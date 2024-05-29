@@ -1,6 +1,6 @@
 use std::env;
 
-use llm::{
+use rig::{
     completion::{Completion, Prompt},
     providers::cohere::Client as CohereClient,
 };

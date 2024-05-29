@@ -1,6 +1,6 @@
 use std::env;
 
-use llm::{
+use rig::{
     completion::Prompt,
     providers::{cohere, openai},
 };

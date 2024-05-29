@@ -1,5 +1,5 @@
 use anyhow::Result;
-use llm::{
+use rig::{
     completion::{Prompt, ToolDefinition},
     embeddings::EmbeddingsBuilder,
     providers::openai::Client,

@@ -1,7 +1,7 @@
 use std::env;
 
 use anyhow::Result;
-use llm::{
+use rig::{
     agent::Agent,
     completion::{Message, Prompt},
     providers::{cohere, openai},

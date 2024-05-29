@@ -1,6 +1,6 @@
 use std::env;
 
-use llm::{
+use rig::{
     embeddings::EmbeddingsBuilder,
     providers::cohere::Client,
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStore, VectorStoreIndex},

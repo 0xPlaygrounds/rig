@@ -1,6 +1,6 @@
 use std::env;
 
-use llm::{
+use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::Client,
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStore, VectorStoreIndex},

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use llm::{
+use rig::{
     cli_chatbot::cli_chatbot,
     completion::ToolDefinition,
     embeddings::EmbeddingsBuilder,

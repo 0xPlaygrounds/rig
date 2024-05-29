@@ -1,6 +1,6 @@
 use std::env;
 
-use llm::{completion::Prompt, providers};
+use rig::{completion::Prompt, providers};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {

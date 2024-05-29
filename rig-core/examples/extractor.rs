@@ -1,7 +1,6 @@
 use std::env;
 
-// use llm::client::{Client, OpenAIClient};
-use llm::providers::{cohere::Client as CohereClient, openai::Client as OpenAIClient};
+use rig::providers::{cohere::Client as CohereClient, openai::Client as OpenAIClient};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
