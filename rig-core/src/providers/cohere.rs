@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     agent::AgentBuilder,
-    completion,
+    completion::{self, CompletionError},
     embeddings::{self, EmbeddingsBuilder},
     extractor::ExtractorBuilder,
     json_utils,
@@ -426,7 +426,7 @@ impl completion::CompletionModel for CompletionModel {
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>> {
+    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let request = json!({
             "model": self.model,
             "preamble": completion_request.preamble,
@@ -467,7 +467,7 @@ impl completion::CompletionModel for CompletionModel {
 
         match cohere_response {
             Response::Completion(completion) => Ok(completion.into()),
-            Response::Error(error) => Err(anyhow::anyhow!(error.message)),
+            Response::Error(error) => Err(CompletionError::ProviderError("Cohere".into(), error.message)),
         }
     }
 }

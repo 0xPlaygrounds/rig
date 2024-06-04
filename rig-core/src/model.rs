@@ -1,8 +1,6 @@
 use crate::completion::{
-    Completion, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message,
-    ModelChoice, Prompt,
+    Completion, CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message, ModelChoice, Prompt, PromptError
 };
-use anyhow::Result;
 
 /// A model that can be used to prompt completions from a completion model.
 /// This is the simplest building block for creating an LLM powered application.
@@ -18,7 +16,7 @@ impl<M: CompletionModel> Completion<M> for Model<M> {
         &self,
         prompt: &str,
         chat_history: Vec<Message>,
-    ) -> Result<CompletionRequestBuilder<M>> {
+    ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         Ok(self
             .model
             .completion_request(prompt)
@@ -28,7 +26,7 @@ impl<M: CompletionModel> Completion<M> for Model<M> {
 }
 
 impl<M: CompletionModel> Prompt for Model<M> {
-    async fn prompt(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String> {
+    async fn prompt(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String, PromptError> {
         match self.completion(prompt, chat_history).await?.send().await? {
             CompletionResponse {
                 choice: ModelChoice::Message(message),
@@ -37,8 +35,8 @@ impl<M: CompletionModel> Prompt for Model<M> {
             CompletionResponse {
                 choice: ModelChoice::ToolCall(_, _),
                 ..
-            } => Err(anyhow::anyhow!(
-                "Tool calls are not supported in prompt mode"
+            } => Err(PromptError::ToolCallError(
+                "Tool calls are not supported by simple models in prompt mode".to_string(),
             )),
         }
     }

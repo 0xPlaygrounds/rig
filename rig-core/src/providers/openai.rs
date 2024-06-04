@@ -1,6 +1,6 @@
 use crate::{
     agent::AgentBuilder,
-    completion::{self, CompletionRequest},
+    completion::{self, CompletionError, CompletionRequest},
     embeddings,
     extractor::ExtractorBuilder,
     json_utils,
@@ -8,7 +8,6 @@ use crate::{
     rag::RagAgentBuilder,
     vector_store::{NoIndex, VectorStoreIndex},
 };
-use anyhow::{anyhow, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -120,7 +119,7 @@ pub struct EmbeddingModel {
 impl embeddings::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 1024;
 
-    async fn embed_documents(&self, documents: Vec<String>) -> Result<Vec<embeddings::Embedding>> {
+    async fn embed_documents(&self, documents: Vec<String>) -> anyhow::Result<Vec<embeddings::Embedding>> {
         let response = self
             .client
             .0
@@ -188,7 +187,7 @@ pub struct CompletionResponse {
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = anyhow::Error;
+    type Error = CompletionError;
 
     fn try_from(value: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
         match value.choices.as_slice() {
@@ -213,7 +212,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             }, ..] => {
                 let call = calls
                     .first()
-                    .ok_or(anyhow!("No tool selected in completion response"))?;
+                    .ok_or(CompletionError::ResponseError("Tool selection is empty".into()))?;
 
                 Ok(completion::CompletionResponse {
                     choice: completion::ModelChoice::ToolCall(
@@ -223,7 +222,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     raw_response: value,
                 })
             }
-            _ => Err(anyhow!("Unhandled completion response")),
+            _ => Err(CompletionError::ResponseError("Response did not contain a message or tool call".into())),
         }
     }
 }
@@ -293,7 +292,7 @@ impl completion::CompletionModel for CompletionModel {
     async fn completion(
         &self,
         mut completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>> {
+    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         // Add preamble to chat history (if available)
         let mut full_history = if let Some(preamble) = &completion_request.preamble {
             vec![completion::Message {

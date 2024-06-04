@@ -1,9 +1,42 @@
 use std::collections::HashMap;
 
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::json_utils;
+
+// Errors
+#[derive(Debug, Error)]
+pub enum CompletionError {
+    /// Http error (e.g.: connection error, timeout, etc.)
+    #[error("HttpError: {0}")]
+    HttpError(#[from] reqwest::Error),
+
+    /// Json error (e.g.: serialization, deserialization)
+    #[error("JsonError: {0}")]
+    JsonError(#[from] serde_json::Error),
+
+    /// Error building the completion request
+    #[error("RequestError: {0}")]
+    RequestError(String),
+
+    /// Error parsing the completion response
+    #[error("ResponseError: {0}")]
+    ResponseError(String),
+
+    /// Error returned by the completion model provider
+    #[error("ProviderError: {0} - {1}")]
+    ProviderError(String, String),
+}
+
+#[derive(Debug, Error)]
+pub enum PromptError {
+    #[error("CompletionError: {0}")]
+    CompletionError(#[from] CompletionError),
+
+    #[error("ToolCallError: {0}")]
+    ToolCallError(String),
+}
 
 // ================================================================
 // Request models
@@ -43,7 +76,7 @@ pub trait Prompt {
         &self,
         prompt: &str,
         chat_history: Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<String>>;
+    ) -> impl std::future::Future<Output = Result<String, PromptError>>;
 }
 
 /// Trait defininig a low-level LLM completion interface
@@ -60,7 +93,7 @@ pub trait Completion<M: CompletionModel> {
         &self,
         prompt: &str,
         chat_history: Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<CompletionRequestBuilder<M>>> + Send;
+    ) -> impl std::future::Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>> + Send;
 }
 
 #[derive(Debug)]
@@ -81,7 +114,7 @@ pub trait CompletionModel: Clone + Send + Sync {
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::T>>> + Send;
+    ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::T>, CompletionError>> + Send;
 
     fn completion_request(&self, prompt: &str) -> CompletionRequestBuilder<Self> {
         CompletionRequestBuilder::new(self.clone(), prompt.to_string())
@@ -91,7 +124,7 @@ pub trait CompletionModel: Clone + Send + Sync {
         &self,
         prompt: &str,
         chat_history: Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::T>>> + Send {
+    ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::T>, CompletionError>> + Send {
         async move {
             self.completion_request(prompt)
                 .messages(chat_history)
@@ -213,7 +246,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         }
     }
 
-    pub async fn send(self) -> Result<CompletionResponse<M::T>> {
+    pub async fn send(self) -> Result<CompletionResponse<M::T>, CompletionError> {
         let model = self.model.clone();
         model.completion(self.build()).await
     }

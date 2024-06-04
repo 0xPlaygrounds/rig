@@ -8,8 +8,8 @@ use futures::{stream, StreamExt, TryStreamExt};
 
 use crate::{
     completion::{
-        Completion, CompletionModel, CompletionRequestBuilder, CompletionResponse, Document,
-        Message, ModelChoice, Prompt,
+        Completion, CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse,
+        Document, Message, ModelChoice, Prompt, PromptError,
     },
     tool::{Tool, ToolSet},
     vector_store::{NoIndex, VectorStoreIndex},
@@ -53,7 +53,7 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Completion<M>
         &self,
         prompt: &str,
         chat_history: Vec<Message>,
-    ) -> Result<CompletionRequestBuilder<M>> {
+    ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         let dynamic_context = stream::iter(self.dynamic_context.iter())
             .then(|(num_sample, index)| async {
                 anyhow::Ok(
@@ -78,7 +78,8 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Completion<M>
                 acc.extend(docs);
                 Ok(acc)
             })
-            .await?;
+            .await
+            .map_err(|e| CompletionError::RequestError(format!("Error ragging context documents: {}", e)))?;
 
         let dynamic_tools = stream::iter(self.dynamic_tools.iter())
             .then(|(num_sample, index)| async {
@@ -101,7 +102,8 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Completion<M>
                 }
                 Ok(acc)
             })
-            .await?;
+            .await
+            .map_err(|e| CompletionError::RequestError(format!("Error ragging tools: {}", e)))?;
 
         let static_tools = stream::iter(self.static_tools.iter())
             .filter_map(|toolname| async move {
@@ -128,7 +130,11 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Completion<M>
 }
 
 impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Prompt for RagAgent<M, C, T> {
-    async fn prompt(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String> {
+    async fn prompt(
+        &self,
+        prompt: &str,
+        chat_history: Vec<Message>,
+    ) -> Result<String, PromptError> {
         match self.completion(prompt, chat_history).await?.send().await? {
             CompletionResponse {
                 choice: ModelChoice::Message(msg),
@@ -137,7 +143,11 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Prompt for Ra
             CompletionResponse {
                 choice: ModelChoice::ToolCall(toolname, args),
                 ..
-            } => Ok(self.tools.call(&toolname, args.to_string()).await?),
+            } => self
+                .tools
+                .call(&toolname, args.to_string())
+                .await
+                .map_err(|e| PromptError::ToolCallError(format!("{}", e))),
         }
     }
 }

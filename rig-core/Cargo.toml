@@ -21,6 +21,7 @@ futures = "0.3.29"
 anyhow = "1.0.75"
 ordered-float = "4.2.0"
 schemars = "0.8.16"
+thiserror = "1.0.61"
 
 [dev-dependencies]
 tokio = { version = "1.34.0", features = ["full"] }

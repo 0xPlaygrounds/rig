@@ -5,8 +5,8 @@ use futures::{stream, StreamExt};
 
 use crate::{
     completion::{
-        Completion, CompletionModel, CompletionRequestBuilder, CompletionResponse, Document,
-        Message, ModelChoice, Prompt,
+        Completion, CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse,
+        Document, Message, ModelChoice, Prompt, PromptError,
     },
     tool::{Tool, ToolSet},
 };
@@ -68,7 +68,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
         &self,
         prompt: &str,
         chat_history: Vec<Message>,
-    ) -> Result<CompletionRequestBuilder<M>> {
+    ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         let tool_definitions = stream::iter(self.static_tools.iter())
             .filter_map(|toolname| async move {
                 if let Some(tool) = self.tools.get(toolname) {
@@ -94,7 +94,11 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 }
 
 impl<M: CompletionModel> Prompt for Agent<M> {
-    async fn prompt(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String> {
+    async fn prompt(
+        &self,
+        prompt: &str,
+        chat_history: Vec<Message>,
+    ) -> Result<String, PromptError> {
         match self.completion(prompt, chat_history).await?.send().await? {
             CompletionResponse {
                 choice: ModelChoice::Message(msg),
@@ -103,7 +107,11 @@ impl<M: CompletionModel> Prompt for Agent<M> {
             CompletionResponse {
                 choice: ModelChoice::ToolCall(toolname, args),
                 ..
-            } => Ok(self.tools.call(&toolname, args.to_string()).await?),
+            } => self
+                .tools
+                .call(&toolname, args.to_string())
+                .await
+                .map_err(|e| PromptError::ToolCallError(format!("{}", e))),
         }
     }
 }
