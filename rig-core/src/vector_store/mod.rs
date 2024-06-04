@@ -4,7 +4,6 @@ use serde::Deserialize;
 use crate::embeddings::{DocumentEmbeddings, Embedding};
 
 pub mod in_memory_store;
-pub mod mongodb_store;
 
 pub trait VectorStore {
     type Q;

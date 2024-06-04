@@ -2,8 +2,10 @@ use anyhow::Result;
 use futures::StreamExt;
 use mongodb::bson::doc;
 
-use super::{VectorStore, VectorStoreIndex};
-use crate::embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel};
+use rig::{
+    embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel},
+    vector_store::{VectorStore, VectorStoreIndex}
+};
 
 pub struct MongoDbVectorStore {
     collection: mongodb::Collection<DocumentEmbeddings>,
