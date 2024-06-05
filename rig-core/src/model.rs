@@ -27,21 +27,17 @@ impl<M: CompletionModel> Completion<M> for Model<M> {
 }
 
 impl<M: CompletionModel> Prompt for Model<M> {
-    async fn prompt(
-        &self,
-        prompt: &str,
-        chat_history: Vec<Message>,
-    ) -> Result<String, PromptError> {
+    async fn chat(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String, PromptError> {
         match self.completion(prompt, chat_history).await?.send().await? {
             CompletionResponse {
                 choice: ModelChoice::Message(message),
                 ..
             } => Ok(message),
             CompletionResponse {
-                choice: ModelChoice::ToolCall(_, _),
+                choice: ModelChoice::ToolCall(toolname, _),
                 ..
-            } => Err(PromptError::ToolCallError(
-                "Tool calls are not supported by simple models in prompt mode".to_string(),
+            } => Err(PromptError::ToolError(
+                crate::tool::ToolSetError::ToolNotFoundError(toolname),
             )),
         }
     }

@@ -93,11 +93,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 }
 
 impl<M: CompletionModel> Prompt for Agent<M> {
-    async fn prompt(
-        &self,
-        prompt: &str,
-        chat_history: Vec<Message>,
-    ) -> Result<String, PromptError> {
+    async fn chat(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String, PromptError> {
         match self.completion(prompt, chat_history).await?.send().await? {
             CompletionResponse {
                 choice: ModelChoice::Message(msg),
@@ -106,11 +102,7 @@ impl<M: CompletionModel> Prompt for Agent<M> {
             CompletionResponse {
                 choice: ModelChoice::ToolCall(toolname, args),
                 ..
-            } => self
-                .tools
-                .call(&toolname, args.to_string())
-                .await
-                .map_err(|e| PromptError::ToolCallError(format!("{}", e))),
+            } => Ok(self.tools.call(&toolname, args.to_string()).await?),
         }
     }
 }

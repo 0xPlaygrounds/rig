@@ -35,21 +35,17 @@ impl<M: CompletionModel> EnglishTranslator<M> {
 }
 
 impl<M: CompletionModel> Prompt for EnglishTranslator<M> {
-    async fn prompt(
-        &self,
-        prompt: &str,
-        chat_history: Vec<Message>,
-    ) -> Result<String, PromptError> {
+    async fn chat(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String, PromptError> {
         // Translate the prompt using the translator agent
         let translated_prompt = self
             .translator_agent
-            .prompt(prompt, chat_history.clone())
+            .chat(prompt, chat_history.clone())
             .await?;
 
         println!("Translated prompt: {}", translated_prompt);
 
         // Answer the prompt using gpt4
-        self.gpt4.prompt(&translated_prompt, chat_history).await
+        self.gpt4.chat(&translated_prompt, chat_history).await
     }
 }
 

@@ -21,11 +21,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Prompt the models and print their response
     println!("Question: Who are you?");
-    println!("GPT-4: {:?}", gpt4.prompt("Who are you?", vec![]).await?);
-    println!(
-        "Coral: {:?}",
-        command_r.prompt("Who are you?", vec![]).await?
-    );
+    println!("GPT-4: {:?}", gpt4.chat("Who are you?", vec![]).await?);
+    println!("Coral: {:?}", command_r.chat("Who are you?", vec![]).await?);
 
     Ok(())
 }

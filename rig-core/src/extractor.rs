@@ -1,15 +1,26 @@
 use std::marker::PhantomData;
 
-use anyhow::Result;
 use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{
     agent::{Agent, AgentBuilder},
-    completion::{CompletionModel, Prompt, ToolDefinition},
+    completion::{CompletionModel, Prompt, PromptError, ToolDefinition},
     tool::Tool,
 };
+
+#[derive(Debug, thiserror::Error)]
+pub enum ExtractionError {
+    #[error("No data extracted")]
+    NoData,
+
+    #[error("Failed to deserialize the extracted data: {0}")]
+    DeserializationError(#[from] serde_json::Error),
+
+    #[error("PromptError: {0}")]
+    PromptError(#[from] PromptError),
+}
 
 pub struct Extractor<M: CompletionModel, T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync> {
     pub agent: Agent<M>,
@@ -20,17 +31,14 @@ impl<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync, M: CompletionModel> 
 where
     M: Sync,
 {
-    pub async fn extract(&self, text: &str) -> Result<T> {
-        let summary = self.agent.prompt(text, vec![]).await?;
+    pub async fn extract(&self, text: &str) -> Result<T, ExtractionError> {
+        let summary = self.agent.prompt(text).await?;
 
         if summary.is_empty() {
-            return Err(anyhow::anyhow!("No data extracted"));
+            return Err(ExtractionError::NoData);
         }
 
-        match serde_json::from_str(&summary) {
-            Ok(data) => Ok(data),
-            Err(e) => Err(anyhow::anyhow!("Failed to deserialize data: {e} {summary}")),
-        }
+        Ok(serde_json::from_str(&summary)?)
     }
 }
 
@@ -86,19 +94,24 @@ struct SubmitTool<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync> {
     _t: PhantomData<T>,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("SubmitError")]
+pub struct SubmitError;
+
 impl<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync> Tool for SubmitTool<T> {
     const NAME: &'static str = "submit";
+    type Error = SubmitError;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "submit",
-            "description": "Submit the structured data you extracted from the provided text.",
-            "parameters": schema_for!(T)
-        }))
-        .expect("Tool Definition")
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description: "Submit the structured data you extracted from the provided text."
+                .to_string(),
+            parameters: json!(schema_for!(T)),
+        }
     }
 
-    async fn call(&self, summary: String) -> Result<String> {
-        Ok(summary)
+    async fn call(&self, data: String) -> Result<String, Self::Error> {
+        Ok(data)
     }
 }

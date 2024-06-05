@@ -17,7 +17,7 @@ pub enum VectorStoreError {
     DatastoreError(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
-pub trait VectorStore {
+pub trait VectorStore: Send + Sync {
     type Q;
 
     fn add_documents(
@@ -41,7 +41,7 @@ pub trait VectorStore {
     ) -> impl std::future::Future<Output = Result<Option<DocumentEmbeddings>, VectorStoreError>> + Send;
 }
 
-pub trait VectorStoreIndex: Sync {
+pub trait VectorStoreIndex: Send + Sync {
     fn embed_document(
         &self,
         document: &str,

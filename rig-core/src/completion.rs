@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::json_utils;
+use crate::{json_utils, tool::ToolSetError};
 
 // Errors
 #[derive(Debug, Error)]
@@ -35,7 +35,7 @@ pub enum PromptError {
     CompletionError(#[from] CompletionError),
 
     #[error("ToolCallError: {0}")]
-    ToolCallError(String),
+    ToolError(#[from] ToolSetError),
 }
 
 // ================================================================
@@ -67,16 +67,22 @@ pub struct ToolDefinition {
 // Implementations
 // ================================================================
 /// Trait defining a high-level LLM chat interface (i.e.: prompt in, response out).
-pub trait Prompt {
-    /// Send a prompt to the completion endpoint along with a chat history.
-    /// If the response is a message, then it is returned
-    /// as a string. If the response is a tool call, then the tool is called
-    /// and the result is returned as a string.
+pub trait Prompt: Send + Sync {
     fn prompt(
         &self,
         prompt: &str,
+    ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send {
+        self.chat(prompt, Vec::new())
+    }
+
+    /// Send a prompt to the completion endpoint along with a chat history.
+    /// If the response is a message, then it is returned as a string. If the response
+    /// is a tool call, then the tool is called and the result is returned as a string.
+    fn chat(
+        &self,
+        prompt: &str,
         chat_history: Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<String, PromptError>>;
+    ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
 }
 
 /// Trait defininig a low-level LLM completion interface
@@ -109,7 +115,7 @@ pub enum ModelChoice {
 }
 
 pub trait CompletionModel: Clone + Send + Sync {
-    type T;
+    type T: Send + Sync;
 
     fn completion(
         &self,

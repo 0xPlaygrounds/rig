@@ -8,7 +8,7 @@ use crate::{
         Completion, CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse,
         Document, Message, ModelChoice, Prompt, PromptError,
     },
-    tool::{Tool, ToolSet},
+    tool::{Tool, ToolSet, ToolSetError},
     vector_store::{NoIndex, VectorStoreIndex},
 };
 
@@ -129,11 +129,7 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Completion<M>
 }
 
 impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Prompt for RagAgent<M, C, T> {
-    async fn prompt(
-        &self,
-        prompt: &str,
-        chat_history: Vec<Message>,
-    ) -> Result<String, PromptError> {
+    async fn chat(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String, PromptError> {
         match self.completion(prompt, chat_history).await?.send().await? {
             CompletionResponse {
                 choice: ModelChoice::Message(msg),
@@ -142,17 +138,13 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Prompt for Ra
             CompletionResponse {
                 choice: ModelChoice::ToolCall(toolname, args),
                 ..
-            } => self
-                .tools
-                .call(&toolname, args.to_string())
-                .await
-                .map_err(|e| PromptError::ToolCallError(format!("{}", e))),
+            } => Ok(self.tools.call(&toolname, args.to_string()).await?),
         }
     }
 }
 
 impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> RagAgent<M, C, T> {
-    pub async fn call_tool(&self, toolname: &str, args: &str) -> Result<String> {
+    pub async fn call_tool(&self, toolname: &str, args: &str) -> Result<String, ToolSetError> {
         self.tools.call(toolname, args.to_string()).await
     }
 }

@@ -111,13 +111,13 @@ async fn main() -> Result<(), anyhow::Error> {
     println!(
         "GPT-4: {}",
         gpt4_calculator_agent
-            .prompt("Calculate 2 - 5", vec![])
+            .chat("Calculate 2 - 5", vec![])
             .await?
     );
     println!(
         "Coral: {}",
         coral_calculator_agent
-            .prompt("Calculate 2 - 5", vec![])
+            .chat("Calculate 2 - 5", vec![])
             .await?
     );
 

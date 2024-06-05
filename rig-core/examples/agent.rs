@@ -5,7 +5,9 @@ use rig::{completion::Prompt, providers};
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let client = providers::openai::Client::new(&env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"));
+    let client = providers::openai::Client::new(
+        &env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"),
+    );
 
     // Create agent with a single context prompt
     let comedian_agent = client
@@ -22,7 +24,7 @@ async fn main() -> Result<(), anyhow::Error> {
     //     .build();
 
     // Prompt the agent and print the response
-    let response = comedian_agent.prompt("Entertain me!", vec![]).await?;
+    let response = comedian_agent.chat("Entertain me!", vec![]).await?;
     println!("{}", response);
 
     Ok(())

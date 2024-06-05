@@ -41,7 +41,7 @@ impl Debater {
                 "Plead your case!".into()
             };
 
-            let resp_a = self.gpt_4.prompt(&prompt_a, history_a.clone()).await?;
+            let resp_a = self.gpt_4.chat(&prompt_a, history_a.clone()).await?;
             println!("GPT-4:\n{}", resp_a);
             history_a.push(Message {
                 role: "user".into(),
@@ -53,7 +53,7 @@ impl Debater {
             });
             println!("================================================================");
 
-            let resp_b = self.coral.prompt(&resp_a, history_b.clone()).await?;
+            let resp_b = self.coral.chat(&resp_a, history_b.clone()).await?;
             println!("Coral:\n{}", resp_b);
             println!("================================================================");
 

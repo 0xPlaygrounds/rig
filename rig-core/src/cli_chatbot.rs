@@ -26,7 +26,7 @@ pub async fn cli_chatbot(chatbot: impl Prompt) -> Result<()> {
                 }
                 tracing::info!("Prompt:\n{}\n", input);
 
-                let response = chatbot.prompt(input, chat_log.clone()).await?;
+                let response = chatbot.chat(input, chat_log.clone()).await?;
                 chat_log.push(Message {
                     role: "user".into(),
                     content: input.into(),

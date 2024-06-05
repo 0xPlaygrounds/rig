@@ -1,7 +1,6 @@
 use std::{collections::HashMap, pin::Pin};
 
-use anyhow::{anyhow, Result};
-use futures::Future;
+use futures::{Future, TryFutureExt};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -9,10 +8,19 @@ use crate::{
     vector_store::VectorStore,
 };
 
+#[derive(Debug, thiserror::Error)]
+pub enum ToolError {
+    /// Error returned by the tool
+    #[error("ToolCallError: {0}")]
+    ToolCallError(#[from] Box<dyn std::error::Error + Send + Sync>),
+}
+
 /// Trait that represents a simple LLM tool
 pub trait Tool: Sized + Send + Sync {
     /// The name of the tool. This name should be unique.
     const NAME: &'static str;
+
+    type Error: std::error::Error + Send + Sync + 'static;
 
     /// A method returning the name of the tool.
     fn name(&self) -> String {
@@ -24,10 +32,10 @@ pub trait Tool: Sized + Send + Sync {
     fn definition(&self, _prompt: String) -> impl Future<Output = ToolDefinition> + Send + Sync;
 
     /// The tool execution method.
-    /// Both the arguments and return value are a String
-    /// since these values are meant to be the output and input
-    /// LLM models (respectively)
-    fn call(&self, args: String) -> impl Future<Output = Result<String>> + Send + Sync;
+    /// Both the arguments and return value are a String since these values are meant to
+    /// be the output and input of LLM models (respectively)
+    fn call(&self, args: String)
+        -> impl Future<Output = Result<String, Self::Error>> + Send + Sync;
 }
 
 /// Trait that represents an LLM tool that can be stored in a vector store and RAGged
@@ -38,13 +46,13 @@ pub trait ToolEmbedding: Tool {
     /// context.
     type Context: for<'a> Deserialize<'a> + Serialize;
 
-    /// Type of the tool's state. This state will be passed to the tool when loading it.
+    /// Type of the tool's state. This state will be passed to the tool when initializing it.
     /// This state can be used to pass runtime arguments to the tool such as clients,
     /// API keys and other configuration.
     type State: Send;
 
     /// A method returning the documents that will be used as embeddings for the tool.
-    /// This allows for a tool to be retrieved from multiple "directions".
+    /// This allows for a tool to be retrieved from multiple embedding "directions".
     /// If the tool will not be RAGged, this method should return an empty vector.
     fn embedding_docs(&self) -> Vec<String>;
 
@@ -52,17 +60,17 @@ pub trait ToolEmbedding: Tool {
     fn context(&self) -> Self::Context;
 
     /// A method to initialize the tool from the context, and a state.
-    fn init(state: Self::State, context: Self::Context) -> Result<Self>;
+    fn init(state: Self::State, context: Self::Context) -> anyhow::Result<Self>;
 
     fn load(
         state: Self::State,
-        store: &(impl VectorStore + Sync),
-    ) -> impl std::future::Future<Output = Result<Self>> + Send {
+        store: &impl VectorStore,
+    ) -> impl std::future::Future<Output = anyhow::Result<Self>> + Send {
         async {
             if let Some(context) = store.get_document::<Self::Context>(Self::NAME).await? {
                 Self::init(state, context)
             } else {
-                Err(anyhow!("Context not found for tool {}", Self::NAME))
+                Err(anyhow::anyhow!("Context not found for tool {}", Self::NAME))
             }
         }
     }
@@ -80,7 +88,7 @@ pub trait ToolDyn: Send + Sync {
     fn call(
         &self,
         args: String,
-    ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + Sync + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>>;
 }
 
 impl<T: Tool> ToolDyn for T {
@@ -98,20 +106,22 @@ impl<T: Tool> ToolDyn for T {
     fn call(
         &self,
         args: String,
-    ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + Sync + '_>> {
-        Box::pin(<Self as Tool>::call(self, args))
+    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>> {
+        Box::pin(
+            <Self as Tool>::call(self, args).map_err(|e| ToolError::ToolCallError(Box::new(e))),
+        )
     }
 }
 
 /// Wrapper trait to allow for dynamic dispatch of raggable tools
 pub trait ToolEmbeddingDyn: ToolDyn {
-    fn context(&self) -> Result<serde_json::Value>;
+    fn context(&self) -> anyhow::Result<serde_json::Value>;
 
     fn embedding_docs(&self) -> Vec<String>;
 }
 
 impl<T: ToolEmbedding> ToolEmbeddingDyn for T {
-    fn context(&self) -> Result<serde_json::Value> {
+    fn context(&self) -> anyhow::Result<serde_json::Value> {
         Ok(serde_json::to_value(&self.context())?)
     }
 
@@ -140,12 +150,26 @@ impl ToolType {
         }
     }
 
-    pub async fn call(&self, args: String) -> Result<String> {
+    pub async fn call(&self, args: String) -> Result<String, ToolError> {
         match self {
             ToolType::Simple(tool) => tool.call(args).await,
             ToolType::Embedding(tool) => tool.call(args).await,
         }
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ToolSetError {
+    /// Error returned by the tool
+    #[error("ToolCallError: {0}")]
+    ToolCallError(#[from] ToolError),
+
+    #[error("ToolNotFoundError: {0}")]
+    ToolNotFoundError(String),
+
+    // TODO: Revisit this
+    #[error("JsonError: {0}")]
+    JsonError(#[from] serde_json::Error),
 }
 
 /// A struct that holds a set of tools
@@ -184,19 +208,19 @@ impl ToolSet {
         self.tools.get(toolname)
     }
 
-    pub async fn call(&self, toolname: &str, args: String) -> Result<String> {
+    pub async fn call(&self, toolname: &str, args: String) -> Result<String, ToolSetError> {
         if let Some(tool) = self.tools.get(toolname) {
             tracing::info!(target: "ai",
                 "Calling tool {toolname} with args:\n{}",
-                serde_json::to_string_pretty(&args)?
+                serde_json::to_string_pretty(&args).unwrap_or_else(|_| args.clone())
             );
-            tool.call(args).await
+            Ok(tool.call(args).await?)
         } else {
-            Err(anyhow!("Tool {} not found!", toolname))
+            Err(ToolSetError::ToolNotFoundError(toolname.to_string()))
         }
     }
 
-    pub async fn documents(&self) -> Result<Vec<completion::Document>> {
+    pub async fn documents(&self) -> Result<Vec<completion::Document>, ToolSetError> {
         let mut docs = Vec::new();
         for tool in self.tools.values() {
             match tool {
