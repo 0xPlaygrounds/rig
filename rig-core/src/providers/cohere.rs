@@ -10,7 +10,7 @@ use crate::{
     rag::RagAgentBuilder,
     vector_store::{NoIndex, VectorStoreIndex},
 };
-use anyhow::Result;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -18,13 +18,23 @@ use serde_json::json;
 // ================================================================
 // Main Cohere Client
 // ================================================================
+const COHERE_API_BASE_URL: &str = "https://api.cohere.ai";
+
 #[derive(Clone)]
-pub struct Client(reqwest::Client);
+pub struct Client {
+    base_url: String,
+    http_client: reqwest::Client,
+}
 
 impl Client {
     pub fn new(api_key: &str) -> Self {
-        Self(
-            reqwest::Client::builder()
+        Self::from_url(api_key, COHERE_API_BASE_URL)
+    }
+
+    pub fn from_url(api_key: &str, base_url: &str) -> Self {
+        Self {
+            base_url: base_url.to_string(),
+            http_client: reqwest::Client::builder()
                 .default_headers({
                     let mut headers = reqwest::header::HeaderMap::new();
                     headers.insert(
@@ -37,7 +47,12 @@ impl Client {
                 })
                 .build()
                 .expect("Cohere reqwest client should build"),
-        )
+        }
+    }
+
+    pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        self.http_client.post(url)
     }
 
     pub fn embedding_model(&self, model: &str, input_type: &str) -> EmbeddingModel {
@@ -148,8 +163,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let response = self
             .client
-            .0
-            .post("https://api.cohere.ai/v1/embed")
+            .post("/v1/embed")
             .json(&json!({
                 "model": self.model,
                 "texts": documents,
@@ -442,8 +456,7 @@ impl completion::CompletionModel for CompletionModel {
 
         let cohere_response = self
             .client
-            .0
-            .post("https://api.cohere.ai/v1/chat")
+            .post("/v1/chat")
             .json(
                 &if let Some(ref params) = completion_request.additional_params {
                     json_utils::merge(request.clone(), params.clone())

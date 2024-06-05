@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use anyhow::Result;
 use futures::{stream, StreamExt};
 
 use crate::{
@@ -37,7 +36,7 @@ impl<M: CompletionModel> Agent<M> {
         model: M,
         preamble: String,
         static_context: Vec<String>,
-        static_tools: Vec<impl Tool + Sync + 'static>,
+        static_tools: Vec<impl Tool + 'static>,
         temperature: Option<f64>,
         additional_params: Option<serde_json::Value>,
     ) -> Self {
@@ -166,7 +165,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
     }
 
     /// Add a static tool to the agent
-    pub fn tool(mut self, tool: impl Tool + Sync + 'static) -> Self {
+    pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
         self.tools.add_tool(tool);
         self.static_tools.push(toolname);

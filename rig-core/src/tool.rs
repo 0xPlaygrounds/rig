@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// Trait that represents a simple LLM tool
-pub trait Tool: Sized + Send {
+pub trait Tool: Sized + Send + Sync {
     /// The name of the tool. This name should be unique.
     const NAME: &'static str;
 
@@ -69,7 +69,7 @@ pub trait ToolEmbedding: Tool {
 }
 
 /// Wrapper trait to allow for dynamic dispatch of simple tools
-pub trait ToolDyn {
+pub trait ToolDyn: Send + Sync {
     fn name(&self) -> String;
 
     fn definition(
@@ -121,8 +121,8 @@ impl<T: ToolEmbedding> ToolEmbeddingDyn for T {
 }
 
 pub(crate) enum ToolType {
-    Simple(Box<dyn ToolDyn + Send + Sync>),
-    Embedding(Box<dyn ToolEmbeddingDyn + Send + Sync>),
+    Simple(Box<dyn ToolDyn>),
+    Embedding(Box<dyn ToolEmbeddingDyn>),
 }
 
 impl ToolType {
@@ -155,7 +155,7 @@ pub struct ToolSet {
 }
 
 impl ToolSet {
-    pub fn new(tools: Vec<impl ToolDyn + Sync + Send + 'static>) -> Self {
+    pub fn new(tools: Vec<impl ToolDyn + 'static>) -> Self {
         let mut toolset = Self::default();
         tools.into_iter().for_each(|tool| {
             toolset.add_tool(tool);
@@ -171,7 +171,7 @@ impl ToolSet {
         self.tools.contains_key(toolname)
     }
 
-    pub fn add_tool(&mut self, tool: impl ToolDyn + Sync + Send + 'static) {
+    pub fn add_tool(&mut self, tool: impl ToolDyn + 'static) {
         self.tools
             .insert(tool.name(), ToolType::Simple(Box::new(tool)));
     }
@@ -242,12 +242,12 @@ pub struct ToolSetBuilder {
 }
 
 impl ToolSetBuilder {
-    pub fn static_tool(mut self, tool: impl ToolDyn + Send + Sync + 'static) -> Self {
+    pub fn static_tool(mut self, tool: impl ToolDyn + 'static) -> Self {
         self.tools.push(ToolType::Simple(Box::new(tool)));
         self
     }
 
-    pub fn dynamic_tool(mut self, tool: impl ToolEmbeddingDyn + Send + Sync + 'static) -> Self {
+    pub fn dynamic_tool(mut self, tool: impl ToolEmbeddingDyn + 'static) -> Self {
         self.tools.push(ToolType::Embedding(Box::new(tool)));
         self
     }

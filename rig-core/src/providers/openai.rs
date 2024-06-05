@@ -15,13 +15,23 @@ use serde_json::json;
 // ================================================================
 // Main OpenAI Client
 // ================================================================
+const OPENAI_API_BASE_URL: &str = "https://api.openai.com";
+
 #[derive(Clone)]
-pub struct Client(reqwest::Client);
+pub struct Client {
+    base_url: String,
+    http_client: reqwest::Client,
+}
 
 impl Client {
     pub fn new(api_key: &str) -> Self {
-        Self(
-            reqwest::Client::builder()
+        Self::from_url(api_key, OPENAI_API_BASE_URL)
+    }
+
+    pub fn from_url(api_key: &str, base_url: &str) -> Self {
+        Self {
+            base_url: base_url.to_string(),
+            http_client: reqwest::Client::builder()
                 .default_headers({
                     let mut headers = reqwest::header::HeaderMap::new();
                     headers.insert(
@@ -34,7 +44,12 @@ impl Client {
                 })
                 .build()
                 .expect("OpenAI reqwest client should build"),
-        )
+        }
+    }
+
+    pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        self.http_client.post(url)
     }
 
     pub fn embedding_model(&self, model: &str) -> EmbeddingModel {
@@ -122,11 +137,10 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     async fn embed_documents(
         &self,
         documents: Vec<String>,
-    ) -> anyhow::Result<Vec<embeddings::Embedding>, EmbeddingError> {
+    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let response = self
             .client
-            .0
-            .post("https://api.openai.com/v1/embeddings")
+            .post("/v1/embeddings")
             .json(&json!({
                 "model": self.model,
                 "input": documents,
@@ -350,8 +364,7 @@ impl completion::CompletionModel for CompletionModel {
 
         let response = self
             .client
-            .0
-            .post("https://api.openai.com/v1/chat/completions")
+            .post("/v1/chat/completions")
             .json(
                 &if let Some(params) = completion_request.additional_params {
                     json_utils::merge(request, params)

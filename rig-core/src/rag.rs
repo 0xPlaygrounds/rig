@@ -1,6 +1,3 @@
-// pub mod context;
-// pub mod tools;
-
 use std::collections::HashMap;
 
 use anyhow::Result;
@@ -213,7 +210,7 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> RagAgentBuild
     }
 
     /// Add a static tool to the RAG agent
-    pub fn static_tool(mut self, tool: impl Tool + Sync + 'static) -> Self {
+    pub fn static_tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
         self.tools.add_tool(tool);
         self.static_tools.push(toolname);

@@ -1227,31 +1227,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-core"
-version = "0.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec94c83a2896cd98519954f02523e80c4f8aa59c88fa89a89852187d50178c5e"
-dependencies = [
- "anyhow",
- "futures",
- "mongodb",
- "ordered-float",
- "reqwest",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "rig-mongodb"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "anyhow",
  "futures",
  "mongodb",
- "rig-core 0.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rig-core",
  "serde",
  "serde_json",
  "tokio",
