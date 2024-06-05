@@ -9,6 +9,10 @@ pub enum VectorStoreError {
     #[error("Embedding error: {0}")]
     EmbeddingError(#[from] EmbeddingError),
 
+    /// Json error (e.g.: serialization, deserialization, etc.)
+    #[error("Json error: {0}")]
+    JsonError(#[from] serde_json::Error),
+
     #[error("Datastore error: {0}")]
     DatastoreError(#[from] Box<dyn std::error::Error + Send + Sync>),
 }

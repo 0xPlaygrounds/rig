@@ -7,9 +7,7 @@ use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 
 use super::{VectorStore, VectorStoreError, VectorStoreIndex};
-use crate::embeddings::{
-    DocumentEmbeddings, Embedding, EmbeddingError, EmbeddingModel, EmbeddingsBuilder,
-};
+use crate::embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel, EmbeddingsBuilder};
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct InMemoryVectorStore {
@@ -58,16 +56,11 @@ impl VectorStore for InMemoryVectorStore {
         &self,
         id: &str,
     ) -> Result<Option<T>, VectorStoreError> {
-        self.embeddings
+        Ok(self
+            .embeddings
             .get(id)
             .map(|document| serde_json::from_value(document.document.clone()))
-            .transpose()
-            .map_err(|e| {
-                VectorStoreError::EmbeddingError(EmbeddingError::DocumentError(format!(
-                    "Error deserializing document {}: {}",
-                    id, e
-                )))
-            })
+            .transpose()?)
     }
 
     async fn get_document_embeddings(
