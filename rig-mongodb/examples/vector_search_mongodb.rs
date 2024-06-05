@@ -15,7 +15,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = Client::new(&openai_api_key);
 
     // Initialize MongoDB client
-    let mongodb_connection_string = env::var("MONGODB_CONNECTION_STRING").expect("MONGODB_CONNECTION_STRING not set");
+    let mongodb_connection_string =
+        env::var("MONGODB_CONNECTION_STRING").expect("MONGODB_CONNECTION_STRING not set");
     let options = ClientOptions::parse(mongodb_connection_string)
         .await
         .expect("MongoDB connection string should be valid");

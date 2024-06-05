@@ -1,6 +1,6 @@
 [package]
 name = "rig-mongodb"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -9,7 +9,7 @@ edition = "2021"
 anyhow = "1.0.86"
 futures = "0.3.30"
 mongodb = "2.8.2"
-rig-core = { version = "0.0.0" }
+rig-core = { path = "../rig-core", version = "0.0.0" }
 serde = { version = "1.0.203", features = ["derive"] }
 serde_json = "1.0.117"
 tracing = "0.1.40"

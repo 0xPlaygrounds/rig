@@ -4,26 +4,45 @@ use mongodb::bson::doc;
 
 use rig::{
     embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel},
-    vector_store::{VectorStore, VectorStoreIndex}
+    vector_store::{VectorStore, VectorStoreError, VectorStoreIndex},
 };
 
 pub struct MongoDbVectorStore {
     collection: mongodb::Collection<DocumentEmbeddings>,
 }
 
+fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
+    VectorStoreError::DatastoreError(Box::new(e))
+}
+
 impl VectorStore for MongoDbVectorStore {
     type Q = mongodb::bson::Document;
 
-    async fn add_documents(&mut self, documents: Vec<DocumentEmbeddings>) -> Result<()> {
-        self.collection.insert_many(documents, None).await?;
+    async fn add_documents(
+        &mut self,
+        documents: Vec<DocumentEmbeddings>,
+    ) -> Result<(), VectorStoreError> {
+        self.collection
+            .insert_many(documents, None)
+            .await
+            .map_err(mongodb_to_rig_error)?;
         Ok(())
     }
 
-    async fn get_document_embeddings(&self, id: &str) -> Result<Option<DocumentEmbeddings>> {
-        Ok(self.collection.find_one(doc! { "_id": id }, None).await?)
+    async fn get_document_embeddings(
+        &self,
+        id: &str,
+    ) -> Result<Option<DocumentEmbeddings>, VectorStoreError> {
+        self.collection
+            .find_one(doc! { "_id": id }, None)
+            .await
+            .map_err(mongodb_to_rig_error)
     }
 
-    async fn get_document<T: for<'a> serde::Deserialize<'a>>(&self, id: &str) -> Result<Option<T>> {
+    async fn get_document<T: for<'a> serde::Deserialize<'a>>(
+        &self,
+        id: &str,
+    ) -> Result<Option<T>, VectorStoreError> {
         Ok(self
             .collection
             .clone_with_type::<String>()
@@ -35,17 +54,25 @@ impl VectorStore for MongoDbVectorStore {
                 ],
                 None,
             )
-            .await?
+            .await
+            .map_err(mongodb_to_rig_error)?
             .with_type::<String>()
             .next()
             .await
-            .transpose()?
+            .transpose()
+            .map_err(mongodb_to_rig_error)?
             .map(|doc| serde_json::from_str(&doc))
             .transpose()?)
     }
 
-    async fn get_document_by_query(&self, query: Self::Q) -> Result<Option<DocumentEmbeddings>> {
-        Ok(self.collection.find_one(query, None).await?)
+    async fn get_document_by_query(
+        &self,
+        query: Self::Q,
+    ) -> Result<Option<DocumentEmbeddings>, VectorStoreError> {
+        self.collection
+            .find_one(query, None)
+            .await
+            .map_err(mongodb_to_rig_error)
     }
 }
 
@@ -88,15 +115,15 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
 }
 
 impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbVectorIndex<M> {
-    async fn embed_document(&self, document: &str) -> Result<Embedding> {
-        self.model.embed_document(document).await
+    async fn embed_document(&self, document: &str) -> Result<Embedding, VectorStoreError> {
+        Ok(self.model.embed_document(document).await?)
     }
 
     async fn top_n_from_query(
         &self,
         query: &str,
         n: usize,
-    ) -> Result<Vec<(f64, DocumentEmbeddings)>> {
+    ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_document(query).await?;
         self.top_n_from_embedding(&prompt_embedding, n).await
     }
@@ -105,7 +132,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
         &self,
         prompt_embedding: &Embedding,
         n: usize,
-    ) -> Result<Vec<(f64, DocumentEmbeddings)>> {
+    ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         let mut cursor = self
             .collection
             .aggregate(
@@ -128,12 +155,13 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
                 ],
                 None,
             )
-            .await?
+            .await
+            .map_err(mongodb_to_rig_error)?
             .with_type::<serde_json::Value>();
 
         let mut results = Vec::new();
         while let Some(doc) = cursor.next().await {
-            let doc = doc?;
+            let doc = doc.map_err(mongodb_to_rig_error)?;
             let score = doc.get("score").expect("score").as_f64().expect("f64");
             let document: DocumentEmbeddings = serde_json::from_value(doc).expect("document");
             results.push((score, document));
