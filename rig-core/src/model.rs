@@ -1,5 +1,6 @@
 use crate::completion::{
-    Completion, CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message, ModelChoice, Prompt, PromptError
+    Completion, CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse,
+    Message, ModelChoice, Prompt, PromptError,
 };
 
 /// A model that can be used to prompt completions from a completion model.
@@ -26,7 +27,11 @@ impl<M: CompletionModel> Completion<M> for Model<M> {
 }
 
 impl<M: CompletionModel> Prompt for Model<M> {
-    async fn prompt(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String, PromptError> {
+    async fn prompt(
+        &self,
+        prompt: &str,
+        chat_history: Vec<Message>,
+    ) -> Result<String, PromptError> {
         match self.completion(prompt, chat_history).await?.send().await? {
             CompletionResponse {
                 choice: ModelChoice::Message(message),

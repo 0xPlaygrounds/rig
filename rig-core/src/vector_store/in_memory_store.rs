@@ -3,12 +3,13 @@ use std::{
     collections::{BinaryHeap, HashMap},
 };
 
-use anyhow::Result;
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 
-use super::{VectorStore, VectorStoreIndex};
-use crate::embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel, EmbeddingsBuilder};
+use super::{VectorStore, VectorStoreError, VectorStoreIndex};
+use crate::embeddings::{
+    DocumentEmbeddings, Embedding, EmbeddingError, EmbeddingModel, EmbeddingsBuilder,
+};
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct InMemoryVectorStore {
@@ -42,7 +43,10 @@ type EmbeddingRanking<'a> = BinaryHeap<Reverse<RankingItem<'a>>>;
 impl VectorStore for InMemoryVectorStore {
     type Q = ();
 
-    async fn add_documents(&mut self, documents: Vec<DocumentEmbeddings>) -> Result<()> {
+    async fn add_documents(
+        &mut self,
+        documents: Vec<DocumentEmbeddings>,
+    ) -> Result<(), VectorStoreError> {
         for doc in documents {
             self.embeddings.insert(doc.id.clone(), doc);
         }
@@ -50,19 +54,33 @@ impl VectorStore for InMemoryVectorStore {
         Ok(())
     }
 
-    async fn get_document<T: for<'a> Deserialize<'a>>(&self, id: &str) -> Result<Option<T>> {
-        Ok(self
-            .embeddings
+    async fn get_document<T: for<'a> Deserialize<'a>>(
+        &self,
+        id: &str,
+    ) -> Result<Option<T>, VectorStoreError> {
+        self.embeddings
             .get(id)
             .map(|document| serde_json::from_value(document.document.clone()))
-            .transpose()?)
+            .transpose()
+            .map_err(|e| {
+                VectorStoreError::EmbeddingError(EmbeddingError::DocumentError(format!(
+                    "Error deserializing document {}: {}",
+                    id, e
+                )))
+            })
     }
 
-    async fn get_document_embeddings(&self, id: &str) -> Result<Option<DocumentEmbeddings>> {
+    async fn get_document_embeddings(
+        &self,
+        id: &str,
+    ) -> Result<Option<DocumentEmbeddings>, VectorStoreError> {
         Ok(self.embeddings.get(id).cloned())
     }
 
-    async fn get_document_by_query(&self, _query: Self::Q) -> Result<Option<DocumentEmbeddings>> {
+    async fn get_document_by_query(
+        &self,
+        _query: Self::Q,
+    ) -> Result<Option<DocumentEmbeddings>, VectorStoreError> {
         Ok(None)
     }
 }
@@ -115,7 +133,7 @@ impl<M: EmbeddingModel> InMemoryVectorIndex<M> {
         embedding_model: M,
         query_model: M,
         documents: &[(String, T)],
-    ) -> Result<Self> {
+    ) -> Result<Self, VectorStoreError> {
         let mut store = InMemoryVectorStore::default();
 
         let embeddings = documents
@@ -140,7 +158,7 @@ impl<M: EmbeddingModel> InMemoryVectorIndex<M> {
     pub async fn from_embeddings(
         query_model: M,
         embeddings: Vec<DocumentEmbeddings>,
-    ) -> Result<Self> {
+    ) -> Result<Self, VectorStoreError> {
         let mut store = InMemoryVectorStore::default();
         store.add_documents(embeddings).await?;
         Ok(store.index(query_model))
@@ -148,15 +166,15 @@ impl<M: EmbeddingModel> InMemoryVectorIndex<M> {
 }
 
 impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorIndex<M> {
-    async fn embed_document(&self, document: &str) -> Result<Embedding> {
-        self.model.embed_document(document).await
+    async fn embed_document(&self, document: &str) -> Result<Embedding, VectorStoreError> {
+        Ok(self.model.embed_document(document).await?)
     }
 
     async fn top_n_from_query(
         &self,
         query: &str,
         n: usize,
-    ) -> Result<Vec<(f64, DocumentEmbeddings)>> {
+    ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_document(query).await?;
         self.top_n_from_embedding(&prompt_embedding, n).await
     }
@@ -165,7 +183,7 @@ impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorI
         &self,
         query_embedding: &Embedding,
         n: usize,
-    ) -> Result<Vec<(f64, DocumentEmbeddings)>> {
+    ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         // Sort documents by best embedding distance
         let mut docs: EmbeddingRanking = BinaryHeap::new();
 

@@ -79,7 +79,9 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Completion<M>
                 Ok(acc)
             })
             .await
-            .map_err(|e| CompletionError::RequestError(format!("Error ragging context documents: {}", e)))?;
+            .map_err(|e| {
+                CompletionError::RequestError(format!("Error ragging context documents: {}", e))
+            })?;
 
         let dynamic_tools = stream::iter(self.dynamic_tools.iter())
             .then(|(num_sample, index)| async {

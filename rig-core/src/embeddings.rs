@@ -1,18 +1,37 @@
 use std::{cmp::max, collections::HashMap};
 
-use anyhow::Result;
 use futures::{stream, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 
 use crate::tool::{ToolEmbedding, ToolSet, ToolType};
 
-pub trait EmbeddingModel: Clone + Sync {
+#[derive(Debug, thiserror::Error)]
+pub enum EmbeddingError {
+    /// Http error (e.g.: connection error, timeout, etc.)
+    #[error("HttpError: {0}")]
+    HttpError(#[from] reqwest::Error),
+
+    /// Json error (e.g.: serialization, deserialization)
+    #[error("JsonError: {0}")]
+    JsonError(#[from] serde_json::Error),
+
+    /// Error processing the document for embedding
+    #[error("DocumentError: {0}")]
+    DocumentError(String),
+
+    /// Error returned by the embedding model provider
+    #[error("ProviderError: {0}")]
+    ProviderError(String),
+}
+
+pub trait EmbeddingModel: Clone + Sync + Send {
     const MAX_DOCUMENTS: usize;
 
+    /// Embed a single document
     fn embed_document(
         &self,
         document: &str,
-    ) -> impl std::future::Future<Output = Result<Embedding>> + Send
+    ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + Send
     where
         Self: Sync,
     {
@@ -26,10 +45,11 @@ pub trait EmbeddingModel: Clone + Sync {
         }
     }
 
+    /// Embed multiple documents in a single request
     fn embed_documents(
         &self,
         documents: Vec<String>,
-    ) -> impl std::future::Future<Output = Result<Vec<Embedding>>> + Send;
+    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + Send;
 }
 
 #[derive(Clone, Default, Deserialize, Serialize)]
@@ -87,8 +107,8 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
         }
     }
 
-    /// Add a document to the embedding collection.
-    /// The document will be used for the embedding.
+    /// Add a simple document to the embedding collection.
+    /// The provided document string will be used for the embedding.
     pub fn simple_document(mut self, id: &str, document: &str) -> Self {
         self.documents.push((
             id.to_string(),
@@ -112,7 +132,13 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
         self
     }
 
-    pub fn tool(mut self, tool: impl ToolEmbedding + Send + Sync + 'static) -> Result<Self> {
+    /// Add a tool to the embedding collection.
+    /// The `tool.context()` corresponds to the document being stored while
+    /// `tool.embedding_docs()` corresponds to the documents that will be used to generate the embeddings.
+    pub fn tool(
+        mut self,
+        tool: impl ToolEmbedding + Send + Sync + 'static,
+    ) -> Result<Self, EmbeddingError> {
         self.documents.push((
             tool.name(),
             serde_json::to_value(tool.context())?,
@@ -121,11 +147,20 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
         Ok(self)
     }
 
-    pub fn tools(mut self, toolset: &ToolSet) -> Result<Self> {
+    /// Add the tools from the given toolset to the embedding collection.
+    pub fn tools(mut self, toolset: &ToolSet) -> Result<Self, EmbeddingError> {
         for (name, tool) in toolset.tools.iter() {
             if let ToolType::Embedding(tool) = tool {
-                self.documents
-                    .push((name.clone(), tool.context()?, tool.embedding_docs()));
+                self.documents.push((
+                    name.clone(),
+                    tool.context().map_err(|e| {
+                        EmbeddingError::DocumentError(format!(
+                            "Failed to generate context for tool {}: {}",
+                            name, e
+                        ))
+                    })?,
+                    tool.embedding_docs(),
+                ));
             }
         }
         Ok(self)
@@ -174,7 +209,7 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
     }
 
     /// Generate the embeddings for the given documents
-    pub async fn build(self) -> Result<Embeddings> {
+    pub async fn build(self) -> Result<Embeddings, EmbeddingError> {
         // Create a temporary store for the documents
         let documents_map = self
             .documents
@@ -192,7 +227,7 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
             // Generate the embeddings
             .map(|docs| async {
                 let (ids, docs): (Vec<_>, Vec<_>) = docs.into_iter().unzip();
-                anyhow::Ok(
+                Ok::<_, EmbeddingError>(
                     ids.into_iter()
                         .zip(self.model.embed_documents(docs).await?.into_iter())
                         .collect::<Vec<_>>(),

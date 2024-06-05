@@ -21,10 +21,7 @@ where
     M: Sync,
 {
     pub async fn extract(&self, text: &str) -> Result<T> {
-        let summary = self
-            .agent
-            .prompt(text, vec![])
-            .await?;
+        let summary = self.agent.prompt(text, vec![]).await?;
 
         if summary.is_empty() {
             return Err(anyhow::anyhow!("No data extracted"));
@@ -32,9 +29,7 @@ where
 
         match serde_json::from_str(&summary) {
             Ok(data) => Ok(data),
-            Err(e) => {
-                Err(anyhow::anyhow!("Failed to deserialize data: {e} {summary}"))
-            }
+            Err(e) => Err(anyhow::anyhow!("Failed to deserialize data: {e} {summary}")),
         }
     }
 }
@@ -66,9 +61,9 @@ impl<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync, M: CompletionModel>
 
     /// Add additional preamble to the extractor
     pub fn preamble(mut self, preamble: &str) -> Self {
-        self.agent_builder = self
-            .agent_builder
-            .append_preamble(&format!("\n=============== ADDITIONAL INSTRUCTIONS ===============\n{preamble}"));
+        self.agent_builder = self.agent_builder.append_preamble(&format!(
+            "\n=============== ADDITIONAL INSTRUCTIONS ===============\n{preamble}"
+        ));
         self
     }
 

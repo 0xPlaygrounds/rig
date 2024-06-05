@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError},
-    embeddings::{self, EmbeddingsBuilder},
+    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     extractor::ExtractorBuilder,
     json_utils,
     model::ModelBuilder,
@@ -142,7 +142,10 @@ pub struct EmbeddingModel {
 impl embeddings::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 96;
 
-    async fn embed_documents(&self, documents: Vec<String>) -> Result<Vec<embeddings::Embedding>> {
+    async fn embed_documents(
+        &self,
+        documents: Vec<String>,
+    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let response = self
             .client
             .0
@@ -467,7 +470,10 @@ impl completion::CompletionModel for CompletionModel {
 
         match cohere_response {
             Response::Completion(completion) => Ok(completion.into()),
-            Response::Error(error) => Err(CompletionError::ProviderError("Cohere".into(), error.message)),
+            Response::Error(error) => Err(CompletionError::ProviderError(
+                "Cohere".into(),
+                error.message,
+            )),
         }
     }
 }

@@ -35,7 +35,11 @@ impl<M: CompletionModel> EnglishTranslator<M> {
 }
 
 impl<M: CompletionModel> Prompt for EnglishTranslator<M> {
-    async fn prompt(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String, PromptError> {
+    async fn prompt(
+        &self,
+        prompt: &str,
+        chat_history: Vec<Message>,
+    ) -> Result<String, PromptError> {
         // Translate the prompt using the translator agent
         let translated_prompt = self
             .translator_agent

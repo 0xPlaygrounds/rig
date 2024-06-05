@@ -124,7 +124,8 @@ pub trait CompletionModel: Clone + Send + Sync {
         &self,
         prompt: &str,
         chat_history: Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::T>, CompletionError>> + Send {
+    ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::T>, CompletionError>> + Send
+    {
         async move {
             self.completion_request(prompt)
                 .messages(chat_history)

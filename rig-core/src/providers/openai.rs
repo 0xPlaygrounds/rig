@@ -1,7 +1,7 @@
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
-    embeddings,
+    embeddings::{self, EmbeddingError},
     extractor::ExtractorBuilder,
     json_utils,
     model::ModelBuilder,
@@ -119,7 +119,10 @@ pub struct EmbeddingModel {
 impl embeddings::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 1024;
 
-    async fn embed_documents(&self, documents: Vec<String>) -> anyhow::Result<Vec<embeddings::Embedding>> {
+    async fn embed_documents(
+        &self,
+        documents: Vec<String>,
+    ) -> anyhow::Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let response = self
             .client
             .0
@@ -210,9 +213,9 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     },
                 ..
             }, ..] => {
-                let call = calls
-                    .first()
-                    .ok_or(CompletionError::ResponseError("Tool selection is empty".into()))?;
+                let call = calls.first().ok_or(CompletionError::ResponseError(
+                    "Tool selection is empty".into(),
+                ))?;
 
                 Ok(completion::CompletionResponse {
                     choice: completion::ModelChoice::ToolCall(
@@ -222,7 +225,9 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     raw_response: value,
                 })
             }
-            _ => Err(CompletionError::ResponseError("Response did not contain a message or tool call".into())),
+            _ => Err(CompletionError::ResponseError(
+                "Response did not contain a message or tool call".into(),
+            )),
         }
     }
 }

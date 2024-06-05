@@ -1,9 +1,17 @@
-use anyhow::Result;
 use serde::Deserialize;
 
-use crate::embeddings::{DocumentEmbeddings, Embedding};
+use crate::embeddings::{DocumentEmbeddings, Embedding, EmbeddingError};
 
 pub mod in_memory_store;
+
+#[derive(Debug, thiserror::Error)]
+pub enum VectorStoreError {
+    #[error("Embedding error: {0}")]
+    EmbeddingError(#[from] EmbeddingError),
+
+    #[error("Datastore error: {0}")]
+    DatastoreError(#[from] Box<dyn std::error::Error + Send + Sync>),
+}
 
 pub trait VectorStore {
     type Q;
@@ -11,29 +19,29 @@ pub trait VectorStore {
     fn add_documents(
         &mut self,
         documents: Vec<DocumentEmbeddings>,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    ) -> impl std::future::Future<Output = Result<(), VectorStoreError>> + Send;
 
     fn get_document_embeddings(
         &self,
         id: &str,
-    ) -> impl std::future::Future<Output = Result<Option<DocumentEmbeddings>>> + Send;
+    ) -> impl std::future::Future<Output = Result<Option<DocumentEmbeddings>, VectorStoreError>> + Send;
 
     fn get_document<T: for<'a> Deserialize<'a>>(
         &self,
         id: &str,
-    ) -> impl std::future::Future<Output = Result<Option<T>>> + Send;
+    ) -> impl std::future::Future<Output = Result<Option<T>, VectorStoreError>> + Send;
 
     fn get_document_by_query(
         &self,
         query: Self::Q,
-    ) -> impl std::future::Future<Output = Result<Option<DocumentEmbeddings>>> + Send;
+    ) -> impl std::future::Future<Output = Result<Option<DocumentEmbeddings>, VectorStoreError>> + Send;
 }
 
 pub trait VectorStoreIndex: Sync {
     fn embed_document(
         &self,
         document: &str,
-    ) -> impl std::future::Future<Output = Result<Embedding>> + Send;
+    ) -> impl std::future::Future<Output = Result<Embedding, VectorStoreError>> + Send;
 
     /// Get the top n documents based on the distance to the given embedding.
     /// The distance is calculated as the cosine distance between the prompt and
@@ -43,7 +51,7 @@ pub trait VectorStoreIndex: Sync {
         &self,
         query: &str,
         n: usize,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, DocumentEmbeddings)>>> + Send;
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> + Send;
 
     /// Same as `top_n_from_query` but returns the documents without its embeddings.
     /// The documents are deserialized into the given type.
@@ -51,7 +59,7 @@ pub trait VectorStoreIndex: Sync {
         &self,
         query: &str,
         n: usize,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, T)>>> + Send {
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, T)>, VectorStoreError>> + Send {
         async move {
             let documents = self.top_n_from_query(query, n).await?;
             Ok(documents
@@ -66,7 +74,8 @@ pub trait VectorStoreIndex: Sync {
         &self,
         query: &str,
         n: usize,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>>> + Send {
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + Send
+    {
         async move {
             let documents = self.top_n_from_query(query, n).await?;
             Ok(documents
@@ -84,7 +93,7 @@ pub trait VectorStoreIndex: Sync {
         &self,
         prompt_embedding: &Embedding,
         n: usize,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, DocumentEmbeddings)>>> + Send;
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> + Send;
 
     /// Same as `top_n_from_embedding` but returns the documents without its embeddings.
     /// The documents are deserialized into the given type.
@@ -92,7 +101,7 @@ pub trait VectorStoreIndex: Sync {
         &self,
         prompt_embedding: &Embedding,
         n: usize,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, T)>>> + Send {
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, T)>, VectorStoreError>> + Send {
         async move {
             let documents = self.top_n_from_embedding(prompt_embedding, n).await?;
             Ok(documents
@@ -107,7 +116,8 @@ pub trait VectorStoreIndex: Sync {
         &self,
         prompt_embedding: &Embedding,
         n: usize,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>>> + Send {
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + Send
+    {
         async move {
             let documents = self.top_n_from_embedding(prompt_embedding, n).await?;
             Ok(documents
@@ -121,7 +131,7 @@ pub trait VectorStoreIndex: Sync {
 pub struct NoIndex;
 
 impl VectorStoreIndex for NoIndex {
-    async fn embed_document(&self, _document: &str) -> Result<Embedding> {
+    async fn embed_document(&self, _document: &str) -> Result<Embedding, VectorStoreError> {
         Ok(Embedding::default())
     }
 
@@ -129,7 +139,7 @@ impl VectorStoreIndex for NoIndex {
         &self,
         _query: &str,
         _n: usize,
-    ) -> Result<Vec<(f64, DocumentEmbeddings)>> {
+    ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         Ok(vec![])
     }
 
@@ -137,7 +147,7 @@ impl VectorStoreIndex for NoIndex {
         &self,
         _prompt_embedding: &Embedding,
         _n: usize,
-    ) -> Result<Vec<(f64, DocumentEmbeddings)>> {
+    ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         Ok(vec![])
     }
 }
