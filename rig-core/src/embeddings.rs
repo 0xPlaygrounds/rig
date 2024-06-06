@@ -2,7 +2,6 @@ use std::{cmp::max, collections::HashMap};
 
 use futures::{stream, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 use crate::tool::{ToolEmbedding, ToolSet, ToolType};
 
@@ -136,10 +135,7 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
     /// Add a tool to the embedding collection.
     /// The `tool.context()` corresponds to the document being stored while
     /// `tool.embedding_docs()` corresponds to the documents that will be used to generate the embeddings.
-    pub fn tool(
-        mut self,
-        tool: impl ToolEmbedding + 'static,
-    ) -> Result<Self, EmbeddingError> {
+    pub fn tool(mut self, tool: impl ToolEmbedding + 'static) -> Result<Self, EmbeddingError> {
         self.documents.push((
             tool.name(),
             serde_json::to_value(tool.context())?,
@@ -176,21 +172,28 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
         document: T,
         embed_documents: Vec<String>,
     ) -> Self {
-        self.documents
-            .push((id.to_string(), serde_json::to_value(document).expect("Document should serialize"), embed_documents));
+        self.documents.push((
+            id.to_string(),
+            serde_json::to_value(document).expect("Document should serialize"),
+            embed_documents,
+        ));
         self
     }
 
     /// Add multiple documents to the embedding collection.
     /// Each element of the vector is a tuple of the form (id, document, embed_documents).
     pub fn documents<T: Serialize>(mut self, documents: Vec<(String, T, Vec<String>)>) -> Self {
-        self.documents.extend(documents.into_iter().map(|(id, document, embed_documents)| {
-            (
-                id,
-                serde_json::to_value(document).expect("Document should serialize"),
-                embed_documents,
-            )
-        }));
+        self.documents.extend(
+            documents
+                .into_iter()
+                .map(|(id, document, embed_documents)| {
+                    (
+                        id,
+                        serde_json::to_value(document).expect("Document should serialize"),
+                        embed_documents,
+                    )
+                }),
+        );
         self
     }
 
