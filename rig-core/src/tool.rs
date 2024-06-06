@@ -1,6 +1,6 @@
 use std::{collections::HashMap, pin::Pin};
 
-use futures::{Future, TryFutureExt};
+use futures::Future;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -13,7 +13,16 @@ pub enum ToolError {
     /// Error returned by the tool
     #[error("ToolCallError: {0}")]
     ToolCallError(#[from] Box<dyn std::error::Error + Send + Sync>),
+
+    #[error("JsonError: {0}")]
+    JsonError(#[from] serde_json::Error),
 }
+
+// impl From<anyhow::Error> for ToolError {
+//     fn from(e: anyhow::Error) -> Self {
+//         ToolError::ToolCallError(Box::<(dyn std::error::Error + Send + Sync>::new(*e)))
+//     }
+// }
 
 /// Trait that represents a simple LLM tool
 pub trait Tool: Sized + Send + Sync {
@@ -21,6 +30,8 @@ pub trait Tool: Sized + Send + Sync {
     const NAME: &'static str;
 
     type Error: std::error::Error + Send + Sync + 'static;
+    type Args: for<'a> Deserialize<'a> + Send + Sync;
+    type Output: Serialize;
 
     /// A method returning the name of the tool.
     fn name(&self) -> String {
@@ -34,8 +45,10 @@ pub trait Tool: Sized + Send + Sync {
     /// The tool execution method.
     /// Both the arguments and return value are a String since these values are meant to
     /// be the output and input of LLM models (respectively)
-    fn call(&self, args: String)
-        -> impl Future<Output = Result<String, Self::Error>> + Send + Sync;
+    fn call(
+        &self,
+        args: Self::Args,
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send + Sync;
 }
 
 /// Trait that represents an LLM tool that can be stored in a vector store and RAGged
@@ -107,9 +120,17 @@ impl<T: Tool> ToolDyn for T {
         &self,
         args: String,
     ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>> {
-        Box::pin(
-            <Self as Tool>::call(self, args).map_err(|e| ToolError::ToolCallError(Box::new(e))),
-        )
+        Box::pin(async move {
+            match serde_json::from_str(&args) {
+                Ok(args) => <Self as Tool>::call(self, args)
+                    .await
+                    .map_err(|e| ToolError::ToolCallError(Box::new(e)))
+                    .and_then(|output| {
+                        serde_json::to_string(&output).map_err(ToolError::JsonError)
+                    }),
+                Err(e) => Err(ToolError::JsonError(e)),
+            }
+        })
     }
 }
 

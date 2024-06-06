@@ -101,6 +101,8 @@ pub struct SubmitError;
 impl<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync> Tool for SubmitTool<T> {
     const NAME: &'static str = "submit";
     type Error = SubmitError;
+    type Args = String;
+    type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
@@ -111,7 +113,7 @@ impl<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync> Tool for SubmitTool<
         }
     }
 
-    async fn call(&self, data: String) -> Result<String, Self::Error> {
+    async fn call(&self, data: Self::Args) -> Result<String, Self::Error> {
         Ok(data)
     }
 }

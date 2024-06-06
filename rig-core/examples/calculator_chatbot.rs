@@ -17,10 +17,18 @@ struct OperationArgs {
     y: i32,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("Math error")]
+struct MathError;
+
 #[derive(Deserialize, Serialize)]
 struct Add;
 impl Tool for Add {
     const NAME: &'static str = "add";
+
+    type Error = MathError;
+    type Args = OperationArgs;
+    type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         serde_json::from_value(json!({
@@ -43,10 +51,9 @@ impl Tool for Add {
         .expect("Tool Definition")
     }
 
-    async fn call(&self, args: String) -> Result<String> {
-        let args: OperationArgs = serde_json::from_str(&args)?;
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
-        Ok(format!("{} + {} = {}", args.x, args.y, result))
+        Ok(result)
     }
 }
 
@@ -70,6 +77,10 @@ struct Subtract;
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
 
+    type Error = MathError;
+    type Args = OperationArgs;
+    type Output = i32;
+
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         serde_json::from_value(json!({
             "name": "subtract",
@@ -91,10 +102,9 @@ impl Tool for Subtract {
         .expect("Tool Definition")
     }
 
-    async fn call(&self, args: String) -> Result<String> {
-        let args: OperationArgs = serde_json::from_str(&args)?;
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x - args.y;
-        Ok(format!("{} - {} = {}", args.x, args.y, result))
+        Ok(result)
     }
 }
 
@@ -117,6 +127,10 @@ struct Multiply;
 impl Tool for Multiply {
     const NAME: &'static str = "multiply";
 
+    type Error = MathError;
+    type Args = OperationArgs;
+    type Output = i32;
+
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         serde_json::from_value(json!({
             "name": "multiply",
@@ -138,10 +152,9 @@ impl Tool for Multiply {
         .expect("Tool Definition")
     }
 
-    async fn call(&self, args: String) -> Result<String> {
-        let args: OperationArgs = serde_json::from_str(&args)?;
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x * args.y;
-        Ok(format!("{} * {} = {}", args.x, args.y, result))
+        Ok(result)
     }
 }
 
@@ -164,6 +177,10 @@ struct Divide;
 impl Tool for Divide {
     const NAME: &'static str = "divide";
 
+    type Error = MathError;
+    type Args = OperationArgs;
+    type Output = i32;
+
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         serde_json::from_value(json!({
             "name": "divide",
@@ -185,10 +202,9 @@ impl Tool for Divide {
         .expect("Tool Definition")
     }
 
-    async fn call(&self, args: String) -> Result<String> {
-        let args: OperationArgs = serde_json::from_str(&args)?;
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x / args.y;
-        Ok(format!("{} / {} = {}", args.x, args.y, result))
+        Ok(result)
     }
 }
 
