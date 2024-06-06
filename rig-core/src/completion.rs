@@ -18,7 +18,7 @@ pub enum CompletionError {
 
     /// Error building the completion request
     #[error("RequestError: {0}")]
-    RequestError(String),
+    RequestError(#[from] Box<dyn std::error::Error + Send + Sync>),
 
     /// Error parsing the completion response
     #[error("ResponseError: {0}")]

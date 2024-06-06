@@ -20,6 +20,10 @@ struct OperationArgs {
 #[error("Math error")]
 struct MathError;
 
+#[derive(Debug, thiserror::Error)]
+#[error("Math error")]
+struct InitError;
+
 #[derive(Deserialize, Serialize)]
 struct Add;
 
@@ -58,10 +62,11 @@ impl Tool for Add {
 }
 
 impl ToolEmbedding for Add {
+    type InitError = InitError;
     type Context = ();
     type State = ();
 
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self> {
+    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
         Ok(Add)
     }
 
@@ -110,10 +115,11 @@ impl Tool for Subtract {
 }
 
 impl ToolEmbedding for Subtract {
+    type InitError = InitError;
     type Context = ();
     type State = ();
 
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self> {
+    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
         Ok(Subtract)
     }
 
@@ -152,18 +158,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .dynamic_tool(Subtract)
         .build();
 
-    // for (toolname, _) in toolset.tools.iter() {
-    //     tracing::info!("Toolset: {}", toolname);
-    // }
-
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .tools(&toolset)?
         .build()
         .await?;
-
-    // for doc in embeddings.iter() {
-    //     tracing::info!("Embeddings: {}", doc.id);
-    // }
 
     vector_store.add_documents(embeddings).await?;
 

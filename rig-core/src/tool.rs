@@ -3,10 +3,7 @@ use std::{collections::HashMap, pin::Pin};
 use futures::Future;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    completion::{self, ToolDefinition},
-    vector_store::VectorStore,
-};
+use crate::completion::{self, ToolDefinition};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ToolError {
@@ -17,12 +14,6 @@ pub enum ToolError {
     #[error("JsonError: {0}")]
     JsonError(#[from] serde_json::Error),
 }
-
-// impl From<anyhow::Error> for ToolError {
-//     fn from(e: anyhow::Error) -> Self {
-//         ToolError::ToolCallError(Box::<(dyn std::error::Error + Send + Sync>::new(*e)))
-//     }
-// }
 
 /// Trait that represents a simple LLM tool
 pub trait Tool: Sized + Send + Sync {
@@ -53,6 +44,8 @@ pub trait Tool: Sized + Send + Sync {
 
 /// Trait that represents an LLM tool that can be stored in a vector store and RAGged
 pub trait ToolEmbedding: Tool {
+    type InitError: std::error::Error + Send + Sync + 'static;
+
     /// Type of the tool' context. This context will be saved and loaded from the
     /// vector store when ragging the tool.
     /// This context can be used to store the tool's static configuration and local
@@ -73,20 +66,7 @@ pub trait ToolEmbedding: Tool {
     fn context(&self) -> Self::Context;
 
     /// A method to initialize the tool from the context, and a state.
-    fn init(state: Self::State, context: Self::Context) -> anyhow::Result<Self>;
-
-    fn load(
-        state: Self::State,
-        store: &impl VectorStore,
-    ) -> impl std::future::Future<Output = anyhow::Result<Self>> + Send {
-        async {
-            if let Some(context) = store.get_document::<Self::Context>(Self::NAME).await? {
-                Self::init(state, context)
-            } else {
-                Err(anyhow::anyhow!("Context not found for tool {}", Self::NAME))
-            }
-        }
-    }
+    fn init(state: Self::State, context: Self::Context) -> Result<Self, Self::InitError>;
 }
 
 /// Wrapper trait to allow for dynamic dispatch of simple tools
@@ -136,14 +116,14 @@ impl<T: Tool> ToolDyn for T {
 
 /// Wrapper trait to allow for dynamic dispatch of raggable tools
 pub trait ToolEmbeddingDyn: ToolDyn {
-    fn context(&self) -> anyhow::Result<serde_json::Value>;
+    fn context(&self) -> serde_json::Result<serde_json::Value>;
 
     fn embedding_docs(&self) -> Vec<String>;
 }
 
 impl<T: ToolEmbedding> ToolEmbeddingDyn for T {
-    fn context(&self) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::to_value(&self.context())?)
+    fn context(&self) -> serde_json::Result<serde_json::Value> {
+        serde_json::to_value(&self.context())
     }
 
     fn embedding_docs(&self) -> Vec<String> {

@@ -49,7 +49,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = vector_store.index(model, "context_vector_index", doc! {})?;
+    let index = vector_store.index(model, "context_vector_index", doc! {});
 
     // Query the index
     let results = index

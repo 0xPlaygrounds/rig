@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use anyhow::Result;
 use futures::{stream, StreamExt, TryStreamExt};
 
 use crate::{
@@ -9,7 +8,7 @@ use crate::{
         Document, Message, ModelChoice, Prompt, PromptError,
     },
     tool::{Tool, ToolSet, ToolSetError},
-    vector_store::{NoIndex, VectorStoreIndex},
+    vector_store::{NoIndex, VectorStoreError, VectorStoreIndex},
 };
 
 /// Struct representing a RAG agent, i.e.: an agent enhanced with two collections of
@@ -53,7 +52,7 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Completion<M>
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         let dynamic_context = stream::iter(self.dynamic_context.iter())
             .then(|(num_sample, index)| async {
-                anyhow::Ok(
+                Ok::<_, VectorStoreError>(
                     index
                         .top_n_from_query(prompt, *num_sample)
                         .await?
@@ -76,13 +75,11 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Completion<M>
                 Ok(acc)
             })
             .await
-            .map_err(|e| {
-                CompletionError::RequestError(format!("Error ragging context documents: {}", e))
-            })?;
+            .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
 
         let dynamic_tools = stream::iter(self.dynamic_tools.iter())
             .then(|(num_sample, index)| async {
-                anyhow::Ok(
+                Ok::<_, VectorStoreError>(
                     index
                         .top_n_ids_from_query(prompt, *num_sample)
                         .await?
@@ -102,7 +99,7 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Completion<M>
                 Ok(acc)
             })
             .await
-            .map_err(|e| CompletionError::RequestError(format!("Error ragging tools: {}", e)))?;
+            .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
 
         let static_tools = stream::iter(self.static_tools.iter())
             .filter_map(|toolname| async move {

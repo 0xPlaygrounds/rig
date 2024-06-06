@@ -21,6 +21,10 @@ struct OperationArgs {
 #[error("Math error")]
 struct MathError;
 
+#[derive(Debug, thiserror::Error)]
+#[error("Init error")]
+struct InitError;
+
 #[derive(Deserialize, Serialize)]
 struct Add;
 impl Tool for Add {
@@ -58,10 +62,11 @@ impl Tool for Add {
 }
 
 impl ToolEmbedding for Add {
+    type InitError = InitError;
     type Context = ();
     type State = ();
 
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self> {
+    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
         Ok(Add)
     }
 
@@ -109,10 +114,11 @@ impl Tool for Subtract {
 }
 
 impl ToolEmbedding for Subtract {
+    type InitError = InitError;
     type Context = ();
     type State = ();
 
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self> {
+    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
         Ok(Subtract)
     }
 
@@ -159,10 +165,11 @@ impl Tool for Multiply {
 }
 
 impl ToolEmbedding for Multiply {
+    type InitError = InitError;
     type Context = ();
     type State = ();
 
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self> {
+    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
         Ok(Multiply)
     }
 
@@ -209,10 +216,11 @@ impl Tool for Divide {
 }
 
 impl ToolEmbedding for Divide {
+    type InitError = InitError;
     type Context = ();
     type State = ();
 
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self> {
+    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
         Ok(Divide)
     }
 

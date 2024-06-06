@@ -1,4 +1,3 @@
-use anyhow::Result;
 use futures::StreamExt;
 use mongodb::bson::doc;
 
@@ -86,7 +85,7 @@ impl MongoDbVectorStore {
         model: M,
         index_name: &str,
         filter: mongodb::bson::Document,
-    ) -> Result<MongoDbVectorIndex<M>> {
+    ) -> MongoDbVectorIndex<M> {
         MongoDbVectorIndex::new(self.collection.clone(), model, index_name, filter)
     }
 }
@@ -104,13 +103,13 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
         model: M,
         index_name: &str,
         filter: mongodb::bson::Document,
-    ) -> Result<Self> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             collection,
             model,
             index_name: index_name.to_string(),
             filter,
-        })
+        }
     }
 }
 
