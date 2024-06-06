@@ -25,8 +25,8 @@ pub enum CompletionError {
     ResponseError(String),
 
     /// Error returned by the completion model provider
-    #[error("ProviderError: {0} - {1}")]
-    ProviderError(String, String),
+    #[error("ProviderError: {0}")]
+    ProviderError(String),
 }
 
 #[derive(Debug, Error)]

@@ -19,6 +19,10 @@ pub enum EmbeddingError {
     #[error("DocumentError: {0}")]
     DocumentError(String),
 
+    /// Error parsing the completion response
+    #[error("ResponseError: {0}")]
+    ResponseError(String),
+
     /// Error returned by the embedding model provider
     #[error("ProviderError: {0}")]
     ProviderError(String),

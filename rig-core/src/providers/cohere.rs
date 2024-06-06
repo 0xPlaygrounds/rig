@@ -104,6 +104,18 @@ impl Client {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct ApiErrorResponse {
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum ApiResponse<T> {
+    Ok(T),
+    Err(ApiErrorResponse),
+}
+
 // ================================================================
 // Cohere Embedding API
 // ================================================================
@@ -171,32 +183,33 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             }))
             .send()
             .await?
-            .json::<EmbeddingResponse>()
+            .json::<ApiResponse<EmbeddingResponse>>()
             .await?;
 
-        // let raw_response = self.client.0.post("https://api.cohere.ai/v1/embed")
-        //     .json(&json!({
-        //         "model": self.model,
-        //         "texts": documents,
-        //         "input_type": self.input_type,
-        //     }))
-        //     .send()
-        //     .await?
-        //     .json::<serde_json::Value>()
-        //     .await?;
+        match response {
+            ApiResponse::Ok(response) => {
+                if response.embeddings.len() != documents.len() {
+                    return Err(EmbeddingError::DocumentError(format!(
+                        "Expected {} embeddings, got {}",
+                        documents.len(),
+                        response.embeddings.len()
+                    )));
+                }
 
-        // println!("raw_response: {}", serde_json::to_string_pretty(&raw_response).unwrap());
-        // let response: EmbeddingResponse = serde_json::from_value(raw_response).unwrap();
-
-        Ok(response
-            .embeddings
-            .into_iter()
-            .zip(documents.into_iter())
-            .map(|(embedding, document)| embeddings::Embedding {
-                document,
-                vec: embedding,
-            })
-            .collect())
+                Ok(response
+                    .embeddings
+                    .into_iter()
+                    .zip(documents.into_iter())
+                    .map(|(embedding, document)| embeddings::Embedding {
+                        document,
+                        vec: embedding,
+                    })
+                    .collect())
+            }
+            ApiResponse::Err(error) => {
+                return Err(EmbeddingError::ProviderError(error.message));
+            }
+        }
     }
 }
 
@@ -232,18 +245,6 @@ pub struct CompletionResponse {
     pub tool_calls: Vec<ToolCall>,
     #[serde(default)]
     pub chat_history: Vec<ChatHistory>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ErrorResponse {
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum Response {
-    Completion(CompletionResponse),
-    Error(ErrorResponse),
 }
 
 impl From<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
@@ -454,7 +455,7 @@ impl completion::CompletionModel for CompletionModel {
             "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
         });
 
-        let cohere_response = self
+        let response = self
             .client
             .post("/v1/chat")
             .json(
@@ -466,27 +467,12 @@ impl completion::CompletionModel for CompletionModel {
             )
             .send()
             .await?
-            .json()
+            .json::<ApiResponse<CompletionResponse>>()
             .await?;
 
-        // let full_req = if let Some(ref params) = completion_request.additional_params {json_utils::merge(request, params.clone())} else {request};
-        // println!("full_req: {}", serde_json::to_string_pretty(&full_req).unwrap());
-
-        // let raw_response = self.client.0.post("https://api.cohere.ai/v1/chat")
-        //     .json(&full_req)
-        //     .send()
-        //     .await?
-        //     .json::<serde_json::Value>()
-        //     .await?;
-
-        // println!("raw_response: {}", serde_json::to_string_pretty(&raw_response).unwrap());
-
-        match cohere_response {
-            Response::Completion(completion) => Ok(completion.into()),
-            Response::Error(error) => Err(CompletionError::ProviderError(
-                "Cohere".into(),
-                error.message,
-            )),
+        match response {
+            ApiResponse::Ok(completion) => Ok(completion.into()),
+            ApiResponse::Err(error) => Err(CompletionError::ProviderError(error.message)),
         }
     }
 }

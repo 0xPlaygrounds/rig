@@ -101,6 +101,18 @@ impl Client {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct ApiErrorResponse {
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum ApiResponse<T> {
+    Ok(T),
+    Err(ApiErrorResponse),
+}
+
 // ================================================================
 // OpenAI Embedding API
 // ================================================================
@@ -110,6 +122,21 @@ pub struct EmbeddingResponse {
     pub data: Vec<EmbeddingData>,
     pub model: String,
     pub usage: Usage,
+}
+
+impl From<ApiErrorResponse> for EmbeddingError {
+    fn from(err: ApiErrorResponse) -> Self {
+        EmbeddingError::ProviderError(err.message)
+    }
+}
+
+impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, EmbeddingError> {
+    fn from(value: ApiResponse<EmbeddingResponse>) -> Self {
+        match value {
+            ApiResponse::Ok(response) => Ok(response),
+            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -147,36 +174,29 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             }))
             .send()
             .await?
-            .json::<EmbeddingResponse>()
+            .json::<ApiResponse<EmbeddingResponse>>()
             .await?;
 
-        // tracing::debug!("Request: {}", serde_json::to_string_pretty(&json!({
-        //     "model": self.model,
-        //     "input": documents,
-        // })).expect("Request should serialize"));
+        match response {
+            ApiResponse::Ok(response) => {
+                if response.data.len() != documents.len() {
+                    return Err(EmbeddingError::ResponseError(
+                        "Response data length does not match input length".into(),
+                    ));
+                }
 
-        // let raw_response = self.client.0.post("https://api.openai.com/v1/embeddings")
-        //     .json(&json!({
-        //         "model": self.model,
-        //         "input": documents,
-        //     }))
-        //     .send()
-        //     .await?
-        //     .json::<serde_json::Value>()
-        //     .await?;
-
-        // tracing::debug!("Response: {}", serde_json::to_string_pretty(&raw_response).expect("Response should serialize"));
-        // let response: EmbeddingResponse = serde_json::from_value(raw_response)?;
-
-        Ok(response
-            .data
-            .into_iter()
-            .zip(documents.into_iter())
-            .map(|(embedding, document)| embeddings::Embedding {
-                document,
-                vec: embedding.embedding,
-            })
-            .collect())
+                Ok(response
+                    .data
+                    .into_iter()
+                    .zip(documents.into_iter())
+                    .map(|(embedding, document)| embeddings::Embedding {
+                        document,
+                        vec: embedding.embedding,
+                    })
+                    .collect())
+            }
+            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+        }
     }
 }
 
@@ -200,7 +220,13 @@ pub struct CompletionResponse {
     pub model: String,
     pub system_fingerprint: Option<String>,
     pub choices: Vec<Choice>,
-    pub usage: Usage,
+    pub usage: Option<Usage>,
+}
+
+impl From<ApiErrorResponse> for CompletionError {
+    fn from(err: ApiErrorResponse) -> Self {
+        CompletionError::ProviderError(err.message)
+    }
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
@@ -360,8 +386,6 @@ impl completion::CompletionModel for CompletionModel {
             })
         };
 
-        // println!("Request: {}", serde_json::to_string_pretty(&request).expect("Request should serialize"));
-
         let response = self
             .client
             .post("/v1/chat/completions")
@@ -374,19 +398,12 @@ impl completion::CompletionModel for CompletionModel {
             )
             .send()
             .await?
-            .json::<CompletionResponse>()
+            .json::<ApiResponse<CompletionResponse>>()
             .await?;
 
-        // let raw_response = self.client.0.post("https://api.openai.com/v1/chat/completions")
-        //     .json(&if let Some(params) = additional_params {json_utils::merge(request, params)} else {request})
-        //     .send()
-        //     .await?
-        //     .json::<serde_json::Value>()
-        //     .await?;
-
-        // println!("Response: {}", serde_json::to_string_pretty(&raw_response).expect("Response should serialize"));
-        // let response: CompletionResponse = serde_json::from_value(raw_response)?;
-
-        response.try_into()
+        match response {
+            ApiResponse::Ok(response) => response.try_into(),
+            ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+        }
     }
 }
