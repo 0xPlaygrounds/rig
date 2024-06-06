@@ -2,6 +2,9 @@
 name = "rig-mongodb"
 version = "0.0.1"
 edition = "2021"
+license = "MIT"
+readme = "README.md"
+description = "MongoDB implementation of a Rig vector store."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
