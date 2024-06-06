@@ -2,6 +2,7 @@ use std::{cmp::max, collections::HashMap};
 
 use futures::{stream, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use crate::tool::{ToolEmbedding, ToolSet, ToolType};
 
@@ -137,7 +138,7 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
     /// `tool.embedding_docs()` corresponds to the documents that will be used to generate the embeddings.
     pub fn tool(
         mut self,
-        tool: impl ToolEmbedding + Send + Sync + 'static,
+        tool: impl ToolEmbedding + 'static,
     ) -> Result<Self, EmbeddingError> {
         self.documents.push((
             tool.name(),
@@ -169,21 +170,27 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
     /// Add a document to the embedding collection.
     /// `embed_documents` are the documents that will be used to generate the embeddings
     /// for `document`.
-    pub fn document(
+    pub fn document<T: Serialize>(
         mut self,
         id: &str,
-        document: serde_json::Value,
+        document: T,
         embed_documents: Vec<String>,
     ) -> Self {
         self.documents
-            .push((id.to_string(), document, embed_documents));
+            .push((id.to_string(), serde_json::to_value(document).expect("Document should serialize"), embed_documents));
         self
     }
 
     /// Add multiple documents to the embedding collection.
     /// Each element of the vector is a tuple of the form (id, document, embed_documents).
-    pub fn documents(mut self, documents: Vec<(String, serde_json::Value, Vec<String>)>) -> Self {
-        self.documents.extend(documents);
+    pub fn documents<T: Serialize>(mut self, documents: Vec<(String, T, Vec<String>)>) -> Self {
+        self.documents.extend(documents.into_iter().map(|(id, document, embed_documents)| {
+            (
+                id,
+                serde_json::to_value(document).expect("Document should serialize"),
+                embed_documents,
+            )
+        }));
         self
     }
 
