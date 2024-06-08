@@ -3,7 +3,7 @@ use std::env;
 use anyhow::Result;
 use rig::{
     agent::Agent,
-    completion::{Message, Prompt},
+    completion::{Chat, Message},
     providers::{cohere, openai},
 };
 

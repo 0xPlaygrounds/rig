@@ -1,3 +1,53 @@
+//! This module contains the implementation of the completion functionality for the LLM (Large Language
+//! Model) chat interface. It provides traits, structs, and enums for generating completion requests,
+//! handling completion responses, and defining completion models.
+//!
+//! The main traits defined in this module are:
+//! - `Prompt`: Defines a high-level LLM chat interface for prompting and receiving responses.
+//! - `Completion`: Defines a low-level LLM completion interface for generating completion requests.
+//! - `CompletionModel`: Defines a completion model that can be used to generate completion responses.
+//!
+//! The module also provides various structs and enums for representing generic completion requests,
+//! responses, and errors.
+//!
+//! Example Usage:
+//!
+//! ```rust
+//! use rig::providers::openai::{Client, self};
+//! use rig::completion::*;
+//!
+//! // Initialize the OpenAI client and a completion model
+//! let openai = Client::new("your-openai-api-key");
+//!
+//! let model = openai.model(openai::GPT_4).build();
+//!
+//!
+//! // Create the completion request
+//! let builder = model.completion_request("Who are you?");
+//!     .preamble(
+//!         "You are Marvin, an extremely smart but depressed robot who is nonetheless helpful towards humanity.".to_string())
+//!     .build();
+//!
+//! // Send the completion request and get the completion response
+//! let response = model.completion(request)
+//!     .await
+//!     .expect("Failed to get completion response");
+//!
+//! // Handle the completion response
+//! match completion_response.choice {
+//!     ModelChoice::Message(message) => {
+//!         // Handle the completion response as a message
+//!         println!("Received message: {}", message);
+//!     }
+//!     ModelChoice::ToolCall(tool_name, tool_params) => {
+//!         // Handle the completion response as a tool call
+//!         println!("Received tool call: {} {:?}", tool_name, tool_params);
+//!     }
+//! }
+//! ```
+//!
+//! For more information on how to use the completion functionality, refer to the documentation of
+//! the individual traits, structs, and enums defined in this module.
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -66,16 +116,17 @@ pub struct ToolDefinition {
 // ================================================================
 // Implementations
 // ================================================================
-/// Trait defining a high-level LLM chat interface (i.e.: prompt in, response out).
+/// Trait defining a high-level LLM on-shot prompt interface (i.e.: prompt in, response out).
 pub trait Prompt: Send + Sync {
     fn prompt(
         &self,
         prompt: &str,
-    ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send {
-        self.chat(prompt, Vec::new())
-    }
+    ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
+}
 
-    /// Send a prompt to the completion endpoint along with a chat history.
+/// Trait defining a high-level LLM chat interface (i.e.: prompt and chat hiroty in, response out).
+pub trait Chat: Send + Sync {
+    /// Send a one-shot prompt to the completion endpoint.
     /// If the response is a message, then it is returned as a string. If the response
     /// is a tool call, then the tool is called and the result is returned as a string.
     fn chat(
@@ -91,10 +142,13 @@ pub trait Completion<M: CompletionModel> {
     /// This function is meant to be called by the user to further customize the
     /// request at prompt time before sending it.
     ///
-    /// IMPORTANT: The CompletionModel that implements this trait will already
-    /// populate fields (the exact fields depend on the model) in the builder.
+    /// ❗IMPORTANT: The type that implements this trait might have already
+    /// populated fields in the builder (the exact fields depend on the type).
     /// For fields that have already been set by the model, calling the corresponding
     /// method on the builder will overwrite the value set by the model.
+    ///
+    /// For example, the request builder returned by `Agent::completion` will already
+    /// contain the `preamble` provided when creating the agent.
     fn completion(
         &self,
         prompt: &str,
@@ -102,25 +156,39 @@ pub trait Completion<M: CompletionModel> {
     ) -> impl std::future::Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>> + Send;
 }
 
+/// General completion response struct that contains the high-level completion choice
+/// and the raw response.
 #[derive(Debug)]
 pub struct CompletionResponse<T> {
+    /// The completion choice returned by the completion model provider
     pub choice: ModelChoice,
+    /// The raw response returned by the completion model provider
     pub raw_response: T,
 }
 
+/// Enum representing the high-level completion choice returned by the completion model provider.
 #[derive(Debug)]
 pub enum ModelChoice {
+    /// Represents a completion response as a message
     Message(String),
+    /// Represents a completion response as a tool call of the form
+    /// `ToolCall(function_name, function_params)`.
     ToolCall(String, serde_json::Value),
 }
 
+/// Trait defining a completion model that can be used to generate completion responses.
+/// This trait is meant to be implemented by the user to define a custom completion model,
+/// either from a third party provider (e.g.: OpenAI) or locally.
 pub trait CompletionModel: Clone + Send + Sync {
-    type T: Send + Sync;
+    /// The raw response type returned by the underlying completion model
+    type Response: Send + Sync;
 
+    /// Generates a completion response for the given completion request.
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::T>, CompletionError>> + Send;
+    ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::Response>, CompletionError>>
+           + Send;
 
     fn completion_request(&self, prompt: &str) -> CompletionRequestBuilder<Self> {
         CompletionRequestBuilder::new(self.clone(), prompt.to_string())
@@ -130,8 +198,8 @@ pub trait CompletionModel: Clone + Send + Sync {
         &self,
         prompt: &str,
         chat_history: Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::T>, CompletionError>> + Send
-    {
+    ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::Response>, CompletionError>>
+           + Send {
         async move {
             self.completion_request(prompt)
                 .messages(chat_history)
@@ -141,16 +209,25 @@ pub trait CompletionModel: Clone + Send + Sync {
     }
 }
 
+/// Struct representing a general completion request that can be sent to a completion model provider.
 pub struct CompletionRequest {
-    pub temperature: Option<f64>,
+    /// The prompt to be sent to the completion model provider
     pub prompt: String,
+    /// The preamble to be sent to the completion model provider
     pub preamble: Option<String>,
+    /// The chat history to be sent to the completion model provider
     pub chat_history: Vec<Message>,
+    /// The documents to be sent to the completion model provider
     pub documents: Vec<Document>,
+    /// The tools to be sent to the completion model provider
     pub tools: Vec<ToolDefinition>,
+    /// The temperature to be sent to the completion model provider
+    pub temperature: Option<f64>,
+    /// Additional provider-specific parameters to be sent to the completion model provider
     pub additional_params: Option<serde_json::Value>,
 }
 
+/// Builder struct for constructing a completion request.
 pub struct CompletionRequestBuilder<M: CompletionModel> {
     model: M,
     prompt: String,
@@ -176,44 +253,52 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         }
     }
 
+    /// Sets the preamble for the completion request.
     pub fn preamble(mut self, preamble: String) -> Self {
         self.preamble = Some(preamble);
         self
     }
 
+    /// Adds a message to the chat history for the completion request.
     pub fn message(mut self, message: Message) -> Self {
         self.chat_history.push(message);
         self
     }
 
+    /// Adds a list of messages to the chat history for the completion request.
     pub fn messages(self, messages: Vec<Message>) -> Self {
         messages
             .into_iter()
             .fold(self, |builder, msg| builder.message(msg))
     }
 
+    /// Adds a document to the completion request.
     pub fn document(mut self, document: Document) -> Self {
         self.documents.push(document);
         self
     }
 
+    /// Adds a list of documents to the completion request.
     pub fn documents(self, documents: Vec<Document>) -> Self {
         documents
             .into_iter()
             .fold(self, |builder, doc| builder.document(doc))
     }
 
+    /// Adds a tool to the completion request.
     pub fn tool(mut self, tool: ToolDefinition) -> Self {
         self.tools.push(tool);
         self
     }
 
+    /// Adds a list of tools to the completion request.
     pub fn tools(self, tools: Vec<ToolDefinition>) -> Self {
         tools
             .into_iter()
             .fold(self, |builder, tool| builder.tool(tool))
     }
 
+    /// Adds additional parameters to the completion request.
     pub fn additional_params(mut self, additional_params: serde_json::Value) -> Self {
         match self.additional_params {
             Some(params) => {
@@ -226,21 +311,25 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         self
     }
 
+    /// Sets the additional parameters for the completion request.
     pub fn additional_params_opt(mut self, additional_params: Option<serde_json::Value>) -> Self {
         self.additional_params = additional_params;
         self
     }
 
+    /// Sets the temperature for the completion request.
     pub fn temperature(mut self, temperature: f64) -> Self {
         self.temperature = Some(temperature);
         self
     }
 
+    /// Sets the temperature for the completion request.
     pub fn temperature_opt(mut self, temperature: Option<f64>) -> Self {
         self.temperature = temperature;
         self
     }
 
+    /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
         CompletionRequest {
             prompt: self.prompt,
@@ -253,7 +342,8 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         }
     }
 
-    pub async fn send(self) -> Result<CompletionResponse<M::T>, CompletionError> {
+    /// Sends the completion request to the completion model provider and returns the completion response.
+    pub async fn send(self) -> Result<CompletionResponse<M::Response>, CompletionError> {
         let model = self.model.clone();
         model.completion(self.build()).await
     }

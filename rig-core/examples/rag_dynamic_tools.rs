@@ -178,7 +178,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Prompt the agent and print the response
-    let response = calculator_rag.chat("Calculate 3 - 7", vec![]).await?;
+    let response = calculator_rag.prompt("Calculate 3 - 7").await?;
     println!("{}", response);
 
     Ok(())

@@ -1,3 +1,4 @@
+//! OpenAI API client and Rig integration
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -24,10 +25,12 @@ pub struct Client {
 }
 
 impl Client {
+    /// Create a new OpenAI client with the given API key.
     pub fn new(api_key: &str) -> Self {
         Self::from_url(api_key, OPENAI_API_BASE_URL)
     }
 
+    /// Create a new OpenAI client with the given API key and base API URL.
     pub fn from_url(api_key: &str, base_url: &str) -> Self {
         Self {
             base_url: base_url.to_string(),
@@ -47,32 +50,116 @@ impl Client {
         }
     }
 
-    pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
+    /// Create a new OpenAI client from the `OPENAI_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    pub fn from_env() -> Self {
+        let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
+        Self::new(&api_key)
+    }
+
+    fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.post(url)
     }
 
+    /// Create an embedding model with the given name.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::openai::{Client, self};
+    ///
+    /// // Initialize the OpenAI client
+    /// let openai = Client::new("your-open-ai-api-key");
+    ///
+    /// let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_3_LARGE);
+    /// ```
     pub fn embedding_model(&self, model: &str) -> EmbeddingModel {
         EmbeddingModel::new(self.clone(), model)
     }
 
+    /// Create an embedding builder with the given embedding model.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::openai::{Client, self};
+    ///
+    /// // Initialize the OpenAI client
+    /// let openai = Client::new("your-open-ai-api-key");
+    ///
+    /// let embeddings = openai.embeddings(openai::TEXT_EMBEDDING_3_LARGE)
+    ///     .simple_document("doc0", "Hello, world!")
+    ///     .simple_document("doc1", "Goodbye, world!")
+    ///     .build()
+    ///     .await
+    ///     .expect("Failed to embed documents");
+    /// ```
     pub fn embeddings(&self, model: &str) -> embeddings::EmbeddingsBuilder<EmbeddingModel> {
         embeddings::EmbeddingsBuilder::new(self.embedding_model(model))
     }
 
+    /// Create a completion model with the given name.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::openai::{Client, self};
+    ///
+    /// // Initialize the OpenAI client
+    /// let openai = Client::new("your-open-ai-api-key");
+    ///
+    /// let gpt4 = openai.completion_model(openai::GPT_4);
+    /// ```
     pub fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
 
+    /// Create a model builder with the given completion model.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::openai::{Client, self};
+    ///
+    /// // Initialize the OpenAI client
+    /// let openai = Client::new("your-open-ai-api-key");
+    ///
+    /// let completion_model = openai.model(openai::GPT_4)
+    ///    .temperature(0.0)
+    ///    .build();
+    /// ```
     pub fn model(&self, model: &str) -> ModelBuilder<CompletionModel> {
         ModelBuilder::new(self.completion_model(model))
     }
 
+    /// Create an agent builder with the given completion model.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::openai::{Client, self};
+    ///
+    /// // Initialize the OpenAI client
+    /// let openai = Client::new("your-open-ai-api-key");
+    ///
+    /// let agent = openai.agent(openai::GPT_4)
+    ///    .preamble("You are comedian AI with a mission to make people laugh.")
+    ///    .temperature(0.0)
+    ///    .build();
+    /// ```
     pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
         AgentBuilder::new(self.completion_model(model))
     }
 
-    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync>(
+    /// Create an extractor builder with the given completion model.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::openai::{Client, self};
+    ///
+    /// // Initialize the OpenAI client
+    /// let openai = Client::new("your-open-ai-api-key");
+    ///
+    /// let extractor = openai.extractor::<MyStruct>(openai::GPT_4)
+    ///     .build();
+    /// ```
+    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
         &self,
         model: &str,
     ) -> ExtractorBuilder<T, CompletionModel> {
@@ -374,7 +461,7 @@ impl CompletionModel {
 }
 
 impl completion::CompletionModel for CompletionModel {
-    type T = CompletionResponse;
+    type Response = CompletionResponse;
 
     async fn completion(
         &self,

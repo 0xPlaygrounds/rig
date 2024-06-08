@@ -17,36 +17,38 @@ pub enum VectorStoreError {
     DatastoreError(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
+/// Trait for vector stores
 pub trait VectorStore: Send + Sync {
+    /// Query type for the vector store
     type Q;
 
+    /// Add a list of documents to the vector store
     fn add_documents(
         &mut self,
         documents: Vec<DocumentEmbeddings>,
     ) -> impl std::future::Future<Output = Result<(), VectorStoreError>> + Send;
 
+    /// Get the embeddings of a document by its id
     fn get_document_embeddings(
         &self,
         id: &str,
     ) -> impl std::future::Future<Output = Result<Option<DocumentEmbeddings>, VectorStoreError>> + Send;
 
+    /// Get the document by its id and deserialize it into the given type
     fn get_document<T: for<'a> Deserialize<'a>>(
         &self,
         id: &str,
     ) -> impl std::future::Future<Output = Result<Option<T>, VectorStoreError>> + Send;
 
+    /// Get the document by a query and deserialize it into the given type
     fn get_document_by_query(
         &self,
         query: Self::Q,
     ) -> impl std::future::Future<Output = Result<Option<DocumentEmbeddings>, VectorStoreError>> + Send;
 }
 
+/// Trait for vector store indexes
 pub trait VectorStoreIndex: Send + Sync {
-    fn embed_document(
-        &self,
-        document: &str,
-    ) -> impl std::future::Future<Output = Result<Embedding, VectorStoreError>> + Send;
-
     /// Get the top n documents based on the distance to the given embedding.
     /// The distance is calculated as the cosine distance between the prompt and
     /// the document embedding.
@@ -135,10 +137,6 @@ pub trait VectorStoreIndex: Send + Sync {
 pub struct NoIndex;
 
 impl VectorStoreIndex for NoIndex {
-    async fn embed_document(&self, _document: &str) -> Result<Embedding, VectorStoreError> {
-        Ok(Embedding::default())
-    }
-
     async fn top_n_from_query(
         &self,
         _query: &str,

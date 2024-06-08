@@ -1,20 +1,71 @@
+//! This module contains the implementation of the `Agent` struct and its builder.
+//!
+//! The `Agent` struct represents an LLM agent, which combines an LLM model with a preamble (system prompt),
+//! a set of context documents, and a set of static tools. The agent can be used to interact with the LLM model
+//! by providing prompts and chat history.
+//!
+//! The `AgentBuilder` struct provides a builder pattern for creating instances of the `Agent` struct.
+//! It allows configuring the model, preamble, context documents, static tools, temperature, and additional parameters
+//! before building the agent.
+//!
+//! Example usage:
+//!
+//! ```rust
+//! use rig::{completion::Prompt, providers::openai};
+//!
+//! let openai_client = openai::Client::from_env();
+//!
+//! // Configure the agent
+//! let agent = client.agent("gpt-4o")
+//!     .preamble("System prompt")
+//!     .context("Context document 1")
+//!     .context("Context document 2")
+//!     .tool(tool1)
+//!     .tool(tool2)
+//!     .temperature(0.8)
+//!     .additional_params(json!({"foo": "bar"}))
+//!     .build();
+//!
+//! // Use the agent for completions and prompts
+//! let completion_req_builder = agent.completion("Prompt", chat_history).await;
+//! let chat_response = agent.chat("Prompt", chat_history).await;
+//! ```
+//!
+//! For more information on how to use the `Agent` struct and its builder, refer to the documentation of the respective structs and methods.
 use std::collections::HashMap;
 
 use futures::{stream, StreamExt};
 
 use crate::{
     completion::{
-        Completion, CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse,
-        Document, Message, ModelChoice, Prompt, PromptError,
+        Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder,
+        CompletionResponse, Document, Message, ModelChoice, Prompt, PromptError,
     },
     tool::{Tool, ToolSet},
 };
 
-/// Struct reprensenting an LLM agent. An agent is an LLM model
-/// combined with static context (i.e.: always inserted at the top
-/// of the chat history before any use prompts) and static tools.
+/// Struct reprensenting an LLM agent. An agent is an LLM model combined with a preamble
+/// (i.e.: system prompt) and a static set of context documents and tools.
+/// All context documents and tools are always provided to the agent when prompted.
+///
+/// # Example
+/// ```
+/// use rig::{completion::Prompt, providers::openai};
+///
+/// let openai_client = openai::Client::from_env();
+///
+/// let comedian_agent = client
+///     .agent("gpt-4o")
+///     .preamble("You are a comedian here to entertain the user using humour and jokes.")
+///     .temperature(0.9)
+///     .build();
+///
+/// let response = comedian_agent.prompt("Entertain me!")
+///     .await
+///     .expect("Failed to prompt GPT-4");
+/// ```
 pub struct Agent<M: CompletionModel> {
-    /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
+    /// Completion model (e.g.: OpenAI's `gpt-3.5-turbo-1106`, Cohere's `command-r`)
     model: M,
     /// System prompt
     preamble: String,
@@ -54,7 +105,7 @@ impl<M: CompletionModel> Agent<M> {
                     additional_props: HashMap::new(),
                 })
                 .collect(),
-            tools: ToolSet::new(static_tools),
+            tools: ToolSet::from_tools(static_tools),
             static_tools: static_tools_ids,
             temperature,
             additional_params,
@@ -73,7 +124,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
                 if let Some(tool) = self.tools.get(toolname) {
                     Some(tool.definition(prompt.into()).await)
                 } else {
-                    tracing::error!(target: "ai", "Agent static tool {} not found", toolname);
+                    tracing::error!(target: "rig", "Agent static tool {} not found", toolname);
                     None
                 }
             })
@@ -93,6 +144,12 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 }
 
 impl<M: CompletionModel> Prompt for Agent<M> {
+    async fn prompt(&self, prompt: &str) -> Result<String, PromptError> {
+        self.chat(prompt, vec![]).await
+    }
+}
+
+impl<M: CompletionModel> Chat for Agent<M> {
     async fn chat(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String, PromptError> {
         match self.completion(prompt, chat_history).await?.send().await? {
             CompletionResponse {
@@ -107,6 +164,27 @@ impl<M: CompletionModel> Prompt for Agent<M> {
     }
 }
 
+/// A builder for creating an agent
+///
+/// # Example
+/// ```
+/// use rig::{providers::openai, agent::AgentBuilder};
+///
+/// let openai_client = openai::Client::from_env();
+///
+/// let gpt4 = openai_client.completion_model("gpt-4");
+///
+/// // Configure the agent
+/// let agent = AgentBuilder::new(model)
+///     .preamble("System prompt")
+///     .context("Context document 1")
+///     .context("Context document 2")
+///     .tool(tool1)
+///     .tool(tool2)
+///     .temperature(0.8)
+///     .additional_params(json!({"foo": "bar"}))
+///     .build();
+/// ```
 pub struct AgentBuilder<M: CompletionModel> {
     model: M,
     preamble: Option<String>,

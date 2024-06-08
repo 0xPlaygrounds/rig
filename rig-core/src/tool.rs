@@ -16,12 +16,66 @@ pub enum ToolError {
 }
 
 /// Trait that represents a simple LLM tool
+///
+/// # Example
+/// ```
+/// use rig::tool::{ToolSet, Tool};
+///
+/// #[derive(Deserialize)]
+/// struct AddArgs {
+///     x: i32,
+///     y: i32,
+/// }
+///
+/// #[derive(Debug, thiserror::Error)]
+/// #[error("Math error")]
+/// struct MathError;
+///
+/// #[derive(Deserialize, Serialize)]
+/// struct Adder;
+///
+/// impl Tool for Adder {
+///     const NAME: &'static str = "add";
+///
+///     type Error = MathError;
+///     type Args = AddArgs;
+///     type Output = i32;
+///
+///     async fn definition(&self, _prompt: String) -> ToolDefinition {
+///         ToolDefinition {
+///             name: "add".to_string(),
+///             description: "Add x and y together".to_string(),
+///             parameters: json!({
+///                 "type": "object",
+///                 "properties": {
+///                     "x": {
+///                         "type": "number",
+///                         "description": "The first number to add"
+///                     },
+///                     "y": {
+///                         "type": "number",
+///                         "description": "The second number to add"
+///                     }
+///                 }
+///             })
+///         }
+///     }
+///
+///     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+///         let result = args.x + args.y;
+///         Ok(result)
+///     }
+/// }
+/// ```
 pub trait Tool: Sized + Send + Sync {
     /// The name of the tool. This name should be unique.
     const NAME: &'static str;
 
+    /// The error type of the tool.
     type Error: std::error::Error + Send + Sync + 'static;
+    /// The arguments type of the tool.
     type Args: for<'a> Deserialize<'a> + Send + Sync;
+    /// The output type of the tool.
     type Output: Serialize;
 
     /// A method returning the name of the tool.
@@ -180,7 +234,8 @@ pub struct ToolSet {
 }
 
 impl ToolSet {
-    pub fn new(tools: Vec<impl ToolDyn + 'static>) -> Self {
+    /// Create a new ToolSet from a list of tools
+    pub fn from_tools(tools: Vec<impl ToolDyn + 'static>) -> Self {
         let mut toolset = Self::default();
         tools.into_iter().for_each(|tool| {
             toolset.add_tool(tool);
@@ -188,19 +243,23 @@ impl ToolSet {
         toolset
     }
 
+    /// Create a toolset builder
     pub fn builder() -> ToolSetBuilder {
         ToolSetBuilder::default()
     }
 
+    /// Check if the toolset contains a tool with the given name
     pub fn contains(&self, toolname: &str) -> bool {
         self.tools.contains_key(toolname)
     }
 
+    /// Add a tool to the toolset
     pub fn add_tool(&mut self, tool: impl ToolDyn + 'static) {
         self.tools
             .insert(tool.name(), ToolType::Simple(Box::new(tool)));
     }
 
+    /// Merge another toolset into this one
     pub fn add_tools(&mut self, toolset: ToolSet) {
         self.tools.extend(toolset.tools);
     }
@@ -209,9 +268,14 @@ impl ToolSet {
         self.tools.get(toolname)
     }
 
+    /// Call a tool with the given name and arguments
+    ///
+    /// # Example
+    /// ```
+    /// ```
     pub async fn call(&self, toolname: &str, args: String) -> Result<String, ToolSetError> {
         if let Some(tool) = self.tools.get(toolname) {
-            tracing::info!(target: "ai",
+            tracing::info!(target: "rig",
                 "Calling tool {toolname} with args:\n{}",
                 serde_json::to_string_pretty(&args).unwrap_or_else(|_| args.clone())
             );
@@ -221,6 +285,7 @@ impl ToolSet {
         }
     }
 
+    /// Get the documents of all the tools in the toolset
     pub async fn documents(&self) -> Result<Vec<completion::Document>, ToolSetError> {
         let mut docs = Vec::new();
         for tool in self.tools.values() {

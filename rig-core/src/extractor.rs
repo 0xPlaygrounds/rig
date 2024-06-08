@@ -22,8 +22,9 @@ pub enum ExtractionError {
     PromptError(#[from] PromptError),
 }
 
+/// Extractor for structured data from text
 pub struct Extractor<M: CompletionModel, T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync> {
-    pub agent: Agent<M>,
+    agent: Agent<M>,
     _t: PhantomData<T>,
 }
 
@@ -42,6 +43,7 @@ where
     }
 }
 
+/// Builder for the Extractor
 pub struct ExtractorBuilder<
     T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync + 'static,
     M: CompletionModel,
@@ -50,7 +52,7 @@ pub struct ExtractorBuilder<
     _t: PhantomData<T>,
 }
 
-impl<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync, M: CompletionModel>
+impl<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync, M: CompletionModel>
     ExtractorBuilder<T, M>
 {
     pub fn new(model: M) -> Self {
@@ -58,7 +60,7 @@ impl<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync, M: CompletionModel>
             agent_builder: AgentBuilder::new(model)
                 .preamble("\
                     You are an AI assistant whose purpose is to extract structured data from the provided text.\n\
-                    You will have access to a `submit` function that defines the structure of the data to extract from the provided text.\n
+                    You will have access to a `submit` function that defines the structure of the data to extract from the provided text.\n\
                     Use the `submit` function to submit the structured data.\n\
                     Be sure to fill out every field and ALWAYS CALL THE `submit` function, event with default values!!!.
                 ")
@@ -81,6 +83,7 @@ impl<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync, M: CompletionModel>
         self
     }
 
+    /// Build the Extractor
     pub fn build(self) -> Extractor<M, T> {
         Extractor {
             agent: self.agent_builder.build(),
@@ -96,13 +99,13 @@ struct SubmitTool<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync> {
 
 #[derive(Debug, thiserror::Error)]
 #[error("SubmitError")]
-pub struct SubmitError;
+struct SubmitError;
 
-impl<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync> Tool for SubmitTool<T> {
+impl<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync> Tool for SubmitTool<T> {
     const NAME: &'static str = "submit";
     type Error = SubmitError;
-    type Args = String;
-    type Output = String;
+    type Args = T;
+    type Output = T;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
@@ -113,7 +116,7 @@ impl<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync> Tool for SubmitTool<
         }
     }
 
-    async fn call(&self, data: Self::Args) -> Result<String, Self::Error> {
+    async fn call(&self, data: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(data)
     }
 }

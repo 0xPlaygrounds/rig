@@ -1,3 +1,44 @@
+//! This module provides functionality for working with embeddings and embedding models.
+//! Embeddings are numerical representations of documents or other objects, typically used in
+//! natural language processing (NLP) tasks such as text classification, information retrieval,
+//! and document similarity.
+//!
+//! The module defines the `EmbeddingModel` trait, which represents an embedding model that can
+//! generate embeddings for documents. It also provides an implementation of the `EmbeddingsBuilder`
+//! struct, which allows users to build collections of document embeddings using different embedding
+//! models and document sources.
+//!
+//! The module also defines the `Embedding` struct, which represents a single document embedding,
+//! and the `DocumentEmbeddings` struct, which represents a document along with its associated
+//! embeddings. These structs are used to store and manipulate collections of document embeddings.
+//!
+//! Finally, the module defines the `EmbeddingError` enum, which represents various errors that
+//! can occur during embedding generation or processing.
+//!
+//! Example usage:
+//!
+//! ```rust
+//! use rig::providers::openai::{Client, self};
+//! use rig::embeddings::{EmbeddingModel, EmbeddingsBuilder};
+//!
+//! // Initialize the OpenAI client
+//! let openai = Client::new("your-openai-api-key");
+//!
+//! // Create an instance of the `text-embedding-ada-002` model
+//! let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+//!
+//! // Create an embeddings builder and add documents
+//! let embeddings = EmbeddingsBuilder::new(embedding_model)
+//!     .simple_document("doc1", "This is the first document.")
+//!     .simple_document("doc2", "This is the second document.")
+//!     .build()
+//!     .await
+//!     .expect("Failed to build embeddings.");
+//!
+//! // Use the generated embeddings
+//! // ...
+//! ```
+
 use std::{cmp::max, collections::HashMap};
 
 use futures::{stream, StreamExt, TryStreamExt};
@@ -28,6 +69,7 @@ pub enum EmbeddingError {
     ProviderError(String),
 }
 
+/// Trait for embedding models that can generate embeddings for documents.
 pub trait EmbeddingModel: Clone + Sync + Send {
     const MAX_DOCUMENTS: usize;
 
@@ -56,9 +98,12 @@ pub trait EmbeddingModel: Clone + Sync + Send {
     ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + Send;
 }
 
+/// Struct that holds a single document and its embedding.
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct Embedding {
+    /// The document that was embedded
     pub document: String,
+    /// The embedding vector
     pub vec: Vec<f64>,
 }
 
@@ -85,7 +130,12 @@ impl Embedding {
     }
 }
 
-/// Struct to store the document and its embeddings.
+/// Struct that holds a document and its embeddings.
+///
+/// The struct is designed to model any kind of documents that can be serialized to JSON
+/// (including a simple string). Moreover, it can hold multiple embeddings for the same
+/// document, thus allowing a large or non-text document to be "ragged" from various
+/// smaller text documents.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DocumentEmbeddings {
     #[serde(rename = "_id")]

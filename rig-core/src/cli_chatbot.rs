@@ -1,8 +1,8 @@
 use std::io::{self, Write};
 
-use crate::completion::{Message, Prompt, PromptError};
+use crate::completion::{Chat, Message, PromptError};
 
-pub async fn cli_chatbot(chatbot: impl Prompt) -> Result<(), PromptError> {
+pub async fn cli_chatbot(chatbot: impl Chat) -> Result<(), PromptError> {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     let mut chat_log = vec![];

@@ -1,3 +1,10 @@
+//! Cohere API client and Rig integration
+//!
+//! # Example
+//! ```
+//! use rig::{providers::cohere, model::ModelBuilder};
+//!
+//! ```
 use std::collections::HashMap;
 
 use crate::{
@@ -75,7 +82,7 @@ impl Client {
         AgentBuilder::new(self.completion_model(model))
     }
 
-    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync>(
+    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
         &self,
         model: &str,
     ) -> ExtractorBuilder<T, CompletionModel> {
@@ -221,9 +228,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                     })
                     .collect())
             }
-            ApiResponse::Err(error) => {
-                return Err(EmbeddingError::ProviderError(error.message));
-            }
+            ApiResponse::Err(error) => Err(EmbeddingError::ProviderError(error.message)),
         }
     }
 }
@@ -467,7 +472,7 @@ impl CompletionModel {
 }
 
 impl completion::CompletionModel for CompletionModel {
-    type T = CompletionResponse;
+    type Response = CompletionResponse;
 
     async fn completion(
         &self,

@@ -1,3 +1,4 @@
+//! In-memory implementation of a vector store.
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, HashMap},
@@ -9,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use super::{VectorStore, VectorStoreError, VectorStoreIndex};
 use crate::embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel, EmbeddingsBuilder};
 
+/// InMemoryVectorStore is a simple in-memory vector store that stores embeddings
+/// in-memory using a HashMap.
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct InMemoryVectorStore {
     /// The embeddings are stored in a HashMap with the document ID as the key.
@@ -159,10 +162,6 @@ impl<M: EmbeddingModel> InMemoryVectorIndex<M> {
 }
 
 impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorIndex<M> {
-    async fn embed_document(&self, document: &str) -> Result<Embedding, VectorStoreError> {
-        Ok(self.model.embed_document(document).await?)
-    }
-
     async fn top_n_from_query(
         &self,
         query: &str,
@@ -208,7 +207,7 @@ impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorI
         }
 
         // Log selected tools with their distances
-        tracing::info!(target: "ai",
+        tracing::info!(target: "rig",
             "Selected documents: {}",
             docs.iter()
                 .map(|Reverse(RankingItem(distance, id, _, _))| format!("{} ({})", id, distance))

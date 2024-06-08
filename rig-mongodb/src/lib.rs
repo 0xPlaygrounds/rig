@@ -114,10 +114,6 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
 }
 
 impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbVectorIndex<M> {
-    async fn embed_document(&self, document: &str) -> Result<Embedding, VectorStoreError> {
-        Ok(self.model.embed_document(document).await?)
-    }
-
     async fn top_n_from_query(
         &self,
         query: &str,
@@ -166,7 +162,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
             results.push((score, document));
         }
 
-        tracing::info!(target: "ai",
+        tracing::info!(target: "rig",
             "Selected documents: {}",
             results.iter()
                 .map(|(distance, doc)| format!("{} ({})", doc.id, distance))

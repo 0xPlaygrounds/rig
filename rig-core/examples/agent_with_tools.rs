@@ -28,10 +28,10 @@ impl Tool for Adder {
     type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "add",
-            "description": "Add x and y together",
-            "parameters": {
+        ToolDefinition {
+            name: "add".to_string(),
+            description: "Add x and y together".to_string(),
+            parameters: json!({
                 "type": "object",
                 "properties": {
                     "x": {
@@ -43,9 +43,8 @@ impl Tool for Adder {
                         "description": "The second number to add"
                     }
                 }
-            }
-        }))
-        .expect("Tool Definition")
+            }),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -120,15 +119,11 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Calculate 2 - 5");
     println!(
         "GPT-4: {}",
-        gpt4_calculator_agent
-            .chat("Calculate 2 - 5", vec![])
-            .await?
+        gpt4_calculator_agent.prompt("Calculate 2 - 5").await?
     );
     println!(
         "Coral: {}",
-        coral_calculator_agent
-            .chat("Calculate 2 - 5", vec![])
-            .await?
+        coral_calculator_agent.prompt("Calculate 2 - 5").await?
     );
 
     Ok(())

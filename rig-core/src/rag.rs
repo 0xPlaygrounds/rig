@@ -4,8 +4,8 @@ use futures::{stream, StreamExt, TryStreamExt};
 
 use crate::{
     completion::{
-        Completion, CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse,
-        Document, Message, ModelChoice, Prompt, PromptError,
+        Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder,
+        CompletionResponse, Document, Message, ModelChoice, Prompt, PromptError,
     },
     tool::{Tool, ToolSet, ToolSetError},
     vector_store::{NoIndex, VectorStoreError, VectorStoreIndex},
@@ -126,6 +126,12 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Completion<M>
 }
 
 impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Prompt for RagAgent<M, C, T> {
+    async fn prompt(&self, prompt: &str) -> Result<String, PromptError> {
+        self.chat(prompt, vec![]).await
+    }
+}
+
+impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Chat for RagAgent<M, C, T> {
     async fn chat(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String, PromptError> {
         match self.completion(prompt, chat_history).await?.send().await? {
             CompletionResponse {
@@ -146,6 +152,28 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> RagAgent<M, C
     }
 }
 
+/// Builder for creating a RAG agent
+///
+/// # Example
+/// ```
+/// use rig::{providers::openai, rag_agent::RagAgentBuilder};
+///
+/// let openai_client = openai::Client::from_env();
+///
+/// let model = openai_client.completion_model("gpt-4");
+///
+/// // Configure the agent
+/// let agent = RagAgentBuilder::new(model)
+///     .preamble("System prompt")
+///     .static_context("Context document 1")
+///     .static_context("Context document 2")
+///     .dynamic_context(2, vector_index)
+///     .tool(tool1)
+///     .tool(tool2)
+///     .temperature(0.8)
+///     .additional_params(json!({"foo": "bar"}))
+///     .build();
+/// ```
 pub struct RagAgentBuilder<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> {
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     model: M,

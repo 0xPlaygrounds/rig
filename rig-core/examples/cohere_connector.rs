@@ -22,9 +22,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Prompt the model and print the response
     // We use `prompt` to get a simple response from the model as a String
-    let response = klimadao_agent
-        .chat("Tell me about BCT tokens?", vec![])
-        .await?;
+    let response = klimadao_agent.prompt("Tell me about BCT tokens?").await?;
 
     println!("\n\nCoral: {:?}", response);
 

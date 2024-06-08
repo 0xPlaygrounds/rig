@@ -1,6 +1,4 @@
-use std::env;
-
-use rig::providers::{cohere::Client as CohereClient, openai::Client as OpenAIClient};
+use rig::providers::openai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -18,8 +16,7 @@ struct Person {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = OpenAIClient::new(&openai_api_key);
+    let openai_client = openai::Client::from_env();
 
     // Create extractor
     let data_extractor = openai_client.extractor::<Person>("gpt-4").build();
@@ -29,19 +26,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     println!("GPT-4: {}", serde_json::to_string_pretty(&person).unwrap());
-
-    // Create Cohere client
-    let cohere_api_key = env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set");
-    let cohere_client = CohereClient::new(&cohere_api_key);
-
-    // Create extractor
-    let data_extractor = cohere_client.extractor::<Person>("command-r").build();
-
-    let person = data_extractor
-        .extract("Hello my name is John Doe! I am a software engineer.")
-        .await?;
-
-    println!("Coral: {}", serde_json::to_string_pretty(&person).unwrap());
 
     Ok(())
 }

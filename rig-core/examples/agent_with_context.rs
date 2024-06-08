@@ -20,9 +20,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Prompt the agent and print the response
-    let response = agent
-        .chat("What does \"glarb-glarb\" mean?", vec![])
-        .await?;
+    let response = agent.prompt("What does \"glarb-glarb\" mean?").await?;
 
     println!("{}", response);
 
