@@ -1,5 +1,5 @@
 # Rig
-This project implements an opinionated library for developing LLM-powered applications.
+A library for developing LLM-powered Rust applications.
 
 ## Installation
 ```bash
