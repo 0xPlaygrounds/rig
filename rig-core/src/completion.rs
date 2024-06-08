@@ -86,9 +86,6 @@ pub enum PromptError {
 
     #[error("ToolCallError: {0}")]
     ToolError(#[from] ToolSetError),
-
-    #[error("Arbitrary prompt error: {0}")]
-    SendError(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
 // ================================================================
