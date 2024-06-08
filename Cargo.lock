@@ -1211,7 +1211,7 @@ dependencies = [
 
 [[package]]
 name = "rig-core"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "anyhow",
  "futures",
@@ -1228,7 +1228,7 @@ dependencies = [
 
 [[package]]
 name = "rig-mongodb"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "anyhow",
  "futures",
