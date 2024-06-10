@@ -5,6 +5,7 @@ edition = "2021"
 license = "MIT"
 readme = "README.md"
 description = "An opinionated library for building LLM powered applications."
+repository = "https://github.com/0xPlaygrounds/rig"
 
 [lib]
 name="rig"

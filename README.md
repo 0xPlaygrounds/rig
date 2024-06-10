@@ -1,18 +1,24 @@
 # Rig
-This project implements an opinionated library for developing LLM-powered applications.
+Rig is a Rust library for building LLM-powered applications that focuses on ergonomics and modularity.
 
-## Installation
-```bash
-cargo add rig-core
-```
+## Table of contents
 
-## Example
+- [High-level features](#high-level-features)
+- [Simple Example](#simple-example)
+
+## High-level features
+- Full support for LLM completion and embedding workflows
+- Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, in-memory)
+- Integrate LLMs in your app with minimal boilerplate
+
+## Simple example:
 ```rust
 use rig::{completion::Prompt, providers::openai};
 
 #[tokio::main]
 async fn main() {
     // Create OpenAI client and model
+    // This requires the `OPENAI_API_KEY` environment variable to be set.
     let openai_client = openai::Client::from_env();
 
     let gpt4 = openai_client.model("gpt-4").build();
@@ -26,5 +32,5 @@ async fn main() {
     println!("GPT-4: {response}");
 }
 ```
-
-Note: This requires the `OPENAI_API_KEY` environment variable to be set.
+Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
+or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
