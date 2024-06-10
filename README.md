@@ -1,10 +1,12 @@
 # Rig
 Rig is a Rust library for building LLM-powered applications that focuses on ergonomics and modularity.
 
+More information about this crate can be found in the [crate documentation](https://docs.rs/rig-core/latest/rig/).
 ## Table of contents
 
 - [High-level features](#high-level-features)
 - [Simple Example](#simple-example)
+- [Integrations](#integrations)
 
 ## High-level features
 - Full support for LLM completion and embedding workflows
@@ -34,3 +36,7 @@ async fn main() {
 ```
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
 or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
+
+## Integrations
+Rig currently has the following integration sub-libraries:
+- MongoDB vector store: `rig-mongodb`
