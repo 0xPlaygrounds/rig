@@ -5,6 +5,7 @@ More information about this crate can be found in the [crate documentation](http
 ## Table of contents
 
 - [High-level features](#high-level-features)
+- [Installation](#)
 - [Simple Example](#simple-example)
 - [Integrations](#integrations)
 
@@ -12,6 +13,11 @@ More information about this crate can be found in the [crate documentation](http
 - Full support for LLM completion and embedding workflows
 - Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, in-memory)
 - Integrate LLMs in your app with minimal boilerplate
+
+## Installation
+```bash
+cargo add rig-core
+```
 
 ## Simple example:
 ```rust
