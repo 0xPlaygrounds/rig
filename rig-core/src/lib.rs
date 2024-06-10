@@ -1,16 +1,16 @@
 //! Rig is a Rust library for building LLM-powered applications that focuses on ergonomics and modularity.
 //!
 //! # Table of contents
-//! 
+//!
 //! - [High-level features](#high-level-features)
 //! - [Simple Example](#simple-example)
 //! - [Integrations](#integrations)
-//! 
+//!
 //! # High-level features
 //! - Full support for LLM completion and embedding workflows
 //! - Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, in-memory)
 //! - Integrate LLMs in your app with minimal boilerplate
-//! 
+//!
 //! # Simple example:
 //! ```
 //! use rig::{completion::Prompt, providers::openai};
@@ -34,7 +34,7 @@
 //! ```
 //! Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
 //! or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
-//! 
+//!
 //! # Integrations
 //! Rig currently has the following integration sub-libraries:
 //! - MongoDB vector store: `rig-mongodb`

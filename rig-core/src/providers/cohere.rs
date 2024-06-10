@@ -3,7 +3,7 @@
 //! # Example
 //! ```
 //! use rig::providers::cohere;
-//! 
+//!
 //! let client = cohere::Client::new("YOUR_API_KEY");
 //!
 //! let command_r = client.completion_model(cohere::COMMAND_R);

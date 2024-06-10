@@ -3,7 +3,7 @@
 //! # Example
 //! ```
 //! use rig::providers::openai;
-//! 
+//!
 //! let client = openai::Client::new("YOUR_API_KEY");
 //!
 //! let gpt4o = client.completion_model(openai::GPT_4O);
