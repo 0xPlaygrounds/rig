@@ -15,8 +15,7 @@
 //! Finally, the module defines the [EmbeddingError] enum, which represents various errors that
 //! can occur during embedding generation or processing.
 //!
-//! Example usage:
-//!
+//! # Example
 //! ```rust
 //! use rig::providers::openai::{Client, self};
 //! use rig::embeddings::{EmbeddingModel, EmbeddingsBuilder};

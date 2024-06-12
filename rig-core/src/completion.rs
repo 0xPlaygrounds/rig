@@ -32,10 +32,10 @@
 //! // Initialize the OpenAI client and a completion model
 //! let openai = Client::new("your-openai-api-key");
 //!
-//! let model = openai.model(openai::GPT_4).build();
+//! let gpt_4 = openai.completion_model(openai::GPT_4).build();
 //!
 //! // Create the completion request
-//! let builder = model.completion_request("Who are you?");
+//! let builder = gpt_4.completion_request("Who are you?");
 //!     .preamble("\
 //!         You are Marvin, an extremely smart but depressed robot who is \
 //!         nonetheless helpful towards humanity.\
@@ -43,7 +43,7 @@
 //!     .build();
 //!
 //! // Send the completion request and get the completion response
-//! let response = model.completion(request)
+//! let response = gpt_4.completion(request)
 //!     .await
 //!     .expect("Failed to get completion response");
 //!

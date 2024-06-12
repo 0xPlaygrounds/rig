@@ -21,7 +21,7 @@ pub enum ToolError {
 /// ```
 /// use rig::tool::{ToolSet, Tool};
 ///
-/// #[derive(Deserialize)]
+/// #[derive(serde::Deserialize)]
 /// struct AddArgs {
 ///     x: i32,
 ///     y: i32,
@@ -31,7 +31,7 @@ pub enum ToolError {
 /// #[error("Math error")]
 /// struct MathError;
 ///
-/// #[derive(Deserialize, Serialize)]
+/// #[derive(serde::Deserialize, serde::Serialize)]
 /// struct Adder;
 ///
 /// impl Tool for Adder {
@@ -45,7 +45,7 @@ pub enum ToolError {
 ///         ToolDefinition {
 ///             name: "add".to_string(),
 ///             description: "Add x and y together".to_string(),
-///             parameters: json!({
+///             parameters: serde_json::json!({
 ///                 "type": "object",
 ///                 "properties": {
 ///                     "x": {

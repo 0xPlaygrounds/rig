@@ -157,17 +157,6 @@ impl Client {
     }
 
     /// Create an extractor builder with the given completion model.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::openai::{Client, self};
-    ///
-    /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key");
-    ///
-    /// let extractor = openai.extractor::<MyStruct>(openai::GPT_4)
-    ///     .build();
-    /// ```
     pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
         &self,
         model: &str,
