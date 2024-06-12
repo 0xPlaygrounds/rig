@@ -43,36 +43,36 @@
 //! and embedding models. These models implement the [CompletionModel](crate::completion::CompletionModel)
 //! and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits respectively, which provide a common,
 //! low-level interface for creating completion and embedding requests and executing them.
-//! 
+//!
 //! ## Models, Agents and RagAgents
 //! Rig provides high-level abstractions over LLMs in the form of [Model](crate::model::Model),
 //! [Agent](crate::agent::Agent) and [RagAgent](crate::rag::RagAgent) structs.
-//! 
-//! These structs range from simple models that can be prompted directly to agents that have a 
+//!
+//! These structs range from simple models that can be prompted directly to agents that have a
 //! system prompt to full blown RAG systems that can be used to answer questions using a knowledgebase.
 //! Here is a quick summary of each:
-//! - [Model](crate::model::Model): A simple LLM model that can be prompted directly. This structs acts 
+//! - [Model](crate::model::Model): A simple LLM model that can be prompted directly. This structs acts
 //! as a thin wrapper around a completion model (i.e.: a struct implementing the [CompletionModel](crate::completion::CompletionModel) trait).
-//! - [Agent](crate::agent::Agent): An LLM model combined with a preamble (i.e.: system prompt) and a 
+//! - [Agent](crate::agent::Agent): An LLM model combined with a preamble (i.e.: system prompt) and a
 //! static set of context documents and tools.
 //! - [RagAgent](crate::rag::RagAgent): A RAG system that can be used to answer questions using a knowledgebase
 //! containing both context documents and tools.
-//! 
+//!
 //! ## Vector stores and indexes
 //! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
-//! provides the [VectorStore](crate::vector_store::VectorStore) and [VectorStoreIndex](crate::vector_store::VectorStoreIndex) 
+//! provides the [VectorStore](crate::vector_store::VectorStore) and [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
 //! traits, which can be implemented to define vector stores and indices respectively.
-//! Those can then be used as the knowledgebase for a [RagAgent](crate::rag::RagAgent), or 
+//! Those can then be used as the knowledgebase for a [RagAgent](crate::rag::RagAgent), or
 //! as a source of context documents in a custom architecture that use multiple LLMs or agents.
-//! 
+//!
 //! # Integrations
 //! Rig natively supports the following completion and embedding model providers:
 //! - OpenAI
 //! - Cohere
-//! 
+//!
 //! Rig currently has the following integration sub-libraries:
 //! - `rig-mongodb`: Vector store implementation for MongoDB
-//! 
+//!
 
 pub mod agent;
 pub mod cli_chatbot;

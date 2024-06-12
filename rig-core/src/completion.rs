@@ -6,20 +6,20 @@
 //! - [Prompt]: Defines a high-level LLM one-shot prompt interface.
 //! - [Chat]: Defines a high-level LLM chat interface with chat history.
 //! - [Completion]: Defines a low-level LLM completion interface for generating completion requests.
-//! - [CompletionModel]: Defines a completion model that can be used to generate completion 
+//! - [CompletionModel]: Defines a completion model that can be used to generate completion
 //! responses from requests.
-//! 
-//! The [Prompt] and [Chat] traits are high level traits that users are expected to use 
-//! to interact with LLM models. Moreover, it is good practice to implement one of these 
+//!
+//! The [Prompt] and [Chat] traits are high level traits that users are expected to use
+//! to interact with LLM models. Moreover, it is good practice to implement one of these
 //! traits for composite agents that use multiple LLM models to generate responses.
 //!
-//! The [Completion] trait defines a lower level interface that is useful when the user want 
+//! The [Completion] trait defines a lower level interface that is useful when the user want
 //! to further customize the request before sending it to the completion model provider.
-//! 
-//! The [CompletionModel] trait is meant to act as the interface between providers and 
+//!
+//! The [CompletionModel] trait is meant to act as the interface between providers and
 //! the library. It defines the methods that need to be implemented by the user to define
 //! a custom base completion model (i.e.: a private or third party LLM provider).
-//! 
+//!
 //! The module also provides various structs and enums for representing generic completion requests,
 //! responses, and errors.
 //!
@@ -304,7 +304,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Adds additional parameters to the completion request.
     /// This can be used to set additional provider-specific parameters. For example,
     /// Cohere's completion models accept a `connectors` parameter that can be used to
-    /// specify the data connectors used by Cohere when executing the completion 
+    /// specify the data connectors used by Cohere when executing the completion
     /// (see `examples/cohere_connectors.rs`).
     pub fn additional_params(mut self, additional_params: serde_json::Value) -> Self {
         match self.additional_params {
@@ -321,7 +321,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Sets the additional parameters for the completion request.
     /// This can be used to set additional provider-specific parameters. For example,
     /// Cohere's completion models accept a `connectors` parameter that can be used to
-    /// specify the data connectors used by Cohere when executing the completion 
+    /// specify the data connectors used by Cohere when executing the completion
     /// (see `examples/cohere_connectors.rs`).
     pub fn additional_params_opt(mut self, additional_params: Option<serde_json::Value>) -> Self {
         self.additional_params = additional_params;

@@ -1,5 +1,5 @@
 //! This module provides high-level abstractions for extracting structured data from text using LLMs.
-//! 
+//!
 //! # Example
 //! ```
 //! use rig::providers::openai;
@@ -14,11 +14,11 @@
 //!    age: Option<u8>,
 //!    profession: Option<String>,
 //! }
-//! 
+//!
 //! // Create the extractor
 //! let extractor = openai.extractor::<Person>(openai::GPT_4O)
 //!     .build();
-//! 
+//!
 //! // Extract structured data from text
 //! let person = extractor.extract("John Doe is a 30 year old doctor.")
 //!     .await;
