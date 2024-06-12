@@ -3,16 +3,16 @@
 //! natural language processing (NLP) tasks such as text classification, information retrieval,
 //! and document similarity.
 //!
-//! The module defines the `EmbeddingModel` trait, which represents an embedding model that can
-//! generate embeddings for documents. It also provides an implementation of the `EmbeddingsBuilder`
+//! The module defines the [EmbeddingModel] trait, which represents an embedding model that can
+//! generate embeddings for documents. It also provides an implementation of the [EmbeddingsBuilder]
 //! struct, which allows users to build collections of document embeddings using different embedding
 //! models and document sources.
 //!
-//! The module also defines the `Embedding` struct, which represents a single document embedding,
-//! and the `DocumentEmbeddings` struct, which represents a document along with its associated
+//! The module also defines the [Embedding] struct, which represents a single document embedding,
+//! and the [DocumentEmbeddings] struct, which represents a document along with its associated
 //! embeddings. These structs are used to store and manipulate collections of document embeddings.
 //!
-//! Finally, the module defines the `EmbeddingError` enum, which represents various errors that
+//! Finally, the module defines the [EmbeddingError] enum, which represents various errors that
 //! can occur during embedding generation or processing.
 //!
 //! Example usage:

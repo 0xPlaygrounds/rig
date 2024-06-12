@@ -1,15 +1,14 @@
-//! This module contains the implementation of the `Agent` struct and its builder.
+//! This module contains the implementation of the [Agent] struct and its builder.
 //!
-//! The `Agent` struct represents an LLM agent, which combines an LLM model with a preamble (system prompt),
+//! The [Agent] struct represents an LLM agent, which combines an LLM model with a preamble (system prompt),
 //! a set of context documents, and a set of static tools. The agent can be used to interact with the LLM model
-//! by providing prompts and chat history.
+//! by providing prompts and chat history without having to provide the preamble and other parameters everytime.
 //!
-//! The `AgentBuilder` struct provides a builder pattern for creating instances of the `Agent` struct.
+//! The [AgentBuilder] implements the builder pattern for creating instances of [Agent].
 //! It allows configuring the model, preamble, context documents, static tools, temperature, and additional parameters
 //! before building the agent.
 //!
-//! Example usage:
-//!
+//! # Example
 //! ```rust
 //! use rig::{completion::Prompt, providers::openai};
 //!

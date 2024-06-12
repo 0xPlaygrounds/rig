@@ -1,12 +1,25 @@
-//! This module contains the implementation of the completion functionality for the LLM (Large Language
-//! Model) chat interface. It provides traits, structs, and enums for generating completion requests,
+//! This module provides functionality for working with completion models.
+//! It provides traits, structs, and enums for generating completion requests,
 //! handling completion responses, and defining completion models.
 //!
 //! The main traits defined in this module are:
-//! - `Prompt`: Defines a high-level LLM chat interface for prompting and receiving responses.
-//! - `Completion`: Defines a low-level LLM completion interface for generating completion requests.
-//! - `CompletionModel`: Defines a completion model that can be used to generate completion responses.
+//! - [Prompt]: Defines a high-level LLM one-shot prompt interface.
+//! - [Chat]: Defines a high-level LLM chat interface with chat history.
+//! - [Completion]: Defines a low-level LLM completion interface for generating completion requests.
+//! - [CompletionModel]: Defines a completion model that can be used to generate completion 
+//! responses from requests.
+//! 
+//! The [Prompt] and [Chat] traits are high level traits that users are expected to use 
+//! to interact with LLM models. Moreover, it is good practice to implement one of these 
+//! traits for composite agents that use multiple LLM models to generate responses.
 //!
+//! The [Completion] trait defines a lower level interface that is useful when the user want 
+//! to further customize the request before sending it to the completion model provider.
+//! 
+//! The [CompletionModel] trait is meant to act as the interface between providers and 
+//! the library. It defines the methods that need to be implemented by the user to define
+//! a custom base completion model (i.e.: a private or third party LLM provider).
+//! 
 //! The module also provides various structs and enums for representing generic completion requests,
 //! responses, and errors.
 //!
@@ -21,11 +34,12 @@
 //!
 //! let model = openai.model(openai::GPT_4).build();
 //!
-//!
 //! // Create the completion request
 //! let builder = model.completion_request("Who are you?");
-//!     .preamble(
-//!         "You are Marvin, an extremely smart but depressed robot who is nonetheless helpful towards humanity.".to_string())
+//!     .preamble("\
+//!         You are Marvin, an extremely smart but depressed robot who is \
+//!         nonetheless helpful towards humanity.\
+//!     ")
 //!     .build();
 //!
 //! // Send the completion request and get the completion response
@@ -118,15 +132,18 @@ pub struct ToolDefinition {
 // ================================================================
 /// Trait defining a high-level LLM on-shot prompt interface (i.e.: prompt in, response out).
 pub trait Prompt: Send + Sync {
+    /// Send a one-shot prompt to the underlying completion model.
+    /// If the response is a message, then it is returned as a string. If the response
+    /// is a tool call, then the tool is called and the result is returned as a string.
     fn prompt(
         &self,
         prompt: &str,
     ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
 }
 
-/// Trait defining a high-level LLM chat interface (i.e.: prompt and chat hiroty in, response out).
+/// Trait defining a high-level LLM chat interface (i.e.: prompt and chat history in, response out).
 pub trait Chat: Send + Sync {
-    /// Send a one-shot prompt to the completion endpoint.
+    /// Send a prompt with optional chat history to the underlying completion model.
     /// If the response is a message, then it is returned as a string. If the response
     /// is a tool call, then the tool is called and the result is returned as a string.
     fn chat(
@@ -147,7 +164,7 @@ pub trait Completion<M: CompletionModel> {
     /// For fields that have already been set by the model, calling the corresponding
     /// method on the builder will overwrite the value set by the model.
     ///
-    /// For example, the request builder returned by `Agent::completion` will already
+    /// For example, the request builder returned by [`Agent::completion`](crate::agent::Agent::completion) will already
     /// contain the `preamble` provided when creating the agent.
     fn completion(
         &self,
@@ -178,9 +195,9 @@ pub enum ModelChoice {
 
 /// Trait defining a completion model that can be used to generate completion responses.
 /// This trait is meant to be implemented by the user to define a custom completion model,
-/// either from a third party provider (e.g.: OpenAI) or locally.
+/// either from a third party provider (e.g.: OpenAI) or a local model.
 pub trait CompletionModel: Clone + Send + Sync {
-    /// The raw response type returned by the underlying completion model
+    /// The raw response type returned by the underlying completion model.
     type Response: Send + Sync;
 
     /// Generates a completion response for the given completion request.
@@ -192,20 +209,6 @@ pub trait CompletionModel: Clone + Send + Sync {
 
     fn completion_request(&self, prompt: &str) -> CompletionRequestBuilder<Self> {
         CompletionRequestBuilder::new(self.clone(), prompt.to_string())
-    }
-
-    fn simple_completion(
-        &self,
-        prompt: &str,
-        chat_history: Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::Response>, CompletionError>>
-           + Send {
-        async move {
-            self.completion_request(prompt)
-                .messages(chat_history)
-                .send()
-                .await
-        }
     }
 }
 
@@ -299,6 +302,10 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     }
 
     /// Adds additional parameters to the completion request.
+    /// This can be used to set additional provider-specific parameters. For example,
+    /// Cohere's completion models accept a `connectors` parameter that can be used to
+    /// specify the data connectors used by Cohere when executing the completion 
+    /// (see `examples/cohere_connectors.rs`).
     pub fn additional_params(mut self, additional_params: serde_json::Value) -> Self {
         match self.additional_params {
             Some(params) => {
@@ -312,6 +319,10 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     }
 
     /// Sets the additional parameters for the completion request.
+    /// This can be used to set additional provider-specific parameters. For example,
+    /// Cohere's completion models accept a `connectors` parameter that can be used to
+    /// specify the data connectors used by Cohere when executing the completion 
+    /// (see `examples/cohere_connectors.rs`).
     pub fn additional_params_opt(mut self, additional_params: Option<serde_json::Value>) -> Self {
         self.additional_params = additional_params;
         self
