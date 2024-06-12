@@ -1,3 +1,5 @@
+[![Crate](https://img.shields.io/crates/v/rig-core.svg)](https://crates.io/crates/rig-core)
+
 # Rig
 Rig is a Rust library for building LLM-powered applications that focuses on ergonomics and modularity.
 
