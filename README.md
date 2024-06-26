@@ -1,9 +1,12 @@
 [![Crate](https://img.shields.io/crates/v/rig-core.svg)](https://crates.io/crates/rig-core)
 
 # Rig
-Rig is a Rust library for building LLM-powered applications that focuses on ergonomics and modularity.
+Rig is a Rust library for building scalable, modular, and ergonomic LLM-powered applications.
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/rig-core/latest/rig/).
+
+We'd love your feedback. Please take a moment to let us know what you think using this [Feedback form](https://bit.ly/Rig-Feeback-Form).
+
 ## Table of contents
 
 - [High-level features](#high-level-features)
