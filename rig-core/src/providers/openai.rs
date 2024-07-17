@@ -201,6 +201,8 @@ enum ApiResponse<T> {
 // ================================================================
 // OpenAI Embedding API
 // ================================================================
+pub const OPENAI_EMBEDDINGS_ENDPOINT: &str = "/v1/embeddings";
+
 /// `text-embedding-3-large` embedding model
 pub const TEXT_EMBEDDING_3_LARGE: &str = "text-embedding-3-large";
 /// `text-embedding-3-small` embedding model
@@ -238,9 +240,10 @@ pub struct EmbeddingData {
     pub index: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct Usage {
     pub prompt_tokens: usize,
+    pub completion_tokens: usize,
     pub total_tokens: usize,
 }
 
@@ -259,7 +262,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let response = self
             .client
-            .post("/v1/embeddings")
+            .post(OPENAI_EMBEDDINGS_ENDPOINT)
             .json(&json!({
                 "model": self.model,
                 "input": documents,
@@ -304,6 +307,8 @@ impl EmbeddingModel {
 // ================================================================
 // OpenAI Completion API
 // ================================================================
+pub const OPENAI_COMPLETION_ENDPOINT: &str = "/v1/chat/completions";
+
 /// `gpt-4o` completion model
 pub const GPT_4O: &str = "gpt-4o";
 /// `gpt-4o-2024-05-13` completion model
@@ -339,7 +344,7 @@ pub const GPT_35_TURBO_1106: &str = "gpt-3.5-turbo-1106";
 /// `gpt-3.5-turbo-instruct` completion model
 pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct CompletionResponse {
     pub id: String,
     pub object: String,
@@ -399,7 +404,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct Choice {
     pub index: usize,
     pub message: Message,
@@ -407,14 +412,14 @@ pub struct Choice {
     pub finish_reason: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct Message {
     pub role: String,
     pub content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct ToolCall {
     pub id: String,
     pub r#type: String,
@@ -436,7 +441,7 @@ impl From<completion::ToolDefinition> for ToolDefinition {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct Function {
     pub name: String,
     pub arguments: String,
@@ -515,7 +520,7 @@ impl completion::CompletionModel for CompletionModel {
 
         let response = self
             .client
-            .post("/v1/chat/completions")
+            .post(OPENAI_COMPLETION_ENDPOINT)
             .json(
                 &if let Some(params) = completion_request.additional_params {
                     json_utils::merge(request, params)
@@ -532,5 +537,152 @@ impl completion::CompletionModel for CompletionModel {
             ApiResponse::Ok(response) => response.try_into(),
             ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{completion::{CompletionModel, CompletionRequestBuilder}, embeddings::EmbeddingModel};
+    use httpmock::{Method::POST, MockServer};
+    
+    #[tokio::test]
+    async fn test_embedding() {
+        use super::*;
+
+        let server = MockServer::start();
+
+        let mock_embedding_endpoint = server.mock(|when, then| {
+            when.method(POST)
+                .path(OPENAI_EMBEDDINGS_ENDPOINT)
+                .json_body(json!({
+                    "model": TEXT_EMBEDDING_3_LARGE,
+                    "input": ["Hello, world!"]
+                }));
+
+            then.status(200)
+                .json_body(json!({
+                    "object": "list",
+                    "data": [
+                        {
+                            "object": "embedding",
+                            "embedding": vec![0.0, 1.0, 2.0],
+                            "index": 0
+                        }
+                    ],
+                    "model": TEXT_EMBEDDING_3_LARGE,
+                    "usage": {
+                        "prompt_tokens": 1,
+                        "total_tokens": 3
+                    }
+                }));
+        });
+
+        let client = Client::from_url("", &server.base_url());
+        let model = client.embedding_model(TEXT_EMBEDDING_3_LARGE);
+
+        let embeddings = model
+            .embed_documents(vec!["Hello, world!".to_string()])
+            .await
+            .expect("Failed to embed documents");
+
+        mock_embedding_endpoint.assert();
+
+        assert_eq!(
+            embeddings,
+            serde_json::from_value::<Vec<_>>(json!([
+                {
+                    "document": "Hello, world!",
+                    "vec": vec![0.0, 1.0, 2.0]
+                }
+            ])).unwrap()
+        )
+    }
+
+    #[tokio::test]
+    async fn test_completion() {
+        use super::*;
+
+        let server = MockServer::start();
+
+        let mock_completion_endpoint = server.mock(|when, then| {
+            when.method(POST)
+                .path(OPENAI_COMPLETION_ENDPOINT)
+                .json_body(json!({
+                    "model": GPT_4O,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "Hello, world!"
+                        }
+                    ],
+                    "temperature": Option::<f64>::None
+                }));
+
+            then.status(200)
+                .json_body(json!({
+                    "id": "chatcmpl-9m2pR3BqoB0n4FtHjDSFRl4oOZB01",
+                    "object": "chat.completion",
+                    "created": 1721237645,
+                    "model": "gpt-4o-2024-05-13",
+                    "choices": [
+                      {
+                        "index": 0,
+                        "message": {
+                          "role": "assistant",
+                          "content": "Hi there! How can I assist you today?"
+                        },
+                        "logprobs": null,
+                        "finish_reason": "stop"
+                      }
+                    ],
+                    "usage": {
+                      "prompt_tokens": 19,
+                      "completion_tokens": 10,
+                      "total_tokens": 29
+                    },
+                    "system_fingerprint": "fp_c4e5b6fa31"
+                }));
+        });
+
+        let client = Client::from_url("", &server.base_url());
+        let model = client.completion_model(GPT_4O);
+
+        let completion = model
+            .completion(CompletionRequestBuilder::new(
+                model.clone(),
+                "Hello, world!".to_string()).build())
+            .await
+            .expect("Failed to complete prompt");
+
+        mock_completion_endpoint.assert();
+
+        assert_eq!(
+            completion,
+            completion::CompletionResponse {
+                choice: completion::ModelChoice::Message("Hi there! How can I assist you today?".to_string()),
+                raw_response: CompletionResponse {
+                    id: "chatcmpl-9m2pR3BqoB0n4FtHjDSFRl4oOZB01".to_string(),
+                    object: "chat.completion".to_string(),
+                    created: 1721237645,
+                    model: "gpt-4o-2024-05-13".to_string(),
+                    system_fingerprint: Some("fp_c4e5b6fa31".to_string()),
+                    choices: vec![Choice {
+                        index: 0,
+                        message: Message {
+                            role: "assistant".to_string(),
+                            content: Some("Hi there! How can I assist you today?".to_string()),
+                            tool_calls: None
+                        },
+                        logprobs: None,
+                        finish_reason: "stop".to_string()
+                    }],
+                    usage: Some(Usage {
+                        prompt_tokens: 19,
+                        completion_tokens: 10,
+                        total_tokens: 29,
+                    })
+                }
+            }
+        )
     }
 }

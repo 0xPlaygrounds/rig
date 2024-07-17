@@ -98,7 +98,7 @@ pub trait EmbeddingModel: Clone + Sync + Send {
 }
 
 /// Struct that holds a single document and its embedding.
-#[derive(Clone, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Embedding {
     /// The document that was embedded
     pub document: String,

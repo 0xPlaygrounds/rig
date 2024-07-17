@@ -25,5 +25,7 @@ thiserror = "1.0.61"
 
 [dev-dependencies]
 anyhow = "1.0.75"
+httpmock = "0.7.0"
+serde_path_to_error = "0.1.16"
 tokio = { version = "1.34.0", features = ["full"] }
 tracing-subscriber = "0.3.18"

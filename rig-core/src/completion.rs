@@ -175,7 +175,7 @@ pub trait Completion<M: CompletionModel> {
 
 /// General completion response struct that contains the high-level completion choice
 /// and the raw response.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct CompletionResponse<T> {
     /// The completion choice returned by the completion model provider
     pub choice: ModelChoice,
@@ -184,7 +184,7 @@ pub struct CompletionResponse<T> {
 }
 
 /// Enum representing the high-level completion choice returned by the completion model provider.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ModelChoice {
     /// Represents a completion response as a message
     Message(String),
