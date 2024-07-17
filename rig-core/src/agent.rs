@@ -30,8 +30,6 @@
 //! let chat_response = agent.chat("Prompt", chat_history).await;
 //! let chat_response = agent.prompt("Prompt").await;
 //! ```
-//!
-//! For more information on how to use the `Agent` struct and its builder, refer to the documentation of the respective structs and methods.
 use std::collections::HashMap;
 
 use futures::{stream, StreamExt};
