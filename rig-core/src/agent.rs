@@ -265,3 +265,82 @@ impl<M: CompletionModel> AgentBuilder<M> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::providers::openai::{Client, GPT_4O, OPENAI_COMPLETION_ENDPOINT};
+    use httpmock::{MockServer, Method::POST};
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_agent() {
+        let server = MockServer::start();
+
+        let mock_completion_endpoint = server.mock(|when, then| {
+            when.method(POST)
+                .path(OPENAI_COMPLETION_ENDPOINT)
+                .json_body(json!({
+                    "model": GPT_4O,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a helpful assistant."
+                        },
+                        {
+                            "role": "user",
+                            "content": "Hello, world!"
+                        }
+                    ],
+                    "temperature": Some(0.8),
+                    "foo": "bar"
+                }));
+
+            then.status(200)
+                .json_body(json!({
+                    "id": "chatcmpl-9m2pR3BqoB0n4FtHjDSFRl4oOZB01",
+                    "object": "chat.completion",
+                    "created": 1721237645,
+                    "model": "gpt-4o-2024-05-13",
+                    "choices": [
+                      {
+                        "index": 0,
+                        "message": {
+                          "role": "assistant",
+                          "content": "Hi there! How can I assist you today?"
+                        },
+                        "logprobs": null,
+                        "finish_reason": "stop"
+                      }
+                    ],
+                    "usage": {
+                      "prompt_tokens": 19,
+                      "completion_tokens": 10,
+                      "total_tokens": 29
+                    },
+                    "system_fingerprint": "fp_c4e5b6fa31"
+                }));
+        });
+
+        let openai_client = Client::from_url("", &server.base_url());
+        let gpt4 = openai_client.completion_model(GPT_4O);
+
+        let agent = AgentBuilder::new(gpt4)
+            .preamble("You are a helpful assistant.")
+            .temperature(0.8)
+            .additional_params(serde_json::json!({"foo": "bar"}))
+            .build();
+
+        let response = agent
+            .prompt("Hello, world!")
+            .await
+            .expect("Failed to prompt GPT-4");
+
+        mock_completion_endpoint.assert();
+
+        assert_eq!(
+            response,
+            "Hi there! How can I assist you today?".to_string()
+        );
+    }
+}
