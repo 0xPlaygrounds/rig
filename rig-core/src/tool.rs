@@ -19,7 +19,10 @@ pub enum ToolError {
 ///
 /// # Example
 /// ```
-/// use rig::tool::{ToolSet, Tool};
+/// use rig::{
+///     completion::ToolDefinition,
+///     tool::{ToolSet, Tool},
+/// };
 ///
 /// #[derive(serde::Deserialize)]
 /// struct AddArgs {

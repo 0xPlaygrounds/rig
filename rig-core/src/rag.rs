@@ -18,10 +18,10 @@
 //! };
 //!
 //! // Initialize OpenAI client
-//! let openai_client = openai::Client::from_env();
+//! let openai = openai::Client::from_env();
 //!
 //! // Initialize OpenAI embedding model
-//! let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+//! let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 //!
 //! // Create vector store, compute embeddings and load them in the store
 //! let mut vector_store = InMemoryVectorStore::default();
@@ -41,7 +41,7 @@
 //! // Create vector store index
 //! let index = vector_store.index(embedding_model);
 //!
-//! let rag_agent = openai_client.context_rag_agent(openai::GPT_4O)
+//! let rag_agent = openai.context_rag_agent(openai::GPT_4O)
 //!     .preamble("
 //!         You are a dictionary assistant here to assist the user in understanding the meaning of words.
 //!         You will find additional non-standard word definitions that could be useful below.
@@ -212,6 +212,7 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> RagAgent<M, C
 /// # Example
 /// ```
 /// use rig::{providers::openai, rag_agent::RagAgentBuilder};
+/// use serde_json::json;
 ///
 /// let openai_client = openai::Client::from_env();
 ///

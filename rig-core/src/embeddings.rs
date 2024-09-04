@@ -28,12 +28,12 @@
 //!
 //! // Create an embeddings builder and add documents
 //! let embeddings = EmbeddingsBuilder::new(embedding_model)
-//!     .simple_document("doc1", "This is the first document.")
+//!     .simple_document("doc1", "This is the first document.")                                                                                                         
 //!     .simple_document("doc2", "This is the second document.")
 //!     .build()
 //!     .await
 //!     .expect("Failed to build embeddings.");
-//!
+//!                                 
 //! // Use the generated embeddings
 //! // ...
 //! ```
@@ -70,6 +70,7 @@ pub enum EmbeddingError {
 
 /// Trait for embedding models that can generate embeddings for documents.
 pub trait EmbeddingModel: Clone + Sync + Send {
+    /// The maximum number of documents that can be embedded in a single request.
     const MAX_DOCUMENTS: usize;
 
     /// Embed a single document
@@ -132,9 +133,12 @@ impl Embedding {
 /// Struct that holds a document and its embeddings.
 ///
 /// The struct is designed to model any kind of documents that can be serialized to JSON
-/// (including a simple string). Moreover, it can hold multiple embeddings for the same
-/// document, thus allowing a large or non-text document to be "ragged" from various
-/// smaller text documents.
+/// (including a simple string).
+/// 
+/// Moreover, it can hold multiple embeddings for the same document, thus allowing a 
+/// large document to be retrieved from a query that matches multiple smaller and 
+/// distinct text documents. For example, if the document is a textbook, a summary of 
+/// each chapter could serve as the book's embeddings.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DocumentEmbeddings {
     #[serde(rename = "_id")]

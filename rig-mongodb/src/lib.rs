@@ -6,6 +6,7 @@ use rig::{
     vector_store::{VectorStore, VectorStoreError, VectorStoreIndex},
 };
 
+/// A MongoDB vector store.
 pub struct MongoDbVectorStore {
     collection: mongodb::Collection<DocumentEmbeddings>,
 }
@@ -76,10 +77,18 @@ impl VectorStore for MongoDbVectorStore {
 }
 
 impl MongoDbVectorStore {
+    /// Create a new `MongoDbVectorStore` from a MongoDB collection.
     pub fn new(collection: mongodb::Collection<DocumentEmbeddings>) -> Self {
         Self { collection }
     }
 
+    /// Create a new `MongoDbVectorIndex` from an existing `MongoDbVectorStore`.
+    /// 
+    /// The index (of type "vector") must already exist for the MongoDB collection.
+    /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
+    /// 
+    /// An additional filter can be provided to further restrict the documents that are 
+    /// considered in the search.
     pub fn index<M: EmbeddingModel>(
         &self,
         model: M,
@@ -90,6 +99,7 @@ impl MongoDbVectorStore {
     }
 }
 
+/// A vector index for a MongoDB collection.
 pub struct MongoDbVectorIndex<M: EmbeddingModel> {
     collection: mongodb::Collection<DocumentEmbeddings>,
     model: M,

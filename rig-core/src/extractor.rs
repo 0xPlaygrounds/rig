@@ -1,4 +1,7 @@
 //! This module provides high-level abstractions for extracting structured data from text using LLMs.
+//! 
+//! Note: The target structure must implement the `serde::Deserialize`, `serde::Serialize`, 
+//! and `schemars::JsonSchema` traits. Those can be easily derived using the `derive` macro.
 //!
 //! # Example
 //! ```
@@ -8,7 +11,7 @@
 //! let openai = openai::Client::new("your-open-ai-api-key");
 //!
 //! // Define the structure of the data you want to extract
-//! #[derive(serde::Deserialize)]
+//! #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 //! struct Person {
 //!    name: Option<String>,
 //!    age: Option<u8>,
@@ -21,7 +24,8 @@
 //!
 //! // Extract structured data from text
 //! let person = extractor.extract("John Doe is a 30 year old doctor.")
-//!     .await;
+//!     .await
+//!     .expect("Failed to extract data from text");
 //! ```
 
 use std::marker::PhantomData;
