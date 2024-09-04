@@ -1,7 +1,7 @@
 name: "Build & Release"
 
 permissions:
-  # To upload files to GitHub Releases
+  pull-requests: write
   contents: write
 
 on:
@@ -12,41 +12,15 @@ on:
       CARGO_REGISTRY_TOKEN:
         description: "Token to publish to crates.io"
         required: true
-      GITHUB_TOKEN:
-        description: "Github Token to enable PR creation"
-        required: true
 
 jobs:
-  validate-input:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate input
-        id: regex-match
-        run: |
-          text="${INPUT_VERSION}";
-          regex="^v([0-9]+)\.([0-9]+)\.([0-9]+)-?([[:alnum:]]*)\+?([0-9]*)$";
-          # Perform the regex match
-          if grep -qE "$regex" <<< "$text"; then
-              echo "match=true" >> "$GITHUB_OUTPUT";
-          else
-              echo "match=false" >> "$GITHUB_OUTPUT";
-          fi
-
-      - name: Fail if don't match regex
-        if: ${{ inputs.version && steps.regex-match.outputs.match == 'false' }}
-        run: |
-          echo "${{inputs.version}} doesn't match regex. Use a version similar to v3.1.4-alpha+159"
-          exit 1;
-
   run-ci:
     needs: validate-input
     uses: ./.github/workflows/ci.yaml
 
   release-plz:
     name: Release-plz
+    requires: run-ci
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
