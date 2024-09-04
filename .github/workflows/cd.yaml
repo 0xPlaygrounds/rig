@@ -20,7 +20,7 @@ jobs:
 
   release-plz:
     name: Release-plz
-    requires: run-ci
+    needs: run-ci
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
