@@ -12,6 +12,7 @@ on:
       CARGO_REGISTRY_TOKEN:
         description: "Token to publish to crates.io"
         required: true
+  workflow_dispatch:
 
 jobs:
   run-ci:
