@@ -24,7 +24,6 @@
 //! responses, and errors.
 //!
 //! Example Usage:
-//!
 //! ```rust
 //! use rig::providers::openai::{Client, self};
 //! use rig::completion::*;
@@ -32,14 +31,15 @@
 //! // Initialize the OpenAI client and a completion model
 //! let openai = Client::new("your-openai-api-key");
 //!
-//! let gpt_4 = openai.completion_model(openai::GPT_4).build();
+//! let gpt_4 = openai.completion_model(openai::GPT_4);
 //!
 //! // Create the completion request
-//! let builder = gpt_4.completion_request("Who are you?");
+//! let request = gpt_4.completion_request("Who are you?")
 //!     .preamble("\
 //!         You are Marvin, an extremely smart but depressed robot who is \
 //!         nonetheless helpful towards humanity.\
 //!     ")
+//!     .temperature(0.5)
 //!     .build();
 //!
 //! // Send the completion request and get the completion response
@@ -130,11 +130,16 @@ pub struct ToolDefinition {
 // ================================================================
 // Implementations
 // ================================================================
-/// Trait defining a high-level LLM on-shot prompt interface (i.e.: prompt in, response out).
+/// Trait defining a high-level LLM simple prompt interface (i.e.: prompt in, response out).
 pub trait Prompt: Send + Sync {
-    /// Send a one-shot prompt to the underlying completion model.
-    /// If the response is a message, then it is returned as a string. If the response
-    /// is a tool call, then the tool is called and the result is returned as a string.
+    /// Send a simple prompt to the underlying completion model.
+    /// 
+    /// If the completion model's response is a message, then it is returned as a string. 
+    /// 
+    /// If the completion model's response is a tool call, then the tool is called and 
+    /// the result is returned as a string.
+    /// 
+    /// If the tool does not exist, or the tool call fails, then an error is returned.
     fn prompt(
         &self,
         prompt: &str,
@@ -144,8 +149,13 @@ pub trait Prompt: Send + Sync {
 /// Trait defining a high-level LLM chat interface (i.e.: prompt and chat history in, response out).
 pub trait Chat: Send + Sync {
     /// Send a prompt with optional chat history to the underlying completion model.
-    /// If the response is a message, then it is returned as a string. If the response
-    /// is a tool call, then the tool is called and the result is returned as a string.
+    /// 
+    /// If the completion model's response is a message, then it is returned as a string. 
+    /// 
+    /// If the completion model's response is a tool call, then the tool is called and the result 
+    /// is returned as a string.
+    /// 
+    /// If the tool does not exist, or the tool call fails, then an error is returned.
     fn chat(
         &self,
         prompt: &str,
@@ -207,6 +217,7 @@ pub trait CompletionModel: Clone + Send + Sync {
     ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::Response>, CompletionError>>
            + Send;
 
+    /// Generates a completion request builder for the given `prompt`.
     fn completion_request(&self, prompt: &str) -> CompletionRequestBuilder<Self> {
         CompletionRequestBuilder::new(self.clone(), prompt.to_string())
     }
@@ -231,6 +242,49 @@ pub struct CompletionRequest {
 }
 
 /// Builder struct for constructing a completion request.
+/// 
+/// Example usage:
+/// ```rust
+/// use rig::{
+///     providers::openai::{Client, self},
+///     completion::CompletionRequestBuilder,
+/// };
+/// 
+/// let openai = Client::new("your-openai-api-key");
+/// let model = openai.completion_model(openai::GPT_4O).build();
+/// 
+/// // Create the completion request and execute it separately
+/// let request = CompletionRequestBuilder::new(model, "Who are you?".to_string())
+///     .preamble("You are Marvin from the Hitchhiker's Guide to the Galaxy.".to_string())
+///     .temperature(0.5)
+///     .build();
+/// 
+/// let response = model.completion(request)
+///     .await
+///     .expect("Failed to get completion response");
+/// ```
+/// 
+/// Alternatively, you can execute the completion request directly from the builder:
+/// ```rust
+/// use rig::{
+///     providers::openai::{Client, self},
+///     completion::CompletionRequestBuilder,
+/// };
+/// 
+/// let openai = Client::new("your-openai-api-key");
+/// let model = openai.completion_model(openai::GPT_4O).build();
+/// 
+/// // Create the completion request and execute it directly
+/// let response = CompletionRequestBuilder::new(model, "Who are you?".to_string())
+///     .preamble("You are Marvin from the Hitchhiker's Guide to the Galaxy.".to_string())
+///     .temperature(0.5)
+///     .send()
+///     .await
+///     .expect("Failed to get completion response");
+/// ```
+/// 
+/// Note: It is usually unnecessary to create a completion request builder directly.
+/// Instead, use the [CompletionModel::completion_request] method.
 pub struct CompletionRequestBuilder<M: CompletionModel> {
     model: M,
     prompt: String,

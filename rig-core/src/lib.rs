@@ -70,7 +70,7 @@
 //! - OpenAI
 //! - Cohere
 //!
-//! Rig currently has the following integration sub-libraries:
+//! Rig currently has the following integration companion crates:
 //! - `rig-mongodb`: Vector store implementation for MongoDB
 //!
 

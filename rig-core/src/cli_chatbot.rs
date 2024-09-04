@@ -2,6 +2,8 @@ use std::io::{self, Write};
 
 use crate::completion::{Chat, Message, PromptError};
 
+/// Utility function to create a simple REPL CLI chatbot from a type that implements the 
+/// `Chat` trait.
 pub async fn cli_chatbot(chatbot: impl Chat) -> Result<(), PromptError> {
     let stdin = io::stdin();
     let mut stdout = io::stdout();

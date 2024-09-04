@@ -11,19 +11,41 @@
 //!
 //! # Example
 //! ```rust
-//! use rig::{completion::{Chat, Prompt}, providers::openai};
+//! use rig::{
+//!     completion::{Chat, Completion, Prompt},
+//!     providers::openai,
+//! };
 //!
-//! let openai_client = openai::Client::from_env();
+//! let openai = openai::Client::from_env();
 //!
 //! // Configure the model
-//! let model = client.model("gpt-4o")
+//! let model = openai.model("gpt-4o")
 //!     .temperature(0.8)
 //!     .build();
 //!
 //! // Use the model for completions and prompts
-//! let completion_req_builder = model.completion("Prompt", chat_history).await;
-//! let chat_response = model.chat("Prompt", chat_history).await;
-//! let prompt_response = model.prompt("Prompt").await;
+//! // Generate a chat completion response from a prompt and chat history
+//! let chat_response = agent.chat("Prompt", chat_history)
+//!     .await
+//!     .expect("Failed to chat with model");
+//! 
+//! // Generate a prompt completion response from a simple prompt
+//! let chat_response = agent.prompt("Prompt")
+//!     .await
+//!     .expect("Failed to prompt the model");
+//! 
+//! // Generate a completion request builder from a prompt and chat history. The builder
+//! // will contain the model's configuration (i.e.: model parameters, etc.), but these 
+//! // can be overwritten.
+//! let completion_req_builder = agent.completion("Prompt", chat_history)
+//!     .await
+//!     .expect("Failed to create completion request builder");
+//! 
+//! let response = completion_req_builder
+//!     .temperature(0.9) // Overwrite the model's temperature
+//!     .send()
+//!     .await
+//!     .expect("Failed to send completion request");
 //! ```
 use crate::completion::{
     Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder,

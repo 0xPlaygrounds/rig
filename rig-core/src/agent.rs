@@ -10,12 +10,15 @@
 //!
 //! # Example
 //! ```rust
-//! use rig::{completion::Prompt, providers::openai};
+//! use rig::{
+//!     completion::{Chat, Completion, Prompt},
+//!     providers::openai,
+//! };
 //!
-//! let openai_client = openai::Client::from_env();
+//! let openai = openai::Client::from_env();
 //!
 //! // Configure the agent
-//! let agent = client.agent("gpt-4o")
+//! let agent = openai.agent("gpt-4o")
 //!     .preamble("System prompt")
 //!     .context("Context document 1")
 //!     .context("Context document 2")
@@ -26,9 +29,28 @@
 //!     .build();
 //!
 //! // Use the agent for completions and prompts
-//! let completion_req_builder = agent.completion("Prompt", chat_history).await;
-//! let chat_response = agent.chat("Prompt", chat_history).await;
-//! let chat_response = agent.prompt("Prompt").await;
+//! // Generate a chat completion response from a prompt and chat history
+//! let chat_response = agent.chat("Prompt", chat_history)
+//!     .await
+//!     .expect("Failed to chat with Agent");
+//! 
+//! // Generate a prompt completion response from a simple prompt
+//! let chat_response = agent.prompt("Prompt")
+//!     .await
+//!     .expect("Failed to prompt the Agent");
+//! 
+//! // Generate a completion request builder from a prompt and chat history. The builder
+//! // will contain the agent's configuration (i.e.: preamble, context documents, tools, 
+//! // model parameters, etc.), but these can be overwritten.
+//! let completion_req_builder = agent.completion("Prompt", chat_history)
+//!     .await
+//!     .expect("Failed to create completion request builder");
+//! 
+//! let response = completion_req_builder
+//!     .temperature(0.9) // Overwrite the agent's temperature
+//!     .send()
+//!     .await
+//!     .expect("Failed to send completion request");
 //! ```
 use std::collections::HashMap;
 
@@ -50,9 +72,9 @@ use crate::{
 /// ```
 /// use rig::{completion::Prompt, providers::openai};
 ///
-/// let openai_client = openai::Client::from_env();
+/// let openai = openai::Client::from_env();
 ///
-/// let comedian_agent = client
+/// let comedian_agent = openai
 ///     .agent("gpt-4o")
 ///     .preamble("You are a comedian here to entertain the user using humour and jokes.")
 ///     .temperature(0.9)
@@ -60,7 +82,7 @@ use crate::{
 ///
 /// let response = comedian_agent.prompt("Entertain me!")
 ///     .await
-///     .expect("Failed to prompt GPT-4");
+///     .expect("Failed to prompt the agent");
 /// ```
 pub struct Agent<M: CompletionModel> {
     /// Completion model (e.g.: OpenAI's `gpt-3.5-turbo-1106`, Cohere's `command-r`)
@@ -168,9 +190,9 @@ impl<M: CompletionModel> Chat for Agent<M> {
 /// ```
 /// use rig::{providers::openai, agent::AgentBuilder};
 ///
-/// let openai_client = openai::Client::from_env();
+/// let openai = openai::Client::from_env();
 ///
-/// let gpt4 = openai_client.completion_model("gpt-4");
+/// let gpt4o = openai.completion_model("gpt-4o");
 ///
 /// // Configure the agent
 /// let agent = AgentBuilder::new(model)
