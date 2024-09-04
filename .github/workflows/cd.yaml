@@ -16,7 +16,6 @@ on:
 
 jobs:
   run-ci:
-    needs: validate-input
     uses: ./.github/workflows/ci.yaml
 
   release-plz:
