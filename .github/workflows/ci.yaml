@@ -3,7 +3,8 @@ name: Lint & Test
 
 on:
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
   workflow_call:
 
 env:
