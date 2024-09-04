@@ -180,7 +180,7 @@ pub trait ToolEmbeddingDyn: ToolDyn {
 
 impl<T: ToolEmbedding> ToolEmbeddingDyn for T {
     fn context(&self) -> serde_json::Result<serde_json::Value> {
-        serde_json::to_value(&self.context())
+        serde_json::to_value(self.context())
     }
 
     fn embedding_docs(&self) -> Vec<String> {

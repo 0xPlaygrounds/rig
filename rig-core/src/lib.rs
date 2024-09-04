@@ -52,11 +52,11 @@
 //! system prompt to full blown RAG systems that can be used to answer questions using a knowledgebase.
 //! Here is a quick summary of each:
 //! - [Model](crate::model::Model): A simple LLM model that can be prompted directly. This structs acts
-//! as a thin wrapper around a completion model (i.e.: a struct implementing the [CompletionModel](crate::completion::CompletionModel) trait).
+//!   as a thin wrapper around a completion model (i.e.: a struct implementing the [CompletionModel](crate::completion::CompletionModel) trait).
 //! - [Agent](crate::agent::Agent): An LLM model combined with a preamble (i.e.: system prompt) and a
-//! static set of context documents and tools.
+//!   static set of context documents and tools.
 //! - [RagAgent](crate::rag::RagAgent): A RAG system that can be used to answer questions using a knowledgebase
-//! containing both context documents and tools.
+//!   containing both context documents and tools.
 //!
 //! ## Vector stores and indexes
 //! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
