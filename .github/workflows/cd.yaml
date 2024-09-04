@@ -12,6 +12,7 @@ on:
       CARGO_REGISTRY_TOKEN:
         description: "Token to publish to crates.io"
         required: true
+  workflow_dispatch:
 
 jobs:
   run-ci:
@@ -20,7 +21,7 @@ jobs:
 
   release-plz:
     name: Release-plz
-    requires: run-ci
+    needs: run-ci
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
