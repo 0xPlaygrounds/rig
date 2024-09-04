@@ -1,6 +1,6 @@
 //! This module provides high-level abstractions for extracting structured data from text using LLMs.
-//! 
-//! Note: The target structure must implement the `serde::Deserialize`, `serde::Serialize`, 
+//!
+//! Note: The target structure must implement the `serde::Deserialize`, `serde::Serialize`,
 //! and `schemars::JsonSchema` traits. Those can be easily derived using the `derive` macro.
 //!
 //! # Example

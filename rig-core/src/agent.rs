@@ -33,19 +33,19 @@
 //! let chat_response = agent.chat("Prompt", chat_history)
 //!     .await
 //!     .expect("Failed to chat with Agent");
-//! 
+//!
 //! // Generate a prompt completion response from a simple prompt
 //! let chat_response = agent.prompt("Prompt")
 //!     .await
 //!     .expect("Failed to prompt the Agent");
-//! 
+//!
 //! // Generate a completion request builder from a prompt and chat history. The builder
-//! // will contain the agent's configuration (i.e.: preamble, context documents, tools, 
+//! // will contain the agent's configuration (i.e.: preamble, context documents, tools,
 //! // model parameters, etc.), but these can be overwritten.
 //! let completion_req_builder = agent.completion("Prompt", chat_history)
 //!     .await
 //!     .expect("Failed to create completion request builder");
-//! 
+//!
 //! let response = completion_req_builder
 //!     .temperature(0.9) // Overwrite the agent's temperature
 //!     .send()
