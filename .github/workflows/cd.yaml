@@ -1,27 +1,24 @@
 name: "Build & Release"
 
-permissions:
-  pull-requests: write
-  contents: write
-
 on:
   push:
     branches:
       - main
-    secrets:
-      CARGO_REGISTRY_TOKEN:
-        description: "Token to publish to crates.io"
-        required: true
   workflow_dispatch:
 
 jobs:
   run-ci:
+    permissions:
+        checks: write
     uses: ./.github/workflows/ci.yaml
 
   release-plz:
     name: Release-plz
     needs: run-ci
     runs-on: ubuntu-latest
+    permissions:
+        pull-requests: write
+        contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
