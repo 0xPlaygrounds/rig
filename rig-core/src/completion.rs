@@ -7,7 +7,7 @@
 //! - [Chat]: Defines a high-level LLM chat interface with chat history.
 //! - [Completion]: Defines a low-level LLM completion interface for generating completion requests.
 //! - [CompletionModel]: Defines a completion model that can be used to generate completion
-//! responses from requests.
+//!   responses from requests.
 //!
 //! The [Prompt] and [Chat] traits are high level traits that users are expected to use
 //! to interact with LLM models. Moreover, it is good practice to implement one of these
