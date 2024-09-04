@@ -1,9 +1,13 @@
 # Inspired by https://github.com/joshka/github-workflows/blob/main/.github/workflows/rust-check.yml
+name: Lint & Test
+
 on:
   pull_request:
     branches: [ main ]
-  push:
-    branches: [ main ]
+  workflow_call:
+
+env:
+  CARGO_TERM_COLOR: always
 
 # ensure that the workflow is only triggered once per PR, subsequent pushes to the PR will cancel
 # and restart the workflow. See https://docs.github.com/en/actions/using-jobs/using-concurrency
