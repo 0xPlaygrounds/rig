@@ -266,6 +266,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             }))
             .send()
             .await?
+            .error_for_status()?
             .json::<ApiResponse<EmbeddingResponse>>()
             .await?;
 
@@ -525,6 +526,7 @@ impl completion::CompletionModel for CompletionModel {
             )
             .send()
             .await?
+            .error_for_status()?
             .json::<ApiResponse<CompletionResponse>>()
             .await?;
 
