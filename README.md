@@ -1,6 +1,13 @@
-[![Crate](https://img.shields.io/crates/v/rig-core.svg)](https://crates.io/crates/rig-core)
+<img src="img/rig_logo.svg" alt="Rig Logo">
 
-# Rig
+<div style="text-align: center">
+
+[![Crate](https://img.shields.io/crates/v/rig-core.svg)](https://crates.io/crates/rig-core) &nbsp; [![Discord](https://img.shields.io/discord/511303648119226382?color=%236d82cc&label=Discord&logo=discord&logoColor=white)](https://discord.gg/gkp6UqEUph)
+
+</div>
+
+---
+
 Rig is a Rust library for building scalable, modular, and ergonomic LLM-powered applications.
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/rig-core/latest/rig/).
@@ -9,9 +16,10 @@ We'd love your feedback. Please take a moment to let us know what you think usin
 
 ## Table of contents
 
+- [Table of contents](#table-of-contents)
 - [High-level features](#high-level-features)
-- [Installation](#)
-- [Simple Example](#simple-example)
+- [Installation](#installation)
+- [Simple example:](#simple-example)
 - [Integrations](#integrations)
 
 ## High-level features
