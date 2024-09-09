@@ -1,5 +1,5 @@
 <p align="center">
-<img src="img/rig_logo.svg" alt="Rig Logo" style="width: 90%; height: 90%;">
+<img src="img/rig_logo.svg" alt="Rig Logo" style="width: 75%; height: 75%;"><br>
 <a href="https://crates.io/crates/rig-core"><img src="https://img.shields.io/crates/v/rig-core.svg" /></a>
 &nbsp;
 <a href="https://discord.gg/gkp6UqEUph"><img src="https://img.shields.io/discord/511303648119226382?color=%236d82cc&label=Discord&logo=discord&logoColor=white" /></a>
