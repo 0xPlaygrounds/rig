@@ -26,7 +26,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Prompt the agent and print the response
     let response = agent
-        .prompt("When and where is the next solar eclipse?")
+        .prompt("When and where and what type is the next solar eclipse?")
         .await?;
     println!("{}", response);
 
