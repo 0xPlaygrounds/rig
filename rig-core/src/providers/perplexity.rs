@@ -26,7 +26,7 @@ use serde_json::json;
 // ================================================================
 // Main Cohere Client
 // ================================================================
-const PERPLEXITY_API_BASE_URL: &str = "https://api.perplexity.ai/chat/completions";
+const PERPLEXITY_API_BASE_URL: &str = "https://api.perplexity.ai";
 
 #[derive(Clone)]
 pub struct Client {
@@ -37,6 +37,13 @@ pub struct Client {
 impl Client {
     pub fn new(api_key: &str) -> Self {
         Self::from_url(api_key, PERPLEXITY_API_BASE_URL)
+    }
+
+    /// Create a new Perplexity client from the `PERPLEXITY_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    pub fn from_env() -> Self {
+        let api_key = std::env::var("PERPLEXITY_API_KEY").expect("PERPLEXITY_API_KEY not set");
+        Self::new(&api_key)
     }
 
     pub fn from_url(api_key: &str, base_url: &str) -> Self {
