@@ -305,6 +305,14 @@ impl EmbeddingModel {
 // ================================================================
 // OpenAI Completion API
 // ================================================================
+/// `o1-preview` completion model
+pub const O1_PREVIEW: &str = "o1-preview";
+/// `o1-preview-2024-09-12` completion model
+pub const O1_PREVIEW_2024_09_12: &str = "o1-preview-2024-09-12";
+/// `o1-mini completion model
+pub const O1_MINI: &str = "o1-mini";
+/// `o1-mini-2024-09-12` completion model
+pub const O1_MINI_2024_09_12: &str = "o1-mini-2024-09-12";
 /// `gpt-4o` completion model
 pub const GPT_4O: &str = "gpt-4o";
 /// `gpt-4o-2024-05-13` completion model
