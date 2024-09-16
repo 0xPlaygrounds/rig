@@ -1,3 +1,4 @@
+use futures::future::BoxFuture;
 use serde::Deserialize;
 
 use crate::embeddings::{DocumentEmbeddings, Embedding, EmbeddingError};
@@ -131,6 +132,66 @@ pub trait VectorStoreIndex: Send + Sync {
                 .map(|(distance, doc)| (distance, doc.id))
                 .collect())
         }
+    }
+}
+
+pub trait VectorStoreIndexDyn: Send + Sync {
+    fn top_n_from_query<'a>(
+        &'a self,
+        query: &'a str,
+        n: usize,
+    ) -> BoxFuture<'a, Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>>;
+
+    fn top_n_ids_from_query<'a>(
+        &'a self,
+        query: &'a str,
+        n: usize,
+    ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
+        Box::pin(async move {
+            let documents = self.top_n_from_query(query, n).await?;
+            Ok(documents
+                .into_iter()
+                .map(|(distance, doc)| (distance, doc.id))
+                .collect())
+        })
+    }
+
+    fn top_n_from_embedding<'a>(
+        &'a self,
+        prompt_embedding: &'a Embedding,
+        n: usize,
+    ) -> BoxFuture<'a, Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>>;
+
+    fn top_n_ids_from_embedding<'a>(
+        &'a self,
+        prompt_embedding: &'a Embedding,
+        n: usize,
+    ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
+        Box::pin(async move {
+            let documents = self.top_n_from_embedding(prompt_embedding, n).await?;
+            Ok(documents
+                .into_iter()
+                .map(|(distance, doc)| (distance, doc.id))
+                .collect())
+        })
+    }
+}
+
+impl<I: VectorStoreIndex> VectorStoreIndexDyn for I {
+    fn top_n_from_query<'a>(
+        &'a self,
+        query: &'a str,
+        n: usize,
+    ) -> BoxFuture<'a, Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> {
+        Box::pin(self.top_n_from_query(query, n))
+    }
+
+    fn top_n_from_embedding<'a>(
+        &'a self,
+        prompt_embedding: &'a Embedding,
+        n: usize,
+    ) -> BoxFuture<'a, Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> {
+        Box::pin(self.top_n_from_embedding(prompt_embedding, n))
     }
 }
 

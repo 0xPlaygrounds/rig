@@ -63,7 +63,7 @@ use crate::{
         CompletionResponse, Document, Message, ModelChoice, Prompt, PromptError,
     },
     tool::{Tool, ToolSet, ToolSetError},
-    vector_store::{NoIndex, VectorStoreError, VectorStoreIndex},
+    vector_store::{VectorStoreError, VectorStoreIndexDyn},
 };
 
 /// Struct representing a RAG agent, i.e.: an agent enhanced with two collections of
@@ -73,7 +73,7 @@ use crate::{
 /// and tools indices (but can be different for context and tools).
 /// If you need to use a more complex combination of vector store indices,
 /// you should implement a custom agent.
-pub struct RagAgent<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> {
+pub struct RagAgent<M: CompletionModel> {
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     model: M,
     /// System prompt
@@ -87,19 +87,14 @@ pub struct RagAgent<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex
     /// Additional parameters to be passed to the model
     additional_params: Option<serde_json::Value>,
     /// List of vector store, with the sample number
-    dynamic_context: Vec<(usize, C)>,
+    dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
     /// Dynamic tools
-    dynamic_tools: Vec<(usize, T)>,
+    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
     /// Actual tool implementations
     pub tools: ToolSet,
 }
 
-pub type ToolRagAgent<M, T> = RagAgent<M, NoIndex, T>;
-pub type ContextRagAgent<M, C> = RagAgent<M, C, NoIndex>;
-
-impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Completion<M>
-    for RagAgent<M, C, T>
-{
+impl<M: CompletionModel> Completion<M> for RagAgent<M> {
     async fn completion(
         &self,
         prompt: &str,
@@ -180,13 +175,13 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Completion<M>
     }
 }
 
-impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Prompt for RagAgent<M, C, T> {
+impl<M: CompletionModel> Prompt for RagAgent<M> {
     async fn prompt(&self, prompt: &str) -> Result<String, PromptError> {
         self.chat(prompt, vec![]).await
     }
 }
 
-impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Chat for RagAgent<M, C, T> {
+impl<M: CompletionModel> Chat for RagAgent<M> {
     async fn chat(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String, PromptError> {
         match self.completion(prompt, chat_history).await?.send().await? {
             CompletionResponse {
@@ -201,7 +196,7 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Chat for RagA
     }
 }
 
-impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> RagAgent<M, C, T> {
+impl<M: CompletionModel> RagAgent<M> {
     pub async fn call_tool(&self, toolname: &str, args: &str) -> Result<String, ToolSetError> {
         self.tools.call(toolname, args.to_string()).await
     }
@@ -230,7 +225,7 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> RagAgent<M, C
 ///     .additional_params(json!({"foo": "bar"}))
 ///     .build();
 /// ```
-pub struct RagAgentBuilder<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> {
+pub struct RagAgentBuilder<M: CompletionModel> {
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     model: M,
     /// System prompt
@@ -242,16 +237,16 @@ pub struct RagAgentBuilder<M: CompletionModel, C: VectorStoreIndex, T: VectorSto
     /// Additional parameters to be passed to the model
     additional_params: Option<serde_json::Value>,
     /// List of vector store, with the sample number
-    dynamic_context: Vec<(usize, C)>,
+    dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
     /// Dynamic tools
-    dynamic_tools: Vec<(usize, T)>,
+    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
     /// Temperature of the model
     temperature: Option<f64>,
     /// Actual tool implementations
     tools: ToolSet,
 }
 
-impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> RagAgentBuilder<M, C, T> {
+impl<M: CompletionModel> RagAgentBuilder<M> {
     pub fn new(model: M) -> Self {
         Self {
             model,
@@ -292,15 +287,25 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> RagAgentBuild
 
     /// Add some dynamic context to the RAG agent. On each prompt, `sample` documents from the
     /// dynamic context will be inserted in the request.
-    pub fn dynamic_context(mut self, sample: usize, dynamic_context: C) -> Self {
-        self.dynamic_context.push((sample, dynamic_context));
+    pub fn dynamic_context(
+        mut self,
+        sample: usize,
+        dynamic_context: impl VectorStoreIndexDyn + 'static,
+    ) -> Self {
+        self.dynamic_context
+            .push((sample, Box::new(dynamic_context)));
         self
     }
 
     /// Add some dynamic tools to the RAG agent. On each prompt, `sample` tools from the
     /// dynamic toolset will be inserted in the request.
-    pub fn dynamic_tools(mut self, sample: usize, dynamic_tools: T, toolset: ToolSet) -> Self {
-        self.dynamic_tools.push((sample, dynamic_tools));
+    pub fn dynamic_tools(
+        mut self,
+        sample: usize,
+        dynamic_tools: impl VectorStoreIndexDyn + 'static,
+        toolset: ToolSet,
+    ) -> Self {
+        self.dynamic_tools.push((sample, Box::new(dynamic_tools)));
         self.tools.add_tools(toolset);
         self
     }
@@ -312,7 +317,7 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> RagAgentBuild
     }
 
     /// Build the RAG agent
-    pub fn build(self) -> RagAgent<M, C, T> {
+    pub fn build(self) -> RagAgent<M> {
         RagAgent {
             model: self.model,
             preamble: self.preamble.unwrap_or_default(),

@@ -16,7 +16,6 @@ use crate::{
     json_utils,
     model::ModelBuilder,
     rag::RagAgentBuilder,
-    vector_store::{NoIndex, VectorStoreIndex},
 };
 
 use schemars::JsonSchema;
@@ -89,17 +88,11 @@ impl Client {
         ExtractorBuilder::new(self.completion_model(model))
     }
 
-    pub fn rag_agent<C: VectorStoreIndex, T: VectorStoreIndex>(
-        &self,
-        model: &str,
-    ) -> RagAgentBuilder<CompletionModel, C, T> {
+    pub fn rag_agent(&self, model: &str) -> RagAgentBuilder<CompletionModel> {
         RagAgentBuilder::new(self.completion_model(model))
     }
 
-    pub fn context_rag_agent<C: VectorStoreIndex>(
-        &self,
-        model: &str,
-    ) -> RagAgentBuilder<CompletionModel, C, NoIndex> {
+    pub fn context_rag_agent(&self, model: &str) -> RagAgentBuilder<CompletionModel> {
         RagAgentBuilder::new(self.completion_model(model))
     }
 }
