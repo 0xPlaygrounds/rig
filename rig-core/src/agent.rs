@@ -94,7 +94,7 @@
 //! // Create vector store index
 //! let index = vector_store.index(embedding_model);
 //!
-//! let rag_agent = openai.context_rag_agent(openai::GPT_4O)
+//! let agent = openai.agent(openai::GPT_4O)
 //!     .preamble("
 //!         You are a dictionary assistant here to assist the user in understanding the meaning of words.
 //!         You will find additional non-standard word definitions that could be useful below.
@@ -103,7 +103,7 @@
 //!     .build();
 //!
 //! // Prompt the agent and print the response
-//! let response = rag_agent.prompt("What does \"glarb-glarb\" mean?").await
+//! let response = agent.prompt("What does \"glarb-glarb\" mean?").await
 //!     .expect("Failed to prompt the agent");
 //! ```
 use std::collections::HashMap;
@@ -174,6 +174,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
                         .await?
                         .into_iter()
                         .map(|(_, doc)| {
+                            // Pretty print the document if possible for better readability
                             let doc_text = serde_json::to_string_pretty(&doc.document)
                                 .unwrap_or_else(|_| doc.document.to_string());
 
