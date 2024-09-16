@@ -213,13 +213,33 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let mut messages = completion_request.chat_history.clone();
-        if let Some(preamble) = completion_request.preamble {
-            messages.push(completion::Message {
-                role: "system".to_string(),
-                content: preamble,
-            });
-        }
+        // Add preamble to messages (if available)
+        let mut messages = if let Some(preamble) = &completion_request.preamble {
+            vec![completion::Message {
+                role: "system".into(),
+                content: preamble.clone(),
+            }]
+        } else {
+            vec![]
+        };
+
+        // Add context documents to chat history
+        messages.append(
+            completion_request
+                .documents
+                .into_iter()
+                .map(|doc| completion::Message {
+                    role: "system".into(),
+                    content: serde_json::to_string(&doc).expect("Document should serialize"),
+                })
+                .collect::<Vec<_>>()
+                .as_mut(),
+        );
+
+        // Add chat history to messages
+        messages.extend(completion_request.chat_history);
+
+        // Add user prompt to messages
         messages.push(completion::Message {
             role: "user".to_string(),
             content: completion_request.prompt,
