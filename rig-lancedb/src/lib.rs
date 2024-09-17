@@ -1,18 +1,15 @@
 use std::sync::Arc;
 
-use arrow_array::{cast::AsArray, RecordBatch, RecordBatchIterator};
-use conversions::{record_batch::arrow_to_rig_error, DocumentEmbeddings};
-use futures::StreamExt;
-use lancedb::{
-    arrow::arrow_schema::{DataType, Schema},
-    query::{ExecutableQuery, QueryBase},
-};
+use arrow_array::RecordBatchIterator;
+use conversions::{document_records, document_schema, embedding_records, embedding_schema};
+use lancedb::{arrow::arrow_schema::{ArrowError, Schema}, query::ExecutableQuery};
 use rig::vector_store::{VectorStore, VectorStoreError};
 
 mod conversions;
 
 pub struct LanceDbVectorStore {
-    table: lancedb::Table,
+    document_table: lancedb::Table,
+    embedding_table: lancedb::Table,
 }
 
 fn lancedb_to_rig_error(e: lancedb::Error) -> VectorStoreError {
@@ -26,20 +23,24 @@ impl VectorStore for LanceDbVectorStore {
         &mut self,
         documents: Vec<rig::embeddings::DocumentEmbeddings>,
     ) -> Result<(), VectorStoreError> {
-        let document_embeddings = DocumentEmbeddings::new(documents);
-
-        let record_batch = document_embeddings
-            .clone()
-            .try_into()
-            .map_err(arrow_to_rig_error)?;
-
-        let batches = RecordBatchIterator::new(
-            vec![record_batch].into_iter().map(Ok),
-            Arc::new(Schema::new(document_embeddings.schema())),
+        let document_batches = RecordBatchIterator::new(
+            vec![document_records(&documents)],
+            Arc::new(document_schema()),
         );
 
-        self.table
-            .add(batches)
+        let embedding_batches = RecordBatchIterator::new(
+            vec![embedding_records(&documents)],
+            Arc::new(embedding_schema()),
+        );
+
+        self.document_table
+            .add(document_batches)
+            .execute()
+            .await
+            .map_err(lancedb_to_rig_error)?;
+
+        self.embedding_table
+            .add(embedding_batches)
             .execute()
             .await
             .map_err(lancedb_to_rig_error)?;
@@ -51,21 +52,21 @@ impl VectorStore for LanceDbVectorStore {
         &self,
         id: &str,
     ) -> Result<Option<rig::embeddings::DocumentEmbeddings>, VectorStoreError> {
-        let mut stream = self
-            .table
-            .query()
-            .only_if(format!("id = {id}"))
-            .execute()
-            .await
-            .map_err(lancedb_to_rig_error)?;
+        // let mut stream = self
+        //     .table
+        //     .query()
+        //     .only_if(format!("id = {id}"))
+        //     .execute()
+        //     .await
+        //     .map_err(lancedb_to_rig_error)?;
 
-        // let record_batches = stream.try_collect::<Vec<_>>().await.map_err(lancedb_to_rig_error)?;
+        // // let record_batches = stream.try_collect::<Vec<_>>().await.map_err(lancedb_to_rig_error)?;
 
-        stream.next().await.map(|maybe_record_batch| {
-            let record_batch = maybe_record_batch?;
+        // stream.next().await.map(|maybe_record_batch| {
+        //     let record_batch = maybe_record_batch?;
 
-            Ok::<(), lancedb::Error>(())
-        });
+        //     Ok::<(), lancedb::Error>(())
+        // });
 
         todo!()
     }
