@@ -4,7 +4,6 @@ use rig::{
     agent::{Agent, AgentBuilder},
     cli_chatbot::cli_chatbot,
     completion::{Chat, CompletionModel, Message, PromptError},
-    model::{Model, ModelBuilder},
     providers::openai::Client as OpenAIClient,
 };
 
@@ -14,7 +13,7 @@ use rig::{
 /// prompt in english, before answering it with GPT-4. The answer in english is returned.
 struct EnglishTranslator<M: CompletionModel> {
     translator_agent: Agent<M>,
-    gpt4: Model<M>,
+    gpt4: Agent<M>,
 }
 
 impl<M: CompletionModel> EnglishTranslator<M> {
@@ -29,7 +28,7 @@ impl<M: CompletionModel> EnglishTranslator<M> {
                 .build(),
 
             // Create the GPT4 model
-            gpt4: ModelBuilder::new(model).build()
+            gpt4: AgentBuilder::new(model).build()
         }
     }
 }

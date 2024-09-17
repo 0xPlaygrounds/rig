@@ -14,9 +14,6 @@ use crate::{
     embeddings::{self, EmbeddingError},
     extractor::ExtractorBuilder,
     json_utils,
-    model::ModelBuilder,
-    rag::RagAgentBuilder,
-    vector_store::{NoIndex, VectorStoreIndex},
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -134,8 +131,12 @@ impl Client {
     ///    .temperature(0.0)
     ///    .build();
     /// ```
-    pub fn model(&self, model: &str) -> ModelBuilder<CompletionModel> {
-        ModelBuilder::new(self.completion_model(model))
+    #[deprecated(
+        since = "0.2.0",
+        note = "Please use the `agent` method instead of the `model` method."
+    )]
+    pub fn model(&self, model: &str) -> AgentBuilder<CompletionModel> {
+        AgentBuilder::new(self.completion_model(model))
     }
 
     /// Create an agent builder with the given completion model.
@@ -164,25 +165,28 @@ impl Client {
         ExtractorBuilder::new(self.completion_model(model))
     }
 
-    pub fn rag_agent<C: VectorStoreIndex, T: VectorStoreIndex>(
-        &self,
-        model: &str,
-    ) -> RagAgentBuilder<CompletionModel, C, T> {
-        RagAgentBuilder::new(self.completion_model(model))
+    #[deprecated(
+        since = "0.2.0",
+        note = "Please use the `agent` method instead of the `rag_agent` method."
+    )]
+    pub fn rag_agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
+        AgentBuilder::new(self.completion_model(model))
     }
 
-    pub fn tool_rag_agent<T: VectorStoreIndex>(
-        &self,
-        model: &str,
-    ) -> RagAgentBuilder<CompletionModel, NoIndex, T> {
-        RagAgentBuilder::new(self.completion_model(model))
+    #[deprecated(
+        since = "0.2.0",
+        note = "Please use the `agent` method instead of the `tool_rag_agent` method."
+    )]
+    pub fn tool_rag_agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
+        AgentBuilder::new(self.completion_model(model))
     }
 
-    pub fn context_rag_agent<C: VectorStoreIndex>(
-        &self,
-        model: &str,
-    ) -> RagAgentBuilder<CompletionModel, C, NoIndex> {
-        RagAgentBuilder::new(self.completion_model(model))
+    #[deprecated(
+        since = "0.2.0",
+        note = "Please use the `agent` method instead of the `context_rag_agent` method."
+    )]
+    pub fn context_rag_agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
+        AgentBuilder::new(self.completion_model(model))
     }
 }
 

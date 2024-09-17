@@ -30,7 +30,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create vector store index
     let index = vector_store.index(embedding_model);
 
-    let rag_agent = openai_client.context_rag_agent("gpt-4")
+    let rag_agent = openai_client.agent("gpt-4")
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.
