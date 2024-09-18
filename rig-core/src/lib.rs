@@ -85,3 +85,4 @@ pub mod providers;
 pub mod rag;
 pub mod tool;
 pub mod vector_store;
+pub mod document_loaders;

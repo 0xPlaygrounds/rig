@@ -44,6 +44,7 @@ use futures::{stream, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 
 use crate::tool::{ToolEmbedding, ToolSet, ToolType};
+use crate::document_loaders::DocumentLoader;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EmbeddingError {
@@ -66,6 +67,10 @@ pub enum EmbeddingError {
     /// Error returned by the embedding model provider
     #[error("ProviderError: {0}")]
     ProviderError(String),
+
+    /// Error loading documents
+    #[error("LoaderError: {0}")]
+    LoaderError(String),
 }
 
 /// Trait for embedding models that can generate embeddings for documents.
@@ -153,6 +158,7 @@ type Embeddings = Vec<DocumentEmbeddings>;
 pub struct EmbeddingsBuilder<M: EmbeddingModel> {
     model: M,
     documents: Vec<(String, serde_json::Value, Vec<String>)>,
+    loaders: Vec<Box<dyn DocumentLoader>>, // New field for document loaders
 }
 
 impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
@@ -161,6 +167,7 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
         Self {
             model,
             documents: vec![],
+            loaders: vec![], // Initialize loaders
         }
     }
 
@@ -275,11 +282,30 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
         self
     }
 
+    /// Add a new document loader
+    pub fn add_loader(mut self, loader: impl DocumentLoader + 'static) -> Self {
+        self.loaders.push(Box::new(loader)); // Add loader to the collection
+        self
+    }
+
     /// Generate the embeddings for the given documents
     pub async fn build(self) -> Result<Embeddings, EmbeddingError> {
         // Create a temporary store for the documents
-        let documents_map = self
-            .documents
+        let mut all_documents = self.documents;
+
+        // Load documents from loaders and merge them with existing ones
+        for loader in self.loaders {
+            let loaded_docs = loader.load().await.map_err(|e| EmbeddingError::LoaderError(e.to_string()))?;
+            for doc in loaded_docs {
+                all_documents.push((
+                    doc.id,
+                    doc.document,
+                    doc.embeddings.into_iter().map(|e| e.document).collect(),
+                ));
+            }
+        }
+
+        let documents_map = all_documents
             .into_iter()
             .map(|(id, document, docs)| (id, (document, docs)))
             .collect::<HashMap<_, _>>();
@@ -289,7 +315,7 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
             .flat_map(|(id, (_, docs))| {
                 stream::iter(docs.iter().map(|doc| (id.clone(), doc.clone())))
             })
-            // Chunk them into N (the emebdding API limit per request)
+            // Chunk them into N (the embedding API limit per request)
             .chunks(M::MAX_DOCUMENTS)
             // Generate the embeddings
             .map(|docs| async {
