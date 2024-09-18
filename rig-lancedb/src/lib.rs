@@ -1,11 +1,17 @@
 use std::sync::Arc;
 
 use arrow_array::RecordBatchIterator;
-use conversions::{document_records, document_schema, embedding_records, embedding_schema};
-use lancedb::{arrow::arrow_schema::{ArrowError, Schema}, query::ExecutableQuery};
+use lancedb::query::QueryBase;
 use rig::vector_store::{VectorStore, VectorStoreError};
+use table_schemas::{
+    document::{document_schema, DocumentRecords},
+    embedding::{embedding_schema, EmbeddingRecordsBatch},
+    merge,
+};
+use utils::Query;
 
-mod conversions;
+mod table_schemas;
+mod utils;
 
 pub struct LanceDbVectorStore {
     document_table: lancedb::Table,
@@ -16,6 +22,10 @@ fn lancedb_to_rig_error(e: lancedb::Error) -> VectorStoreError {
     VectorStoreError::DatastoreError(Box::new(e))
 }
 
+fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
+    VectorStoreError::DatastoreError(Box::new(e))
+}
+
 impl VectorStore for LanceDbVectorStore {
     type Q = lancedb::query::Query;
 
@@ -23,24 +33,25 @@ impl VectorStore for LanceDbVectorStore {
         &mut self,
         documents: Vec<rig::embeddings::DocumentEmbeddings>,
     ) -> Result<(), VectorStoreError> {
-        let document_batches = RecordBatchIterator::new(
-            vec![document_records(&documents)],
-            Arc::new(document_schema()),
-        );
-
-        let embedding_batches = RecordBatchIterator::new(
-            vec![embedding_records(&documents)],
-            Arc::new(embedding_schema()),
-        );
+        let document_records =
+            DocumentRecords::try_from(documents.clone()).map_err(serde_to_rig_error)?;
 
         self.document_table
-            .add(document_batches)
+            .add(RecordBatchIterator::new(
+                vec![document_records.try_into()],
+                Arc::new(document_schema()),
+            ))
             .execute()
             .await
             .map_err(lancedb_to_rig_error)?;
 
+        let embedding_records = EmbeddingRecordsBatch::from(documents);
+
         self.embedding_table
-            .add(embedding_batches)
+            .add(RecordBatchIterator::new(
+                embedding_records.record_batch_iter(),
+                Arc::new(embedding_schema()),
+            ))
             .execute()
             .await
             .map_err(lancedb_to_rig_error)?;
@@ -52,23 +63,21 @@ impl VectorStore for LanceDbVectorStore {
         &self,
         id: &str,
     ) -> Result<Option<rig::embeddings::DocumentEmbeddings>, VectorStoreError> {
-        // let mut stream = self
-        //     .table
-        //     .query()
-        //     .only_if(format!("id = {id}"))
-        //     .execute()
-        //     .await
-        //     .map_err(lancedb_to_rig_error)?;
+        let documents: DocumentRecords = self
+            .document_table
+            .query()
+            .only_if(format!("id = {id}"))
+            .execute_query()
+            .await?;
 
-        // // let record_batches = stream.try_collect::<Vec<_>>().await.map_err(lancedb_to_rig_error)?;
+        let embeddings: EmbeddingRecordsBatch = self
+            .embedding_table
+            .query()
+            .only_if(format!("document_id = {id}"))
+            .execute_query()
+            .await?;
 
-        // stream.next().await.map(|maybe_record_batch| {
-        //     let record_batch = maybe_record_batch?;
-
-        //     Ok::<(), lancedb::Error>(())
-        // });
-
-        todo!()
+        Ok(merge(documents, embeddings)?.into_iter().next())
     }
 
     async fn get_document<T: for<'a> serde::Deserialize<'a>>(
@@ -82,8 +91,15 @@ impl VectorStore for LanceDbVectorStore {
         &self,
         query: Self::Q,
     ) -> Result<Option<rig::embeddings::DocumentEmbeddings>, VectorStoreError> {
-        query.execute().await.map_err(lancedb_to_rig_error)?;
+        let documents: DocumentRecords = query.execute_query().await?;
 
-        todo!()
+        let embeddings: EmbeddingRecordsBatch = self
+            .embedding_table
+            .query()
+            .only_if(format!("document_id IN [{}]", documents.ids().join(",")))
+            .execute_query()
+            .await?;
+
+        Ok(merge(documents, embeddings)?.into_iter().next())
     }
 }
