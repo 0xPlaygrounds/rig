@@ -1,21 +1,17 @@
-use std::sync::Arc;
-
-use arrow_array::RecordBatchIterator;
-use lancedb::query::QueryBase;
-use rig::vector_store::{VectorStore, VectorStoreError};
-use table_schemas::{
-    document::{document_schema, DocumentRecords},
-    embedding::{embedding_schema, EmbeddingRecordsBatch},
-    merge,
-};
-use utils::Query;
+use lancedb::{arrow::arrow_schema::Schema, query::QueryBase};
+use rig::vector_store::{VectorStore, VectorStoreError, VectorStoreIndex};
+use table_schemas::{document::DocumentRecords, embedding::EmbeddingRecordsBatch, merge};
+use utils::{Insert, Query};
 
 mod table_schemas;
 mod utils;
 
 pub struct LanceDbVectorStore {
     document_table: lancedb::Table,
+    document_schema: Schema,
+
     embedding_table: lancedb::Table,
+    embedding_schema: Schema,
 }
 
 fn lancedb_to_rig_error(e: lancedb::Error) -> VectorStoreError {
@@ -23,7 +19,7 @@ fn lancedb_to_rig_error(e: lancedb::Error) -> VectorStoreError {
 }
 
 fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
-    VectorStoreError::DatastoreError(Box::new(e))
+    VectorStoreError::JsonError(e)
 }
 
 impl VectorStore for LanceDbVectorStore {
@@ -37,22 +33,14 @@ impl VectorStore for LanceDbVectorStore {
             DocumentRecords::try_from(documents.clone()).map_err(serde_to_rig_error)?;
 
         self.document_table
-            .add(RecordBatchIterator::new(
-                vec![document_records.try_into()],
-                Arc::new(document_schema()),
-            ))
-            .execute()
+            .insert(document_records, self.document_schema.clone())
             .await
             .map_err(lancedb_to_rig_error)?;
 
         let embedding_records = EmbeddingRecordsBatch::from(documents);
 
         self.embedding_table
-            .add(RecordBatchIterator::new(
-                embedding_records.record_batch_iter(),
-                Arc::new(embedding_schema()),
-            ))
-            .execute()
+            .insert(embedding_records, self.embedding_schema.clone())
             .await
             .map_err(lancedb_to_rig_error)?;
 
@@ -84,7 +72,20 @@ impl VectorStore for LanceDbVectorStore {
         &self,
         id: &str,
     ) -> Result<Option<T>, VectorStoreError> {
-        todo!()
+        let documents: DocumentRecords = self
+            .document_table
+            .query()
+            .only_if(format!("id = {id}"))
+            .execute_query()
+            .await?;
+
+        let document = documents
+            .as_iter()
+            .next()
+            .map(|document| serde_json::from_str(&document.document).map_err(serde_to_rig_error))
+            .transpose();
+
+        document
     }
 
     async fn get_document_by_query(
@@ -101,5 +102,23 @@ impl VectorStore for LanceDbVectorStore {
             .await?;
 
         Ok(merge(documents, embeddings)?.into_iter().next())
+    }
+}
+
+impl VectorStoreIndex for LanceDbVectorStore {
+    fn top_n_from_query(
+        &self,
+        query: &str,
+        n: usize,
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, rig::embeddings::DocumentEmbeddings)>, VectorStoreError>> + Send {
+        todo!()
+    }
+
+    fn top_n_from_embedding(
+        &self,
+        prompt_embedding: &rig::embeddings::Embedding,
+        n: usize,
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, rig::embeddings::DocumentEmbeddings)>, VectorStoreError>> + Send {
+        todo!()
     }
 }

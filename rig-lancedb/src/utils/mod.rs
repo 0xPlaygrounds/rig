@@ -1,6 +1,11 @@
-use arrow_array::{Array, Float64Array, ListArray, RecordBatch, StringArray};
+use std::sync::Arc;
+
+use arrow_array::{Array, Float64Array, ListArray, RecordBatch, RecordBatchIterator, StringArray};
 use futures::TryStreamExt;
-use lancedb::{arrow::arrow_schema::ArrowError, query::ExecutableQuery};
+use lancedb::{
+    arrow::arrow_schema::{ArrowError, Schema},
+    query::ExecutableQuery,
+};
 use rig::vector_store::VectorStoreError;
 
 use crate::lancedb_to_rig_error;
@@ -66,5 +71,19 @@ where
             .map_err(lancedb_to_rig_error)?;
 
         T::try_from(record_batches)
+    }
+}
+
+pub trait Insert<T> {
+    async fn insert(&self, data: T, schema: Schema) -> Result<(), lancedb::Error>;
+}
+
+impl<T: Into<Vec<Result<RecordBatch, ArrowError>>>> Insert<T> for lancedb::Table {
+    async fn insert(&self, data: T, schema: Schema) -> Result<(), lancedb::Error> {
+        self.add(RecordBatchIterator::new(data.into(), Arc::new(schema)))
+            .execute()
+            .await?;
+
+        Ok(())
     }
 }

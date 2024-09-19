@@ -30,16 +30,24 @@ impl DocumentRecords {
         Self(Vec::new())
     }
 
-    pub fn as_iter(&self) -> impl Iterator<Item = &DocumentRecord> {
-        self.0.iter()
+    fn records(&self) -> Vec<DocumentRecord> {
+        self.0.clone()
+    }
+
+    fn add_records(&mut self, records: Vec<DocumentRecord>) {
+        self.0.extend(records);
+    }
+
+    fn documents(&self) -> Vec<String> {
+        self.as_iter().map(|doc| doc.document.clone()).collect()
     }
 
     pub fn ids(&self) -> Vec<String> {
         self.as_iter().map(|doc| doc.id.clone()).collect()
     }
 
-    fn add_records(&mut self, records: Vec<DocumentRecord>) {
-        self.0.extend(records);
+    pub fn as_iter(&self) -> impl Iterator<Item = &DocumentRecord> {
+        self.0.iter()
     }
 }
 
@@ -77,16 +85,19 @@ impl TryFrom<DocumentRecords> for RecordBatch {
     type Error = ArrowError;
 
     fn try_from(document_records: DocumentRecords) -> Result<Self, Self::Error> {
-        let id =
-            StringArray::from_iter_values(document_records.as_iter().map(|doc| doc.id.clone()));
-        let document = StringArray::from_iter_values(
-            document_records.as_iter().map(|doc| doc.document.clone()),
-        );
+        let id = StringArray::from_iter_values(document_records.ids());
+        let document = StringArray::from_iter_values(document_records.documents());
 
         RecordBatch::try_new(
             Arc::new(document_schema()),
             vec![Arc::new(id), Arc::new(document)],
         )
+    }
+}
+
+impl From<DocumentRecords> for Vec<Result<RecordBatch, ArrowError>> {
+    fn from(documents: DocumentRecords) -> Self {
+        vec![RecordBatch::try_from(documents)]
     }
 }
 
@@ -125,7 +136,7 @@ impl TryFrom<Vec<RecordBatch>> for DocumentRecords {
         Ok(documents
             .into_iter()
             .fold(DocumentRecords::new(), |mut acc, document| {
-                acc.add_records(document.0);
+                acc.add_records(document.records());
                 acc
             }))
     }

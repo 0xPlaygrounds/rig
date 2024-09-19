@@ -111,12 +111,14 @@ impl EmbeddingRecordsBatch {
         self.0.clone().into_values().collect::<Vec<_>>().into_iter()
     }
 
-    pub fn record_batch_iter(&self) -> impl Iterator<Item = Result<RecordBatch, ArrowError>> {
-        self.as_iter().map(RecordBatch::try_from)
-    }
-
     pub fn get_by_id(&self, id: &str) -> Option<EmbeddingRecords> {
         self.0.get(id).cloned()
+    }
+}
+
+impl From<EmbeddingRecordsBatch> for Vec<Result<RecordBatch, ArrowError>> {
+    fn from(embeddings: EmbeddingRecordsBatch) -> Self {
+        embeddings.as_iter().map(RecordBatch::try_from).collect()
     }
 }
 
