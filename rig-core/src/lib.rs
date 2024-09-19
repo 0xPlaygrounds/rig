@@ -77,6 +77,7 @@
 pub mod agent;
 pub mod cli_chatbot;
 pub mod completion;
+pub mod document_loaders;
 pub mod embeddings;
 pub mod extractor;
 pub mod json_utils;
