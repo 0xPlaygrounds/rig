@@ -237,6 +237,8 @@ pub struct CompletionRequest {
     pub tools: Vec<ToolDefinition>,
     /// The temperature to be sent to the completion model provider
     pub temperature: Option<f64>,
+    /// The max tokens to be sent to the completion model provider
+    pub max_tokens: Option<u64>,
     /// Additional provider-specific parameters to be sent to the completion model provider
     pub additional_params: Option<serde_json::Value>,
 }
@@ -293,6 +295,7 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
     documents: Vec<Document>,
     tools: Vec<ToolDefinition>,
     temperature: Option<f64>,
+    max_tokens: Option<u64>,
     additional_params: Option<serde_json::Value>,
 }
 
@@ -306,6 +309,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
+            max_tokens: None,
             additional_params: None,
         }
     }
@@ -394,6 +398,20 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         self
     }
 
+    /// Sets the max tokens for the completion request.
+    /// Only required for: [ Anthropic ]
+    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
+        self.max_tokens = Some(max_tokens);
+        self
+    }
+
+    /// Sets the max tokens for the completion request.
+    /// Only required for: [ Anthropic ]
+    pub fn max_tokens_opt(mut self, max_tokens: Option<u64>) -> Self {
+        self.max_tokens = max_tokens;
+        self
+    }
+
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
         CompletionRequest {
@@ -403,6 +421,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             documents: self.documents,
             tools: self.tools,
             temperature: self.temperature,
+            max_tokens: self.max_tokens,
             additional_params: self.additional_params,
         }
     }
