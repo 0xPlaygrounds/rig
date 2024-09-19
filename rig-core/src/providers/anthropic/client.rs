@@ -1,12 +1,6 @@
 //! Anthropic client api implementation
 
-use crate::{
-    agent::AgentBuilder,
-    extractor::ExtractorBuilder,
-    model::ModelBuilder,
-    rag::RagAgentBuilder,
-    vector_store::{NoIndex, VectorStoreIndex},
-};
+use crate::{agent::AgentBuilder, extractor::ExtractorBuilder};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -26,6 +20,19 @@ pub struct ClientBuilder<'a> {
     anthropic_betas: Option<Vec<&'a str>>,
 }
 
+/// Create a new anthropic client using the builder
+///
+/// # Example
+/// ```
+/// use rig::providers::anthropic::{ClientBuilder, self};
+///
+/// // Initialize the Anthropic client
+/// let anthropic_client = ClientBuilder::new("your-claude-api-key")
+///    .base_url("https://api.anthropic.com")
+///    .anthropic_version(ANTHROPIC_VERSION_LATEST)
+///    .anthropic_beta("prompt-caching-2024-07-31")
+///    .build()
+/// ```
 impl<'a> ClientBuilder<'a> {
     pub fn new(api_key: &'a str) -> Self {
         Self {
@@ -46,8 +53,13 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn anthropic_betas(mut self, anthropic_betas: Vec<&'a str>) -> Self {
-        self.anthropic_betas = Some(anthropic_betas);
+    pub fn anthropic_beta(mut self, anthropic_beta: &'a str) -> Self {
+        if let Some(mut betas) = self.anthropic_betas {
+            betas.push(anthropic_beta);
+            self.anthropic_betas = Some(betas);
+        } else {
+            self.anthropic_betas = Some(vec![anthropic_beta]);
+        }
         self
     }
 
@@ -104,25 +116,19 @@ impl Client {
         CompletionModel::new(self.clone(), model)
     }
 
-    pub fn model(&self, model: &str) -> ModelBuilder<CompletionModel> {
-        ModelBuilder::new(self.completion_model(model))
-    }
-
-    /// Create an embedding builder with the given embedding model.
+    /// Create an agent builder with the given completion model.
     ///
     /// # Example
     /// ```
-    /// use rig::providers::openai::{Client, self};
+    /// use rig::providers::anthropic::{ClientBuilder, self};
     ///
-    /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key");
+    /// // Initialize the Anthropic client
+    /// let anthropic = ClientBuilder::new("your-claude-api-key").build();
     ///
-    /// let embeddings = openai.embeddings(openai::TEXT_EMBEDDING_3_LARGE)
-    ///     .simple_document("doc0", "Hello, world!")
-    ///     .simple_document("doc1", "Goodbye, world!")
-    ///     .build()
-    ///     .await
-    ///     .expect("Failed to embed documents");
+    /// let agent = anthropic.agent(anthropic::CLAUDE_3_5_SONNET)
+    ///    .preamble("You are comedian AI with a mission to make people laugh.")
+    ///    .temperature(0.0)
+    ///    .build();
     /// ```
     pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
         AgentBuilder::new(self.completion_model(model))
@@ -133,26 +139,5 @@ impl Client {
         model: &str,
     ) -> ExtractorBuilder<T, CompletionModel> {
         ExtractorBuilder::new(self.completion_model(model))
-    }
-
-    pub fn rag_agent<C: VectorStoreIndex, T: VectorStoreIndex>(
-        &self,
-        model: &str,
-    ) -> RagAgentBuilder<CompletionModel, C, T> {
-        RagAgentBuilder::new(self.completion_model(model))
-    }
-
-    pub fn tool_rag_agent<T: VectorStoreIndex>(
-        &self,
-        model: &str,
-    ) -> RagAgentBuilder<CompletionModel, NoIndex, T> {
-        RagAgentBuilder::new(self.completion_model(model))
-    }
-
-    pub fn context_rag_agent<C: VectorStoreIndex>(
-        &self,
-        model: &str,
-    ) -> RagAgentBuilder<CompletionModel, C, NoIndex> {
-        RagAgentBuilder::new(self.completion_model(model))
     }
 }
