@@ -53,7 +53,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = index
-        .top_n_from_query("What is a linglingdong?", 1, &SearchParams::new())
+        .top_n_from_query("What is a linglingdong?", 1, SearchParams::new())
         .await?
         .into_iter()
         .map(|(score, doc)| (score, doc.id, doc.document))

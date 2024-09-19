@@ -5,6 +5,7 @@ use rig::{
     embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel},
     vector_store::{VectorStore, VectorStoreError, VectorStoreIndex},
 };
+use serde::Deserialize;
 
 /// A MongoDB vector store.
 pub struct MongoDbVectorStore {
@@ -117,6 +118,7 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
 
 /// See [MongoDB Vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information
 /// on each of the fields
+#[derive(Deserialize)]
 pub struct SearchParams {
     filter: mongodb::bson::Document,
     /// Whether to use ANN or ENN search
@@ -136,12 +138,18 @@ impl SearchParams {
     }
 }
 
+impl Default for SearchParams {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbVectorIndex<M> {
     async fn top_n_from_query(
         &self,
         query: &str,
         n: usize,
-        search_params: &Self::S,
+        search_params: Self::SearchParams,
     ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_document(query).await?;
         self.top_n_from_embedding(&prompt_embedding, n, search_params)
@@ -152,7 +160,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
         &self,
         prompt_embedding: &Embedding,
         n: usize,
-        search_params: &Self::S,
+        search_params: Self::SearchParams,
     ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         let mut cursor = self
             .collection
@@ -201,5 +209,5 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
         Ok(results)
     }
 
-    type S = SearchParams;
+    type SearchParams = SearchParams;
 }

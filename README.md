@@ -2,15 +2,16 @@
 <img src="img/rig_logo.svg" alt="Rig Logo" style="width: 75%; height: 75%;"><br>
 <a href="https://crates.io/crates/rig-core"><img src="https://img.shields.io/crates/v/rig-core.svg" /></a>
 &nbsp;
-<a href="https://discord.gg/gkp6UqEUph"><img src="https://img.shields.io/discord/511303648119226382?color=%236d82cc&label=Discord&logo=discord&logoColor=white" /></a>
+<a href="https://discord.gg/playgrounds"><img src="https://img.shields.io/discord/511303648119226382?color=%236d82cc&label=Discord&logo=discord&logoColor=white" /></a>
 &nbsp;
-<a href="https://github.com/surrealdb/surrealdb"><img src="https://img.shields.io/badge/built_with-Rust-dca282.svg" /></a>
+<a href=""><img src="https://img.shields.io/badge/built_with-Rust-dca282.svg?logo=rust" /></a>
 &nbsp;
-<a href="https://twitter.com/Playgrounds0x"><img src="https://img.shields.io/badge/twitter-follow_us-1d9bf0.svg?style=flat /"></a>
+<a href="https://twitter.com/Playgrounds0x"><img src="https://img.shields.io/badge/Twitter-Follow_Us-1d9bf0.svg?style=flat /"></a>
 &nbsp;
-<a href="https://github.com/surrealdb/license"><img src="https://img.shields.io/badge/license-MIT-00bfff.svg" /></a>
+<a href="https://github.com/0xPlaygrounds/rig?tab=MIT-1-ov-file"><img src="https://img.shields.io/badge/license-MIT-00bfff.svg?color=red" /></a>
 </p>
 &nbsp;
+
 
 ## What is Rig?
 Rig is a Rust library for building scalable, modular, and ergonomic LLM-powered applications.

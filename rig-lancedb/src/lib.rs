@@ -3,6 +3,7 @@ use rig::{
     embeddings::EmbeddingModel,
     vector_store::{VectorStore, VectorStoreError, VectorStoreIndex},
 };
+use serde::Deserialize;
 use table_schemas::{document::DocumentRecords, embedding::EmbeddingRecordsBatch, merge};
 use utils::{Insert, Query};
 
@@ -126,6 +127,7 @@ impl<M: EmbeddingModel> LanceDbVectorIndex<M> {
 }
 
 /// See [LanceDB vector search](https://lancedb.github.io/lancedb/search/) for more information.
+#[derive(Deserialize)]
 pub enum SearchType {
     // Flat search, also called ENN or kNN.
     Flat,
@@ -133,6 +135,7 @@ pub enum SearchType {
     Approximate,
 }
 
+#[derive(Deserialize)]
 pub struct SearchParams {
     /// Always set the distance_type to match the value used to train the index
     distance_type: DistanceType,
@@ -156,7 +159,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
         &self,
         query: &str,
         n: usize,
-        search_params: &Self::S,
+        search_params: Self::SearchParams,
     ) -> Result<Vec<(f64, rig::embeddings::DocumentEmbeddings)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_document(query).await?;
 
@@ -172,7 +175,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
             .embedding_table
             .vector_search(prompt_embedding.vec)
             .map_err(lancedb_to_rig_error)?
-            .distance_type(*distance_type)
+            .distance_type(distance_type)
             .limit(n);
 
         if let Some(SearchType::Flat) = &search_type {
@@ -181,10 +184,10 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
 
         if let Some(SearchType::Approximate) = &search_type {
             if let Some(nprobes) = nprobes {
-                query.clone().nprobes(*nprobes);
+                query.clone().nprobes(nprobes);
             }
             if let Some(refine_factor) = refine_factor {
-                query.clone().refine_factor(*refine_factor);
+                query.clone().refine_factor(refine_factor);
             }
         }
 
@@ -212,10 +215,10 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
         &self,
         prompt_embedding: &rig::embeddings::Embedding,
         n: usize,
-        search_params: &Self::S,
+        search_params: Self::SearchParams,
     ) -> Result<Vec<(f64, rig::embeddings::DocumentEmbeddings)>, VectorStoreError> {
         todo!()
     }
 
-    type S = SearchParams;
+    type SearchParams = SearchParams;
 }

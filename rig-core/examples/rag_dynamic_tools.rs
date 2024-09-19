@@ -170,11 +170,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create RAG agent with a single context prompt and a dynamic tool source
     let calculator_rag = openai_client
-        .tool_rag_agent("gpt-4")
+        .agent("gpt-4")
         .preamble("You are a calculator here to help the user perform arithmetic operations.")
         // Add a dynamic tool source with a sample rate of 1 (i.e.: only
         // 1 additional tool will be added to prompts)
-        .dynamic_tools(1, index, toolset, ())
+        .dynamic_tools(1, index, toolset, "".to_string())
         .build();
 
     // Prompt the agent and print the response

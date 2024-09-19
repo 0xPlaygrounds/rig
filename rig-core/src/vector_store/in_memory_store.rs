@@ -162,13 +162,13 @@ impl<M: EmbeddingModel> InMemoryVectorIndex<M> {
 }
 
 impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorIndex<M> {
-    type S = ();
+    type SearchParams = ();
 
     async fn top_n_from_query(
         &self,
         query: &str,
         n: usize,
-        search_params: &Self::S,
+        search_params: Self::SearchParams,
     ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_document(query).await?;
         self.top_n_from_embedding(&prompt_embedding, n, search_params)
@@ -179,7 +179,7 @@ impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorI
         &self,
         query_embedding: &Embedding,
         n: usize,
-        _search_params: &Self::S,
+        _search_params: Self::SearchParams,
     ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         // Sort documents by best embedding distance
         let mut docs: EmbeddingRanking = BinaryHeap::new();
