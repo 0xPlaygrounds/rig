@@ -162,7 +162,15 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
         search_params: Self::SearchParams,
     ) -> Result<Vec<(f64, rig::embeddings::DocumentEmbeddings)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_document(query).await?;
+        self.top_n_from_embedding(&prompt_embedding, n, search_params).await
+    }
 
+    async fn top_n_from_embedding(
+        &self,
+        prompt_embedding: &rig::embeddings::Embedding,
+        n: usize,
+        search_params: Self::SearchParams,
+    ) -> Result<Vec<(f64, rig::embeddings::DocumentEmbeddings)>, VectorStoreError> {
         let SearchParams {
             distance_type,
             search_type,
@@ -173,7 +181,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
 
         let query = self
             .embedding_table
-            .vector_search(prompt_embedding.vec)
+            .vector_search(prompt_embedding.vec.clone())
             .map_err(lancedb_to_rig_error)?
             .distance_type(distance_type)
             .limit(n);
@@ -208,15 +216,6 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
 
         merge(documents, embeddings)?;
 
-        todo!()
-    }
-
-    async fn top_n_from_embedding(
-        &self,
-        prompt_embedding: &rig::embeddings::Embedding,
-        n: usize,
-        search_params: Self::SearchParams,
-    ) -> Result<Vec<(f64, rig::embeddings::DocumentEmbeddings)>, VectorStoreError> {
         todo!()
     }
 

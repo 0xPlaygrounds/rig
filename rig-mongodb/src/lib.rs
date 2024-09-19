@@ -120,6 +120,7 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
 /// on each of the fields
 #[derive(Deserialize)]
 pub struct SearchParams {
+    /// Pre-filter
     filter: mongodb::bson::Document,
     /// Whether to use ANN or ENN search
     exact: Option<bool>,
