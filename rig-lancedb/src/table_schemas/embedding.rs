@@ -114,6 +114,10 @@ impl EmbeddingRecordsBatch {
     pub fn get_by_id(&self, id: &str) -> Option<EmbeddingRecords> {
         self.0.get(id).cloned()
     }
+
+    pub fn document_ids(&self) -> Vec<String> {
+        self.0.clone().into_keys().collect()
+    }
 }
 
 impl From<EmbeddingRecordsBatch> for Vec<Result<RecordBatch, ArrowError>> {

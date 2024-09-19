@@ -49,6 +49,8 @@ pub trait VectorStore: Send + Sync {
 
 /// Trait for vector store indexes
 pub trait VectorStoreIndex: Send + Sync {
+    type S: Send + Sync;
+
     /// Get the top n documents based on the distance to the given embedding.
     /// The distance is calculated as the cosine distance between the prompt and
     /// the document embedding.
@@ -57,6 +59,7 @@ pub trait VectorStoreIndex: Send + Sync {
         &self,
         query: &str,
         n: usize,
+        search_params: &Self::S,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> + Send;
 
     /// Same as `top_n_from_query` but returns the documents without its embeddings.
@@ -65,9 +68,10 @@ pub trait VectorStoreIndex: Send + Sync {
         &self,
         query: &str,
         n: usize,
+        search_params: &Self::S,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, T)>, VectorStoreError>> + Send {
         async move {
-            let documents = self.top_n_from_query(query, n).await?;
+            let documents = self.top_n_from_query(query, n, search_params).await?;
             Ok(documents
                 .into_iter()
                 .map(|(distance, doc)| (distance, serde_json::from_value(doc.document).unwrap()))
@@ -80,10 +84,11 @@ pub trait VectorStoreIndex: Send + Sync {
         &self,
         query: &str,
         n: usize,
+        search_params: &Self::S,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + Send
     {
         async move {
-            let documents = self.top_n_from_query(query, n).await?;
+            let documents = self.top_n_from_query(query, n, search_params).await?;
             Ok(documents
                 .into_iter()
                 .map(|(distance, doc)| (distance, doc.id))
@@ -99,6 +104,7 @@ pub trait VectorStoreIndex: Send + Sync {
         &self,
         prompt_embedding: &Embedding,
         n: usize,
+        search_params: &Self::S,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> + Send;
 
     /// Same as `top_n_from_embedding` but returns the documents without its embeddings.
@@ -107,9 +113,12 @@ pub trait VectorStoreIndex: Send + Sync {
         &self,
         prompt_embedding: &Embedding,
         n: usize,
+        search_params: &Self::S,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, T)>, VectorStoreError>> + Send {
         async move {
-            let documents = self.top_n_from_embedding(prompt_embedding, n).await?;
+            let documents = self
+                .top_n_from_embedding(prompt_embedding, n, search_params)
+                .await?;
             Ok(documents
                 .into_iter()
                 .map(|(distance, doc)| (distance, serde_json::from_value(doc.document).unwrap()))
@@ -122,10 +131,13 @@ pub trait VectorStoreIndex: Send + Sync {
         &self,
         prompt_embedding: &Embedding,
         n: usize,
+        search_params: &Self::S,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + Send
     {
         async move {
-            let documents = self.top_n_from_embedding(prompt_embedding, n).await?;
+            let documents = self
+                .top_n_from_embedding(prompt_embedding, n, search_params)
+                .await?;
             Ok(documents
                 .into_iter()
                 .map(|(distance, doc)| (distance, doc.id))
@@ -137,10 +149,13 @@ pub trait VectorStoreIndex: Send + Sync {
 pub struct NoIndex;
 
 impl VectorStoreIndex for NoIndex {
+    type S = ();
+
     async fn top_n_from_query(
         &self,
         _query: &str,
         _n: usize,
+        _search_params: &Self::S,
     ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         Ok(vec![])
     }
@@ -149,6 +164,7 @@ impl VectorStoreIndex for NoIndex {
         &self,
         _prompt_embedding: &Embedding,
         _n: usize,
+        _search_params: &Self::S,
     ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         Ok(vec![])
     }

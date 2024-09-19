@@ -89,13 +89,8 @@ impl MongoDbVectorStore {
     ///
     /// An additional filter can be provided to further restrict the documents that are
     /// considered in the search.
-    pub fn index<M: EmbeddingModel>(
-        &self,
-        model: M,
-        index_name: &str,
-        filter: mongodb::bson::Document,
-    ) -> MongoDbVectorIndex<M> {
-        MongoDbVectorIndex::new(self.collection.clone(), model, index_name, filter)
+    pub fn index<M: EmbeddingModel>(&self, model: M, index_name: &str) -> MongoDbVectorIndex<M> {
+        MongoDbVectorIndex::new(self.collection.clone(), model, index_name)
     }
 }
 
@@ -104,7 +99,6 @@ pub struct MongoDbVectorIndex<M: EmbeddingModel> {
     collection: mongodb::Collection<DocumentEmbeddings>,
     model: M,
     index_name: String,
-    filter: mongodb::bson::Document,
 }
 
 impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
@@ -112,13 +106,32 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
         collection: mongodb::Collection<DocumentEmbeddings>,
         model: M,
         index_name: &str,
-        filter: mongodb::bson::Document,
     ) -> Self {
         Self {
             collection,
             model,
             index_name: index_name.to_string(),
-            filter,
+        }
+    }
+}
+
+/// See [MongoDB Vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information
+/// on each of the fields
+pub struct SearchParams {
+    filter: mongodb::bson::Document,
+    /// Whether to use ANN or ENN search
+    exact: Option<bool>,
+    /// Only set this field if exact is set to false
+    /// Number of nearest neighbors to use during the search
+    num_candidates: Option<u32>,
+}
+
+impl SearchParams {
+    pub fn new() -> Self {
+        Self {
+            filter: doc! {},
+            exact: None,
+            num_candidates: None,
         }
     }
 }
@@ -128,15 +141,18 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
         &self,
         query: &str,
         n: usize,
+        search_params: &Self::S,
     ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_document(query).await?;
-        self.top_n_from_embedding(&prompt_embedding, n).await
+        self.top_n_from_embedding(&prompt_embedding, n, search_params)
+            .await
     }
 
     async fn top_n_from_embedding(
         &self,
         prompt_embedding: &Embedding,
         n: usize,
+        search_params: &Self::S,
     ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         let mut cursor = self
             .collection
@@ -144,12 +160,13 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
                 [
                     doc! {
                       "$vectorSearch": {
-                        "index": &self.index_name,
-                        "path": "embeddings.vec",
                         "queryVector": &prompt_embedding.vec,
-                        "numCandidates": (n * 10) as u32,
+                        "index": &self.index_name,
+                        "exact": search_params.exact.unwrap_or(false),
+                        "path": "embeddings.vec",
+                        "numCandidates": search_params.num_candidates.unwrap_or((n * 10) as u32),
                         "limit": n as u32,
-                        "filter": &self.filter,
+                        "filter": &search_params.filter,
                       }
                     },
                     doc! {
@@ -168,7 +185,8 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
         while let Some(doc) = cursor.next().await {
             let doc = doc.map_err(mongodb_to_rig_error)?;
             let score = doc.get("score").expect("score").as_f64().expect("f64");
-            let document: DocumentEmbeddings = serde_json::from_value(doc).expect("document");
+            let document: DocumentEmbeddings =
+                serde_json::from_value(doc).map_err(VectorStoreError::JsonError)?;
             results.push((score, document));
         }
 
@@ -182,4 +200,6 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
 
         Ok(results)
     }
+
+    type S = SearchParams;
 }

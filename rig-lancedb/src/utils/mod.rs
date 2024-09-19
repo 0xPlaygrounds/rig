@@ -74,6 +74,23 @@ where
     }
 }
 
+impl<T> Query<T> for lancedb::query::VectorQuery
+where
+    T: TryFrom<Vec<RecordBatch>, Error = VectorStoreError>,
+{
+    async fn execute_query(&self) -> Result<T, VectorStoreError> {
+        let record_batches = self
+            .execute()
+            .await
+            .map_err(lancedb_to_rig_error)?
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(lancedb_to_rig_error)?;
+
+        T::try_from(record_batches)
+    }
+}
+
 pub trait Insert<T> {
     async fn insert(&self, data: T, schema: Schema) -> Result<(), lancedb::Error>;
 }

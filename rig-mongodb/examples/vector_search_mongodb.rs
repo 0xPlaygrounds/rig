@@ -6,7 +6,7 @@ use rig::{
     providers::openai::Client,
     vector_store::{VectorStore, VectorStoreIndex},
 };
-use rig_mongodb::MongoDbVectorStore;
+use rig_mongodb::{MongoDbVectorStore, SearchParams};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -49,11 +49,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = vector_store.index(model, "context_vector_index", doc! {});
+    let index = vector_store.index(model, "context_vector_index");
 
     // Query the index
     let results = index
-        .top_n_from_query("What is a linglingdong?", 1)
+        .top_n_from_query("What is a linglingdong?", 1, &SearchParams::new())
         .await?
         .into_iter()
         .map(|(score, doc)| (score, doc.id, doc.document))

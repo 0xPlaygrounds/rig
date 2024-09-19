@@ -87,9 +87,9 @@ pub struct RagAgent<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex
     /// Additional parameters to be passed to the model
     additional_params: Option<serde_json::Value>,
     /// List of vector store, with the sample number
-    dynamic_context: Vec<(usize, C)>,
+    dynamic_context: Vec<(usize, C, C::S)>,
     /// Dynamic tools
-    dynamic_tools: Vec<(usize, T)>,
+    dynamic_tools: Vec<(usize, T, T::S)>,
     /// Actual tool implementations
     pub tools: ToolSet,
 }
@@ -106,10 +106,10 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Completion<M>
         chat_history: Vec<Message>,
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         let dynamic_context = stream::iter(self.dynamic_context.iter())
-            .then(|(num_sample, index)| async {
+            .then(|(num_sample, index, search_params)| async {
                 Ok::<_, VectorStoreError>(
                     index
-                        .top_n_from_query(prompt, *num_sample)
+                        .top_n_from_query(prompt, *num_sample, search_params)
                         .await?
                         .into_iter()
                         .map(|(_, doc)| {
@@ -133,10 +133,10 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> Completion<M>
             .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
 
         let dynamic_tools = stream::iter(self.dynamic_tools.iter())
-            .then(|(num_sample, index)| async {
+            .then(|(num_sample, index, search_params)| async {
                 Ok::<_, VectorStoreError>(
                     index
-                        .top_n_ids_from_query(prompt, *num_sample)
+                        .top_n_ids_from_query(prompt, *num_sample, search_params)
                         .await?
                         .into_iter()
                         .map(|(_, doc)| doc)
@@ -242,9 +242,9 @@ pub struct RagAgentBuilder<M: CompletionModel, C: VectorStoreIndex, T: VectorSto
     /// Additional parameters to be passed to the model
     additional_params: Option<serde_json::Value>,
     /// List of vector store, with the sample number
-    dynamic_context: Vec<(usize, C)>,
+    dynamic_context: Vec<(usize, C, C::S)>,
     /// Dynamic tools
-    dynamic_tools: Vec<(usize, T)>,
+    dynamic_tools: Vec<(usize, T, T::S)>,
     /// Temperature of the model
     temperature: Option<f64>,
     /// Actual tool implementations
@@ -292,15 +292,28 @@ impl<M: CompletionModel, C: VectorStoreIndex, T: VectorStoreIndex> RagAgentBuild
 
     /// Add some dynamic context to the RAG agent. On each prompt, `sample` documents from the
     /// dynamic context will be inserted in the request.
-    pub fn dynamic_context(mut self, sample: usize, dynamic_context: C) -> Self {
-        self.dynamic_context.push((sample, dynamic_context));
+    pub fn dynamic_context(
+        mut self,
+        sample: usize,
+        dynamic_context: C,
+        search_params: C::S,
+    ) -> Self {
+        self.dynamic_context
+            .push((sample, dynamic_context, search_params));
         self
     }
 
     /// Add some dynamic tools to the RAG agent. On each prompt, `sample` tools from the
     /// dynamic toolset will be inserted in the request.
-    pub fn dynamic_tools(mut self, sample: usize, dynamic_tools: T, toolset: ToolSet) -> Self {
-        self.dynamic_tools.push((sample, dynamic_tools));
+    pub fn dynamic_tools(
+        mut self,
+        sample: usize,
+        dynamic_tools: T,
+        toolset: ToolSet,
+        search_params: T::S,
+    ) -> Self {
+        self.dynamic_tools
+            .push((sample, dynamic_tools, search_params));
         self.tools.add_tools(toolset);
         self
     }
