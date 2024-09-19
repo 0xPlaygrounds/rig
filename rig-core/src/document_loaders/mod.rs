@@ -1,4 +1,5 @@
-// src/document_loaders/mod.rs
+//! This module contains the implementation of document loaders for various file formats.
+//! Currently, it includes loaders for CSV and PDF files.
 
 mod csv;
 // mod directory;
@@ -14,6 +15,7 @@ use std::error::Error as StdError;
 
 #[async_trait]
 pub trait DocumentLoader {
+    /// Asynchronously loads the document and returns a vector of document embeddings.
     async fn load(&self) -> Result<Vec<DocumentEmbeddings>, Box<dyn StdError + Send + Sync>>;
 }
 

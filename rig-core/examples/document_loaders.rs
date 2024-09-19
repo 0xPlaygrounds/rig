@@ -1,5 +1,3 @@
-// examples/document_loaders.rs
-
 use rig::{
     completion::Prompt,
     document_loaders::PdfLoader,
@@ -50,8 +48,8 @@ async fn main() -> Result<(), anyhow::Error> {
         embeddings.len()
     );
     for emb in &embeddings {
-        println!("Document ID: {}", emb.id);
-        println!("Document Content: {:?}", emb.document);
+        // println!("Document ID: {}", emb.id);
+        // println!("Document Content: {:?}", emb.document);
         println!("Number of embeddings: {}", emb.embeddings.len());
         println!(
             "First embedding vector length: {}",
