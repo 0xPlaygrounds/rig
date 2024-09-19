@@ -37,7 +37,7 @@ impl DocumentLoader for CsvLoader {
             for (i, field) in record.iter().enumerate() {
                 csv_content.push_str(&format!("{}: {}\n", headers[i], field));
             }
-            csv_content.push_str("\n");
+            csv_content.push('\n'); // Changed from push_str("\n") to push('\n')
         }
 
         Ok(vec![DocumentEmbeddings {
