@@ -1,8 +1,6 @@
-// src/document_loaders/csv.rs
-
 use async_trait::async_trait;
 use csv::Reader;
-use serde_json::Value;
+use serde_json::json;
 use std::error::Error as StdError;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
@@ -12,14 +10,12 @@ use crate::embeddings::DocumentEmbeddings;
 
 pub struct CsvLoader {
     path: String,
-    id_column: Option<String>,
 }
 
 impl CsvLoader {
-    pub fn new(path: &str, id_column: Option<&str>) -> Self {
+    pub fn new(path: &str) -> Self {
         Self {
             path: path.to_string(),
-            id_column: id_column.map(String::from),
         }
     }
 }
@@ -32,34 +28,22 @@ impl DocumentLoader for CsvLoader {
         file.read_to_string(&mut contents).await?;
 
         let mut reader = Reader::from_reader(contents.as_bytes());
-        let headers = reader.headers()?.clone();
+        let headers: Vec<String> = reader.headers()?.iter().map(|h| h.to_string()).collect();
 
-        let mut documents = Vec::new();
+        let mut csv_content = String::new();
 
         for result in reader.records() {
             let record = result?;
-            let mut doc = serde_json::Map::new();
-
             for (i, field) in record.iter().enumerate() {
-                doc.insert(headers[i].to_string(), Value::String(field.to_string()));
+                csv_content.push_str(&format!("{}: {}\n", headers[i], field));
             }
-
-            let id = if let Some(id_col) = &self.id_column {
-                doc.get(id_col)
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string()
-            } else {
-                format!("csv_row_{}", documents.len())
-            };
-
-            documents.push(DocumentEmbeddings {
-                id,
-                document: Value::Object(doc),
-                embeddings: vec![],
-            });
+            csv_content.push_str("\n");
         }
 
-        Ok(documents)
+        Ok(vec![DocumentEmbeddings {
+            id: self.path.clone(),
+            document: json!({"text": csv_content}),
+            embeddings: vec![],
+        }])
     }
 }
