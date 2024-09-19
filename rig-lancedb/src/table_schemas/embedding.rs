@@ -146,7 +146,7 @@ impl TryFrom<RecordBatch> for EmbeddingRecords {
         let ids = record_batch.deserialize_str_column(0)?;
         let document_ids = record_batch.deserialize_str_column(1)?;
         let contents = record_batch.deserialize_str_column(2)?;
-        let embeddings = record_batch.deserialize_list_column(3)?;
+        let embeddings = record_batch.deserialize_float_list_column(3)?;
 
         Ok(EmbeddingRecords(
             ids.into_iter()

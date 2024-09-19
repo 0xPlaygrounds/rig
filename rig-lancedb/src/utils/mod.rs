@@ -10,9 +10,15 @@ use rig::vector_store::VectorStoreError;
 
 use crate::lancedb_to_rig_error;
 
+/// Trait used to "deserialize" a column of a RecordBatch object into a list o primitive types
 pub trait DeserializeArrow {
+    /// Define the column number that contains strings, i.
+    /// For each item in the column, convert it to a string and collect the result in a vector of strings.
     fn deserialize_str_column(&self, i: usize) -> Result<Vec<&str>, ArrowError>;
-    fn deserialize_list_column(&self, i: usize) -> Result<Vec<Vec<f64>>, ArrowError>;
+    /// Define the column number that contains the list of floats, i.
+    /// For each item in the column, convert it to a list and for each item in the list, convert it to a float.
+    /// Collect the result as a vector of vectors of floats.
+    fn deserialize_float_list_column(&self, i: usize) -> Result<Vec<Vec<f64>>, ArrowError>;
 }
 
 impl DeserializeArrow for RecordBatch {
@@ -28,7 +34,7 @@ impl DeserializeArrow for RecordBatch {
         }
     }
 
-    fn deserialize_list_column(&self, i: usize) -> Result<Vec<Vec<f64>>, ArrowError> {
+    fn deserialize_float_list_column(&self, i: usize) -> Result<Vec<Vec<f64>>, ArrowError> {
         let column = self.column(i);
         match column.as_any().downcast_ref::<ListArray>() {
             Some(list_array) => (0..list_array.len())
@@ -50,6 +56,10 @@ impl DeserializeArrow for RecordBatch {
     }
 }
 
+/// Trait that facilitates the conversion of columnar data returned by a lanceDb query to the desired struct.
+/// Used whenever a lanceDb table is queried.
+/// First, execute the query and get the result as a list of RecordBatches (columnar data).
+/// Then, convert the record batches to the desired type using the try_from trait.
 pub trait Query<T>
 where
     T: TryFrom<Vec<RecordBatch>, Error = VectorStoreError>,
@@ -74,6 +84,8 @@ where
     }
 }
 
+/// Same as the above trait but for the VectorQuery type.
+/// Used whenever a lanceDb table vector search is executed.
 impl<T> Query<T> for lancedb::query::VectorQuery
 where
     T: TryFrom<Vec<RecordBatch>, Error = VectorStoreError>,
@@ -91,6 +103,7 @@ where
     }
 }
 
+/// Trait that facilitate inserting data defined as Rust structs into lanceDB table which contains columnar data.
 pub trait Insert<T> {
     async fn insert(&self, data: T, schema: Schema) -> Result<(), lancedb::Error>;
 }
