@@ -87,9 +87,6 @@ impl MongoDbVectorStore {
     ///
     /// The index (of type "vector") must already exist for the MongoDB collection.
     /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
-    ///
-    /// An additional filter can be provided to further restrict the documents that are
-    /// considered in the search.
     pub fn index<M: EmbeddingModel>(&self, model: M, index_name: &str) -> MongoDbVectorIndex<M> {
         MongoDbVectorIndex::new(self.collection.clone(), model, index_name)
     }

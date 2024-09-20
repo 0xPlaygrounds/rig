@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use arrow_array::{Array, Float64Array, ListArray, RecordBatch, RecordBatchIterator, StringArray};
+use arrow_array::{
+    Array, FixedSizeListArray, Float32Array, Float64Array, RecordBatch, RecordBatchIterator,
+    StringArray,
+};
 use futures::TryStreamExt;
 use lancedb::{
     arrow::arrow_schema::{ArrowError, Schema},
@@ -15,6 +18,9 @@ pub trait DeserializeArrow {
     /// Define the column number that contains strings, i.
     /// For each item in the column, convert it to a string and collect the result in a vector of strings.
     fn deserialize_str_column(&self, i: usize) -> Result<Vec<&str>, ArrowError>;
+    /// Define the column number that contains float32's, i.
+    /// For each item in the column, convert it to a float32 and collect the result in a vector of float32.
+    fn deserialize_float32_column(&self, i: usize) -> Result<Vec<f32>, ArrowError>;
     /// Define the column number that contains the list of floats, i.
     /// For each item in the column, convert it to a list and for each item in the list, convert it to a float.
     /// Collect the result as a vector of vectors of floats.
@@ -34,9 +40,21 @@ impl DeserializeArrow for RecordBatch {
         }
     }
 
+    fn deserialize_float32_column(&self, i: usize) -> Result<Vec<f32>, ArrowError> {
+        let column = self.column(i);
+        match column.as_any().downcast_ref::<Float32Array>() {
+            Some(float_array) => Ok((0..float_array.len())
+                .map(|j| float_array.value(j))
+                .collect::<Vec<_>>()),
+            None => Err(ArrowError::CastError(format!(
+                "Can't cast column {i} to string array"
+            ))),
+        }
+    }
+
     fn deserialize_float_list_column(&self, i: usize) -> Result<Vec<Vec<f64>>, ArrowError> {
         let column = self.column(i);
-        match column.as_any().downcast_ref::<ListArray>() {
+        match column.as_any().downcast_ref::<FixedSizeListArray>() {
             Some(list_array) => (0..list_array.len())
                 .map(
                     |j| match list_array.value(j).as_any().downcast_ref::<Float64Array>() {
@@ -50,7 +68,7 @@ impl DeserializeArrow for RecordBatch {
                 )
                 .collect::<Result<Vec<_>, _>>(),
             None => Err(ArrowError::CastError(format!(
-                "Can't cast column {i} to list array"
+                "Can't cast column {i} to fixed size list array"
             ))),
         }
     }

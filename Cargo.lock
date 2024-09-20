@@ -3992,6 +3992,7 @@ dependencies = [
 name = "rig-lancedb"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "arrow-array",
  "futures",
  "lancedb",

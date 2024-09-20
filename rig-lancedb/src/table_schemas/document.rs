@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use arrow_array::{RecordBatch, StringArray};
-use lancedb::arrow::arrow_schema::{ArrowError, DataType, Field, Fields, Schema};
+use arrow_array::{ArrayRef, RecordBatch, StringArray};
+use lancedb::arrow::arrow_schema::ArrowError;
 use rig::{embeddings::DocumentEmbeddings, vector_store::VectorStoreError};
 
 use crate::utils::DeserializeArrow;
@@ -11,14 +11,6 @@ use crate::utils::DeserializeArrow;
 pub struct DocumentRecord {
     pub id: String,
     pub document: String,
-}
-
-/// Schema of `documents` table in LanceDB defined in `Schema` terms.
-pub fn document_schema() -> Schema {
-    Schema::new(Fields::from(vec![
-        Field::new("id", DataType::Utf8, false),
-        Field::new("document", DataType::Utf8, false),
-    ]))
 }
 
 /// Wrapper around `Vec<DocumentRecord>`
@@ -79,19 +71,17 @@ impl TryFrom<Vec<DocumentEmbeddings>> for DocumentRecords {
     }
 }
 
-/// Convert a list of `DocumentRecord` objects to a `RecordBatch` object.
-/// All data written to a lanceDB table must be a `RecordBatch` object.
+/// Convert a list of documents (`DocumentRecords`) to a `RecordBatch`, the data structure that needs ot be written to LanceDB.
+/// All documents will be written to the database as part of the same batch.
 impl TryFrom<DocumentRecords> for RecordBatch {
     type Error = ArrowError;
 
     fn try_from(document_records: DocumentRecords) -> Result<Self, Self::Error> {
-        let id = StringArray::from_iter_values(document_records.ids());
-        let document = StringArray::from_iter_values(document_records.documents());
+        let id = Arc::new(StringArray::from_iter_values(document_records.ids())) as ArrayRef;
+        let document =
+            Arc::new(StringArray::from_iter_values(document_records.documents())) as ArrayRef;
 
-        RecordBatch::try_new(
-            Arc::new(document_schema()),
-            vec![Arc::new(id), Arc::new(document)],
-        )
+        RecordBatch::try_from_iter(vec![("id", id), ("document", document)])
     }
 }
 
@@ -149,7 +139,7 @@ mod tests {
     use crate::table_schemas::document::{DocumentRecord, DocumentRecords};
 
     #[tokio::test]
-    async fn test_record_batch_deserialize() {
+    async fn test_record_batch_conversion() {
         let document_records = DocumentRecords(vec![
             DocumentRecord {
                 id: "ABC".to_string(),

@@ -1,9 +1,16 @@
-use lancedb::{arrow::arrow_schema::Schema, query::QueryBase, DistanceType};
+use std::sync::Arc;
+
+use lancedb::{
+    arrow::arrow_schema::{DataType, Field, Fields, Schema},
+    index::Index,
+    query::QueryBase,
+    DistanceType,
+};
 use rig::{
     embeddings::EmbeddingModel,
     vector_store::{VectorStore, VectorStoreError, VectorStoreIndex},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use table_schemas::{document::DocumentRecords, embedding::EmbeddingRecordsBatch, merge};
 use utils::{Insert, Query};
 
@@ -12,10 +19,63 @@ mod utils;
 
 pub struct LanceDbVectorStore {
     document_table: lancedb::Table,
-    document_schema: Schema,
-
     embedding_table: lancedb::Table,
-    embedding_schema: Schema,
+    embedding_dimension: i32,
+}
+
+impl LanceDbVectorStore {
+    /// Note: Tables are created inside the new function rather than created outside and passed as reference to new function.
+    /// This is because a specific schema needs to be enforced on the tables and this is done at creation time.
+    pub async fn new(
+        db: &lancedb::Connection,
+        embedding_dimension: i32,
+    ) -> Result<Self, lancedb::Error> {
+        Ok(Self {
+            document_table: db
+                .create_empty_table("documents", Arc::new(Self::document_schema()))
+                .execute()
+                .await?,
+            embedding_table: db
+                .create_empty_table(
+                    "embeddings",
+                    Arc::new(Self::embedding_schema(embedding_dimension)),
+                )
+                .execute()
+                .await?,
+            embedding_dimension,
+        })
+    }
+
+    fn document_schema() -> Schema {
+        Schema::new(Fields::from(vec![
+            Field::new("id", DataType::Utf8, false),
+            Field::new("document", DataType::Utf8, false),
+        ]))
+    }
+
+    fn embedding_schema(dimension: i32) -> Schema {
+        Schema::new(Fields::from(vec![
+            Field::new("id", DataType::Utf8, false),
+            Field::new("document_id", DataType::Utf8, false),
+            Field::new("content", DataType::Utf8, false),
+            Field::new(
+                "embedding",
+                DataType::FixedSizeList(
+                    Arc::new(Field::new("item", DataType::Float64, true)),
+                    dimension,
+                ),
+                false,
+            ),
+        ]))
+    }
+
+    pub fn index<M: EmbeddingModel>(&self, model: M) -> LanceDbVectorIndex<M> {
+        LanceDbVectorIndex::new(
+            model,
+            self.embedding_table.clone(),
+            self.document_table.clone(),
+        )
+    }
 }
 
 fn lancedb_to_rig_error(e: lancedb::Error) -> VectorStoreError {
@@ -37,14 +97,17 @@ impl VectorStore for LanceDbVectorStore {
             DocumentRecords::try_from(documents.clone()).map_err(serde_to_rig_error)?;
 
         self.document_table
-            .insert(document_records, self.document_schema.clone())
+            .insert(document_records, Self::document_schema())
             .await
             .map_err(lancedb_to_rig_error)?;
 
         let embedding_records = EmbeddingRecordsBatch::from(documents);
 
         self.embedding_table
-            .insert(embedding_records, self.embedding_schema.clone())
+            .insert(
+                embedding_records,
+                Self::embedding_schema(self.embedding_dimension),
+            )
             .await
             .map_err(lancedb_to_rig_error)?;
 
@@ -69,7 +132,7 @@ impl VectorStore for LanceDbVectorStore {
             .execute_query()
             .await?;
 
-        Ok(merge(documents, embeddings)?.into_iter().next())
+        Ok(merge(&documents, &embeddings)?.into_iter().next())
     }
 
     async fn get_document<T: for<'a> serde::Deserialize<'a>>(
@@ -105,7 +168,7 @@ impl VectorStore for LanceDbVectorStore {
             .execute_query()
             .await?;
 
-        Ok(merge(documents, embeddings)?.into_iter().next())
+        Ok(merge(&documents, &embeddings)?.into_iter().next())
     }
 }
 
@@ -124,10 +187,19 @@ impl<M: EmbeddingModel> LanceDbVectorIndex<M> {
             document_table,
         }
     }
+
+    pub async fn create_index(&self, index: Index) -> Result<(), lancedb::Error> {
+        self.embedding_table
+            .create_index(&["embedding"], index)
+            .execute()
+            .await?;
+
+        Ok(())
+    }
 }
 
 /// See [LanceDB vector search](https://lancedb.github.io/lancedb/search/) for more information.
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum SearchType {
     // Flat search, also called ENN or kNN.
     Flat,
@@ -135,10 +207,11 @@ pub enum SearchType {
     Approximate,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct SearchParams {
     /// Always set the distance_type to match the value used to train the index
-    distance_type: DistanceType,
+    /// By default, set to L2
+    distance_type: Option<DistanceType>,
     /// By default, ANN will be used if there is an index on the table.
     /// By default, kNN will be used if there is NO index on the table.
     /// To use defaults, set to None.
@@ -154,6 +227,24 @@ pub struct SearchParams {
     post_filter: Option<bool>,
 }
 
+impl SearchParams {
+    pub fn new(
+        distance_type: Option<DistanceType>,
+        search_type: Option<SearchType>,
+        nprobes: Option<usize>,
+        refine_factor: Option<u32>,
+        post_filter: Option<bool>,
+    ) -> Self {
+        Self {
+            distance_type,
+            search_type,
+            nprobes,
+            refine_factor,
+            post_filter,
+        }
+    }
+}
+
 impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M> {
     async fn top_n_from_query(
         &self,
@@ -162,7 +253,8 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
         search_params: Self::SearchParams,
     ) -> Result<Vec<(f64, rig::embeddings::DocumentEmbeddings)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_document(query).await?;
-        self.top_n_from_embedding(&prompt_embedding, n, search_params).await
+        self.top_n_from_embedding(&prompt_embedding, n, search_params)
+            .await
     }
 
     async fn top_n_from_embedding(
@@ -177,20 +269,23 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
             nprobes,
             refine_factor,
             post_filter,
-        } = search_params;
+        } = search_params.clone();
 
         let query = self
             .embedding_table
             .vector_search(prompt_embedding.vec.clone())
             .map_err(lancedb_to_rig_error)?
-            .distance_type(distance_type)
             .limit(n);
 
-        if let Some(SearchType::Flat) = &search_type {
+        if let Some(distance_type) = distance_type {
+            query.clone().distance_type(distance_type);
+        }
+
+        if let Some(SearchType::Flat) = search_type {
             query.clone().bypass_vector_index();
         }
 
-        if let Some(SearchType::Approximate) = &search_type {
+        if let Some(SearchType::Approximate) = search_type {
             if let Some(nprobes) = nprobes {
                 query.clone().nprobes(nprobes);
             }
@@ -199,7 +294,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
             }
         }
 
-        if let Some(true) = &post_filter {
+        if let Some(true) = post_filter {
             query.clone().postfilter();
         }
 
@@ -208,15 +303,37 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
         let documents: DocumentRecords = self
             .document_table
             .query()
-            .only_if(format!("id IN [{}]", embeddings.document_ids().join(",")))
+            .only_if(format!(
+                "id IN ({})",
+                embeddings
+                    .document_ids()
+                    .iter()
+                    .map(|id| format!("'{id}'"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ))
             .execute_query()
             .await?;
 
-        // Todo: get distances for each returned vector
+        let document_embeddings = merge(&documents, &embeddings)?;
 
-        merge(documents, embeddings)?;
+        Ok(document_embeddings
+            .into_iter()
+            .map(|doc| {
+                let distance = embeddings
+                    .get_by_id(&doc.id)
+                    .map(|records| {
+                        records
+                            .as_iter()
+                            .next()
+                            .map(|record| record.distance.unwrap_or(0.0))
+                            .unwrap_or(0.0)
+                    })
+                    .unwrap_or(0.0);
 
-        todo!()
+                (distance as f64, doc)
+            })
+            .collect())
     }
 
     type SearchParams = SearchParams;

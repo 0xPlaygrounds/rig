@@ -11,8 +11,8 @@ pub mod document;
 pub mod embedding;
 
 pub fn merge(
-    documents: DocumentRecords,
-    embeddings: EmbeddingRecordsBatch,
+    documents: &DocumentRecords,
+    embeddings: &EmbeddingRecordsBatch,
 ) -> Result<Vec<DocumentEmbeddings>, VectorStoreError> {
     documents
         .as_iter()
