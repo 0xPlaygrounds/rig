@@ -97,6 +97,15 @@ impl InMemoryVectorStore {
     pub fn is_empty(&self) -> bool {
         self.embeddings.is_empty()
     }
+
+    /// Uitilty method to create an InMemoryVectorStore from a list of embeddings.
+    pub async fn from_embeddings(
+        embeddings: Vec<DocumentEmbeddings>,
+    ) -> Result<Self, VectorStoreError> {
+        let mut store = InMemoryVectorStore::default();
+        store.add_documents(embeddings).await?;
+        Ok(store)
+    }
 }
 
 pub struct InMemoryVectorIndex<M: EmbeddingModel> {
@@ -151,12 +160,13 @@ impl<M: EmbeddingModel> InMemoryVectorIndex<M> {
         Ok(store.index(query_model))
     }
 
+    /// Utility method to create an InMemoryVectorIndex from a list of embeddings
+    /// and an embedding model.
     pub async fn from_embeddings(
         query_model: M,
         embeddings: Vec<DocumentEmbeddings>,
     ) -> Result<Self, VectorStoreError> {
-        let mut store = InMemoryVectorStore::default();
-        store.add_documents(embeddings).await?;
+        let store = InMemoryVectorStore::from_embeddings(embeddings).await?;
         Ok(store.index(query_model))
     }
 }
