@@ -102,8 +102,34 @@ impl InMemoryVectorStore {
     pub async fn from_embeddings(
         embeddings: Vec<DocumentEmbeddings>,
     ) -> Result<Self, VectorStoreError> {
-        let mut store = InMemoryVectorStore::default();
+        let mut store = Self::default();
         store.add_documents(embeddings).await?;
+        Ok(store)
+    }
+
+    /// Create an InMemoryVectorStore from a list of documents.
+    /// The documents are serialized to JSON and embedded using the provided embedding model.
+    /// The resulting embeddings are stored in an InMemoryVectorStore created by the method.
+    pub async fn from_documents<M: EmbeddingModel, T: Serialize>(
+        embedding_model: M,
+        documents: &[(String, T)],
+    ) -> Result<Self, VectorStoreError> {
+        let embeddings = documents
+            .iter()
+            .fold(
+                EmbeddingsBuilder::new(embedding_model),
+                |builder, (id, doc)| {
+                    builder.json_document(
+                        id,
+                        serde_json::to_value(doc).expect("Document should be serializable"),
+                        vec![serde_json::to_string(doc).expect("Document should be serializable")],
+                    )
+                },
+            )
+            .build()
+            .await?;
+
+        let store = Self::from_embeddings(embeddings).await?;
         Ok(store)
     }
 }
