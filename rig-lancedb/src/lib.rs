@@ -17,19 +17,17 @@ use utils::{Insert, Query};
 mod table_schemas;
 mod utils;
 
-pub struct LanceDbVectorStore {
+pub struct LanceDbVectorStore<M: EmbeddingModel> {
+    model: M,
     document_table: lancedb::Table,
     embedding_table: lancedb::Table,
-    embedding_dimension: i32,
 }
 
-impl LanceDbVectorStore {
+impl<M: EmbeddingModel> LanceDbVectorStore<M> {
     /// Note: Tables are created inside the new function rather than created outside and passed as reference to new function.
     /// This is because a specific schema needs to be enforced on the tables and this is done at creation time.
-    pub async fn new(
-        db: &lancedb::Connection,
-        embedding_dimension: i32,
-    ) -> Result<Self, lancedb::Error> {
+    pub async fn new(db: &lancedb::Connection, model: &M) -> Result<Self, lancedb::Error> {
+        // db.embedding_registry().register(name, function)
         Ok(Self {
             document_table: db
                 .create_empty_table("documents", Arc::new(Self::document_schema()))
@@ -38,11 +36,11 @@ impl LanceDbVectorStore {
             embedding_table: db
                 .create_empty_table(
                     "embeddings",
-                    Arc::new(Self::embedding_schema(embedding_dimension)),
+                    Arc::new(Self::embedding_schema(model.ndims() as i32)),
                 )
                 .execute()
                 .await?,
-            embedding_dimension,
+            model: model.clone(),
         })
     }
 
@@ -69,12 +67,13 @@ impl LanceDbVectorStore {
         ]))
     }
 
-    pub fn index<M: EmbeddingModel>(&self, model: M) -> LanceDbVectorIndex<M> {
-        LanceDbVectorIndex::new(
-            model,
-            self.embedding_table.clone(),
-            self.document_table.clone(),
-        )
+    pub async fn create_index(&self, index: Index) -> Result<(), lancedb::Error> {
+        self.embedding_table
+            .create_index(&["embedding"], index)
+            .execute()
+            .await?;
+
+        Ok(())
     }
 }
 
@@ -86,7 +85,7 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
     VectorStoreError::JsonError(e)
 }
 
-impl VectorStore for LanceDbVectorStore {
+impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStore for LanceDbVectorStore<M> {
     type Q = lancedb::query::Query;
 
     async fn add_documents(
@@ -106,7 +105,7 @@ impl VectorStore for LanceDbVectorStore {
         self.embedding_table
             .insert(
                 embedding_records,
-                Self::embedding_schema(self.embedding_dimension),
+                Self::embedding_schema(self.model.ndims() as i32),
             )
             .await
             .map_err(lancedb_to_rig_error)?;
@@ -172,32 +171,6 @@ impl VectorStore for LanceDbVectorStore {
     }
 }
 
-/// A vector index for a LanceDB collection.
-pub struct LanceDbVectorIndex<M: EmbeddingModel> {
-    model: M,
-    embedding_table: lancedb::Table,
-    document_table: lancedb::Table,
-}
-
-impl<M: EmbeddingModel> LanceDbVectorIndex<M> {
-    pub fn new(model: M, embedding_table: lancedb::Table, document_table: lancedb::Table) -> Self {
-        Self {
-            model,
-            embedding_table,
-            document_table,
-        }
-    }
-
-    pub async fn create_index(&self, index: Index) -> Result<(), lancedb::Error> {
-        self.embedding_table
-            .create_index(&["embedding"], index)
-            .execute()
-            .await?;
-
-        Ok(())
-    }
-}
-
 /// See [LanceDB vector search](https://lancedb.github.io/lancedb/search/) for more information.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum SearchType {
@@ -245,7 +218,7 @@ impl SearchParams {
     }
 }
 
-impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M> {
+impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbVectorStore<M> {
     async fn top_n_from_query(
         &self,
         query: &str,

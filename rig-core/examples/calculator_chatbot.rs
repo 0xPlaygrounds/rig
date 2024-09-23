@@ -3,7 +3,7 @@ use rig::{
     cli_chatbot::cli_chatbot,
     completion::ToolDefinition,
     embeddings::EmbeddingsBuilder,
-    providers::openai::Client,
+    providers::openai::{Client, OpenAIEmbeddingModel},
     tool::{Tool, ToolEmbedding, ToolSet},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStore},
 };
@@ -245,7 +245,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .dynamic_tool(Divide)
         .build();
 
-    let embedding_model = openai_client.embedding_model("text-embedding-ada-002");
+    let embedding_model = openai_client.embedding_model(&OpenAIEmbeddingModel::TextEmbeddingAda002);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .tools(&toolset)?
         .build()

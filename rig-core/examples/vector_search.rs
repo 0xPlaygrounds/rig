@@ -2,7 +2,7 @@ use std::env;
 
 use rig::{
     embeddings::EmbeddingsBuilder,
-    providers::openai::Client,
+    providers::openai::{Client, OpenAIEmbeddingModel},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStore, VectorStoreIndex},
 };
 
@@ -12,7 +12,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     let openai_client = Client::new(&openai_api_key);
 
-    let model = openai_client.embedding_model("text-embedding-ada-002");
+    let model = openai_client.embedding_model(&OpenAIEmbeddingModel::TextEmbeddingAda002);
 
     let mut vector_store = InMemoryVectorStore::default();
 

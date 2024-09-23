@@ -2,7 +2,7 @@ use std::env;
 
 use rig::{
     embeddings::EmbeddingsBuilder,
-    providers::cohere::Client,
+    providers::cohere::{Client, CohereEmbeddingModel},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStore, VectorStoreIndex},
 };
 
@@ -12,8 +12,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let cohere_api_key = env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set");
     let cohere_client = Client::new(&cohere_api_key);
 
-    let document_model = cohere_client.embedding_model("embed-english-v3.0", "search_document");
-    let search_model = cohere_client.embedding_model("embed-english-v3.0", "search_query");
+    let document_model =
+        cohere_client.embedding_model(&CohereEmbeddingModel::EmbedEnglishV3, "search_document");
+    let search_model =
+        cohere_client.embedding_model(&CohereEmbeddingModel::EmbedEnglishV3, "search_query");
 
     let mut vector_store = InMemoryVectorStore::default();
 

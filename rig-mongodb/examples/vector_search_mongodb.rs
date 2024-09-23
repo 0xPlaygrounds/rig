@@ -3,7 +3,7 @@ use std::env;
 
 use rig::{
     embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
-    providers::openai::Client,
+    providers::openai::{Client, OpenAIEmbeddingModel},
     vector_store::{VectorStore, VectorStoreIndex},
 };
 use rig_mongodb::{MongoDbVectorStore, SearchParams};
@@ -32,7 +32,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut vector_store = MongoDbVectorStore::new(collection);
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model("text-embedding-ada-002");
+    let model = openai_client.embedding_model(&OpenAIEmbeddingModel::TextEmbeddingAda002);
 
     let embeddings = EmbeddingsBuilder::new(model.clone())
         .simple_document("doc0", "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")

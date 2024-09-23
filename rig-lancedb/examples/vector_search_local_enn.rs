@@ -2,23 +2,23 @@ use std::env;
 
 use rig::{
     embeddings::EmbeddingsBuilder,
-    providers::openai::Client,
+    providers::openai::{Client, OpenAIEmbeddingModel},
     vector_store::{VectorStore, VectorStoreIndexDyn},
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Initialize LanceDB locally.
-    let db = lancedb::connect("data/lancedb-store").execute().await?;
-    let mut vector_store = LanceDbVectorStore::new(&db, 1536).await?;
-
     // Initialize OpenAI client. Use this to generate embeddings (and generate test data for RAG demo).
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     let openai_client = Client::new(&openai_api_key);
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model("text-embedding-ada-002");
+    let model = openai_client.embedding_model(&OpenAIEmbeddingModel::TextEmbeddingAda002);
+
+    // Initialize LanceDB locally.
+    let db = lancedb::connect("data/lancedb-store").execute().await?;
+    let mut vector_store = LanceDbVectorStore::new(&db, &model).await?;
 
     let embeddings = EmbeddingsBuilder::new(model.clone())
         .simple_document("doc0", "Definition of *flumbrel (noun)*: a small, seemingly insignificant item that you constantly lose or misplace, such as a pen, hair tie, or remote control.")
@@ -30,11 +30,8 @@ async fn main() -> Result<(), anyhow::Error> {
     // Add embeddings to vector store
     vector_store.add_documents(embeddings).await?;
 
-    // Create a vector index on our vector store
-    let index = vector_store.index(model);
-
     // Query the index
-    let results = index
+    let results = vector_store
         .top_n_from_query(
             "My boss says I zindle too much, what does that mean?",
             1,

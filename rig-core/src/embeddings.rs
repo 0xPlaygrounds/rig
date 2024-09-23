@@ -66,12 +66,19 @@ pub enum EmbeddingError {
     /// Error returned by the embedding model provider
     #[error("ProviderError: {0}")]
     ProviderError(String),
+
+    /// Http error (e.g.: connection error, timeout, etc.)
+    #[error("BadModel: {0}")]
+    BadModel(String),
 }
 
 /// Trait for embedding models that can generate embeddings for documents.
 pub trait EmbeddingModel: Clone + Sync + Send {
     /// The maximum number of documents that can be embedded in a single request.
     const MAX_DOCUMENTS: usize;
+
+    /// The number of dimensions in the embedding vector.
+    fn ndims(&self) -> usize;
 
     /// Embed a single document
     fn embed_document(
