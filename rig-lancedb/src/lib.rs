@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use lancedb::{
     arrow::arrow_schema::{DataType, Field, Fields, Schema},
-    index::{Index},
+    index::Index,
     query::QueryBase,
     DistanceType,
 };
@@ -70,14 +70,14 @@ impl<M: EmbeddingModel> LanceDbVectorStore<M> {
         ]))
     }
 
-    pub async fn create_document_index(&self, index: Index) -> Result<(), lancedb::Error>{
+    pub async fn create_document_index(&self, index: Index) -> Result<(), lancedb::Error> {
         self.document_table
             .create_index(&["id"], index)
             .execute()
             .await
     }
 
-    pub async fn create_embedding_index(&self, index: Index) -> Result<(), lancedb::Error>{
+    pub async fn create_embedding_index(&self, index: Index) -> Result<(), lancedb::Error> {
         self.embedding_table
             .create_index(&["id", "document_id"], index)
             .execute()
