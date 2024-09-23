@@ -3,7 +3,7 @@ use std::env;
 use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, OpenAIEmbeddingModel},
-    vector_store::{in_memory_store::InMemoryVectorStore, VectorStore, VectorStoreIndex},
+    vector_store::{in_memory_store::InMemoryVectorIndex, VectorStoreIndex},
 };
 
 #[tokio::main]
@@ -14,8 +14,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let model = openai_client.embedding_model(&OpenAIEmbeddingModel::TextEmbeddingAda002);
 
-    let mut vector_store = InMemoryVectorStore::default();
-
     let embeddings = EmbeddingsBuilder::new(model.clone())
         .simple_document("doc0", "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
         .simple_document("doc1", "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
@@ -23,9 +21,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    vector_store.add_documents(embeddings).await?;
-
-    let index = vector_store.index(model);
+    let index = InMemoryVectorIndex::from_embeddings(model, embeddings).await?;
 
     let results = index
         .top_n_from_query("What is a linglingdong?", 1, ())
