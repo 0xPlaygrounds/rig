@@ -163,6 +163,10 @@ impl completion::CompletionModel for CompletionModel {
                 .chat_history
                 .into_iter()
                 .map(Message::from)
+                .chain(completion_request.documents.into_iter().map(|doc| Message {
+                    role: "system".to_owned(),
+                    content: serde_json::to_string(&doc).expect("Document should serialize"),
+                }))
                 .chain(iter::once(Message {
                     role: "user".to_owned(),
                     content: completion_request.prompt,
