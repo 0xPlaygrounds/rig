@@ -27,9 +27,9 @@ pub const CLAUDE_3_SONNET: &str = "claude-3-sonnet-20240229";
 /// `claude-3-haiku-20240307` completion model
 pub const CLAUDE_3_HAIKU: &str = "claude-3-haiku-20240307";
 
-pub const ANTHROPIC_VERSION_1: &str = "2023-01-01";
-pub const ANTHROPIC_VERSION_2: &str = "2023-06-01";
-pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2;
+pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
+pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
+pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
 
 #[derive(Debug, Deserialize)]
 pub struct CompletionResponse {
