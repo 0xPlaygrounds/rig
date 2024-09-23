@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use lancedb::{
     arrow::arrow_schema::{DataType, Field, Fields, Schema},
-    index::Index,
+    index::{Index},
     query::QueryBase,
     DistanceType,
 };
@@ -27,19 +27,22 @@ impl<M: EmbeddingModel> LanceDbVectorStore<M> {
     /// Note: Tables are created inside the new function rather than created outside and passed as reference to new function.
     /// This is because a specific schema needs to be enforced on the tables and this is done at creation time.
     pub async fn new(db: &lancedb::Connection, model: &M) -> Result<Self, lancedb::Error> {
-        // db.embedding_registry().register(name, function)
+        let document_table = db
+            .create_empty_table("documents", Arc::new(Self::document_schema()))
+            .execute()
+            .await?;
+
+        let embedding_table = db
+            .create_empty_table(
+                "embeddings",
+                Arc::new(Self::embedding_schema(model.ndims() as i32)),
+            )
+            .execute()
+            .await?;
+
         Ok(Self {
-            document_table: db
-                .create_empty_table("documents", Arc::new(Self::document_schema()))
-                .execute()
-                .await?,
-            embedding_table: db
-                .create_empty_table(
-                    "embeddings",
-                    Arc::new(Self::embedding_schema(model.ndims() as i32)),
-                )
-                .execute()
-                .await?,
+            document_table,
+            embedding_table,
             model: model.clone(),
         })
     }
@@ -65,6 +68,20 @@ impl<M: EmbeddingModel> LanceDbVectorStore<M> {
                 false,
             ),
         ]))
+    }
+
+    pub async fn create_document_index(&self, index: Index) -> Result<(), lancedb::Error>{
+        self.document_table
+            .create_index(&["id"], index)
+            .execute()
+            .await
+    }
+
+    pub async fn create_embedding_index(&self, index: Index) -> Result<(), lancedb::Error>{
+        self.embedding_table
+            .create_index(&["id", "document_id"], index)
+            .execute()
+            .await
     }
 
     pub async fn create_index(&self, index: Index) -> Result<(), lancedb::Error> {
