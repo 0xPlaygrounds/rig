@@ -167,10 +167,10 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
         chat_history: Vec<Message>,
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         let dynamic_context = stream::iter(self.dynamic_context.iter())
-            .then(|(num_sample, index, search_query)| async {
+            .then(|(num_sample, index, search_params)| async {
                 Ok::<_, VectorStoreError>(
                     index
-                        .top_n_from_query(prompt, *num_sample, search_query)
+                        .top_n_from_query(prompt, *num_sample, search_params)
                         .await?
                         .into_iter()
                         .map(|(_, doc)| {
@@ -195,10 +195,10 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
             .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
 
         let dynamic_tools = stream::iter(self.dynamic_tools.iter())
-            .then(|(num_sample, index, search_query)| async {
+            .then(|(num_sample, index, search_params)| async {
                 Ok::<_, VectorStoreError>(
                     index
-                        .top_n_ids_from_query(prompt, *num_sample, search_query)
+                        .top_n_ids_from_query(prompt, *num_sample, search_params)
                         .await?
                         .into_iter()
                         .map(|(_, doc)| doc)
@@ -360,10 +360,10 @@ impl<M: CompletionModel> AgentBuilder<M> {
         mut self,
         sample: usize,
         dynamic_context: impl VectorStoreIndexDyn + 'static,
-        params: String,
+        search_params: String,
     ) -> Self {
         self.dynamic_context
-            .push((sample, Box::new(dynamic_context), params));
+            .push((sample, Box::new(dynamic_context), search_params));
         self
     }
 
@@ -374,10 +374,10 @@ impl<M: CompletionModel> AgentBuilder<M> {
         sample: usize,
         dynamic_tools: impl VectorStoreIndexDyn + 'static,
         toolset: ToolSet,
-        params: String,
+        search_params: String,
     ) -> Self {
         self.dynamic_tools
-            .push((sample, Box::new(dynamic_tools), params));
+            .push((sample, Box::new(dynamic_tools), search_params));
         self.tools.add_tools(toolset);
         self
     }

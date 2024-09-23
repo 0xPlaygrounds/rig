@@ -49,5 +49,8 @@ jobs:
         with:
           components: clippy
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
       - name: Run clippy action
         uses: clechasseur/rs-clippy-check@v3
