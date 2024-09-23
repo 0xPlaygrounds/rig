@@ -1,27 +1,26 @@
 use document::{DocumentRecord, DocumentRecords};
 use embedding::{EmbeddingRecord, EmbeddingRecordsBatch};
-use rig::{
-    embeddings::{DocumentEmbeddings, Embedding},
-    vector_store::VectorStoreError,
-};
-
-use crate::serde_to_rig_error;
+use rig::embeddings::{DocumentEmbeddings, Embedding};
 
 pub mod document;
 pub mod embedding;
 
+/// Merge an `DocumentRecords` object with an `EmbeddingRecordsBatch` object.
+/// These objects contain document and embedding data, respectively, read from LanceDB.
+/// For each document in `DocumentRecords` find the embeddings from `EmbeddingRecordsBatch` that correspond to that document,
+/// using the document_id as reference.
 pub fn merge(
     documents: &DocumentRecords,
     embeddings: &EmbeddingRecordsBatch,
-) -> Result<Vec<DocumentEmbeddings>, VectorStoreError> {
+) -> Result<Vec<DocumentEmbeddings>, serde_json::Error> {
     documents
         .as_iter()
         .map(|DocumentRecord { id, document }| {
             let emebedding_records = embeddings.get_by_id(id);
 
-            Ok::<_, VectorStoreError>(DocumentEmbeddings {
+            Ok(DocumentEmbeddings {
                 id: id.to_string(),
-                document: serde_json::from_str(document).map_err(serde_to_rig_error)?,
+                document: serde_json::from_str(document)?,
                 embeddings: match emebedding_records {
                     Some(records) => records
                         .as_iter()

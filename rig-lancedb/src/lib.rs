@@ -172,7 +172,7 @@ impl VectorStore for LanceDbVectorStore {
     }
 }
 
-/// A vector index for a MongoDB collection.
+/// A vector index for a LanceDB collection.
 pub struct LanceDbVectorIndex<M: EmbeddingModel> {
     model: M,
     embedding_table: lancedb::Table,
@@ -303,15 +303,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
         let documents: DocumentRecords = self
             .document_table
             .query()
-            .only_if(format!(
-                "id IN ({})",
-                embeddings
-                    .document_ids()
-                    .iter()
-                    .map(|id| format!("'{id}'"))
-                    .collect::<Vec<_>>()
-                    .join(",")
-            ))
+            .only_if(format!("id IN ({})", embeddings.document_ids()))
             .execute_query()
             .await?;
 

@@ -2,12 +2,13 @@ use std::{collections::HashMap, sync::Arc};
 
 use arrow_array::{
     builder::{FixedSizeListBuilder, Float64Builder},
+    types::{Float32Type, Float64Type},
     ArrayRef, RecordBatch, StringArray,
 };
 use lancedb::arrow::arrow_schema::ArrowError;
 use rig::{embeddings::DocumentEmbeddings, vector_store::VectorStoreError};
 
-use crate::utils::DeserializeArrow;
+use crate::utils::{DeserializeArrow, DeserializePrimitiveArray};
 
 /// Data format in the LanceDB table `embeddings`
 #[derive(Clone, Debug, PartialEq)]
@@ -56,8 +57,13 @@ impl EmbeddingRecordsBatch {
         self.0.get(id).cloned()
     }
 
-    pub fn document_ids(&self) -> Vec<String> {
-        self.0.clone().into_keys().collect()
+    pub fn document_ids(&self) -> String {
+        self.0
+            .clone()
+            .into_keys()
+            .map(|id| format!("'{id}'"))
+            .collect::<Vec<_>>()
+            .join(",")
     }
 }
 
@@ -152,16 +158,17 @@ impl TryFrom<RecordBatch> for EmbeddingRecords {
     type Error = ArrowError;
 
     fn try_from(record_batch: RecordBatch) -> Result<Self, Self::Error> {
-        let ids = record_batch.deserialize_str_column(0)?;
-        let document_ids = record_batch.deserialize_str_column(1)?;
-        let contents = record_batch.deserialize_str_column(2)?;
-        let embeddings = record_batch.deserialize_float_list_column(3)?;
+        let ids = record_batch.to_str(0)?;
+        let document_ids = record_batch.to_str(1)?;
+        let contents = record_batch.to_str(2)?;
+        let embeddings = record_batch.to_float_list::<Float64Type>(3)?;
 
         // There is a `_distance` field in the response if the executed query was a VectorQuery
         // Otherwise, for normal queries, the `_distance` field is not present in the response.
         let distances = if record_batch.num_columns() == 5 {
             record_batch
-                .deserialize_float32_column(4)?
+                .column(4)
+                .to_float::<Float32Type>()?
                 .into_iter()
                 .map(Some)
                 .collect()

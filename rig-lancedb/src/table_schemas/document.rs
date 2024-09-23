@@ -97,8 +97,8 @@ impl TryFrom<RecordBatch> for DocumentRecords {
     type Error = ArrowError;
 
     fn try_from(record_batch: RecordBatch) -> Result<Self, Self::Error> {
-        let ids = record_batch.deserialize_str_column(0)?;
-        let documents = record_batch.deserialize_str_column(1)?;
+        let ids = record_batch.to_str(0)?;
+        let documents = record_batch.to_str(1)?;
 
         Ok(DocumentRecords(
             ids.into_iter()

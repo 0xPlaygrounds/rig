@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use arrow_array::{
-    Array, FixedSizeListArray, Float32Array, Float64Array, RecordBatch, RecordBatchIterator,
-    StringArray,
+    Array, ArrowPrimitiveType, FixedSizeListArray, PrimitiveArray, RecordBatch,
+    RecordBatchIterator, StringArray,
 };
 use futures::TryStreamExt;
 use lancedb::{
@@ -13,22 +13,41 @@ use rig::vector_store::VectorStoreError;
 
 use crate::lancedb_to_rig_error;
 
+pub trait DeserializePrimitiveArray {
+    fn to_float<T: ArrowPrimitiveType>(
+        &self,
+    ) -> Result<Vec<<T as ArrowPrimitiveType>::Native>, ArrowError>;
+}
+
+impl DeserializePrimitiveArray for &Arc<dyn Array> {
+    fn to_float<T: ArrowPrimitiveType>(
+        &self,
+    ) -> Result<Vec<<T as ArrowPrimitiveType>::Native>, ArrowError> {
+        match self.as_any().downcast_ref::<PrimitiveArray<T>>() {
+            Some(array) => Ok((0..array.len()).map(|j| array.value(j)).collect::<Vec<_>>()),
+            None => Err(ArrowError::CastError(format!(
+                "Can't cast array: {self:?} to float array"
+            ))),
+        }
+    }
+}
+
 /// Trait used to "deserialize" a column of a RecordBatch object into a list o primitive types
 pub trait DeserializeArrow {
     /// Define the column number that contains strings, i.
     /// For each item in the column, convert it to a string and collect the result in a vector of strings.
-    fn deserialize_str_column(&self, i: usize) -> Result<Vec<&str>, ArrowError>;
-    /// Define the column number that contains float32's, i.
-    /// For each item in the column, convert it to a float32 and collect the result in a vector of float32.
-    fn deserialize_float32_column(&self, i: usize) -> Result<Vec<f32>, ArrowError>;
+    fn to_str(&self, i: usize) -> Result<Vec<&str>, ArrowError>;
     /// Define the column number that contains the list of floats, i.
     /// For each item in the column, convert it to a list and for each item in the list, convert it to a float.
     /// Collect the result as a vector of vectors of floats.
-    fn deserialize_float_list_column(&self, i: usize) -> Result<Vec<Vec<f64>>, ArrowError>;
+    fn to_float_list<T: ArrowPrimitiveType>(
+        &self,
+        i: usize,
+    ) -> Result<Vec<Vec<<T as ArrowPrimitiveType>::Native>>, ArrowError>;
 }
 
 impl DeserializeArrow for RecordBatch {
-    fn deserialize_str_column(&self, i: usize) -> Result<Vec<&str>, ArrowError> {
+    fn to_str(&self, i: usize) -> Result<Vec<&str>, ArrowError> {
         let column = self.column(i);
         match column.as_any().downcast_ref::<StringArray>() {
             Some(str_array) => Ok((0..str_array.len())
@@ -40,32 +59,14 @@ impl DeserializeArrow for RecordBatch {
         }
     }
 
-    fn deserialize_float32_column(&self, i: usize) -> Result<Vec<f32>, ArrowError> {
-        let column = self.column(i);
-        match column.as_any().downcast_ref::<Float32Array>() {
-            Some(float_array) => Ok((0..float_array.len())
-                .map(|j| float_array.value(j))
-                .collect::<Vec<_>>()),
-            None => Err(ArrowError::CastError(format!(
-                "Can't cast column {i} to string array"
-            ))),
-        }
-    }
-
-    fn deserialize_float_list_column(&self, i: usize) -> Result<Vec<Vec<f64>>, ArrowError> {
+    fn to_float_list<T: ArrowPrimitiveType>(
+        &self,
+        i: usize,
+    ) -> Result<Vec<Vec<<T as ArrowPrimitiveType>::Native>>, ArrowError> {
         let column = self.column(i);
         match column.as_any().downcast_ref::<FixedSizeListArray>() {
             Some(list_array) => (0..list_array.len())
-                .map(
-                    |j| match list_array.value(j).as_any().downcast_ref::<Float64Array>() {
-                        Some(float_array) => Ok((0..float_array.len())
-                            .map(|k| float_array.value(k))
-                            .collect::<Vec<_>>()),
-                        None => Err(ArrowError::CastError(format!(
-                            "Can't cast value at index {j} to float array"
-                        ))),
-                    },
-                )
+                .map(|j| (&list_array.value(j)).to_float::<T>())
                 .collect::<Result<Vec<_>, _>>(),
             None => Err(ArrowError::CastError(format!(
                 "Can't cast column {i} to fixed size list array"
