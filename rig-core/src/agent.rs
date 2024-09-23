@@ -150,6 +150,8 @@ pub struct Agent<M: CompletionModel> {
     static_tools: Vec<String>,
     /// Temperature of the model
     temperature: Option<f64>,
+    /// Maximum number of tokens for the completion
+    max_tokens: Option<u64>,
     /// Additional parameters to be passed to the model
     additional_params: Option<serde_json::Value>,
     /// List of vector store, with the sample number
@@ -238,6 +240,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
             .documents([self.static_context.clone(), dynamic_context].concat())
             .tools([static_tools.clone(), dynamic_tools].concat())
             .temperature_opt(self.temperature)
+            .max_tokens_opt(self.max_tokens)
             .additional_params_opt(self.additional_params.clone()))
     }
 }
@@ -295,6 +298,8 @@ pub struct AgentBuilder<M: CompletionModel> {
     static_tools: Vec<String>,
     /// Additional parameters to be passed to the model
     additional_params: Option<serde_json::Value>,
+    /// Maximum number of tokens for the completion
+    max_tokens: Option<u64>,
     /// List of vector store, with the sample number
     dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
     /// Dynamic tools
@@ -313,6 +318,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
             static_context: vec![],
             static_tools: vec![],
             temperature: None,
+            max_tokens: None,
             additional_params: None,
             dynamic_context: vec![],
             dynamic_tools: vec![],
@@ -385,6 +391,12 @@ impl<M: CompletionModel> AgentBuilder<M> {
         self
     }
 
+    /// Set the maximum number of tokens for the completion
+    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
+        self.max_tokens = Some(max_tokens);
+        self
+    }
+
     /// Set additional parameters to be passed to the model
     pub fn additional_params(mut self, params: serde_json::Value) -> Self {
         self.additional_params = Some(params);
@@ -399,6 +411,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
             static_context: self.static_context,
             static_tools: self.static_tools,
             temperature: self.temperature,
+            max_tokens: self.max_tokens,
             additional_params: self.additional_params,
             dynamic_context: self.dynamic_context,
             dynamic_tools: self.dynamic_tools,
