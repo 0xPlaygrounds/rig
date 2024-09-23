@@ -2,5 +2,5 @@
 resolver = "2"
 members = [
     "rig-core",
-    "rig-mongodb",
+    "rig-mongodb", "rig-pinecone",
 ]
