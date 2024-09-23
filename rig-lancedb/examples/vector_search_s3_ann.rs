@@ -35,12 +35,13 @@ async fn main() -> Result<(), anyhow::Error> {
         .preamble("Return the answer as JSON containing a list of strings in the form: `Definition of {generated_word}: {generated definition}`. Return ONLY the JSON string generated, nothing else.")
         .build();
     let response = agent
-        .prompt("Invent at least 175 words and their definitions")
+        .prompt("Invent at least 100 words and their definitions")
         .await?;
     let mut definitions: Vec<String> = serde_json::from_str(&response)?;
 
-    // Note: need at least 256 rows in order to create an index on a table but OpenAi limits the output size
-    // so we duplicate the vector for testing purposes.
+    // Note: need at least 256 rows in order to create an index on a table but OpenAI limits the output size
+    // so we triplicate the vector for testing purposes.
+    definitions.extend(definitions.clone());
     definitions.extend(definitions.clone());
 
     let embeddings: Vec<rig::embeddings::DocumentEmbeddings> = EmbeddingsBuilder::new(model.clone())
