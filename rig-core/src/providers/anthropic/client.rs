@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use super::completion::{CompletionModel, ANTHROPIC_VERSION_LATEST};
 
 // ================================================================
-// Main Cohere Client
+// Main Anthropic Client
 // ================================================================
-const COHERE_API_BASE_URL: &str = "https://api.anthropic.com";
+const ANTHROPIC_API_BASE_URL: &str = "https://api.anthropic.com";
 
 #[derive(Clone)]
 pub struct ClientBuilder<'a> {
@@ -28,7 +28,6 @@ pub struct ClientBuilder<'a> {
 ///
 /// // Initialize the Anthropic client
 /// let anthropic_client = ClientBuilder::new("your-claude-api-key")
-///    .base_url("https://api.anthropic.com")
 ///    .anthropic_version(ANTHROPIC_VERSION_LATEST)
 ///    .anthropic_beta("prompt-caching-2024-07-31")
 ///    .build()
@@ -37,7 +36,7 @@ impl<'a> ClientBuilder<'a> {
     pub fn new(api_key: &'a str) -> Self {
         Self {
             api_key,
-            base_url: COHERE_API_BASE_URL,
+            base_url: ANTHROPIC_API_BASE_URL,
             anthropic_version: ANTHROPIC_VERSION_LATEST,
             anthropic_betas: None,
         }
@@ -80,6 +79,13 @@ pub struct Client {
 }
 
 impl Client {
+    /// Create a new Anthropic client with the given API key, base URL, betas, and version.
+    /// Note, you proably want to use the `ClientBuilder` instead.
+    ///
+    /// Panics:
+    /// - If the API key or version cannot be parsed as a Json value from a String.
+    ///   - This should really never happen.
+    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str, base_url: &str, betas: Option<Vec<&str>>, version: &str) -> Self {
         Self {
             base_url: base_url.to_string(),
@@ -103,7 +109,7 @@ impl Client {
                     headers
                 })
                 .build()
-                .expect("Cohere reqwest client should build"),
+                .expect("Anthropic reqwest client should build"),
         }
     }
 

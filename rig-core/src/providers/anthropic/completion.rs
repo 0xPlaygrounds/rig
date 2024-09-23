@@ -79,7 +79,7 @@ pub struct ToolDefinition {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CacheControl {
-    Ephemeral {},
+    Ephemeral,
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
