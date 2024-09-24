@@ -4,6 +4,7 @@
 //! - Cohere
 //! - OpenAI
 //! - Perplexity
+//! - Anthropic
 //!
 //! Each provider has its own module, which contains a `Client` implementation that can
 //! be used to initialize completion and embedding models and execute requests to those models.
@@ -38,6 +39,7 @@
 //! ```
 //! Note: The example above uses the OpenAI provider client, but the same pattern can
 //! be used with the Cohere provider client.
+pub mod anthropic;
 pub mod cohere;
 pub mod openai;
 pub mod perplexity;
