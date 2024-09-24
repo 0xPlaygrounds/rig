@@ -183,7 +183,7 @@ impl<I: VectorStoreIndex> VectorStoreIndexDyn for I {
         query: &'a str,
         n: usize,
     ) -> BoxFuture<'a, Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> {
-        Box::pin(async move { self.top_n_from_query(query, n).await })
+        Box::pin(self.top_n_from_query(query, n))
     }
 
     fn top_n_from_embedding<'a>(
@@ -191,7 +191,7 @@ impl<I: VectorStoreIndex> VectorStoreIndexDyn for I {
         prompt_embedding: &'a Embedding,
         n: usize,
     ) -> BoxFuture<'a, Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> {
-        Box::pin(async move { self.top_n_from_embedding(prompt_embedding, n).await })
+        Box::pin(self.top_n_from_embedding(prompt_embedding, n))
     }
 }
 

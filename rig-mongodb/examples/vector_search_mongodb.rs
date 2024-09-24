@@ -1,9 +1,9 @@
-use mongodb::{bson::doc, options::ClientOptions, Client as MongoClient, Collection};
+use mongodb::{options::ClientOptions, Client as MongoClient, Collection};
 use std::env;
 
 use rig::{
     embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
-    providers::openai::{Client, OpenAIEmbeddingModel},
+    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::{VectorStore, VectorStoreIndex},
 };
 use rig_mongodb::{MongoDbVectorStore, SearchParams};

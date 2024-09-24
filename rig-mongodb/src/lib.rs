@@ -123,7 +123,6 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
 
 /// See [MongoDB Vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information
 /// on each of the fields
-#[derive(Deserialize)]
 pub struct SearchParams {
     /// Pre-filter
     filter: mongodb::bson::Document,

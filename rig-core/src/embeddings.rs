@@ -66,10 +66,6 @@ pub enum EmbeddingError {
     /// Error returned by the embedding model provider
     #[error("ProviderError: {0}")]
     ProviderError(String),
-
-    /// Http error (e.g.: connection error, timeout, etc.)
-    #[error("BadModel: {0}")]
-    BadModel(String),
 }
 
 /// Trait for embedding models that can generate embeddings for documents.

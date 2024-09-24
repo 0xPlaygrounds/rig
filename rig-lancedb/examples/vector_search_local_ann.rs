@@ -30,7 +30,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .preamble("Return the answer as JSON containing a list of strings in the form: `Definition of {generated_word}: {generated definition}`. Return ONLY the JSON string generated, nothing else.")
         .build();
     let response = agent
-        .prompt("Invent at least 100 words and their definitions")
+        .prompt("Invent 100 words and their definitions")
         .await?;
     let mut definitions: Vec<String> = serde_json::from_str(&response)?;
 

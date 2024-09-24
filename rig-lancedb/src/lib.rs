@@ -10,7 +10,6 @@ use rig::{
     embeddings::EmbeddingModel,
     vector_store::{VectorStore, VectorStoreError, VectorStoreIndex},
 };
-use serde::{Deserialize, Serialize};
 use table_schemas::{document::DocumentRecords, embedding::EmbeddingRecordsBatch, merge};
 use utils::{Insert, Query};
 
@@ -38,7 +37,7 @@ pub struct LanceDbVectorStore<M: EmbeddingModel> {
 }
 
 /// See [LanceDB vector search](https://lancedb.github.io/lancedb/search/) for more information.
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum SearchType {
     // Flat search, also called ENN or kNN.
     Flat,
@@ -46,7 +45,7 @@ pub enum SearchType {
     Approximate,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct SearchParams {
     /// Always set the distance_type to match the value used to train the index
     /// By default, set to L2
@@ -283,7 +282,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
         prompt_embedding: &rig::embeddings::Embedding,
         n: usize,
     ) -> Result<Vec<(f64, rig::embeddings::DocumentEmbeddings)>, VectorStoreError> {
-        let query = self
+        let mut query = self
             .embedding_table
             .vector_search(prompt_embedding.vec.clone())
             .map_err(lancedb_to_rig_error)?
@@ -298,24 +297,24 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
         } = self.search_params.clone();
 
         if let Some(distance_type) = distance_type {
-            query.clone().distance_type(distance_type);
+            query = query.distance_type(distance_type);
         }
 
         if let Some(SearchType::Flat) = search_type {
-            query.clone().bypass_vector_index();
+            query = query.bypass_vector_index();
         }
 
         if let Some(SearchType::Approximate) = search_type {
             if let Some(nprobes) = nprobes {
-                query.clone().nprobes(nprobes);
+                query = query.nprobes(nprobes);
             }
             if let Some(refine_factor) = refine_factor {
-                query.clone().refine_factor(refine_factor);
+                query = query.refine_factor(refine_factor);
             }
         }
 
         if let Some(true) = post_filter {
-            query.clone().postfilter();
+            query = query.postfilter();
         }
 
         let embeddings: EmbeddingRecordsBatch = query.execute_query().await?;
