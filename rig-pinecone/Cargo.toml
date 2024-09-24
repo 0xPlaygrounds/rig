@@ -5,5 +5,6 @@ edition = "2021"
 
 [dependencies]
 pinecone-sdk = "0.1.2"
+prost-types = "0.13.3"
 rig-core = { path = "../rig-core", version = "0.1.0" }
 serde_json = "1.0.128"
