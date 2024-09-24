@@ -62,7 +62,7 @@ impl Client {
         self.http_client.post(url)
     }
 
-    /// Note: default embedding dimension of 0 will be used if model cannot be matched.
+    /// Note: default embedding dimension of 0 will be used if model is not known.
     /// If this is the case, it's better to use function `embedding_model_with_ndims`
     pub fn embedding_model(&self, model: &str, input_type: &str) -> EmbeddingModel {
         let ndims = match model {
@@ -230,7 +230,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             .client
             .post("/v1/embed")
             .json(&json!({
-                "model": self.model.to_string(),
+                "model": self.model,
                 "texts": documents,
                 "input_type": self.input_type,
             }))

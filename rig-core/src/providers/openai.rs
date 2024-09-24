@@ -69,7 +69,7 @@ impl Client {
     }
 
     /// Create an embedding model with the given name.
-    /// Note: default embedding dimension of 0 will be used if model cannot be matched.
+    /// Note: default embedding dimension of 0 will be used if model is not known.
     /// If this is the case, it's better to use function `embedding_model_with_ndims`
     ///
     /// # Example
@@ -235,31 +235,6 @@ pub const TEXT_EMBEDDING_3_SMALL: &str = "text-embedding-3-small";
 pub const TEXT_EMBEDDING_ADA_002: &str = "text-embedding-ada-002";
 
 #[derive(Debug, Deserialize)]
-pub struct EmbeddingRequest {
-    pub model: String,
-    pub input: Vec<String>,
-    pub encoding_format: String,
-}
-
-impl EmbeddingRequest {
-    pub fn new(model: &str, input: Vec<String>) -> Self {
-        Self {
-            model: model.to_string(),
-            input,
-            encoding_format: "float".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct EmbeddingResponseError {
-    pub code: String,
-    pub message: String,
-    pub param: Option<String>,
-    pub type_: String,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct EmbeddingResponse {
     pub object: String,
     pub data: Vec<EmbeddingData>,
@@ -317,7 +292,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             .client
             .post("/v1/embeddings")
             .json(&json!({
-                "model": self.model.to_string(),
+                "model": self.model,
                 "input": documents,
             }))
             .send()
