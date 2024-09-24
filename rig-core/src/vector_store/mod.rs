@@ -50,8 +50,6 @@ pub trait VectorStore: Send + Sync {
 
 /// Trait for vector store indexes
 pub trait VectorStoreIndex: Send + Sync {
-    type SearchParams: for<'a> Deserialize<'a> + Send + Sync;
-
     /// Get the top n documents based on the distance to the given embedding.
     /// The distance is calculated as the cosine distance between the prompt and
     /// the document embedding.
@@ -60,7 +58,6 @@ pub trait VectorStoreIndex: Send + Sync {
         &self,
         query: &str,
         n: usize,
-        search_params: Self::SearchParams,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> + Send;
 
     /// Same as `top_n_from_query` but returns the documents without its embeddings.
@@ -69,10 +66,9 @@ pub trait VectorStoreIndex: Send + Sync {
         &self,
         query: &str,
         n: usize,
-        search_params: Self::SearchParams,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, T)>, VectorStoreError>> + Send {
         async move {
-            let documents = self.top_n_from_query(query, n, search_params).await?;
+            let documents = self.top_n_from_query(query, n).await?;
             Ok(documents
                 .into_iter()
                 .map(|(distance, doc)| (distance, serde_json::from_value(doc.document).unwrap()))
@@ -85,11 +81,10 @@ pub trait VectorStoreIndex: Send + Sync {
         &self,
         query: &str,
         n: usize,
-        search_params: Self::SearchParams,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + Send
     {
         async move {
-            let documents = self.top_n_from_query(query, n, search_params).await?;
+            let documents = self.top_n_from_query(query, n).await?;
             Ok(documents
                 .into_iter()
                 .map(|(distance, doc)| (distance, doc.id))
@@ -105,7 +100,6 @@ pub trait VectorStoreIndex: Send + Sync {
         &self,
         prompt_embedding: &Embedding,
         n: usize,
-        search_params: Self::SearchParams,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> + Send;
 
     /// Same as `top_n_from_embedding` but returns the documents without its embeddings.
@@ -114,12 +108,9 @@ pub trait VectorStoreIndex: Send + Sync {
         &self,
         prompt_embedding: &Embedding,
         n: usize,
-        search_params: Self::SearchParams,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, T)>, VectorStoreError>> + Send {
         async move {
-            let documents = self
-                .top_n_from_embedding(prompt_embedding, n, search_params)
-                .await?;
+            let documents = self.top_n_from_embedding(prompt_embedding, n).await?;
             Ok(documents
                 .into_iter()
                 .map(|(distance, doc)| (distance, serde_json::from_value(doc.document).unwrap()))
@@ -132,13 +123,10 @@ pub trait VectorStoreIndex: Send + Sync {
         &self,
         prompt_embedding: &Embedding,
         n: usize,
-        search_params: Self::SearchParams,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + Send
     {
         async move {
-            let documents = self
-                .top_n_from_embedding(prompt_embedding, n, search_params)
-                .await?;
+            let documents = self.top_n_from_embedding(prompt_embedding, n).await?;
             Ok(documents
                 .into_iter()
                 .map(|(distance, doc)| (distance, doc.id))
@@ -152,17 +140,15 @@ pub trait VectorStoreIndexDyn: Send + Sync {
         &'a self,
         query: &'a str,
         n: usize,
-        search_params: &'a str,
     ) -> BoxFuture<'a, Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>>;
 
     fn top_n_ids_from_query<'a>(
         &'a self,
         query: &'a str,
         n: usize,
-        search_params: &'a str,
     ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
         Box::pin(async move {
-            let documents = self.top_n_from_query(query, n, search_params).await?;
+            let documents = self.top_n_from_query(query, n).await?;
             Ok(documents
                 .into_iter()
                 .map(|(distance, doc)| (distance, doc.id))
@@ -174,19 +160,15 @@ pub trait VectorStoreIndexDyn: Send + Sync {
         &'a self,
         prompt_embedding: &'a Embedding,
         n: usize,
-        search_params: &'a str,
     ) -> BoxFuture<'a, Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>>;
 
     fn top_n_ids_from_embedding<'a>(
         &'a self,
         prompt_embedding: &'a Embedding,
         n: usize,
-        search_params: &'a str,
     ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
         Box::pin(async move {
-            let documents = self
-                .top_n_from_embedding(prompt_embedding, n, search_params)
-                .await?;
+            let documents = self.top_n_from_embedding(prompt_embedding, n).await?;
             Ok(documents
                 .into_iter()
                 .map(|(distance, doc)| (distance, doc.id))
@@ -200,44 +182,26 @@ impl<I: VectorStoreIndex> VectorStoreIndexDyn for I {
         &'a self,
         query: &'a str,
         n: usize,
-        search_params: &'a str,
     ) -> BoxFuture<'a, Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> {
-        Box::pin(async move {
-            match serde_json::from_str(search_params) {
-                Ok(search_params) => self.top_n_from_query(query, n, search_params).await,
-                Err(e) => Err(VectorStoreError::JsonError(e)),
-            }
-        })
+        Box::pin(async move { self.top_n_from_query(query, n).await })
     }
 
     fn top_n_from_embedding<'a>(
         &'a self,
         prompt_embedding: &'a Embedding,
         n: usize,
-        search_params: &'a str,
     ) -> BoxFuture<'a, Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> {
-        Box::pin(async move {
-            match serde_json::from_str(search_params) {
-                Ok(search_params) => {
-                    self.top_n_from_embedding(prompt_embedding, n, search_params)
-                        .await
-                }
-                Err(e) => Err(VectorStoreError::JsonError(e)),
-            }
-        })
+        Box::pin(async move { self.top_n_from_embedding(prompt_embedding, n).await })
     }
 }
 
 pub struct NoIndex;
 
 impl VectorStoreIndex for NoIndex {
-    type SearchParams = ();
-
     async fn top_n_from_query(
         &self,
         _query: &str,
         _n: usize,
-        _search_params: Self::SearchParams,
     ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         Ok(vec![])
     }
@@ -246,7 +210,6 @@ impl VectorStoreIndex for NoIndex {
         &self,
         _prompt_embedding: &Embedding,
         _n: usize,
-        _search_params: Self::SearchParams,
     ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         Ok(vec![])
     }

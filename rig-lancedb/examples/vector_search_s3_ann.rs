@@ -21,13 +21,15 @@ async fn main() -> Result<(), anyhow::Error> {
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(&OpenAIEmbeddingModel::TextEmbeddingAda002);
 
+    let search_params = SearchParams::default().distance_type(DistanceType::Cosine);
+
     // Initialize LanceDB on S3.
     // Note: see below docs for more options and IAM permission required to read/write to S3.
     // https://lancedb.github.io/lancedb/guides/storage/#aws-s3
     let db = lancedb::connect("s3://lancedb-test-829666124233")
         .execute()
         .await?;
-    let mut vector_store = LanceDbVectorStore::new(&db, &model).await?;
+    let mut vector_store = LanceDbVectorStore::new(&db, &model, &search_params).await?;
 
     // Generate test data for RAG demo
     let agent = openai_client
@@ -59,25 +61,15 @@ async fn main() -> Result<(), anyhow::Error> {
     vector_store
         .create_index(lancedb::index::Index::IvfPq(
             IvfPqIndexBuilder::default()
-                // This overrides the default distance type of L2
+                // This overrides the default distance type of L2.
+                // Needs to be the same distance type as the one used in search params.
                 .distance_type(DistanceType::Cosine),
         ))
         .await?;
 
     // Query the index
     let results = vector_store
-        .top_n_from_query(
-            "My boss says I zindle too much, what does that mean?",
-            1,
-            &serde_json::to_string(&SearchParams::new(
-                // Important: use the same same distance type that was used to train the index.
-                Some(DistanceType::Cosine),
-                None,
-                None,
-                None,
-                None,
-            ))?,
-        )
+        .top_n_from_query("My boss says I zindle too much, what does that mean?", 1)
         .await?
         .into_iter()
         .map(|(score, doc)| (score, doc.id, doc.document))

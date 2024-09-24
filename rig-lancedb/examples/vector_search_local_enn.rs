@@ -18,7 +18,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store").execute().await?;
-    let mut vector_store = LanceDbVectorStore::new(&db, &model).await?;
+    let mut vector_store = LanceDbVectorStore::new(&db, &model, &SearchParams::default()).await?;
 
     let embeddings = EmbeddingsBuilder::new(model.clone())
         .simple_document("doc0", "Definition of *flumbrel (noun)*: a small, seemingly insignificant item that you constantly lose or misplace, such as a pen, hair tie, or remote control.")
@@ -32,11 +32,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = vector_store
-        .top_n_from_query(
-            "My boss says I zindle too much, what does that mean?",
-            1,
-            &serde_json::to_string(&SearchParams::new(None, None, None, None, None))?,
-        )
+        .top_n_from_query("My boss says I zindle too much, what does that mean?", 1)
         .await?
         .into_iter()
         .map(|(score, doc)| (score, doc.id, doc.document))

@@ -49,11 +49,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = vector_store.index(model, "context_vector_index");
+    let index = vector_store.index(model, "context_vector_index", SearchParams::new());
 
     // Query the index
     let results = index
-        .top_n_from_query("What is a linglingdong?", 1, SearchParams::new())
+        .top_n_from_query("What is a linglingdong?", 1)
         .await?
         .into_iter()
         .map(|(score, doc)| (score, doc.id, doc.document))

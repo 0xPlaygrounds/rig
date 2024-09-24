@@ -87,8 +87,13 @@ impl MongoDbVectorStore {
     ///
     /// The index (of type "vector") must already exist for the MongoDB collection.
     /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
-    pub fn index<M: EmbeddingModel>(&self, model: M, index_name: &str) -> MongoDbVectorIndex<M> {
-        MongoDbVectorIndex::new(self.collection.clone(), model, index_name)
+    pub fn index<M: EmbeddingModel>(
+        &self,
+        model: M,
+        index_name: &str,
+        search_params: SearchParams,
+    ) -> MongoDbVectorIndex<M> {
+        MongoDbVectorIndex::new(self.collection.clone(), model, index_name, search_params)
     }
 }
 
@@ -97,6 +102,7 @@ pub struct MongoDbVectorIndex<M: EmbeddingModel> {
     collection: mongodb::Collection<DocumentEmbeddings>,
     model: M,
     index_name: String,
+    search_params: SearchParams,
 }
 
 impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
@@ -104,11 +110,13 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
         collection: mongodb::Collection<DocumentEmbeddings>,
         model: M,
         index_name: &str,
+        search_params: SearchParams,
     ) -> Self {
         Self {
             collection,
             model,
             index_name: index_name.to_string(),
+            search_params,
         }
     }
 }
@@ -134,6 +142,21 @@ impl SearchParams {
             num_candidates: None,
         }
     }
+
+    pub fn filter(mut self, filter: mongodb::bson::Document) -> Self {
+        self.filter = filter;
+        self
+    }
+
+    pub fn exact(mut self, exact: bool) -> Self {
+        self.exact = Some(exact);
+        self
+    }
+
+    pub fn num_candidates(mut self, num_candidates: u32) -> Self {
+        self.num_candidates = Some(num_candidates);
+        self
+    }
 }
 
 impl Default for SearchParams {
@@ -147,19 +170,22 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
         &self,
         query: &str,
         n: usize,
-        search_params: Self::SearchParams,
     ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_document(query).await?;
-        self.top_n_from_embedding(&prompt_embedding, n, search_params)
-            .await
+        self.top_n_from_embedding(&prompt_embedding, n).await
     }
 
     async fn top_n_from_embedding(
         &self,
         prompt_embedding: &Embedding,
         n: usize,
-        search_params: Self::SearchParams,
     ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
+        let SearchParams {
+            filter,
+            exact,
+            num_candidates,
+        } = &self.search_params;
+
         let mut cursor = self
             .collection
             .aggregate(
@@ -168,11 +194,11 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
                       "$vectorSearch": {
                         "queryVector": &prompt_embedding.vec,
                         "index": &self.index_name,
-                        "exact": search_params.exact.unwrap_or(false),
+                        "exact": exact.unwrap_or(false),
                         "path": "embeddings.vec",
-                        "numCandidates": search_params.num_candidates.unwrap_or((n * 10) as u32),
+                        "numCandidates": num_candidates.unwrap_or((n * 10) as u32),
                         "limit": n as u32,
-                        "filter": &search_params.filter,
+                        "filter": filter,
                       }
                     },
                     doc! {
@@ -206,6 +232,4 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
 
         Ok(results)
     }
-
-    type SearchParams = SearchParams;
 }

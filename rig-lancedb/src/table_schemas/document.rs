@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, RecordBatch, StringArray};
+use arrow_array::{types::Utf8Type, ArrayRef, RecordBatch, StringArray};
 use lancedb::arrow::arrow_schema::ArrowError;
 use rig::{embeddings::DocumentEmbeddings, vector_store::VectorStoreError};
 
-use crate::utils::DeserializeArrow;
+use crate::utils::DeserializeByteArray;
 
 /// Schema of `documents` table in LanceDB defined as a struct.
 #[derive(Clone, Debug)]
@@ -30,12 +30,12 @@ impl DocumentRecords {
         self.0.extend(records);
     }
 
-    fn documents(&self) -> Vec<String> {
-        self.as_iter().map(|doc| doc.document.clone()).collect()
+    fn documents(&self) -> impl Iterator<Item = String> + '_ {
+        self.as_iter().map(|doc| doc.document.clone())
     }
 
-    pub fn ids(&self) -> Vec<String> {
-        self.as_iter().map(|doc| doc.id.clone()).collect()
+    pub fn ids(&self) -> impl Iterator<Item = String> + '_ {
+        self.as_iter().map(|doc| doc.id.clone())
     }
 
     pub fn as_iter(&self) -> impl Iterator<Item = &DocumentRecord> {
@@ -97,8 +97,11 @@ impl TryFrom<RecordBatch> for DocumentRecords {
     type Error = ArrowError;
 
     fn try_from(record_batch: RecordBatch) -> Result<Self, Self::Error> {
-        let ids = record_batch.to_str(0)?;
-        let documents = record_batch.to_str(1)?;
+        let binding_0 = record_batch.column(0);
+        let ids = binding_0.to_str::<Utf8Type>()?;
+
+        let binding_1 = record_batch.column(1);
+        let documents = binding_1.to_str::<Utf8Type>()?;
 
         Ok(DocumentRecords(
             ids.into_iter()

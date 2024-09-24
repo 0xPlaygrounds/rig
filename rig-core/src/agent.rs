@@ -153,9 +153,9 @@ pub struct Agent<M: CompletionModel> {
     /// Additional parameters to be passed to the model
     additional_params: Option<serde_json::Value>,
     /// List of vector store, with the sample number
-    dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn>, String)>,
+    dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
     /// Dynamic tools
-    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn>, String)>,
+    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
     /// Actual tool implementations
     pub tools: ToolSet,
 }
@@ -167,10 +167,10 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
         chat_history: Vec<Message>,
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         let dynamic_context = stream::iter(self.dynamic_context.iter())
-            .then(|(num_sample, index, search_params)| async {
+            .then(|(num_sample, index)| async {
                 Ok::<_, VectorStoreError>(
                     index
-                        .top_n_from_query(prompt, *num_sample, search_params)
+                        .top_n_from_query(prompt, *num_sample)
                         .await?
                         .into_iter()
                         .map(|(_, doc)| {
@@ -195,10 +195,10 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
             .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
 
         let dynamic_tools = stream::iter(self.dynamic_tools.iter())
-            .then(|(num_sample, index, search_params)| async {
+            .then(|(num_sample, index)| async {
                 Ok::<_, VectorStoreError>(
                     index
-                        .top_n_ids_from_query(prompt, *num_sample, search_params)
+                        .top_n_ids_from_query(prompt, *num_sample)
                         .await?
                         .into_iter()
                         .map(|(_, doc)| doc)
@@ -296,9 +296,9 @@ pub struct AgentBuilder<M: CompletionModel> {
     /// Additional parameters to be passed to the model
     additional_params: Option<serde_json::Value>,
     /// List of vector store, with the sample number
-    dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn>, String)>,
+    dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
     /// Dynamic tools
-    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn>, String)>,
+    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
     /// Temperature of the model
     temperature: Option<f64>,
     /// Actual tool implementations
@@ -360,10 +360,9 @@ impl<M: CompletionModel> AgentBuilder<M> {
         mut self,
         sample: usize,
         dynamic_context: impl VectorStoreIndexDyn + 'static,
-        search_params: String,
     ) -> Self {
         self.dynamic_context
-            .push((sample, Box::new(dynamic_context), search_params));
+            .push((sample, Box::new(dynamic_context)));
         self
     }
 
@@ -374,10 +373,8 @@ impl<M: CompletionModel> AgentBuilder<M> {
         sample: usize,
         dynamic_tools: impl VectorStoreIndexDyn + 'static,
         toolset: ToolSet,
-        search_params: String,
     ) -> Self {
-        self.dynamic_tools
-            .push((sample, Box::new(dynamic_tools), search_params));
+        self.dynamic_tools.push((sample, Box::new(dynamic_tools)));
         self.tools.add_tools(toolset);
         self
     }

@@ -17,16 +17,90 @@ use utils::{Insert, Query};
 mod table_schemas;
 mod utils;
 
+fn lancedb_to_rig_error(e: lancedb::Error) -> VectorStoreError {
+    VectorStoreError::DatastoreError(Box::new(e))
+}
+
+fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
+    VectorStoreError::JsonError(e)
+}
+
 pub struct LanceDbVectorStore<M: EmbeddingModel> {
+    /// Defines which model is used to generate embeddings for the vector store
     model: M,
+    /// Table containing documents only
     document_table: lancedb::Table,
+    /// Table containing embeddings only.
+    /// Foreign key references the document in document table.
     embedding_table: lancedb::Table,
+    /// Vector search params that are used during vector search operations.
+    search_params: SearchParams,
+}
+
+/// See [LanceDB vector search](https://lancedb.github.io/lancedb/search/) for more information.
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum SearchType {
+    // Flat search, also called ENN or kNN.
+    Flat,
+    /// Approximal Nearest Neighbor search, also called ANN.
+    Approximate,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+pub struct SearchParams {
+    /// Always set the distance_type to match the value used to train the index
+    /// By default, set to L2
+    distance_type: Option<DistanceType>,
+    /// By default, ANN will be used if there is an index on the table.
+    /// By default, kNN will be used if there is NO index on the table.
+    /// To use defaults, set to None.
+    search_type: Option<SearchType>,
+    /// Set this value only when search type is ANN.
+    /// See [LanceDb ANN Search](https://lancedb.github.io/lancedb/ann_indexes/#querying-an-ann-index) for more information
+    nprobes: Option<usize>,
+    /// Set this value only when search type is ANN.
+    /// See [LanceDb ANN Search](https://lancedb.github.io/lancedb/ann_indexes/#querying-an-ann-index) for more information
+    refine_factor: Option<u32>,
+    /// If set to true, filtering will happen after the vector search instead of before
+    /// See [LanceDb pre/post filtering](https://lancedb.github.io/lancedb/sql/#pre-and-post-filtering) for more information
+    post_filter: Option<bool>,
+}
+
+impl SearchParams {
+    pub fn distance_type(mut self, distance_type: DistanceType) -> Self {
+        self.distance_type = Some(distance_type);
+        self
+    }
+
+    pub fn search_type(mut self, search_type: SearchType) -> Self {
+        self.search_type = Some(search_type);
+        self
+    }
+
+    pub fn nprobes(mut self, nprobes: usize) -> Self {
+        self.nprobes = Some(nprobes);
+        self
+    }
+
+    pub fn refine_factor(mut self, refine_factor: u32) -> Self {
+        self.refine_factor = Some(refine_factor);
+        self
+    }
+
+    pub fn post_filter(mut self, post_filter: bool) -> Self {
+        self.post_filter = Some(post_filter);
+        self
+    }
 }
 
 impl<M: EmbeddingModel> LanceDbVectorStore<M> {
     /// Note: Tables are created inside the new function rather than created outside and passed as reference to new function.
     /// This is because a specific schema needs to be enforced on the tables and this is done at creation time.
-    pub async fn new(db: &lancedb::Connection, model: &M) -> Result<Self, lancedb::Error> {
+    pub async fn new(
+        db: &lancedb::Connection,
+        model: &M,
+        search_params: &SearchParams,
+    ) -> Result<Self, lancedb::Error> {
         let document_table = db
             .create_empty_table("documents", Arc::new(Self::document_schema()))
             .execute()
@@ -44,9 +118,11 @@ impl<M: EmbeddingModel> LanceDbVectorStore<M> {
             document_table,
             embedding_table,
             model: model.clone(),
+            search_params: search_params.clone(),
         })
     }
 
+    /// Schema of records in document table.
     fn document_schema() -> Schema {
         Schema::new(Fields::from(vec![
             Field::new("id", DataType::Utf8, false),
@@ -54,6 +130,8 @@ impl<M: EmbeddingModel> LanceDbVectorStore<M> {
         ]))
     }
 
+    /// Schema of records in embeddings table.
+    /// Every embedding vector in the table must have the same size.
     fn embedding_schema(dimension: i32) -> Schema {
         Schema::new(Fields::from(vec![
             Field::new("id", DataType::Utf8, false),
@@ -70,6 +148,7 @@ impl<M: EmbeddingModel> LanceDbVectorStore<M> {
         ]))
     }
 
+    /// Define index on document table `id` field for search optimization.
     pub async fn create_document_index(&self, index: Index) -> Result<(), lancedb::Error> {
         self.document_table
             .create_index(&["id"], index)
@@ -77,6 +156,7 @@ impl<M: EmbeddingModel> LanceDbVectorStore<M> {
             .await
     }
 
+    /// Define index on embedding table `id` and `document_id` fields for search optimization.
     pub async fn create_embedding_index(&self, index: Index) -> Result<(), lancedb::Error> {
         self.embedding_table
             .create_index(&["id", "document_id"], index)
@@ -84,6 +164,7 @@ impl<M: EmbeddingModel> LanceDbVectorStore<M> {
             .await
     }
 
+    /// Define index on embedding table `embedding` fields for vector search optimization.
     pub async fn create_index(&self, index: Index) -> Result<(), lancedb::Error> {
         self.embedding_table
             .create_index(&["embedding"], index)
@@ -92,14 +173,6 @@ impl<M: EmbeddingModel> LanceDbVectorStore<M> {
 
         Ok(())
     }
-}
-
-fn lancedb_to_rig_error(e: lancedb::Error) -> VectorStoreError {
-    VectorStoreError::DatastoreError(Box::new(e))
-}
-
-fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
-    VectorStoreError::JsonError(e)
 }
 
 impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStore for LanceDbVectorStore<M> {
@@ -137,14 +210,14 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStore for LanceDbVector
         let documents: DocumentRecords = self
             .document_table
             .query()
-            .only_if(format!("id = {id}"))
+            .only_if(format!("id = '{id}'"))
             .execute_query()
             .await?;
 
         let embeddings: EmbeddingRecordsBatch = self
             .embedding_table
             .query()
-            .only_if(format!("document_id = {id}"))
+            .only_if(format!("document_id = '{id}'"))
             .execute_query()
             .await?;
 
@@ -158,7 +231,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStore for LanceDbVector
         let documents: DocumentRecords = self
             .document_table
             .query()
-            .only_if(format!("id = {id}"))
+            .only_if(format!("id = '{id}'"))
             .execute_query()
             .await?;
 
@@ -180,58 +253,18 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStore for LanceDbVector
         let embeddings: EmbeddingRecordsBatch = self
             .embedding_table
             .query()
-            .only_if(format!("document_id IN [{}]", documents.ids().join(",")))
+            .only_if(format!(
+                "document_id IN ({})",
+                documents
+                    .ids()
+                    .map(|id| format!("'{id}'"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ))
             .execute_query()
             .await?;
 
         Ok(merge(&documents, &embeddings)?.into_iter().next())
-    }
-}
-
-/// See [LanceDB vector search](https://lancedb.github.io/lancedb/search/) for more information.
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub enum SearchType {
-    // Flat search, also called ENN or kNN.
-    Flat,
-    /// Approximal Nearest Neighbor search, also called ANN.
-    Approximate,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct SearchParams {
-    /// Always set the distance_type to match the value used to train the index
-    /// By default, set to L2
-    distance_type: Option<DistanceType>,
-    /// By default, ANN will be used if there is an index on the table.
-    /// By default, kNN will be used if there is NO index on the table.
-    /// To use defaults, set to None.
-    search_type: Option<SearchType>,
-    /// Set this value only when search type is ANN.
-    /// See [LanceDb ANN Search](https://lancedb.github.io/lancedb/ann_indexes/#querying-an-ann-index) for more information
-    nprobes: Option<usize>,
-    /// Set this value only when search type is ANN.
-    /// See [LanceDb ANN Search](https://lancedb.github.io/lancedb/ann_indexes/#querying-an-ann-index) for more information
-    refine_factor: Option<u32>,
-    /// If set to true, filtering will happen after the vector search instead of before
-    /// See [LanceDb pre/post filtering](https://lancedb.github.io/lancedb/sql/#pre-and-post-filtering) for more information
-    post_filter: Option<bool>,
-}
-
-impl SearchParams {
-    pub fn new(
-        distance_type: Option<DistanceType>,
-        search_type: Option<SearchType>,
-        nprobes: Option<usize>,
-        refine_factor: Option<u32>,
-        post_filter: Option<bool>,
-    ) -> Self {
-        Self {
-            distance_type,
-            search_type,
-            nprobes,
-            refine_factor,
-            post_filter,
-        }
     }
 }
 
@@ -240,32 +273,29 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
         &self,
         query: &str,
         n: usize,
-        search_params: Self::SearchParams,
     ) -> Result<Vec<(f64, rig::embeddings::DocumentEmbeddings)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_document(query).await?;
-        self.top_n_from_embedding(&prompt_embedding, n, search_params)
-            .await
+        self.top_n_from_embedding(&prompt_embedding, n).await
     }
 
     async fn top_n_from_embedding(
         &self,
         prompt_embedding: &rig::embeddings::Embedding,
         n: usize,
-        search_params: Self::SearchParams,
     ) -> Result<Vec<(f64, rig::embeddings::DocumentEmbeddings)>, VectorStoreError> {
+        let query = self
+            .embedding_table
+            .vector_search(prompt_embedding.vec.clone())
+            .map_err(lancedb_to_rig_error)?
+            .limit(n);
+
         let SearchParams {
             distance_type,
             search_type,
             nprobes,
             refine_factor,
             post_filter,
-        } = search_params.clone();
-
-        let query = self
-            .embedding_table
-            .vector_search(prompt_embedding.vec.clone())
-            .map_err(lancedb_to_rig_error)?
-            .limit(n);
+        } = self.search_params.clone();
 
         if let Some(distance_type) = distance_type {
             query.clone().distance_type(distance_type);
@@ -317,6 +347,4 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
             })
             .collect())
     }
-
-    type SearchParams = SearchParams;
 }

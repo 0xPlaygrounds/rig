@@ -2,13 +2,13 @@ use std::{collections::HashMap, sync::Arc};
 
 use arrow_array::{
     builder::{FixedSizeListBuilder, Float64Builder},
-    types::{Float32Type, Float64Type},
+    types::{Float32Type, Float64Type, Utf8Type},
     ArrayRef, RecordBatch, StringArray,
 };
 use lancedb::arrow::arrow_schema::ArrowError;
 use rig::{embeddings::DocumentEmbeddings, vector_store::VectorStoreError};
 
-use crate::utils::{DeserializeArrow, DeserializePrimitiveArray};
+use crate::utils::{DeserializeByteArray, DeserializeListArray, DeserializePrimitiveArray};
 
 /// Data format in the LanceDB table `embeddings`
 #[derive(Clone, Debug, PartialEq)]
@@ -158,10 +158,16 @@ impl TryFrom<RecordBatch> for EmbeddingRecords {
     type Error = ArrowError;
 
     fn try_from(record_batch: RecordBatch) -> Result<Self, Self::Error> {
-        let ids = record_batch.to_str(0)?;
-        let document_ids = record_batch.to_str(1)?;
-        let contents = record_batch.to_str(2)?;
-        let embeddings = record_batch.to_float_list::<Float64Type>(3)?;
+        let binding_0 = record_batch.column(0);
+        let ids = binding_0.to_str::<Utf8Type>()?;
+
+        let binding_1 = record_batch.column(1);
+        let document_ids = binding_1.to_str::<Utf8Type>()?;
+
+        let binding_2 = record_batch.column(2);
+        let contents = binding_2.to_str::<Utf8Type>()?;
+
+        let embeddings = record_batch.column(3).to_float_list::<Float64Type>()?;
 
         // There is a `_distance` field in the response if the executed query was a VectorQuery
         // Otherwise, for normal queries, the `_distance` field is not present in the response.

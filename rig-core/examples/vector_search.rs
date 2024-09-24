@@ -24,7 +24,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let index = InMemoryVectorIndex::from_embeddings(model, embeddings).await?;
 
     let results = index
-        .top_n_from_query("What is a linglingdong?", 1, ())
+        .top_n_from_query("What is a linglingdong?", 1)
         .await?
         .into_iter()
         .map(|(score, doc)| (score, doc.id, doc.document))
