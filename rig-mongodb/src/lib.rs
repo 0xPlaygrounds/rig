@@ -5,8 +5,6 @@ use rig::{
     embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel},
     vector_store::{VectorStore, VectorStoreError, VectorStoreIndex},
 };
-use serde::Deserialize;
-
 /// A MongoDB vector store.
 pub struct MongoDbVectorStore {
     collection: mongodb::Collection<DocumentEmbeddings>,
