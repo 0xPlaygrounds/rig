@@ -79,8 +79,28 @@ impl Client {
     ///
     /// let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_3_LARGE);
     /// ```
-    pub fn embedding_model(&self, model: &OpenAIEmbeddingModel) -> EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model)
+    pub fn embedding_model(&self, model: &str) -> EmbeddingModel {
+        let ndims = match model {
+            TEXT_EMBEDDING_3_LARGE => 3072,
+            TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => 1536,
+            _ => 0,
+        };
+        EmbeddingModel::new(self.clone(), model, ndims)
+    }
+
+    /// Create an embedding model with the given name.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::openai::{Client, self};
+    ///
+    /// // Initialize the OpenAI client
+    /// let openai = Client::new("your-open-ai-api-key");
+    ///
+    /// let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_3_LARGE, 3072);
+    /// ```
+    pub fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> EmbeddingModel {
+        EmbeddingModel::new(self.clone(), model, ndims)
     }
 
     /// Create an embedding builder with the given embedding model.
@@ -99,10 +119,7 @@ impl Client {
     ///     .await
     ///     .expect("Failed to embed documents");
     /// ```
-    pub fn embeddings(
-        &self,
-        model: &OpenAIEmbeddingModel,
-    ) -> embeddings::EmbeddingsBuilder<EmbeddingModel> {
+    pub fn embeddings(&self, model: &str) -> embeddings::EmbeddingsBuilder<EmbeddingModel> {
         embeddings::EmbeddingsBuilder::new(self.embedding_model(model))
     }
 
@@ -208,35 +225,12 @@ enum ApiResponse<T> {
 // ================================================================
 // OpenAI Embedding API
 // ================================================================
-#[derive(Debug, Clone)]
-pub enum OpenAIEmbeddingModel {
-    TextEmbedding3Large,
-    TextEmbedding3Small,
-    TextEmbeddingAda002,
-}
-
-impl std::str::FromStr for OpenAIEmbeddingModel {
-    type Err = EmbeddingError;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s {
-            "text-embedding-3-large" => Ok(Self::TextEmbedding3Large),
-            "text-embedding-3-small" => Ok(Self::TextEmbedding3Small),
-            "text-embedding-ada-002" => Ok(Self::TextEmbeddingAda002),
-            _ => Err(EmbeddingError::BadModel(s.to_string())),
-        }
-    }
-}
-
-impl std::fmt::Display for OpenAIEmbeddingModel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OpenAIEmbeddingModel::TextEmbedding3Large => write!(f, "text-embedding-3-large"),
-            OpenAIEmbeddingModel::TextEmbedding3Small => write!(f, "text-embedding-3-small"),
-            OpenAIEmbeddingModel::TextEmbeddingAda002 => write!(f, "text-embedding-ada-002"),
-        }
-    }
-}
+/// `text-embedding-3-large` embedding model
+pub const TEXT_EMBEDDING_3_LARGE: &str = "text-embedding-3-large";
+/// `text-embedding-3-small` embedding model
+pub const TEXT_EMBEDDING_3_SMALL: &str = "text-embedding-3-small";
+/// `text-embedding-ada-002` embedding model
+pub const TEXT_EMBEDDING_ADA_002: &str = "text-embedding-ada-002";
 
 #[derive(Debug, Deserialize)]
 pub struct EmbeddingRequest {
@@ -302,18 +296,15 @@ pub struct Usage {
 #[derive(Clone)]
 pub struct EmbeddingModel {
     client: Client,
-    pub model: OpenAIEmbeddingModel,
+    pub model: String,
+    ndims: usize,
 }
 
 impl embeddings::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 1024;
 
     fn ndims(&self) -> usize {
-        match self.model {
-            OpenAIEmbeddingModel::TextEmbedding3Large => 3072,
-            OpenAIEmbeddingModel::TextEmbedding3Small => 1536,
-            OpenAIEmbeddingModel::TextEmbeddingAda002 => 1536,
-        }
+        self.ndims
     }
 
     async fn embed_documents(
@@ -357,10 +348,11 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 }
 
 impl EmbeddingModel {
-    pub fn new(client: Client, model: &OpenAIEmbeddingModel) -> Self {
+    pub fn new(client: Client, model: &str, ndims: usize) -> Self {
         Self {
             client,
-            model: model.clone(),
+            model: model.to_string(),
+            ndims,
         }
     }
 }

@@ -2,7 +2,7 @@ use std::env;
 
 use rig::{
     embeddings::EmbeddingsBuilder,
-    providers::openai::{Client, OpenAIEmbeddingModel},
+    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::{VectorStore, VectorStoreIndexDyn},
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
@@ -14,7 +14,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = Client::new(&openai_api_key);
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(&OpenAIEmbeddingModel::TextEmbeddingAda002);
+    let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store").execute().await?;

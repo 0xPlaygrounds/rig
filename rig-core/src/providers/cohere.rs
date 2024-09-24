@@ -62,19 +62,27 @@ impl Client {
         self.http_client.post(url)
     }
 
-    pub fn embedding_model(
-        &self,
-        model: &CohereEmbeddingModel,
-        input_type: &str,
-    ) -> EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, input_type)
+    pub fn embedding_model(&self, model: &str, input_type: &str) -> EmbeddingModel {
+        let ndims = match model {
+            EMBED_ENGLISH_V3 | EMBED_MULTILINGUAL_V3 | EMBED_ENGLISH_LIGHT_V2 => 1024,
+            EMBED_ENGLISH_LIGHT_V3 | EMBED_MULTILINGUAL_LIGHT_V3 => 384,
+            EMBED_ENGLISH_V2 => 4096,
+            EMBED_MULTILINGUAL_V2 => 768,
+            _ => 0,
+        };
+        EmbeddingModel::new(self.clone(), model, input_type, ndims)
     }
 
-    pub fn embeddings(
+    pub fn embedding_model_with_ndims(
         &self,
-        model: &CohereEmbeddingModel,
+        model: &str,
         input_type: &str,
-    ) -> EmbeddingsBuilder<EmbeddingModel> {
+        ndims: usize,
+    ) -> EmbeddingModel {
+        EmbeddingModel::new(self.clone(), model, input_type, ndims)
+    }
+
+    pub fn embeddings(&self, model: &str, input_type: &str) -> EmbeddingsBuilder<EmbeddingModel> {
         EmbeddingsBuilder::new(self.embedding_model(model, input_type))
     }
 
@@ -141,47 +149,20 @@ enum ApiResponse<T> {
 // ================================================================
 // Cohere Embedding API
 // ================================================================
-#[derive(Debug, Clone)]
-pub enum CohereEmbeddingModel {
-    EmbedEnglishV3,
-    EmbedEnglishLightV3,
-    EmbedMultilingualV3,
-    EmbedMultilingualLightV3,
-    EmbedEnglishV2,
-    EmbedEnglishLightV2,
-    EmbedMultilingualV2,
-}
-
-impl std::str::FromStr for CohereEmbeddingModel {
-    type Err = EmbeddingError;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s {
-            "embed-english-v3.0" => Ok(Self::EmbedEnglishV3),
-            "embed-english-light-v3.0" => Ok(Self::EmbedEnglishLightV3),
-            "embed-multilingual-v3.0" => Ok(Self::EmbedMultilingualV3),
-            "embed-multilingual-light-v3.0" => Ok(Self::EmbedMultilingualLightV3),
-            "embed-english-v2.0" => Ok(Self::EmbedEnglishV2),
-            "embed-english-light-v2.0" => Ok(Self::EmbedEnglishLightV2),
-            "embed-multilingual-v2.0" => Ok(Self::EmbedMultilingualV2),
-            _ => Err(EmbeddingError::BadModel(s.to_string())),
-        }
-    }
-}
-
-impl std::fmt::Display for CohereEmbeddingModel {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::EmbedEnglishLightV3 => write!(f, "embed-english-light-v3.0"),
-            Self::EmbedEnglishV3 => write!(f, "embed-english-v3.0"),
-            Self::EmbedMultilingualLightV3 => write!(f, "embed-multilingual-light-v3.0"),
-            Self::EmbedMultilingualV3 => write!(f, "embed-multilingual-v3.0"),
-            Self::EmbedEnglishV2 => write!(f, "embed-english-v2.0"),
-            Self::EmbedEnglishLightV2 => write!(f, "embed-english-light-v2.0"),
-            Self::EmbedMultilingualV2 => write!(f, "embed-multilingual-v2.0"),
-        }
-    }
-}
+/// `embed-english-v3.0` embedding model
+pub const EMBED_ENGLISH_V3: &str = "embed-english-v3.0";
+/// `embed-english-light-v3.0` embedding model
+pub const EMBED_ENGLISH_LIGHT_V3: &str = "embed-english-light-v3.0";
+/// `embed-multilingual-v3.0` embedding model
+pub const EMBED_MULTILINGUAL_V3: &str = "embed-multilingual-v3.0";
+/// `embed-multilingual-light-v3.0` embedding model
+pub const EMBED_MULTILINGUAL_LIGHT_V3: &str = "embed-multilingual-light-v3.0";
+/// `embed-english-v2.0` embedding model
+pub const EMBED_ENGLISH_V2: &str = "embed-english-v2.0";
+/// `embed-english-light-v2.0` embedding model
+pub const EMBED_ENGLISH_LIGHT_V2: &str = "embed-english-light-v2.0";
+/// `embed-multilingual-v2.0` embedding model
+pub const EMBED_MULTILINGUAL_V2: &str = "embed-multilingual-v2.0";
 
 #[derive(Deserialize)]
 pub struct EmbeddingResponse {
@@ -226,23 +207,16 @@ pub struct BilledUnits {
 #[derive(Clone)]
 pub struct EmbeddingModel {
     client: Client,
-    pub model: CohereEmbeddingModel,
+    pub model: String,
     pub input_type: String,
+    ndims: usize,
 }
 
 impl embeddings::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 96;
 
     fn ndims(&self) -> usize {
-        match self.model {
-            CohereEmbeddingModel::EmbedEnglishV3 => 1024,
-            CohereEmbeddingModel::EmbedEnglishLightV3 => 384,
-            CohereEmbeddingModel::EmbedMultilingualV3 => 1024,
-            CohereEmbeddingModel::EmbedMultilingualLightV3 => 384,
-            CohereEmbeddingModel::EmbedEnglishV2 => 4096,
-            CohereEmbeddingModel::EmbedEnglishLightV2 => 1024,
-            CohereEmbeddingModel::EmbedMultilingualV2 => 768,
-        }
+        self.ndims
     }
 
     async fn embed_documents(
@@ -289,11 +263,12 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 }
 
 impl EmbeddingModel {
-    pub fn new(client: Client, model: &CohereEmbeddingModel, input_type: &str) -> Self {
+    pub fn new(client: Client, model: &str, input_type: &str, ndims: usize) -> Self {
         Self {
             client,
-            model: model.clone(),
+            model: model.to_string(),
             input_type: input_type.to_string(),
+            ndims,
         }
     }
 }

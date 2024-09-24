@@ -4,7 +4,7 @@ use lancedb::{index::vector::IvfPqIndexBuilder, DistanceType};
 use rig::{
     completion::Prompt,
     embeddings::EmbeddingsBuilder,
-    providers::openai::{Client, OpenAIEmbeddingModel},
+    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::{VectorStore, VectorStoreIndexDyn},
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
@@ -16,7 +16,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = Client::new(&openai_api_key);
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(&OpenAIEmbeddingModel::TextEmbeddingAda002);
+    let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     let search_params = SearchParams::default().distance_type(DistanceType::Cosine);
 
