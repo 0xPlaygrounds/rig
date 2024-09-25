@@ -1,3 +1,4 @@
+pub mod deserializer;
 use std::sync::Arc;
 
 use arrow_array::{
