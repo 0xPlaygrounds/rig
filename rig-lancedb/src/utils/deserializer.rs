@@ -323,8 +323,6 @@ impl RecordBatchDeserializer for RecordBatch {
             .map(type_matcher)
             .collect::<Result<Vec<_>, _>>()?;
 
-        println!("{:?}", serde_json::to_string(&columns).unwrap());
-
         serde_json::to_value(&columns).map_err(serde_to_rig_error)
     }
 }
