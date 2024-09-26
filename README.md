@@ -12,6 +12,9 @@
 </p>
 &nbsp;
 
+> [!WARNING]  
+> Here be dragons! Rig is **alpha** software and may contain breaking changes as it evolves. We'll annotate them and highlight migration paths as we encounter them.
+
 
 ## What is Rig?
 Rig is a Rust library for building scalable, modular, and ergonomic LLM-powered applications.
