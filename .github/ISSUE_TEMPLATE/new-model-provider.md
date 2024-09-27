@@ -1,5 +1,5 @@
 ---
-name: New Model Provider
+name: New model provider
 about: Suggest a new model provider to integrate
 title: 'feat: Add support for X'
 labels: feat, model
