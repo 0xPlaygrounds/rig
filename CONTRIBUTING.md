@@ -14,7 +14,7 @@ PRs should be small and focused and should avoid interacting with multiple facet
 
 ## Project Structure
 
-Rig is split up into multiple crates in a monorepo structure. The main crate `rig-core` contains all of the foundational abstractions for building with LLMs. This crate avoids adding many new dependencies to keep to lean and only really contains simple provider integration ontop of the base layer of abstractions. Side crates are leveraged to help add important first-party behavior without over burdening the main library with dependencies. For example, `rig-mongodb` contains extra dependencies to be able to interact with `mongodb` as a vector store.
+Rig is split up into multiple crates in a monorepo structure. The main crate `rig-core` contains all of the foundational abstractions for building with LLMs. This crate avoids adding many new dependencies to keep to lean and only really contains simple provider integrations on top of the base layer of abstractions. Side crates are leveraged to help add important first-party behavior without over burdening the main library with dependencies. For example, `rig-mongodb` contains extra dependencies to be able to interact with `mongodb` as a vector store.
 
 If you are unsure whether a side-crate should live in the main repo, you can spin up a personal repo containing your crate and create an issue in our repo making the case on whether this side-crate should be integrated in the main repo and maintained by the Rig team.
 

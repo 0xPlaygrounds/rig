@@ -13,7 +13,7 @@
 &nbsp;
 
 > [!WARNING]  
-> Here be dragons! Rig is **alpha** software and may contain breaking changes as it evolves. We'll annotate them and highlight migration paths as we encounter them.
+> Here be dragons! Rig is **alpha** software and **will** contain breaking changes as it evolves. We'll annotate them and highlight migration paths as we encounter them.
 
 
 ## What is Rig?
