@@ -8,7 +8,7 @@ use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 
 use super::{VectorStore, VectorStoreError, VectorStoreIndex};
-use crate::embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel, EmbeddingsBuilder};
+use crate::embeddings::{DocumentEmbeddings, EmbeddingModel, EmbeddingsBuilder};
 
 /// InMemoryVectorStore is a simple in-memory vector store that stores embeddings
 /// in-memory using a HashMap.
@@ -198,20 +198,13 @@ impl<M: EmbeddingModel> InMemoryVectorIndex<M> {
 }
 
 impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorIndex<M> {
-    async fn top_n_from_query(
+    async fn top_n<T: for<'a> Deserialize<'a>>(
         &self,
         query: &str,
         n: usize,
-    ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_document(query).await?;
-        self.top_n_from_embedding(&prompt_embedding, n).await
-    }
+    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+        let prompt_embedding = &self.model.embed_document(query).await?;
 
-    async fn top_n_from_embedding(
-        &self,
-        query_embedding: &Embedding,
-        n: usize,
-    ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         // Sort documents by best embedding distance
         let mut docs: EmbeddingRanking = BinaryHeap::new();
 
@@ -222,7 +215,7 @@ impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorI
                 .iter()
                 .map(|embedding| {
                     (
-                        OrderedFloat(embedding.distance(query_embedding)),
+                        OrderedFloat(embedding.distance(prompt_embedding)),
                         &embedding.document,
                     )
                 })
@@ -252,9 +245,15 @@ impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorI
         );
 
         // Return n best
-        Ok(docs
-            .into_iter()
-            .map(|Reverse(RankingItem(distance, _, doc, _))| (distance.0, doc.clone()))
-            .collect())
+        docs.into_iter()
+            .map(|Reverse(RankingItem(distance, _, doc, _))| {
+                let doc_value = serde_json::to_value(doc).map_err(VectorStoreError::JsonError)?;
+                Ok((
+                    distance.0,
+                    doc.id.clone(),
+                    serde_json::from_value(doc_value).map_err(VectorStoreError::JsonError)?,
+                ))
+            })
+            .collect::<Result<Vec<_>, _>>()
     }
 }

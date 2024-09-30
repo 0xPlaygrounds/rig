@@ -2,9 +2,10 @@ use futures::StreamExt;
 use mongodb::bson::doc;
 
 use rig::{
-    embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel},
+    embeddings::{DocumentEmbeddings, EmbeddingModel},
     vector_store::{VectorStore, VectorStoreError, VectorStoreIndex},
 };
+use serde::Deserialize;
 
 /// A MongoDB vector store.
 pub struct MongoDbVectorStore {
@@ -124,20 +125,13 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
 }
 
 impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbVectorIndex<M> {
-    async fn top_n_from_query(
+    async fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
         &self,
         query: &str,
         n: usize,
-    ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
+    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_document(query).await?;
-        self.top_n_from_embedding(&prompt_embedding, n).await
-    }
 
-    async fn top_n_from_embedding(
-        &self,
-        prompt_embedding: &Embedding,
-        n: usize,
-    ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         let mut cursor = self
             .collection
             .aggregate(
@@ -168,14 +162,15 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
         while let Some(doc) = cursor.next().await {
             let doc = doc.map_err(mongodb_to_rig_error)?;
             let score = doc.get("score").expect("score").as_f64().expect("f64");
-            let document: DocumentEmbeddings = serde_json::from_value(doc).expect("document");
-            results.push((score, document));
+            let id = doc.get("_id").expect("_id").to_string();
+            let doc_t: T = serde_json::from_value(doc).map_err(VectorStoreError::JsonError)?;
+            results.push((score, id, doc_t));
         }
 
         tracing::info!(target: "rig",
             "Selected documents: {}",
             results.iter()
-                .map(|(distance, doc)| format!("{} ({})", doc.id, distance))
+                .map(|(distance, id, _)| format!("{} ({})", id, distance))
                 .collect::<Vec<String>>()
                 .join(", ")
         );

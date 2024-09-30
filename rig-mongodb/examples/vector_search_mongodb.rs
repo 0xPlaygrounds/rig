@@ -53,10 +53,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = index
-        .top_n_from_query("What is a linglingdong?", 1)
+        .top_n::<DocumentEmbeddings>("What is a linglingdong?", 1)
         .await?
         .into_iter()
-        .map(|(score, doc)| (score, doc.id, doc.document))
+        .map(|(score, id, doc)| (score, id, doc.document))
         .collect::<Vec<_>>();
 
     println!("Results: {:?}", results);

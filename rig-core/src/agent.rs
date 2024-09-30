@@ -172,16 +172,16 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
             .then(|(num_sample, index)| async {
                 Ok::<_, VectorStoreError>(
                     index
-                        .top_n_from_query(prompt, *num_sample)
+                        .top_n(prompt, *num_sample)
                         .await?
                         .into_iter()
-                        .map(|(_, doc)| {
+                        .map(|(_, id, doc)| {
                             // Pretty print the document if possible for better readability
-                            let doc_text = serde_json::to_string_pretty(&doc.document)
-                                .unwrap_or_else(|_| doc.document.to_string());
+                            let doc_text = serde_json::to_string_pretty(&doc)
+                                .unwrap_or_else(|_| doc.to_string());
 
                             Document {
-                                id: doc.id,
+                                id,
                                 text: doc_text,
                                 additional_props: HashMap::new(),
                             }
@@ -198,14 +198,14 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 
         let dynamic_tools = stream::iter(self.dynamic_tools.iter())
             .then(|(num_sample, index)| async {
-                Ok::<_, VectorStoreError>(
-                    index
-                        .top_n_ids_from_query(prompt, *num_sample)
-                        .await?
-                        .into_iter()
-                        .map(|(_, doc)| doc)
-                        .collect::<Vec<_>>(),
-                )
+                index
+                    .top_n(prompt, *num_sample)
+                    .await?
+                    .into_iter()
+                    .map(|(_, _, doc)| {
+                        serde_json::to_string(&doc).map_err(VectorStoreError::JsonError)
+                    })
+                    .collect::<Result<Vec<_>, _>>()
             })
             .try_fold(vec![], |mut acc, docs| async {
                 for doc in docs {
