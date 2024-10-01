@@ -71,14 +71,6 @@ impl Client {
         CompletionModel::new(self.clone(), model)
     }
 
-    #[deprecated(
-        since = "0.2.0",
-        note = "Please use the `agent` method instead of the `model` method."
-    )]
-    pub fn model(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
     pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
         AgentBuilder::new(self.completion_model(model))
     }
@@ -88,22 +80,6 @@ impl Client {
         model: &str,
     ) -> ExtractorBuilder<T, CompletionModel> {
         ExtractorBuilder::new(self.completion_model(model))
-    }
-
-    #[deprecated(
-        since = "0.2.0",
-        note = "Please use the `agent` method instead of the `rag_agent` method."
-    )]
-    pub fn rag_agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    #[deprecated(
-        since = "0.2.0",
-        note = "Please use the `agent` method instead of the `context_rag_agent` method."
-    )]
-    pub fn context_rag_agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
     }
 }
 
