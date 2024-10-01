@@ -71,14 +71,6 @@ impl Client {
         CompletionModel::new(self.clone(), model)
     }
 
-    #[deprecated(
-        since = "0.2.0",
-        note = "Please use the `agent` method instead of the `model` method."
-    )]
-    pub fn model(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
     pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
         AgentBuilder::new(self.completion_model(model))
     }
@@ -88,22 +80,6 @@ impl Client {
         model: &str,
     ) -> ExtractorBuilder<T, CompletionModel> {
         ExtractorBuilder::new(self.completion_model(model))
-    }
-
-    #[deprecated(
-        since = "0.2.0",
-        note = "Please use the `agent` method instead of the `rag_agent` method."
-    )]
-    pub fn rag_agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    #[deprecated(
-        since = "0.2.0",
-        note = "Please use the `agent` method instead of the `context_rag_agent` method."
-    )]
-    pub fn context_rag_agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
     }
 }
 
@@ -227,17 +203,7 @@ impl completion::CompletionModel for CompletionModel {
         };
 
         // Add context documents to chat history
-        messages.append(
-            completion_request
-                .documents
-                .into_iter()
-                .map(|doc| completion::Message {
-                    role: "system".into(),
-                    content: serde_json::to_string(&doc).expect("Document should serialize"),
-                })
-                .collect::<Vec<_>>()
-                .as_mut(),
-        );
+        let prompt_with_context = completion_request.prompt_with_context();
 
         // Add chat history to messages
         messages.extend(completion_request.chat_history);
@@ -245,7 +211,7 @@ impl completion::CompletionModel for CompletionModel {
         // Add user prompt to messages
         messages.push(completion::Message {
             role: "user".to_string(),
-            content: completion_request.prompt,
+            content: prompt_with_context,
         });
 
         let request = json!({

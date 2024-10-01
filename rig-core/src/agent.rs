@@ -13,7 +13,7 @@
 //! be used for generating chat completions.
 //!
 //! The [AgentBuilder] implements the builder pattern for creating instances of [Agent].
-//! It allows configuring the model, preamble, context documents, static tools, temperature, and additional parameters
+//! It allows configuring the model, preamble, context documents, tools, temperature, and additional parameters
 //! before building the agent.
 //!
 //! # Example

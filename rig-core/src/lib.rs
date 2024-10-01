@@ -22,7 +22,7 @@
 //!     // This requires the `OPENAI_API_KEY` environment variable to be set.
 //!     let openai_client = openai::Client::from_env();
 //!
-//!     let gpt4 = openai_client.model("gpt-4").build();
+//!     let gpt4 = openai_client.agent("gpt-4").build();
 //!
 //!     // Prompt the model and print its response
 //!     let response = gpt4
@@ -44,19 +44,11 @@
 //! and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits respectively, which provide a common,
 //! low-level interface for creating completion and embedding requests and executing them.
 //!
-//! ## Models, Agents and RagAgents
-//! Rig provides high-level abstractions over LLMs in the form of [Model](crate::model::Model),
-//! [Agent](crate::agent::Agent) and [RagAgent](crate::rag::RagAgent) structs.
+//! ## Agents
+//! Rig provides high-level abstractions over LLMs in the form of the [Agent](crate::agent::Agent) type.
 //!
-//! These structs range from simple models that can be prompted directly to agents that have a
-//! system prompt to full blown RAG systems that can be used to answer questions using a knowledgebase.
-//! Here is a quick summary of each:
-//! - [Model](crate::model::Model): A simple LLM model that can be prompted directly. This structs acts
-//!   as a thin wrapper around a completion model (i.e.: a struct implementing the [CompletionModel](crate::completion::CompletionModel) trait).
-//! - [Agent](crate::agent::Agent): An LLM model combined with a preamble (i.e.: system prompt) and a
-//!   static set of context documents and tools.
-//! - [RagAgent](crate::rag::RagAgent): A RAG system that can be used to answer questions using a knowledgebase
-//!   containing both context documents and tools.
+//! The [Agent](crate::agent::Agent) type can be used to create anything from simple agents that use vanilla models to full blown
+//! RAG systems that can be used to answer questions using a knowledge base.
 //!
 //! ## Vector stores and indexes
 //! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
@@ -80,8 +72,6 @@ pub mod completion;
 pub mod embeddings;
 pub mod extractor;
 pub mod json_utils;
-pub mod model;
 pub mod providers;
-pub mod rag;
 pub mod tool;
 pub mod vector_store;

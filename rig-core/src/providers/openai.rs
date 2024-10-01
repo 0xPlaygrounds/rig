@@ -140,27 +140,6 @@ impl Client {
         CompletionModel::new(self.clone(), model)
     }
 
-    /// Create a model builder with the given completion model.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::openai::{Client, self};
-    ///
-    /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key");
-    ///
-    /// let completion_model = openai.model(openai::GPT_4)
-    ///    .temperature(0.0)
-    ///    .build();
-    /// ```
-    #[deprecated(
-        since = "0.2.0",
-        note = "Please use the `agent` method instead of the `model` method."
-    )]
-    pub fn model(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
     /// Create an agent builder with the given completion model.
     ///
     /// # Example
@@ -185,30 +164,6 @@ impl Client {
         model: &str,
     ) -> ExtractorBuilder<T, CompletionModel> {
         ExtractorBuilder::new(self.completion_model(model))
-    }
-
-    #[deprecated(
-        since = "0.2.0",
-        note = "Please use the `agent` method instead of the `rag_agent` method."
-    )]
-    pub fn rag_agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    #[deprecated(
-        since = "0.2.0",
-        note = "Please use the `agent` method instead of the `tool_rag_agent` method."
-    )]
-    pub fn tool_rag_agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    #[deprecated(
-        since = "0.2.0",
-        note = "Please use the `agent` method instead of the `context_rag_agent` method."
-    )]
-    pub fn context_rag_agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
     }
 }
 
@@ -516,26 +471,16 @@ impl completion::CompletionModel for CompletionModel {
             vec![]
         };
 
-        // Add context documents to chat history
-        full_history.append(
-            completion_request
-                .documents
-                .into_iter()
-                .map(|doc| completion::Message {
-                    role: "system".into(),
-                    content: serde_json::to_string(&doc).expect("Document should serialize"),
-                })
-                .collect::<Vec<_>>()
-                .as_mut(),
-        );
+        // Extend existing chat history
+        full_history.append(&mut completion_request.chat_history);
 
         // Add context documents to chat history
-        full_history.append(&mut completion_request.chat_history);
+        let prompt_with_context = completion_request.prompt_with_context();
 
         // Add context documents to chat history
         full_history.push(completion::Message {
             role: "user".into(),
-            content: completion_request.prompt,
+            content: prompt_with_context,
         });
 
         let request = if completion_request.tools.is_empty() {
