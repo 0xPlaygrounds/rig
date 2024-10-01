@@ -28,7 +28,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Add embeddings to vector store
-    vector_store.add_documents(embeddings).await?;
+    // vector_store.add_documents(embeddings).await?;
 
     // Query the index
     let results = vector_store

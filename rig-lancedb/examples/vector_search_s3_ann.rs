@@ -55,7 +55,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Add embeddings to vector store
-    vector_store.add_documents(embeddings).await?;
+    // vector_store.add_documents(embeddings).await?;
 
     // See [LanceDB indexing](https://lancedb.github.io/lancedb/concepts/index_ivfpq/#product-quantization) for more information
     vector_store
