@@ -122,13 +122,6 @@ pub struct Document {
 
 impl std::fmt::Display for Document {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let metadata = self
-            .additional_props
-            .iter()
-            .map(|(k, v)| format!("{}: {:?}", k, v))
-            .collect::<Vec<_>>()
-            .join(" ");
-
         write!(
             f,
             concat!("<file id: {}>\n", "{}\n", "</file>\n"),
@@ -136,6 +129,13 @@ impl std::fmt::Display for Document {
             if self.additional_props.is_empty() {
                 self.text.clone()
             } else {
+                let mut sorted_props = self.additional_props.iter().collect::<Vec<_>>();
+                sorted_props.sort_by(|a, b| a.0.cmp(b.0));
+                let metadata = sorted_props
+                    .iter()
+                    .map(|(k, v)| format!("{}: {:?}", k, v))
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 format!("<metadata {} />\n{}", metadata, self.text)
             }
         )
