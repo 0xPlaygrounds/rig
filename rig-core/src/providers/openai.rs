@@ -118,27 +118,6 @@ impl Client {
         CompletionModel::new(self.clone(), model)
     }
 
-    /// Create a model builder with the given completion model.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::openai::{Client, self};
-    ///
-    /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key");
-    ///
-    /// let completion_model = openai.model(openai::GPT_4)
-    ///    .temperature(0.0)
-    ///    .build();
-    /// ```
-    #[deprecated(
-        since = "0.2.0",
-        note = "Please use the `agent` method instead of the `model` method."
-    )]
-    pub fn model(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
     /// Create an agent builder with the given completion model.
     ///
     /// # Example
@@ -163,30 +142,6 @@ impl Client {
         model: &str,
     ) -> ExtractorBuilder<T, CompletionModel> {
         ExtractorBuilder::new(self.completion_model(model))
-    }
-
-    #[deprecated(
-        since = "0.2.0",
-        note = "Please use the `agent` method instead of the `rag_agent` method."
-    )]
-    pub fn rag_agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    #[deprecated(
-        since = "0.2.0",
-        note = "Please use the `agent` method instead of the `tool_rag_agent` method."
-    )]
-    pub fn tool_rag_agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    #[deprecated(
-        since = "0.2.0",
-        note = "Please use the `agent` method instead of the `context_rag_agent` method."
-    )]
-    pub fn context_rag_agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
     }
 }
 
