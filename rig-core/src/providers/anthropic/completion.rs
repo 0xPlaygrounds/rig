@@ -157,19 +157,17 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let prompt_with_context = completion_request.prompt_with_context();
+
         let request = json!({
             "model": self.model,
             "messages": completion_request
                 .chat_history
                 .into_iter()
                 .map(Message::from)
-                .chain(completion_request.documents.into_iter().map(|doc| Message {
-                    role: "system".to_owned(),
-                    content: serde_json::to_string(&doc).expect("Document should serialize"),
-                }))
                 .chain(iter::once(Message {
                     role: "user".to_owned(),
-                    content: completion_request.prompt,
+                    content: prompt_with_context,
                 }))
                 .collect::<Vec<_>>(),
             "max_tokens": completion_request.max_tokens,

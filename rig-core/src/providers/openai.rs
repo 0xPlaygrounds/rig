@@ -443,26 +443,16 @@ impl completion::CompletionModel for CompletionModel {
             vec![]
         };
 
-        // Add context documents to chat history
-        full_history.append(
-            completion_request
-                .documents
-                .into_iter()
-                .map(|doc| completion::Message {
-                    role: "system".into(),
-                    content: serde_json::to_string(&doc).expect("Document should serialize"),
-                })
-                .collect::<Vec<_>>()
-                .as_mut(),
-        );
+        // Extend existing chat history
+        full_history.append(&mut completion_request.chat_history);
 
         // Add context documents to chat history
-        full_history.append(&mut completion_request.chat_history);
+        let prompt_with_context = completion_request.prompt_with_context();
 
         // Add context documents to chat history
         full_history.push(completion::Message {
             role: "user".into(),
-            content: completion_request.prompt,
+            content: prompt_with_context,
         });
 
         let request = if completion_request.tools.is_empty() {

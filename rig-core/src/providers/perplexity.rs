@@ -203,17 +203,7 @@ impl completion::CompletionModel for CompletionModel {
         };
 
         // Add context documents to chat history
-        messages.append(
-            completion_request
-                .documents
-                .into_iter()
-                .map(|doc| completion::Message {
-                    role: "system".into(),
-                    content: serde_json::to_string(&doc).expect("Document should serialize"),
-                })
-                .collect::<Vec<_>>()
-                .as_mut(),
-        );
+        let prompt_with_context = completion_request.prompt_with_context();
 
         // Add chat history to messages
         messages.extend(completion_request.chat_history);
@@ -221,7 +211,7 @@ impl completion::CompletionModel for CompletionModel {
         // Add user prompt to messages
         messages.push(completion::Message {
             role: "user".to_string(),
-            content: completion_request.prompt,
+            content: prompt_with_context,
         });
 
         let request = json!({
