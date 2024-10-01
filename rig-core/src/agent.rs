@@ -177,12 +177,12 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
                         .into_iter()
                         .map(|(_, id, doc)| {
                             // Pretty print the document if possible for better readability
-                            let doc_text = serde_json::to_string_pretty(&doc)
+                            let text = serde_json::to_string_pretty(&doc)
                                 .unwrap_or_else(|_| doc.to_string());
 
                             Document {
                                 id,
-                                text: doc_text,
+                                text,
                                 additional_props: HashMap::new(),
                             }
                         })
