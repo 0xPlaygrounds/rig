@@ -492,25 +492,12 @@ impl completion::CompletionModel for CompletionModel {
         full_history.append(&mut completion_request.chat_history);
 
         // Add context documents to chat history
-        let prompt_content = if !completion_request.documents.is_empty() {
-            format!(
-                "<attachments>\n{}</attachments>\n\n{}",
-                completion_request
-                    .documents
-                    .iter()
-                    .map(|doc| doc.to_string())
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-                completion_request.prompt
-            )
-        } else {
-            completion_request.prompt
-        };
+        let prompt_with_context = completion_request.prompt_with_context();
 
         // Add context documents to chat history
         full_history.push(completion::Message {
             role: "user".into(),
-            content: prompt_content,
+            content: prompt_with_context,
         });
 
         let request = if completion_request.tools.is_empty() {

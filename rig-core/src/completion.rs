@@ -125,7 +125,7 @@ impl std::fmt::Display for Document {
         let metadata = self
             .additional_props
             .iter()
-            .map(|(k, v)| format!("{}: {}", k, v))
+            .map(|(k, v)| format!("{}: {:?}", k, v))
             .collect::<Vec<_>>()
             .join(" ");
 
@@ -263,6 +263,24 @@ pub struct CompletionRequest {
     pub max_tokens: Option<u64>,
     /// Additional provider-specific parameters to be sent to the completion model provider
     pub additional_params: Option<serde_json::Value>,
+}
+
+impl CompletionRequest {
+    pub fn prompt_with_context(&self) -> String {
+        if !self.documents.is_empty() {
+            format!(
+                "<attachments>\n{}</attachments>\n\n{}",
+                self.documents
+                    .iter()
+                    .map(|doc| doc.to_string())
+                    .collect::<Vec<_>>()
+                    .join(""),
+                self.prompt
+            )
+        } else {
+            self.prompt.clone()
+        }
+    }
 }
 
 /// Builder struct for constructing a completion request.
@@ -452,5 +470,80 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     pub async fn send(self) -> Result<CompletionResponse<M::Response>, CompletionError> {
         let model = self.model.clone();
         model.completion(self.build()).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_document_display_without_metadata() {
+        let doc = Document {
+            id: "123".to_string(),
+            text: "This is a test document.".to_string(),
+            additional_props: HashMap::new(),
+        };
+
+        let expected = "<file id: 123>\nThis is a test document.\n</file>\n";
+        assert_eq!(format!("{}", doc), expected);
+    }
+
+    #[test]
+    fn test_document_display_with_metadata() {
+        let mut additional_props = HashMap::new();
+        additional_props.insert("author".to_string(), "John Doe".to_string());
+        additional_props.insert("length".to_string(), "42".to_string());
+
+        let doc = Document {
+            id: "123".to_string(),
+            text: "This is a test document.".to_string(),
+            additional_props,
+        };
+
+        let expected = concat!(
+            "<file id: 123>\n",
+            "<metadata author: \"John Doe\" length: \"42\" />\n",
+            "This is a test document.\n",
+            "</file>\n"
+        );
+        assert_eq!(format!("{}", doc), expected);
+    }
+
+    #[test]
+    fn test_prompt_with_context_with_documents() {
+        let doc1 = Document {
+            id: "doc1".to_string(),
+            text: "Document 1 text.".to_string(),
+            additional_props: HashMap::new(),
+        };
+
+        let doc2 = Document {
+            id: "doc2".to_string(),
+            text: "Document 2 text.".to_string(),
+            additional_props: HashMap::new(),
+        };
+
+        let request = CompletionRequest {
+            prompt: "What is the capital of France?".to_string(),
+            preamble: None,
+            chat_history: Vec::new(),
+            documents: vec![doc1, doc2],
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            additional_params: None,
+        };
+
+        let expected = concat!(
+            "<attachments>\n",
+            "<file id: doc1>\nDocument 1 text.\n</file>\n",
+            "<file id: doc2>\nDocument 2 text.\n</file>\n",
+            "</attachments>\n\n",
+            "What is the capital of France?"
+        )
+        .to_string();
+
+        assert_eq!(request.prompt_with_context(), expected);
     }
 }

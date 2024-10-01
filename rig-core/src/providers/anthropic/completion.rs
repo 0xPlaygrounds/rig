@@ -157,21 +157,7 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        // Add context documents to chat history
-        let prompt_content = if !completion_request.documents.is_empty() {
-            format!(
-                "<attachments>\n{}</attachments>\n\n{}",
-                completion_request
-                    .documents
-                    .iter()
-                    .map(|doc| doc.to_string())
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-                completion_request.prompt
-            )
-        } else {
-            completion_request.prompt
-        };
+        let prompt_with_context = completion_request.prompt_with_context();
 
         let request = json!({
             "model": self.model,
@@ -181,7 +167,7 @@ impl completion::CompletionModel for CompletionModel {
                 .map(Message::from)
                 .chain(iter::once(Message {
                     role: "user".to_owned(),
-                    content: prompt_content,
+                    content: prompt_with_context,
                 }))
                 .collect::<Vec<_>>(),
             "max_tokens": completion_request.max_tokens,

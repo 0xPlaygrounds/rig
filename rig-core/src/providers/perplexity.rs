@@ -227,20 +227,7 @@ impl completion::CompletionModel for CompletionModel {
         };
 
         // Add context documents to chat history
-        let prompt_content = if !completion_request.documents.is_empty() {
-            format!(
-                "<attachments>\n{}</attachments>\n\n{}",
-                completion_request
-                    .documents
-                    .iter()
-                    .map(|doc| doc.to_string())
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-                completion_request.prompt
-            )
-        } else {
-            completion_request.prompt
-        };
+        let prompt_with_context = completion_request.prompt_with_context();
 
         // Add chat history to messages
         messages.extend(completion_request.chat_history);
@@ -248,7 +235,7 @@ impl completion::CompletionModel for CompletionModel {
         // Add user prompt to messages
         messages.push(completion::Message {
             role: "user".to_string(),
-            content: prompt_content,
+            content: prompt_with_context,
         });
 
         let request = json!({
