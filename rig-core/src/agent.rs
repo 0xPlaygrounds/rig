@@ -172,17 +172,17 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
             .then(|(num_sample, index)| async {
                 Ok::<_, VectorStoreError>(
                     index
-                        .top_n_from_query(prompt, *num_sample)
+                        .top_n(prompt, *num_sample)
                         .await?
                         .into_iter()
-                        .map(|(_, doc)| {
+                        .map(|(_, id, doc)| {
                             // Pretty print the document if possible for better readability
-                            let doc_text = serde_json::to_string_pretty(&doc.document)
-                                .unwrap_or_else(|_| doc.document.to_string());
+                            let text = serde_json::to_string_pretty(&doc)
+                                .unwrap_or_else(|_| doc.to_string());
 
                             Document {
-                                id: doc.id,
-                                text: doc_text,
+                                id,
+                                text,
                                 additional_props: HashMap::new(),
                             }
                         })
@@ -200,10 +200,10 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
             .then(|(num_sample, index)| async {
                 Ok::<_, VectorStoreError>(
                     index
-                        .top_n_ids_from_query(prompt, *num_sample)
+                        .top_n_ids(prompt, *num_sample)
                         .await?
                         .into_iter()
-                        .map(|(_, doc)| doc)
+                        .map(|(_, id)| id)
                         .collect::<Vec<_>>(),
                 )
             })

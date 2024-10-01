@@ -1,10 +1,11 @@
 use futures::StreamExt;
-use mongodb::bson::doc;
+use mongodb::bson::{self, doc};
 
 use rig::{
     embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel},
     vector_store::{VectorStore, VectorStoreError, VectorStoreIndex},
 };
+use serde::Deserialize;
 
 /// A MongoDB vector store.
 pub struct MongoDbVectorStore {
@@ -108,6 +109,33 @@ pub struct MongoDbVectorIndex<M: EmbeddingModel> {
 }
 
 impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
+    /// Vector search stage of aggregation pipeline of mongoDB collection.
+    /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
+    fn pipeline_search_stage(&self, prompt_embedding: &Embedding, n: usize) -> bson::Document {
+        doc! {
+          "$vectorSearch": {
+            "index": &self.index_name,
+            "path": "embeddings.vec",
+            "queryVector": &prompt_embedding.vec,
+            "numCandidates": (n * 10) as u32,
+            "limit": n as u32,
+            "filter": &self.filter,
+          }
+        }
+    }
+
+    /// Score declaration stage of aggregation pipeline of mongoDB collection.
+    /// /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
+    fn pipeline_score_stage(&self) -> bson::Document {
+        doc! {
+          "$addFields": {
+            "score": { "$meta": "vectorSearchScore" }
+          }
+        }
+    }
+}
+
+impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
     pub fn new(
         collection: mongodb::Collection<DocumentEmbeddings>,
         model: M,
@@ -124,38 +152,64 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
 }
 
 impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbVectorIndex<M> {
-    async fn top_n_from_query(
+    async fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
         &self,
         query: &str,
         n: usize,
-    ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
+    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_document(query).await?;
-        self.top_n_from_embedding(&prompt_embedding, n).await
-    }
 
-    async fn top_n_from_embedding(
-        &self,
-        prompt_embedding: &Embedding,
-        n: usize,
-    ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
         let mut cursor = self
             .collection
             .aggregate(
                 [
+                    self.pipeline_search_stage(&prompt_embedding, n),
+                    self.pipeline_score_stage(),
+                ],
+                None,
+            )
+            .await
+            .map_err(mongodb_to_rig_error)?
+            .with_type::<serde_json::Value>();
+
+        let mut results = Vec::new();
+        while let Some(doc) = cursor.next().await {
+            let doc = doc.map_err(mongodb_to_rig_error)?;
+            let score = doc.get("score").expect("score").as_f64().expect("f64");
+            let id = doc.get("_id").expect("_id").to_string();
+            let doc_t: T = serde_json::from_value(doc).map_err(VectorStoreError::JsonError)?;
+            results.push((score, id, doc_t));
+        }
+
+        tracing::info!(target: "rig",
+            "Selected documents: {}",
+            results.iter()
+                .map(|(distance, id, _)| format!("{} ({})", id, distance))
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
+
+        Ok(results)
+    }
+
+    async fn top_n_ids(
+        &self,
+        query: &str,
+        n: usize,
+    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+        let prompt_embedding = self.model.embed_document(query).await?;
+
+        let mut cursor = self
+            .collection
+            .aggregate(
+                [
+                    self.pipeline_search_stage(&prompt_embedding, n),
+                    self.pipeline_score_stage(),
                     doc! {
-                      "$vectorSearch": {
-                        "index": &self.index_name,
-                        "path": "embeddings.vec",
-                        "queryVector": &prompt_embedding.vec,
-                        "numCandidates": (n * 10) as u32,
-                        "limit": n as u32,
-                        "filter": &self.filter,
-                      }
-                    },
-                    doc! {
-                      "$addFields": {
-                        "score": { "$meta": "vectorSearchScore" }
-                      }
+                        "$project": {
+                            "_id": 1,
+                            "score": 1
+                        },
                     },
                 ],
                 None,
@@ -168,14 +222,14 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
         while let Some(doc) = cursor.next().await {
             let doc = doc.map_err(mongodb_to_rig_error)?;
             let score = doc.get("score").expect("score").as_f64().expect("f64");
-            let document: DocumentEmbeddings = serde_json::from_value(doc).expect("document");
-            results.push((score, document));
+            let id = doc.get("_id").expect("_id").to_string();
+            results.push((score, id));
         }
 
         tracing::info!(target: "rig",
             "Selected documents: {}",
             results.iter()
-                .map(|(distance, doc)| format!("{} ({})", doc.id, distance))
+                .map(|(distance, id)| format!("{} ({})", id, distance))
                 .collect::<Vec<String>>()
                 .join(", ")
         );

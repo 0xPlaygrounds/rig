@@ -1,7 +1,8 @@
 use futures::future::BoxFuture;
 use serde::Deserialize;
+use serde_json::Value;
 
-use crate::embeddings::{DocumentEmbeddings, Embedding, EmbeddingError};
+use crate::embeddings::{DocumentEmbeddings, EmbeddingError};
 
 pub mod in_memory_store;
 
@@ -50,167 +51,48 @@ pub trait VectorStore: Send + Sync {
 
 /// Trait for vector store indexes
 pub trait VectorStoreIndex: Send + Sync {
-    /// Get the top n documents based on the distance to the given embedding.
-    /// The distance is calculated as the cosine distance between the prompt and
-    /// the document embedding.
-    /// The result is a list of tuples with the distance and the document.
-    fn top_n_from_query(
+    /// Get the top n documents based on the distance to the given query.
+    /// The result is a list of tuples of the form (score, id, document)
+    fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
         &self,
         query: &str,
         n: usize,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> + Send;
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, String, T)>, VectorStoreError>> + Send;
 
-    /// Same as `top_n_from_query` but returns the documents without its embeddings.
-    /// The documents are deserialized into the given type.
-    fn top_n_documents_from_query<T: for<'a> Deserialize<'a>>(
+    /// Same as `top_n` but returns the document ids only.
+    fn top_n_ids(
         &self,
         query: &str,
         n: usize,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, T)>, VectorStoreError>> + Send {
-        async move {
-            let documents = self.top_n_from_query(query, n).await?;
-            Ok(documents
-                .into_iter()
-                .map(|(distance, doc)| (distance, serde_json::from_value(doc.document).unwrap()))
-                .collect())
-        }
-    }
-
-    /// Same as `top_n_from_query` but returns the document ids only.
-    fn top_n_ids_from_query(
-        &self,
-        query: &str,
-        n: usize,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + Send
-    {
-        async move {
-            let documents = self.top_n_from_query(query, n).await?;
-            Ok(documents
-                .into_iter()
-                .map(|(distance, doc)| (distance, doc.id))
-                .collect())
-        }
-    }
-
-    /// Get the top n documents based on the distance to the given embedding.
-    /// The distance is calculated as the cosine distance between the prompt and
-    /// the document embedding.
-    /// The result is a list of tuples with the distance and the document.
-    fn top_n_from_embedding(
-        &self,
-        prompt_embedding: &Embedding,
-        n: usize,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> + Send;
-
-    /// Same as `top_n_from_embedding` but returns the documents without its embeddings.
-    /// The documents are deserialized into the given type.
-    fn top_n_documents_from_embedding<T: for<'a> Deserialize<'a>>(
-        &self,
-        prompt_embedding: &Embedding,
-        n: usize,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, T)>, VectorStoreError>> + Send {
-        async move {
-            let documents = self.top_n_from_embedding(prompt_embedding, n).await?;
-            Ok(documents
-                .into_iter()
-                .map(|(distance, doc)| (distance, serde_json::from_value(doc.document).unwrap()))
-                .collect())
-        }
-    }
-
-    /// Same as `top_n_from_embedding` but returns the document ids only.
-    fn top_n_ids_from_embedding(
-        &self,
-        prompt_embedding: &Embedding,
-        n: usize,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + Send
-    {
-        async move {
-            let documents = self.top_n_from_embedding(prompt_embedding, n).await?;
-            Ok(documents
-                .into_iter()
-                .map(|(distance, doc)| (distance, doc.id))
-                .collect())
-        }
-    }
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + Send;
 }
 
+pub type TopNResults = Result<Vec<(f64, String, Value)>, VectorStoreError>;
+
 pub trait VectorStoreIndexDyn: Send + Sync {
-    fn top_n_from_query<'a>(
+    fn top_n<'a>(&'a self, query: &'a str, n: usize) -> BoxFuture<'a, TopNResults>;
+
+    fn top_n_ids<'a>(
         &'a self,
         query: &'a str,
         n: usize,
-    ) -> BoxFuture<'a, Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>>;
-
-    fn top_n_ids_from_query<'a>(
-        &'a self,
-        query: &'a str,
-        n: usize,
-    ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        Box::pin(async move {
-            let documents = self.top_n_from_query(query, n).await?;
-            Ok(documents
-                .into_iter()
-                .map(|(distance, doc)| (distance, doc.id))
-                .collect())
-        })
-    }
-
-    fn top_n_from_embedding<'a>(
-        &'a self,
-        prompt_embedding: &'a Embedding,
-        n: usize,
-    ) -> BoxFuture<'a, Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>>;
-
-    fn top_n_ids_from_embedding<'a>(
-        &'a self,
-        prompt_embedding: &'a Embedding,
-        n: usize,
-    ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        Box::pin(async move {
-            let documents = self.top_n_from_embedding(prompt_embedding, n).await?;
-            Ok(documents
-                .into_iter()
-                .map(|(distance, doc)| (distance, doc.id))
-                .collect())
-        })
-    }
+    ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>>;
 }
 
 impl<I: VectorStoreIndex> VectorStoreIndexDyn for I {
-    fn top_n_from_query<'a>(
+    fn top_n<'a>(
         &'a self,
         query: &'a str,
         n: usize,
-    ) -> BoxFuture<'a, Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> {
-        Box::pin(self.top_n_from_query(query, n))
+    ) -> BoxFuture<'a, Result<Vec<(f64, String, Value)>, VectorStoreError>> {
+        Box::pin(self.top_n(query, n))
     }
 
-    fn top_n_from_embedding<'a>(
+    fn top_n_ids<'a>(
         &'a self,
-        prompt_embedding: &'a Embedding,
+        query: &'a str,
         n: usize,
-    ) -> BoxFuture<'a, Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError>> {
-        Box::pin(self.top_n_from_embedding(prompt_embedding, n))
-    }
-}
-
-pub struct NoIndex;
-
-impl VectorStoreIndex for NoIndex {
-    async fn top_n_from_query(
-        &self,
-        _query: &str,
-        _n: usize,
-    ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
-        Ok(vec![])
-    }
-
-    async fn top_n_from_embedding(
-        &self,
-        _prompt_embedding: &Embedding,
-        _n: usize,
-    ) -> Result<Vec<(f64, DocumentEmbeddings)>, VectorStoreError> {
-        Ok(vec![])
+    ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
+        Box::pin(self.top_n_ids(query, n))
     }
 }

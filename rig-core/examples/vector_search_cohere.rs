@@ -1,7 +1,7 @@
 use std::env;
 
 use rig::{
-    embeddings::EmbeddingsBuilder,
+    embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
     providers::cohere::Client,
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStore, VectorStoreIndex},
 };
@@ -29,10 +29,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let index = vector_store.index(search_model);
 
     let results = index
-        .top_n_from_query("What is a linglingdong?", 1)
+        .top_n::<DocumentEmbeddings>("What is a linglingdong?", 1)
         .await?
         .into_iter()
-        .map(|(score, doc)| (score, doc.id, doc.document))
+        .map(|(score, id, doc)| (score, id, doc.document))
         .collect::<Vec<_>>();
 
     println!("Results: {:?}", results);
