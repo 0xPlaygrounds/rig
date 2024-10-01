@@ -120,6 +120,28 @@ pub struct Document {
     pub additional_props: HashMap<String, String>,
 }
 
+impl std::fmt::Display for Document {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let metadata = self
+            .additional_props
+            .iter()
+            .map(|(k, v)| format!("{}: {}", k, v))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        write!(
+            f,
+            concat!("<file id: {}>\n", "{}\n", "</file>\n"),
+            self.id,
+            if self.additional_props.is_empty() {
+                self.text.clone()
+            } else {
+                format!("<metadata {} />\n{}", metadata, self.text)
+            }
+        )
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ToolDefinition {
     pub name: String,

@@ -157,19 +157,31 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        // Add context documents to chat history
+        let prompt_content = if !completion_request.documents.is_empty() {
+            format!(
+                "<attachments>\n{}</attachments>\n\n{}",
+                completion_request
+                    .documents
+                    .iter()
+                    .map(|doc| doc.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                completion_request.prompt
+            )
+        } else {
+            completion_request.prompt
+        };
+
         let request = json!({
             "model": self.model,
             "messages": completion_request
                 .chat_history
                 .into_iter()
                 .map(Message::from)
-                .chain(completion_request.documents.into_iter().map(|doc| Message {
-                    role: "system".to_owned(),
-                    content: serde_json::to_string(&doc).expect("Document should serialize"),
-                }))
                 .chain(iter::once(Message {
                     role: "user".to_owned(),
-                    content: completion_request.prompt,
+                    content: prompt_content,
                 }))
                 .collect::<Vec<_>>(),
             "max_tokens": completion_request.max_tokens,
