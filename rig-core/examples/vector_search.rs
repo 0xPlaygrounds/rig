@@ -1,7 +1,7 @@
 use std::env;
 
 use rig::{
-    embeddings::EmbeddingsBuilder,
+    embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::{in_memory_store::InMemoryVectorIndex, VectorStoreIndex},
 };
@@ -24,13 +24,22 @@ async fn main() -> Result<(), anyhow::Error> {
     let index = InMemoryVectorIndex::from_embeddings(model, embeddings).await?;
 
     let results = index
-        .top_n_from_query("What is a linglingdong?", 1)
+        .top_n::<DocumentEmbeddings>("What is a linglingdong?", 1)
         .await?
         .into_iter()
-        .map(|(score, doc)| (score, doc.id, doc.document))
+        .map(|(score, id, doc)| (score, id, doc.document))
         .collect::<Vec<_>>();
 
     println!("Results: {:?}", results);
+
+    let id_results = index
+        .top_n_ids("What is a linglingdong?", 1)
+        .await?
+        .into_iter()
+        .map(|(score, id)| (score, id))
+        .collect::<Vec<_>>();
+
+    println!("ID results: {:?}", id_results);
 
     Ok(())
 }
