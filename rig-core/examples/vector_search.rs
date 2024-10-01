@@ -32,5 +32,14 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("Results: {:?}", results);
 
+    let id_results = index
+        .top_n_ids("What is a linglingdong?", 1)
+        .await?
+        .into_iter()
+        .map(|(score, id)| (score, id))
+        .collect::<Vec<_>>();
+
+    println!("ID results: {:?}", id_results);
+
     Ok(())
 }

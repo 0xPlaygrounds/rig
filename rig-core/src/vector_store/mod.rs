@@ -52,29 +52,19 @@ pub trait VectorStore: Send + Sync {
 /// Trait for vector store indexes
 pub trait VectorStoreIndex: Send + Sync {
     /// Get the top n documents based on the distance to the given query.
-    /// The result is a list of tuples with the distance and the document.
+    /// The result is a list of tuples of the form (score, id, document)
     fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
         &self,
         query: &str,
         n: usize,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, String, T)>, VectorStoreError>> + Send;
 
-    /// Same as `top_n_from_query` but returns the document ids only.
-    fn top_n_ids<T: for<'a> Deserialize<'a> + std::marker::Send>(
+    /// Same as `top_n` but returns the document ids only.
+    fn top_n_ids(
         &self,
         query: &str,
         n: usize,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + Send
-    {
-        async move {
-            Ok(self
-                .top_n::<T>(query, n)
-                .await?
-                .into_iter()
-                .map(|(distance, id, _)| (distance, id))
-                .collect())
-        }
-    }
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + Send;
 }
 
 pub type TopNResults = Result<Vec<(f64, String, Value)>, VectorStoreError>;
@@ -103,26 +93,6 @@ impl<I: VectorStoreIndex> VectorStoreIndexDyn for I {
         query: &'a str,
         n: usize,
     ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        Box::pin(self.top_n_ids::<String>(query, n))
-    }
-}
-
-pub struct NoIndex;
-
-impl VectorStoreIndex for NoIndex {
-    async fn top_n<T: for<'a> Deserialize<'a>>(
-        &self,
-        _query: &str,
-        _n: usize,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        Ok(vec![])
-    }
-
-    async fn top_n_ids<T: for<'a> Deserialize<'a>>(
-        &self,
-        _query: &str,
-        _n: usize,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        Ok(vec![])
+        Box::pin(self.top_n_ids(query, n))
     }
 }

@@ -49,7 +49,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = vector_store.index(model, "context_vector_index", doc! {});
+    let index = vector_store.index(model, "vector_index", doc! {});
 
     // Query the index
     let results = index
@@ -60,6 +60,15 @@ async fn main() -> Result<(), anyhow::Error> {
         .collect::<Vec<_>>();
 
     println!("Results: {:?}", results);
+
+    let id_results = index
+        .top_n_ids("What is a linglingdong?", 1)
+        .await?
+        .into_iter()
+        .map(|(score, id)| (score, id))
+        .collect::<Vec<_>>();
+
+    println!("ID results: {:?}", id_results);
 
     Ok(())
 }

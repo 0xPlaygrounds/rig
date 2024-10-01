@@ -8,7 +8,7 @@ use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 
 use super::{VectorStore, VectorStoreError, VectorStoreIndex};
-use crate::embeddings::{DocumentEmbeddings, EmbeddingModel, EmbeddingsBuilder};
+use crate::embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel, EmbeddingsBuilder};
 
 /// InMemoryVectorStore is a simple in-memory vector store that stores embeddings
 /// in-memory using a HashMap.
@@ -16,6 +16,53 @@ use crate::embeddings::{DocumentEmbeddings, EmbeddingModel, EmbeddingsBuilder};
 pub struct InMemoryVectorStore {
     /// The embeddings are stored in a HashMap with the document ID as the key.
     embeddings: HashMap<String, DocumentEmbeddings>,
+}
+
+impl InMemoryVectorStore {
+    /// Implement vector search on InMemoryVectorStore.
+    /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for InMemoryVectorStore.
+    fn vector_search(&self, prompt_embedding: &Embedding, n: usize) -> EmbeddingRanking {
+        // Sort documents by best embedding distance
+        let mut docs: EmbeddingRanking = BinaryHeap::new();
+
+        for (id, doc_embeddings) in self.embeddings.iter() {
+            // Get the best context for the document given the prompt
+            if let Some((distance, embed_doc)) = doc_embeddings
+                .embeddings
+                .iter()
+                .map(|embedding| {
+                    (
+                        OrderedFloat(embedding.distance(prompt_embedding)),
+                        &embedding.document,
+                    )
+                })
+                .min_by(|a, b| a.0.cmp(&b.0))
+            {
+                docs.push(Reverse(RankingItem(
+                    distance,
+                    id,
+                    doc_embeddings,
+                    embed_doc,
+                )));
+            };
+
+            // If the heap size exceeds n, pop the least old element.
+            if docs.len() > n {
+                docs.pop();
+            }
+        }
+
+        // Log selected tools with their distances
+        tracing::info!(target: "rig",
+            "Selected documents: {}",
+            docs.iter()
+                .map(|Reverse(RankingItem(distance, id, _, _))| format!("{} ({})", id, distance))
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
+
+        docs
+    }
 }
 
 /// RankingItem(distance, document_id, document, embed_doc)
@@ -205,44 +252,7 @@ impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorI
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let prompt_embedding = &self.model.embed_document(query).await?;
 
-        // Sort documents by best embedding distance
-        let mut docs: EmbeddingRanking = BinaryHeap::new();
-
-        for (id, doc_embeddings) in self.store.embeddings.iter() {
-            // Get the best context for the document given the prompt
-            if let Some((distance, embed_doc)) = doc_embeddings
-                .embeddings
-                .iter()
-                .map(|embedding| {
-                    (
-                        OrderedFloat(embedding.distance(prompt_embedding)),
-                        &embedding.document,
-                    )
-                })
-                .min_by(|a, b| a.0.cmp(&b.0))
-            {
-                docs.push(Reverse(RankingItem(
-                    distance,
-                    id,
-                    doc_embeddings,
-                    embed_doc,
-                )));
-            };
-
-            // If the heap size exceeds n, pop the least old element.
-            if docs.len() > n {
-                docs.pop();
-            }
-        }
-
-        // Log selected tools with their distances
-        tracing::info!(target: "rig",
-            "Selected documents: {}",
-            docs.iter()
-                .map(|Reverse(RankingItem(distance, id, _, _))| format!("{} ({})", id, distance))
-                .collect::<Vec<String>>()
-                .join(", ")
-        );
+        let docs = self.store.vector_search(prompt_embedding, n);
 
         // Return n best
         docs.into_iter()
@@ -254,6 +264,21 @@ impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorI
                     serde_json::from_value(doc_value).map_err(VectorStoreError::JsonError)?,
                 ))
             })
+            .collect::<Result<Vec<_>, _>>()
+    }
+
+    async fn top_n_ids(
+        &self,
+        query: &str,
+        n: usize,
+    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+        let prompt_embedding = &self.model.embed_document(query).await?;
+
+        let docs = self.store.vector_search(prompt_embedding, n);
+
+        // Return n best
+        docs.into_iter()
+            .map(|Reverse(RankingItem(distance, _, doc, _))| Ok((distance.0, doc.id.clone())))
             .collect::<Result<Vec<_>, _>>()
     }
 }

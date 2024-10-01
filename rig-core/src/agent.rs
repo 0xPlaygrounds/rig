@@ -198,14 +198,14 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 
         let dynamic_tools = stream::iter(self.dynamic_tools.iter())
             .then(|(num_sample, index)| async {
-                index
-                    .top_n(prompt, *num_sample)
-                    .await?
-                    .into_iter()
-                    .map(|(_, _, doc)| {
-                        serde_json::to_string(&doc).map_err(VectorStoreError::JsonError)
-                    })
-                    .collect::<Result<Vec<_>, _>>()
+                Ok::<_, VectorStoreError>(
+                    index
+                        .top_n_ids(prompt, *num_sample)
+                        .await?
+                        .into_iter()
+                        .map(|(_, id)| id)
+                        .collect::<Vec<_>>(),
+                )
             })
             .try_fold(vec![], |mut acc, docs| async {
                 for doc in docs {
