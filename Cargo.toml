@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "rig-core",
+    "rig-core", "rig-macros", "rig-macros/rig-macros-derive",
     "rig-mongodb",
 ]
