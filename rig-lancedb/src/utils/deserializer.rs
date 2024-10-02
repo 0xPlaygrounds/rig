@@ -25,6 +25,8 @@ fn arrow_to_rig_error(e: ArrowError) -> VectorStoreError {
     VectorStoreError::DatastoreError(Box::new(e))
 }
 
+/// Trait used to deserialize data returned from LanceDB queries into a serde_json::Value vector.
+/// Data returned by LanceDB is a vector of `RecordBatch` items.
 pub trait RecordBatchDeserializer {
     fn deserialize(&self) -> Result<Vec<serde_json::Value>, VectorStoreError>;
 }
@@ -43,6 +45,7 @@ impl RecordBatchDeserializer for Vec<RecordBatch> {
 
 impl RecordBatchDeserializer for RecordBatch {
     fn deserialize(&self) -> Result<Vec<serde_json::Value>, VectorStoreError> {
+        /// Recursive function that matches all possible data types store in LanceDB and converts them to serde_json::Value.
         fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError> {
             match column.data_type() {
                 DataType::Null => Ok(vec![serde_json::Value::Null]),

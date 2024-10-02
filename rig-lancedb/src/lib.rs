@@ -22,15 +22,19 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
 }
 
 pub struct LanceDbVectorStore<M: EmbeddingModel> {
-    /// Defines which model is used to generate embeddings for the vector store
+    /// Defines which model is used to generate embeddings for the vector store.
     model: M,
+    /// LanceDB table containing embeddings.
     table: lancedb::Table,
+    /// Column name in `table` that contains the id of a record.
     id_field: String,
     /// Vector search params that are used during vector search operations.
     search_params: SearchParams,
 }
 
 impl<M: EmbeddingModel> LanceDbVectorStore<M> {
+    /// Apply the search_params to the vector query.
+    /// This is a helper function used by the methods `top_n` and `top_n_ids` of the `VectorStoreIndex` trait.
     fn build_query(&self, mut query: VectorQuery) -> VectorQuery {
         let SearchParams {
             distance_type,
@@ -136,7 +140,8 @@ impl<M: EmbeddingModel> LanceDbVectorStore<M> {
         })
     }
 
-    /// Define index on document table `id` field for search optimization.
+    /// Define an index on the specified fields of the lanceDB table for search optimization.
+    /// Note: it is required to add an index on the column containing the embeddings when performing an ANN type vector search.
     pub async fn create_index(
         &self,
         index: Index,
