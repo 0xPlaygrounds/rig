@@ -21,6 +21,74 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
     VectorStoreError::JsonError(e)
 }
 
+/// # Example
+/// ```
+/// use std::{env, sync::Arc};
+
+/// use arrow_array::RecordBatchIterator;
+/// use fixture::{as_record_batch, schema};
+/// use rig::{
+///     embeddings::{EmbeddingModel, EmbeddingsBuilder},
+///     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+///     vector_store::VectorStoreIndexDyn,
+/// };
+/// use rig_lancedb::{LanceDbVectorStore, SearchParams};
+/// use serde::Deserialize;
+/// 
+/// #[derive(Deserialize, Debug)]
+/// pub struct VectorSearchResult {
+///     pub id: String,
+///     pub content: String,
+/// }
+///
+/// // Initialize OpenAI client. Use this to generate embeddings (and generate test data for RAG demo).
+/// let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
+/// let openai_client = Client::new(&openai_api_key);
+
+/// // Select the embedding model and generate our embeddings
+/// let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+
+/// let embeddings = EmbeddingsBuilder::new(model.clone())
+///     .simple_document("doc0", "Definition of *flumbrel (noun)*: a small, seemingly insignificant item that you constantly lose or misplace, such as a pen, hair tie, or remote control.")
+///     .simple_document("doc1", "Definition of *zindle (verb)*: to pretend to be working on something important while actually doing something completely unrelated or unproductive")
+///     .simple_document("doc2", "Definition of *glimber (adjective)*: describing a state of excitement mixed with nervousness, often experienced before an important event or decision.")
+///     .build()
+///     .await?;
+
+/// // Define search_params params that will be used by the vector store to perform the vector search.
+/// let search_params = SearchParams::default();
+
+/// // Initialize LanceDB locally.
+/// let db = lancedb::connect("data/lancedb-store").execute().await?;
+
+/// // Create table with embeddings.
+/// let record_batch = as_record_batch(embeddings, model.ndims());
+/// let table = db
+///     .create_table(
+///         "definitions",
+///         RecordBatchIterator::new(vec![record_batch], Arc::new(schema(model.ndims()))),
+///     )
+///     .execute()
+///     .await?;
+
+/// let vector_store = LanceDbVectorStore::new(table, model, "id", search_params).await?;
+
+/// // Query the index
+/// let results = vector_store
+/// .top_n("My boss says I zindle too much, what does that mean?", 1)
+/// .await?
+/// .into_iter()
+/// .map(|(score, id, doc)| {
+///     anyhow::Ok((
+///         score,
+///         id,
+///         serde_json::from_value::<VectorSearchResult>(doc)?,
+///     ))
+/// })
+/// .collect::<Result<Vec<_>, _>>()?;
+
+/// println!("Results: {:?}", results);
+/// ```
 pub struct LanceDbVectorStore<M: EmbeddingModel> {
     /// Defines which model is used to generate embeddings for the vector store.
     model: M,
@@ -42,6 +110,7 @@ impl<M: EmbeddingModel> LanceDbVectorStore<M> {
             nprobes,
             refine_factor,
             post_filter,
+            column,
         } = self.search_params.clone();
 
         if let Some(distance_type) = distance_type {
@@ -63,6 +132,10 @@ impl<M: EmbeddingModel> LanceDbVectorStore<M> {
 
         if let Some(true) = post_filter {
             query = query.postfilter();
+        }
+
+        if let Some(column) = column {
+            query = query.column(column.as_str())
         }
 
         query
@@ -96,6 +169,7 @@ pub struct SearchParams {
     /// If set to true, filtering will happen after the vector search instead of before
     /// See [LanceDb pre/post filtering](https://lancedb.github.io/lancedb/sql/#pre-and-post-filtering) for more information
     post_filter: Option<bool>,
+    column: Option<String>,
 }
 
 impl SearchParams {
@@ -121,6 +195,11 @@ impl SearchParams {
 
     pub fn post_filter(mut self, post_filter: bool) -> Self {
         self.post_filter = Some(post_filter);
+        self
+    }
+
+    pub fn column(mut self, column: &str) -> Self {
+        self.column = Some(column.to_string());
         self
     }
 }

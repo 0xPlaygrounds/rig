@@ -8,7 +8,6 @@ use rig::{
     vector_store::VectorStoreIndexDyn,
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
-use serde::Deserialize;
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;
