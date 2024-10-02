@@ -99,7 +99,7 @@ impl Client {
     /// // Initialize the OpenAI client
     /// let openai = Client::new("your-open-ai-api-key");
     ///
-    /// let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_3_LARGE, 3072);
+    /// let embedding_model = openai.embedding_model("model-unknown-to-rig", 3072);
     /// ```
     pub fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> EmbeddingModel {
         EmbeddingModel::new(self.clone(), model, ndims)

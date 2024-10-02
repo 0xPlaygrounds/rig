@@ -109,15 +109,21 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
     /// Vector search stage of aggregation pipeline of mongoDB collection.
     /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
     fn pipeline_search_stage(&self, prompt_embedding: &Embedding, n: usize) -> bson::Document {
+        let SearchParams {
+            filter,
+            exact,
+            num_candidates,
+        } = &self.search_params;
+
         doc! {
           "$vectorSearch": {
             "index": &self.index_name,
             "path": "embeddings.vec",
             "queryVector": &prompt_embedding.vec,
-            "numCandidates": (n * 10) as u32,
+            "numCandidates": num_candidates.unwrap_or((n * 10) as u32),
             "limit": n as u32,
-            "filter": &self.search_params.filter,
-            "exact": self.search_params.exact.unwrap_or(false)
+            "filter": filter,
+            "exact": exact.unwrap_or(false)
           }
         }
     }

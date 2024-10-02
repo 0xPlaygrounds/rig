@@ -34,7 +34,7 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
 /// };
 /// use rig_lancedb::{LanceDbVectorStore, SearchParams};
 /// use serde::Deserialize;
-/// 
+///
 /// #[derive(Deserialize, Debug)]
 /// pub struct VectorSearchResult {
 ///     pub id: String,
