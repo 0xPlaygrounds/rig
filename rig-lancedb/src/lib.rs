@@ -1,9 +1,6 @@
-use std::sync::Arc;
-
 use lancedb::{
-    arrow::arrow_schema::{DataType, Field, Fields, Schema},
     index::Index,
-    query::QueryBase,
+    query::{QueryBase, VectorQuery},
     DistanceType,
 };
 use rig::{
@@ -14,7 +11,6 @@ use serde::Deserialize;
 use serde_json::Value;
 use utils::Query;
 
-mod table_schemas;
 mod utils;
 
 fn lancedb_to_rig_error(e: lancedb::Error) -> VectorStoreError {
@@ -32,6 +28,41 @@ pub struct LanceDbVectorStore<M: EmbeddingModel> {
     id_field: String,
     /// Vector search params that are used during vector search operations.
     search_params: SearchParams,
+}
+
+impl<M: EmbeddingModel> LanceDbVectorStore<M> {
+    fn build_query(&self, mut query: VectorQuery) -> VectorQuery {
+        let SearchParams {
+            distance_type,
+            search_type,
+            nprobes,
+            refine_factor,
+            post_filter,
+        } = self.search_params.clone();
+
+        if let Some(distance_type) = distance_type {
+            query = query.distance_type(distance_type);
+        }
+
+        if let Some(SearchType::Flat) = search_type {
+            query = query.bypass_vector_index();
+        }
+
+        if let Some(SearchType::Approximate) = search_type {
+            if let Some(nprobes) = nprobes {
+                query = query.nprobes(nprobes);
+            }
+            if let Some(refine_factor) = refine_factor {
+                query = query.refine_factor(refine_factor);
+            }
+        }
+
+        if let Some(true) = post_filter {
+            query = query.postfilter();
+        }
+
+        query
+    }
 }
 
 /// See [LanceDB vector search](https://lancedb.github.io/lancedb/search/) for more information.
@@ -94,19 +125,19 @@ impl<M: EmbeddingModel> LanceDbVectorStore<M> {
     pub async fn new(
         table: lancedb::Table,
         model: M,
-        id_field: String,
+        id_field: &str,
         search_params: SearchParams,
     ) -> Result<Self, lancedb::Error> {
         Ok(Self {
             table,
             model,
-            id_field,
+            id_field: id_field.to_string(),
             search_params,
         })
     }
 
     /// Define index on document table `id` field for search optimization.
-    pub async fn create_document_index(
+    pub async fn create_index(
         &self,
         index: Index,
         field_names: &[impl AsRef<str>],
@@ -123,48 +154,19 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_document(query).await?;
 
-        let mut query = self
+        let query = self
             .table
             .vector_search(prompt_embedding.vec.clone())
             .map_err(lancedb_to_rig_error)?
             .limit(n);
 
-        let SearchParams {
-            distance_type,
-            search_type,
-            nprobes,
-            refine_factor,
-            post_filter,
-        } = self.search_params.clone();
-
-        if let Some(distance_type) = distance_type {
-            query = query.distance_type(distance_type);
-        }
-
-        if let Some(SearchType::Flat) = search_type {
-            query = query.bypass_vector_index();
-        }
-
-        if let Some(SearchType::Approximate) = search_type {
-            if let Some(nprobes) = nprobes {
-                query = query.nprobes(nprobes);
-            }
-            if let Some(refine_factor) = refine_factor {
-                query = query.refine_factor(refine_factor);
-            }
-        }
-
-        if let Some(true) = post_filter {
-            query = query.postfilter();
-        }
-
-        query
+        self.build_query(query)
             .execute_query()
             .await?
             .into_iter()
             .map(|value| {
                 Ok((
-                    match value.get("distance") {
+                    match value.get("_distance") {
                         Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
                         _ => 0.0,
                     },
@@ -183,6 +185,32 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
         query: &str,
         n: usize,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        todo!()
+        let prompt_embedding = self.model.embed_document(query).await?;
+
+        let query = self
+            .table
+            .query()
+            .select(lancedb::query::Select::Columns(vec![self.id_field.clone()]))
+            .nearest_to(prompt_embedding.vec.clone())
+            .map_err(lancedb_to_rig_error)?
+            .limit(n);
+
+        self.build_query(query)
+            .execute_query()
+            .await?
+            .into_iter()
+            .map(|value| {
+                Ok((
+                    match value.get("distance") {
+                        Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
+                        _ => 0.0,
+                    },
+                    match value.get(self.id_field.clone()) {
+                        Some(Value::String(id)) => id.to_string(),
+                        _ => "".to_string(),
+                    },
+                ))
+            })
+            .collect()
     }
 }

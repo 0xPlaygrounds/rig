@@ -1,13 +1,25 @@
-use std::env;
+use std::{env, sync::Arc};
 
+use arrow_array::RecordBatchIterator;
+use fixture::{as_record_batch, schema};
 use lancedb::{index::vector::IvfPqIndexBuilder, DistanceType};
 use rig::{
     completion::Prompt,
-    embeddings::EmbeddingsBuilder,
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::{VectorStore, VectorStoreIndexDyn},
+    vector_store::VectorStoreIndexDyn,
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
+use serde::Deserialize;
+
+#[path = "./fixtures/lib.rs"]
+mod fixture;
+
+#[derive(Deserialize, Debug)]
+pub struct VectorSearchResult {
+    pub id: String,
+    pub content: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -15,14 +27,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     let openai_client = Client::new(&openai_api_key);
 
-    // Select the embedding model and generate our embeddings
+    // Select an embedding model.
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
-
-    let search_params = SearchParams::default().distance_type(DistanceType::Cosine);
-
-    // Initialize LanceDB locally.
-    let db = lancedb::connect("data/lancedb-store").execute().await?;
-    let mut vector_store = LanceDbVectorStore::new(&db, &model, &search_params).await?;
 
     // Generate test data for RAG demo
     let agent = openai_client
@@ -39,6 +45,7 @@ async fn main() -> Result<(), anyhow::Error> {
     definitions.extend(definitions.clone());
     definitions.extend(definitions.clone());
 
+    // Generate embeddings for the test data.
     let embeddings = EmbeddingsBuilder::new(model.clone())
         .simple_document("doc0", "Definition of *flumbrel (noun)*: a small, seemingly insignificant item that you constantly lose or misplace, such as a pen, hair tie, or remote control.")
         .simple_document("doc1", "Definition of *zindle (verb)*: to pretend to be working on something important while actually doing something completely unrelated or unproductive")
@@ -47,17 +54,35 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Add embeddings to vector store
-    // vector_store.add_documents(embeddings).await?;
+    // Define search_params params that will be used by the vector store to perform the vector search.
+    let search_params = SearchParams::default().distance_type(DistanceType::Cosine);
+
+    // Initialize LanceDB locally.
+    let db = lancedb::connect("data/lancedb-store").execute().await?;
+
+    // Create table with embeddings.
+    let record_batch = as_record_batch(embeddings, model.ndims());
+    let table = db
+        .create_table(
+            "definitions",
+            RecordBatchIterator::new(vec![record_batch], Arc::new(schema(model.ndims()))),
+        )
+        .execute()
+        .await?;
+
+    let vector_store = LanceDbVectorStore::new(table, model, "id", search_params).await?;
 
     // See [LanceDB indexing](https://lancedb.github.io/lancedb/concepts/index_ivfpq/#product-quantization) for more information
     vector_store
-        .create_index(lancedb::index::Index::IvfPq(
-            IvfPqIndexBuilder::default()
-                // This overrides the default distance type of L2.
-                // Needs to be the same distance type as the one used in search params.
-                .distance_type(DistanceType::Cosine),
-        ))
+        .create_index(
+            lancedb::index::Index::IvfPq(
+                IvfPqIndexBuilder::default()
+                    // This overrides the default distance type of L2.
+                    // Needs to be the same distance type as the one used in search params.
+                    .distance_type(DistanceType::Cosine),
+            ),
+            &["embedding"],
+        )
         .await?;
 
     // Query the index
@@ -65,8 +90,14 @@ async fn main() -> Result<(), anyhow::Error> {
         .top_n("My boss says I zindle too much, what does that mean?", 1)
         .await?
         .into_iter()
-        .map(|(score, id, doc)| (score, id, doc))
-        .collect::<Vec<_>>();
+        .map(|(score, id, doc)| {
+            anyhow::Ok((
+                score,
+                id,
+                serde_json::from_value::<VectorSearchResult>(doc)?,
+            ))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     println!("Results: {:?}", results);
 

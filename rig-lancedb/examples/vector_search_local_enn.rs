@@ -1,11 +1,17 @@
-use std::env;
+use std::{env, sync::Arc};
 
+use arrow_array::RecordBatchIterator;
+use fixture::{as_record_batch, schema};
 use rig::{
-    embeddings::EmbeddingsBuilder,
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::{VectorStore, VectorStoreIndexDyn},
+    vector_store::VectorStoreIndexDyn,
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
+use serde::Deserialize;
+
+#[path = "./fixtures/lib.rs"]
+mod fixture;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -16,10 +22,6 @@ async fn main() -> Result<(), anyhow::Error> {
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
-    // Initialize LanceDB locally.
-    let db = lancedb::connect("data/lancedb-store").execute().await?;
-    let mut vector_store = LanceDbVectorStore::new(&db, &model, &SearchParams::default()).await?;
-
     let embeddings = EmbeddingsBuilder::new(model.clone())
         .simple_document("doc0", "Definition of *flumbrel (noun)*: a small, seemingly insignificant item that you constantly lose or misplace, such as a pen, hair tie, or remote control.")
         .simple_document("doc1", "Definition of *zindle (verb)*: to pretend to be working on something important while actually doing something completely unrelated or unproductive")
@@ -27,16 +29,28 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Add embeddings to vector store
-    // vector_store.add_documents(embeddings).await?;
+    // Define search_params params that will be used by the vector store to perform the vector search.
+    let search_params = SearchParams::default();
+
+    // Initialize LanceDB locally.
+    let db = lancedb::connect("data/lancedb-store").execute().await?;
+
+    // Create table with embeddings.
+    let record_batch = as_record_batch(embeddings, model.ndims());
+    let table = db
+        .create_table(
+            "definitions",
+            RecordBatchIterator::new(vec![record_batch], Arc::new(schema(model.ndims()))),
+        )
+        .execute()
+        .await?;
+
+    let vector_store = LanceDbVectorStore::new(table, model, "id", search_params).await?;
 
     // Query the index
     let results = vector_store
-        .top_n("My boss says I zindle too much, what does that mean?", 1)
-        .await?
-        .into_iter()
-        .map(|(score, id, doc)| (score, id, doc))
-        .collect::<Vec<_>>();
+        .top_n_ids("My boss says I zindle too much, what does that mean?", 1)
+        .await?;
 
     println!("Results: {:?}", results);
 
