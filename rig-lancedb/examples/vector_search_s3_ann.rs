@@ -7,7 +7,7 @@ use rig::{
     completion::Prompt,
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::VectorStoreIndexDyn,
+    vector_store::VectorStoreIndex,
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
 use serde::Deserialize;
@@ -92,17 +92,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = vector_store
-        .top_n("I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?", 1)
-        .await?
-        .into_iter()
-        .map(|(score, id, doc)| {
-            anyhow::Ok((
-                score,
-                id,
-                serde_json::from_value::<VectorSearchResult>(doc)?,
-            ))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+        .top_n::<VectorSearchResult>("I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?", 1)
+        .await?;
 
     println!("Results: {:?}", results);
 

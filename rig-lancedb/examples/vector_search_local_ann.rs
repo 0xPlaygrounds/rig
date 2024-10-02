@@ -3,11 +3,11 @@ use std::{env, sync::Arc};
 use arrow_array::RecordBatchIterator;
 use fixture::{as_record_batch, schema};
 use lancedb::{index::vector::IvfPqIndexBuilder, DistanceType};
+use rig::vector_store::VectorStoreIndex;
 use rig::{
     completion::Prompt,
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::VectorStoreIndexDyn,
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
 use serde::Deserialize;
@@ -87,17 +87,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = vector_store
-        .top_n("My boss says I zindle too much, what does that mean?", 1)
-        .await?
-        .into_iter()
-        .map(|(score, id, doc)| {
-            anyhow::Ok((
-                score,
-                id,
-                serde_json::from_value::<VectorSearchResult>(doc)?,
-            ))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+        .top_n::<VectorSearchResult>("My boss says I zindle too much, what does that mean?", 1)
+        .await?;
 
     println!("Results: {:?}", results);
 
