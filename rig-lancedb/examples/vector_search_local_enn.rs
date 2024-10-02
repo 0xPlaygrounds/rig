@@ -32,10 +32,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = vector_store
-        .top_n_from_query("My boss says I zindle too much, what does that mean?", 1)
+        .top_n("My boss says I zindle too much, what does that mean?", 1)
         .await?
         .into_iter()
-        .map(|(score, doc)| (score, doc.id, doc.document))
+        .map(|(score, id, doc)| (score, id, doc))
         .collect::<Vec<_>>();
 
     println!("Results: {:?}", results);

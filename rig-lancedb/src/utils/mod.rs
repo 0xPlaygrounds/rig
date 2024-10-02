@@ -5,6 +5,7 @@ use arrow_array::{
     types::ByteArrayType, Array, ArrowPrimitiveType, FixedSizeListArray, GenericByteArray,
     PrimitiveArray, RecordBatch, RecordBatchIterator,
 };
+use deserializer::RecordBatchDeserializer;
 use futures::TryStreamExt;
 use lancedb::{
     arrow::arrow_schema::{ArrowError, Schema},
@@ -76,37 +77,14 @@ impl DeserializeListArray for &Arc<dyn Array> {
 /// Used whenever a lanceDb table is queried.
 /// First, execute the query and get the result as a list of RecordBatches (columnar data).
 /// Then, convert the record batches to the desired type using the try_from trait.
-pub trait Query<T>
-where
-    T: TryFrom<Vec<RecordBatch>, Error = VectorStoreError>,
-{
-    async fn execute_query(&self) -> Result<T, VectorStoreError>;
-}
-
-impl<T> Query<T> for lancedb::query::Query
-where
-    T: TryFrom<Vec<RecordBatch>, Error = VectorStoreError>,
-{
-    async fn execute_query(&self) -> Result<T, VectorStoreError> {
-        let record_batches = self
-            .execute()
-            .await
-            .map_err(lancedb_to_rig_error)?
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(lancedb_to_rig_error)?;
-
-        T::try_from(record_batches)
-    }
+pub trait Query {
+    async fn execute_query(&self) -> Result<Vec<serde_json::Value>, VectorStoreError>;
 }
 
 /// Same as the above trait but for the VectorQuery type.
 /// Used whenever a lanceDb table vector search is executed.
-impl<T> Query<T> for lancedb::query::VectorQuery
-where
-    T: TryFrom<Vec<RecordBatch>, Error = VectorStoreError>,
-{
-    async fn execute_query(&self) -> Result<T, VectorStoreError> {
+impl Query for lancedb::query::VectorQuery {
+    async fn execute_query(&self) -> Result<Vec<serde_json::Value>, VectorStoreError> {
         let record_batches = self
             .execute()
             .await
@@ -115,7 +93,7 @@ where
             .await
             .map_err(lancedb_to_rig_error)?;
 
-        T::try_from(record_batches)
+        record_batches.deserialize()
     }
 }
 

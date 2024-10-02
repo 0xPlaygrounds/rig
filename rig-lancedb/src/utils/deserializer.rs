@@ -26,11 +26,23 @@ fn arrow_to_rig_error(e: ArrowError) -> VectorStoreError {
 }
 
 pub trait RecordBatchDeserializer {
-    fn deserialize(&self) -> Result<serde_json::Value, VectorStoreError>;
+    fn deserialize(&self) -> Result<Vec<serde_json::Value>, VectorStoreError>;
+}
+
+impl RecordBatchDeserializer for Vec<RecordBatch> {
+    fn deserialize(&self) -> Result<Vec<serde_json::Value>, VectorStoreError> {
+        Ok(self
+            .iter()
+            .map(|record_batch| record_batch.deserialize())
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect())
+    }
 }
 
 impl RecordBatchDeserializer for RecordBatch {
-    fn deserialize(&self) -> Result<serde_json::Value, VectorStoreError> {
+    fn deserialize(&self) -> Result<Vec<serde_json::Value>, VectorStoreError> {
         fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError> {
             match column.data_type() {
                 DataType::Null => Ok(vec![serde_json::Value::Null]),
@@ -317,19 +329,18 @@ impl RecordBatchDeserializer for RecordBatch {
             .map(type_matcher)
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(Value::Object((0..self.num_rows()).fold(
-            serde_json::Map::new(),
-            |mut acc, row_i| {
-                columns.iter().enumerate().for_each(|(col_i, col)| {
-                    acc.entry(column_names[col_i].to_string()).and_modify(|v| {
-                        if let Value::Array(v_arr) = v {
-                            v_arr.push(col[row_i].clone())
-                        }
-                    }).or_insert(Value::Array(vec![col[row_i].clone()]));
-                });
-                acc
-            },
-        )))
+        Ok((0..self.num_rows())
+            .map(|row_i| {
+                columns
+                    .iter()
+                    .enumerate()
+                    .fold(serde_json::Map::new(), |mut acc, (col_i, col)| {
+                        acc.insert(column_names[col_i].to_string(), col[row_i].clone());
+                        acc
+                    })
+            })
+            .map(Value::Object)
+            .collect())
     }
 }
 
@@ -713,84 +724,60 @@ mod tests {
 
         assert_eq!(
             record_batch.deserialize().unwrap(),
-            json!({
-                "binary": [
-                    [
+            vec![
+                json!({
+                    "binary": [
                         104,
                         101,
                         108,
                         108,
                         111
                     ],
-                    [
+                    "float_32": 0.0,
+                    "float_64": 0.0,
+                    "int_16": 0,
+                    "int_32": 0,
+                    "int_64": 0,
+                    "int_8": 0,
+                    "large_binary": [
+                        97,
+                        98,
+                        99
+                    ],
+                    "large_string": "Jerry",
+                    "string": "Marty",
+                    "uint_16": 0,
+                    "uint_32": 0,
+                    "uint_64": 0,
+                    "uint_8": 0
+                }),
+                json!({
+                    "binary": [
                         119,
                         111,
                         114,
                         108,
                         100
-                    ]
-                ],
-                "float_32": [
-                    0.0,
-                    1.0
-                ],
-                "float_64": [
-                    0.0,
-                    1.0
-                ],
-                "int_16": [
-                    0,
-                    1
-                ],
-                "int_32": [
-                    0,
-                    -1
-                ],
-                "int_64": [
-                    0,
-                    1
-                ],
-                "int_8": [
-                    0,
-                    -1
-                ],
-                "large_binary": [
-                    [
-                        97,
-                        98,
-                        99
                     ],
-                    [
+                    "float_32": 1.0,
+                    "float_64": 1.0,
+                    "int_16": 1,
+                    "int_32": -1,
+                    "int_64": 1,
+                    "int_8": -1,
+                    "large_binary": [
                         100,
                         101,
                         102
-                    ]
-                ],
-                "large_string": [
-                    "Jerry",
-                    "Freddy"
-                ],
-                "string": [
-                    "Marty",
-                    "Tony"
-                ],
-                "uint_16": [
-                    0,
-                    1
-                ],
-                "uint_32": [
-                    0,
-                    1
-                ],
-                "uint_64": [
-                    0,
-                    1
-                ],
-                "uint_8": [
-                    0,
-                    1
-                ]
-            })
+                    ],
+                    "large_string": "Freddy",
+                    "string": "Tony",
+                    "uint_16": 1,
+                    "uint_32": 1,
+                    "uint_64": 1,
+                    "uint_8": 1
+                })
+            ]
         )
     }
 
@@ -813,19 +800,23 @@ mod tests {
 
         assert_eq!(
             record_batch.deserialize().unwrap(),
-            json!([
-                [
-                    {
+            vec![
+                json!({
+                    "some_dict": {
                         "2": ""
-                    },
-                    {
+                    }
+                }),
+                json!({
+                    "some_dict": {
                         "0": "abc"
-                    },
-                    {
+                    }
+                }),
+                json!({
+                    "some_dict": {
                         "1": "def"
                     }
-                ]
-            ])
+                })
+            ]
         )
     }
 
@@ -838,11 +829,27 @@ mod tests {
         let union = builder.build().unwrap();
 
         let record_batch =
-            RecordBatch::try_from_iter(vec![("some_dict", Arc::new(union) as ArrayRef)]).unwrap();
+            RecordBatch::try_from_iter(vec![("some_union", Arc::new(union) as ArrayRef)]).unwrap();
 
         assert_eq!(
             record_batch.deserialize().unwrap(),
-            json!([[[1], [3.0], [4]]])
+            vec![
+                json!({
+                    "some_union": [
+                        1
+                    ]
+                }),
+                json!({
+                    "some_union": [
+                        3.0
+                    ]
+                }),
+                json!({
+                    "some_union": [
+                        4
+                    ]
+                })
+            ]
         )
     }
 
@@ -859,15 +866,7 @@ mod tests {
         let record_batch =
             RecordBatch::try_from_iter(vec![("some_dict", Arc::new(array) as ArrayRef)]).unwrap();
 
-        assert_eq!(
-            record_batch.deserialize().unwrap(),
-            json!([[
-                ["abc"],
-                ["", ""],
-                ["def", "def", "def", "def"],
-                ["abc", "abc", "abc", "abc", "abc"]
-            ]])
-        )
+        assert_eq!(record_batch.deserialize().unwrap(), vec![json!({})])
     }
 
     #[tokio::test]
@@ -887,40 +886,32 @@ mod tests {
 
         assert_eq!(
             record_batch.deserialize().unwrap(),
-            json!([
-                [
-                    {
+            vec![
+                json!({
+                    "map_col": {
                         "tarentino": {
-                            "name": "Pulp Fiction",
-                            "year": 1999,
                             "actors": [
                                 "Johnny Depp",
                                 "Cate Blanchet"
-                            ]
+                            ],
+                            "name": "Pulp Fiction",
+                            "year": 1999
                         }
-                    },
-                    {
+                    }
+                }),
+                json!({
+                    "map_col": {
                         "darabont": {
-                            "name": "The Shawshank Redemption",
-                            "year": 2026,
                             "actors": [
                                 "Meryl Streep",
                                 "Scarlett Johansson"
-                            ]
-                        }
-                    },
-                    {
-                        "chazelle": {
-                            "name": "La La Land",
-                            "year": 1745,
-                            "actors": [
-                                "Brad Pitt",
-                                "Natalie Portman"
-                            ]
+                            ],
+                            "name": "The Shawshank Redemption",
+                            "year": 2026
                         }
                     }
-                ]
-            ])
+                })
+            ]
         )
     }
 
@@ -984,15 +975,10 @@ mod tests {
 
         assert_eq!(
             record_batch.deserialize().unwrap(),
-            json!([
-                [
-                    {
-                        "id": "id1",
+            vec![
+                json!({
+                    "employees": {
                         "age": 25.0,
-                        "names": [
-                            "Alice",
-                            "Bob"
-                        ],
                         "favorite_animals": [
                             [
                                 "Dog",
@@ -1003,20 +989,23 @@ mod tests {
                             ]
                         ],
                         "favorite_movie": {
-                            "name": "Pulp Fiction",
-                            "year": 1999,
                             "actors": [
                                 "Johnny Depp",
                                 "Cate Blanchet"
-                            ]
-                        }
-                    },
-                    {
-                        "id": "id2",
-                        "age": 30.5,
+                            ],
+                            "name": "Pulp Fiction",
+                            "year": 1999
+                        },
+                        "id": "id1",
                         "names": [
-                            "Charlie"
-                        ],
+                            "Alice",
+                            "Bob"
+                        ]
+                    }
+                }),
+                json!({
+                    "employees": {
+                        "age": 30.5,
                         "favorite_animals": [
                             [
                                 "Giraffe"
@@ -1027,22 +1016,22 @@ mod tests {
                             ]
                         ],
                         "favorite_movie": {
-                            "name": "The Shawshank Redemption",
-                            "year": 2026,
                             "actors": [
                                 "Meryl Streep",
                                 "Scarlett Johansson"
-                            ]
-                        }
-                    },
-                    {
-                        "id": "id3",
-                        "age": 22.100000381469727,
+                            ],
+                            "name": "The Shawshank Redemption",
+                            "year": 2026
+                        },
+                        "id": "id2",
                         "names": [
-                            "David",
-                            "Eve",
-                            "Frank"
-                        ],
+                            "Charlie"
+                        ]
+                    }
+                }),
+                json!({
+                    "employees": {
+                        "age": 22.100000381469727,
                         "favorite_animals": [
                             [
                                 "Sloth"
@@ -1053,16 +1042,22 @@ mod tests {
                             ]
                         ],
                         "favorite_movie": {
-                            "name": "La La Land",
-                            "year": 1745,
                             "actors": [
                                 "Brad Pitt",
                                 "Natalie Portman"
-                            ]
-                        }
+                            ],
+                            "name": "La La Land",
+                            "year": 1745
+                        },
+                        "id": "id3",
+                        "names": [
+                            "David",
+                            "Eve",
+                            "Frank"
+                        ]
                     }
-                ]
-            ])
+                })
+            ]
         )
     }
 }
