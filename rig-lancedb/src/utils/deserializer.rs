@@ -313,21 +313,24 @@ impl RecordBatchDeserializer for RecordBatch {
                         .map(|item| serde_json::to_value(item).map_err(serde_to_rig_error))
                         .collect()
                 }
-                // Not yet fully supported
                 DataType::BinaryView
                 | DataType::Utf8View
                 | DataType::ListView(..)
-                | DataType::LargeListView(..) => {
-                    todo!()
-                }
-                // Currently unstable
-                DataType::Float16 | DataType::Decimal256(..) => {
-                    todo!()
-                }
-                _ => {
-                    println!("Unsupported data type");
-                    Ok(vec![serde_json::Value::Null])
-                }
+                | DataType::LargeListView(..) => Err(VectorStoreError::DatastoreError(Box::new(
+                    ArrowError::CastError(format!(
+                        "Data type: {} not yet fully supported",
+                        column.data_type()
+                    )),
+                ))),
+                DataType::Float16 | DataType::Decimal256(..) => Err(
+                    VectorStoreError::DatastoreError(Box::new(ArrowError::CastError(format!(
+                        "Data type: {} currently unstable",
+                        column.data_type()
+                    )))),
+                ),
+                _ => Err(VectorStoreError::DatastoreError(Box::new(
+                    ArrowError::CastError(format!("Unsupported data type: {}", column.data_type())),
+                ))),
             }
         }
 

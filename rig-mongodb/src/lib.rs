@@ -158,16 +158,13 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
 /// See [MongoDB Vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information
 /// on each of the fields
 pub struct SearchParams {
-    /// Pre-filter
     filter: mongodb::bson::Document,
-    /// Whether to use ANN or ENN search
     exact: Option<bool>,
-    /// Only set this field if exact is set to false
-    /// Number of nearest neighbors to use during the search
     num_candidates: Option<u32>,
 }
 
 impl SearchParams {
+    /// Initializes a new `SearchParams` with default values.
     pub fn new() -> Self {
         Self {
             filter: doc! {},
@@ -176,16 +173,26 @@ impl SearchParams {
         }
     }
 
+    /// Sets the pre-filter field of the search params.
+    /// See [MongoDB vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information.
     pub fn filter(mut self, filter: mongodb::bson::Document) -> Self {
         self.filter = filter;
         self
     }
 
+    /// Sets the exact field of the search params.
+    /// If exact is true, an ENN vector search will be performed, otherwise, an ANN search will be performed.
+    /// By default, exact is false.
+    /// See [MongoDB vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information.
     pub fn exact(mut self, exact: bool) -> Self {
         self.exact = Some(exact);
         self
     }
 
+    /// Sets the num_candidates field of the search params.
+    /// Only set this field if exact is set to false.
+    /// Number of nearest neighbors to use during the search.
+    /// See [MongoDB vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information.
     pub fn num_candidates(mut self, num_candidates: u32) -> Self {
         self.num_candidates = Some(num_candidates);
         self

@@ -9,11 +9,11 @@ use crate::lancedb_to_rig_error;
 
 /// Trait that facilitates the conversion of columnar data returned by a lanceDb query to serde_json::Value.
 /// Used whenever a lanceDb table is queried.
-pub trait Query {
+pub trait QueryToJson {
     async fn execute_query(&self) -> Result<Vec<serde_json::Value>, VectorStoreError>;
 }
 
-impl Query for lancedb::query::VectorQuery {
+impl QueryToJson for lancedb::query::VectorQuery {
     async fn execute_query(&self) -> Result<Vec<serde_json::Value>, VectorStoreError> {
         let record_batches = self
             .execute()

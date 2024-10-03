@@ -73,16 +73,17 @@ async fn main() -> Result<(), anyhow::Error> {
     let vector_store = LanceDbVectorStore::new(table, model, "id", search_params).await?;
 
     // See [LanceDB indexing](https://lancedb.github.io/lancedb/concepts/index_ivfpq/#product-quantization) for more information
-    vector_store
+    table
         .create_index(
+            &["embedding"],
             lancedb::index::Index::IvfPq(
                 IvfPqIndexBuilder::default()
                     // This overrides the default distance type of L2.
                     // Needs to be the same distance type as the one used in search params.
                     .distance_type(DistanceType::Cosine),
             ),
-            &["embedding"],
         )
+        .execute()
         .await?;
 
     // Query the index
