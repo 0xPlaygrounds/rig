@@ -248,7 +248,8 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
             .execute_query()
             .await?
             .into_iter()
-            .map(|value| {
+            .enumerate()
+            .map(|(i, value)| {
                 Ok((
                     match value.get("_distance") {
                         Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
@@ -256,7 +257,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
                     },
                     match value.get(self.id_field.clone()) {
                         Some(Value::String(id)) => id.to_string(),
-                        _ => "".to_string(),
+                        _ => format!("unknown{i}"),
                     },
                     serde_json::from_value(value).map_err(serde_to_rig_error)?,
                 ))

@@ -43,297 +43,9 @@ impl RecordBatchDeserializer for Vec<RecordBatch> {
     }
 }
 
+/// Trait used to deserialize data returned from LanceDB queries into a serde_json::Value vector.
 impl RecordBatchDeserializer for RecordBatch {
     fn deserialize(&self) -> Result<Vec<serde_json::Value>, VectorStoreError> {
-        /// Recursive function that matches all possible data types store in LanceDB and converts them to serde_json::Value.
-        fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError> {
-            match column.data_type() {
-                DataType::Null => Ok(vec![serde_json::Value::Null]),
-                DataType::Float32 => column
-                    .to_primitive_value::<Float32Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::Float64 => column
-                    .to_primitive_value::<Float64Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::Int8 => column
-                    .to_primitive_value::<Int8Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::Int16 => column
-                    .to_primitive_value::<Int16Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::Int32 => column
-                    .to_primitive_value::<Int32Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::Int64 => column
-                    .to_primitive_value::<Int64Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::UInt8 => column
-                    .to_primitive_value::<UInt8Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::UInt16 => column
-                    .to_primitive_value::<UInt16Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::UInt32 => column
-                    .to_primitive_value::<UInt32Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::UInt64 => column
-                    .to_primitive_value::<UInt64Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::Date32 => column
-                    .to_primitive_value::<Date32Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::Date64 => column
-                    .to_primitive_value::<Date64Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::Decimal128(..) => column
-                    .to_primitive_value::<Decimal128Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::Time32(TimeUnit::Second) => column
-                    .to_primitive_value::<Time32SecondType>()
-                    .map_err(serde_to_rig_error),
-                DataType::Time32(TimeUnit::Millisecond) => column
-                    .to_primitive_value::<Time32MillisecondType>()
-                    .map_err(serde_to_rig_error),
-                DataType::Time64(TimeUnit::Microsecond) => column
-                    .to_primitive_value::<Time64MicrosecondType>()
-                    .map_err(serde_to_rig_error),
-                DataType::Time64(TimeUnit::Nanosecond) => column
-                    .to_primitive_value::<Time64NanosecondType>()
-                    .map_err(serde_to_rig_error),
-                DataType::Timestamp(TimeUnit::Microsecond, ..) => column
-                    .to_primitive_value::<TimestampMicrosecondType>()
-                    .map_err(serde_to_rig_error),
-                DataType::Timestamp(TimeUnit::Millisecond, ..) => column
-                    .to_primitive_value::<TimestampMillisecondType>()
-                    .map_err(serde_to_rig_error),
-                DataType::Timestamp(TimeUnit::Second, ..) => column
-                    .to_primitive_value::<TimestampSecondType>()
-                    .map_err(serde_to_rig_error),
-                DataType::Timestamp(TimeUnit::Nanosecond, ..) => column
-                    .to_primitive_value::<TimestampNanosecondType>()
-                    .map_err(serde_to_rig_error),
-                DataType::Duration(TimeUnit::Microsecond) => column
-                    .to_primitive_value::<DurationMicrosecondType>()
-                    .map_err(serde_to_rig_error),
-                DataType::Duration(TimeUnit::Millisecond) => column
-                    .to_primitive_value::<DurationMillisecondType>()
-                    .map_err(serde_to_rig_error),
-                DataType::Duration(TimeUnit::Nanosecond) => column
-                    .to_primitive_value::<DurationNanosecondType>()
-                    .map_err(serde_to_rig_error),
-                DataType::Duration(TimeUnit::Second) => column
-                    .to_primitive_value::<DurationSecondType>()
-                    .map_err(serde_to_rig_error),
-                DataType::Interval(IntervalUnit::YearMonth) => column
-                    .to_primitive_value::<IntervalYearMonthType>()
-                    .map_err(serde_to_rig_error),
-                DataType::Interval(IntervalUnit::DayTime) => Ok(column
-                    .to_primitive::<IntervalDayTimeType>()
-                    .iter()
-                    .map(|IntervalDayTime { days, milliseconds }| {
-                        json!({
-                            "days": days,
-                            "milliseconds": milliseconds,
-                        })
-                    })
-                    .collect()),
-                DataType::Interval(IntervalUnit::MonthDayNano) => Ok(column
-                    .to_primitive::<IntervalMonthDayNanoType>()
-                    .iter()
-                    .map(
-                        |IntervalMonthDayNano {
-                             months,
-                             days,
-                             nanoseconds,
-                         }| {
-                            json!({
-                                "months": months,
-                                "days": days,
-                                "nanoseconds": nanoseconds,
-                            })
-                        },
-                    )
-                    .collect()),
-                DataType::Utf8 => column
-                    .to_str_value::<Utf8Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::LargeUtf8 => column
-                    .to_str_value::<LargeUtf8Type>()
-                    .map_err(serde_to_rig_error),
-                DataType::Binary => column
-                    .to_str_value::<BinaryType>()
-                    .map_err(serde_to_rig_error),
-                DataType::LargeBinary => column
-                    .to_str_value::<LargeBinaryType>()
-                    .map_err(serde_to_rig_error),
-                DataType::FixedSizeBinary(n) => (0..*n)
-                    .map(|i| serde_json::to_value(column.as_fixed_size_binary().value(i as usize)))
-                    .collect::<Result<Vec<_>, _>>()
-                    .map_err(serde_to_rig_error),
-                DataType::Boolean => {
-                    let bool_array = column.as_boolean();
-                    (0..bool_array.len())
-                        .map(|i| bool_array.value(i))
-                        .map(serde_json::to_value)
-                        .collect::<Result<Vec<_>, _>>()
-                        .map_err(serde_to_rig_error)
-                }
-                DataType::FixedSizeList(..) => {
-                    column.to_fixed_lists().iter().map(type_matcher).map_ok()
-                }
-                DataType::List(..) => column.to_list::<i32>().iter().map(type_matcher).map_ok(),
-                DataType::LargeList(..) => {
-                    column.to_list::<i64>().iter().map(type_matcher).map_ok()
-                }
-                DataType::Struct(..) => {
-                    let struct_array = column.as_struct();
-                    let struct_columns = struct_array
-                        .inner_lists()
-                        .iter()
-                        .map(type_matcher)
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    Ok(struct_columns
-                        .build_struct(struct_array.num_rows(), struct_array.column_names()))
-                }
-                DataType::Map(..) => {
-                    let map_columns = column
-                        .as_map()
-                        .entries()
-                        .inner_lists()
-                        .iter()
-                        .map(type_matcher)
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    Ok(map_columns.build_map())
-                }
-                DataType::Dictionary(keys_type, ..) => {
-                    let (keys, v) = match **keys_type {
-                        DataType::Int8 => column.to_dict_values::<Int8Type>()?,
-                        DataType::Int16 => column.to_dict_values::<Int16Type>()?,
-                        DataType::Int32 => column.to_dict_values::<Int32Type>()?,
-                        DataType::Int64 => column.to_dict_values::<Int64Type>()?,
-                        DataType::UInt8 => column.to_dict_values::<UInt8Type>()?,
-                        DataType::UInt16 => column.to_dict_values::<UInt16Type>()?,
-                        DataType::UInt32 => column.to_dict_values::<UInt32Type>()?,
-                        DataType::UInt64 => column.to_dict_values::<UInt64Type>()?,
-                        _ => {
-                            return Err(VectorStoreError::DatastoreError(Box::new(
-                                ArrowError::CastError(format!(
-                                    "Dictionary keys type is not accepted: {keys_type:?}"
-                                )),
-                            )))
-                        }
-                    };
-
-                    let values = type_matcher(v)?;
-
-                    Ok(keys
-                        .iter()
-                        .zip(values)
-                        .map(|(k, v)| {
-                            let mut map = serde_json::Map::new();
-                            map.insert(k.to_string(), v);
-                            map
-                        })
-                        .map(Value::Object)
-                        .collect())
-                }
-                DataType::Union(..) => match column.as_any().downcast_ref::<UnionArray>() {
-                    Some(union_array) => (0..union_array.len())
-                        .map(|i| union_array.value(i).clone())
-                        .collect::<Vec<_>>()
-                        .iter()
-                        .map(type_matcher)
-                        .map_ok(),
-                    None => Err(VectorStoreError::DatastoreError(Box::new(
-                        ArrowError::CastError(format!(
-                            "Can't cast column {column:?} to union array"
-                        )),
-                    ))),
-                },
-                DataType::RunEndEncoded(index_type, ..) => {
-                    let items = match index_type.data_type() {
-                        DataType::Int16 => {
-                            let (indexes, v) = column
-                                .to_run_end::<Int16Type>()
-                                .map_err(arrow_to_rig_error)?;
-
-                            let mut prev = vec![0];
-                            prev.extend(indexes.clone());
-
-                            prev.iter()
-                                .zip(indexes)
-                                .map(|(prev, cur)| cur - prev)
-                                .zip(type_matcher(&v)?)
-                                .flat_map(|(n, value)| vec![value; n as usize])
-                                .collect::<Vec<_>>()
-                        }
-                        DataType::Int32 => {
-                            let (indexes, v) = column
-                                .to_run_end::<Int32Type>()
-                                .map_err(arrow_to_rig_error)?;
-
-                            let mut prev = vec![0];
-                            prev.extend(indexes.clone());
-
-                            prev.iter()
-                                .zip(indexes)
-                                .map(|(prev, cur)| cur - prev)
-                                .zip(type_matcher(&v)?)
-                                .flat_map(|(n, value)| vec![value; n as usize])
-                                .collect::<Vec<_>>()
-                        }
-                        DataType::Int64 => {
-                            let (indexes, v) = column
-                                .to_run_end::<Int64Type>()
-                                .map_err(arrow_to_rig_error)?;
-
-                            let mut prev = vec![0];
-                            prev.extend(indexes.clone());
-
-                            prev.iter()
-                                .zip(indexes)
-                                .map(|(prev, cur)| cur - prev)
-                                .zip(type_matcher(&v)?)
-                                .flat_map(|(n, value)| vec![value; n as usize])
-                                .collect::<Vec<_>>()
-                        }
-                        _ => {
-                            return Err(VectorStoreError::DatastoreError(Box::new(
-                                ArrowError::CastError(format!(
-                                    "RunEndEncoded index type is not accepted: {index_type:?}"
-                                )),
-                            )))
-                        }
-                    };
-
-                    items
-                        .iter()
-                        .map(|item| serde_json::to_value(item).map_err(serde_to_rig_error))
-                        .collect()
-                }
-                DataType::BinaryView
-                | DataType::Utf8View
-                | DataType::ListView(..)
-                | DataType::LargeListView(..) => Err(VectorStoreError::DatastoreError(Box::new(
-                    ArrowError::CastError(format!(
-                        "Data type: {} not yet fully supported",
-                        column.data_type()
-                    )),
-                ))),
-                DataType::Float16 | DataType::Decimal256(..) => Err(
-                    VectorStoreError::DatastoreError(Box::new(ArrowError::CastError(format!(
-                        "Data type: {} currently unstable",
-                        column.data_type()
-                    )))),
-                ),
-                _ => Err(VectorStoreError::DatastoreError(Box::new(
-                    ArrowError::CastError(format!("Unsupported data type: {}", column.data_type())),
-                ))),
-            }
-        }
-
         let binding = self.schema();
         let column_names = binding
             .fields()
@@ -362,8 +74,294 @@ impl RecordBatchDeserializer for RecordBatch {
     }
 }
 
+/// Recursive function that matches all possible data types store in LanceDB and converts them to serde_json::Value vector.
+fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError> {
+    match column.data_type() {
+        DataType::Null => Ok(vec![serde_json::Value::Null]),
+        DataType::Float32 => column
+            .to_primitive_value::<Float32Type>()
+            .map_err(serde_to_rig_error),
+        DataType::Float64 => column
+            .to_primitive_value::<Float64Type>()
+            .map_err(serde_to_rig_error),
+        DataType::Int8 => column
+            .to_primitive_value::<Int8Type>()
+            .map_err(serde_to_rig_error),
+        DataType::Int16 => column
+            .to_primitive_value::<Int16Type>()
+            .map_err(serde_to_rig_error),
+        DataType::Int32 => column
+            .to_primitive_value::<Int32Type>()
+            .map_err(serde_to_rig_error),
+        DataType::Int64 => column
+            .to_primitive_value::<Int64Type>()
+            .map_err(serde_to_rig_error),
+        DataType::UInt8 => column
+            .to_primitive_value::<UInt8Type>()
+            .map_err(serde_to_rig_error),
+        DataType::UInt16 => column
+            .to_primitive_value::<UInt16Type>()
+            .map_err(serde_to_rig_error),
+        DataType::UInt32 => column
+            .to_primitive_value::<UInt32Type>()
+            .map_err(serde_to_rig_error),
+        DataType::UInt64 => column
+            .to_primitive_value::<UInt64Type>()
+            .map_err(serde_to_rig_error),
+        DataType::Date32 => column
+            .to_primitive_value::<Date32Type>()
+            .map_err(serde_to_rig_error),
+        DataType::Date64 => column
+            .to_primitive_value::<Date64Type>()
+            .map_err(serde_to_rig_error),
+        DataType::Decimal128(..) => column
+            .to_primitive_value::<Decimal128Type>()
+            .map_err(serde_to_rig_error),
+        DataType::Time32(TimeUnit::Second) => column
+            .to_primitive_value::<Time32SecondType>()
+            .map_err(serde_to_rig_error),
+        DataType::Time32(TimeUnit::Millisecond) => column
+            .to_primitive_value::<Time32MillisecondType>()
+            .map_err(serde_to_rig_error),
+        DataType::Time64(TimeUnit::Microsecond) => column
+            .to_primitive_value::<Time64MicrosecondType>()
+            .map_err(serde_to_rig_error),
+        DataType::Time64(TimeUnit::Nanosecond) => column
+            .to_primitive_value::<Time64NanosecondType>()
+            .map_err(serde_to_rig_error),
+        DataType::Timestamp(TimeUnit::Microsecond, ..) => column
+            .to_primitive_value::<TimestampMicrosecondType>()
+            .map_err(serde_to_rig_error),
+        DataType::Timestamp(TimeUnit::Millisecond, ..) => column
+            .to_primitive_value::<TimestampMillisecondType>()
+            .map_err(serde_to_rig_error),
+        DataType::Timestamp(TimeUnit::Second, ..) => column
+            .to_primitive_value::<TimestampSecondType>()
+            .map_err(serde_to_rig_error),
+        DataType::Timestamp(TimeUnit::Nanosecond, ..) => column
+            .to_primitive_value::<TimestampNanosecondType>()
+            .map_err(serde_to_rig_error),
+        DataType::Duration(TimeUnit::Microsecond) => column
+            .to_primitive_value::<DurationMicrosecondType>()
+            .map_err(serde_to_rig_error),
+        DataType::Duration(TimeUnit::Millisecond) => column
+            .to_primitive_value::<DurationMillisecondType>()
+            .map_err(serde_to_rig_error),
+        DataType::Duration(TimeUnit::Nanosecond) => column
+            .to_primitive_value::<DurationNanosecondType>()
+            .map_err(serde_to_rig_error),
+        DataType::Duration(TimeUnit::Second) => column
+            .to_primitive_value::<DurationSecondType>()
+            .map_err(serde_to_rig_error),
+        DataType::Interval(IntervalUnit::YearMonth) => column
+            .to_primitive_value::<IntervalYearMonthType>()
+            .map_err(serde_to_rig_error),
+        DataType::Interval(IntervalUnit::DayTime) => Ok(column
+            .to_primitive::<IntervalDayTimeType>()
+            .iter()
+            .map(|IntervalDayTime { days, milliseconds }| {
+                json!({
+                    "days": days,
+                    "milliseconds": milliseconds,
+                })
+            })
+            .collect()),
+        DataType::Interval(IntervalUnit::MonthDayNano) => Ok(column
+            .to_primitive::<IntervalMonthDayNanoType>()
+            .iter()
+            .map(
+                |IntervalMonthDayNano {
+                     months,
+                     days,
+                     nanoseconds,
+                 }| {
+                    json!({
+                        "months": months,
+                        "days": days,
+                        "nanoseconds": nanoseconds,
+                    })
+                },
+            )
+            .collect()),
+        DataType::Utf8 => column
+            .to_str_value::<Utf8Type>()
+            .map_err(serde_to_rig_error),
+        DataType::LargeUtf8 => column
+            .to_str_value::<LargeUtf8Type>()
+            .map_err(serde_to_rig_error),
+        DataType::Binary => column
+            .to_str_value::<BinaryType>()
+            .map_err(serde_to_rig_error),
+        DataType::LargeBinary => column
+            .to_str_value::<LargeBinaryType>()
+            .map_err(serde_to_rig_error),
+        DataType::FixedSizeBinary(n) => (0..*n)
+            .map(|i| serde_json::to_value(column.as_fixed_size_binary().value(i as usize)))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(serde_to_rig_error),
+        DataType::Boolean => {
+            let bool_array = column.as_boolean();
+            (0..bool_array.len())
+                .map(|i| bool_array.value(i))
+                .map(serde_json::to_value)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(serde_to_rig_error)
+        }
+        DataType::FixedSizeList(..) => column.to_fixed_lists().iter().map(type_matcher).map_ok(),
+        DataType::List(..) => column.to_list::<i32>().iter().map(type_matcher).map_ok(),
+        DataType::LargeList(..) => column.to_list::<i64>().iter().map(type_matcher).map_ok(),
+        DataType::Struct(..) => {
+            let struct_array = column.as_struct();
+            let struct_columns = struct_array
+                .inner_lists()
+                .iter()
+                .map(type_matcher)
+                .collect::<Result<Vec<_>, _>>()?;
+
+            Ok(struct_columns.build_struct(struct_array.num_rows(), struct_array.column_names()))
+        }
+        DataType::Map(..) => {
+            let map_columns = column
+                .as_map()
+                .entries()
+                .inner_lists()
+                .iter()
+                .map(type_matcher)
+                .collect::<Result<Vec<_>, _>>()?;
+
+            Ok(map_columns.build_map())
+        }
+        DataType::Dictionary(keys_type, ..) => {
+            let (keys, v) = match **keys_type {
+                DataType::Int8 => column.to_dict_values::<Int8Type>()?,
+                DataType::Int16 => column.to_dict_values::<Int16Type>()?,
+                DataType::Int32 => column.to_dict_values::<Int32Type>()?,
+                DataType::Int64 => column.to_dict_values::<Int64Type>()?,
+                DataType::UInt8 => column.to_dict_values::<UInt8Type>()?,
+                DataType::UInt16 => column.to_dict_values::<UInt16Type>()?,
+                DataType::UInt32 => column.to_dict_values::<UInt32Type>()?,
+                DataType::UInt64 => column.to_dict_values::<UInt64Type>()?,
+                _ => {
+                    return Err(VectorStoreError::DatastoreError(Box::new(
+                        ArrowError::CastError(format!(
+                            "Dictionary keys type is not accepted: {keys_type:?}"
+                        )),
+                    )))
+                }
+            };
+
+            let values = type_matcher(v)?;
+
+            Ok(keys
+                .iter()
+                .zip(values)
+                .map(|(k, v)| {
+                    let mut map = serde_json::Map::new();
+                    map.insert(k.to_string(), v);
+                    map
+                })
+                .map(Value::Object)
+                .collect())
+        }
+        DataType::Union(..) => match column.as_any().downcast_ref::<UnionArray>() {
+            Some(union_array) => (0..union_array.len())
+                .map(|i| union_array.value(i).clone())
+                .collect::<Vec<_>>()
+                .iter()
+                .map(type_matcher)
+                .map_ok(),
+            None => Err(VectorStoreError::DatastoreError(Box::new(
+                ArrowError::CastError(format!("Can't cast column {column:?} to union array")),
+            ))),
+        },
+        DataType::RunEndEncoded(index_type, ..) => {
+            let items = match index_type.data_type() {
+                DataType::Int16 => {
+                    let (indexes, v) = column
+                        .to_run_end::<Int16Type>()
+                        .map_err(arrow_to_rig_error)?;
+
+                    let mut prev = vec![0];
+                    prev.extend(indexes.clone());
+
+                    prev.iter()
+                        .zip(indexes)
+                        .map(|(prev, cur)| cur - prev)
+                        .zip(type_matcher(&v)?)
+                        .flat_map(|(n, value)| vec![value; n as usize])
+                        .collect::<Vec<_>>()
+                }
+                DataType::Int32 => {
+                    let (indexes, v) = column
+                        .to_run_end::<Int32Type>()
+                        .map_err(arrow_to_rig_error)?;
+
+                    let mut prev = vec![0];
+                    prev.extend(indexes.clone());
+
+                    prev.iter()
+                        .zip(indexes)
+                        .map(|(prev, cur)| cur - prev)
+                        .zip(type_matcher(&v)?)
+                        .flat_map(|(n, value)| vec![value; n as usize])
+                        .collect::<Vec<_>>()
+                }
+                DataType::Int64 => {
+                    let (indexes, v) = column
+                        .to_run_end::<Int64Type>()
+                        .map_err(arrow_to_rig_error)?;
+
+                    let mut prev = vec![0];
+                    prev.extend(indexes.clone());
+
+                    prev.iter()
+                        .zip(indexes)
+                        .map(|(prev, cur)| cur - prev)
+                        .zip(type_matcher(&v)?)
+                        .flat_map(|(n, value)| vec![value; n as usize])
+                        .collect::<Vec<_>>()
+                }
+                _ => {
+                    return Err(VectorStoreError::DatastoreError(Box::new(
+                        ArrowError::CastError(format!(
+                            "RunEndEncoded index type is not accepted: {index_type:?}"
+                        )),
+                    )))
+                }
+            };
+
+            items
+                .iter()
+                .map(|item| serde_json::to_value(item).map_err(serde_to_rig_error))
+                .collect()
+        }
+        DataType::BinaryView
+        | DataType::Utf8View
+        | DataType::ListView(..)
+        | DataType::LargeListView(..) => Err(VectorStoreError::DatastoreError(Box::new(
+            ArrowError::CastError(format!(
+                "Data type: {} not yet fully supported",
+                column.data_type()
+            )),
+        ))),
+        DataType::Float16 | DataType::Decimal256(..) => Err(VectorStoreError::DatastoreError(
+            Box::new(ArrowError::CastError(format!(
+                "Data type: {} currently unstable",
+                column.data_type()
+            ))),
+        )),
+        _ => Err(VectorStoreError::DatastoreError(Box::new(
+            ArrowError::CastError(format!("Unsupported data type: {}", column.data_type())),
+        ))),
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+/// Everything below includes helpers for the recursive function `type_matcher`.///
+///////////////////////////////////////////////////////////////////////////////////
+
 /// Trait used to "deserialize" an arrow_array::Array as as list of primitive objects.
-pub trait DeserializePrimitiveArray {
+trait DeserializePrimitiveArray {
     /// Downcast arrow Array into a `PrimitiveArray` with items that implement trait `ArrowPrimitiveType`.
     /// Return the primitive array values.
     fn to_primitive<T: ArrowPrimitiveType>(&self) -> Vec<<T as ArrowPrimitiveType>::Native>;
@@ -395,7 +393,7 @@ impl DeserializePrimitiveArray for &Arc<dyn Array> {
 }
 
 /// Trait used to "deserialize" an arrow_array::Array as as list of str objects.
-pub trait DeserializeByteArray {
+trait DeserializeByteArray {
     /// Downcast arrow Array into a `GenericByteArray` with items that implement trait `ByteArrayType`.
     /// Return the generic byte array values.
     fn to_str<T: ByteArrayType>(&self) -> Vec<&<T as ByteArrayType>::Native>;

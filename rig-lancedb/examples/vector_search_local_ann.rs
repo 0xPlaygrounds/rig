@@ -70,8 +70,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .execute()
         .await?;
 
-    let vector_store = LanceDbVectorStore::new(table, model, "id", search_params).await?;
-
     // See [LanceDB indexing](https://lancedb.github.io/lancedb/concepts/index_ivfpq/#product-quantization) for more information
     table
         .create_index(
@@ -85,6 +83,8 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .execute()
         .await?;
+
+    let vector_store = LanceDbVectorStore::new(table, model, "id", search_params).await?;
 
     // Query the index
     let results = vector_store
