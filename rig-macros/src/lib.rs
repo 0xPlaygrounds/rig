@@ -33,7 +33,7 @@ mod tests {
     struct MyStruct {
         #[embed]
         id: usize,
-        #[embed]
+        #[embed(embed_with = "something")]
         name: String,
     }
 
@@ -44,7 +44,9 @@ mod tests {
             name: "John".to_string(),
         };
 
-        println!("{:?}", my_struct.embeddable());
+        my_struct.embeddable();
+
+        // println!("{:?}", my_struct.embeddable());
 
         assert!(false)
     }

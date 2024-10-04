@@ -1,18 +1,18 @@
 /// Builder for creating a collection of embeddings
-pub struct EmbeddingsBuilder<M: EmbeddingModel, T: Embeddable, V: Serialize> {
+pub struct EmbeddingsBuilder<M: EmbeddingModel, T: Embeddable> {
     model: M,
-    documents: Vec<(T, Vec<V>)>,
+    documents: Vec<(T, Vec<String>)>,
 }
 
-trait Embeddable<V: Serialize> {
+trait Embeddable {
     // Return list of strings that need to be embedded.
     // Instead of Vec<String>, should be Vec<T: Serialize>
-    fn embeddable(&self) -> Vec<V>;
+    fn embeddable(&self) -> Vec<String>;
 }
 
 type EmbeddingVector = Vec<f64>;
 
-impl<M: EmbeddingModel, T: Embeddable, V: Serialize> EmbeddingsBuilder<M, T, V> {
+impl<M: EmbeddingModel, T: Embeddable> EmbeddingsBuilder<M, T> {
     /// Create a new embedding builder with the given embedding model
     pub fn new(model: M) -> Self {
         Self {
@@ -25,7 +25,7 @@ impl<M: EmbeddingModel, T: Embeddable, V: Serialize> EmbeddingsBuilder<M, T, V> 
         mut self,
         document: T,
     ) -> Self {
-        let embed_documents: Vec<V> = document.embeddable();
+        let embed_documents: Vec<String> = document.embeddable();
 
         self.documents.push((
             document,
