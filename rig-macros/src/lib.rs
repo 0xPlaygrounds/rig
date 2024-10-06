@@ -21,14 +21,6 @@ mod tests {
         }
     }
 
-    impl Embeddable for String {
-        type Kind = Kind;
-
-        fn embeddable(&self) -> Vec<String> {
-            vec![self.clone()]
-        }
-    }
-
     #[derive(Embedding)]
     struct MyStruct {
         #[embed]
