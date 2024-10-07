@@ -31,6 +31,13 @@ async fn main() -> Result<(), anyhow::Error> {
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
+    // Initialize LanceDB on S3.
+    // Note: see below docs for more options and IAM permission required to read/write to S3.
+    // https://lancedb.github.io/lancedb/guides/storage/#aws-s3
+    let db = lancedb::connect("s3://lancedb-test-829666124233")
+        .execute()
+        .await?;
+
     // Set up test data for RAG demo
     let definition = "Definition of *flumbuzzle (verb)*: to bewilder or confuse someone completely, often by using nonsensical or overly complex explanations or instructions.".to_string();
 
@@ -46,15 +53,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Define search_params params that will be used by the vector store to perform the vector search.
-    let search_params = SearchParams::default().distance_type(DistanceType::Cosine);
-
-    // Initialize LanceDB on S3.
-    // Note: see below docs for more options and IAM permission required to read/write to S3.
-    // https://lancedb.github.io/lancedb/guides/storage/#aws-s3
-    let db = lancedb::connect("s3://lancedb-test-829666124233")
-        .execute()
-        .await?;
     // Create table with embeddings.
     let record_batch = as_record_batch(embeddings, model.ndims());
     let table = db
@@ -78,6 +76,9 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .execute()
         .await?;
+
+    // Define search_params params that will be used by the vector store to perform the vector search.
+    let search_params = SearchParams::default().distance_type(DistanceType::Cosine);
 
     let vector_store = LanceDbVectorStore::new(table, model, "id", search_params).await?;
 

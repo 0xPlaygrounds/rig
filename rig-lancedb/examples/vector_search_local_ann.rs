@@ -29,6 +29,9 @@ async fn main() -> Result<(), anyhow::Error> {
     // Select an embedding model.
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
+    // Initialize LanceDB locally.
+    let db = lancedb::connect("data/lancedb-store").execute().await?;
+
     // Set up test data for RAG demo
     let definition = "Definition of *flumbuzzle (verb)*: to bewilder or confuse someone completely, often by using nonsensical or overly complex explanations or instructions.".to_string();
 
@@ -44,12 +47,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Define search_params params that will be used by the vector store to perform the vector search.
-    let search_params = SearchParams::default().distance_type(DistanceType::Cosine);
-
-    // Initialize LanceDB locally.
-    let db = lancedb::connect("data/lancedb-store").execute().await?;
-
     // Create table with embeddings.
     let record_batch = as_record_batch(embeddings, model.ndims());
     let table = db
@@ -64,16 +61,13 @@ async fn main() -> Result<(), anyhow::Error> {
     table
         .create_index(
             &["embedding"],
-            lancedb::index::Index::IvfPq(
-                IvfPqIndexBuilder::default()
-                    // This overrides the default distance type of L2.
-                    // Needs to be the same distance type as the one used in search params.
-                    .distance_type(DistanceType::Cosine),
-            ),
+            lancedb::index::Index::IvfPq(IvfPqIndexBuilder::default()),
         )
         .execute()
         .await?;
 
+    // Define search_params params that will be used by the vector store to perform the vector search.
+    let search_params = SearchParams::default();
     let vector_store = LanceDbVectorStore::new(table, model, "id", search_params).await?;
 
     // Query the index
