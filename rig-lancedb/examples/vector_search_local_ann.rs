@@ -2,7 +2,7 @@ use std::{env, sync::Arc};
 
 use arrow_array::RecordBatchIterator;
 use fixture::{as_record_batch, schema};
-use lancedb::{index::vector::IvfPqIndexBuilder, DistanceType};
+use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::vector_store::VectorStoreIndex;
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
