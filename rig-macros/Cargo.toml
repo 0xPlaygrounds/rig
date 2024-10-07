@@ -1,9 +1,0 @@
-[package]
-name = "rig-macros"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-serde_json = "1.0.128"
-rig-macros-derive = { path = "./rig-macros-derive" }
-serde = {version = "1.0.210", features = ["derive"]}

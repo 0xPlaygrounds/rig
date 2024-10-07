@@ -8,7 +8,7 @@ mod embedding;
 // https://doc.rust-lang.org/reference/procedural-macros.html
 
 #[proc_macro_derive(Embedding, attributes(embed))]
-pub fn derive_embed_trait(item: TokenStream) -> TokenStream {
+pub fn derive_embedding_trait(item: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(item as DeriveInput);
 
     embedding::expand_derive_embedding(&mut input)

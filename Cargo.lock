@@ -1223,6 +1223,7 @@ dependencies = [
  "futures",
  "ordered-float",
  "reqwest",
+ "rig-core-derive",
  "schemars",
  "serde",
  "serde_json",
@@ -1233,16 +1234,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-macros"
-version = "0.1.0"
-dependencies = [
- "rig-macros-derive",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "rig-macros-derive"
+name = "rig-core-derive"
 version = "0.1.0"
 dependencies = [
  "indoc",

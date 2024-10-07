@@ -22,6 +22,7 @@ futures = "0.3.29"
 ordered-float = "4.2.0"
 schemars = "0.8.16"
 thiserror = "1.0.61"
+rig-core-derive = { path = "./rig-core-derive" }
 
 [dev-dependencies]
 anyhow = "1.0.75"
