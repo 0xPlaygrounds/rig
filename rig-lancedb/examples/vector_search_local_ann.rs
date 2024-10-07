@@ -5,7 +5,6 @@ use fixture::{as_record_batch, schema};
 use lancedb::{index::vector::IvfPqIndexBuilder, DistanceType};
 use rig::vector_store::VectorStoreIndex;
 use rig::{
-    completion::Prompt,
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
 };
@@ -30,20 +29,11 @@ async fn main() -> Result<(), anyhow::Error> {
     // Select an embedding model.
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
-    // Generate test data for RAG demo
-    let agent = openai_client
-        .agent("gpt-4o")
-        .preamble("Return the answer as JSON containing a list of strings in the form: `Definition of {generated_word}: {generated definition}`. Return ONLY the JSON string generated, nothing else.")
-        .build();
-    let response = agent
-        .prompt("Invent 100 words and their definitions")
-        .await?;
-    let mut definitions: Vec<String> = serde_json::from_str(&response)?;
+    // Set up test data for RAG demo
+    let definition = "Definition of *flumbuzzle (verb)*: to bewilder or confuse someone completely, often by using nonsensical or overly complex explanations or instructions.".to_string();
 
-    // Note: need at least 256 rows in order to create an index on a table but OpenAI limits the output size
-    // so we triplicate the vector for testing purposes.
-    definitions.extend(definitions.clone());
-    definitions.extend(definitions.clone());
+    // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
+    let definitions = vec![definition; 256];
 
     // Generate embeddings for the test data.
     let embeddings = EmbeddingsBuilder::new(model.clone())
