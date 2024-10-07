@@ -5,12 +5,35 @@ pub struct EmbeddingsBuilder<M: EmbeddingModel, T: Embeddable> {
 }
 
 trait Embeddable {
+    type Kind;
     // Return list of strings that need to be embedded.
     // Instead of Vec<String>, should be Vec<T: Serialize>
     fn embeddable(&self) -> Vec<String>;
 }
 
 type EmbeddingVector = Vec<f64>;
+
+impl<M: EmbeddingModel, T: Embeddable<Kind = Single>> EmbeddingsBuilder<M, T> {
+    pub fn build(&self) -> Result<Vec<(T, EmbeddingVector)>, EmbeddingError> {
+        self.documents.iter().map(|(doc, values_to_embed)| {
+            values_to_embed.iter().map(|value| {
+                let value_str = serde_json::to_string(value)?;
+                generate_embedding(value_str)
+            })
+        })
+    }
+} 
+
+impl<M: EmbeddingModel, T: Embeddable<Kind = Many>> EmbeddingsBuilder<M, T> {
+    pub fn build(&self) -> Result<Vec<(T, Vec<EmbeddingVector>)>, EmbeddingError> {
+        self.documents.iter().map(|(doc, values_to_embed)| {
+            values_to_embed.iter().map(|value| {
+                let value_str = serde_json::to_string(value)?;
+                generate_embedding(value_str)
+            })
+        })
+    }
+} 
 
 impl<M: EmbeddingModel, T: Embeddable> EmbeddingsBuilder<M, T> {
     /// Create a new embedding builder with the given embedding model
@@ -32,22 +55,6 @@ impl<M: EmbeddingModel, T: Embeddable> EmbeddingsBuilder<M, T> {
             embed_documents,
         ));
         self
-    }
-
-    pub fn build(&self) -> Result<Vec<(T, Vec<EmbeddingVector>)>, EmbeddingError> {
-        self.documents.iter().map(|(doc, values_to_embed)| {
-            values_to_embed.iter().map(|value| {
-                let value_str = serde_json::to_string(value)?;
-                generate_embedding(value_str)
-            })
-        })
-    }
-
-    pub fn build_simple(&self) -> Result<Vec<(T, EmbeddingVector)>, EmbeddingError> {
-        self.documents.iter().map(|(doc, value_to_embed)| {
-            let value_str = serde_json::to_string(value_to_embed)?;
-            generate_embedding(value_str)
-        })
     }
 }
 
