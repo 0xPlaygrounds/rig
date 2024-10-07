@@ -73,6 +73,9 @@ pub trait EmbeddingModel: Clone + Sync + Send {
     /// The maximum number of documents that can be embedded in a single request.
     const MAX_DOCUMENTS: usize;
 
+    /// The number of dimensions in the embedding vector.
+    fn ndims(&self) -> usize;
+
     /// Embed a single document
     fn embed_document(
         &self,

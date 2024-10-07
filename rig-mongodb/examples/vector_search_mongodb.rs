@@ -1,12 +1,12 @@
-use mongodb::{bson::doc, options::ClientOptions, Client as MongoClient, Collection};
+use mongodb::{options::ClientOptions, Client as MongoClient, Collection};
 use std::env;
 
 use rig::{
     embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
-    providers::openai::Client,
+    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::{VectorStore, VectorStoreIndex},
 };
-use rig_mongodb::MongoDbVectorStore;
+use rig_mongodb::{MongoDbVectorStore, SearchParams};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -32,7 +32,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut vector_store = MongoDbVectorStore::new(collection);
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model("text-embedding-ada-002");
+    let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     let embeddings = EmbeddingsBuilder::new(model.clone())
         .simple_document("doc0", "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
@@ -49,7 +49,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = vector_store.index(model, "vector_index", doc! {});
+    let index = vector_store.index(model, "vector_index", SearchParams::default());
 
     // Query the index
     let results = index

@@ -49,6 +49,9 @@ jobs:
         with:
           components: clippy
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
       - name: Run clippy action
         uses: clechasseur/rs-clippy-check@v3
 
@@ -66,6 +69,9 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: nextest
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
 
       - name: Test with latest nextest release
         uses: actions-rs/cargo@v1

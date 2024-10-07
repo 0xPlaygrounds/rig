@@ -2,7 +2,7 @@ use anyhow::Result;
 use rig::{
     completion::{Prompt, ToolDefinition},
     embeddings::EmbeddingsBuilder,
-    providers::openai::Client,
+    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     tool::{Tool, ToolEmbedding, ToolSet},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStore},
 };
@@ -148,7 +148,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     let openai_client = Client::new(&openai_api_key);
 
-    let embedding_model = openai_client.embedding_model("text-embedding-ada-002");
+    let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     // Create vector store, compute tool embeddings and load them in the store
     let mut vector_store = InMemoryVectorStore::default();
