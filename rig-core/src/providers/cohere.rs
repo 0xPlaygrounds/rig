@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError},
-    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
+    embeddings::{self, Embeddable, EmbeddingError, EmbeddingsBuilder},
     extractor::ExtractorBuilder,
     json_utils,
 };
@@ -85,7 +85,11 @@ impl Client {
         EmbeddingModel::new(self.clone(), model, input_type, ndims)
     }
 
-    pub fn embeddings(&self, model: &str, input_type: &str) -> EmbeddingsBuilder<EmbeddingModel> {
+    pub fn embeddings<D: Embeddable>(
+        &self,
+        model: &str,
+        input_type: &str,
+    ) -> EmbeddingsBuilder<EmbeddingModel, D, D::Kind> {
         EmbeddingsBuilder::new(self.embedding_model(model, input_type))
     }
 

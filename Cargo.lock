@@ -3997,7 +3997,7 @@ dependencies = [
  "futures",
  "ordered-float",
  "reqwest 0.11.27",
- "rig-core-derive",
+ "rig-derive",
  "schemars",
  "serde",
  "serde_json",
@@ -4008,7 +4008,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-core-derive"
+name = "rig-derive"
 version = "0.1.0"
 dependencies = [
  "indoc",
@@ -4025,6 +4025,7 @@ dependencies = [
  "futures",
  "lancedb",
  "rig-core",
+ "rig-derive",
  "serde",
  "serde_json",
  "tokio",
@@ -4038,6 +4039,7 @@ dependencies = [
  "futures",
  "mongodb",
  "rig-core",
+ "rig-derive",
  "serde",
  "serde_json",
  "tokio",

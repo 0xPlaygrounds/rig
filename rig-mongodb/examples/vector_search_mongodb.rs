@@ -1,12 +1,27 @@
-use mongodb::{options::ClientOptions, Client as MongoClient, Collection};
+use mongodb::{bson::doc, options::ClientOptions, Client as MongoClient, Collection};
+use rig::{embeddings::Embedding, providers::openai::TEXT_EMBEDDING_ADA_002};
+use rig_derive::Embed;
+use serde::{Deserialize, Serialize};
 use std::env;
 
 use rig::{
-    embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::{VectorStore, VectorStoreIndex},
+    embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex,
 };
 use rig_mongodb::{MongoDbVectorStore, SearchParams};
+
+#[derive(Embed, Clone)]
+struct FakeDefinition {
+    id: String,
+    #[embed]
+    definition: String,
+}
+
+#[derive(Serialize, Debug, Deserialize)]
+struct Document {
+    #[serde(rename = "_id")]
+    id: String,
+    definition: Embedding,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -25,38 +40,62 @@ async fn main() -> Result<(), anyhow::Error> {
         MongoClient::with_options(options).expect("MongoDB client options should be valid");
 
     // Initialize MongoDB vector store
-    let collection: Collection<DocumentEmbeddings> = mongodb_client
+    let collection: Collection<Document> = mongodb_client
         .database("knowledgebase")
         .collection("context");
-
-    let mut vector_store = MongoDbVectorStore::new(collection);
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
+    let fake_definitions = vec![
+        FakeDefinition {
+            id: "doc0".to_string(),
+            definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string()
+        },
+        FakeDefinition {
+            id: "doc1".to_string(),
+            definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string()
+        },
+        FakeDefinition {
+            id: "doc2".to_string(),
+            definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string()
+        }
+    ];
+
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .simple_document("doc0", "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
-        .simple_document("doc1", "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
-        .simple_document("doc2", "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.")
+        .documents(fake_definitions)
         .build()
         .await?;
 
-    // Add embeddings to vector store
-    match vector_store.add_documents(embeddings).await {
+    let mongo_documents = embeddings
+        .iter()
+        .map(|(FakeDefinition { id, .. }, embedding)| Document {
+            id: id.clone(),
+            definition: embedding.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    match collection.insert_many(mongo_documents, None).await {
         Ok(_) => println!("Documents added successfully"),
         Err(e) => println!("Error adding documents: {:?}", e),
-    }
+    };
+
+    let vector_store = MongoDbVectorStore::new(collection);
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = vector_store.index(model, "vector_index", SearchParams::default());
+    let index = vector_store.index(
+        model,
+        "definitions_vector_index",
+        SearchParams::new("definition.vec"),
+    );
 
     // Query the index
     let results = index
-        .top_n::<DocumentEmbeddings>("What is a linglingdong?", 1)
+        .top_n::<Document>("What is a linglingdong?", 1)
         .await?
         .into_iter()
-        .map(|(score, id, doc)| (score, id, doc.document))
+        .map(|(score, id, doc)| (score, id, doc.definition.document))
         .collect::<Vec<_>>();
 
     println!("Results: {:?}", results);

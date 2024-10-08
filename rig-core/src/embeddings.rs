@@ -38,12 +38,10 @@
 //! // ...
 //! ```
 
-use std::{cmp::max, collections::HashMap};
+use std::{cmp::max, collections::HashMap, marker::PhantomData};
 
 use futures::{stream, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
-
-use crate::tool::{ToolEmbedding, ToolSet, ToolType};
 
 #[derive(Debug, thiserror::Error)]
 pub enum EmbeddingError {
@@ -102,7 +100,7 @@ pub trait EmbeddingModel: Clone + Sync + Send {
 }
 
 /// Struct that holds a single document and its embedding.
-#[derive(Clone, Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize, Debug)]
 pub struct Embedding {
     /// The document that was embedded
     pub document: String,
@@ -149,25 +147,29 @@ pub struct DocumentEmbeddings {
     pub document: serde_json::Value,
     pub embeddings: Vec<Embedding>,
 }
-
-struct SingleEmbedding;
-struct ManyEmbedding;
+pub trait EmbeddingKind {}
+pub struct SingleEmbedding;
+impl EmbeddingKind for SingleEmbedding {}
+pub struct ManyEmbedding;
+impl EmbeddingKind for ManyEmbedding {}
 
 pub trait Embeddable {
-    type Kind;
+    type Kind: EmbeddingKind;
     fn embeddable(&self) -> Vec<String>;
 }
 
 /// Builder for creating a collection of embeddings
-pub struct EmbeddingsBuilder<M: EmbeddingModel, D: Embeddable + Send> {
+pub struct EmbeddingsBuilder<M: EmbeddingModel, D: Embeddable, K: EmbeddingKind> {
+    kind: PhantomData<K>,
     model: M,
     documents: Vec<(D, Vec<String>)>,
 }
 
-impl<M: EmbeddingModel, D: Embeddable + Send> EmbeddingsBuilder<M, D> {
+impl<M: EmbeddingModel, D: Embeddable<Kind = K>, K: EmbeddingKind> EmbeddingsBuilder<M, D, K> {
     /// Create a new embedding builder with the given embedding model
     pub fn new(model: M) -> Self {
         Self {
+            kind: PhantomData,
             model,
             documents: vec![],
         }
@@ -179,12 +181,22 @@ impl<M: EmbeddingModel, D: Embeddable + Send> EmbeddingsBuilder<M, D> {
         self.documents.push((document, embed_targets));
         self
     }
+
+    pub fn documents(mut self, documents: Vec<D>) -> EmbeddingsBuilder<M, D, D::Kind> {
+        documents.into_iter().for_each(|doc| {
+            let embed_targets = doc.embeddable();
+
+            self.documents.push((doc, embed_targets));
+        });
+
+        self
+    }
 }
 
-impl<M: EmbeddingModel, D: Embeddable<Kind = ManyEmbedding> + Send + Clone>
-    EmbeddingsBuilder<M, D>
+impl<M: EmbeddingModel, D: Embeddable + Send + Sync + Clone>
+    EmbeddingsBuilder<M, D, ManyEmbedding>
 {
-    pub async fn build(self) -> Result<Vec<(D, Vec<Embedding>)>, EmbeddingError> {
+    pub async fn build(&self) -> Result<Vec<(D, Vec<Embedding>)>, EmbeddingError> {
         let documents_map = self
             .documents
             .clone()
@@ -193,7 +205,7 @@ impl<M: EmbeddingModel, D: Embeddable<Kind = ManyEmbedding> + Send + Clone>
             .map(|(id, (document, _))| (id, document))
             .collect::<HashMap<_, _>>();
 
-        let embeddings = stream::iter(self.documents.into_iter().enumerate())
+        let embeddings = stream::iter(self.documents.clone().into_iter().enumerate())
             // Flatten the documents
             .flat_map(|(i, (_, embed_targets))| {
                 stream::iter(
@@ -219,13 +231,16 @@ impl<M: EmbeddingModel, D: Embeddable<Kind = ManyEmbedding> + Send + Clone>
             .buffer_unordered(max(1, 1024 / M::MAX_DOCUMENTS))
             // .try_collect::<Vec<_>>()
             // .await;
-            .try_fold(HashMap::new(), |mut acc, mut embeddings| async move {
-                embeddings.into_iter().for_each(|(i, embedding)| {
-                    acc.entry(i).or_insert(vec![]).push(embedding);
-                });
+            .try_fold(
+                HashMap::new(),
+                |mut acc: HashMap<_, Vec<_>>, embeddings| async move {
+                    embeddings.into_iter().for_each(|(i, embedding)| {
+                        acc.entry(i).or_default().push(embedding);
+                    });
 
-                Ok(acc)
-            })
+                    Ok(acc)
+                },
+            )
             .await?
             .iter()
             .fold(vec![], |mut acc, (i, embeddings_vec)| {
@@ -240,35 +255,61 @@ impl<M: EmbeddingModel, D: Embeddable<Kind = ManyEmbedding> + Send + Clone>
     }
 }
 
-impl<M: EmbeddingModel, D: Embeddable<Kind = SingleEmbedding> + Send + Clone>
-    EmbeddingsBuilder<M, D>
+impl<M: EmbeddingModel, D: Embeddable + Send + Sync + Clone>
+    EmbeddingsBuilder<M, D, SingleEmbedding>
 {
-    pub async fn build(self) -> Result<Vec<(D, Embedding)>, EmbeddingError> {
-        let embeddings =
-            stream::iter(self.documents.into_iter().map(|(document, embed_target)| {
-                (document, embed_target.first().cloned().unwrap())
-            }))
-            // Chunk them into N (the emebdding API limit per request)
-            .chunks(M::MAX_DOCUMENTS)
-            // Generate the embeddings
-            .map(|docs| async {
-                let (documents, embed_targets): (Vec<_>, Vec<_>) = docs.into_iter().unzip();
-                Ok::<_, EmbeddingError>(
-                    documents
-                        .into_iter()
-                        .zip(self.model.embed_documents(embed_targets).await?.into_iter())
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .boxed()
-            // Parallelize the embeddings generation over 10 concurrent requests
-            .buffer_unordered(max(1, 1024 / M::MAX_DOCUMENTS))
-            .try_fold(vec![], |mut acc, embeddings| async move {
-                acc.extend(embeddings);
-                Ok(acc)
-            })
-            .await?;
+    pub async fn build(&self) -> Result<Vec<(D, Embedding)>, EmbeddingError> {
+        let embeddings = stream::iter(
+            self.documents
+                .clone()
+                .into_iter()
+                .map(|(document, embed_target)| (document, embed_target.first().cloned().unwrap())),
+        )
+        // Chunk them into N (the emebdding API limit per request)
+        .chunks(M::MAX_DOCUMENTS)
+        // Generate the embeddings
+        .map(|docs| async {
+            let (documents, embed_targets): (Vec<_>, Vec<_>) = docs.into_iter().unzip();
+            Ok::<_, EmbeddingError>(
+                documents
+                    .into_iter()
+                    .zip(self.model.embed_documents(embed_targets).await?.into_iter())
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .boxed()
+        // Parallelize the embeddings generation over 10 concurrent requests
+        .buffer_unordered(max(1, 1024 / M::MAX_DOCUMENTS))
+        .try_fold(vec![], |mut acc, embeddings| async move {
+            acc.extend(embeddings);
+            Ok(acc)
+        })
+        .await?;
 
         Ok(embeddings)
+    }
+}
+
+impl Embeddable for String {
+    type Kind = SingleEmbedding;
+
+    fn embeddable(&self) -> Vec<String> {
+        vec![self.clone()]
+    }
+}
+
+impl Embeddable for i32 {
+    type Kind = SingleEmbedding;
+
+    fn embeddable(&self) -> Vec<String> {
+        vec![self.to_string()]
+    }
+}
+
+impl<T: Embeddable> Embeddable for Vec<T> {
+    type Kind = ManyEmbedding;
+
+    fn embeddable(&self) -> Vec<String> {
+        self.iter().flat_map(|i| i.embeddable()).collect()
     }
 }

@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    meta::ParseNestedMeta, parse_quote, punctuated::Punctuated, spanned::Spanned, Attribute,
-    DataStruct, ExprPath, Meta, Token,
+    meta::ParseNestedMeta, parse_quote, parse_str, punctuated::Punctuated, spanned::Spanned,
+    Attribute, DataStruct, ExprPath, Meta, Token,
 };
 
 const EMBED: &str = "embed";
@@ -11,7 +11,7 @@ const EMBED_WITH: &str = "embed_with";
 pub fn expand_derive_embedding(input: &mut syn::DeriveInput) -> TokenStream {
     let name = &input.ident;
 
-    let func_calls =
+    let (func_calls, embed_kind) =
         match &input.data {
             syn::Data::Struct(data_struct) => {
                 // Handles fields tagged with #[embed]
@@ -21,6 +21,7 @@ pub fn expand_derive_embedding(input: &mut syn::DeriveInput) -> TokenStream {
                         add_struct_bounds(&mut input.generics, &field.ty);
 
                         let field_name = field.ident;
+
                         quote! {
                             self.#field_name.embeddable()
                         }
@@ -38,9 +39,9 @@ pub fn expand_derive_embedding(input: &mut syn::DeriveInput) -> TokenStream {
                     },
                 ));
 
-                function_calls
+                (function_calls, data_struct.embed_kind().unwrap())
             }
-            _ => vec![],
+            _ => panic!("Embeddable can only be derived for structs"),
         };
 
     // Import the paths to the custom functions.
@@ -60,10 +61,13 @@ pub fn expand_derive_embedding(input: &mut syn::DeriveInput) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let gen = quote! {
+        use rig::embeddings::Embeddable;
+        use rig::embeddings::#embed_kind;
+
         #(#custom_func_paths);*
 
         impl #impl_generics Embeddable for #name #ty_generics #where_clause {
-            type Kind = String;
+            type Kind = #embed_kind;
 
             fn embeddable(&self) -> Vec<String> {
                 vec![
@@ -86,6 +90,13 @@ fn add_struct_bounds(generics: &mut syn::Generics, field_type: &syn::Type) {
     });
 }
 
+fn embed_kind(field: &syn::Field) -> Result<syn::Expr, syn::Error> {
+    match &field.ty {
+        syn::Type::Array(_) => parse_str("ManyEmbedding"),
+        _ => parse_str("SingleEmbedding"),
+    }
+}
+
 trait AttributeParser {
     /// Finds and returns fields with simple #[embed] attribute tags only.
     fn basic_embed_fields(&self) -> impl Iterator<Item = syn::Field>;
@@ -94,6 +105,23 @@ trait AttributeParser {
     fn custom_embed_fields(
         &self,
     ) -> Result<impl Iterator<Item = (syn::Field, syn::ExprPath)>, syn::Error>;
+
+    /// If the total number of fields tagged with #[embed] or #[embed(embed_with = "...")] is 1,
+    /// returns the kind of embedding that field should be.
+    /// If the total number of fields tagged with #[embed] or #[embed(embed_with = "...")] is greater than 1,
+    /// return ManyEmbedding.
+    fn embed_kind(&self) -> Result<syn::Expr, syn::Error> {
+        let fields = self
+            .basic_embed_fields()
+            .chain(self.custom_embed_fields().unwrap().map(|(f, _)| f))
+            .collect::<Vec<_>>();
+
+        if fields.len() == 1 {
+            fields.iter().map(embed_kind).next().unwrap()
+        } else {
+            parse_str("ManyEmbedding")
+        }
+    }
 }
 
 impl AttributeParser for DataStruct {

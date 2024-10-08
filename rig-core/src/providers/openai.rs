@@ -11,7 +11,7 @@
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
-    embeddings::{self, EmbeddingError},
+    embeddings::{self, Embeddable, EmbeddingError},
     extractor::ExtractorBuilder,
     json_utils,
 };
@@ -121,7 +121,10 @@ impl Client {
     ///     .await
     ///     .expect("Failed to embed documents");
     /// ```
-    pub fn embeddings(&self, model: &str) -> embeddings::EmbeddingsBuilder<EmbeddingModel> {
+    pub fn embeddings<D: Embeddable>(
+        &self,
+        model: &str,
+    ) -> embeddings::EmbeddingsBuilder<EmbeddingModel, D, D::Kind> {
         embeddings::EmbeddingsBuilder::new(self.embedding_model(model))
     }
 
