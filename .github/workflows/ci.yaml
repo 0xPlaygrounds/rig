@@ -49,6 +49,7 @@ jobs:
         with:
           components: clippy
 
+      # Required to compile rig-lancedb
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
 
@@ -70,6 +71,7 @@ jobs:
         with:
           tool: nextest
 
+      # Required to compile rig-lancedb
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
 

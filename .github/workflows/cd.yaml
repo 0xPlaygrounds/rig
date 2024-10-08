@@ -28,6 +28,10 @@ jobs:
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
+      # Required to compile rig-lancedb
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
       - name: Run release-plz
         uses: MarcoIeni/release-plz-action@v0.5
         env:
