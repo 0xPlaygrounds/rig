@@ -4,7 +4,7 @@ version = "0.1.2"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
-description = "MongoDB implementation of a Rig vector store."
+description = "MongoDB implementation of a Rig vector store index."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
