@@ -6,28 +6,22 @@ use rig::embeddings::Embedding;
 use rig_derive::Embed;
 use serde::Deserialize;
 
-#[derive(Embed, Clone)]
+#[derive(Embed, Clone, Deserialize, Debug)]
 pub struct FakeDefinition {
     id: String,
     #[embed]
     definition: String,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct VectorSearchResult {
-    pub id: String,
-    pub definition: String,
-}
-
 pub fn fake_definitions() -> Vec<FakeDefinition> {
     vec![
         FakeDefinition {
             id: "doc0".to_string(),
-            definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string()
+            definition: "Definition of *flumbrel (noun)*: a small, seemingly insignificant item that you constantly lose or misplace, such as a pen, hair tie, or remote control.".to_string()
         },
         FakeDefinition {
             id: "doc1".to_string(),
-            definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string()
+            definition: "Definition of *zindle (verb)*: to pretend to be working on something important while actually doing something completely unrelated or unproductive.".to_string()
         },
         FakeDefinition {
             id: "doc2".to_string(),
@@ -39,7 +33,7 @@ pub fn fake_definitions() -> Vec<FakeDefinition> {
 pub fn fake_definition(id: String) -> FakeDefinition {
     FakeDefinition {
         id,
-        definition: "Definition of *flumbuzzle (verb)*: to bewilder or confuse someone completely, often by using nonsensical or overly complex explanations or instructions.".to_string()
+        definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
     }
 }
 
@@ -59,7 +53,7 @@ pub fn schema(dims: usize) -> Schema {
     ]))
 }
 
-// Convert DocumentEmbeddings objects to a RecordBatch.
+// Convert FakeDefinition objects and their embedding to a RecordBatch.
 pub fn as_record_batch(
     records: Vec<(FakeDefinition, Embedding)>,
     dims: usize,
@@ -74,7 +68,7 @@ pub fn as_record_batch(
     let definition = StringArray::from_iter_values(
         records
             .iter()
-            .map(|(_, Embedding { document, .. })| document)
+            .map(|(FakeDefinition { definition, .. }, _)| definition)
             .collect::<Vec<_>>(),
     );
 

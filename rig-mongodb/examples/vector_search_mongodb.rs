@@ -1,5 +1,5 @@
 use mongodb::{bson::doc, options::ClientOptions, Client as MongoClient, Collection};
-use rig::{embeddings::Embedding, providers::openai::TEXT_EMBEDDING_ADA_002};
+use rig::providers::openai::TEXT_EMBEDDING_ADA_002;
 use rig_derive::Embed;
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -9,18 +9,22 @@ use rig::{
 };
 use rig_mongodb::{MongoDbVectorStore, SearchParams};
 
-#[derive(Embed, Clone)]
+// Shape of data that needs to be RAG'ed.
+// The definition field will be used to generate embeddings.
+#[derive(Embed, Clone, Deserialize, Debug)]
 struct FakeDefinition {
     id: String,
     #[embed]
     definition: String,
 }
 
-#[derive(Serialize, Debug, Deserialize)]
+// Shape of the document to be stored in MongoDB.
+#[derive(Serialize, Debug)]
 struct Document {
     #[serde(rename = "_id")]
     id: String,
-    definition: Embedding,
+    definition: String,
+    embedding: Vec<f64>,
 }
 
 #[tokio::main]
@@ -69,9 +73,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let mongo_documents = embeddings
         .iter()
-        .map(|(FakeDefinition { id, .. }, embedding)| Document {
+        .map(|(FakeDefinition { id, definition }, embedding)| Document {
             id: id.clone(),
-            definition: embedding.clone(),
+            definition: definition.clone(),
+            embedding: embedding.vec.clone(),
         })
         .collect::<Vec<_>>();
 
@@ -87,16 +92,13 @@ async fn main() -> Result<(), anyhow::Error> {
     let index = vector_store.index(
         model,
         "definitions_vector_index",
-        SearchParams::new("definition.vec"),
+        SearchParams::new("embedding"),
     );
 
     // Query the index
     let results = index
-        .top_n::<Document>("What is a linglingdong?", 1)
-        .await?
-        .into_iter()
-        .map(|(score, id, doc)| (score, id, doc.definition.document))
-        .collect::<Vec<_>>();
+        .top_n::<FakeDefinition>("What is a linglingdong?", 1)
+        .await?;
 
     println!("Results: {:?}", results);
 

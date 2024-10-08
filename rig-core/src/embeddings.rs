@@ -131,22 +131,6 @@ impl Embedding {
     }
 }
 
-/// Struct that holds a document and its embeddings.
-///
-/// The struct is designed to model any kind of documents that can be serialized to JSON
-/// (including a simple string).
-///
-/// Moreover, it can hold multiple embeddings for the same document, thus allowing a
-/// large document to be retrieved from a query that matches multiple smaller and
-/// distinct text documents. For example, if the document is a textbook, a summary of
-/// each chapter could serve as the book's embeddings.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct DocumentEmbeddings {
-    #[serde(rename = "_id")]
-    pub id: String,
-    pub document: serde_json::Value,
-    pub embeddings: Vec<Embedding>,
-}
 pub trait EmbeddingKind {}
 pub struct SingleEmbedding;
 impl EmbeddingKind for SingleEmbedding {}

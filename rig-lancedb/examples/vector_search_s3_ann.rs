@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use arrow_array::RecordBatchIterator;
-use fixture::{as_record_batch, fake_definition, fake_definitions, schema, VectorSearchResult};
+use fixture::{as_record_batch, fake_definition, fake_definitions, schema, FakeDefinition};
 use lancedb::{index::vector::IvfPqIndexBuilder, DistanceType};
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
@@ -74,7 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = vector_store
-        .top_n::<VectorSearchResult>("I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?", 1)
+        .top_n::<FakeDefinition>("I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?", 1)
         .await?;
 
     println!("Results: {:?}", results);

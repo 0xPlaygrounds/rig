@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use arrow_array::RecordBatchIterator;
-use fixture::{as_record_batch, fake_definition, fake_definitions, schema, VectorSearchResult};
+use fixture::{as_record_batch, fake_definition, fake_definitions, schema, FakeDefinition};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::vector_store::VectorStoreIndex;
 use rig::{
@@ -62,7 +62,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = vector_store
-        .top_n::<VectorSearchResult>("My boss says I zindle too much, what does that mean?", 1)
+        .top_n::<FakeDefinition>("My boss says I zindle too much, what does that mean?", 1)
         .await?;
 
     println!("Results: {:?}", results);

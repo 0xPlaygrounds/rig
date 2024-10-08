@@ -7,6 +7,7 @@ use syn::{
 
 const EMBED: &str = "embed";
 const EMBED_WITH: &str = "embed_with";
+const VEC_TYPE: &str = "Vec";
 
 pub fn expand_derive_embedding(input: &mut syn::DeriveInput) -> TokenStream {
     let name = &input.ident;
@@ -92,7 +93,13 @@ fn add_struct_bounds(generics: &mut syn::Generics, field_type: &syn::Type) {
 
 fn embed_kind(field: &syn::Field) -> Result<syn::Expr, syn::Error> {
     match &field.ty {
-        syn::Type::Array(_) => parse_str("ManyEmbedding"),
+        syn::Type::Path(path) => {
+            if path.path.segments.first().unwrap().ident == VEC_TYPE {
+                parse_str("ManyEmbedding")
+            } else {
+                parse_str("SingleEmbedding")
+            }
+        },
         _ => parse_str("SingleEmbedding"),
     }
 }
