@@ -49,5 +49,34 @@ jobs:
         with:
           components: clippy
 
+      # Required to compile rig-lancedb
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
       - name: Run clippy action
         uses: clechasseur/rs-clippy-check@v3
+
+  test:
+    name: stable / test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      # Required to compile rig-lancedb
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
+      - name: Test with latest nextest release
+        uses: actions-rs/cargo@v1
+        with:
+          command: nextest
+          args: run --all-features

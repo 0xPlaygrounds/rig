@@ -87,16 +87,13 @@ impl MongoDbVectorStore {
     ///
     /// The index (of type "vector") must already exist for the MongoDB collection.
     /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
-    ///
-    /// An additional filter can be provided to further restrict the documents that are
-    /// considered in the search.
     pub fn index<M: EmbeddingModel>(
         &self,
         model: M,
         index_name: &str,
-        filter: mongodb::bson::Document,
+        search_params: SearchParams,
     ) -> MongoDbVectorIndex<M> {
-        MongoDbVectorIndex::new(self.collection.clone(), model, index_name, filter)
+        MongoDbVectorIndex::new(self.collection.clone(), model, index_name, search_params)
     }
 }
 
@@ -105,21 +102,28 @@ pub struct MongoDbVectorIndex<M: EmbeddingModel> {
     collection: mongodb::Collection<DocumentEmbeddings>,
     model: M,
     index_name: String,
-    filter: mongodb::bson::Document,
+    search_params: SearchParams,
 }
 
 impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
     /// Vector search stage of aggregation pipeline of mongoDB collection.
     /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
     fn pipeline_search_stage(&self, prompt_embedding: &Embedding, n: usize) -> bson::Document {
+        let SearchParams {
+            filter,
+            exact,
+            num_candidates,
+        } = &self.search_params;
+
         doc! {
           "$vectorSearch": {
             "index": &self.index_name,
             "path": "embeddings.vec",
             "queryVector": &prompt_embedding.vec,
-            "numCandidates": (n * 10) as u32,
+            "numCandidates": num_candidates.unwrap_or((n * 10) as u32),
             "limit": n as u32,
-            "filter": &self.filter,
+            "filter": filter,
+            "exact": exact.unwrap_or(false)
           }
         }
     }
@@ -140,14 +144,64 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
         collection: mongodb::Collection<DocumentEmbeddings>,
         model: M,
         index_name: &str,
-        filter: mongodb::bson::Document,
+        search_params: SearchParams,
     ) -> Self {
         Self {
             collection,
             model,
             index_name: index_name.to_string(),
-            filter,
+            search_params,
         }
+    }
+}
+
+/// See [MongoDB Vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information
+/// on each of the fields
+pub struct SearchParams {
+    filter: mongodb::bson::Document,
+    exact: Option<bool>,
+    num_candidates: Option<u32>,
+}
+
+impl SearchParams {
+    /// Initializes a new `SearchParams` with default values.
+    pub fn new() -> Self {
+        Self {
+            filter: doc! {},
+            exact: None,
+            num_candidates: None,
+        }
+    }
+
+    /// Sets the pre-filter field of the search params.
+    /// See [MongoDB vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information.
+    pub fn filter(mut self, filter: mongodb::bson::Document) -> Self {
+        self.filter = filter;
+        self
+    }
+
+    /// Sets the exact field of the search params.
+    /// If exact is true, an ENN vector search will be performed, otherwise, an ANN search will be performed.
+    /// By default, exact is false.
+    /// See [MongoDB vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information.
+    pub fn exact(mut self, exact: bool) -> Self {
+        self.exact = Some(exact);
+        self
+    }
+
+    /// Sets the num_candidates field of the search params.
+    /// Only set this field if exact is set to false.
+    /// Number of nearest neighbors to use during the search.
+    /// See [MongoDB vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information.
+    pub fn num_candidates(mut self, num_candidates: u32) -> Self {
+        self.num_candidates = Some(num_candidates);
+        self
+    }
+}
+
+impl Default for SearchParams {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

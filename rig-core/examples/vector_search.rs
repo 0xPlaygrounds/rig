@@ -2,7 +2,7 @@ use std::env;
 
 use rig::{
     embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
-    providers::openai::Client,
+    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::{in_memory_store::InMemoryVectorIndex, VectorStoreIndex},
 };
 
@@ -12,7 +12,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     let openai_client = Client::new(&openai_api_key);
 
-    let model = openai_client.embedding_model("text-embedding-ada-002");
+    let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     let embeddings = EmbeddingsBuilder::new(model.clone())
         .simple_document("doc0", "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")

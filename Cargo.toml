@@ -3,4 +3,5 @@ resolver = "2"
 members = [
     "rig-core", "rig-core/rig-core-derive",
     "rig-mongodb",
+    "rig-lancedb"
 ]
