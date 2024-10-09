@@ -22,20 +22,20 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    let vector_store = InMemoryVectorStore::default().add_documents(
-        embeddings
-            .into_iter()
-            .map(
-                |DocumentEmbeddings {
-                     id,
-                     document,
-                     embeddings,
-                 }| { (id, document, embeddings) },
-            )
-            .collect(),
-    )?;
-
-    let index = vector_store.index(search_model);
+    let index = InMemoryVectorStore::default()
+        .add_documents(
+            embeddings
+                .into_iter()
+                .map(
+                    |DocumentEmbeddings {
+                         id,
+                         document,
+                         embeddings,
+                     }| { (id, document, embeddings) },
+                )
+                .collect(),
+        )?
+        .index(search_model);
 
     let results = index
         .top_n::<DocumentEmbeddings>("What is a linglingdong?", 1)

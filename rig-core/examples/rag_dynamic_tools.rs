@@ -160,21 +160,20 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    let vector_store = InMemoryVectorStore::default().add_documents(
-        embeddings
-            .into_iter()
-            .map(
-                |DocumentEmbeddings {
-                     id,
-                     document,
-                     embeddings,
-                 }| { (id, document, embeddings) },
-            )
-            .collect(),
-    )?;
-
-    // Create vector store index
-    let index = vector_store.index(embedding_model);
+    let index = InMemoryVectorStore::default()
+        .add_documents(
+            embeddings
+                .into_iter()
+                .map(
+                    |DocumentEmbeddings {
+                         id,
+                         document,
+                         embeddings,
+                     }| { (id, document, embeddings) },
+                )
+                .collect(),
+        )?
+        .index(embedding_model);
 
     // Create RAG agent with a single context prompt and a dynamic tool source
     let calculator_rag = openai_client
