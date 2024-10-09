@@ -2,9 +2,9 @@ use std::env;
 
 use rig::{
     completion::Prompt,
-    embeddings::EmbeddingsBuilder,
+    embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::{in_memory_store::InMemoryVectorStore, VectorStore},
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 
 #[tokio::main]
@@ -25,7 +25,18 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    vector_store.add_documents(embeddings).await?;
+    let vector_store = vector_store.add_documents(
+        embeddings
+            .into_iter()
+            .map(
+                |DocumentEmbeddings {
+                     id,
+                     document,
+                     embeddings,
+                 }| { (id, document, embeddings) },
+            )
+            .collect(),
+    )?;
 
     // Create vector store index
     let index = vector_store.index(embedding_model);

@@ -1,10 +1,10 @@
 use anyhow::Result;
 use rig::{
     completion::{Prompt, ToolDefinition},
-    embeddings::EmbeddingsBuilder,
+    embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     tool::{Tool, ToolEmbedding, ToolSet},
-    vector_store::{in_memory_store::InMemoryVectorStore, VectorStore},
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -150,9 +150,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
-    // Create vector store, compute tool embeddings and load them in the store
-    let mut vector_store = InMemoryVectorStore::default();
-
     let toolset = ToolSet::builder()
         .dynamic_tool(Add)
         .dynamic_tool(Subtract)
@@ -163,7 +160,18 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    vector_store.add_documents(embeddings).await?;
+    let vector_store = InMemoryVectorStore::default().add_documents(
+        embeddings
+            .into_iter()
+            .map(
+                |DocumentEmbeddings {
+                     id,
+                     document,
+                     embeddings,
+                 }| { (id, document, embeddings) },
+            )
+            .collect(),
+    )?;
 
     // Create vector store index
     let index = vector_store.index(embedding_model);

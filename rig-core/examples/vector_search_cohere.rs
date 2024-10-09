@@ -3,7 +3,7 @@ use std::env;
 use rig::{
     embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
     providers::cohere::{Client, EMBED_ENGLISH_V3},
-    vector_store::{in_memory_store::InMemoryVectorStore, VectorStore, VectorStoreIndex},
+    vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
 };
 
 #[tokio::main]
@@ -15,8 +15,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let document_model = cohere_client.embedding_model(EMBED_ENGLISH_V3, "search_document");
     let search_model = cohere_client.embedding_model(EMBED_ENGLISH_V3, "search_query");
 
-    let mut vector_store = InMemoryVectorStore::default();
-
     let embeddings = EmbeddingsBuilder::new(document_model)
         .simple_document("doc0", "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
         .simple_document("doc1", "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
@@ -24,7 +22,18 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    vector_store.add_documents(embeddings).await?;
+    let vector_store = InMemoryVectorStore::default().add_documents(
+        embeddings
+            .into_iter()
+            .map(
+                |DocumentEmbeddings {
+                     id,
+                     document,
+                     embeddings,
+                 }| { (id, document, embeddings) },
+            )
+            .collect(),
+    )?;
 
     let index = vector_store.index(search_model);
 

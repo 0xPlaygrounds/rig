@@ -3,7 +3,10 @@ use std::env;
 use rig::{
     embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::{in_memory_store::InMemoryVectorIndex, VectorStoreIndex},
+    vector_store::{
+        in_memory_store::{InMemoryVectorIndex, InMemoryVectorStore},
+        VectorStoreIndex,
+    },
 };
 
 #[tokio::main]
@@ -21,7 +24,20 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    let index = InMemoryVectorIndex::from_embeddings(model, embeddings).await?;
+    let vector_store = InMemoryVectorStore::default().add_documents(
+        embeddings
+            .into_iter()
+            .map(
+                |DocumentEmbeddings {
+                     id,
+                     document,
+                     embeddings,
+                 }| { (id, document, embeddings) },
+            )
+            .collect(),
+    )?;
+
+    let index = vector_store.index(model);
 
     let results = index
         .top_n::<DocumentEmbeddings>("What is a linglingdong?", 1)
