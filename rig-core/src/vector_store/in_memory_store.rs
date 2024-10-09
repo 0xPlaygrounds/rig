@@ -14,7 +14,9 @@ use crate::embeddings::{Embedding, EmbeddingModel};
 /// in-memory using a HashMap.
 #[derive(Clone, Default)]
 pub struct InMemoryVectorStore<D: Serialize> {
-    /// The embeddings are stored in a HashMap with the document ID as the key.
+    /// The embeddings are stored in a HashMap.
+    /// Hashmap key is the document id.
+    /// Hashmap value is a tuple of the serializable document and its corresponding embeddings.
     embeddings: HashMap<String, (D, Vec<Embedding>)>,
 }
 
@@ -50,7 +52,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         tracing::info!(target: "rig",
             "Selected documents: {}",
             docs.iter()
-                .map(|Reverse(RankingItem(distance, id, _, _))| format!("{} ({})", id, distance))
+                .map(|Reverse(RankingItem(distance, id, _, embed_doc))| format!("{} ({}). Specific match: {}", id, distance, embed_doc))
                 .collect::<Vec<String>>()
                 .join(", ")
         );
@@ -58,6 +60,8 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         docs
     }
 
+    /// Add documents to the store.
+    /// Returns the store with the added documents.
     pub fn add_documents(
         mut self,
         documents: Vec<(String, D, Vec<Embedding>)>,
@@ -69,7 +73,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         Ok(self)
     }
 
-    /// Get the document by its id and deserialize it into the given type
+    /// Get the document by its id and deserialize it into the given type.
     pub fn get_document<T: for<'a> Deserialize<'a>>(
         &self,
         id: &str,
@@ -81,12 +85,13 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             .transpose()?)
     }
 
+    /// Get the document embeddings by its id.
     pub fn get_document_embeddings(&self, id: &str) -> Result<Option<&D>, VectorStoreError> {
         Ok(self.embeddings.get(id).map(|(doc, _)| doc))
     }
 }
 
-/// RankingItem(distance, document_id, document, embed_doc)
+/// RankingItem(distance, document_id, serializable document, embeddings document)
 #[derive(Eq, PartialEq)]
 struct RankingItem<'a, D: Serialize>(OrderedFloat<f64>, &'a String, &'a D, &'a String);
 
