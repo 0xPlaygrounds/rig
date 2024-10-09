@@ -1,8 +1,8 @@
 use futures::future::BoxFuture;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
 
-use crate::embeddings::{Embedding, EmbeddingError};
+use crate::embeddings::{DocumentEmbeddings, EmbeddingError};
 
 pub mod in_memory_store;
 
@@ -20,27 +20,33 @@ pub enum VectorStoreError {
 }
 
 /// Trait for vector stores
-pub trait VectorStore<D: Serialize>: Send + Sync {
+pub trait VectorStore: Send + Sync {
     /// Query type for the vector store
     type Q;
 
     /// Add a list of documents to the vector store
     fn add_documents(
         &mut self,
-        documents: Vec<(String, D, Vec<Embedding>)>,
+        documents: Vec<DocumentEmbeddings>,
     ) -> impl std::future::Future<Output = Result<(), VectorStoreError>> + Send;
 
     /// Get the embeddings of a document by its id
     fn get_document_embeddings(
         &self,
         id: &str,
-    ) -> impl std::future::Future<Output = Result<Option<D>, VectorStoreError>> + Send;
+    ) -> impl std::future::Future<Output = Result<Option<DocumentEmbeddings>, VectorStoreError>> + Send;
+
+    /// Get the document by its id and deserialize it into the given type
+    fn get_document<T: for<'a> Deserialize<'a>>(
+        &self,
+        id: &str,
+    ) -> impl std::future::Future<Output = Result<Option<T>, VectorStoreError>> + Send;
 
     /// Get the document by a query and deserialize it into the given type
     fn get_document_by_query(
         &self,
         query: Self::Q,
-    ) -> impl std::future::Future<Output = Result<Option<D>, VectorStoreError>> + Send;
+    ) -> impl std::future::Future<Output = Result<Option<DocumentEmbeddings>, VectorStoreError>> + Send;
 }
 
 /// Trait for vector store indexes
