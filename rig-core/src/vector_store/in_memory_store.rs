@@ -7,28 +7,29 @@ use std::{
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 
-use super::{VectorStore, VectorStoreError, VectorStoreIndex};
-use crate::embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel, EmbeddingsBuilder};
+use super::{VectorStoreError, VectorStoreIndex};
+use crate::embeddings::{Embedding, EmbeddingModel};
 
 /// InMemoryVectorStore is a simple in-memory vector store that stores embeddings
 /// in-memory using a HashMap.
-#[derive(Clone, Default, Deserialize, Serialize)]
-pub struct InMemoryVectorStore {
-    /// The embeddings are stored in a HashMap with the document ID as the key.
-    embeddings: HashMap<String, DocumentEmbeddings>,
+#[derive(Clone, Default)]
+pub struct InMemoryVectorStore<D: Serialize> {
+    /// The embeddings are stored in a HashMap.
+    /// Hashmap key is the document id.
+    /// Hashmap value is a tuple of the serializable document and its corresponding embeddings.
+    embeddings: HashMap<String, (D, Vec<Embedding>)>,
 }
 
-impl InMemoryVectorStore {
+impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// Implement vector search on InMemoryVectorStore.
     /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for InMemoryVectorStore.
-    fn vector_search(&self, prompt_embedding: &Embedding, n: usize) -> EmbeddingRanking {
+    fn vector_search(&self, prompt_embedding: &Embedding, n: usize) -> EmbeddingRanking<D> {
         // Sort documents by best embedding distance
-        let mut docs: EmbeddingRanking = BinaryHeap::new();
+        let mut docs = BinaryHeap::new();
 
-        for (id, doc_embeddings) in self.embeddings.iter() {
+        for (id, (doc, embeddings)) in self.embeddings.iter() {
             // Get the best context for the document given the prompt
-            if let Some((distance, embed_doc)) = doc_embeddings
-                .embeddings
+            if let Some((distance, embed_doc)) = embeddings
                 .iter()
                 .map(|embedding| {
                     (
@@ -38,12 +39,7 @@ impl InMemoryVectorStore {
                 })
                 .min_by(|a, b| a.0.cmp(&b.0))
             {
-                docs.push(Reverse(RankingItem(
-                    distance,
-                    id,
-                    doc_embeddings,
-                    embed_doc,
-                )));
+                docs.push(Reverse(RankingItem(distance, id, doc, embed_doc)));
             };
 
             // If the heap size exceeds n, pop the least old element.
@@ -56,84 +52,69 @@ impl InMemoryVectorStore {
         tracing::info!(target: "rig",
             "Selected documents: {}",
             docs.iter()
-                .map(|Reverse(RankingItem(distance, id, _, _))| format!("{} ({})", id, distance))
+                .map(|Reverse(RankingItem(distance, id, _, embed_doc))| format!("{} ({}). Specific match: {}", id, distance, embed_doc))
                 .collect::<Vec<String>>()
                 .join(", ")
         );
 
         docs
     }
-}
 
-/// RankingItem(distance, document_id, document, embed_doc)
-#[derive(Eq, PartialEq)]
-struct RankingItem<'a>(
-    OrderedFloat<f64>,
-    &'a String,
-    &'a DocumentEmbeddings,
-    &'a String,
-);
-
-impl Ord for RankingItem<'_> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.cmp(&other.0)
-    }
-}
-
-impl PartialOrd for RankingItem<'_> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-type EmbeddingRanking<'a> = BinaryHeap<Reverse<RankingItem<'a>>>;
-
-impl VectorStore for InMemoryVectorStore {
-    type Q = ();
-
-    async fn add_documents(
-        &mut self,
-        documents: Vec<DocumentEmbeddings>,
-    ) -> Result<(), VectorStoreError> {
-        for doc in documents {
-            self.embeddings.insert(doc.id.clone(), doc);
+    /// Add documents to the store.
+    /// Returns the store with the added documents.
+    pub fn add_documents(
+        mut self,
+        documents: Vec<(String, D, Vec<Embedding>)>,
+    ) -> Result<Self, VectorStoreError> {
+        for (id, doc, embeddings) in documents {
+            self.embeddings.insert(id, (doc, embeddings));
         }
 
-        Ok(())
+        Ok(self)
     }
 
-    async fn get_document<T: for<'a> Deserialize<'a>>(
+    /// Get the document by its id and deserialize it into the given type.
+    pub fn get_document<T: for<'a> Deserialize<'a>>(
         &self,
         id: &str,
     ) -> Result<Option<T>, VectorStoreError> {
         Ok(self
             .embeddings
             .get(id)
-            .map(|document| serde_json::from_value(document.document.clone()))
+            .map(|(doc, _)| serde_json::from_str(&serde_json::to_string(doc)?))
             .transpose()?)
     }
 
-    async fn get_document_embeddings(
-        &self,
-        id: &str,
-    ) -> Result<Option<DocumentEmbeddings>, VectorStoreError> {
-        Ok(self.embeddings.get(id).cloned())
-    }
-
-    async fn get_document_by_query(
-        &self,
-        _query: Self::Q,
-    ) -> Result<Option<DocumentEmbeddings>, VectorStoreError> {
-        Ok(None)
+    /// Get the document embeddings by its id.
+    pub fn get_document_embeddings(&self, id: &str) -> Result<Option<&D>, VectorStoreError> {
+        Ok(self.embeddings.get(id).map(|(doc, _)| doc))
     }
 }
 
-impl InMemoryVectorStore {
-    pub fn index<M: EmbeddingModel>(self, model: M) -> InMemoryVectorIndex<M> {
+/// RankingItem(distance, document_id, serializable document, embeddings document)
+#[derive(Eq, PartialEq)]
+struct RankingItem<'a, D: Serialize>(OrderedFloat<f64>, &'a String, &'a D, &'a String);
+
+impl<D: Serialize + Eq> Ord for RankingItem<'_, D> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
+impl<D: Serialize + Eq> PartialOrd for RankingItem<'_, D> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+type EmbeddingRanking<'a, D> = BinaryHeap<Reverse<RankingItem<'a, D>>>;
+
+impl<D: Serialize> InMemoryVectorStore<D> {
+    pub fn index<M: EmbeddingModel>(self, model: M) -> InMemoryVectorIndex<M, D> {
         InMemoryVectorIndex::new(model, self)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &DocumentEmbeddings)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, Vec<Embedding>))> {
         self.embeddings.iter()
     }
 
@@ -144,54 +125,19 @@ impl InMemoryVectorStore {
     pub fn is_empty(&self) -> bool {
         self.embeddings.is_empty()
     }
-
-    /// Uitilty method to create an InMemoryVectorStore from a list of embeddings.
-    pub async fn from_embeddings(
-        embeddings: Vec<DocumentEmbeddings>,
-    ) -> Result<Self, VectorStoreError> {
-        let mut store = Self::default();
-        store.add_documents(embeddings).await?;
-        Ok(store)
-    }
-
-    /// Create an InMemoryVectorStore from a list of documents.
-    /// The documents are serialized to JSON and embedded using the provided embedding model.
-    /// The resulting embeddings are stored in an InMemoryVectorStore created by the method.
-    pub async fn from_documents<M: EmbeddingModel, T: Serialize>(
-        embedding_model: M,
-        documents: &[(String, T)],
-    ) -> Result<Self, VectorStoreError> {
-        let embeddings = documents
-            .iter()
-            .fold(
-                EmbeddingsBuilder::new(embedding_model),
-                |builder, (id, doc)| {
-                    builder.json_document(
-                        id,
-                        serde_json::to_value(doc).expect("Document should be serializable"),
-                        vec![serde_json::to_string(doc).expect("Document should be serializable")],
-                    )
-                },
-            )
-            .build()
-            .await?;
-
-        let store = Self::from_embeddings(embeddings).await?;
-        Ok(store)
-    }
 }
 
-pub struct InMemoryVectorIndex<M: EmbeddingModel> {
+pub struct InMemoryVectorIndex<M: EmbeddingModel, D: Serialize> {
     model: M,
-    pub store: InMemoryVectorStore,
+    pub store: InMemoryVectorStore<D>,
 }
 
-impl<M: EmbeddingModel> InMemoryVectorIndex<M> {
-    pub fn new(model: M, store: InMemoryVectorStore) -> Self {
+impl<M: EmbeddingModel, D: Serialize> InMemoryVectorIndex<M, D> {
+    pub fn new(model: M, store: InMemoryVectorStore<D>) -> Self {
         Self { model, store }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &DocumentEmbeddings)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, Vec<Embedding>))> {
         self.store.iter()
     }
 
@@ -202,49 +148,11 @@ impl<M: EmbeddingModel> InMemoryVectorIndex<M> {
     pub fn is_empty(&self) -> bool {
         self.store.is_empty()
     }
-
-    /// Create an InMemoryVectorIndex from a list of documents.
-    /// The documents are serialized to JSON and embedded using the provided embedding model.
-    /// The resulting embeddings are stored in an InMemoryVectorStore created by the method.
-    /// The InMemoryVectorIndex is then created from the store and the provided query model.
-    pub async fn from_documents<T: Serialize>(
-        embedding_model: M,
-        query_model: M,
-        documents: &[(String, T)],
-    ) -> Result<Self, VectorStoreError> {
-        let mut store = InMemoryVectorStore::default();
-
-        let embeddings = documents
-            .iter()
-            .fold(
-                EmbeddingsBuilder::new(embedding_model),
-                |builder, (id, doc)| {
-                    builder.json_document(
-                        id,
-                        serde_json::to_value(doc).expect("Document should be serializable"),
-                        vec![serde_json::to_string(doc).expect("Document should be serializable")],
-                    )
-                },
-            )
-            .build()
-            .await?;
-
-        store.add_documents(embeddings).await?;
-        Ok(store.index(query_model))
-    }
-
-    /// Utility method to create an InMemoryVectorIndex from a list of embeddings
-    /// and an embedding model.
-    pub async fn from_embeddings(
-        query_model: M,
-        embeddings: Vec<DocumentEmbeddings>,
-    ) -> Result<Self, VectorStoreError> {
-        let store = InMemoryVectorStore::from_embeddings(embeddings).await?;
-        Ok(store.index(query_model))
-    }
 }
 
-impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorIndex<M> {
+impl<M: EmbeddingModel + std::marker::Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
+    for InMemoryVectorIndex<M, D>
+{
     async fn top_n<T: for<'a> Deserialize<'a>>(
         &self,
         query: &str,
@@ -256,12 +164,11 @@ impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorI
 
         // Return n best
         docs.into_iter()
-            .map(|Reverse(RankingItem(distance, _, doc, _))| {
-                let doc_value = serde_json::to_value(doc).map_err(VectorStoreError::JsonError)?;
+            .map(|Reverse(RankingItem(distance, id, doc, _))| {
                 Ok((
                     distance.0,
-                    doc.id.clone(),
-                    serde_json::from_value(doc_value).map_err(VectorStoreError::JsonError)?,
+                    id.clone(),
+                    serde_json::from_str(&serde_json::to_string(doc)?)?,
                 ))
             })
             .collect::<Result<Vec<_>, _>>()
@@ -278,7 +185,7 @@ impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorI
 
         // Return n best
         docs.into_iter()
-            .map(|Reverse(RankingItem(distance, _, doc, _))| Ok((distance.0, doc.id.clone())))
+            .map(|Reverse(RankingItem(distance, id, _, _))| Ok((distance.0, id.clone())))
             .collect::<Result<Vec<_>, _>>()
     }
 }

@@ -85,11 +85,9 @@ async fn main() -> Result<(), anyhow::Error> {
         Err(e) => println!("Error adding documents: {:?}", e),
     };
 
-    let vector_store = MongoDbVectorStore::new(collection);
-
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = vector_store.index(
+    let index = MongoDbVectorStore::new(collection).index(
         model,
         "definitions_vector_index",
         SearchParams::new("embedding"),
