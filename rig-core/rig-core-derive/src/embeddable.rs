@@ -99,7 +99,7 @@ fn embed_kind(field: &syn::Field) -> Result<syn::Expr, syn::Error> {
             } else {
                 parse_str("SingleEmbedding")
             }
-        },
+        }
         _ => parse_str("SingleEmbedding"),
     }
 }

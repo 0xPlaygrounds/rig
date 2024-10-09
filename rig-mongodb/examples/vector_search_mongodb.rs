@@ -18,7 +18,7 @@ struct FakeDefinition {
     definition: String,
 }
 
-// Shape of the document to be stored in MongoDB.
+// Shape of the document to be stored in MongoDB, with embeddings.
 #[derive(Serialize, Debug)]
 struct Document {
     #[serde(rename = "_id")]
