@@ -46,7 +46,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = MongoDbVectorStore::new(collection).index(model, "vector_index", SearchParams::default());
+    let index =
+        MongoDbVectorStore::new(collection).index(model, "vector_index", SearchParams::default());
 
     // Query the index
     let results = index
