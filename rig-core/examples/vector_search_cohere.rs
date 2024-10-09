@@ -38,10 +38,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .index(search_model);
 
     let results = index
-        .top_n::<DocumentEmbeddings>("What is a linglingdong?", 1)
+        .top_n::<String>("What is a linglingdong?", 1)
         .await?
         .into_iter()
-        .map(|(score, id, doc)| (score, id, doc.document))
+        .map(|(score, id, doc)| (score, id, doc))
         .collect::<Vec<_>>();
 
     println!("Results: {:?}", results);
