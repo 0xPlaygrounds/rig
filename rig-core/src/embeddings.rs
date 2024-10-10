@@ -240,7 +240,7 @@ impl<M: EmbeddingModel, D: Embeddable + Send + Sync + Clone>
             // Generate the embeddings for a chunk at a time.
             .map(|docs| async {
                 let (document_indices, embed_targets): (Vec<_>, Vec<_>) = docs.into_iter().unzip();
-                
+
                 Ok::<_, EmbeddingError>(
                     document_indices
                         .into_iter()
@@ -402,4 +402,32 @@ impl<T: Embeddable> Embeddable for Vec<T> {
     fn embeddable(&self) -> Vec<String> {
         self.iter().flat_map(|i| i.embeddable()).collect()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Embeddable, SingleEmbedding};
+
+    use rig_derive::Embed;
+    use serde::Serialize;
+
+    // #[derive(Serialize)]
+    // struct FakeDefinition2 {
+    //     id: String,
+    //     #[serde(test = "")]
+    //     definition: String,
+    // }
+
+    #[derive(Embed)]
+    struct FakeDefinition {
+        id: String,
+        #[embed(something = "a")]
+        definition: String,
+    }
+
+    #[test]
+    fn test_missing_embed_fields() {}
+
+    #[test]
+    fn test_empty_custom_function() {}
 }

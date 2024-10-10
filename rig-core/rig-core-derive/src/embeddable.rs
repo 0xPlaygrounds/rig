@@ -1,55 +1,49 @@
-use proc_macro::TokenStream;
+use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{
-    meta::ParseNestedMeta, parse_quote, parse_str, punctuated::Punctuated, spanned::Spanned,
-    Attribute, DataStruct, ExprPath, Meta, Token,
-};
+use syn::{parse_quote, parse_str, Attribute, DataStruct, Meta};
 
-const EMBED: &str = "embed";
-const EMBED_WITH: &str = "embed_with";
+use crate::{custom::CustomAttributeParser, EMBED};
 const VEC_TYPE: &str = "Vec";
+const MANY_EMBEDDING: &str = "ManyEmbedding";
+const SINGLE_EMBEDDING: &str = "SingleEmbedding";
 
-pub fn expand_derive_embedding(input: &mut syn::DeriveInput) -> TokenStream {
+pub fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
 
-    let (func_calls, embed_kind) =
-        match &input.data {
-            syn::Data::Struct(data_struct) => {
-                // Handles fields tagged with #[embed]
-                let mut function_calls = data_struct
-                    .basic_embed_fields()
-                    .map(|field| {
-                        add_struct_bounds(&mut input.generics, &field.ty);
+    let (embed_targets, embed_kind) = match &input.data {
+        syn::Data::Struct(data_struct) => {
+            // Handles fields tagged with #[embed]
+            let mut inner_embed_targets = data_struct
+                .basic_embed_fields()
+                .map(|field| {
+                    add_struct_bounds(&mut input.generics, &field.ty);
 
-                        let field_name = field.ident;
+                    let field_name = field.ident;
 
-                        quote! {
-                            self.#field_name.embeddable()
-                        }
-                    })
-                    .collect::<Vec<_>>();
+                    quote! {
+                        self.#field_name.embeddable()
+                    }
+                })
+                .collect::<Vec<_>>();
 
-                // Handles fields tagged with #[embed(embed_with = "...")]
-                function_calls.extend(data_struct.custom_embed_fields().unwrap().map(
-                    |(field, _)| {
-                        let field_name = field.ident;
+            // Handles fields tagged with #[embed(embed_with = "...")]
+            inner_embed_targets.extend(data_struct.custom_embed_fields()?.map(|(field, _)| {
+                let field_name = field.ident;
 
-                        quote! {
-                            embeddable(&self.#field_name)
-                        }
-                    },
-                ));
+                quote! {
+                    embeddable(&self.#field_name)
+                }
+            }));
 
-                (function_calls, data_struct.embed_kind().unwrap())
-            }
-            _ => panic!("Embeddable can only be derived for structs"),
-        };
+            (inner_embed_targets, data_struct.embed_kind()?)
+        }
+        _ => panic!("Embeddable trait can only be derived for structs"),
+    };
 
     // Import the paths to the custom functions.
     let custom_func_paths = match &input.data {
         syn::Data::Struct(data_struct) => data_struct
-            .custom_embed_fields()
-            .unwrap()
+            .custom_embed_fields()?
             .map(|(_, custom_func_path)| {
                 quote! {
                     use #custom_func_path::embeddable;
@@ -59,11 +53,17 @@ pub fn expand_derive_embedding(input: &mut syn::DeriveInput) -> TokenStream {
         _ => vec![],
     };
 
+    // If there are no fields tagged with #[embed] or #[embed(embed_with = "...")], return an empty TokenStream.
+    // ie. do not implement Embeddable trait for the struct.
+    if embed_targets.is_empty() {
+        return Ok(TokenStream::new());
+    }
+
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let gen = quote! {
-        use rig::embeddings::Embeddable;
-        use rig::embeddings::#embed_kind;
+        // Note: we do NOT import the Embeddable trait here because if there are multiple structs in the same file
+        // that derive Embed, there will be import conflicts.
 
         #(#custom_func_paths);*
 
@@ -72,14 +72,14 @@ pub fn expand_derive_embedding(input: &mut syn::DeriveInput) -> TokenStream {
 
             fn embeddable(&self) -> Vec<String> {
                 vec![
-                    #(#func_calls),*
+                    #(#embed_targets),*
                 ].into_iter().flatten().collect()
             }
         }
     };
     eprintln!("Generated code:\n{}", gen);
 
-    gen.into()
+    Ok(gen)
 }
 
 // Adds bounds to where clause that force all fields tagged with #[embed] to implement the Embeddable trait.
@@ -91,36 +91,35 @@ fn add_struct_bounds(generics: &mut syn::Generics, field_type: &syn::Type) {
     });
 }
 
-fn embed_kind(field: &syn::Field) -> Result<syn::Expr, syn::Error> {
+fn embed_kind(field: &syn::Field) -> syn::Result<syn::Expr> {
     match &field.ty {
         syn::Type::Path(path) => {
             if path.path.segments.first().unwrap().ident == VEC_TYPE {
-                parse_str("ManyEmbedding")
+                parse_str(MANY_EMBEDDING)
             } else {
-                parse_str("SingleEmbedding")
+                parse_str(SINGLE_EMBEDDING)
             }
         }
-        _ => parse_str("SingleEmbedding"),
+        _ => parse_str(SINGLE_EMBEDDING),
     }
 }
 
-trait AttributeParser {
+trait StructParser {
     /// Finds and returns fields with simple #[embed] attribute tags only.
     fn basic_embed_fields(&self) -> impl Iterator<Item = syn::Field>;
     /// Finds and returns fields with #[embed(embed_with = "...")] attribute tags only.
     /// Also returns the attribute in question.
-    fn custom_embed_fields(
-        &self,
-    ) -> Result<impl Iterator<Item = (syn::Field, syn::ExprPath)>, syn::Error>;
+    fn custom_embed_fields(&self)
+        -> syn::Result<impl Iterator<Item = (syn::Field, syn::ExprPath)>>;
 
     /// If the total number of fields tagged with #[embed] or #[embed(embed_with = "...")] is 1,
     /// returns the kind of embedding that field should be.
     /// If the total number of fields tagged with #[embed] or #[embed(embed_with = "...")] is greater than 1,
     /// return ManyEmbedding.
-    fn embed_kind(&self) -> Result<syn::Expr, syn::Error> {
+    fn embed_kind(&self) -> syn::Result<syn::Expr> {
         let fields = self
             .basic_embed_fields()
-            .chain(self.custom_embed_fields().unwrap().map(|(f, _)| f))
+            .chain(self.custom_embed_fields()?.map(|(f, _)| f))
             .collect::<Vec<_>>();
 
         if fields.len() == 1 {
@@ -131,7 +130,7 @@ trait AttributeParser {
     }
 }
 
-impl AttributeParser for DataStruct {
+impl StructParser for DataStruct {
     fn basic_embed_fields(&self) -> impl Iterator<Item = syn::Field> {
         self.fields.clone().into_iter().filter(|field| {
             field
@@ -150,42 +149,7 @@ impl AttributeParser for DataStruct {
 
     fn custom_embed_fields(
         &self,
-    ) -> Result<impl Iterator<Item = (syn::Field, syn::ExprPath)>, syn::Error> {
-        // Determine if field is tagged with #[embed(embed_with = "...")] attribute.
-        fn is_custom_embed(attribute: &syn::Attribute) -> Result<bool, syn::Error> {
-            let is_custom_embed = match attribute.meta {
-                Meta::List(_) => attribute
-                    .parse_args_with(Punctuated::<Meta, Token![=]>::parse_terminated)?
-                    .into_iter()
-                    .any(|meta| meta.path().is_ident(EMBED_WITH)),
-                _ => false,
-            };
-
-            Ok(attribute.path().is_ident(EMBED) && is_custom_embed)
-        }
-
-        // Get the "..." part of the #[embed(embed_with = "...")] attribute.
-        // Ex: If attribute is tagged with #[embed(embed_with = "my_embed")], returns "my_embed".
-        fn expand_tag(attribute: &syn::Attribute) -> Result<syn::ExprPath, syn::Error> {
-            let mut custom_func_path = None;
-
-            attribute.parse_nested_meta(|meta| {
-                custom_func_path = Some(meta.function_path()?);
-                Ok(())
-            })?;
-
-            match custom_func_path {
-                Some(path) => Ok(path),
-                None => Err(syn::Error::new(
-                    attribute.span(),
-                    format!(
-                        "expected {} attribute to have format: `#[embed(embed_with = \"...\")]`",
-                        EMBED_WITH
-                    ),
-                )),
-            }
-        }
-
+    ) -> syn::Result<impl Iterator<Item = (syn::Field, syn::ExprPath)>> {
         Ok(self
             .fields
             .clone()
@@ -196,8 +160,8 @@ impl AttributeParser for DataStruct {
                     .clone()
                     .into_iter()
                     .map(|attribute| {
-                        if is_custom_embed(&attribute)? {
-                            Ok::<_, syn::Error>(Some((field.clone(), expand_tag(&attribute)?)))
+                        if attribute.is_custom()? {
+                            Ok::<_, syn::Error>(Some((field.clone(), attribute.expand_tag()?)))
                         } else {
                             Ok(None)
                         }
@@ -208,44 +172,5 @@ impl AttributeParser for DataStruct {
             .into_iter()
             .flatten()
             .flatten())
-    }
-}
-
-trait CustomFunction {
-    fn function_path(&self) -> Result<ExprPath, syn::Error>;
-}
-
-impl CustomFunction for ParseNestedMeta<'_> {
-    fn function_path(&self) -> Result<ExprPath, syn::Error> {
-        // #[embed(embed_with = "...")]
-        let expr = self.value().unwrap().parse::<syn::Expr>().unwrap();
-        let mut value = &expr;
-        while let syn::Expr::Group(e) = value {
-            value = &e.expr;
-        }
-        let string = if let syn::Expr::Lit(syn::ExprLit {
-            lit: syn::Lit::Str(lit_str),
-            ..
-        }) = value
-        {
-            let suffix = lit_str.suffix();
-            if !suffix.is_empty() {
-                return Err(syn::Error::new(
-                    lit_str.span(),
-                    format!("unexpected suffix `{}` on string literal", suffix),
-                ));
-            }
-            lit_str.clone()
-        } else {
-            return Err(syn::Error::new(
-                value.span(),
-                format!(
-                    "expected {} attribute to be a string: `{} = \"...\"`",
-                    EMBED_WITH, EMBED_WITH
-                ),
-            ));
-        };
-
-        string.parse()
     }
 }

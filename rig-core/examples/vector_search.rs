@@ -1,7 +1,7 @@
 use std::env;
 
 use rig::{
-    embeddings::EmbeddingsBuilder,
+    embeddings::{Embeddable, EmbeddingsBuilder, ManyEmbedding},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
 };

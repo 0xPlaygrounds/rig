@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::env;
 
 use rig::{
-    embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex,
+    embeddings::{EmbeddingsBuilder, Embeddable, SingleEmbedding}, providers::openai::Client, vector_store::VectorStoreIndex,
 };
 use rig_mongodb::{MongoDbVectorStore, SearchParams};
 

@@ -1,7 +1,7 @@
 use std::env;
 
 use rig::{
-    embeddings::EmbeddingsBuilder,
+    embeddings::{Embeddable, EmbeddingsBuilder, ManyEmbedding},
     providers::cohere::{Client, EMBED_ENGLISH_V3},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
 };
@@ -69,7 +69,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .index(search_model);
 
     let results = index
-        .top_n::<FakeDefinition>("Which instrument is found in the Nebulon Mountain Ranges?", 1)
+        .top_n::<FakeDefinition>(
+            "Which instrument is found in the Nebulon Mountain Ranges?",
+            1,
+        )
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.word))
