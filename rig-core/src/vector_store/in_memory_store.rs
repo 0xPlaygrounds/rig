@@ -37,7 +37,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
                         &embedding.document,
                     )
                 })
-                .min_by(|a, b| a.0.cmp(&b.0))
+                .max_by(|a, b| a.0.cmp(&b.0))
             {
                 docs.push(Reverse(RankingItem(distance, id, doc, embed_doc)));
             };
