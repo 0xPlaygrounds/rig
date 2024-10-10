@@ -2,10 +2,10 @@ use anyhow::Result;
 use rig::{
     cli_chatbot::cli_chatbot,
     completion::ToolDefinition,
-    embeddings::EmbeddingsBuilder,
+    embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     tool::{Tool, ToolEmbedding, ToolSet},
-    vector_store::{in_memory_store::InMemoryVectorStore, VectorStore},
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -251,9 +251,20 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    let mut store = InMemoryVectorStore::default();
-    store.add_documents(embeddings).await?;
-    let index = store.index(embedding_model);
+    let index = InMemoryVectorStore::default()
+        .add_documents(
+            embeddings
+                .into_iter()
+                .map(
+                    |DocumentEmbeddings {
+                         id,
+                         document,
+                         embeddings,
+                     }| { (id, document, embeddings) },
+                )
+                .collect(),
+        )?
+        .index(embedding_model);
 
     // Create RAG agent with a single context prompt and a dynamic tool source
     let calculator_rag = openai_client

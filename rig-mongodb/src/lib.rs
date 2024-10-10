@@ -3,7 +3,7 @@ use mongodb::bson::{self, doc};
 
 use rig::{
     embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel},
-    vector_store::{VectorStore, VectorStoreError, VectorStoreIndex},
+    vector_store::{VectorStoreError, VectorStoreIndex},
 };
 use serde::Deserialize;
 
@@ -14,67 +14,6 @@ pub struct MongoDbVectorStore {
 
 fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
     VectorStoreError::DatastoreError(Box::new(e))
-}
-
-impl VectorStore for MongoDbVectorStore {
-    type Q = mongodb::bson::Document;
-
-    async fn add_documents(
-        &mut self,
-        documents: Vec<DocumentEmbeddings>,
-    ) -> Result<(), VectorStoreError> {
-        self.collection
-            .insert_many(documents, None)
-            .await
-            .map_err(mongodb_to_rig_error)?;
-        Ok(())
-    }
-
-    async fn get_document_embeddings(
-        &self,
-        id: &str,
-    ) -> Result<Option<DocumentEmbeddings>, VectorStoreError> {
-        self.collection
-            .find_one(doc! { "_id": id }, None)
-            .await
-            .map_err(mongodb_to_rig_error)
-    }
-
-    async fn get_document<T: for<'a> serde::Deserialize<'a>>(
-        &self,
-        id: &str,
-    ) -> Result<Option<T>, VectorStoreError> {
-        Ok(self
-            .collection
-            .clone_with_type::<String>()
-            .aggregate(
-                [
-                    doc! {"$match": { "_id": id}},
-                    doc! {"$project": { "document": 1 }},
-                    doc! {"$replaceRoot": { "newRoot": "$document" }},
-                ],
-                None,
-            )
-            .await
-            .map_err(mongodb_to_rig_error)?
-            .with_type::<String>()
-            .next()
-            .await
-            .transpose()
-            .map_err(mongodb_to_rig_error)?
-            .map(|doc| serde_json::from_str(&doc))
-            .transpose()?)
-    }
-
-    async fn get_document_by_query(
-        &self,
-        query: Self::Q,
-    ) -> Result<Option<DocumentEmbeddings>, VectorStoreError> {
-        self.collection
-            .find_one(query, None)
-            .await
-            .map_err(mongodb_to_rig_error)
-    }
 }
 
 impl MongoDbVectorStore {

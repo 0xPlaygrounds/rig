@@ -4,7 +4,7 @@ use std::env;
 use rig::{
     embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::{VectorStore, VectorStoreIndex},
+    vector_store::VectorStoreIndex,
 };
 use rig_mongodb::{MongoDbVectorStore, SearchParams};
 
@@ -29,8 +29,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .database("knowledgebase")
         .collection("context");
 
-    let mut vector_store = MongoDbVectorStore::new(collection);
-
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
@@ -41,15 +39,15 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Add embeddings to vector store
-    match vector_store.add_documents(embeddings).await {
+    match collection.insert_many(embeddings, None).await {
         Ok(_) => println!("Documents added successfully"),
         Err(e) => println!("Error adding documents: {:?}", e),
     }
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = vector_store.index(model, "vector_index", SearchParams::default());
+    let index =
+        MongoDbVectorStore::new(collection).index(model, "vector_index", SearchParams::default());
 
     // Query the index
     let results = index
