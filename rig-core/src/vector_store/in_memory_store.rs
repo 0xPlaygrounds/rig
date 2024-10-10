@@ -84,11 +84,6 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             .map(|(doc, _)| serde_json::from_str(&serde_json::to_string(doc)?))
             .transpose()?)
     }
-
-    /// Get the document embeddings by its id.
-    pub fn get_document_embeddings(&self, id: &str) -> Result<Option<&D>, VectorStoreError> {
-        Ok(self.embeddings.get(id).map(|(doc, _)| doc))
-    }
 }
 
 /// RankingItem(distance, document_id, serializable document, embeddings document)
@@ -187,5 +182,148 @@ impl<M: EmbeddingModel + std::marker::Sync, D: Serialize + Sync + Send + Eq> Vec
         docs.into_iter()
             .map(|Reverse(RankingItem(distance, id, _, _))| Ok((distance.0, id.clone())))
             .collect::<Result<Vec<_>, _>>()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cmp::Reverse;
+
+    use crate::embeddings::Embedding;
+
+    use super::{InMemoryVectorStore, RankingItem};
+
+    #[test]
+    fn test_single_embedding() {
+        let index = InMemoryVectorStore::default()
+            .add_documents(vec![
+                (
+                    "doc1".to_string(),
+                    "glarb-garb",
+                    vec![Embedding {
+                        document: "glarb-garb".to_string(),
+                        vec: vec![0.1, 0.1, 0.5],
+                    }],
+                ),
+                (
+                    "doc2".to_string(),
+                    "marble-marble",
+                    vec![Embedding {
+                        document: "marble-marble".to_string(),
+                        vec: vec![0.7, -0.3, 0.0],
+                    }],
+                ),
+                (
+                    "doc3".to_string(),
+                    "flumb-flumb",
+                    vec![Embedding {
+                        document: "flumb-flumb".to_string(),
+                        vec: vec![0.3, 0.7, 0.1],
+                    }],
+                ),
+            ])
+            .unwrap();
+
+        let ranking = index.vector_search(
+            &Embedding {
+                document: "glarby-glarble".to_string(),
+                vec: vec![0.0, 0.1, 0.6],
+            },
+            1,
+        );
+
+        assert_eq!(
+            ranking
+                .into_iter()
+                .map(|Reverse(RankingItem(distance, id, doc, _))| {
+                    (
+                        distance.0,
+                        id.clone(),
+                        serde_json::from_str(&serde_json::to_string(doc).unwrap()).unwrap(),
+                    )
+                })
+                .collect::<Vec<(_, _, String)>>(),
+            vec![(
+                0.034444444444444444,
+                "doc1".to_string(),
+                "glarb-garb".to_string()
+            )]
+        )
+    }
+
+    #[test]
+    fn test_multiple_embeddings() {
+        let index = InMemoryVectorStore::default()
+            .add_documents(vec![
+                (
+                    "doc1".to_string(),
+                    "glarb-garb",
+                    vec![
+                        Embedding {
+                            document: "glarb-garb".to_string(),
+                            vec: vec![0.1, 0.1, 0.5],
+                        },
+                        Embedding {
+                            document: "don't-choose-me".to_string(),
+                            vec: vec![-0.5, 0.9, 0.1],
+                        },
+                    ],
+                ),
+                (
+                    "doc2".to_string(),
+                    "marble-marble",
+                    vec![
+                        Embedding {
+                            document: "marble-marble".to_string(),
+                            vec: vec![0.7, -0.3, 0.0],
+                        },
+                        Embedding {
+                            document: "sandwich".to_string(),
+                            vec: vec![0.5, 0.5, -0.7],
+                        },
+                    ],
+                ),
+                (
+                    "doc3".to_string(),
+                    "flumb-flumb",
+                    vec![
+                        Embedding {
+                            document: "flumb-flumb".to_string(),
+                            vec: vec![0.3, 0.7, 0.1],
+                        },
+                        Embedding {
+                            document: "banana".to_string(),
+                            vec: vec![0.1, -0.5, -0.5],
+                        },
+                    ],
+                ),
+            ])
+            .unwrap();
+
+        let ranking = index.vector_search(
+            &Embedding {
+                document: "glarby-glarble".to_string(),
+                vec: vec![0.0, 0.1, 0.6],
+            },
+            1,
+        );
+
+        assert_eq!(
+            ranking
+                .into_iter()
+                .map(|Reverse(RankingItem(distance, id, doc, _))| {
+                    (
+                        distance.0,
+                        id.clone(),
+                        serde_json::from_str(&serde_json::to_string(doc).unwrap()).unwrap(),
+                    )
+                })
+                .collect::<Vec<(_, _, String)>>(),
+            vec![(
+                0.034444444444444444,
+                "doc1".to_string(),
+                "glarb-garb".to_string()
+            )]
+        )
     }
 }
