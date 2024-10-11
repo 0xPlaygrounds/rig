@@ -1,5 +1,5 @@
 use quote::ToTokens;
-use syn::{meta::ParseNestedMeta, spanned::Spanned, ExprPath};
+use syn::{meta::ParseNestedMeta, ExprPath};
 
 use crate::EMBED;
 
@@ -50,6 +50,39 @@ impl CustomAttributeParser for syn::Attribute {
     }
 
     fn expand_tag(&self) -> syn::Result<syn::ExprPath> {
+        fn function_path(meta: &ParseNestedMeta<'_>) -> syn::Result<ExprPath> {
+            // #[embed(embed_with = "...")]
+            let expr = meta.value()?.parse::<syn::Expr>().unwrap();
+            let mut value = &expr;
+            while let syn::Expr::Group(e) = value {
+                value = &e.expr;
+            }
+            let string = if let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(lit_str),
+                ..
+            }) = value
+            {
+                let suffix = lit_str.suffix();
+                if !suffix.is_empty() {
+                    return Err(syn::Error::new_spanned(
+                        lit_str,
+                        format!("unexpected suffix `{}` on string literal", suffix),
+                    ));
+                }
+                lit_str.clone()
+            } else {
+                return Err(syn::Error::new_spanned(
+                    value,
+                    format!(
+                        "expected {} attribute to be a string: `{} = \"...\"`",
+                        EMBED_WITH, EMBED_WITH
+                    ),
+                ));
+            };
+
+            string.parse()
+        }
+
         let mut custom_func_path = None;
 
         self.parse_nested_meta(|meta| match function_path(&meta) {
@@ -62,37 +95,4 @@ impl CustomAttributeParser for syn::Attribute {
 
         Ok(custom_func_path.unwrap())
     }
-}
-
-fn function_path(meta: &ParseNestedMeta<'_>) -> syn::Result<ExprPath> {
-    // #[embed(embed_with = "...")]
-    let expr = meta.value()?.parse::<syn::Expr>().unwrap();
-    let mut value = &expr;
-    while let syn::Expr::Group(e) = value {
-        value = &e.expr;
-    }
-    let string = if let syn::Expr::Lit(syn::ExprLit {
-        lit: syn::Lit::Str(lit_str),
-        ..
-    }) = value
-    {
-        let suffix = lit_str.suffix();
-        if !suffix.is_empty() {
-            return Err(syn::Error::new(
-                lit_str.span(),
-                format!("unexpected suffix `{}` on string literal", suffix),
-            ));
-        }
-        lit_str.clone()
-    } else {
-        return Err(syn::Error::new(
-            value.span(),
-            format!(
-                "expected {} attribute to be a string: `{} = \"...\"`",
-                EMBED_WITH, EMBED_WITH
-            ),
-        ));
-    };
-
-    string.parse()
 }

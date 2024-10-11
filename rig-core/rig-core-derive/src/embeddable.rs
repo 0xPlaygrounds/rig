@@ -10,10 +10,10 @@ const SINGLE_EMBEDDING: &str = "SingleEmbedding";
 pub fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
 
-    let (embed_targets, embed_kind) = match &input.data {
+    let (embed_targets, custom_embed_targets, embed_kind) = match &input.data {
         syn::Data::Struct(data_struct) => {
             // Handles fields tagged with #[embed]
-            let mut inner_embed_targets = data_struct
+            let embed_targets = data_struct
                 .basic_embed_fields()
                 .map(|field| {
                     add_struct_bounds(&mut input.generics, &field.ty);
@@ -21,24 +21,37 @@ pub fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Result<Toke
                     let field_name = field.ident;
 
                     quote! {
-                        self.#field_name.embeddable()
+                        self.#field_name
                     }
                 })
                 .collect::<Vec<_>>();
 
             // Handles fields tagged with #[embed(embed_with = "...")]
-            inner_embed_targets.extend(data_struct.custom_embed_fields()?.map(|(field, _)| {
-                let field_name = field.ident;
+            let custom_embed_targets = data_struct
+                .custom_embed_fields()?
+                .map(|(field, _)| {
+                    let field_name = field.ident;
 
-                quote! {
-                    embeddable(&self.#field_name)
-                }
-            }));
+                    quote! {
+                        self.#field_name
+                    }
+                })
+                .collect::<Vec<_>>();
 
-            (inner_embed_targets, data_struct.embed_kind()?)
+            (
+                embed_targets,
+                custom_embed_targets,
+                data_struct.embed_kind()?,
+            )
         }
         _ => panic!("Embeddable trait can only be derived for structs"),
     };
+
+    // If there are no fields tagged with #[embed] or #[embed(embed_with = "...")], return an empty TokenStream.
+    // ie. do not implement Embeddable trait for the struct.
+    if embed_targets.is_empty() && custom_embed_targets.is_empty() {
+        return Ok(TokenStream::new());
+    }
 
     // Import the paths to the custom functions.
     let custom_func_paths = match &input.data {
@@ -53,12 +66,6 @@ pub fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Result<Toke
         _ => vec![],
     };
 
-    // If there are no fields tagged with #[embed] or #[embed(embed_with = "...")], return an empty TokenStream.
-    // ie. do not implement Embeddable trait for the struct.
-    if embed_targets.is_empty() {
-        return Ok(TokenStream::new());
-    }
-
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let gen = quote! {
@@ -69,11 +76,18 @@ pub fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Result<Toke
 
         impl #impl_generics Embeddable for #name #ty_generics #where_clause {
             type Kind = #embed_kind;
+            type Error = EmbeddingGenerationError;
 
-            fn embeddable(&self) -> Vec<String> {
-                vec![
-                    #(#embed_targets),*
-                ].into_iter().flatten().collect()
+            fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+                vec![#(#embed_targets.clone()),*].embeddable()
+
+                // let custom_embed_targets = vec![#( embeddable( #embed_targets ); ),*]
+                //     .iter()
+                //     .collect::<Result<Vec<_>, _>>()?
+                //     .into_iter()
+                //     .flatten();
+
+                // Ok(embed_targets.chain(custom_embed_targets).collect())
             }
         }
     };

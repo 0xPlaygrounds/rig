@@ -172,9 +172,17 @@ impl EmbeddingKind for SingleEmbedding {}
 pub struct ManyEmbedding;
 impl EmbeddingKind for ManyEmbedding {}
 
+#[derive(Debug, thiserror::Error)]
+pub enum EmbeddingGenerationError {
+    #[error("SerdeError: {0}")]
+    SerdeError(#[from] serde_json::Error),
+}
+
 pub trait Embeddable {
     type Kind: EmbeddingKind;
-    fn embeddable(&self) -> Vec<String>;
+    type Error: std::error::Error;
+
+    fn embeddable(&self) -> Result<Vec<String>, Self::Error>;
 }
 
 /// Builder for creating a collection of embeddings
@@ -195,22 +203,22 @@ impl<M: EmbeddingModel, D: Embeddable<Kind = K>, K: EmbeddingKind> EmbeddingsBui
     }
 
     /// Add a document that implements `Embeddable` to the builder.
-    pub fn document(mut self, document: D) -> Self {
-        let embed_targets = document.embeddable();
+    pub fn document(mut self, document: D) -> Result<Self, D::Error> {
+        let embed_targets = document.embeddable()?;
 
         self.documents.push((document, embed_targets));
-        self
+        Ok(self)
     }
 
     /// Add many documents that implement `Embeddable` to the builder.
-    pub fn documents(mut self, documents: Vec<D>) -> EmbeddingsBuilder<M, D, D::Kind> {
-        documents.into_iter().for_each(|doc| {
-            let embed_targets = doc.embeddable();
+    pub fn documents(mut self, documents: Vec<D>) -> Result<Self, D::Error> {
+        for doc in documents.into_iter() {
+            let embed_targets = doc.embeddable()?;
 
             self.documents.push((doc, embed_targets));
-        });
+        }
 
-        self
+        Ok(self)
     }
 }
 
@@ -318,110 +326,119 @@ impl<M: EmbeddingModel, D: Embeddable + Send + Sync + Clone>
 //////////////////////////////////////////////////////
 impl Embeddable for String {
     type Kind = SingleEmbedding;
+    type Error = EmbeddingGenerationError;
 
-    fn embeddable(&self) -> Vec<String> {
-        vec![self.clone()]
+    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+        Ok(vec![self.clone()])
     }
 }
 
 impl Embeddable for i8 {
     type Kind = SingleEmbedding;
+    type Error = EmbeddingGenerationError;
 
-    fn embeddable(&self) -> Vec<String> {
-        vec![self.to_string()]
+    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+        Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for i16 {
     type Kind = SingleEmbedding;
+    type Error = EmbeddingGenerationError;
 
-    fn embeddable(&self) -> Vec<String> {
-        vec![self.to_string()]
+    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+        Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for i32 {
     type Kind = SingleEmbedding;
+    type Error = EmbeddingGenerationError;
 
-    fn embeddable(&self) -> Vec<String> {
-        vec![self.to_string()]
+    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+        Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for i64 {
     type Kind = SingleEmbedding;
+    type Error = EmbeddingGenerationError;
 
-    fn embeddable(&self) -> Vec<String> {
-        vec![self.to_string()]
+    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+        Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for i128 {
     type Kind = SingleEmbedding;
+    type Error = EmbeddingGenerationError;
 
-    fn embeddable(&self) -> Vec<String> {
-        vec![self.to_string()]
+    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+        Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for f32 {
     type Kind = SingleEmbedding;
+    type Error = EmbeddingGenerationError;
 
-    fn embeddable(&self) -> Vec<String> {
-        vec![self.to_string()]
+    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+        Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for f64 {
     type Kind = SingleEmbedding;
+    type Error = EmbeddingGenerationError;
 
-    fn embeddable(&self) -> Vec<String> {
-        vec![self.to_string()]
+    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+        Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for bool {
     type Kind = SingleEmbedding;
+    type Error = EmbeddingGenerationError;
 
-    fn embeddable(&self) -> Vec<String> {
-        vec![self.to_string()]
+    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+        Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for char {
     type Kind = SingleEmbedding;
+    type Error = EmbeddingGenerationError;
 
-    fn embeddable(&self) -> Vec<String> {
-        vec![self.to_string()]
+    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+        Ok(vec![self.to_string()])
     }
 }
 
 impl<T: Embeddable> Embeddable for Vec<T> {
     type Kind = ManyEmbedding;
+    type Error = T::Error;
 
-    fn embeddable(&self) -> Vec<String> {
-        self.iter().flat_map(|i| i.embeddable()).collect()
+    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+        Ok(self
+            .iter()
+            .map(|i| i.embeddable())
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Embeddable, SingleEmbedding};
+    use super::{Embeddable, SingleEmbedding, EmbeddingGenerationError};
 
     use rig_derive::Embed;
-    use serde::Serialize;
-
-    // #[derive(Serialize)]
-    // struct FakeDefinition2 {
-    //     id: String,
-    //     #[serde(test = "")]
-    //     definition: String,
-    // }
 
     #[derive(Embed)]
     struct FakeDefinition {
         id: String,
-        #[embed(something = "a")]
+        #[embed]
         definition: String,
     }
 
