@@ -3,5 +3,6 @@
 //! natural language processing (NLP) tasks such as text classification, information retrieval,
 //! and document similarity.
 
+pub mod builder;
 pub mod embeddable;
 pub mod embedding;

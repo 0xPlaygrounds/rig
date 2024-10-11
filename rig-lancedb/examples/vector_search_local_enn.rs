@@ -3,7 +3,7 @@ use std::{env, sync::Arc};
 use arrow_array::RecordBatchIterator;
 use fixture::{as_record_batch, fake_definitions, schema};
 use rig::{
-    embeddings::{embeddable::EmbeddingsBuilder, embedding::EmbeddingModel},
+    embeddings::{builder::EmbeddingsBuilder, embedding::EmbeddingModel},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndexDyn,
 };

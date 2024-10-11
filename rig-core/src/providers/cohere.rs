@@ -14,9 +14,7 @@ use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError},
     embeddings::{
-        self,
-        embeddable::{Embeddable, EmbeddingsBuilder},
-        embedding::EmbeddingError,
+        self, builder::EmbeddingsBuilder, embeddable::Embeddable, embedding::EmbeddingError,
     },
     extractor::ExtractorBuilder,
     json_utils,

@@ -1,12 +1,12 @@
 use mongodb::{bson::doc, options::ClientOptions, Client as MongoClient, Collection};
+use rig::embeddings::embeddable::EmbeddableError;
 use rig::providers::openai::TEXT_EMBEDDING_ADA_002;
 use serde::{Deserialize, Serialize};
 use std::env;
 
 use rig::Embeddable;
 use rig::{
-    embeddings::embeddable::{EmbeddingGenerationError, EmbeddingsBuilder, SingleEmbedding},
-    providers::openai::Client,
+    embeddings::builder::EmbeddingsBuilder, providers::openai::Client,
     vector_store::VectorStoreIndex,
 };
 use rig_mongodb::{MongoDbVectorStore, SearchParams};
@@ -18,6 +18,12 @@ struct FakeDefinition {
     id: String,
     #[embed]
     definition: String,
+}
+
+#[derive(Clone, Deserialize, Debug, Serialize)]
+struct Link {
+    word: String,
+    link: String,
 }
 
 // Shape of the document to be stored in MongoDB, with embeddings.
@@ -56,15 +62,15 @@ async fn main() -> Result<(), anyhow::Error> {
     let fake_definitions = vec![
         FakeDefinition {
             id: "doc0".to_string(),
-            definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string()
+            definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
         },
         FakeDefinition {
             id: "doc1".to_string(),
-            definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string()
+            definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         },
         FakeDefinition {
             id: "doc2".to_string(),
-            definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string()
+            definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }
     ];
 
@@ -75,11 +81,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let mongo_documents = embeddings
         .iter()
-        .map(|(FakeDefinition { id, definition }, embedding)| Document {
-            id: id.clone(),
-            definition: definition.clone(),
-            embedding: embedding.vec.clone(),
-        })
+        .map(
+            |(FakeDefinition { id, definition, .. }, embedding)| Document {
+                id: id.clone(),
+                definition: definition.clone(),
+                embedding: embedding.vec.clone(),
+            },
+        )
         .collect::<Vec<_>>();
 
     match collection.insert_many(mongo_documents, None).await {

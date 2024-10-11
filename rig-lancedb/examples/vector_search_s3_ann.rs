@@ -4,7 +4,7 @@ use arrow_array::RecordBatchIterator;
 use fixture::{as_record_batch, fake_definition, fake_definitions, schema, FakeDefinition};
 use lancedb::{index::vector::IvfPqIndexBuilder, DistanceType};
 use rig::{
-    embeddings::{embeddable::EmbeddingsBuilder, embedding::EmbeddingModel},
+    embeddings::{builder::EmbeddingsBuilder, embedding::EmbeddingModel},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
 };

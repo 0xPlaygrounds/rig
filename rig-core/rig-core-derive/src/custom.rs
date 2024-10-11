@@ -5,7 +5,36 @@ use crate::EMBED;
 
 const EMBED_WITH: &str = "embed_with";
 
-pub(crate) trait CustomAttributeParser {
+/// Finds and returns fields with #[embed(embed_with = "...")] attribute tags only.
+/// Also returns the attribute in question.
+pub(crate) fn custom_embed_fields(
+    data_struct: &syn::DataStruct,
+) -> syn::Result<impl Iterator<Item = (syn::Field, syn::ExprPath)>> {
+    Ok(data_struct
+        .fields
+        .clone()
+        .into_iter()
+        .map(|field| {
+            field
+                .attrs
+                .clone()
+                .into_iter()
+                .map(|attribute| {
+                    if attribute.is_custom()? {
+                        Ok::<_, syn::Error>(Some((field.clone(), attribute.expand_tag()?)))
+                    } else {
+                        Ok(None)
+                    }
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .flatten())
+}
+
+trait CustomAttributeParser {
     // Determine if field is tagged with an #[embed(embed_with = "...")] attribute.
     fn is_custom(&self) -> syn::Result<bool>;
 

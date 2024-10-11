@@ -13,7 +13,8 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{
         self,
-        embeddable::{Embeddable, EmbeddingsBuilder},
+        builder::EmbeddingsBuilder,
+        embeddable::Embeddable,
         embedding::{Embedding, EmbeddingError},
     },
     extractor::ExtractorBuilder,

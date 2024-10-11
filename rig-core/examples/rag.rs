@@ -2,7 +2,7 @@ use std::{env, vec};
 
 use rig::{
     completion::Prompt,
-    embeddings::embeddable::{EmbeddingGenerationError, EmbeddingsBuilder, ManyEmbedding},
+    embeddings::builder::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::in_memory_store::InMemoryVectorStore,
     Embeddable,
