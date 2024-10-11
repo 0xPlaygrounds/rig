@@ -5,7 +5,7 @@ use fixture::{as_record_batch, fake_definition, fake_definitions, schema, FakeDe
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::vector_store::VectorStoreIndex;
 use rig::{
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
+    embeddings::{embeddable::EmbeddingsBuilder, embedding::EmbeddingModel},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
@@ -33,7 +33,7 @@ async fn main() -> Result<(), anyhow::Error> {
             (0..256)
                 .map(|i| fake_definition(format!("doc{}", i)))
                 .collect(),
-        )
+        )?
         .build()
         .await?;
 

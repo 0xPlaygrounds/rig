@@ -2,16 +2,16 @@ use std::{env, vec};
 
 use rig::{
     completion::Prompt,
-    embeddings::{Embeddable, EmbeddingsBuilder, ManyEmbedding},
+    embeddings::embeddable::{EmbeddingGenerationError, EmbeddingsBuilder, ManyEmbedding},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::in_memory_store::InMemoryVectorStore,
+    Embeddable,
 };
-use rig_derive::Embed;
 use serde::Serialize;
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
-#[derive(Embed, Clone, Debug, Serialize, Eq, PartialEq, Default)]
+#[derive(Embeddable, Clone, Debug, Serialize, Eq, PartialEq, Default)]
 struct FakeDefinition {
     id: String,
     #[embed]
@@ -49,7 +49,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     "Definition of a *linglingdong*: A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
                 ]
             },
-        ])
+        ])?
         .build()
         .await?;
 

@@ -1,16 +1,16 @@
 use std::env;
 
 use rig::{
-    embeddings::{Embeddable, EmbeddingsBuilder, ManyEmbedding},
+    embeddings::embeddable::{EmbeddingGenerationError, EmbeddingsBuilder, ManyEmbedding},
     providers::cohere::{Client, EMBED_ENGLISH_V3},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
+    Embeddable,
 };
-use rig_derive::Embed;
 use serde::{Deserialize, Serialize};
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
-#[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
+#[derive(Embeddable, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
 struct FakeDefinition {
     id: String,
     word: String,
@@ -53,7 +53,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     "A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
                 ]
             },
-        ])
+        ])?
         .build()
         .await?;
 

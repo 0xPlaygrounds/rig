@@ -1,17 +1,19 @@
 use mongodb::{bson::doc, options::ClientOptions, Client as MongoClient, Collection};
 use rig::providers::openai::TEXT_EMBEDDING_ADA_002;
-use rig_derive::Embed;
 use serde::{Deserialize, Serialize};
 use std::env;
 
+use rig::Embeddable;
 use rig::{
-    embeddings::{EmbeddingsBuilder, Embeddable, SingleEmbedding}, providers::openai::Client, vector_store::VectorStoreIndex,
+    embeddings::embeddable::{EmbeddingGenerationError, EmbeddingsBuilder, SingleEmbedding},
+    providers::openai::Client,
+    vector_store::VectorStoreIndex,
 };
 use rig_mongodb::{MongoDbVectorStore, SearchParams};
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
-#[derive(Embed, Clone, Deserialize, Debug)]
+#[derive(Embeddable, Clone, Deserialize, Debug)]
 struct FakeDefinition {
     id: String,
     #[embed]
@@ -67,7 +69,7 @@ async fn main() -> Result<(), anyhow::Error> {
     ];
 
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(fake_definitions)
+        .documents(fake_definitions)?
         .build()
         .await?;
 

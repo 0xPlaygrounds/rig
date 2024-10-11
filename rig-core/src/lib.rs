@@ -75,3 +75,7 @@ pub mod json_utils;
 pub mod providers;
 pub mod tool;
 pub mod vector_store;
+
+// Export Embeddable trait and Embeddable together.
+pub use embeddings::embeddable::Embeddable;
+pub use rig_derive::Embeddable;

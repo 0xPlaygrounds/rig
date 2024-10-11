@@ -13,7 +13,11 @@ use std::collections::HashMap;
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError},
-    embeddings::{self, Embeddable, EmbeddingError, EmbeddingsBuilder},
+    embeddings::{
+        self,
+        embeddable::{Embeddable, EmbeddingsBuilder},
+        embedding::EmbeddingError,
+    },
     extractor::ExtractorBuilder,
     json_utils,
 };
@@ -187,7 +191,7 @@ pub struct EmbeddingModel {
     ndims: usize,
 }
 
-impl embeddings::EmbeddingModel for EmbeddingModel {
+impl embeddings::embedding::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 96;
 
     fn ndims(&self) -> usize {
@@ -197,7 +201,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     async fn embed_documents(
         &self,
         documents: Vec<String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+    ) -> Result<Vec<embeddings::embedding::Embedding>, EmbeddingError> {
         let response = self
             .client
             .post("/v1/embed")
@@ -226,7 +230,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                     .embeddings
                     .into_iter()
                     .zip(documents.into_iter())
-                    .map(|(embedding, document)| embeddings::Embedding {
+                    .map(|(embedding, document)| embeddings::embedding::Embedding {
                         document,
                         vec: embedding,
                     })

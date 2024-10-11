@@ -4,7 +4,7 @@ use arrow_array::RecordBatchIterator;
 use fixture::{as_record_batch, fake_definition, fake_definitions, schema, FakeDefinition};
 use lancedb::{index::vector::IvfPqIndexBuilder, DistanceType};
 use rig::{
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
+    embeddings::{embeddable::EmbeddingsBuilder, embedding::EmbeddingModel},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
 };
@@ -33,13 +33,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Generate embeddings for the test data.
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(fake_definitions())
+        .documents(fake_definitions())?
         // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
         .documents(
             (0..256)
                 .map(|i| fake_definition(format!("doc{}", i)))
                 .collect(),
-        )
+        )?
         .build()
         .await?;
 

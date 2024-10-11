@@ -2,7 +2,7 @@ use futures::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::embeddings::EmbeddingError;
+use crate::embeddings::embedding::EmbeddingError;
 
 pub mod in_memory_store;
 

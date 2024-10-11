@@ -3,7 +3,7 @@ use std::{env, sync::Arc};
 use arrow_array::RecordBatchIterator;
 use fixture::{as_record_batch, fake_definitions, schema};
 use rig::{
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
+    embeddings::{embeddable::EmbeddingsBuilder, embedding::EmbeddingModel},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndexDyn,
 };
@@ -23,7 +23,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Generate embeddings for the test data.
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(fake_definitions())
+        .documents(fake_definitions())?
         .build()
         .await?;
 

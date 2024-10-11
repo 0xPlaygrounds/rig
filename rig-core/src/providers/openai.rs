@@ -11,7 +11,11 @@
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
-    embeddings::{self, Embeddable, EmbeddingError},
+    embeddings::{
+        self,
+        embeddable::{Embeddable, EmbeddingsBuilder},
+        embedding::{Embedding, EmbeddingError},
+    },
     extractor::ExtractorBuilder,
     json_utils,
 };
@@ -121,11 +125,11 @@ impl Client {
     ///     .await
     ///     .expect("Failed to embed documents");
     /// ```
-    pub fn embeddings<D: Embeddable>(
+    pub fn embeddings<T: Embeddable>(
         &self,
         model: &str,
-    ) -> embeddings::EmbeddingsBuilder<EmbeddingModel, D, D::Kind> {
-        embeddings::EmbeddingsBuilder::new(self.embedding_model(model))
+    ) -> EmbeddingsBuilder<EmbeddingModel, T, T::Kind> {
+        EmbeddingsBuilder::new(self.embedding_model(model))
     }
 
     /// Create a completion model with the given name.
@@ -235,7 +239,7 @@ pub struct EmbeddingModel {
     ndims: usize,
 }
 
-impl embeddings::EmbeddingModel for EmbeddingModel {
+impl embeddings::embedding::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 1024;
 
     fn ndims(&self) -> usize {
@@ -245,7 +249,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     async fn embed_documents(
         &self,
         documents: Vec<String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+    ) -> Result<Vec<Embedding>, EmbeddingError> {
         let response = self
             .client
             .post("/v1/embeddings")
@@ -271,7 +275,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                     .data
                     .into_iter()
                     .zip(documents.into_iter())
-                    .map(|(embedding, document)| embeddings::Embedding {
+                    .map(|(embedding, document)| Embedding {
                         document,
                         vec: embedding.embedding,
                     })

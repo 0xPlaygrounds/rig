@@ -2,11 +2,14 @@ use std::sync::Arc;
 
 use arrow_array::{types::Float64Type, ArrayRef, FixedSizeListArray, RecordBatch, StringArray};
 use lancedb::arrow::arrow_schema::{DataType, Field, Fields, Schema};
-use rig::embeddings::{Embedding, Embeddable, SingleEmbedding};
-use rig_derive::Embed;
+use rig::embeddings::{
+    embeddable::{EmbeddingGenerationError, SingleEmbedding},
+    embedding::Embedding,
+};
+use rig::Embeddable;
 use serde::Deserialize;
 
-#[derive(Embed, Clone, Deserialize, Debug)]
+#[derive(Embeddable, Clone, Deserialize, Debug)]
 pub struct FakeDefinition {
     id: String,
     #[embed]
