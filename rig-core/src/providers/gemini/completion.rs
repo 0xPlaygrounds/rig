@@ -1,8 +1,7 @@
 // ================================================================
-// Google Gemini Completion API
+//! Google Gemini Completion Integration
+//! https://ai.google.dev/api/generate-content
 // ================================================================
-//
-// https://ai.google.dev/api/generate-conten
 
 /// `gemini-1.5-flash` completion model
 pub const GEMINI_1_5_FLASH: &str = "gemini-1.5-flash";
@@ -26,7 +25,7 @@ use crate::{
 use super::Client;
 
 // =================================================================
-// Gemini API Response Structures
+// Gemini API Types
 // =================================================================
 
 // Define the struct for the GenerateContentResponse
@@ -166,33 +165,63 @@ pub struct LogProbCandidate {
     pub log_probability: f64,
 }
 
-/// Gemini API Configuration options for model generation and outputs. Not all parameters are configurable for every model.
-/// https://ai.google.dev/api/generate-content#generationconfig
+/// Gemini API Configuration options for model generation and outputs. Not all parameters are
+/// configurable for every model. https://ai.google.dev/api/generate-content#generationconfig
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GenerationConfig {
-    /// The set of character sequences (up to 5) that will stop output generation. If specified, the API will stop at the first appearance of a stop_sequence. The stop sequence will not be included as part of the response.
+    /// The set of character sequences (up to 5) that will stop output generation. If specified, the API will stop
+    /// at the first appearance of a stop_sequence. The stop sequence will not be included as part of the response.
     pub stop_sequences: Option<Vec<String>>,
-    /// MIME type of the generated candidate text. Supported MIME types are: text/plain: (default) Text output. application/json: JSON response in the response candidates. text/x.enum: ENUM as a string response in the response candidates. Refer to the docs for a list of all supported text MIME types
+    /// MIME type of the generated candidate text. Supported MIME types are:
+    ///     - text/plain:  (default) Text output
+    ///     - application/json: JSON response in the response candidates.
+    ///     - text/x.enum: ENUM as a string response in the response candidates.
+    /// Refer to the docs for a list of all supported text MIME types
     pub response_mime_type: Option<String>,
-    /// Output schema of the generated candidate text. Schemas must be a subset of the OpenAPI schema and can be objects, primitives or arrays. If set, a compatible responseMimeType must also be set. Compatible MIME types: application/json: Schema for JSON response. Refer to the JSON text generation guide for more details.
+    /// Output schema of the generated candidate text. Schemas must be a subset of the OpenAPI schema and can be
+    /// objects, primitives or arrays. If set, a compatible responseMimeType must also  be set. Compatible MIME
+    /// types: application/json: Schema for JSON response. Refer to the JSON text generation guide for more details.
     pub response_schema: Option<Schema>,
-    /// Number of generated responses to return. Currently, this value can only be set to 1. If unset, this will default to 1.
+    /// Number of generated responses to return. Currently, this value can only be set to 1. If
+    /// unset, this will default to 1.
     pub candidate_count: Option<i32>,
-    /// The maximum number of tokens to include in a response candidate. Note: The default value varies by model, see the Model.output_token_limit attribute of the Model returned from the getModel function.
+    /// The maximum number of tokens to include in a response candidate. Note: The default value varies by model, see
+    /// the Model.output_token_limit attribute of the Model returned from the getModel function.
     pub max_output_tokens: Option<u64>,
-    /// Controls the randomness of the output. Note: The default value varies by model, see the Model.temperature attribute of the Model returned from the getModel function. Values can range from [0.0, 2.0].
+    /// Controls the randomness of the output. Note: The default value varies by model, see the Model.temperature
+    /// attribute of the Model returned from the getModel function. Values can range from [0.0, 2.0].
     pub temperature: Option<f64>,
-    /// The maximum cumulative probability of tokens to consider when sampling. The model uses combined Top-k and Top-p (nucleus) sampling. Tokens are sorted based on their assigned probabilities so that only the most likely tokens are considered. Top-k sampling directly limits the maximum number of tokens to consider, while Nucleus sampling limits the number of tokens based on the cumulative probability. Note: The default value varies by Model and is specified by theModel.top_p attribute returned from the getModel function. An empty topK attribute indicates that the model doesn't apply top-k sampling and doesn't allow setting topK on requests.
+    /// The maximum cumulative probability of tokens to consider when sampling. The model uses combined Top-k and
+    /// Top-p (nucleus) sampling. Tokens are sorted based on their assigned probabilities so that only the most
+    /// likely tokens are considered. Top-k sampling directly limits the maximum number of tokens to consider, while
+    /// Nucleus sampling limits the number of tokens based on the cumulative probability. Note: The default value
+    /// varies by Model and is specified by theModel.top_p attribute returned from the getModel function. An empty
+    /// topK attribute indicates that the model doesn't apply top-k sampling and doesn't allow setting topK on requests.
     pub top_p: Option<f64>,
-    /// The maximum number of tokens to consider when sampling. Gemini models use Top-p (nucleus) sampling or a combination of Top-k and nucleus sampling. Top-k sampling considers the set of topK most probable tokens. Models running with nucleus sampling don't allow topK setting. Note: The default value varies by Model and is specified by theModel.top_p attribute returned from the getModel function. An empty topK attribute indicates that the model doesn't apply top-k sampling and doesn't allow setting topK on requests.
+    /// The maximum number of tokens to consider when sampling. Gemini models use Top-p (nucleus) sampling or a
+    /// combination of Top-k and nucleus sampling. Top-k sampling considers the set of topK most probable tokens.
+    /// Models running with nucleus sampling don't allow topK setting. Note: The default value varies by Model and is
+    /// specified by theModel.top_p attribute returned from the getModel function. An empty topK attribute indicates
+    /// that the model doesn't apply top-k sampling and doesn't allow setting topK on requests.
     pub top_k: Option<i32>,
-    /// Presence penalty applied to the next token's logprobs if the token has already been seen in the response. This penalty is binary on/off and not dependant on the number of times the token is used (after the first). Use frequencyPenalty for a penalty that increases with each use. A positive penalty will discourage the use of tokens that have already been used in the response, increasing the vocabulary. A negative penalty will encourage the use of tokens that have already been used in the response, decreasing the vocabulary.
+    /// Presence penalty applied to the next token's logprobs if the token has already been seen in the response.
+    /// This penalty is binary on/off and not dependant on the number of times the token is used (after the first).
+    /// Use frequencyPenalty for a penalty that increases with each use. A positive penalty will discourage the use
+    /// of tokens that have already been used in the response, increasing the vocabulary. A negative penalty will
+    /// encourage the use of tokens that have already been used in the response, decreasing the vocabulary.
     pub presence_penalty: Option<f64>,
-    /// Frequency penalty applied to the next token's logprobs, multiplied by the number of times each token has been seen in the respponse so far. A positive penalty will discourage the use of tokens that have already been used, proportional to the number of times the token has been used: The more a token is used, the more dificult it is for the model to use that token again increasing the vocabulary of responses. Caution: A negative penalty will encourage the model to reuse tokens proportional to the number of times the token has been used. Small negative values will reduce the vocabulary of a response. Larger negative values will cause the model to start repeating a common token until it hits the maxOutputTokens limit: "...the the the the the...".
+    /// Frequency penalty applied to the next token's logprobs, multiplied by the number of times each token has been
+    /// seen in the respponse so far. A positive penalty will discourage the use of tokens that have already been
+    /// used, proportional to the number of times the token has been used: The more a token is used, the more
+    /// dificult it is for the  model to use that token again increasing the vocabulary of responses. Caution: A
+    /// negative penalty will encourage the model to reuse tokens proportional to the number of times the token has
+    /// been used. Small negative values will reduce the vocabulary of a response. Larger negative values will cause
+    /// the model to  repeating a common token until it hits the maxOutputTokens limit: "...the the the the the...".
     pub frequency_penalty: Option<f64>,
     /// If true, export the logprobs results in response.
     pub response_logprobs: Option<bool>,
-    /// Only valid if responseLogprobs=True. This sets the number of top logprobs to return at each decoding step in the Candidate.logprobs_result.
+    /// Only valid if responseLogprobs=True. This sets the number of top logprobs to return at each decoding step in
+    /// [Candidate.logprobs_result].
     pub logprobs: Option<i32>,
 }
 
@@ -214,7 +243,8 @@ impl Default for GenerationConfig {
         }
     }
 }
-/// The Schema object allows the definition of input and output data types. These types can be objects, but also primitives and arrays. Represents a select subset of an OpenAPI 3.0 schema object.
+/// The Schema object allows the definition of input and output data types. These types can be objects, but also
+/// primitives and arrays. Represents a select subset of an OpenAPI 3.0 schema object.
 /// https://ai.google.dev/api/caching#Schema
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Schema {
@@ -293,8 +323,24 @@ pub struct GenerateContentRequest {
     pub contents: Vec<Content>,
     pub tools: Option<Vec<Tool>>,
     pub tool_config: Option<ToolConfig>,
+    /// Optional. Configuration options for model generation and outputs.
     pub generation_config: Option<GenerationConfig>,
+    /// Optional. A list of unique SafetySetting instances for blocking unsafe content. This will be enforced on the
+    /// [GenerateContentRequest.contents] and [GenerateContentResponse.candidates]. There should not be more than one
+    /// setting for each SafetyCategory type. The API will block any contents and responses that fail to meet the
+    /// thresholds set by these settings. This list overrides the default settings for each SafetyCategory specified
+    /// in the safetySettings. If there is no SafetySetting for a given SafetyCategory provided in the list, the API
+    /// will use the default safety setting for that category. Harm categories:
+    ///     - HARM_CATEGORY_HATE_SPEECH,
+    ///     - HARM_CATEGORY_SEXUALLY_EXPLICIT
+    ///     - HARM_CATEGORY_DANGEROUS_CONTENT
+    ///     - HARM_CATEGORY_HARASSMENT
+    /// are supported.
+    /// Refer to the guide for detailed information on available safety settings. Also refer to the Safety guidance
+    /// to learn how to incorporate safety considerations in your AI applications.
     pub safety_settings: Option<Vec<SafetySetting>>,
+    /// Optional. Developer set system instruction(s). Currently, text only.
+    /// https://ai.google.dev/gemini-api/docs/system-instructions?lang=rest
     pub system_instruction: Option<String>,
     // cachedContent: Optional<String>
 }

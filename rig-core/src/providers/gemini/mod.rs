@@ -1,4 +1,4 @@
-//! Google API client and Rig integration
+//! Google Gemini API client and Rig integration
 //!
 //! # Example
 //! ```
