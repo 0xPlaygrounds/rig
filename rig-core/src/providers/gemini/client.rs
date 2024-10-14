@@ -108,12 +108,16 @@ impl Client {
         embeddings::EmbeddingsBuilder::new(self.embedding_model(model))
     }
 
+    /// Create a completion model with the given name.
+    /// Gemini-specific parameters can be set using the [GenerationConfig](crate::providers::gemini::completion::GenerationConfig) struct.
+    /// https://ai.google.dev/api/generate-content#generationconfig
     pub fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
 
     /// Create an agent builder with the given completion model.
-    ///
+    /// Gemini-specific parameters can be set using the [GenerationConfig](crate::providers::gemini::completion::GenerationConfig) struct.
+    /// https://ai.google.dev/api/generate-content#generationconfig
     /// # Example
     /// ```
     /// use rig::providers::gemini::{Client, self};
