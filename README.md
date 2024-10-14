@@ -34,7 +34,7 @@ We'd love your feedback. Please take a moment to let us know what you think usin
 
 ## High-level features
 - Full support for LLM completion and embedding workflows
-- Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, in-memory)
+- Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere, Google Gemini) and vector stores (e.g. MongoDB, in-memory)
 - Integrate LLMs in your app with minimal boilerplate
 
 ## Installation
@@ -70,6 +70,6 @@ or just `full` to enable all features (`cargo add tokio --features macros,rt-mul
 Rig supports the following LLM providers natively:
 - OpenAI
 - Cohere
-
+- Google Gemini
 Additionally, Rig currently has the following integration sub-libraries:
 - MongoDB vector store: `rig-mongodb`
