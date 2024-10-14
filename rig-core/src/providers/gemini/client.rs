@@ -1,4 +1,8 @@
-use crate::{agent::AgentBuilder, embeddings::{self}, extractor::ExtractorBuilder};
+use crate::{
+    agent::AgentBuilder,
+    embeddings::{self},
+    extractor::ExtractorBuilder,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

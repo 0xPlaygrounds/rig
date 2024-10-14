@@ -21,5 +21,4 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("{}", response);
 
     Ok(())
-
 }

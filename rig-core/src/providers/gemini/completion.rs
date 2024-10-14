@@ -17,10 +17,12 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{completion::{self, CompletionError, CompletionRequest}, providers::gemini::client::ApiResponse};
+use crate::{
+    completion::{self, CompletionError, CompletionRequest},
+    providers::gemini::client::ApiResponse,
+};
 
 use super::Client;
-
 
 //
 // Gemini API Response Types
@@ -247,7 +249,7 @@ pub enum HarmBlockThreshold {
     BlockMediumAndAbove,
     BlockOnlyHigh,
     BlockNone,
-    Off
+    Off,
 }
 
 // =================================================================
@@ -260,7 +262,7 @@ impl From<completion::ToolDefinition> for Tool {
             function_declaration: FunctionDeclaration {
                 name: tool.name,
                 description: tool.description,
-                parameters: None  // tool.parameters, TODO: Map Gemini 
+                parameters: None, // tool.parameters, TODO: Map Gemini
             },
             code_execution: None,
         }
@@ -282,23 +284,23 @@ impl CompletionModel {
     }
 }
 
-
 impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<GenerateContentResponse> {
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
         match response.candidates.as_slice() {
-            [ContentCandidate { content, .. }, ..] => {
-                Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::Message(content.parts.first().unwrap().text.clone()),
-                    raw_response: response,
-                })
-            }
-            _ => Err(CompletionError::ResponseError("No candidates found in response".into())),
+            [ContentCandidate { content, .. }, ..] => Ok(completion::CompletionResponse {
+                choice: completion::ModelChoice::Message(
+                    content.parts.first().unwrap().text.clone(),
+                ),
+                raw_response: response,
+            }),
+            _ => Err(CompletionError::ResponseError(
+                "No candidates found in response".into(),
+            )),
         }
     }
 }
-
 
 impl completion::CompletionModel for CompletionModel {
     type Response = GenerateContentResponse;
@@ -307,15 +309,16 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         mut completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
-
         // QUESTION: Why do Anthropic/openAi implementation differ here? OpenAI adds the preamble but Anthropic does not.
-        
+
         let mut full_history = if let Some(preamble) = &completion_request.preamble {
             vec![completion::Message {
                 role: "system".into(),
                 content: preamble.clone(),
             }]
-        } else { vec![] };
+        } else {
+            vec![]
+        };
 
         full_history.append(&mut completion_request.chat_history);
 
@@ -327,15 +330,18 @@ impl completion::CompletionModel for CompletionModel {
         });
 
         let request = GenerateContentRequest {
-            contents: full_history.into_iter().map(|msg| Content {
-                parts: vec![Part { text: msg.content }],
-                role: match msg.role.as_str() {
-                    "system" => Some("model".to_string()),
-                    "user" => Some("user".to_string()),
-                    "assistant" => Some("model".to_string()),
-                    _ => None,
-                },
-            }).collect(),
+            contents: full_history
+                .into_iter()
+                .map(|msg| Content {
+                    parts: vec![Part { text: msg.content }],
+                    role: match msg.role.as_str() {
+                        "system" => Some("model".to_string()),
+                        "user" => Some("user".to_string()),
+                        "assistant" => Some("model".to_string()),
+                        _ => None,
+                    },
+                })
+                .collect(),
             // QUESTION: How to handle API config specifics?
             generation_config: Some(GenerationConfig {
                 temperature: completion_request.temperature,
@@ -352,19 +358,26 @@ impl completion::CompletionModel for CompletionModel {
                 logprobs: None,
             }),
             safety_settings: None,
-            tools: Some(completion_request.tools.into_iter().map(Tool::from).collect()),
+            tools: Some(
+                completion_request
+                    .tools
+                    .into_iter()
+                    .map(Tool::from)
+                    .collect(),
+            ),
             tool_config: None,
             system_instruction: None,
         };
 
-        let response = self.client.post(&format!("/v1beta/models/{}:generateContent", self.model))
+        let response = self
+            .client
+            .post(&format!("/v1beta/models/{}:generateContent", self.model))
             .json(&request)
             .send()
             .await?
             .error_for_status()?
             .json::<ApiResponse<GenerateContentResponse>>()
             .await?;
-
 
         match response {
             ApiResponse::Ok(response) => Ok(response.try_into()?),

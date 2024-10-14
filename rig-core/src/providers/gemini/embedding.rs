@@ -1,4 +1,3 @@
-
 // ================================================================
 // Google Gemini Embeddings
 // ================================================================
@@ -36,10 +35,12 @@ pub struct EmbeddingModel {
 
 impl EmbeddingModel {
     pub fn new(client: Client, model: &str, ndims: Option<usize>) -> Self {
-        Self { client, model: model.to_string(), ndims }
+        Self {
+            client,
+            model: model.to_string(),
+            ndims,
+        }
     }
-
-
 }
 
 impl embeddings::EmbeddingModel for EmbeddingModel {
@@ -52,7 +53,6 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             _ => 0, // Default to 0 for unknown models
         }
     }
-
 
     async fn embed_documents(
         &self,
@@ -82,12 +82,14 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         match response {
             ApiResponse::Ok(response) => {
                 let chunk_size = self.ndims.unwrap_or_else(|| self.ndims());
-                Ok(documents.into_iter().zip(response.embedding.values.chunks(chunk_size)).map(|(document, embedding)| {
-                    embeddings::Embedding {
+                Ok(documents
+                    .into_iter()
+                    .zip(response.embedding.values.chunks(chunk_size))
+                    .map(|(document, embedding)| embeddings::Embedding {
                         document,
                         vec: embedding.to_vec(),
-                    }
-                }).collect())
+                    })
+                    .collect())
             }
             ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
         }
