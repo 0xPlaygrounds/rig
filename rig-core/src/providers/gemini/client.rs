@@ -1,5 +1,6 @@
-use crate::embeddings::{self};
-use serde::Deserialize;
+use crate::{agent::AgentBuilder, embeddings::{self}, extractor::ExtractorBuilder};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use super::{completion::CompletionModel, embedding::EmbeddingModel};
 
@@ -36,6 +37,14 @@ impl Client {
                 .expect("Gemini reqwest client should build"),
         }
     }
+
+    /// Create a new Google Gemini client from the `GEMINI_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    pub fn from_env() -> Self {
+        let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
+        Self::new(&api_key)
+    }
+
     pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}?key={}", self.base_url, path, self.api_key).replace("//", "/");
 
@@ -99,9 +108,31 @@ impl Client {
         CompletionModel::new(self.clone(), model)
     }
 
-    // pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-    //     AgentBuilder::new(self.completion_model(model))
-    // }
+    /// Create an agent builder with the given completion model.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::gemini::{Client, self};
+    ///
+    /// // Initialize the Google Gemini client
+    /// let gemini = Client::new("your-google-gemini-api-key");
+    ///
+    /// let agent = gemini.agent(gemini::completion::GEMINI_1_5_PRO)
+    ///    .preamble("You are comedian AI with a mission to make people laugh.")
+    ///    .temperature(0.0)
+    ///    .build();
+    /// ```
+    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
+        AgentBuilder::new(self.completion_model(model))
+    }
+
+    /// Create an extractor builder with the given completion model.
+    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
+        &self,
+        model: &str,
+    ) -> ExtractorBuilder<T, CompletionModel> {
+        ExtractorBuilder::new(self.completion_model(model))
+    }
 }
 
 #[derive(Debug, Deserialize)]
