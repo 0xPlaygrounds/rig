@@ -68,7 +68,7 @@ use std::{cmp::max, collections::HashMap, marker::PhantomData};
 use futures::{stream, StreamExt, TryStreamExt};
 
 use super::{
-    embeddable::{Embeddable, EmbeddableError, EmbeddingKind, ManyEmbedding, SingleEmbedding},
+    embeddable::{Embeddable, EmbeddingKind, ManyEmbedding, SingleEmbedding},
     embedding::{Embedding, EmbeddingError, EmbeddingModel},
 };
 

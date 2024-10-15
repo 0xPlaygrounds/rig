@@ -68,7 +68,6 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
             }
         }
     };
-    eprintln!("Generated code:\n{}", gen);
 
     Ok(gen)
 }
