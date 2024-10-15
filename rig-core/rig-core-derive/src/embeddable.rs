@@ -26,7 +26,7 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
                 return Err(syn::Error::new_spanned(
                     name,
                     "Add at least one field tagged with #[embed] or #[embed(embed_with = \"...\")].",
-                ))
+                ));
             }
 
             // Determine whether the Embeddable::Kind should be SingleEmbedding or ManyEmbedding
@@ -90,7 +90,11 @@ fn embed_kind(data_struct: &DataStruct) -> syn::Result<syn::Expr> {
         }
     }
     let fields = basic_embed_fields(data_struct)
-        .chain(custom_embed_fields(data_struct)?.into_iter().map(|(f, _)| f))
+        .chain(
+            custom_embed_fields(data_struct)?
+                .into_iter()
+                .map(|(f, _)| f),
+        )
         .collect::<Vec<_>>();
 
     if fields.len() == 1 {
@@ -128,14 +132,14 @@ impl StructParser for DataStruct {
                 quote! {
                     vec![#(#embed_targets.embeddable()),*]
                 },
-                embed_targets.len()
+                embed_targets.len(),
             )
         } else {
             (
                 quote! {
                     vec![]
                 },
-                0
+                0,
             )
         }
     }
@@ -143,7 +147,8 @@ impl StructParser for DataStruct {
     fn custom(&self) -> syn::Result<(TokenStream, usize)> {
         let embed_targets = custom_embed_fields(self)?
             // Iterate over every field tagged with #[embed(embed_with = "...")]
-            .into_iter().map(|(field, custom_func_path)| {
+            .into_iter()
+            .map(|(field, custom_func_path)| {
                 let field_name = field.ident;
 
                 quote! {
@@ -157,14 +162,14 @@ impl StructParser for DataStruct {
                 quote! {
                     vec![#(#embed_targets),*]
                 },
-                embed_targets.len()
+                embed_targets.len(),
             )
         } else {
             (
                 quote! {
                     vec![]
                 },
-                0
+                0,
             )
         })
     }

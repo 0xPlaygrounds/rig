@@ -19,22 +19,17 @@ pub(crate) fn custom_embed_fields(
                 .attrs
                 .clone()
                 .into_iter()
-                .filter_map(|attribute| {
-                    match attribute.is_custom() {
-                        Ok(true) => {
-                            match attribute.expand_tag() {
-                                Ok(path) => Some(Ok((field.clone(), path))),
-                                Err(e) => Some(Err(e)),
-                            }
-                        },
-                        Ok(false) => None,
-                        Err(e) => Some(Err(e))
-                    }
+                .filter_map(|attribute| match attribute.is_custom() {
+                    Ok(true) => match attribute.expand_tag() {
+                        Ok(path) => Some(Ok((field.clone(), path))),
+                        Err(e) => Some(Err(e)),
+                    },
+                    Ok(false) => None,
+                    Err(e) => Some(Err(e)),
                 })
                 .next()
         })
         .collect::<Result<Vec<_>, _>>()
-        
 }
 
 trait CustomAttributeParser {
