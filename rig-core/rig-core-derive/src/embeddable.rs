@@ -53,8 +53,9 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
 
         impl #impl_generics Embeddable for #name #ty_generics #where_clause {
             type Kind = rig::embeddings::embeddable::#embed_kind;
+            type Error = rig::embeddings::embeddable::EmbeddableError;
 
-            fn embeddable(&self) -> Result<Vec<String>, rig::embeddings::embeddable::EmbeddableError> {
+            fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
                 #target_stream;
 
                 let targets = embed_targets.into_iter()

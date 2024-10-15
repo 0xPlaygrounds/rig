@@ -327,6 +327,9 @@ impl ToolSet {
         Ok(docs)
     }
 
+    /// Convert tools in self to objects of type EmbeddableTool.
+    /// This is necessary because when adding tools to the EmbeddingBuilder because all
+    /// documents added to the builder must all be of the same type.
     pub fn embedabble_tools(&self) -> Result<Vec<EmbeddableTool>, EmbeddableError> {
         self.tools
             .values()

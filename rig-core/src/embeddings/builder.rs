@@ -6,18 +6,23 @@
 //! use std::env;
 //!
 //! use rig::{
-//!    embeddings::EmbeddingsBuilder,
-//!    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+//!     embeddings::builder::EmbeddingsBuilder,
+//!     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+//!     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
+//!     Embeddable,
 //! };
-//! use rig_derive::Embed;
+//! use serde::{Deserialize, Serialize};
 //!
-//! #[derive(Embed)]
+//! // Shape of data that needs to be RAG'ed.
+//! // The definition field will be used to generate embeddings.
+//! #[derive(Embeddable, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
 //! struct FakeDefinition {
-//!    id: String,
-//!    word: String,
-//!    #[embed]
-//!    definitions: Vec<String>,
+//!     id: String,
+//!     word: String,
+//!     #[embed]
+//!     definitions: Vec<String>,
 //! }
+//!
 //! // Create OpenAI client
 //! let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
 //! let openai_client = Client::new(&openai_api_key);
@@ -25,34 +30,34 @@
 //! let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 //!
 //! let embeddings = EmbeddingsBuilder::new(model.clone())
-//!    .documents(vec![
-//!        FakeDefinition {
-//!            id: "doc0".to_string(),
-//!            word: "flurbo".to_string(),
-//!            definitions: vec![
-//!                "A green alien that lives on cold planets.".to_string(),
-//!                "A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
-//!            ]
-//!        },
-//!        FakeDefinition {
-//!            id: "doc1".to_string(),
-//!            word: "glarb-glarb".to_string(),
-//!            definitions: vec![
-//!                "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-//!                "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
-//!            ]
-//!        },
-//!        FakeDefinition {
-//!            id: "doc2".to_string(),
-//!            word: "linglingdong".to_string(),
-//!            definitions: vec![
-//!                "A term used by inhabitants of the sombrero galaxy to describe humans.".to_string(),
-//!                "A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
-//!            ]
-//!        },
-//!    ])
-//!    .build()
-//!    .await?;
+//!     .documents(vec![
+//!         FakeDefinition {
+//!             id: "doc0".to_string(),
+//!             word: "flurbo".to_string(),
+//!             definitions: vec![
+//!                 "A green alien that lives on cold planets.".to_string(),
+//!                 "A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
+//!             ]
+//!         },
+//!         FakeDefinition {
+//!             id: "doc1".to_string(),
+//!             word: "glarb-glarb".to_string(),
+//!             definitions: vec![
+//!                 "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+//!                 "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
+//!             ]
+//!         },
+//!         FakeDefinition {
+//!             id: "doc2".to_string(),
+//!             word: "linglingdong".to_string(),
+//!             definitions: vec![
+//!                 "A term used by inhabitants of the sombrero galaxy to describe humans.".to_string(),
+//!                 "A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
+//!             ]
+//!         },
+//!     ])?
+//!     .build()
+//!     .await?;
 //!                                 
 //! // Use the generated embeddings
 //! // ...
@@ -62,10 +67,8 @@ use std::{cmp::max, collections::HashMap, marker::PhantomData};
 
 use futures::{stream, StreamExt, TryStreamExt};
 
-use crate::Embeddable;
-
 use super::{
-    embeddable::{EmbeddableError, EmbeddingKind, ManyEmbedding, SingleEmbedding},
+    embeddable::{Embeddable, EmbeddableError, EmbeddingKind, ManyEmbedding, SingleEmbedding},
     embedding::{Embedding, EmbeddingError, EmbeddingModel},
 };
 
@@ -87,7 +90,7 @@ impl<M: EmbeddingModel, D: Embeddable<Kind = K>, K: EmbeddingKind> EmbeddingsBui
     }
 
     /// Add a document that implements `Embeddable` to the builder.
-    pub fn document(mut self, document: D) -> Result<Self, EmbeddableError> {
+    pub fn document(mut self, document: D) -> Result<Self, D::Error> {
         let embed_targets = document.embeddable()?;
 
         self.documents.push((document, embed_targets));
@@ -95,7 +98,7 @@ impl<M: EmbeddingModel, D: Embeddable<Kind = K>, K: EmbeddingKind> EmbeddingsBui
     }
 
     /// Add many documents that implement `Embeddable` to the builder.
-    pub fn documents(mut self, documents: Vec<D>) -> Result<Self, EmbeddableError> {
+    pub fn documents(mut self, documents: Vec<D>) -> Result<Self, D::Error> {
         for doc in documents.into_iter() {
             let embed_targets = doc.embeddable()?;
 
