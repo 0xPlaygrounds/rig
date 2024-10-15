@@ -8,9 +8,9 @@ use serde::Deserialize;
 
 #[derive(Embeddable, Clone, Deserialize, Debug)]
 pub struct FakeDefinition {
-    id: String,
+    pub id: String,
     #[embed]
-    definition: String,
+    pub definition: String,
 }
 
 pub fn fake_definitions() -> Vec<FakeDefinition> {
@@ -28,13 +28,6 @@ pub fn fake_definitions() -> Vec<FakeDefinition> {
             definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string()
         }
     ]
-}
-
-pub fn fake_definition(id: String) -> FakeDefinition {
-    FakeDefinition {
-        id,
-        definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
-    }
 }
 
 // Schema of table in LanceDB.

@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use arrow_array::RecordBatchIterator;
-use fixture::{as_record_batch, fake_definition, fake_definitions, schema, FakeDefinition};
+use fixture::{as_record_batch, fake_definitions, schema, FakeDefinition};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::vector_store::VectorStoreIndex;
 use rig::{
@@ -31,7 +31,10 @@ async fn main() -> Result<(), anyhow::Error> {
         // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
         .documents(
             (0..256)
-                .map(|i| fake_definition(format!("doc{}", i)))
+                .map(|i| FakeDefinition {
+                    id: format!("doc{}", i),
+                    definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
+                })
                 .collect(),
         )?
         .build()
