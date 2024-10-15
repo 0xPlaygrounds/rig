@@ -173,6 +173,11 @@ mod tests {
             },
         };
 
+        println!(
+            "FakeDefinition: {}, {}",
+            fake_definition.id, fake_definition.word
+        );
+
         assert_eq!(
             fake_definition.embeddable().unwrap(),
             vec!["{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()]
@@ -188,12 +193,17 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_embed() {
+    fn test_single_embed() {
         let fake_definition = FakeDefinition2 {
             id: "doc1".to_string(),
             word: "house".to_string(),
             definition: "a building in which people live; residence for human beings.".to_string(),
         };
+
+        println!(
+            "FakeDefinition2: {}, {}",
+            fake_definition.id, fake_definition.word
+        );
 
         assert_eq!(
             fake_definition.embeddable().unwrap(),
@@ -218,6 +228,8 @@ mod tests {
             company: "Google".to_string(),
             employee_ages: vec![25, 30, 35, 40],
         };
+
+        println!("Company: {}, {}", company.id, company.company);
 
         assert_eq!(
             company.embeddable().unwrap(),
@@ -246,6 +258,8 @@ mod tests {
             company: "Google".to_string(),
             employee_ages: vec![25, 30, 35, 40],
         };
+
+        println!("Company2: {}", company.id);
 
         assert_eq!(
             company.embeddable().unwrap(),
