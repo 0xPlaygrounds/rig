@@ -9,29 +9,32 @@ const EMBED_WITH: &str = "embed_with";
 /// Also returns the "..." part of the tag (ie. the custom function).
 pub(crate) fn custom_embed_fields(
     data_struct: &syn::DataStruct,
-) -> syn::Result<impl Iterator<Item = (syn::Field, syn::ExprPath)>> {
-    Ok(data_struct
+) -> syn::Result<Vec<(syn::Field, syn::ExprPath)>> {
+    data_struct
         .fields
         .clone()
         .into_iter()
-        .map(|field| {
+        .filter_map(|field| {
             field
                 .attrs
                 .clone()
                 .into_iter()
-                .map(|attribute| {
-                    if attribute.is_custom()? {
-                        Ok::<_, syn::Error>(Some((field.clone(), attribute.expand_tag()?)))
-                    } else {
-                        Ok(None)
+                .filter_map(|attribute| {
+                    match attribute.is_custom() {
+                        Ok(true) => {
+                            match attribute.expand_tag() {
+                                Ok(path) => Some(Ok((field.clone(), path))),
+                                Err(e) => Some(Err(e)),
+                            }
+                        },
+                        Ok(false) => None,
+                        Err(e) => Some(Err(e))
                     }
                 })
-                .collect::<Result<Vec<_>, _>>()
+                .next()
         })
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .flatten()
-        .flatten())
+        .collect::<Result<Vec<_>, _>>()
+        
 }
 
 trait CustomAttributeParser {

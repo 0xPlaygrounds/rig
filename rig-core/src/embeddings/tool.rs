@@ -15,7 +15,7 @@ pub struct EmbeddableTool {
 
 impl EmbeddableTool {
     /// Convert item that implements ToolEmbedding to an EmbeddableTool.
-    pub fn try_from(tool: &Box<dyn ToolEmbeddingDyn>) -> Result<Self, EmbeddableError> {
+    pub fn try_from(tool: &dyn ToolEmbeddingDyn) -> Result<Self, EmbeddableError> {
         Ok(EmbeddableTool {
             name: tool.name(),
             context: serde_json::to_value(tool.context().map_err(EmbeddableError::SerdeError)?)

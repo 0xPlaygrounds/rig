@@ -332,7 +332,7 @@ impl ToolSet {
             .values()
             .filter_map(|tool_type| {
                 if let ToolType::Embedding(tool) = tool_type {
-                    Some(EmbeddableTool::try_from(tool))
+                    Some(EmbeddableTool::try_from(&**tool))
                 } else {
                     None
                 }
