@@ -65,7 +65,7 @@ use futures::{stream, StreamExt, TryStreamExt};
 use crate::Embeddable;
 
 use super::{
-    embeddable::{EmbeddingKind, ManyEmbedding, SingleEmbedding},
+    embeddable::{EmbeddableError, EmbeddingKind, ManyEmbedding, SingleEmbedding},
     embedding::{Embedding, EmbeddingError, EmbeddingModel},
 };
 
@@ -87,7 +87,7 @@ impl<M: EmbeddingModel, D: Embeddable<Kind = K>, K: EmbeddingKind> EmbeddingsBui
     }
 
     /// Add a document that implements `Embeddable` to the builder.
-    pub fn document(mut self, document: D) -> Result<Self, D::Error> {
+    pub fn document(mut self, document: D) -> Result<Self, EmbeddableError> {
         let embed_targets = document.embeddable()?;
 
         self.documents.push((document, embed_targets));
@@ -95,7 +95,7 @@ impl<M: EmbeddingModel, D: Embeddable<Kind = K>, K: EmbeddingKind> EmbeddingsBui
     }
 
     /// Add many documents that implement `Embeddable` to the builder.
-    pub fn documents(mut self, documents: Vec<D>) -> Result<Self, D::Error> {
+    pub fn documents(mut self, documents: Vec<D>) -> Result<Self, EmbeddableError> {
         for doc in documents.into_iter() {
             let embed_targets = doc.embeddable()?;
 

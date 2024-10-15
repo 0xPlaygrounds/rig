@@ -3,7 +3,10 @@ use std::{collections::HashMap, pin::Pin};
 use futures::Future;
 use serde::{Deserialize, Serialize};
 
-use crate::completion::{self, ToolDefinition};
+use crate::{
+    completion::{self, ToolDefinition},
+    embeddings::{embeddable::EmbeddableError, tool::EmbeddableTool},
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ToolError {
@@ -322,6 +325,19 @@ impl ToolSet {
             }
         }
         Ok(docs)
+    }
+
+    pub fn embedabble_tools(&self) -> Result<Vec<EmbeddableTool>, EmbeddableError> {
+        self.tools
+            .values()
+            .filter_map(|tool_type| {
+                if let ToolType::Embedding(tool) = tool_type {
+                    Some(EmbeddableTool::try_from(tool))
+                } else {
+                    None
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()
     }
 }
 

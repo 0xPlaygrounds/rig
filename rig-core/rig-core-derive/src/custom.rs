@@ -6,7 +6,7 @@ use crate::EMBED;
 const EMBED_WITH: &str = "embed_with";
 
 /// Finds and returns fields with #[embed(embed_with = "...")] attribute tags only.
-/// Also returns the attribute in question.
+/// Also returns the "..." part of the tag (ie. the custom function).
 pub(crate) fn custom_embed_fields(
     data_struct: &syn::DataStruct,
 ) -> syn::Result<impl Iterator<Item = (syn::Field, syn::ExprPath)>> {

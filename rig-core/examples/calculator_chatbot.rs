@@ -2,7 +2,7 @@ use anyhow::Result;
 use rig::{
     cli_chatbot::cli_chatbot,
     completion::ToolDefinition,
-    embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
+    embeddings::builder::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     tool::{Tool, ToolEmbedding, ToolSet},
     vector_store::in_memory_store::InMemoryVectorStore,
@@ -25,7 +25,7 @@ struct MathError;
 #[error("Init error")]
 struct InitError;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 struct Add;
 impl Tool for Add {
     const NAME: &'static str = "add";
@@ -77,7 +77,7 @@ impl ToolEmbedding for Add {
     fn context(&self) -> Self::Context {}
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 struct Subtract;
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
@@ -247,7 +247,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .tools(&toolset)?
+        .documents(toolset.embedabble_tools()?)?
         .build()
         .await?;
 
@@ -255,13 +255,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .add_documents(
             embeddings
                 .into_iter()
-                .map(
-                    |DocumentEmbeddings {
-                         id,
-                         document,
-                         embeddings,
-                     }| { (id, document, embeddings) },
-                )
+                .enumerate()
+                .map(|(i, (tool, embedding))| (i.to_string(), tool, vec![embedding]))
                 .collect(),
         )?
         .index(embedding_model);

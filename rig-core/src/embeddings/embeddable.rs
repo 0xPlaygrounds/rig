@@ -22,9 +22,8 @@ pub enum EmbeddableError {
 /// If the type `Kind` is `SingleEmbedding`, the list of strings contains a single item, otherwise, the list can contain many items.
 pub trait Embeddable {
     type Kind: EmbeddingKind;
-    type Error: std::error::Error;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error>;
+    fn embeddable(&self) -> Result<Vec<String>, EmbeddableError>;
 }
 
 //////////////////////////////////////////////////////
@@ -32,99 +31,98 @@ pub trait Embeddable {
 //////////////////////////////////////////////////////
 impl Embeddable for String {
     type Kind = SingleEmbedding;
-    type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+    fn embeddable(&self) -> Result<Vec<String>, EmbeddableError> {
         Ok(vec![self.clone()])
     }
 }
 
 impl Embeddable for i8 {
     type Kind = SingleEmbedding;
-    type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+    fn embeddable(&self) -> Result<Vec<String>, EmbeddableError> {
         Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for i16 {
     type Kind = SingleEmbedding;
-    type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+    fn embeddable(&self) -> Result<Vec<String>, EmbeddableError> {
         Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for i32 {
     type Kind = SingleEmbedding;
-    type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+    fn embeddable(&self) -> Result<Vec<String>, EmbeddableError> {
         Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for i64 {
     type Kind = SingleEmbedding;
-    type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+    fn embeddable(&self) -> Result<Vec<String>, EmbeddableError> {
         Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for i128 {
     type Kind = SingleEmbedding;
-    type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+    fn embeddable(&self) -> Result<Vec<String>, EmbeddableError> {
         Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for f32 {
     type Kind = SingleEmbedding;
-    type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+    fn embeddable(&self) -> Result<Vec<String>, EmbeddableError> {
         Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for f64 {
     type Kind = SingleEmbedding;
-    type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+    fn embeddable(&self) -> Result<Vec<String>, EmbeddableError> {
         Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for bool {
     type Kind = SingleEmbedding;
-    type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+    fn embeddable(&self) -> Result<Vec<String>, EmbeddableError> {
         Ok(vec![self.to_string()])
     }
 }
 
 impl Embeddable for char {
     type Kind = SingleEmbedding;
-    type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+    fn embeddable(&self) -> Result<Vec<String>, EmbeddableError> {
         Ok(vec![self.to_string()])
+    }
+}
+
+impl Embeddable for serde_json::Value {
+    type Kind = SingleEmbedding;
+
+    fn embeddable(&self) -> Result<Vec<String>, EmbeddableError> {
+        Ok(vec![
+            serde_json::to_string(self).map_err(EmbeddableError::SerdeError)?
+        ])
     }
 }
 
 impl<T: Embeddable> Embeddable for Vec<T> {
     type Kind = ManyEmbedding;
-    type Error = T::Error;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+    fn embeddable(&self) -> Result<Vec<String>, EmbeddableError> {
         Ok(self
             .iter()
             .map(|i| i.embeddable())

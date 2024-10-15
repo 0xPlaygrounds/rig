@@ -1,5 +1,4 @@
 use mongodb::{bson::doc, options::ClientOptions, Client as MongoClient, Collection};
-use rig::embeddings::embeddable::EmbeddableError;
 use rig::providers::openai::TEXT_EMBEDDING_ADA_002;
 use serde::{Deserialize, Serialize};
 use std::env;
