@@ -28,12 +28,12 @@
 //!
 //! // Create an embeddings builder and add documents
 //! let embeddings = EmbeddingsBuilder::new(embedding_model)
-//!     .simple_document("doc1", "This is the first document.")                                                                                                         
+//!     .simple_document("doc1", "This is the first document.")
 //!     .simple_document("doc2", "This is the second document.")
 //!     .build()
 //!     .await
 //!     .expect("Failed to build embeddings.");
-//!                                 
+//!
 //! // Use the generated embeddings
 //! // ...
 //! ```
@@ -102,7 +102,7 @@ pub trait EmbeddingModel: Clone + Sync + Send {
 }
 
 /// Struct that holds a single document and its embedding.
-#[derive(Clone, Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize, Debug)]
 pub struct Embedding {
     /// The document that was embedded
     pub document: String,
@@ -142,7 +142,7 @@ impl Embedding {
 /// large document to be retrieved from a query that matches multiple smaller and
 /// distinct text documents. For example, if the document is a textbook, a summary of
 /// each chapter could serve as the book's embeddings.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct DocumentEmbeddings {
     #[serde(rename = "_id")]
     pub id: String,
