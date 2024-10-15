@@ -242,9 +242,7 @@ mod tests {
         assert_eq!(
             fake_definition.embeddable().unwrap(),
             vec!["a building in which people live; residence for human beings.".to_string()]
-        );
-
-        assert!(false)
+        )
     }
 
     #[derive(Embeddable)]
