@@ -52,7 +52,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         tracing::info!(target: "rig",
             "Selected documents: {}",
             docs.iter()
-                .map(|Reverse(RankingItem(distance, id, _, embed_doc))| format!("{} ({}). Specific match: {}", id, distance, embed_doc))
+                .map(|Reverse(RankingItem(distance, id, _, _))| format!("{} ({})", id, distance))
                 .collect::<Vec<String>>()
                 .join(", ")
         );
