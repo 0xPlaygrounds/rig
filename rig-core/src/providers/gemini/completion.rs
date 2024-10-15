@@ -36,7 +36,6 @@ pub struct GenerateContentResponse {
     pub usage_metadata: Option<UsageMetadata>,
 }
 
-// Define the struct for a Candidate
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContentCandidate {
@@ -341,7 +340,7 @@ pub struct GenerateContentRequest {
     pub safety_settings: Option<Vec<SafetySetting>>,
     /// Optional. Developer set system instruction(s). Currently, text only.
     /// https://ai.google.dev/gemini-api/docs/system-instructions?lang=rest
-    pub system_instruction: Option<String>,
+    pub system_instruction: Option<Content>,
     // cachedContent: Optional<String>
 }
 
@@ -414,17 +413,7 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         mut completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
-        // QUESTION: Why do Anthropic/openAi implementation differ here? OpenAI adds the preamble but Anthropic does not.
-
-        let mut full_history = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
-                role: "system".into(),
-                content: preamble.clone(),
-            }]
-        } else {
-            vec![]
-        };
-
+        let mut full_history = Vec::new();
         full_history.append(&mut completion_request.chat_history);
 
         let prompt_with_context = completion_request.prompt_with_context();
@@ -471,8 +460,15 @@ impl completion::CompletionModel for CompletionModel {
                     .collect(),
             ),
             tool_config: None,
-            system_instruction: None,
+            system_instruction: Some(Content {
+                parts: vec![Part {
+                    text: "system".to_string(),
+                }],
+                role: Some("system".to_string()),
+            }),
         };
+
+        tracing::info!("Request: {:?}", request);
 
         let response = self
             .client
