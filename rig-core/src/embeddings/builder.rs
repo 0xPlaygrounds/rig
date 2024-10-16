@@ -1,5 +1,6 @@
-//! The module defines the [EmbeddingsBuilder] struct which accumulates objects to be embedded and generates the embeddings for each object when built.
-//! Only types that implement the [Embeddable] trait can be added to the [EmbeddingsBuilder].
+//! The module provides an implementation of the [EmbeddingsBuilder]
+//! struct, which allows users to build collections of document embeddings using different embedding
+//! models and document sources.
 //!
 //! # Example
 //! ```rust
