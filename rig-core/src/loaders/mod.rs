@@ -1,4 +1,4 @@
 pub mod file;
 
-// #[cfg(feature = "pdf")]
+#[cfg(feature = "pdf")]
 pub mod pdf;
