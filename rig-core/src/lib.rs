@@ -72,7 +72,7 @@ pub mod completion;
 pub mod embeddings;
 pub mod extractor;
 pub mod json_utils;
-pub mod _loaders;
+pub mod loaders;
 pub mod providers;
 pub mod tool;
 pub mod vector_store;

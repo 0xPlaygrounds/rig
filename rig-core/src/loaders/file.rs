@@ -1,8 +1,6 @@
-use std::fs;
+use std::{fs, path::PathBuf};
 
-use futures::Stream;
-use glob::{glob, GlobError};
-use lopdf::{Document, Error as LopdfError};
+use glob::glob;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -20,61 +18,98 @@ pub enum FileLoaderError {
     GlobError(#[from] glob::GlobError),
 }
 
-struct FileLoader<State> {
-    iter_generator: Box<dyn Fn(String) -> Result<Box<dyn Iterator<Item = State>>, FileLoaderError>>,
+pub struct FileLoader<'a, State> {
+    iterator: Box<dyn Iterator<Item = State> + 'a>,
 }
 
-type FileLoaderWithPath = FileLoader<(String, String)>;
-
-// struct WithPath;
-// struct IgnoreErrors;
-// struct IgnoreErrorsWithPath;
-
-impl FileLoader<String> {
-    pub fn new() -> Self {}
+pub(crate) trait Readable {
+    fn read(self) -> Result<String, FileLoaderError>;
+    fn read_with_path(self) -> Result<(PathBuf, String), FileLoaderError>;
 }
 
-impl FileLoader<String> {
-    pub fn new() -> Self {
-        Self {
-            iter_generator: Box::new(
-                |pattern: String| -> Result<Box<dyn Iterator<Item = String>>, FileLoaderError> {
-                    let paths = glob(&pattern).map_err(|e| FileLoaderError::PatternError(e))?;
-                    let iter = paths.map(|path| {
-                        fs::read_to_string(path)
-                            .map_err(|e| FileLoaderError::IoError(e))
-                            .unwrap_or_default()
-                    });
-                    Ok(Box::new(iter))
-                },
+impl<'a> FileLoader<'a, Result<PathBuf, FileLoaderError>> {
+    pub fn read(self) -> FileLoader<'a, Result<String, FileLoaderError>> {
+        FileLoader {
+            iterator: Box::new(self.iterator.map(|res| res.read())),
+        }
+    }
+    pub fn read_with_path(self) -> FileLoader<'a, Result<(PathBuf, String), FileLoaderError>> {
+        FileLoader {
+            iterator: Box::new(self.iterator.map(|res| res.read_with_path())),
+        }
+    }
+}
+
+impl<'a> FileLoader<'a, PathBuf> {
+    pub fn read(self) -> FileLoader<'a, Result<String, FileLoaderError>> {
+        FileLoader {
+            iterator: Box::new(self.iterator.map(|res| res.read())),
+        }
+    }
+    pub fn read_with_path(self) -> FileLoader<'a, Result<(PathBuf, String), FileLoaderError>> {
+        FileLoader {
+            iterator: Box::new(self.iterator.map(|res| res.read_with_path())),
+        }
+    }
+}
+
+impl Readable for PathBuf {
+    fn read(self) -> Result<String, FileLoaderError> {
+        fs::read_to_string(self).map_err(FileLoaderError::IoError)
+    }
+    fn read_with_path(self) -> Result<(PathBuf, String), FileLoaderError> {
+        let contents = fs::read_to_string(&self);
+        Ok((self, contents?))
+    }
+}
+impl<T: Readable> Readable for Result<T, FileLoaderError> {
+    fn read(self) -> Result<String, FileLoaderError> {
+        self.map(|t| t.read())?
+    }
+    fn read_with_path(self) -> Result<(PathBuf, String), FileLoaderError> {
+        self.map(|t| t.read_with_path())?
+    }
+}
+
+impl<'a, T: 'a> FileLoader<'a, Result<T, FileLoaderError>> {
+    pub fn ignore_errors(self) -> FileLoader<'a, T> {
+        FileLoader {
+            iterator: Box::new(self.iterator.filter_map(|res| res.ok())),
+        }
+    }
+}
+
+impl<'a> FileLoader<'a, PathBuf> {
+    pub fn new(
+        pattern: &str,
+    ) -> Result<FileLoader<Result<PathBuf, FileLoaderError>>, FileLoaderError> {
+        let paths = glob(pattern)?;
+        Ok(FileLoader {
+            iterator: Box::new(
+                paths
+                    .into_iter()
+                    .map(|path| path.map_err(FileLoaderError::GlobError)),
             ),
-        }
-    }
-
-    pub fn with_path(self) -> FileLoaderWithPath {
-        FileLoader::<(String, String)> {
-            iter_generator:
-                Box::new(
-                    move |pattern: String| -> Result<
-                        Box<dyn Iterator<Item = (String, String)>>,
-                        FileLoaderError,
-                    > {
-                        let paths = glob(&pattern).map_err(|e| FileLoaderError::PatternError(e))?;
-                        let iter = paths.filter_map(Result::ok).map(|path| {
-                            let content = fs::read_to_string(&path)
-                                .map_err(|e| FileLoaderError::IoError(e))
-                                .unwrap_or_default();
-                            (path.to_string_lossy().into_owned(), content)
-                        });
-                        Ok(Box::new(iter))
-                    },
-                ),
-        }
+        })
     }
 }
 
-impl<State> FileLoader<State> {
-    pub fn glob(self, pattern: &str) -> Result<Box<dyn Iterator<Item = State>>, FileLoaderError> {
-        (self.iter_generator)(pattern.to_string())
+impl<'a, State> FileLoader<'a, State> {
+    pub fn iter(self) -> Box<dyn Iterator<Item = State> + 'a> {
+        self.iterator
+    }
+}
+
+mod tests {
+    use super::FileLoader;
+
+    #[test]
+    fn test_file_loader() {
+        let loader = FileLoader::new("src/*.rs").unwrap();
+        let files = loader
+            .ignore_errors()
+            .read_with_path()
+            .iter()
+            .for_each(|file| println!("{:?}", file));
     }
 }

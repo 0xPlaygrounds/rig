@@ -32,4 +32,4 @@ tokio = { version = "1.34.0", features = ["full"] }
 tracing-subscriber = "0.3.18"
 
 # [features]
-# lopdf = ["dep:lopdf"]
+# pdf = ["dep:lopdf"]
