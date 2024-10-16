@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::tool::{ToolEmbedding, ToolSet, ToolType};
 
-use super::embedding::{ Embedding, EmbeddingError, EmbeddingModel};
+use super::embedding::{Embedding, EmbeddingError, EmbeddingModel};
 
 /// Struct that holds a document and its embeddings.
 ///

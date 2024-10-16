@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError},
-    embeddings::{self, embedding::EmbeddingError, builder::EmbeddingsBuilder},
+    embeddings::{self, builder::EmbeddingsBuilder, embedding::EmbeddingError},
     extractor::ExtractorBuilder,
     json_utils,
 };
