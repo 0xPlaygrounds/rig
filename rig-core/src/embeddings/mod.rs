@@ -6,4 +6,3 @@
 pub mod builder;
 pub mod embeddable;
 pub mod embedding;
-pub mod tool;

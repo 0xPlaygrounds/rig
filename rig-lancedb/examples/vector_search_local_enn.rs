@@ -1,9 +1,9 @@
 use std::{env, sync::Arc};
 
 use arrow_array::RecordBatchIterator;
-use fixture::{as_record_batch, fake_definitions, schema};
+use fixture::{as_record_batch, schema};
 use rig::{
-    embeddings::{builder::EmbeddingsBuilder, embedding::EmbeddingModel},
+    embeddings::{embedding::EmbeddingModel, builder::EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndexDyn,
 };
@@ -21,9 +21,10 @@ async fn main() -> Result<(), anyhow::Error> {
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
-    // Generate embeddings for the test data.
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(fake_definitions())?
+        .simple_document("doc0", "Definition of *flumbrel (noun)*: a small, seemingly insignificant item that you constantly lose or misplace, such as a pen, hair tie, or remote control.")
+        .simple_document("doc1", "Definition of *zindle (verb)*: to pretend to be working on something important while actually doing something completely unrelated or unproductive")
+        .simple_document("doc2", "Definition of *glimber (adjective)*: describing a state of excitement mixed with nervousness, often experienced before an important event or decision.")
         .build()
         .await?;
 

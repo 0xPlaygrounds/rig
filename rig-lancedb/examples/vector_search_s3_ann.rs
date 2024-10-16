@@ -1,17 +1,24 @@
 use std::{env, sync::Arc};
 
 use arrow_array::RecordBatchIterator;
-use fixture::{as_record_batch, fake_definitions, schema, FakeDefinition};
+use fixture::{as_record_batch, schema};
 use lancedb::{index::vector::IvfPqIndexBuilder, DistanceType};
 use rig::{
-    embeddings::{builder::EmbeddingsBuilder, embedding::EmbeddingModel},
+    embeddings::{embedding::EmbeddingModel, builder::EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
+use serde::Deserialize;
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;
+
+#[derive(Deserialize, Debug)]
+pub struct VectorSearchResult {
+    pub id: String,
+    pub content: String,
+}
 
 // Note: see docs to deploy LanceDB on other cloud providers such as google and azure.
 // https://lancedb.github.io/lancedb/guides/storage/
@@ -31,18 +38,18 @@ async fn main() -> Result<(), anyhow::Error> {
         .execute()
         .await?;
 
+    // Set up test data for RAG demo
+    let definition = "Definition of *flumbuzzle (verb)*: to bewilder or confuse someone completely, often by using nonsensical or overly complex explanations or instructions.".to_string();
+
+    // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
+    let definitions = vec![definition; 256];
+
     // Generate embeddings for the test data.
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(fake_definitions())?
-        // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
-        .documents(
-            (0..256)
-                .map(|i| FakeDefinition {
-                    id: format!("doc{}", i),
-                    definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
-                })
-                .collect(),
-        )?
+        .simple_document("doc0", "Definition of *flumbrel (noun)*: a small, seemingly insignificant item that you constantly lose or misplace, such as a pen, hair tie, or remote control.")
+        .simple_document("doc1", "Definition of *zindle (verb)*: to pretend to be working on something important while actually doing something completely unrelated or unproductive")
+        .simple_document("doc2", "Definition of *glimber (adjective)*: describing a state of excitement mixed with nervousness, often experienced before an important event or decision.")
+        .simple_documents(definitions.clone().into_iter().enumerate().map(|(i, def)| (format!("doc{}", i+3), def)).collect())
         .build()
         .await?;
 
@@ -77,7 +84,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = vector_store
-        .top_n::<FakeDefinition>("I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?", 1)
+        .top_n::<VectorSearchResult>("I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?", 1)
         .await?;
 
     println!("Results: {:?}", results);
