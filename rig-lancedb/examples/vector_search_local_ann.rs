@@ -72,7 +72,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = vector_store
-        .top_n::<VectorSearchResult>("My boss says I zindle too much, what does that mean?", 1)
+        .top_n("My boss says I zindle too much, what does that mean?", 1)
         .await?;
 
     println!("Results: {:?}", results);

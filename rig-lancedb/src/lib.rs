@@ -230,8 +230,8 @@ impl<M: EmbeddingModel> LanceDbVectorStore<M> {
     }
 }
 
-impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbVectorStore<M> {
-    async fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
+impl<M: EmbeddingModel + std::marker::Sync + Send, T: for<'a> Deserialize<'a> + std::marker::Send> VectorStoreIndex<T> for LanceDbVectorStore<M> {
+    async fn top_n(
         &self,
         query: &str,
         n: usize,

@@ -53,7 +53,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = index
-        .top_n::<DocumentEmbeddings>("What is a linglingdong?", 1)
+        .top_n("What is a linglingdong?", 1)
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.document))

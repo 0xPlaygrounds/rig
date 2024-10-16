@@ -244,8 +244,10 @@ impl<M: EmbeddingModel> InMemoryVectorIndex<M> {
     }
 }
 
-impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorIndex<M> {
-    async fn top_n<T: for<'a> Deserialize<'a>>(
+impl<M: EmbeddingModel + std::marker::Sync, T: for<'a> Deserialize<'a>> VectorStoreIndex<T>
+    for InMemoryVectorIndex<M>
+{
+    async fn top_n(
         &self,
         query: &str,
         n: usize,
