@@ -52,6 +52,43 @@ fn test_custom_embed() {
 #[derive(Embeddable)]
 struct FakeDefinition2 {
     id: String,
+    #[embed]
+    word: String,
+    #[embed(embed_with = "serialize")]
+    definition: Definition,
+}
+
+#[test]
+fn test_custom_and_basic_embed() {
+    let fake_definition = FakeDefinition2 {
+        id: "doc1".to_string(),
+        word: "house".to_string(),
+        definition: Definition {
+            speech: "noun".to_string(),
+            word: "a building in which people live; residence for human beings.".to_string(),
+            link: "https://www.dictionary.com/browse/house".to_string(),
+        },
+    };
+
+    println!(
+        "FakeDefinition: {}, {}",
+        fake_definition.id, fake_definition.word
+    );
+
+    assert_eq!(
+        fake_definition.embeddable().unwrap().first(),
+        "house".to_string()
+    );
+
+    assert_eq!(
+        fake_definition.embeddable().unwrap().rest(),
+        vec!["{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()]
+    )
+}
+
+#[derive(Embeddable)]
+struct FakeDefinition3 {
+    id: String,
     word: String,
     #[embed]
     definition: String,
@@ -61,14 +98,14 @@ struct FakeDefinition2 {
 fn test_single_embed() {
     let definition = "a building in which people live; residence for human beings.".to_string();
 
-    let fake_definition = FakeDefinition2 {
+    let fake_definition = FakeDefinition3 {
         id: "doc1".to_string(),
         word: "house".to_string(),
         definition: definition.clone(),
     };
 
     println!(
-        "FakeDefinition2: {}, {}",
+        "FakeDefinition3: {}, {}",
         fake_definition.id, fake_definition.word
     );
 
@@ -87,7 +124,7 @@ struct Company {
 }
 
 #[test]
-fn test_multiple_embed() {
+fn test_multiple_embed_strings() {
     let company = Company {
         id: "doc1".to_string(),
         company: "Google".to_string(),
@@ -96,8 +133,10 @@ fn test_multiple_embed() {
 
     println!("Company: {}, {}", company.id, company.company);
 
+    let result = company.embeddable().unwrap();
+
     assert_eq!(
-        company.embeddable().unwrap(),
+        result,
         OneOrMany::try_from(vec![
             "25".to_string(),
             "30".to_string(),
@@ -106,6 +145,13 @@ fn test_multiple_embed() {
         ])
         .unwrap()
     );
+
+    assert_eq!(result.first(), "25".to_string());
+
+    assert_eq!(
+        result.rest(),
+        vec!["30".to_string(), "35".to_string(), "40".to_string()]
+    )
 }
 
 #[derive(Embeddable)]
@@ -118,7 +164,7 @@ struct Company2 {
 }
 
 #[test]
-fn test_many_embed() {
+fn test_multiple_embed_tags() {
     let company = Company2 {
         id: "doc1".to_string(),
         company: "Google".to_string(),
