@@ -130,7 +130,7 @@ impl<M: EmbeddingModel, D: Embeddable + Send + Sync + Clone>
             .flat_map(|(i, (_, embed_targets))| {
                 stream::iter(embed_targets.iter().map(move |target| (i, target.clone())))
             })
-            // Chunk them into N (the emebdding API limit per request).
+            // Chunk them into N (the embedding API limit per request).
             .chunks(M::MAX_DOCUMENTS)
             // Generate the embeddings for a chunk at a time.
             .map(|docs| async {

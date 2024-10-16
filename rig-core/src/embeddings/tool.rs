@@ -9,8 +9,9 @@ use super::embeddable::EmbeddableError;
 #[derive(Embeddable, Clone, Serialize, Default, Eq, PartialEq)]
 pub struct EmbeddableTool {
     name: String,
-    #[embed]
     context: serde_json::Value,
+    #[embed]
+    embedding_docs: Vec<String>
 }
 
 impl EmbeddableTool {
@@ -20,6 +21,7 @@ impl EmbeddableTool {
             name: tool.name(),
             context: serde_json::to_value(tool.context().map_err(EmbeddableError::SerdeError)?)
                 .map_err(EmbeddableError::SerdeError)?,
+            embedding_docs: tool.embedding_docs(),
         })
     }
 }
