@@ -78,4 +78,6 @@ pub mod vector_store;
 
 // Export Embeddable trait and Embeddable together.
 pub use embeddings::embeddable::Embeddable;
+
+#[cfg(feature = "rig_derive")]
 pub use rig_derive::Embeddable;

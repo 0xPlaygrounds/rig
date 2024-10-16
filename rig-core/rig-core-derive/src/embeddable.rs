@@ -1,21 +1,18 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{parse_str, DataStruct};
+use syn::DataStruct;
 
 use crate::{
     basic::{add_struct_bounds, basic_embed_fields},
     custom::custom_embed_fields,
 };
-const VEC_TYPE: &str = "Vec";
-const MANY_EMBEDDING: &str = "ManyEmbedding";
-const SINGLE_EMBEDDING: &str = "SingleEmbedding";
 
 pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let data = &input.data;
     let generics = &mut input.generics;
 
-    let (target_stream, embed_kind) = match data {
+    let target_stream = match data {
         syn::Data::Struct(data_struct) => {
             let (basic_targets, basic_target_size) = data_struct.basic(generics);
             let (custom_targets, custom_target_size) = data_struct.custom()?;
@@ -30,13 +27,10 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
             }
 
             // Determine whether the Embeddable::Kind should be SingleEmbedding or ManyEmbedding
-            (
-                quote! {
-                    let mut embed_targets = #basic_targets;
-                    embed_targets.extend(#custom_targets)
-                },
-                embed_kind(data_struct)?,
-            )
+            quote! {
+                let mut embed_targets = #basic_targets;
+                embed_targets.extend(#custom_targets)
+            }
         }
         _ => {
             return Err(syn::Error::new_spanned(
@@ -52,56 +46,21 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
         // Note: Embeddable trait is imported with the macro.
 
         impl #impl_generics Embeddable for #name #ty_generics #where_clause {
-            type Kind = rig::embeddings::embeddable::#embed_kind;
             type Error = rig::embeddings::embeddable::EmbeddableError;
 
-            fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
+            fn embeddable(&self) -> Result<rig::embeddings::embeddable::OneOrMany<String>, Self::Error> {
                 #target_stream;
 
-                let targets = embed_targets.into_iter()
-                    .collect::<Result<Vec<_>, _>>()?
-                    .into_iter()
-                    .flatten()
-                    .collect::<Vec<_>>();
-
-                Ok(targets)
+                rig::embeddings::embeddable::OneOrMany::try_from(
+                    embed_targets.into_iter()
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|e| rig::embeddings::embeddable::EmbeddableError::Error(e.to_string()))?
+                )
             }
         }
     };
 
     Ok(gen)
-}
-
-/// If the total number of fields tagged with #[embed] or #[embed(embed_with = "...")] is 1,
-/// returns the kind of embedding that field should be.
-/// If the total number of fields tagged with #[embed] or #[embed(embed_with = "...")] is greater than 1,
-/// return ManyEmbedding.
-fn embed_kind(data_struct: &DataStruct) -> syn::Result<syn::Expr> {
-    fn embed_kind(field: &syn::Field) -> syn::Result<syn::Expr> {
-        match &field.ty {
-            syn::Type::Path(path) => {
-                if path.path.segments.first().unwrap().ident == VEC_TYPE {
-                    parse_str(MANY_EMBEDDING)
-                } else {
-                    parse_str(SINGLE_EMBEDDING)
-                }
-            }
-            _ => parse_str(SINGLE_EMBEDDING),
-        }
-    }
-    let fields = basic_embed_fields(data_struct)
-        .chain(
-            custom_embed_fields(data_struct)?
-                .into_iter()
-                .map(|(f, _)| f),
-        )
-        .collect::<Vec<_>>();
-
-    if fields.len() == 1 {
-        fields.iter().map(embed_kind).next().unwrap()
-    } else {
-        parse_str(MANY_EMBEDDING)
-    }
 }
 
 trait StructParser {

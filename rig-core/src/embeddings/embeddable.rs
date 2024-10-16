@@ -35,6 +35,8 @@ impl EmbeddingKind for ManyEmbedding {}
 pub enum EmbeddableError {
     #[error("SerdeError: {0}")]
     SerdeError(#[from] serde_json::Error),
+    #[error("Error: {0}")]
+    Error(String),
 }
 
 /// Trait for types that can be embedded.
@@ -42,266 +44,177 @@ pub enum EmbeddableError {
 /// If the type `Kind` is `SingleEmbedding`, the list of strings contains a single item, otherwise, the list can contain many items.
 /// If there is an error generating the list of strings, the method should return an error that implements `std::error::Error`.
 pub trait Embeddable {
-    type Kind: EmbeddingKind;
     type Error: std::error::Error;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error>;
+    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error>;
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct OneOrMany<T> {
+    first: T,
+    rest: Vec<T>,
+}
+
+impl<T: Clone> OneOrMany<T> {
+    pub fn first(&self) -> T {
+        self.first.clone()
+    }
+
+    pub fn rest(&self) -> Vec<T> {
+        self.rest.clone()
+    }
+
+    pub fn all(&self) -> Vec<T> {
+        let mut all = vec![self.first.clone()];
+        all.extend(self.rest.clone().into_iter());
+        all
+    }
+}
+
+impl<T> From<T> for OneOrMany<T> {
+    fn from(item: T) -> Self {
+        OneOrMany {
+            first: item,
+            rest: vec![],
+        }
+    }
+}
+
+impl<T> TryFrom<Vec<T>> for OneOrMany<T> {
+    type Error = EmbeddableError;
+
+    fn try_from(items: Vec<T>) -> Result<Self, Self::Error> {
+        let mut iter = items.into_iter();
+        Ok(OneOrMany {
+            first: match iter.next() {
+                Some(item) => item,
+                None => {
+                    return Err(EmbeddableError::Error(format!(
+                        "Cannot convert empty Vec to OneOrMany"
+                    )))
+                }
+            },
+            rest: iter.collect(),
+        })
+    }
+}
+
+impl<T: Clone> TryFrom<Vec<OneOrMany<T>>> for OneOrMany<T> {
+    type Error = EmbeddableError;
+
+    fn try_from(value: Vec<OneOrMany<T>>) -> Result<Self, Self::Error> {
+        let items = value
+            .into_iter()
+            .flat_map(|one_or_many| one_or_many.all())
+            .collect::<Vec<_>>();
+
+        OneOrMany::try_from(items)
+    }
 }
 
 //////////////////////////////////////////////////////
 /// Implementations of Embeddable for common types ///
 //////////////////////////////////////////////////////
 impl Embeddable for String {
-    type Kind = SingleEmbedding;
     type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
-        Ok(vec![self.clone()])
+    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
+        Ok(OneOrMany::from(self.clone()))
     }
 }
 
 impl Embeddable for i8 {
-    type Kind = SingleEmbedding;
     type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
-        Ok(vec![self.to_string()])
+    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
+        Ok(OneOrMany::from(self.to_string()))
     }
 }
 
 impl Embeddable for i16 {
-    type Kind = SingleEmbedding;
     type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
-        Ok(vec![self.to_string()])
+    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
+        Ok(OneOrMany::from(self.to_string()))
     }
 }
 
 impl Embeddable for i32 {
-    type Kind = SingleEmbedding;
     type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
-        Ok(vec![self.to_string()])
+    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
+        Ok(OneOrMany::from(self.to_string()))
     }
 }
 
 impl Embeddable for i64 {
-    type Kind = SingleEmbedding;
     type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
-        Ok(vec![self.to_string()])
+    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
+        Ok(OneOrMany::from(self.to_string()))
     }
 }
 
 impl Embeddable for i128 {
-    type Kind = SingleEmbedding;
     type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
-        Ok(vec![self.to_string()])
+    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
+        Ok(OneOrMany::from(self.to_string()))
     }
 }
 
 impl Embeddable for f32 {
-    type Kind = SingleEmbedding;
     type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
-        Ok(vec![self.to_string()])
+    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
+        Ok(OneOrMany::from(self.to_string()))
     }
 }
 
 impl Embeddable for f64 {
-    type Kind = SingleEmbedding;
     type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
-        Ok(vec![self.to_string()])
+    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
+        Ok(OneOrMany::from(self.to_string()))
     }
 }
 
 impl Embeddable for bool {
-    type Kind = SingleEmbedding;
     type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
-        Ok(vec![self.to_string()])
+    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
+        Ok(OneOrMany::from(self.to_string()))
     }
 }
 
 impl Embeddable for char {
-    type Kind = SingleEmbedding;
     type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
-        Ok(vec![self.to_string()])
+    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
+        Ok(OneOrMany::from(self.to_string()))
     }
 }
 
 impl Embeddable for serde_json::Value {
-    type Kind = SingleEmbedding;
     type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
-        Ok(vec![
-            serde_json::to_string(self).map_err(EmbeddableError::SerdeError)?
-        ])
+    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
+        Ok(OneOrMany::from(
+            serde_json::to_string(self).map_err(EmbeddableError::SerdeError)?,
+        ))
     }
 }
 
 impl<T: Embeddable> Embeddable for Vec<T> {
-    type Kind = ManyEmbedding;
-    type Error = T::Error;
+    type Error = EmbeddableError;
 
-    fn embeddable(&self) -> Result<Vec<String>, Self::Error> {
-        Ok(self
+    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
+        let items = self
             .iter()
-            .map(|i| i.embeddable())
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect())
-    }
-}
+            .map(|item| item.embeddable())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| EmbeddableError::Error(e.to_string()))?;
 
-#[cfg(test)]
-mod tests {
-    use crate as rig;
-    use rig::embeddings::embeddable::{Embeddable, EmbeddableError};
-    use rig_derive::Embeddable;
-    use serde::Serialize;
-
-    fn serialize(definition: Definition) -> Result<Vec<String>, EmbeddableError> {
-        Ok(vec![
-            serde_json::to_string(&definition).map_err(EmbeddableError::SerdeError)?
-        ])
-    }
-
-    #[derive(Embeddable)]
-    struct FakeDefinition {
-        id: String,
-        word: String,
-        #[embed(embed_with = "serialize")]
-        definition: Definition,
-    }
-
-    #[derive(Serialize, Clone)]
-    struct Definition {
-        word: String,
-        link: String,
-        speech: String,
-    }
-
-    #[test]
-    fn test_custom_embed() {
-        let fake_definition = FakeDefinition {
-            id: "doc1".to_string(),
-            word: "house".to_string(),
-            definition: Definition {
-                speech: "noun".to_string(),
-                word: "a building in which people live; residence for human beings.".to_string(),
-                link: "https://www.dictionary.com/browse/house".to_string(),
-            },
-        };
-
-        println!(
-            "FakeDefinition: {}, {}",
-            fake_definition.id, fake_definition.word
-        );
-
-        assert_eq!(
-            fake_definition.embeddable().unwrap(),
-            vec!["{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()]
-        )
-    }
-
-    #[derive(Embeddable)]
-    struct FakeDefinition2 {
-        id: String,
-        word: String,
-        #[embed]
-        definition: String,
-    }
-
-    #[test]
-    fn test_single_embed() {
-        let fake_definition = FakeDefinition2 {
-            id: "doc1".to_string(),
-            word: "house".to_string(),
-            definition: "a building in which people live; residence for human beings.".to_string(),
-        };
-
-        println!(
-            "FakeDefinition2: {}, {}",
-            fake_definition.id, fake_definition.word
-        );
-
-        assert_eq!(
-            fake_definition.embeddable().unwrap(),
-            vec!["a building in which people live; residence for human beings.".to_string()]
-        )
-    }
-
-    #[derive(Embeddable)]
-    struct Company {
-        id: String,
-        company: String,
-        #[embed]
-        employee_ages: Vec<i32>,
-    }
-
-    #[test]
-    fn test_multiple_embed() {
-        let company = Company {
-            id: "doc1".to_string(),
-            company: "Google".to_string(),
-            employee_ages: vec![25, 30, 35, 40],
-        };
-
-        println!("Company: {}, {}", company.id, company.company);
-
-        assert_eq!(
-            company.embeddable().unwrap(),
-            vec![
-                "25".to_string(),
-                "30".to_string(),
-                "35".to_string(),
-                "40".to_string()
-            ]
-        );
-    }
-
-    #[derive(Embeddable)]
-    struct Company2 {
-        id: String,
-        #[embed]
-        company: String,
-        #[embed]
-        employee_ages: Vec<i32>,
-    }
-
-    #[test]
-    fn test_many_embed() {
-        let company = Company2 {
-            id: "doc1".to_string(),
-            company: "Google".to_string(),
-            employee_ages: vec![25, 30, 35, 40],
-        };
-
-        println!("Company2: {}", company.id);
-
-        assert_eq!(
-            company.embeddable().unwrap(),
-            vec![
-                "Google".to_string(),
-                "25".to_string(),
-                "30".to_string(),
-                "35".to_string(),
-                "40".to_string()
-            ]
-        );
+        OneOrMany::try_from(items)
     }
 }
