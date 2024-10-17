@@ -100,6 +100,7 @@ impl<'a, State> FileLoader<'a, State> {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::FileLoader;
 
