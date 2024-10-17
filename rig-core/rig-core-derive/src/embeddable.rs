@@ -51,11 +51,10 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
             fn embeddable(&self) -> Result<rig::embeddings::embeddable::OneOrMany<String>, Self::Error> {
                 #target_stream;
 
-                rig::embeddings::embeddable::OneOrMany::try_from(
+                Ok(rig::embeddings::embeddable::OneOrMany::from(
                     embed_targets.into_iter()
-                        .collect::<Result<Vec<_>, _>>()
-                        .map_err(|e| rig::embeddings::embeddable::EmbeddableError::Error(e.to_string()))?
-                )
+                        .collect::<Result<Vec<_>, _>>()?
+                ))
             }
         }
     };
