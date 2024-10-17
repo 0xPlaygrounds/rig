@@ -144,6 +144,7 @@ impl<'a, State> PdfFileLoader<'a, State> {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::PdfFileLoader;
 
