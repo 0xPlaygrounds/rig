@@ -48,13 +48,13 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
         impl #impl_generics Embeddable for #name #ty_generics #where_clause {
             type Error = rig::embeddings::embeddable::EmbeddableError;
 
-            fn embeddable(&self) -> Result<rig::embeddings::embeddable::OneOrMany<String>, Self::Error> {
+            fn embeddable(&self) -> Result<rig::OneOrMany<String>, Self::Error> {
                 #target_stream;
 
-                Ok(rig::embeddings::embeddable::OneOrMany::from(
+                rig::OneOrMany::merge(
                     embed_targets.into_iter()
                         .collect::<Result<Vec<_>, _>>()?
-                ))
+                ).map_err(rig::embeddings::embeddable::EmbeddableError::new)
             }
         }
     };

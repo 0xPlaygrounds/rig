@@ -1,10 +1,10 @@
-use rig::embeddings::embeddable::{EmbeddableError, OneOrMany};
-use rig::Embeddable;
+use rig::embeddings::embeddable::EmbeddableError;
+use rig::{Embeddable, OneOrMany};
 use serde::Serialize;
 
 fn serialize(definition: Definition) -> Result<OneOrMany<String>, EmbeddableError> {
     Ok(OneOrMany::one(
-        serde_json::to_string(&definition).map_err(EmbeddableError::SerdeError)?,
+        serde_json::to_string(&definition).map_err(EmbeddableError::new)?,
     ))
 }
 
@@ -143,6 +143,7 @@ fn test_multiple_embed_strings() {
             "35".to_string(),
             "40".to_string()
         ])
+        .unwrap()
     );
 
     assert_eq!(result.first(), "25".to_string());
@@ -181,5 +182,6 @@ fn test_multiple_embed_tags() {
             "35".to_string(),
             "40".to_string()
         ])
+        .unwrap()
     );
 }
