@@ -66,7 +66,7 @@ impl<T: Clone> OneOrMany<T> {
 
     pub fn all(&self) -> Vec<T> {
         let mut all = vec![self.first.clone()];
-        all.extend(self.rest.clone().into_iter());
+        all.extend(self.rest.clone());
         all
     }
 }
@@ -89,9 +89,9 @@ impl<T> TryFrom<Vec<T>> for OneOrMany<T> {
             first: match iter.next() {
                 Some(item) => item,
                 None => {
-                    return Err(EmbeddableError::Error(format!(
-                        "Cannot convert empty Vec to OneOrMany"
-                    )))
+                    return Err(EmbeddableError::Error(
+                        "Cannot convert empty Vec to OneOrMany".to_string(),
+                    ))
                 }
             },
             rest: iter.collect(),
