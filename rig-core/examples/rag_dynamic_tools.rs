@@ -1,10 +1,11 @@
 use anyhow::Result;
 use rig::{
     completion::{Prompt, ToolDefinition},
-    embeddings::builder::EmbeddingsBuilder,
+    embeddings::builder::DocumentEmbeddings,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     tool::{Tool, ToolEmbedding, ToolSet},
     vector_store::in_memory_store::InMemoryVectorStore,
+    EmbeddingsBuilder,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -156,7 +157,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(toolset.embedabble_tools()?)?
+        .tools(&toolset)?
         .build()
         .await?;
 

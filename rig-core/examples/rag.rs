@@ -1,22 +1,12 @@
-use std::{env, vec};
+use std::env;
 
 use rig::{
     completion::Prompt,
-    embeddings::builder::EmbeddingsBuilder,
+    embeddings::builder::DocumentEmbeddings,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::in_memory_store::InMemoryVectorStore,
-    Embeddable,
+    EmbeddingsBuilder,
 };
-use serde::Serialize;
-
-// Shape of data that needs to be RAG'ed.
-// The definition field will be used to generate embeddings.
-#[derive(Embeddable, Clone, Debug, Serialize, Eq, PartialEq, Default)]
-struct FakeDefinition {
-    id: String,
-    #[embed]
-    definitions: Vec<String>,
-}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -27,29 +17,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(vec![
-            FakeDefinition {
-                id: "doc0".to_string(),
-                definitions: vec![
-                    "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets.".to_string(),
-                    "Definition of a *flurbo*: A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
-                ]
-            },
-            FakeDefinition {
-                id: "doc1".to_string(),
-                definitions: vec![
-                    "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-                    "Definition of a *glarb-glarb*: A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
-                ]
-            },
-            FakeDefinition {
-                id: "doc2".to_string(),
-                definitions: vec![
-                    "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
-                    "Definition of a *linglingdong*: A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
-                ]
-            },
-        ])?
+        .simple_document("doc0", "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
+        .simple_document("doc1", "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
+        .simple_document("doc2", "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.")
         .build()
         .await?;
 
@@ -57,9 +27,13 @@ async fn main() -> Result<(), anyhow::Error> {
         .add_documents(
             embeddings
                 .into_iter()
-                .map(|(fake_definition, embedding_vec)| {
-                    (fake_definition.id.clone(), fake_definition, embedding_vec)
-                })
+                .map(
+                    |DocumentEmbeddings {
+                         id,
+                         document,
+                         embeddings,
+                     }| { (id, document, embeddings) },
+                )
                 .collect(),
         )?
         .index(embedding_model);
