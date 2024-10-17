@@ -13,9 +13,9 @@ use std::collections::HashMap;
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError},
-    embeddings::{self, builder::EmbeddingsBuilder, embedding::EmbeddingError},
+    embeddings::{self, embedding::EmbeddingError},
     extractor::ExtractorBuilder,
-    json_utils,
+    json_utils, EmbeddingsBuilder,
 };
 
 use schemars::JsonSchema;

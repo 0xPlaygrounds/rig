@@ -2,9 +2,10 @@ use mongodb::{options::ClientOptions, Client as MongoClient, Collection};
 use std::env;
 
 use rig::{
-    embeddings::{builder::DocumentEmbeddings, builder::EmbeddingsBuilder},
+    embeddings::builder::DocumentEmbeddings,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
+    EmbeddingsBuilder,
 };
 use rig_mongodb::{MongoDbVectorStore, SearchParams};
 

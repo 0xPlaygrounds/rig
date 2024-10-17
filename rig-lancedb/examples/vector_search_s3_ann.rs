@@ -4,9 +4,10 @@ use arrow_array::RecordBatchIterator;
 use fixture::{as_record_batch, schema};
 use lancedb::{index::vector::IvfPqIndexBuilder, DistanceType};
 use rig::{
-    embeddings::{builder::EmbeddingsBuilder, embedding::EmbeddingModel},
+    embeddings::embedding::EmbeddingModel,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
+    EmbeddingsBuilder,
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
 use serde::Deserialize;

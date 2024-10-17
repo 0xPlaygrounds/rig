@@ -1,9 +1,10 @@
 use std::env;
 
 use rig::{
-    embeddings::{builder::DocumentEmbeddings, builder::EmbeddingsBuilder},
+    embeddings::builder::DocumentEmbeddings,
     providers::cohere::{Client, EMBED_ENGLISH_V3},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
+    EmbeddingsBuilder,
 };
 
 #[tokio::main]

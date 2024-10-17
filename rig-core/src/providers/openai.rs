@@ -13,7 +13,7 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, embedding::EmbeddingError},
     extractor::ExtractorBuilder,
-    json_utils,
+    json_utils, EmbeddingsBuilder,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -121,11 +121,8 @@ impl Client {
     ///     .await
     ///     .expect("Failed to embed documents");
     /// ```
-    pub fn embeddings(
-        &self,
-        model: &str,
-    ) -> embeddings::builder::EmbeddingsBuilder<EmbeddingModel> {
-        embeddings::builder::EmbeddingsBuilder::new(self.embedding_model(model))
+    pub fn embeddings(&self, model: &str) -> EmbeddingsBuilder<EmbeddingModel> {
+        EmbeddingsBuilder::new(self.embedding_model(model))
     }
 
     /// Create a completion model with the given name.

@@ -2,9 +2,10 @@ use std::env;
 
 use rig::{
     completion::Prompt,
-    embeddings::{builder::DocumentEmbeddings, builder::EmbeddingsBuilder},
+    embeddings::builder::DocumentEmbeddings,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::in_memory_store::InMemoryVectorStore,
+    EmbeddingsBuilder,
 };
 
 #[tokio::main]

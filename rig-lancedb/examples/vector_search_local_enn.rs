@@ -3,9 +3,10 @@ use std::{env, sync::Arc};
 use arrow_array::RecordBatchIterator;
 use fixture::{as_record_batch, schema};
 use rig::{
-    embeddings::{builder::EmbeddingsBuilder, embedding::EmbeddingModel},
+    embeddings::embedding::EmbeddingModel,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndexDyn,
+    EmbeddingsBuilder,
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
 

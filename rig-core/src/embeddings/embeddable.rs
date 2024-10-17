@@ -49,7 +49,7 @@ pub trait Embeddable {
 /// If a single item is present, `first` will contain it and `rest` will be empty.
 /// If multiple items are present, `first` will contain the first item and `rest` will contain the rest.
 /// IMPORTANT: this struct cannot be created with an empty vector.
-/// OneOrMany objects can only be create using OneOrMany::from() or OneOrMany::try_from().
+/// OneOrMany objects can only be created using OneOrMany::from() or OneOrMany::try_from().
 #[derive(PartialEq, Eq, Debug)]
 pub struct OneOrMany<T> {
     /// First item in the list.

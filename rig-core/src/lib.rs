@@ -76,7 +76,8 @@ pub mod providers;
 pub mod tool;
 pub mod vector_store;
 
-// Export Embeddable trait and Embeddable together.
+// Re-export commonly used types and traits
+pub use embeddings::builder::EmbeddingsBuilder;
 pub use embeddings::embeddable::Embeddable;
 
 #[cfg(feature = "rig_derive")]

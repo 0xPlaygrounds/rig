@@ -5,8 +5,9 @@ use fixture::{as_record_batch, schema};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::vector_store::VectorStoreIndex;
 use rig::{
-    embeddings::{builder::EmbeddingsBuilder, embedding::EmbeddingModel},
+    embeddings::embedding::EmbeddingModel,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+    EmbeddingsBuilder,
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
 use serde::Deserialize;
