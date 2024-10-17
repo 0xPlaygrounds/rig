@@ -191,8 +191,6 @@ mod test {
 
     #[test]
     fn test_one_or_many_error() {
-        assert!(
-            OneOrMany::<String>::many(vec![]).is_err()
-        )
+        assert!(OneOrMany::<String>::many(vec![]).is_err())
     }
 }
