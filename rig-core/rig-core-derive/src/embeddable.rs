@@ -26,7 +26,6 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
                 ));
             }
 
-            // Determine whether the Embeddable::Kind should be SingleEmbedding or ManyEmbedding
             quote! {
                 let mut embed_targets = #basic_targets;
                 embed_targets.extend(#custom_targets)
