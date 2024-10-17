@@ -101,3 +101,5 @@ jobs:
 
       - name: Run cargo doc
         run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -D warnings
