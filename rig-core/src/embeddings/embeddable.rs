@@ -49,8 +49,8 @@ pub trait Embeddable {
 /// If a single item is present, `first` will contain it and `rest` will be empty.
 /// If multiple items are present, `first` will contain the first item and `rest` will contain the rest.
 /// IMPORTANT: this struct cannot be created with an empty vector.
-/// OneOrMany objects can only be created using OneOrMany::from() or OneOrMany::try_from().
-#[derive(PartialEq, Eq, Debug)]
+/// OneOrMany objects can only be created using OneOrMany::from_single() or OneOrMany::from_many().
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct OneOrMany<T> {
     /// First item in the list.
     first: T,
@@ -69,27 +69,16 @@ impl<T: Clone> OneOrMany<T> {
         self.rest.clone()
     }
 
-    /// Get all items in the list (joins the first with the rest).
-    pub fn all(&self) -> Vec<T> {
-        let mut all = vec![self.first.clone()];
-        all.extend(self.rest.clone());
-        all
-    }
-}
-
-/// Create a OneOrMany object with a single item.
-impl<T> From<T> for OneOrMany<T> {
-    fn from(item: T) -> Self {
+    /// Create a OneOrMany object with a single item of any type.
+    pub fn from_single(item: T) -> Self {
         OneOrMany {
             first: item,
             rest: vec![],
         }
     }
-}
 
-/// Create a OneOrMany object with a list of items.
-impl<T> From<Vec<T>> for OneOrMany<T> {
-    fn from(items: Vec<T>) -> Self {
+    /// Create a OneOrMany object with a single item of any type.
+    pub fn from_many(items: Vec<T>) -> Self {
         let mut iter = items.into_iter();
         OneOrMany {
             first: match iter.next() {
@@ -99,6 +88,74 @@ impl<T> From<Vec<T>> for OneOrMany<T> {
             rest: iter.collect(),
         }
     }
+
+    /// Use the Iterator trait on OneOrMany
+    pub fn iter(&self) -> OneOrManyIterator<T> {
+        OneOrManyIterator {
+            one_or_many: self,
+            index: 0,
+        }
+    }
+}
+
+/// Implement Iterator for OneOrMany.
+/// Iterates over all items in both `first` and `rest`.
+/// Borrows the OneOrMany object that is being iterator over.
+pub struct OneOrManyIterator<'a, T> {
+    one_or_many: &'a OneOrMany<T>,
+    index: usize,
+}
+
+impl<'a, T> Iterator for OneOrManyIterator<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut item = None;
+        if self.index == 0 {
+            item = Some(&self.one_or_many.first)
+        } else if self.index - 1 < self.one_or_many.rest.len() {
+            item = Some(&self.one_or_many.rest[self.index - 1]);
+        };
+
+        self.index += 1;
+        item
+    }
+}
+
+/// Implement IntoIterator for OneOrMany.
+/// Iterates over all items in both `first` and `rest`.
+/// Takes ownership the OneOrMany object that is being iterator over.
+pub struct OneOrManyIntoIterator<T> {
+    one_or_many: OneOrMany<T>,
+    index: usize,
+}
+
+impl<T: Clone> IntoIterator for OneOrMany<T> {
+    type Item = T;
+    type IntoIter = OneOrManyIntoIterator<T>;
+
+    fn into_iter(self) -> OneOrManyIntoIterator<T> {
+        OneOrManyIntoIterator {
+            one_or_many: self,
+            index: 0,
+        }
+    }
+}
+
+impl<T: Clone> Iterator for OneOrManyIntoIterator<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut item = None;
+        if self.index == 0 {
+            item = Some(self.one_or_many.first())
+        } else if self.index - 1 < self.one_or_many.rest.len() {
+            item = Some(self.one_or_many.rest[self.index - 1].clone());
+        };
+
+        self.index += 1;
+        item
+    }
 }
 
 /// Merge a list of OneOrMany items into a single OneOrMany item.
@@ -106,10 +163,10 @@ impl<T: Clone> From<Vec<OneOrMany<T>>> for OneOrMany<T> {
     fn from(value: Vec<OneOrMany<T>>) -> Self {
         let items = value
             .into_iter()
-            .flat_map(|one_or_many| one_or_many.all())
+            .flat_map(|one_or_many| one_or_many.into_iter())
             .collect::<Vec<_>>();
 
-        OneOrMany::from(items)
+        OneOrMany::from_many(items)
     }
 }
 
@@ -120,7 +177,7 @@ impl Embeddable for String {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from(self.clone()))
+        Ok(OneOrMany::from_single(self.clone()))
     }
 }
 
@@ -128,7 +185,7 @@ impl Embeddable for i8 {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from(self.to_string()))
+        Ok(OneOrMany::from_single(self.to_string()))
     }
 }
 
@@ -136,7 +193,7 @@ impl Embeddable for i16 {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from(self.to_string()))
+        Ok(OneOrMany::from_single(self.to_string()))
     }
 }
 
@@ -144,7 +201,7 @@ impl Embeddable for i32 {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from(self.to_string()))
+        Ok(OneOrMany::from_single(self.to_string()))
     }
 }
 
@@ -152,7 +209,7 @@ impl Embeddable for i64 {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from(self.to_string()))
+        Ok(OneOrMany::from_single(self.to_string()))
     }
 }
 
@@ -160,7 +217,7 @@ impl Embeddable for i128 {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from(self.to_string()))
+        Ok(OneOrMany::from_single(self.to_string()))
     }
 }
 
@@ -168,7 +225,7 @@ impl Embeddable for f32 {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from(self.to_string()))
+        Ok(OneOrMany::from_single(self.to_string()))
     }
 }
 
@@ -176,7 +233,7 @@ impl Embeddable for f64 {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from(self.to_string()))
+        Ok(OneOrMany::from_single(self.to_string()))
     }
 }
 
@@ -184,7 +241,7 @@ impl Embeddable for bool {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from(self.to_string()))
+        Ok(OneOrMany::from_single(self.to_string()))
     }
 }
 
@@ -192,7 +249,7 @@ impl Embeddable for char {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from(self.to_string()))
+        Ok(OneOrMany::from_single(self.to_string()))
     }
 }
 
@@ -200,7 +257,7 @@ impl Embeddable for serde_json::Value {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from(
+        Ok(OneOrMany::from_single(
             serde_json::to_string(self).map_err(EmbeddableError::SerdeError)?,
         ))
     }
@@ -216,5 +273,87 @@ impl<T: Embeddable> Embeddable for Vec<T> {
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(OneOrMany::from(items))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::OneOrMany;
+
+    #[test]
+    fn test_one_or_many_iter_single() {
+        let one_or_many = OneOrMany::from_single("hello".to_string());
+
+        assert_eq!(one_or_many.iter().count(), 1);
+
+        one_or_many.iter().for_each(|i| {
+            assert_eq!(i, "hello");
+        });
+    }
+
+    #[test]
+    fn test_one_or_many_iter() {
+        let one_or_many = OneOrMany::from_many(vec!["hello".to_string(), "word".to_string()]);
+
+        assert_eq!(one_or_many.iter().count(), 2);
+
+        one_or_many.iter().enumerate().for_each(|(i, item)| {
+            if i == 0 {
+                assert_eq!(item, "hello");
+            }
+            if i == 1 {
+                assert_eq!(item, "word");
+            }
+        });
+    }
+
+    #[test]
+    fn test_one_or_many_into_iter_single() {
+        let one_or_many = OneOrMany::from_single("hello".to_string());
+
+        assert_eq!(one_or_many.clone().into_iter().count(), 1);
+
+        one_or_many.into_iter().for_each(|i| {
+            assert_eq!(i, "hello".to_string());
+        });
+    }
+
+    #[test]
+    fn test_one_or_many_into_iter() {
+        let one_or_many = OneOrMany::from_many(vec!["hello".to_string(), "word".to_string()]);
+
+        assert_eq!(one_or_many.clone().into_iter().count(), 2);
+
+        one_or_many.into_iter().enumerate().for_each(|(i, item)| {
+            if i == 0 {
+                assert_eq!(item, "hello".to_string());
+            }
+            if i == 1 {
+                assert_eq!(item, "word".to_string());
+            }
+        });
+    }
+
+    #[test]
+    fn test_one_or_many_merge() {
+        let one_or_many_1 = OneOrMany::from_many(vec!["hello".to_string(), "word".to_string()]);
+
+        let one_or_many_2 = OneOrMany::from_single("sup".to_string());
+
+        let merged = OneOrMany::from(vec![one_or_many_1, one_or_many_2]);
+
+        assert_eq!(merged.iter().count(), 3);
+
+        merged.iter().enumerate().for_each(|(i, item)| {
+            if i == 0 {
+                assert_eq!(item, "hello");
+            }
+            if i == 1 {
+                assert_eq!(item, "word");
+            }
+            if i == 2 {
+                assert_eq!(item, "sup");
+            }
+        });
     }
 }
