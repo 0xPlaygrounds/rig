@@ -22,8 +22,8 @@
 //!
 //!     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
 //!         // Embeddigns only need to be generated for `definition` field.
-//!         // Select it from te struct and return it as a single item.
-//!         Ok(OneOrMany::from(self.definition.clone()))
+//!         // Select it from the struct and return it as a single item.
+//!         Ok(OneOrMany::one(self.definition.clone()))
 //!     }
 //! }
 //! ```
@@ -49,7 +49,7 @@ pub trait Embeddable {
 /// If a single item is present, `first` will contain it and `rest` will be empty.
 /// If multiple items are present, `first` will contain the first item and `rest` will contain the rest.
 /// IMPORTANT: this struct cannot be created with an empty vector.
-/// OneOrMany objects can only be created using OneOrMany::from_single() or OneOrMany::from_many().
+/// OneOrMany objects can only be created using OneOrMany::one() or OneOrMany::many().
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct OneOrMany<T> {
     /// First item in the list.
@@ -70,15 +70,15 @@ impl<T: Clone> OneOrMany<T> {
     }
 
     /// Create a OneOrMany object with a single item of any type.
-    pub fn from_single(item: T) -> Self {
+    pub fn one(item: T) -> Self {
         OneOrMany {
             first: item,
             rest: vec![],
         }
     }
 
-    /// Create a OneOrMany object with a single item of any type.
-    pub fn from_many(items: Vec<T>) -> Self {
+    /// Create a OneOrMany object with a vector of items of any type.
+    pub fn many(items: Vec<T>) -> Self {
         let mut iter = items.into_iter();
         OneOrMany {
             first: match iter.next() {
@@ -166,7 +166,7 @@ impl<T: Clone> From<Vec<OneOrMany<T>>> for OneOrMany<T> {
             .flat_map(|one_or_many| one_or_many.into_iter())
             .collect::<Vec<_>>();
 
-        OneOrMany::from_many(items)
+        OneOrMany::many(items)
     }
 }
 
@@ -177,7 +177,7 @@ impl Embeddable for String {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from_single(self.clone()))
+        Ok(OneOrMany::one(self.clone()))
     }
 }
 
@@ -185,7 +185,7 @@ impl Embeddable for i8 {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from_single(self.to_string()))
+        Ok(OneOrMany::one(self.to_string()))
     }
 }
 
@@ -193,7 +193,7 @@ impl Embeddable for i16 {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from_single(self.to_string()))
+        Ok(OneOrMany::one(self.to_string()))
     }
 }
 
@@ -201,7 +201,7 @@ impl Embeddable for i32 {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from_single(self.to_string()))
+        Ok(OneOrMany::one(self.to_string()))
     }
 }
 
@@ -209,7 +209,7 @@ impl Embeddable for i64 {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from_single(self.to_string()))
+        Ok(OneOrMany::one(self.to_string()))
     }
 }
 
@@ -217,7 +217,7 @@ impl Embeddable for i128 {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from_single(self.to_string()))
+        Ok(OneOrMany::one(self.to_string()))
     }
 }
 
@@ -225,7 +225,7 @@ impl Embeddable for f32 {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from_single(self.to_string()))
+        Ok(OneOrMany::one(self.to_string()))
     }
 }
 
@@ -233,7 +233,7 @@ impl Embeddable for f64 {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from_single(self.to_string()))
+        Ok(OneOrMany::one(self.to_string()))
     }
 }
 
@@ -241,7 +241,7 @@ impl Embeddable for bool {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from_single(self.to_string()))
+        Ok(OneOrMany::one(self.to_string()))
     }
 }
 
@@ -249,7 +249,7 @@ impl Embeddable for char {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from_single(self.to_string()))
+        Ok(OneOrMany::one(self.to_string()))
     }
 }
 
@@ -257,7 +257,7 @@ impl Embeddable for serde_json::Value {
     type Error = EmbeddableError;
 
     fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        Ok(OneOrMany::from_single(
+        Ok(OneOrMany::one(
             serde_json::to_string(self).map_err(EmbeddableError::SerdeError)?,
         ))
     }
@@ -282,7 +282,7 @@ mod test {
 
     #[test]
     fn test_one_or_many_iter_single() {
-        let one_or_many = OneOrMany::from_single("hello".to_string());
+        let one_or_many = OneOrMany::one("hello".to_string());
 
         assert_eq!(one_or_many.iter().count(), 1);
 
@@ -293,7 +293,7 @@ mod test {
 
     #[test]
     fn test_one_or_many_iter() {
-        let one_or_many = OneOrMany::from_many(vec!["hello".to_string(), "word".to_string()]);
+        let one_or_many = OneOrMany::many(vec!["hello".to_string(), "word".to_string()]);
 
         assert_eq!(one_or_many.iter().count(), 2);
 
@@ -309,7 +309,7 @@ mod test {
 
     #[test]
     fn test_one_or_many_into_iter_single() {
-        let one_or_many = OneOrMany::from_single("hello".to_string());
+        let one_or_many = OneOrMany::one("hello".to_string());
 
         assert_eq!(one_or_many.clone().into_iter().count(), 1);
 
@@ -320,7 +320,7 @@ mod test {
 
     #[test]
     fn test_one_or_many_into_iter() {
-        let one_or_many = OneOrMany::from_many(vec!["hello".to_string(), "word".to_string()]);
+        let one_or_many = OneOrMany::many(vec!["hello".to_string(), "word".to_string()]);
 
         assert_eq!(one_or_many.clone().into_iter().count(), 2);
 
@@ -336,9 +336,9 @@ mod test {
 
     #[test]
     fn test_one_or_many_merge() {
-        let one_or_many_1 = OneOrMany::from_many(vec!["hello".to_string(), "word".to_string()]);
+        let one_or_many_1 = OneOrMany::many(vec!["hello".to_string(), "word".to_string()]);
 
-        let one_or_many_2 = OneOrMany::from_single("sup".to_string());
+        let one_or_many_2 = OneOrMany::one("sup".to_string());
 
         let merged = OneOrMany::from(vec![one_or_many_1, one_or_many_2]);
 
