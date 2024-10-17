@@ -74,11 +74,11 @@ pub mod extractor;
 pub mod json_utils;
 pub mod providers;
 pub mod tool;
+mod vec_utils;
 pub mod vector_store;
 
 // Re-export commonly used types and traits
-pub use embeddings::builder::EmbeddingsBuilder;
 pub use embeddings::embeddable::Embeddable;
 
-#[cfg(feature = "rig_derive")]
+#[cfg(feature = "derive")]
 pub use rig_derive::Embeddable;

@@ -3,9 +3,9 @@ use std::env;
 
 use rig::{
     embeddings::builder::DocumentEmbeddings,
+    embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
-    EmbeddingsBuilder,
 };
 use rig_mongodb::{MongoDbVectorStore, SearchParams};
 
