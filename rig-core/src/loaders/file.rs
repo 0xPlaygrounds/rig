@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn test_file_loader() {
         let loader = FileLoader::new("src/*.rs").unwrap();
-        let files = loader
+        loader
             .ignore_errors()
             .read_with_path()
             .iter()
