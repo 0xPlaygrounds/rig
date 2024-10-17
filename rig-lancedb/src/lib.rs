@@ -3,7 +3,7 @@ use lancedb::{
     DistanceType,
 };
 use rig::{
-    embeddings::EmbeddingModel,
+    embeddings::embedding::EmbeddingModel,
     vector_store::{VectorStoreError, VectorStoreIndex},
 };
 use serde::Deserialize;

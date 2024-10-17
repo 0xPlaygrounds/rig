@@ -2,7 +2,8 @@ use anyhow::Result;
 use rig::{
     cli_chatbot::cli_chatbot,
     completion::ToolDefinition,
-    embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
+    embeddings::builder::DocumentEmbeddings,
+    embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     tool::{Tool, ToolEmbedding, ToolSet},
     vector_store::in_memory_store::InMemoryVectorStore,

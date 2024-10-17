@@ -189,7 +189,7 @@ impl<M: EmbeddingModel + std::marker::Sync, D: Serialize + Sync + Send + Eq> Vec
 mod tests {
     use std::cmp::Reverse;
 
-    use crate::embeddings::Embedding;
+    use crate::embeddings::embedding::Embedding;
 
     use super::{InMemoryVectorStore, RankingItem};
 
