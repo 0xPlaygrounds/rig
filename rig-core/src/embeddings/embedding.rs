@@ -1,5 +1,5 @@
 //! The module defines the [EmbeddingModel] trait, which represents an embedding model that can
-//! generate embeddings for documents. It also provides an implementation of the [embeddings::EmbeddingsBuilder]
+//! generate embeddings for documents. It also provides an implementation of the [crate::embeddings::EmbeddingsBuilder]
 //! struct, which allows users to build collections of document embeddings using different embedding
 //! models and document sources.
 //!

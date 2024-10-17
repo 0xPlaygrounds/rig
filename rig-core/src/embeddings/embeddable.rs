@@ -29,7 +29,7 @@
 //! }
 //! ```
 
-use crate::vec_utils::OneOrMany;
+use crate::one_or_many::OneOrMany;
 
 /// Error type used for when the `embeddable` method fails.
 /// Used by default implementations of `Embeddable` for common types.

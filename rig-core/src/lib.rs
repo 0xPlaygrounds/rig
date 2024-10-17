@@ -52,8 +52,8 @@
 //!
 //! ## Vector stores and indexes
 //! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
-//! provides the [VectorStore](crate::vector_store::VectorStore) and [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
-//! traits, which can be implemented to define vector stores and indices respectively.
+//! provides the [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
+//! trait, which can be implemented to define vector stores and indices.
 //! Those can then be used as the knowledgebase for a [RagAgent](crate::rag::RagAgent), or
 //! as a source of context documents in a custom architecture that use multiple LLMs or agents.
 //!
@@ -72,14 +72,14 @@ pub mod completion;
 pub mod embeddings;
 pub mod extractor;
 pub mod json_utils;
+pub mod one_or_many;
 pub mod providers;
 pub mod tool;
-pub mod vec_utils;
 pub mod vector_store;
 
 // Re-export commonly used types and traits
 pub use embeddings::embeddable::Embeddable;
-pub use vec_utils::OneOrMany;
+pub use one_or_many::OneOrMany;
 
 #[cfg(feature = "derive")]
 pub use rig_derive::Embeddable;

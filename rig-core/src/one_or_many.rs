@@ -33,14 +33,6 @@ impl<T: Clone> OneOrMany<T> {
         self.rest.clone()
     }
 
-    /// Use the Iterator trait on OneOrMany
-    pub fn iter(&self) -> OneOrManyIterator<T> {
-        OneOrManyIterator {
-            one_or_many: self,
-            index: 0,
-        }
-    }
-
     /// Create a OneOrMany object with a single item of any type.
     pub fn one(item: T) -> Self {
         OneOrMany {
@@ -70,41 +62,102 @@ impl<T: Clone> OneOrMany<T> {
 
         OneOrMany::many(items)
     }
-}
 
-/// Implement Iterator for OneOrMany.
-/// Iterates over all items in both `first` and `rest`.
-/// Borrows the OneOrMany object that is being iterator over.
-pub struct OneOrManyIterator<'a, T> {
-    one_or_many: &'a OneOrMany<T>,
-    index: usize,
-}
+    pub fn iter(&self) -> Iter<T> {
+        Iter {
+            first: Some(&self.first),
+            rest: self.rest.iter(),
+        }
+    }
 
-impl<'a, T> Iterator for OneOrManyIterator<'a, T> {
-    type Item = &'a T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut item = None;
-        if self.index == 0 {
-            item = Some(&self.one_or_many.first)
-        } else if self.index - 1 < self.one_or_many.rest.len() {
-            item = Some(&self.one_or_many.rest[self.index - 1]);
-        };
-
-        self.index += 1;
-        item
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
+        IterMut {
+            first: Some(&mut self.first),
+            rest: self.rest.iter_mut(),
+        }
     }
 }
 
-/// Implement IntoIterator for OneOrMany.
-/// Iterates over all items in both `first` and `rest`.
-/// Takes ownership the OneOrMany object that is being iterator over.
+// ================================================================
+// Implementations of Iterator for OneOrMany
+//   - OneOrMany<T>::iter() -> iterate over references of T objects
+//   - OneOrMany<T>::into_iter() -> iterate over owned T objects
+//   - OneOrMany<T>::iter_mut() -> iterate over mutable references of T objects
+// ================================================================
+
+/// Struct returned by call to `OneOrMany::iter()`.
+pub struct Iter<'a, T> {
+    // References.
+    first: Option<&'a T>,
+    rest: std::slice::Iter<'a, T>,
+}
+
+/// Implement `Iterator` for `Iter<T>`.
+/// The Item type of the `Iterator` trait is a reference of `T`.
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(first) = self.first.take() {
+            Some(first)
+        } else {
+            self.rest.next()
+        }
+    }
+}
+
+/// Struct returned by call to `OneOrMany::into_iter()`.
+pub struct IntoIter<T> {
+    // Owned.
+    first: Option<T>,
+    rest: std::vec::IntoIter<T>,
+}
+
+/// Implement `Iterator` for `IntoIter<T>`.
 impl<T: Clone> IntoIterator for OneOrMany<T> {
     type Item = T;
-    type IntoIter = std::iter::Chain<std::iter::Once<T>, std::vec::IntoIter<T>>;
+    type IntoIter = IntoIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        std::iter::once(self.first).chain(self.rest)
+        IntoIter {
+            first: Some(self.first),
+            rest: self.rest.into_iter(),
+        }
+    }
+}
+
+/// Implement `Iterator` for `IntoIter<T>`.
+/// The Item type of the `Iterator` trait is an owned `T`.
+impl<T: Clone> Iterator for IntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(first) = self.first.take() {
+            Some(first)
+        } else {
+            self.rest.next()
+        }
+    }
+}
+
+/// Struct returned by call to `OneOrMany::iter_mut()`.
+pub struct IterMut<'a, T> {
+    // Mutable references.
+    first: Option<&'a mut T>,
+    rest: std::slice::IterMut<'a, T>,
+}
+
+// Implement `Iterator` for `IterMut<T>`.
+// The Item type of the `Iterator` trait is a mutable reference of `OneOrMany<T>`.
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(first) = self.first.take() {
+            Some(first)
+        } else {
+            self.rest.next()
+        }
     }
 }
 
@@ -113,7 +166,7 @@ mod test {
     use super::OneOrMany;
 
     #[test]
-    fn test_one_or_many_iter_single() {
+    fn test_single() {
         let one_or_many = OneOrMany::one("hello".to_string());
 
         assert_eq!(one_or_many.iter().count(), 1);
@@ -124,7 +177,7 @@ mod test {
     }
 
     #[test]
-    fn test_one_or_many_iter() {
+    fn test() {
         let one_or_many = OneOrMany::many(vec!["hello".to_string(), "word".to_string()]).unwrap();
 
         assert_eq!(one_or_many.iter().count(), 2);
@@ -185,6 +238,34 @@ mod test {
             }
             if i == 2 {
                 assert_eq!(item, "sup");
+            }
+        });
+    }
+
+    #[test]
+    fn test_mut_single() {
+        let mut one_or_many = OneOrMany::one("hello".to_string());
+
+        assert_eq!(one_or_many.iter_mut().count(), 1);
+
+        one_or_many.iter_mut().for_each(|i| {
+            assert_eq!(i, "hello");
+        });
+    }
+
+    #[test]
+    fn test_mut() {
+        let mut one_or_many =
+            OneOrMany::many(vec!["hello".to_string(), "word".to_string()]).unwrap();
+
+        assert_eq!(one_or_many.iter_mut().count(), 2);
+
+        one_or_many.iter_mut().enumerate().for_each(|(i, item)| {
+            if i == 0 {
+                assert_eq!(item, "hello");
+            }
+            if i == 1 {
+                assert_eq!(item, "word");
             }
         });
     }
