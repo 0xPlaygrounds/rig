@@ -95,5 +95,9 @@ jobs:
         with:
           components: rust-docs
 
+      # Required to compile rig-lancedb
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
       - name: Run cargo doc
         run: cargo doc --no-deps --all-features
