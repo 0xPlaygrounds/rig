@@ -12,15 +12,9 @@ pub struct OneOrMany<T> {
 }
 
 /// Error type for when trying to create a OneOrMany object with an empty vector.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("Cannot create OneOrMany with an empty vector.")]
 pub struct EmptyListError;
-
-impl std::fmt::Display for EmptyListError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Cannot create OneOrMany with an empty vector.")
-    }
-}
-impl std::error::Error for EmptyListError {}
 
 impl<T: Clone> OneOrMany<T> {
     /// Get the first item in the list.
