@@ -10,7 +10,7 @@ use rig::{
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
 
-#[path = "./fixtures/lib.rs"]
+#[path = "./fixtures/main.rs"]
 mod fixture;
 
 // Note: see docs to deploy LanceDB on other cloud providers such as google and azure.

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use arrow_array::{types::Float64Type, ArrayRef, FixedSizeListArray, RecordBatch, StringArray};
 use lancedb::arrow::arrow_schema::{DataType, Field, Fields, Schema};
-use rig::embeddings::embedding::Embedding;
+use rig::embeddings::Embedding;
 use rig::{Embeddable, OneOrMany};
 use serde::Deserialize;
 
