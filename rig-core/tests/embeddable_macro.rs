@@ -35,6 +35,11 @@ fn test_custom_embed() {
         },
     };
 
+    println!(
+        "FakeDefinition: {}, {}",
+        fake_definition.id, fake_definition.word
+    );
+
     assert_eq!(
             fake_definition.embeddable().unwrap(),
             OneOrMany::one(
@@ -65,6 +70,11 @@ fn test_custom_and_basic_embed() {
         },
     };
 
+    println!(
+        "FakeDefinition: {}, {}",
+        fake_definition.id, fake_definition.word
+    );
+
     assert_eq!(
         fake_definition.embeddable().unwrap().first(),
         "house".to_string()
@@ -93,6 +103,10 @@ fn test_single_embed() {
         word: "house".to_string(),
         definition: definition.clone(),
     };
+    println!(
+        "FakeDefinition3: {}, {}",
+        fake_definition.id, fake_definition.word
+    );
 
     assert_eq!(
         fake_definition.embeddable().unwrap(),
@@ -115,6 +129,8 @@ fn test_multiple_embed_strings() {
         company: "Google".to_string(),
         employee_ages: vec![25, 30, 35, 40],
     };
+
+    println!("Company: {}, {}", company.id, company.company);
 
     let result = company.embeddable().unwrap();
 
@@ -153,6 +169,8 @@ fn test_multiple_embed_tags() {
         company: "Google".to_string(),
         employee_ages: vec![25, 30, 35, 40],
     };
+
+    println!("Company: {}", company.id);
 
     assert_eq!(
         company.embeddable().unwrap(),
