@@ -1,7 +1,6 @@
 use anyhow::Result;
 use rig::{
     completion::{Prompt, ToolDefinition},
-    embeddings::builder::DocumentEmbeddings,
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     tool::{Tool, ToolEmbedding, ToolSet},
@@ -157,7 +156,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .tools(&toolset)?
+        .documents(toolset.embedabble_tools()?)?
         .build()
         .await?;
 
@@ -165,13 +164,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .add_documents(
             embeddings
                 .into_iter()
-                .map(
-                    |DocumentEmbeddings {
-                         id,
-                         document,
-                         embeddings,
-                     }| { (id, document, embeddings) },
-                )
+                .map(|(tool, embedding)| (tool.name.clone(), tool, embedding))
                 .collect(),
         )?
         .index(embedding_model);
