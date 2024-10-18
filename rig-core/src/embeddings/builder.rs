@@ -73,12 +73,12 @@ use crate::{
 };
 
 /// Builder for creating a collection of embeddings.
-pub struct EmbeddingsBuilder<M: EmbeddingModel, D: Embeddable> {
+pub struct EmbeddingsBuilder<M: EmbeddingModel, T: Embeddable> {
     model: M,
-    documents: Vec<(D, OneOrMany<String>)>,
+    documents: Vec<(T, OneOrMany<String>)>,
 }
 
-impl<M: EmbeddingModel, D: Embeddable> EmbeddingsBuilder<M, D> {
+impl<M: EmbeddingModel, T: Embeddable> EmbeddingsBuilder<M, T> {
     /// Create a new embedding builder with the given embedding model
     pub fn new(model: M) -> Self {
         Self {
@@ -88,7 +88,7 @@ impl<M: EmbeddingModel, D: Embeddable> EmbeddingsBuilder<M, D> {
     }
 
     /// Add a document that implements `Embeddable` to the builder.
-    pub fn document(mut self, document: D) -> Result<Self, D::Error> {
+    pub fn document(mut self, document: T) -> Result<Self, T::Error> {
         let embed_targets = document.embeddable()?;
 
         self.documents.push((document, embed_targets));
@@ -96,7 +96,7 @@ impl<M: EmbeddingModel, D: Embeddable> EmbeddingsBuilder<M, D> {
     }
 
     /// Add many documents that implement `Embeddable` to the builder.
-    pub fn documents(mut self, documents: Vec<D>) -> Result<Self, D::Error> {
+    pub fn documents(mut self, documents: Vec<T>) -> Result<Self, T::Error> {
         for doc in documents.into_iter() {
             let embed_targets = doc.embeddable()?;
 
@@ -107,11 +107,11 @@ impl<M: EmbeddingModel, D: Embeddable> EmbeddingsBuilder<M, D> {
     }
 }
 
-impl<M: EmbeddingModel, D: Embeddable + Send + Sync + Clone> EmbeddingsBuilder<M, D> {
+impl<M: EmbeddingModel, T: Embeddable + Send + Sync + Clone> EmbeddingsBuilder<M, T> {
     /// Generate embeddings for all documents in the builder.
     /// The method only applies when documents in the builder each contain multiple embedding targets.
     /// Returns a vector of tuples, where the first element is the document and the second element is the vector of embeddings.
-    pub async fn build(&self) -> Result<Vec<(D, OneOrMany<Embedding>)>, EmbeddingError> {
+    pub async fn build(&self) -> Result<Vec<(T, OneOrMany<Embedding>)>, EmbeddingError> {
         // Use this for reference later to merge a document back with its embeddings.
         let documents_map = self
             .documents
