@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use arrow_array::RecordBatchIterator;
-use fixtures::{as_record_batch, fake_definitions, schema};
+use fixture::{as_record_batch, fake_definitions, schema};
 use rig::{
     embeddings::{builder::EmbeddingsBuilder, embedding::EmbeddingModel},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},

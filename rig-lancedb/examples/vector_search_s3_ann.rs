@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use arrow_array::RecordBatchIterator;
-use fixtures::{as_record_batch, fake_definitions, schema, FakeDefinition};
+use fixture::{as_record_batch, fake_definitions, schema, FakeDefinition};
 use lancedb::{index::vector::IvfPqIndexBuilder, DistanceType};
 use rig::{
     embeddings::{builder::EmbeddingsBuilder, embedding::EmbeddingModel},
