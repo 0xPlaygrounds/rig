@@ -68,7 +68,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .index(model);
 
     let results = index
-        .top_n::<FakeDefinition>("I need to buy something in a fictional universe. What type of money can I use for this?", 1)
+        .top_n("I need to buy something in a fictional universe. What type of money can I use for this?", 1)
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.word))

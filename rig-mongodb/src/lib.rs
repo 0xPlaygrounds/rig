@@ -8,7 +8,7 @@ use rig::{
 use serde::Deserialize;
 
 /// A MongoDB vector store.
-pub struct MongoDbVectorStore<C> {
+pub struct MongoDbVectorStore<C: for<'a> Deserialize<'a>> {
     collection: mongodb::Collection<C>,
 }
 
@@ -16,7 +16,7 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
     VectorStoreError::DatastoreError(Box::new(e))
 }
 
-impl<C> MongoDbVectorStore<C> {
+impl<C: for<'a> Deserialize<'a>> MongoDbVectorStore<C> {
     /// Create a new `MongoDbVectorStore` from a MongoDB collection.
     pub fn new(collection: mongodb::Collection<C>) -> Self {
         Self { collection }
@@ -141,10 +141,13 @@ impl SearchParams {
     }
 }
 
-impl<M: EmbeddingModel + std::marker::Sync + Send, C: std::marker::Sync + Send> VectorStoreIndex
-    for MongoDbVectorIndex<M, C>
+impl<
+        M: EmbeddingModel + std::marker::Sync + Send,
+        C: std::marker::Sync + Send,
+        T: for<'a> Deserialize<'a> + std::marker::Send,
+    > VectorStoreIndex<T> for MongoDbVectorIndex<M, C>
 {
-    async fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
+    async fn top_n(
         &self,
         query: &str,
         n: usize,

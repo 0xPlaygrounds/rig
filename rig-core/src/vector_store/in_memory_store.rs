@@ -5,7 +5,7 @@ use std::{
 };
 
 use ordered_float::OrderedFloat;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize};
 
 use super::{VectorStoreError, VectorStoreIndex};
 use crate::{
@@ -16,14 +16,14 @@ use crate::{
 /// InMemoryVectorStore is a simple in-memory vector store that stores embeddings
 /// in-memory using a HashMap.
 #[derive(Clone, Default)]
-pub struct InMemoryVectorStore<D: Serialize> {
+pub struct InMemoryVectorStore<D: for<'a> Deserialize<'a> + Clone> {
     /// The embeddings are stored in a HashMap.
     /// Hashmap key is the document id.
     /// Hashmap value is a tuple of the serializable document and its corresponding embeddings.
     embeddings: HashMap<String, (D, OneOrMany<Embedding>)>,
 }
 
-impl<D: Serialize + Eq> InMemoryVectorStore<D> {
+impl<D: for<'a> Deserialize<'a> + Eq + Clone> InMemoryVectorStore<D> {
     /// Implement vector search on InMemoryVectorStore.
     /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for InMemoryVectorStore.
     fn vector_search(&self, prompt_embedding: &Embedding, n: usize) -> EmbeddingRanking<D> {
@@ -77,29 +77,28 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     }
 
     /// Get the document by its id and deserialize it into the given type.
-    pub fn get_document<T: for<'a> Deserialize<'a>>(
+    pub fn get_document(
         &self,
         id: &str,
-    ) -> Result<Option<T>, VectorStoreError> {
+    ) -> Result<Option<D>, VectorStoreError> {
         Ok(self
             .embeddings
             .get(id)
-            .map(|(doc, _)| serde_json::from_str(&serde_json::to_string(doc)?))
-            .transpose()?)
+            .map(|(doc, _)| doc.clone()))
     }
 }
 
 /// RankingItem(distance, document_id, serializable document, embeddings document)
 #[derive(Eq, PartialEq)]
-struct RankingItem<'a, D: Serialize>(OrderedFloat<f64>, &'a String, &'a D, &'a String);
+struct RankingItem<'a, D: Deserialize<'a>>(OrderedFloat<f64>, &'a String, &'a D, &'a String);
 
-impl<D: Serialize + Eq> Ord for RankingItem<'_, D> {
+impl<D: for<'a> Deserialize<'a> + Eq> Ord for RankingItem<'_, D> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0.cmp(&other.0)
     }
 }
 
-impl<D: Serialize + Eq> PartialOrd for RankingItem<'_, D> {
+impl<D: for<'a> Deserialize<'a> + Eq> PartialOrd for RankingItem<'_, D> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
@@ -107,7 +106,7 @@ impl<D: Serialize + Eq> PartialOrd for RankingItem<'_, D> {
 
 type EmbeddingRanking<'a, D> = BinaryHeap<Reverse<RankingItem<'a, D>>>;
 
-impl<D: Serialize> InMemoryVectorStore<D> {
+impl<D: for<'a> Deserialize<'a> + Clone> InMemoryVectorStore<D> {
     pub fn index<M: EmbeddingModel>(self, model: M) -> InMemoryVectorIndex<M, D> {
         InMemoryVectorIndex::new(model, self)
     }
@@ -125,12 +124,12 @@ impl<D: Serialize> InMemoryVectorStore<D> {
     }
 }
 
-pub struct InMemoryVectorIndex<M: EmbeddingModel, D: Serialize> {
+pub struct InMemoryVectorIndex<M: EmbeddingModel, D: for<'a> Deserialize<'a> + Clone> {
     model: M,
     pub store: InMemoryVectorStore<D>,
 }
 
-impl<M: EmbeddingModel, D: Serialize> InMemoryVectorIndex<M, D> {
+impl<M: EmbeddingModel, D: for<'a> Deserialize<'a> + Clone> InMemoryVectorIndex<M, D> {
     pub fn new(model: M, store: InMemoryVectorStore<D>) -> Self {
         Self { model, store }
     }
@@ -148,14 +147,16 @@ impl<M: EmbeddingModel, D: Serialize> InMemoryVectorIndex<M, D> {
     }
 }
 
-impl<M: EmbeddingModel + std::marker::Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
-    for InMemoryVectorIndex<M, D>
+impl<
+        M: EmbeddingModel + std::marker::Sync,
+        D: for<'a> Deserialize<'a> + Sync + Send + Eq + Clone,
+    > VectorStoreIndex<D> for InMemoryVectorIndex<M, D>
 {
-    async fn top_n<T: for<'a> Deserialize<'a>>(
+    async fn top_n(
         &self,
         query: &str,
         n: usize,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<(f64, String, D)>, VectorStoreError> {
         let prompt_embedding = &self.model.embed_document(query).await?;
 
         let docs = self.store.vector_search(prompt_embedding, n);
@@ -166,7 +167,7 @@ impl<M: EmbeddingModel + std::marker::Sync, D: Serialize + Sync + Send + Eq> Vec
                 Ok((
                     distance.0,
                     id.clone(),
-                    serde_json::from_str(&serde_json::to_string(doc)?)?,
+                    doc.clone(),
                 ))
             })
             .collect::<Result<Vec<_>, _>>()
@@ -202,7 +203,7 @@ mod tests {
             .add_documents(vec![
                 (
                     "doc1".to_string(),
-                    "glarb-garb",
+                    "glarb-garb".to_string(),
                     OneOrMany::one(Embedding {
                         document: "glarb-garb".to_string(),
                         vec: vec![0.1, 0.1, 0.5],
@@ -210,7 +211,7 @@ mod tests {
                 ),
                 (
                     "doc2".to_string(),
-                    "marble-marble",
+                    "marble-marble".to_string(),
                     OneOrMany::one(Embedding {
                         document: "marble-marble".to_string(),
                         vec: vec![0.7, -0.3, 0.0],
@@ -218,7 +219,7 @@ mod tests {
                 ),
                 (
                     "doc3".to_string(),
-                    "flumb-flumb",
+                    "flumb-flumb".to_string(),
                     OneOrMany::one(Embedding {
                         document: "flumb-flumb".to_string(),
                         vec: vec![0.3, 0.7, 0.1],
@@ -260,7 +261,7 @@ mod tests {
             .add_documents(vec![
                 (
                     "doc1".to_string(),
-                    "glarb-garb",
+                    "glarb-garb".to_string(),
                     OneOrMany::many(vec![
                         Embedding {
                             document: "glarb-garb".to_string(),
@@ -275,7 +276,7 @@ mod tests {
                 ),
                 (
                     "doc2".to_string(),
-                    "marble-marble",
+                    "marble-marble".to_string(),
                     OneOrMany::many(vec![
                         Embedding {
                             document: "marble-marble".to_string(),
@@ -290,7 +291,7 @@ mod tests {
                 ),
                 (
                     "doc3".to_string(),
-                    "flumb-flumb",
+                    "flumb-flumb".to_string(),
                     OneOrMany::many(vec![
                         Embedding {
                             document: "flumb-flumb".to_string(),

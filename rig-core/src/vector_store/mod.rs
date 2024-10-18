@@ -1,5 +1,5 @@
 use futures::future::BoxFuture;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::embeddings::EmbeddingError;
@@ -20,10 +20,13 @@ pub enum VectorStoreError {
 }
 
 /// Trait for vector store indexes
-pub trait VectorStoreIndex: Send + Sync {
+pub trait VectorStoreIndex<T>: Send + Sync
+where
+    T: for<'a> Deserialize<'a> + std::marker::Send,
+{
     /// Get the top n documents based on the distance to the given query.
     /// The result is a list of tuples of the form (score, id, document)
-    fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
+    fn top_n(
         &self,
         query: &str,
         n: usize,
@@ -49,13 +52,20 @@ pub trait VectorStoreIndexDyn: Send + Sync {
     ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>>;
 }
 
-impl<I: VectorStoreIndex> VectorStoreIndexDyn for I {
+impl<T: for<'a> Deserialize<'a> + Serialize + Send, I: VectorStoreIndex<T>> VectorStoreIndexDyn for I {
     fn top_n<'a>(
         &'a self,
         query: &'a str,
         n: usize,
     ) -> BoxFuture<'a, Result<Vec<(f64, String, Value)>, VectorStoreError>> {
-        Box::pin(self.top_n(query, n))
+        Box::pin(async move {
+            self.top_n(query, n).await.map(|results| {
+                results
+                    .into_iter()
+                    .map(|(score, id, doc)| (score, id, serde_json::to_value(&doc).unwrap()))
+                    .collect()
+            })
+        })
     }
 
     fn top_n_ids<'a>(

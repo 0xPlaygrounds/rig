@@ -25,7 +25,7 @@ struct Link {
 }
 
 // Shape of the document to be stored in MongoDB, with embeddings.
-#[derive(Serialize, Debug)]
+#[derive(Deserialize, Debug)]
 struct Document {
     #[serde(rename = "_id")]
     id: String,
@@ -103,7 +103,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = index
-        .top_n::<FakeDefinition>("What is a linglingdong?", 1)
+        .top_n("What is a linglingdong?", 1)
         .await?;
 
     println!("Results: {:?}", results);
