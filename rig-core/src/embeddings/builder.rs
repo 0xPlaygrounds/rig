@@ -152,8 +152,8 @@ impl<M: EmbeddingModel, D: Embeddable + Send + Sync + Clone> EmbeddingsBuilder<M
                 |mut acc: HashMap<_, OneOrMany<Embedding>>, embeddings| async move {
                     embeddings.into_iter().for_each(|(i, embedding)| {
                         acc.entry(i)
-                            .or_insert(OneOrMany::one(embedding.clone()))
-                            .add(embedding.clone());
+                            .and_modify(|embeddings| embeddings.add(embedding.clone()))
+                            .or_insert(OneOrMany::one(embedding.clone()));
                     });
 
                     Ok(acc)
@@ -170,5 +170,217 @@ impl<M: EmbeddingModel, D: Embeddable + Send + Sync + Clone> EmbeddingsBuilder<M
             });
 
         Ok(embeddings)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        embeddings::{embeddable::EmbeddableError, Embedding, EmbeddingModel},
+        Embeddable,
+    };
+
+    use super::EmbeddingsBuilder;
+
+    #[derive(Clone)]
+    struct FakeModel;
+
+    impl EmbeddingModel for FakeModel {
+        const MAX_DOCUMENTS: usize = 5;
+
+        fn ndims(&self) -> usize {
+            10
+        }
+
+        async fn embed_documents(
+            &self,
+            documents: Vec<String>,
+        ) -> Result<Vec<crate::embeddings::Embedding>, crate::embeddings::EmbeddingError> {
+            Ok(documents
+                .iter()
+                .map(|doc| Embedding {
+                    document: doc.to_string(),
+                    vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+                })
+                .collect())
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct FakeDefinition {
+        id: String,
+        definitions: Vec<String>,
+    }
+
+    impl Embeddable for FakeDefinition {
+        type Error = EmbeddableError;
+
+        fn embeddable(&self) -> Result<crate::OneOrMany<String>, Self::Error> {
+            crate::OneOrMany::many(self.definitions.clone()).map_err(EmbeddableError::new)
+        }
+    }
+
+    fn fake_definitions() -> Vec<FakeDefinition> {
+        vec![
+            FakeDefinition {
+                id: "doc0".to_string(),
+                definitions: vec![
+                    "A green alien that lives on cold planets.".to_string(),
+                    "A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
+                ]
+            },
+            FakeDefinition {
+                id: "doc1".to_string(),
+                definitions: vec![
+                    "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+                    "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
+                ]
+            }
+        ]
+    }
+
+    fn fake_definitions_2() -> Vec<FakeDefinition> {
+        vec![
+            FakeDefinition {
+                id: "doc2".to_string(),
+                definitions: vec!["Another fake definitions".to_string()],
+            },
+            FakeDefinition {
+                id: "doc3".to_string(),
+                definitions: vec!["Some fake definition".to_string()],
+            },
+        ]
+    }
+
+    #[derive(Clone, Debug)]
+    struct FakeDefinitionSingle {
+        id: String,
+        definition: String,
+    }
+
+    impl Embeddable for FakeDefinitionSingle {
+        type Error = EmbeddableError;
+
+        fn embeddable(&self) -> Result<crate::OneOrMany<String>, Self::Error> {
+            Ok(crate::OneOrMany::one(self.definition.clone()))
+        }
+    }
+
+    fn fake_definitions_single() -> Vec<FakeDefinitionSingle> {
+        vec![
+            FakeDefinitionSingle {
+                id: "doc0".to_string(),
+                definition: "A green alien that lives on cold planets.".to_string(),
+            },
+            FakeDefinitionSingle {
+                id: "doc1".to_string(),
+                definition: "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+            }
+        ]
+    }
+
+    #[tokio::test]
+    async fn test_build_many() {
+        let fake_definitions = fake_definitions();
+
+        let fake_model = FakeModel;
+        let mut result = EmbeddingsBuilder::new(fake_model)
+            .documents(fake_definitions)
+            .unwrap()
+            .build()
+            .await
+            .unwrap();
+
+        result.sort_by(|(fake_definition_1, _), (fake_definition_2, _)| {
+            fake_definition_1.id.cmp(&fake_definition_2.id)
+        });
+
+        assert_eq!(result.len(), 2);
+
+        let first_definition = &result[0];
+        assert_eq!(first_definition.0.id, "doc0");
+        assert_eq!(first_definition.1.len(), 2);
+        assert_eq!(
+            first_definition.1.first().document,
+            "A green alien that lives on cold planets.".to_string()
+        );
+
+        let second_definition = &result[1];
+        assert_eq!(second_definition.0.id, "doc1");
+        assert_eq!(second_definition.1.len(), 2);
+        assert_eq!(
+            second_definition.1.rest()[0].document, "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
+        )
+    }
+
+    #[tokio::test]
+    async fn test_build_single() {
+        let fake_definitions = fake_definitions_single();
+
+        let fake_model = FakeModel;
+        let mut result = EmbeddingsBuilder::new(fake_model)
+            .documents(fake_definitions)
+            .unwrap()
+            .build()
+            .await
+            .unwrap();
+
+        result.sort_by(|(fake_definition_1, _), (fake_definition_2, _)| {
+            fake_definition_1.id.cmp(&fake_definition_2.id)
+        });
+
+        assert_eq!(result.len(), 2);
+
+        let first_definition = &result[0];
+        assert_eq!(first_definition.0.id, "doc0");
+        assert_eq!(first_definition.1.len(), 1);
+        assert_eq!(
+            first_definition.1.first().document,
+            "A green alien that lives on cold planets.".to_string()
+        );
+
+        let second_definition = &result[1];
+        assert_eq!(second_definition.0.id, "doc1");
+        assert_eq!(second_definition.1.len(), 1);
+        assert_eq!(
+            second_definition.1.first().document, "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string()
+        )
+    }
+
+    #[tokio::test]
+    async fn test_build_many_and_single() {
+        let fake_definitions = fake_definitions();
+        let fake_definitions_single = fake_definitions_2();
+
+        let fake_model = FakeModel;
+        let mut result = EmbeddingsBuilder::new(fake_model)
+            .documents(fake_definitions)
+            .unwrap()
+            .documents(fake_definitions_single)
+            .unwrap()
+            .build()
+            .await
+            .unwrap();
+
+        result.sort_by(|(fake_definition_1, _), (fake_definition_2, _)| {
+            fake_definition_1.id.cmp(&fake_definition_2.id)
+        });
+
+        assert_eq!(result.len(), 4);
+
+        let second_definition = &result[1];
+        assert_eq!(second_definition.0.id, "doc1");
+        assert_eq!(second_definition.1.len(), 2);
+        assert_eq!(
+            second_definition.1.first().document, "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string()
+        );
+
+        let third_definition = &result[2];
+        assert_eq!(third_definition.0.id, "doc2");
+        assert_eq!(third_definition.1.len(), 1);
+        assert_eq!(
+            third_definition.1.first().document,
+            "Another fake definitions".to_string()
+        )
     }
 }

@@ -164,8 +164,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .add_documents(
             embeddings
                 .into_iter()
-                .enumerate()
-                .map(|(i, (tool, embedding))| (i.to_string(), tool, embedding))
+                .map(|(tool, embedding)| (tool.name.clone(), tool, embedding))
                 .collect(),
         )?
         .index(embedding_model);

@@ -5,8 +5,7 @@ use std::env;
 
 use rig::Embeddable;
 use rig::{
-    embeddings::EmbeddingsBuilder, providers::openai::Client,
-    vector_store::VectorStoreIndex,
+    embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex,
 };
 use rig_mongodb::{MongoDbVectorStore, SearchParams};
 

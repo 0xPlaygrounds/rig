@@ -6,9 +6,9 @@ use super::embeddable::EmbeddableError;
 /// Used by EmbeddingsBuilder to embed anything that implements ToolEmbedding.
 #[derive(Clone, Serialize, Default, Eq, PartialEq)]
 pub struct EmbeddableTool {
-    name: String,
-    context: serde_json::Value,
-    embedding_docs: Vec<String>,
+    pub name: String,
+    pub context: serde_json::Value,
+    pub embedding_docs: Vec<String>,
 }
 
 impl Embeddable for EmbeddableTool {

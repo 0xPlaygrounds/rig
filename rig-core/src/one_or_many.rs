@@ -32,6 +32,11 @@ impl<T: Clone> OneOrMany<T> {
         self.rest.push(item);
     }
 
+    /// Length of all items in `OneOrMany<T>`.
+    pub fn len(&self) -> usize {
+        1 + self.rest.len()
+    }
+
     /// Create a OneOrMany object with a single item of any type.
     pub fn one(item: T) -> Self {
         OneOrMany {
@@ -273,5 +278,19 @@ mod test {
     #[test]
     fn test_one_or_many_error() {
         assert!(OneOrMany::<String>::many(vec![]).is_err())
+    }
+
+    #[test]
+    fn test_len_single() {
+        let one_or_many = OneOrMany::one("hello".to_string());
+
+        assert_eq!(one_or_many.len(), 1);
+    }
+
+    #[test]
+    fn test_len_many() {
+        let one_or_many = OneOrMany::many(vec!["hello".to_string(), "word".to_string()]).unwrap();
+
+        assert_eq!(one_or_many.len(), 2);
     }
 }
