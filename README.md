@@ -70,6 +70,7 @@ or just `full` to enable all features (`cargo add tokio --features macros,rt-mul
 Rig supports the following LLM providers natively:
 - OpenAI
 - Cohere
+- Google Gemini
 
 Additionally, Rig currently has the following integration sub-libraries:
 - MongoDB vector store: `rig-mongodb`
