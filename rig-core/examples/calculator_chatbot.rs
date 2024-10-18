@@ -256,7 +256,7 @@ async fn main() -> Result<(), anyhow::Error> {
             embeddings
                 .into_iter()
                 .enumerate()
-                .map(|(i, (tool, embedding))| (i.to_string(), tool, vec![embedding]))
+                .map(|(i, (tool, embedding))| (i.to_string(), tool, embedding))
                 .collect(),
         )?
         .index(embedding_model);
