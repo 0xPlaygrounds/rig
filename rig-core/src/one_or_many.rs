@@ -37,6 +37,12 @@ impl<T: Clone> OneOrMany<T> {
         1 + self.rest.len()
     }
 
+    /// If `OneOrMany<T>` is empty. This will always be false because you cannot create an empty `OneOrMany<T>`.
+    /// This methos is required when the method `len` exists.
+    pub fn is_empty(&self) -> bool {
+        false
+    }
+
     /// Create a OneOrMany object with a single item of any type.
     pub fn one(item: T) -> Self {
         OneOrMany {
