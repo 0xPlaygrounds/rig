@@ -8,7 +8,7 @@ use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 
 use super::{VectorStoreError, VectorStoreIndex};
-use crate::embeddings::embedding::{Embedding, EmbeddingModel};
+use crate::embeddings::{Embedding, EmbeddingModel};
 
 /// InMemoryVectorStore is a simple in-memory vector store that stores embeddings
 /// in-memory using a HashMap.

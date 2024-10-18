@@ -1,10 +1,10 @@
-use rig::embeddings::embeddable::{EmbeddableError, OneOrMany};
-use rig::Embeddable;
+use rig::embeddings::embeddable::EmbeddableError;
+use rig::{Embeddable, OneOrMany};
 use serde::Serialize;
 
 fn serialize(definition: Definition) -> Result<OneOrMany<String>, EmbeddableError> {
-    Ok(OneOrMany::from(
-        serde_json::to_string(&definition).map_err(EmbeddableError::SerdeError)?,
+    Ok(OneOrMany::one(
+        serde_json::to_string(&definition).map_err(EmbeddableError::new)?,
     ))
 }
 
@@ -42,7 +42,7 @@ fn test_custom_embed() {
 
     assert_eq!(
             fake_definition.embeddable().unwrap(),
-            OneOrMany::from(
+            OneOrMany::one(
                 "{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()
             )
 
@@ -103,7 +103,6 @@ fn test_single_embed() {
         word: "house".to_string(),
         definition: definition.clone(),
     };
-
     println!(
         "FakeDefinition3: {}, {}",
         fake_definition.id, fake_definition.word
@@ -111,7 +110,7 @@ fn test_single_embed() {
 
     assert_eq!(
         fake_definition.embeddable().unwrap(),
-        OneOrMany::from(definition)
+        OneOrMany::one(definition)
     )
 }
 
@@ -137,7 +136,7 @@ fn test_multiple_embed_strings() {
 
     assert_eq!(
         result,
-        OneOrMany::try_from(vec![
+        OneOrMany::many(vec![
             "25".to_string(),
             "30".to_string(),
             "35".to_string(),
@@ -171,11 +170,11 @@ fn test_multiple_embed_tags() {
         employee_ages: vec![25, 30, 35, 40],
     };
 
-    println!("Company2: {}", company.id);
+    println!("Company: {}", company.id);
 
     assert_eq!(
         company.embeddable().unwrap(),
-        OneOrMany::try_from(vec![
+        OneOrMany::many(vec![
             "Google".to_string(),
             "25".to_string(),
             "30".to_string(),

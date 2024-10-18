@@ -26,7 +26,6 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
                 ));
             }
 
-            // Determine whether the Embeddable::Kind should be SingleEmbedding or ManyEmbedding
             quote! {
                 let mut embed_targets = #basic_targets;
                 embed_targets.extend(#custom_targets)
@@ -48,13 +47,13 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
         impl #impl_generics Embeddable for #name #ty_generics #where_clause {
             type Error = rig::embeddings::embeddable::EmbeddableError;
 
-            fn embeddable(&self) -> Result<rig::embeddings::embeddable::OneOrMany<String>, Self::Error> {
+            fn embeddable(&self) -> Result<rig::OneOrMany<String>, Self::Error> {
                 #target_stream;
 
-                Ok(rig::embeddings::embeddable::OneOrMany::from(
+                rig::OneOrMany::merge(
                     embed_targets.into_iter()
                         .collect::<Result<Vec<_>, _>>()?
-                ))
+                ).map_err(rig::embeddings::embeddable::EmbeddableError::new)
             }
         }
     };
@@ -77,7 +76,7 @@ impl StructParser for DataStruct {
             .map(|field| {
                 add_struct_bounds(generics, &field.ty);
 
-                let field_name = field.ident;
+                let field_name = &field.ident;
 
                 quote! {
                     self.#field_name
@@ -107,7 +106,7 @@ impl StructParser for DataStruct {
             // Iterate over every field tagged with #[embed(embed_with = "...")]
             .into_iter()
             .map(|(field, custom_func_path)| {
-                let field_name = field.ident;
+                let field_name = &field.ident;
 
                 quote! {
                     #custom_func_path(self.#field_name.clone())

@@ -6,3 +6,7 @@
 pub mod builder;
 pub mod embeddable;
 pub mod embedding;
+
+pub use builder::EmbeddingsBuilder;
+pub use embeddable::Embeddable;
+pub use embedding::{Embedding, EmbeddingError, EmbeddingModel};

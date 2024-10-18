@@ -30,9 +30,10 @@ use std::{cmp::max, collections::HashMap};
 use futures::{stream, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 
-use crate::tool::{ToolEmbedding, ToolSet, ToolType};
-
-use super::embedding::{Embedding, EmbeddingError, EmbeddingModel};
+use crate::{
+    embeddings::{Embedding, EmbeddingError, EmbeddingModel},
+    tool::{ToolEmbedding, ToolSet, ToolType},
+};
 
 /// Struct that holds a document and its embeddings.
 ///

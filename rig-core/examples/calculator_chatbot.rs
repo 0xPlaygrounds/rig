@@ -3,10 +3,10 @@ use rig::{
     cli_chatbot::cli_chatbot,
     completion::ToolDefinition,
     embeddings::builder::DocumentEmbeddings,
+    embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     tool::{Tool, ToolEmbedding, ToolSet},
     vector_store::in_memory_store::InMemoryVectorStore,
-    EmbeddingsBuilder,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;

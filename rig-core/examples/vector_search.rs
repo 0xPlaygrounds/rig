@@ -2,9 +2,9 @@ use std::env;
 
 use rig::{
     embeddings::builder::DocumentEmbeddings,
+    embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-    EmbeddingsBuilder,
 };
 
 #[tokio::main]
