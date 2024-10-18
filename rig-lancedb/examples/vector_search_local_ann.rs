@@ -3,10 +3,10 @@ use std::{env, sync::Arc};
 use arrow_array::RecordBatchIterator;
 use fixture::{as_record_batch, schema};
 use lancedb::index::vector::IvfPqIndexBuilder;
-use rig::vector_store::VectorStoreIndex;
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+    vector_store::VectorStoreIndex,
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
 use serde::Deserialize;

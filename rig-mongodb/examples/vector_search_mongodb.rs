@@ -2,7 +2,8 @@ use mongodb::{options::ClientOptions, Client as MongoClient, Collection};
 use std::env;
 
 use rig::{
-    embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
+    embeddings::builder::DocumentEmbeddings,
+    embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
 };

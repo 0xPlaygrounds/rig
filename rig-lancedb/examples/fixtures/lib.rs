@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use arrow_array::{types::Float64Type, ArrayRef, FixedSizeListArray, RecordBatch, StringArray};
 use lancedb::arrow::arrow_schema::{DataType, Field, Fields, Schema};
-use rig::embeddings::DocumentEmbeddings;
+use rig::embeddings::builder::DocumentEmbeddings;
 
 // Schema of table in LanceDB.
 pub fn schema(dims: usize) -> Schema {

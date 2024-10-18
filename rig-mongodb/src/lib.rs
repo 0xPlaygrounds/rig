@@ -2,7 +2,8 @@ use futures::StreamExt;
 use mongodb::bson::{self, doc};
 
 use rig::{
-    embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel},
+    embeddings::builder::DocumentEmbeddings,
+    embeddings::{Embedding, EmbeddingModel},
     vector_store::{VectorStoreError, VectorStoreIndex},
 };
 use serde::Deserialize;
