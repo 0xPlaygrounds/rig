@@ -1,12 +1,10 @@
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
-use futures::Stream;
-use glob::{glob, GlobError};
+use glob::glob;
 use lopdf::{Document, Error as LopdfError};
-use serde_json::de::Read;
 use thiserror::Error;
 
-use super::file::{FileLoaderError, Readable};
+use super::file::FileLoaderError;
 
 #[derive(Error, Debug)]
 pub enum PdfLoaderError {
@@ -95,10 +93,9 @@ impl<'a> PdfFileLoader<'a, Document> {
     }
 }
 
+type ByPage = (PathBuf, Vec<Result<(usize, String), PdfLoaderError>>);
 impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
-    pub fn by_page(
-        self,
-    ) -> PdfFileLoader<'a, (PathBuf, Vec<Result<(usize, String), PdfLoaderError>>)> {
+    pub fn by_page(self) -> PdfFileLoader<'a, ByPage> {
         PdfFileLoader {
             iterator: Box::new(self.iterator.map(|(path, doc)| {
                 (
@@ -117,7 +114,7 @@ impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
 }
 
 impl<'a, T: 'a> PdfFileLoader<'a, Result<T, PdfLoaderError>> {
-    fn ignore_errors(self) -> PdfFileLoader<'a, T> {
+    pub fn ignore_errors(self) -> PdfFileLoader<'a, T> {
         PdfFileLoader {
             iterator: Box::new(self.iterator.filter_map(|res| res.ok())),
         }
@@ -151,6 +148,9 @@ mod tests {
     #[test]
     fn test_pdf_loader() {
         let loader = PdfFileLoader::new("pdfs/*.pdf").unwrap();
-        let files = loader.read_with_path().iter().for_each(|file| println!("{:?}", file));
+        let files = loader
+            .read_with_path()
+            .iter()
+            .for_each(|file| println!("{:?}", file));
     }
 }
