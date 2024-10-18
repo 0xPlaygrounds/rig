@@ -13,8 +13,6 @@ pub struct FakeDefinition {
     pub definition: String,
 }
 
-fn main() {}
-
 pub fn fake_definitions() -> Vec<FakeDefinition> {
     vec![
         FakeDefinition {

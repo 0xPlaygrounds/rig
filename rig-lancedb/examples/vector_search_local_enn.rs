@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use arrow_array::RecordBatchIterator;
-use fixture::{as_record_batch, fake_definitions, schema};
+use fixtures::{as_record_batch, fake_definitions, schema};
 use rig::{
     embeddings::{builder::EmbeddingsBuilder, embedding::EmbeddingModel},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
@@ -9,7 +9,7 @@ use rig::{
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
 
-#[path = "./fixtures.rs"]
+#[path = "./fixtures/lib.rs"]
 mod fixture;
 
 #[tokio::main]

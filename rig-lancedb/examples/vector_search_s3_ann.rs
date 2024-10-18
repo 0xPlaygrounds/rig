@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use arrow_array::RecordBatchIterator;
-use fixture::{as_record_batch, fake_definitions, schema, FakeDefinition};
+use fixtures::{as_record_batch, fake_definitions, schema, FakeDefinition};
 use lancedb::{index::vector::IvfPqIndexBuilder, DistanceType};
 use rig::{
     embeddings::{builder::EmbeddingsBuilder, embedding::EmbeddingModel},
@@ -10,7 +10,7 @@ use rig::{
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
 
-#[path = "./fixtures.rs"]
+#[path = "./fixtures/lib.rs"]
 mod fixture;
 
 // Note: see docs to deploy LanceDB on other cloud providers such as google and azure.
