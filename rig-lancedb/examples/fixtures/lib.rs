@@ -3,7 +3,7 @@ use std::sync::Arc;
 use arrow_array::{types::Float64Type, ArrayRef, FixedSizeListArray, RecordBatch, StringArray};
 use lancedb::arrow::arrow_schema::{DataType, Field, Fields, Schema};
 use rig::embeddings::embedding::Embedding;
-use rig::Embeddable;
+use rig::{Embeddable, OneOrMany};
 use serde::Deserialize;
 
 #[derive(Embeddable, Clone, Deserialize, Debug)]
@@ -48,7 +48,7 @@ pub fn schema(dims: usize) -> Schema {
 
 // Convert FakeDefinition objects and their embedding to a RecordBatch.
 pub fn as_record_batch(
-    records: Vec<(FakeDefinition, Embedding)>,
+    records: Vec<(FakeDefinition, OneOrMany<Embedding>)>,
     dims: usize,
 ) -> Result<RecordBatch, lancedb::arrow::arrow_schema::ArrowError> {
     let id = StringArray::from_iter_values(
@@ -68,7 +68,7 @@ pub fn as_record_batch(
     let embedding = FixedSizeListArray::from_iter_primitive::<Float64Type, _, _>(
         records
             .into_iter()
-            .map(|(_, Embedding { vec, .. })| Some(vec.into_iter().map(Some).collect::<Vec<_>>()))
+            .map(|(_, embeddings)| Some(embeddings.first().vec.into_iter().map(Some).collect::<Vec<_>>()))
             .collect::<Vec<_>>(),
         dims as i32,
     );

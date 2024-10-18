@@ -84,7 +84,7 @@ async fn main() -> Result<(), anyhow::Error> {
             |(FakeDefinition { id, definition, .. }, embedding)| Document {
                 id: id.clone(),
                 definition: definition.clone(),
-                embedding: embedding.vec.clone(),
+                embedding: embedding.first().vec.clone(),
             },
         )
         .collect::<Vec<_>>();
