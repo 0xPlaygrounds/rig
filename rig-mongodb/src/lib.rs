@@ -2,24 +2,23 @@ use futures::StreamExt;
 use mongodb::bson::{self, doc};
 
 use rig::{
-    embeddings::builder::DocumentEmbeddings,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::embedding::{Embedding, EmbeddingModel},
     vector_store::{VectorStoreError, VectorStoreIndex},
 };
 use serde::Deserialize;
 
 /// A MongoDB vector store.
-pub struct MongoDbVectorStore {
-    collection: mongodb::Collection<DocumentEmbeddings>,
+pub struct MongoDbVectorStore<C> {
+    collection: mongodb::Collection<C>,
 }
 
 fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
     VectorStoreError::DatastoreError(Box::new(e))
 }
 
-impl MongoDbVectorStore {
+impl<C> MongoDbVectorStore<C> {
     /// Create a new `MongoDbVectorStore` from a MongoDB collection.
-    pub fn new(collection: mongodb::Collection<DocumentEmbeddings>) -> Self {
+    pub fn new(collection: mongodb::Collection<C>) -> Self {
         Self { collection }
     }
 
@@ -32,20 +31,20 @@ impl MongoDbVectorStore {
         model: M,
         index_name: &str,
         search_params: SearchParams,
-    ) -> MongoDbVectorIndex<M> {
+    ) -> MongoDbVectorIndex<M, C> {
         MongoDbVectorIndex::new(self.collection.clone(), model, index_name, search_params)
     }
 }
 
 /// A vector index for a MongoDB collection.
-pub struct MongoDbVectorIndex<M: EmbeddingModel> {
-    collection: mongodb::Collection<DocumentEmbeddings>,
+pub struct MongoDbVectorIndex<M: EmbeddingModel, C> {
+    collection: mongodb::Collection<C>,
     model: M,
     index_name: String,
     search_params: SearchParams,
 }
 
-impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
+impl<M: EmbeddingModel, C> MongoDbVectorIndex<M, C> {
     /// Vector search stage of aggregation pipeline of mongoDB collection.
     /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
     fn pipeline_search_stage(&self, prompt_embedding: &Embedding, n: usize) -> bson::Document {
@@ -53,12 +52,13 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
             filter,
             exact,
             num_candidates,
+            path,
         } = &self.search_params;
 
         doc! {
           "$vectorSearch": {
             "index": &self.index_name,
-            "path": "embeddings.vec",
+            "path": path,
             "queryVector": &prompt_embedding.vec,
             "numCandidates": num_candidates.unwrap_or((n * 10) as u32),
             "limit": n as u32,
@@ -79,9 +79,9 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
     }
 }
 
-impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
+impl<M: EmbeddingModel, C> MongoDbVectorIndex<M, C> {
     pub fn new(
-        collection: mongodb::Collection<DocumentEmbeddings>,
+        collection: mongodb::Collection<C>,
         model: M,
         index_name: &str,
         search_params: SearchParams,
@@ -99,17 +99,19 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
 /// on each of the fields
 pub struct SearchParams {
     filter: mongodb::bson::Document,
+    path: String,
     exact: Option<bool>,
     num_candidates: Option<u32>,
 }
 
 impl SearchParams {
     /// Initializes a new `SearchParams` with default values.
-    pub fn new() -> Self {
+    pub fn new(path: &str) -> Self {
         Self {
             filter: doc! {},
             exact: None,
             num_candidates: None,
+            path: path.to_string(),
         }
     }
 
@@ -139,13 +141,9 @@ impl SearchParams {
     }
 }
 
-impl Default for SearchParams {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbVectorIndex<M> {
+impl<M: EmbeddingModel + std::marker::Sync + Send, C: std::marker::Sync + Send> VectorStoreIndex
+    for MongoDbVectorIndex<M, C>
+{
     async fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
         &self,
         query: &str,

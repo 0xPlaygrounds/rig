@@ -36,3 +36,15 @@ derive = ["dep:rig-derive"]
 [[test]]
 name = "embeddable_macro"
 required-features = ["derive"]
+
+[[example]]
+name = "rag"
+required-features = ["derive"] 
+
+[[example]]
+name = "vector_search"
+required-features = ["derive"] 
+
+[[example]]
+name = "vector_search_cohere"
+required-features = ["derive"] 

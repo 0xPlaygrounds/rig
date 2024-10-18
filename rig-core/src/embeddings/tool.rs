@@ -1,17 +1,22 @@
-use crate::{self as rig, tool::ToolEmbeddingDyn};
-use rig::embeddings::embeddable::Embeddable;
-use rig_derive::Embeddable;
+use crate::{tool::ToolEmbeddingDyn, Embeddable, OneOrMany};
 use serde::Serialize;
 
 use super::embeddable::EmbeddableError;
 
 /// Used by EmbeddingsBuilder to embed anything that implements ToolEmbedding.
-#[derive(Embeddable, Clone, Serialize, Default, Eq, PartialEq)]
+#[derive(Clone, Serialize, Default, Eq, PartialEq)]
 pub struct EmbeddableTool {
     name: String,
     context: serde_json::Value,
-    #[embed]
     embedding_docs: Vec<String>
+}
+
+impl Embeddable for EmbeddableTool {
+    type Error = EmbeddableError;
+
+    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
+        OneOrMany::many(self.embedding_docs.clone()).map_err(EmbeddableError::new)
+    }
 }
 
 impl EmbeddableTool {
@@ -19,8 +24,7 @@ impl EmbeddableTool {
     pub fn try_from(tool: &dyn ToolEmbeddingDyn) -> Result<Self, EmbeddableError> {
         Ok(EmbeddableTool {
             name: tool.name(),
-            context: serde_json::to_value(tool.context().map_err(EmbeddableError::SerdeError)?)
-                .map_err(EmbeddableError::SerdeError)?,
+            context: tool.context().map_err(EmbeddableError::new)?,
             embedding_docs: tool.embedding_docs(),
         })
     }
