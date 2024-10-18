@@ -9,7 +9,7 @@ use rig::{
 };
 use rig_lancedb::{LanceDbVectorStore, SearchParams};
 
-#[path = "./fixtures/main.rs"]
+#[path = "./fixtures.rs"]
 mod fixture;
 
 #[tokio::main]
