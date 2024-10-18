@@ -76,7 +76,7 @@ impl StructParser for DataStruct {
             .map(|field| {
                 add_struct_bounds(generics, &field.ty);
 
-                let field_name = field.ident;
+                let field_name = &field.ident;
 
                 quote! {
                     self.#field_name
@@ -106,7 +106,7 @@ impl StructParser for DataStruct {
             // Iterate over every field tagged with #[embed(embed_with = "...")]
             .into_iter()
             .map(|(field, custom_func_path)| {
-                let field_name = field.ident;
+                let field_name = &field.ident;
 
                 quote! {
                     #custom_func_path(self.#field_name.clone())

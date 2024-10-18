@@ -262,7 +262,8 @@ mod test {
 
         one_or_many.iter_mut().enumerate().for_each(|(i, item)| {
             if i == 0 {
-                assert_eq!(item, "hello");
+                item.push_str(" world");
+                assert_eq!(item, "hello world");
             }
             if i == 1 {
                 assert_eq!(item, "word");
