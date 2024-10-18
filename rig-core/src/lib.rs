@@ -53,8 +53,8 @@
 //! ## Vector stores and indexes
 //! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
 //! provides the [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
-//! trait, which can be implemented to define vector stores and indices.
-//! Those can then be used as the knowledgebase for a [RagAgent](crate::rag::RagAgent), or
+//! trait, which can be implemented to define vector stores and indices respectively.
+//! Those can then be used as the knowledgebase for a RAG enabled [Agent](crate::agent::Agent), or
 //! as a source of context documents in a custom architecture that use multiple LLMs or agents.
 //!
 //! # Integrations

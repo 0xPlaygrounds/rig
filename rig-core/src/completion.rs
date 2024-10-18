@@ -439,14 +439,14 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     }
 
     /// Sets the max tokens for the completion request.
-    /// Only required for: [ Anthropic ]
+    /// Note: This is required if using Anthropic
     pub fn max_tokens(mut self, max_tokens: u64) -> Self {
         self.max_tokens = Some(max_tokens);
         self
     }
 
     /// Sets the max tokens for the completion request.
-    /// Only required for: [ Anthropic ]
+    /// Note: This is required if using Anthropic
     pub fn max_tokens_opt(mut self, max_tokens: Option<u64>) -> Self {
         self.max_tokens = max_tokens;
         self
