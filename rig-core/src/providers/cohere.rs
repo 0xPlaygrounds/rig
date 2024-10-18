@@ -85,7 +85,11 @@ impl Client {
         EmbeddingModel::new(self.clone(), model, input_type, ndims)
     }
 
-    pub fn embeddings<D: Embeddable>(&self, model: &str, input_type: &str) -> EmbeddingsBuilder<EmbeddingModel, D> {
+    pub fn embeddings<D: Embeddable>(
+        &self,
+        model: &str,
+        input_type: &str,
+    ) -> EmbeddingsBuilder<EmbeddingModel, D> {
         EmbeddingsBuilder::new(self.embedding_model(model, input_type))
     }
 

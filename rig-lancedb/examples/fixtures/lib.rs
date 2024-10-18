@@ -68,7 +68,16 @@ pub fn as_record_batch(
     let embedding = FixedSizeListArray::from_iter_primitive::<Float64Type, _, _>(
         records
             .into_iter()
-            .map(|(_, embeddings)| Some(embeddings.first().vec.into_iter().map(Some).collect::<Vec<_>>()))
+            .map(|(_, embeddings)| {
+                Some(
+                    embeddings
+                        .first()
+                        .vec
+                        .into_iter()
+                        .map(Some)
+                        .collect::<Vec<_>>(),
+                )
+            })
             .collect::<Vec<_>>(),
         dims as i32,
     );

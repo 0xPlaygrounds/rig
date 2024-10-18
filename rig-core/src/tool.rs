@@ -3,7 +3,10 @@ use std::{collections::HashMap, pin::Pin};
 use futures::Future;
 use serde::{Deserialize, Serialize};
 
-use crate::{completion::{self, ToolDefinition}, embeddings::{embeddable::EmbeddableError, tool::EmbeddableTool}};
+use crate::{
+    completion::{self, ToolDefinition},
+    embeddings::{embeddable::EmbeddableError, tool::EmbeddableTool},
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ToolError {

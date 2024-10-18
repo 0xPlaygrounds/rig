@@ -8,7 +8,10 @@ use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 
 use super::{VectorStoreError, VectorStoreIndex};
-use crate::{embeddings::{Embedding, EmbeddingModel}, OneOrMany};
+use crate::{
+    embeddings::{Embedding, EmbeddingModel},
+    OneOrMany,
+};
 
 /// InMemoryVectorStore is a simple in-memory vector store that stores embeddings
 /// in-memory using a HashMap.
@@ -267,7 +270,8 @@ mod tests {
                             document: "don't-choose-me".to_string(),
                             vec: vec![-0.5, 0.9, 0.1],
                         },
-                    ]).unwrap(),
+                    ])
+                    .unwrap(),
                 ),
                 (
                     "doc2".to_string(),
@@ -281,7 +285,8 @@ mod tests {
                             document: "sandwich".to_string(),
                             vec: vec![0.5, 0.5, -0.7],
                         },
-                    ],).unwrap()
+                    ])
+                    .unwrap(),
                 ),
                 (
                     "doc3".to_string(),
@@ -295,7 +300,8 @@ mod tests {
                             document: "banana".to_string(),
                             vec: vec![0.1, -0.5, -0.5],
                         },
-                    ],).unwrap()
+                    ])
+                    .unwrap(),
                 ),
             ])
             .unwrap();

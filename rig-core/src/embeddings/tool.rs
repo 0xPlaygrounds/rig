@@ -8,7 +8,7 @@ use super::embeddable::EmbeddableError;
 pub struct EmbeddableTool {
     name: String,
     context: serde_json::Value,
-    embedding_docs: Vec<String>
+    embedding_docs: Vec<String>,
 }
 
 impl Embeddable for EmbeddableTool {

@@ -124,7 +124,12 @@ impl<M: EmbeddingModel, D: Embeddable + Send + Sync + Clone> EmbeddingsBuilder<M
         let embeddings = stream::iter(self.documents.iter().enumerate())
             // Merge the embedding targets of each document into a single list of embedding targets.
             .flat_map(|(i, (_, embed_targets))| {
-                stream::iter(embed_targets.clone().into_iter().map(move |target| (i, target)))
+                stream::iter(
+                    embed_targets
+                        .clone()
+                        .into_iter()
+                        .map(move |target| (i, target)),
+                )
             })
             // Chunk them into N (the emebdding API limit per request).
             .chunks(M::MAX_DOCUMENTS)
@@ -146,7 +151,9 @@ impl<M: EmbeddingModel, D: Embeddable + Send + Sync + Clone> EmbeddingsBuilder<M
                 HashMap::new(),
                 |mut acc: HashMap<_, OneOrMany<Embedding>>, embeddings| async move {
                     embeddings.into_iter().for_each(|(i, embedding)| {
-                        acc.entry(i).or_insert(OneOrMany::one(embedding.clone())).add(embedding.clone());
+                        acc.entry(i)
+                            .or_insert(OneOrMany::one(embedding.clone()))
+                            .add(embedding.clone());
                     });
 
                     Ok(acc)
