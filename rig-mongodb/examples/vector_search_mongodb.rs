@@ -52,8 +52,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Initialize MongoDB vector store
     let collection: Collection<Document> = mongodb_client
-        .database("knowledgebase")
-        .collection("context");
+        .database("knowledgebase") // <-- Use your database name here!
+        .collection("context"); // <-- Use your collection name here!
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
@@ -89,13 +89,12 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .collect::<Vec<_>>();
 
-    // match collection.insert_many(mongo_documents, None).await {
-    //     Ok(_) => println!("Documents added successfully"),
-    //     Err(e) => println!("Error adding documents: {:?}", e),
-    // };
+    match collection.insert_many(mongo_documents, None).await {
+        Ok(_) => println!("Documents added successfully"),
+        Err(e) => println!("Error adding documents: {:?}", e),
+    };
 
-    // Create a vector index on our vector store.
-    // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
+    // Note: an index of type vector called "vector_index" must exist on the MongoDB collection you are querying.
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
     let index = MongoDbVectorIndex::<_, _, FakeDefinition>::new(
         model,

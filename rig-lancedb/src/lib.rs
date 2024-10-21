@@ -22,6 +22,7 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
     VectorStoreError::JsonError(e)
 }
 
+/// A vector index on a LanceDB table.
 /// # Example
 /// ```
 /// use std::{env, sync::Arc};
