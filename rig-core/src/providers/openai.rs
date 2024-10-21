@@ -251,30 +251,31 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 "input": documents,
             }))
             .send()
-            .await?
-            .error_for_status()?
-            .json::<ApiResponse<EmbeddingResponse>>()
             .await?;
 
-        match response {
-            ApiResponse::Ok(response) => {
-                if response.data.len() != documents.len() {
-                    return Err(EmbeddingError::ResponseError(
-                        "Response data length does not match input length".into(),
-                    ));
-                }
+        if response.status().is_success() {
+            match response.json::<ApiResponse<EmbeddingResponse>>().await? {
+                ApiResponse::Ok(response) => {
+                    if response.data.len() != documents.len() {
+                        return Err(EmbeddingError::ResponseError(
+                            "Response data length does not match input length".into(),
+                        ));
+                    }
 
-                Ok(response
-                    .data
-                    .into_iter()
-                    .zip(documents.into_iter())
-                    .map(|(embedding, document)| embeddings::Embedding {
-                        document,
-                        vec: embedding.embedding,
-                    })
-                    .collect())
+                    Ok(response
+                        .data
+                        .into_iter()
+                        .zip(documents.into_iter())
+                        .map(|(embedding, document)| embeddings::Embedding {
+                            document,
+                            vec: embedding.embedding,
+                        })
+                        .collect())
+                }
+                ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
             }
-            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+        } else {
+            Err(EmbeddingError::ProviderError(response.text().await?))
         }
     }
 }
@@ -510,14 +511,15 @@ impl completion::CompletionModel for CompletionModel {
                 },
             )
             .send()
-            .await?
-            .error_for_status()?
-            .json::<ApiResponse<CompletionResponse>>()
             .await?;
 
-        match response {
-            ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+        if response.status().is_success() {
+            match response.json::<ApiResponse<CompletionResponse>>().await? {
+                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+            }
+        } else {
+            Err(CompletionError::ProviderError(response.text().await?))
         }
     }
 }

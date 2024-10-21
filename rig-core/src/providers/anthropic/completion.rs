@@ -196,14 +196,15 @@ impl completion::CompletionModel for CompletionModel {
             .post("/v1/messages")
             .json(&request)
             .send()
-            .await?
-            .error_for_status()?
-            .json::<ApiResponse<CompletionResponse>>()
             .await?;
 
-        match response {
-            ApiResponse::Message(completion) => completion.try_into(),
-            ApiResponse::Error(error) => Err(CompletionError::ProviderError(error.message)),
+        if response.status().is_success() {
+            match response.json::<ApiResponse<CompletionResponse>>().await? {
+                ApiResponse::Message(completion) => completion.try_into(),
+                ApiResponse::Error(error) => Err(CompletionError::ProviderError(error.message)),
+            }
+        } else {
+            Err(CompletionError::ProviderError(response.text().await?))
         }
     }
 }
