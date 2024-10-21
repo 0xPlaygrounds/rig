@@ -140,3 +140,25 @@ impl<'a, State> PdfFileLoader<'a, State> {
         self.iterator
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::PdfFileLoader;
+
+    #[test]
+    fn test_pdf_loader() {
+        let loader = PdfFileLoader::new("*.md").unwrap();
+        let actual = loader
+            .ignore_errors()
+            .read_with_path()
+            .ignore_errors()
+            .iter()
+            .map(|(_, content)| content.split("\n").next().unwrap().to_string())
+            .collect::<Vec<_>>();
+
+        let expected = vec!["# Changelog".to_string(), "# Rig".to_string()];
+
+        assert!(!actual.is_empty());
+        assert!(expected == actual)
+    }
+}
