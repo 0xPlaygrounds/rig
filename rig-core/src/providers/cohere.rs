@@ -57,6 +57,13 @@ impl Client {
         }
     }
 
+    /// Create a new Cohere client from the `COHERE_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    pub fn from_env() -> Self {
+        let api_key = std::env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set");
+        Self::new(&api_key)
+    }
+
     pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.post(url)
