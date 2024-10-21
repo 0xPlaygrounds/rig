@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use futures::StreamExt;
 use mongodb::bson::{self, doc};
 
@@ -8,43 +10,51 @@ use rig::{
 use serde::Deserialize;
 
 /// A MongoDB vector store.
-pub struct MongoDbVectorStore<C: for<'a> Deserialize<'a>> {
-    collection: mongodb::Collection<C>,
+pub struct MongoDbVectorStore<I> {
+    collection: mongodb::Collection<I>,
 }
 
 fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
     VectorStoreError::DatastoreError(Box::new(e))
 }
 
-impl<C: for<'a> Deserialize<'a>> MongoDbVectorStore<C> {
+impl<I> MongoDbVectorStore<I> {
     /// Create a new `MongoDbVectorStore` from a MongoDB collection.
-    pub fn new(collection: mongodb::Collection<C>) -> Self {
+    pub fn new(collection: mongodb::Collection<I>) -> Self {
         Self { collection }
     }
 
     /// Create a new `MongoDbVectorIndex` from an existing `MongoDbVectorStore`.
+    /// Note: this is a rig concept, NOT a mongoDB cloud concept.
+    /// Make sure you have a vector index on your Mongodb collection called `index_name`.
     ///
-    /// The index (of type "vector") must already exist for the MongoDB collection.
     /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
-    pub fn index<M: EmbeddingModel>(
+    pub fn index<M: EmbeddingModel, T: for<'a> Deserialize<'a>>(
         &self,
         model: M,
         index_name: &str,
         search_params: SearchParams,
-    ) -> MongoDbVectorIndex<M, C> {
-        MongoDbVectorIndex::new(self.collection.clone(), model, index_name, search_params)
+    ) -> MongoDbVectorIndex<M, I, T> {
+        MongoDbVectorIndex {
+            _t: PhantomData,
+            collection: self.collection.clone(),
+            model,
+            index_name: index_name.to_string(),
+            search_params,
+        }
     }
 }
 
 /// A vector index for a MongoDB collection.
-pub struct MongoDbVectorIndex<M: EmbeddingModel, C> {
-    collection: mongodb::Collection<C>,
+pub struct MongoDbVectorIndex<M, I, T> {
+    _t: PhantomData<T>,
+    collection: mongodb::Collection<I>,
     model: M,
     index_name: String,
     search_params: SearchParams,
 }
 
-impl<M: EmbeddingModel, C> MongoDbVectorIndex<M, C> {
+impl<M: EmbeddingModel, I, T: for<'a> Deserialize<'a>> MongoDbVectorIndex<M, I, T> {
     /// Vector search stage of aggregation pipeline of mongoDB collection.
     /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
     fn pipeline_search_stage(&self, prompt_embedding: &Embedding, n: usize) -> bson::Document {
@@ -75,22 +85,6 @@ impl<M: EmbeddingModel, C> MongoDbVectorIndex<M, C> {
           "$addFields": {
             "score": { "$meta": "vectorSearchScore" }
           }
-        }
-    }
-}
-
-impl<M: EmbeddingModel, C> MongoDbVectorIndex<M, C> {
-    pub fn new(
-        collection: mongodb::Collection<C>,
-        model: M,
-        index_name: &str,
-        search_params: SearchParams,
-    ) -> Self {
-        Self {
-            collection,
-            model,
-            index_name: index_name.to_string(),
-            search_params,
         }
     }
 }
@@ -141,11 +135,8 @@ impl SearchParams {
     }
 }
 
-impl<
-        M: EmbeddingModel + std::marker::Sync + Send,
-        C: std::marker::Sync + Send,
-        T: for<'a> Deserialize<'a> + std::marker::Send,
-    > VectorStoreIndex<T> for MongoDbVectorIndex<M, C>
+impl<M: EmbeddingModel + Sync + Send, I: Sync + Send, T: for<'a> Deserialize<'a> + Sync + Send>
+    VectorStoreIndex<T> for MongoDbVectorIndex<M, I, T>
 {
     async fn top_n(
         &self,

@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use lancedb::{
     query::{QueryBase, VectorQuery},
     DistanceType,
@@ -88,7 +90,8 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
 ///
 /// println!("Results: {:?}", results);
 /// ```
-pub struct LanceDbVectorStore<M: EmbeddingModel> {
+pub struct LanceDbVectorStore<M: EmbeddingModel, T> {
+    _t: PhantomData<T>,
     /// Defines which model is used to generate embeddings for the vector store.
     model: M,
     /// LanceDB table containing embeddings.
@@ -99,7 +102,25 @@ pub struct LanceDbVectorStore<M: EmbeddingModel> {
     search_params: SearchParams,
 }
 
-impl<M: EmbeddingModel> LanceDbVectorStore<M> {
+impl<M: EmbeddingModel, T: for<'a> Deserialize<'a>> LanceDbVectorStore<M, T> {
+    /// Create an instance of `LanceDbVectorStore` with an existing table and model.
+    /// Define the id field name of the table.
+    /// Define search parameters that will be used to perform vector searches on the table.
+    pub async fn new(
+        table: lancedb::Table,
+        model: M,
+        id_field: &str,
+        search_params: SearchParams,
+    ) -> Result<Self, lancedb::Error> {
+        Ok(Self {
+            _t: PhantomData,
+            table,
+            model,
+            id_field: id_field.to_string(),
+            search_params,
+        })
+    }
+
     /// Apply the search_params to the vector query.
     /// This is a helper function used by the methods `top_n` and `top_n_ids` of the `VectorStoreIndex` trait.
     fn build_query(&self, mut query: VectorQuery) -> VectorQuery {
@@ -211,29 +232,8 @@ impl SearchParams {
     }
 }
 
-impl<M: EmbeddingModel> LanceDbVectorStore<M> {
-    /// Create an instance of `LanceDbVectorStore` with an existing table and model.
-    /// Define the id field name of the table.
-    /// Define search parameters that will be used to perform vector searches on the table.
-    pub async fn new(
-        table: lancedb::Table,
-        model: M,
-        id_field: &str,
-        search_params: SearchParams,
-    ) -> Result<Self, lancedb::Error> {
-        Ok(Self {
-            table,
-            model,
-            id_field: id_field.to_string(),
-            search_params,
-        })
-    }
-}
-
-impl<
-        M: EmbeddingModel + std::marker::Sync + Send,
-        T: for<'a> Deserialize<'a> + std::marker::Send,
-    > VectorStoreIndex<T> for LanceDbVectorStore<M>
+impl<M: EmbeddingModel + Sync + Send, T: for<'a> Deserialize<'a> + Sync + Send> VectorStoreIndex<T>
+    for LanceDbVectorStore<M, T>
 {
     async fn top_n(
         &self,

@@ -26,7 +26,7 @@ struct Link {
 }
 
 // Shape of the document to be stored in MongoDB, with embeddings.
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Debug)]
 struct Document {
     #[serde(rename = "_id")]
     id: String,
@@ -97,7 +97,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create a vector index on our vector store.
     // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = MongoDbVectorStore::new(collection).index(
+    let index = MongoDbVectorStore::new(collection).index::<_, FakeDefinition>(
         model,
         "vector_index",
         SearchParams::new("embedding"),

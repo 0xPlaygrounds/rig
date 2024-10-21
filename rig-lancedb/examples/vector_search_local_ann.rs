@@ -61,14 +61,22 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Define search_params params that will be used by the vector store to perform the vector search.
     let search_params = SearchParams::default();
-    let vector_store = LanceDbVectorStore::new(table, model, "id", search_params).await?;
+    let vector_store =
+        LanceDbVectorStore::<_, FakeDefinition>::new(table, model, "id", search_params).await?;
 
-    // Query the index
+    // Query the index. Get entire matching objects as result.
     let results = vector_store
-        .top_n::<FakeDefinition>("My boss says I zindle too much, what does that mean?", 1)
+        .top_n("My boss says I zindle too much, what does that mean?", 1)
         .await?;
 
     println!("Results: {:?}", results);
+
+    // Query the index. Get only matching ids as result.
+    let id_results = vector_store
+        .top_n_ids("My boss says I zindle too much, what does that mean?", 1)
+        .await?;
+
+    println!("Id results: {:?}", id_results);
 
     Ok(())
 }

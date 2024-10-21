@@ -16,17 +16,17 @@ use crate::{
 /// InMemoryVectorStore is a simple in-memory vector store that stores embeddings
 /// in-memory using a HashMap.
 #[derive(Clone, Default)]
-pub struct InMemoryVectorStore<D> {
+pub struct InMemoryVectorStore<T> {
     /// The embeddings are stored in a HashMap.
     /// Hashmap key is the document id.
     /// Hashmap value is a tuple of the serializable document and its corresponding embeddings.
-    embeddings: HashMap<String, (D, OneOrMany<Embedding>)>,
+    embeddings: HashMap<String, (T, OneOrMany<Embedding>)>,
 }
 
-impl<D: for<'a> Deserialize<'a> + Eq + Clone> InMemoryVectorStore<D> {
+impl<T: for<'a> Deserialize<'a> + Eq + Clone> InMemoryVectorStore<T> {
     /// Implement vector search on InMemoryVectorStore.
     /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for InMemoryVectorStore.
-    fn vector_search(&self, prompt_embedding: &Embedding, n: usize) -> EmbeddingRanking<D> {
+    fn vector_search(&self, prompt_embedding: &Embedding, n: usize) -> EmbeddingRanking<T> {
         // Sort documents by best embedding distance
         let mut docs = BinaryHeap::new();
 
@@ -67,7 +67,7 @@ impl<D: for<'a> Deserialize<'a> + Eq + Clone> InMemoryVectorStore<D> {
     /// Returns the store with the added documents.
     pub fn add_documents(
         mut self,
-        documents: Vec<(String, D, OneOrMany<Embedding>)>,
+        documents: Vec<(String, T, OneOrMany<Embedding>)>,
     ) -> Result<Self, VectorStoreError> {
         for (id, doc, embeddings) in documents {
             self.embeddings.insert(id, (doc, embeddings));
@@ -99,35 +99,35 @@ impl<D: for<'a> Deserialize<'a> + Eq + Clone> InMemoryVectorStore<D> {
     }
 
     /// Get the document by its id and deserialize it into the given type.
-    pub fn get_document(&self, id: &str) -> Result<Option<D>, VectorStoreError> {
+    pub fn get_document(&self, id: &str) -> Result<Option<T>, VectorStoreError> {
         Ok(self.embeddings.get(id).map(|(doc, _)| doc.clone()))
     }
 }
 
 /// RankingItem(distance, document_id, serializable document, embeddings document)
 #[derive(Eq, PartialEq)]
-struct RankingItem<'a, D: Deserialize<'a>>(OrderedFloat<f64>, &'a String, &'a D, &'a String);
+struct RankingItem<'a, T: Deserialize<'a>>(OrderedFloat<f64>, &'a String, &'a T, &'a String);
 
-impl<D: for<'a> Deserialize<'a> + Eq> Ord for RankingItem<'_, D> {
+impl<T: for<'a> Deserialize<'a> + Eq> Ord for RankingItem<'_, T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0.cmp(&other.0)
     }
 }
 
-impl<D: for<'a> Deserialize<'a> + Eq> PartialOrd for RankingItem<'_, D> {
+impl<T: for<'a> Deserialize<'a> + Eq> PartialOrd for RankingItem<'_, T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-type EmbeddingRanking<'a, D> = BinaryHeap<Reverse<RankingItem<'a, D>>>;
+type EmbeddingRanking<'a, T> = BinaryHeap<Reverse<RankingItem<'a, T>>>;
 
-impl<D: for<'a> Deserialize<'a> + Clone> InMemoryVectorStore<D> {
-    pub fn index<M: EmbeddingModel>(self, model: M) -> InMemoryVectorIndex<M, D> {
+impl<T: for<'a> Deserialize<'a> + Clone> InMemoryVectorStore<T> {
+    pub fn index<M: EmbeddingModel>(self, model: M) -> InMemoryVectorIndex<M, T> {
         InMemoryVectorIndex::new(model, self)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, OneOrMany<Embedding>))> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &(T, OneOrMany<Embedding>))> {
         self.embeddings.iter()
     }
 
@@ -140,17 +140,17 @@ impl<D: for<'a> Deserialize<'a> + Clone> InMemoryVectorStore<D> {
     }
 }
 
-pub struct InMemoryVectorIndex<M: EmbeddingModel, D: for<'a> Deserialize<'a> + Clone> {
+pub struct InMemoryVectorIndex<M: EmbeddingModel, T: for<'a> Deserialize<'a> + Clone> {
     model: M,
-    pub store: InMemoryVectorStore<D>,
+    pub store: InMemoryVectorStore<T>,
 }
 
-impl<M: EmbeddingModel, D: for<'a> Deserialize<'a> + Clone> InMemoryVectorIndex<M, D> {
-    pub fn new(model: M, store: InMemoryVectorStore<D>) -> Self {
+impl<M: EmbeddingModel, T: for<'a> Deserialize<'a> + Clone> InMemoryVectorIndex<M, T> {
+    pub fn new(model: M, store: InMemoryVectorStore<T>) -> Self {
         Self { model, store }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, OneOrMany<Embedding>))> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &(T, OneOrMany<Embedding>))> {
         self.store.iter()
     }
 
@@ -163,14 +163,14 @@ impl<M: EmbeddingModel, D: for<'a> Deserialize<'a> + Clone> InMemoryVectorIndex<
     }
 }
 
-impl<M: EmbeddingModel + Sync, D: for<'a> Deserialize<'a> + Sync + Send + Eq + Clone>
-    VectorStoreIndex<D> for InMemoryVectorIndex<M, D>
+impl<M: EmbeddingModel + Sync, T: for<'a> Deserialize<'a> + Sync + Send + Eq + Clone>
+    VectorStoreIndex<T> for InMemoryVectorIndex<M, T>
 {
     async fn top_n(
         &self,
         query: &str,
         n: usize,
-    ) -> Result<Vec<(f64, String, D)>, VectorStoreError> {
+    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let prompt_embedding = &self.model.embed_document(query).await?;
 
         let docs = self.store.vector_search(prompt_embedding, n);

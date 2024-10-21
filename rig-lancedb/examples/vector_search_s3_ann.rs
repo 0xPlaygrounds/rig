@@ -73,11 +73,12 @@ async fn main() -> Result<(), anyhow::Error> {
     // Define search_params params that will be used by the vector store to perform the vector search.
     let search_params = SearchParams::default().distance_type(DistanceType::Cosine);
 
-    let vector_store = LanceDbVectorStore::new(table, model, "id", search_params).await?;
+    let vector_store =
+        LanceDbVectorStore::<_, FakeDefinition>::new(table, model, "id", search_params).await?;
 
     // Query the index
     let results = vector_store
-        .top_n::<FakeDefinition>("I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?", 1)
+        .top_n("I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?", 1)
         .await?;
 
     println!("Results: {:?}", results);
