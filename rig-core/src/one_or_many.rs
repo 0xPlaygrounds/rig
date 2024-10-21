@@ -28,7 +28,7 @@ impl<T: Clone> OneOrMany<T> {
     }
 
     /// After `OneOrMany<T>` is created, add an item of type T to the `rest`.
-    pub fn add(&mut self, item: T) {
+    pub fn push(&mut self, item: T) {
         self.rest.push(item);
     }
 

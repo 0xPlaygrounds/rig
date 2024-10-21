@@ -147,7 +147,7 @@ impl<M: EmbeddingModel, T: Embeddable + Send + Sync + Clone> EmbeddingsBuilder<M
                 |mut acc: HashMap<_, OneOrMany<Embedding>>, embeddings| async move {
                     embeddings.into_iter().for_each(|(i, embedding)| {
                         acc.entry(i)
-                            .and_modify(|embeddings| embeddings.add(embedding.clone()))
+                            .and_modify(|embeddings| embeddings.push(embedding.clone()))
                             .or_insert(OneOrMany::one(embedding.clone()));
                     });
 
