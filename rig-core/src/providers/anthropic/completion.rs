@@ -91,10 +91,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 })
             }
             [Content::ToolUse { name, input, .. }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::ToolCall(
-                    name.clone(),
-                    input.clone(),
-                ),
+                choice: completion::ModelChoice::ToolCall(name.clone(), input.clone()),
                 raw_response: response,
             }),
             _ => Err(CompletionError::ResponseError(
