@@ -102,9 +102,7 @@ async fn main() -> Result<(), anyhow::Error> {
     );
 
     // Query the index
-    let results = index
-        .top_n("What is a linglingdong?", 1)
-        .await?;
+    let results = index.top_n("What is a linglingdong?", 1).await?;
 
     println!("Results: {:?}", results);
 

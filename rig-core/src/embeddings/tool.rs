@@ -1,10 +1,10 @@
 use crate::{tool::ToolEmbeddingDyn, Embeddable, OneOrMany};
-use serde::{Deserialize};
+use serde::{Deserialize, Serialize};
 
 use super::embeddable::EmbeddableError;
 
 /// Used by EmbeddingsBuilder to embed anything that implements ToolEmbedding.
-#[derive(Clone, Deserialize, Default, Eq, PartialEq)]
+#[derive(Clone, Deserialize, Serialize, Default, Eq, PartialEq)]
 pub struct EmbeddableTool {
     pub name: String,
     pub context: serde_json::Value,

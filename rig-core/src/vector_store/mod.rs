@@ -1,5 +1,5 @@
 use futures::future::BoxFuture;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
 
 use crate::embeddings::EmbeddingError;
@@ -22,7 +22,7 @@ pub enum VectorStoreError {
 /// Trait for vector store indexes
 pub trait VectorStoreIndex<T>: Send + Sync
 where
-    T: for<'a> Deserialize<'a> + std::marker::Send,
+    T: for<'a> Deserialize<'a> + Send,
 {
     /// Get the top n documents based on the distance to the given query.
     /// The result is a list of tuples of the form (score, id, document)

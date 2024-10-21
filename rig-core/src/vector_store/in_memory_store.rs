@@ -5,18 +5,18 @@ use std::{
 };
 
 use ordered_float::OrderedFloat;
-use serde::{Deserialize};
+use serde::Deserialize;
 
 use super::{VectorStoreError, VectorStoreIndex};
 use crate::{
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::{tool::EmbeddableTool, Embedding, EmbeddingModel},
     OneOrMany,
 };
 
 /// InMemoryVectorStore is a simple in-memory vector store that stores embeddings
 /// in-memory using a HashMap.
 #[derive(Clone, Default)]
-pub struct InMemoryVectorStore<D: for<'a> Deserialize<'a> + Clone> {
+pub struct InMemoryVectorStore<D> {
     /// The embeddings are stored in a HashMap.
     /// Hashmap key is the document id.
     /// Hashmap value is a tuple of the serializable document and its corresponding embeddings.
@@ -76,15 +76,31 @@ impl<D: for<'a> Deserialize<'a> + Eq + Clone> InMemoryVectorStore<D> {
         Ok(self)
     }
 
+    /// Add objects of type EmbeddableTool to the store.
+    /// Returns the store with the added documents.
+    pub fn add_tools(
+        mut self,
+        documents: Vec<(EmbeddableTool, OneOrMany<Embedding>)>,
+    ) -> Result<Self, VectorStoreError> {
+        for (tool, embeddings) in documents {
+            self.embeddings.insert(
+                tool.name.clone(),
+                (
+                    serde_json::from_value(
+                        serde_json::to_value(tool).map_err(VectorStoreError::JsonError)?,
+                    )
+                    .map_err(VectorStoreError::JsonError)?,
+                    embeddings,
+                ),
+            );
+        }
+
+        Ok(self)
+    }
+
     /// Get the document by its id and deserialize it into the given type.
-    pub fn get_document(
-        &self,
-        id: &str,
-    ) -> Result<Option<D>, VectorStoreError> {
-        Ok(self
-            .embeddings
-            .get(id)
-            .map(|(doc, _)| doc.clone()))
+    pub fn get_document(&self, id: &str) -> Result<Option<D>, VectorStoreError> {
+        Ok(self.embeddings.get(id).map(|(doc, _)| doc.clone()))
     }
 }
 
@@ -147,10 +163,8 @@ impl<M: EmbeddingModel, D: for<'a> Deserialize<'a> + Clone> InMemoryVectorIndex<
     }
 }
 
-impl<
-        M: EmbeddingModel + std::marker::Sync,
-        D: for<'a> Deserialize<'a> + Sync + Send + Eq + Clone,
-    > VectorStoreIndex<D> for InMemoryVectorIndex<M, D>
+impl<M: EmbeddingModel + Sync, D: for<'a> Deserialize<'a> + Sync + Send + Eq + Clone>
+    VectorStoreIndex<D> for InMemoryVectorIndex<M, D>
 {
     async fn top_n(
         &self,
@@ -164,11 +178,7 @@ impl<
         // Return n best
         docs.into_iter()
             .map(|Reverse(RankingItem(distance, id, doc, _))| {
-                Ok((
-                    distance.0,
-                    id.clone(),
-                    doc.clone(),
-                ))
+                Ok((distance.0, id.clone(), doc.clone()))
             })
             .collect::<Result<Vec<_>, _>>()
     }
