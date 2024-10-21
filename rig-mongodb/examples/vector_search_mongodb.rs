@@ -13,6 +13,7 @@ use rig_mongodb::{MongoDbVectorStore, SearchParams};
 // The definition field will be used to generate embeddings.
 #[derive(Embeddable, Clone, Deserialize, Debug)]
 struct FakeDefinition {
+    #[serde(rename = "_id")]
     id: String,
     #[embed]
     definition: String,
@@ -93,11 +94,12 @@ async fn main() -> Result<(), anyhow::Error> {
         Err(e) => println!("Error adding documents: {:?}", e),
     };
 
-    // Create a vector index on our vector store
+    // Create a vector index on our vector store.
+    // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
     let index = MongoDbVectorStore::new(collection).index(
         model,
-        "definitions_vector_index",
+        "vector_index",
         SearchParams::new("embedding"),
     );
 
