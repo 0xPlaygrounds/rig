@@ -9,3 +9,14 @@ pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
         (a, _) => a,
     }
 }
+
+pub fn merge_inplace(a: &mut serde_json::Value, b: serde_json::Value) {
+    match (a, b) {
+        (serde_json::Value::Object(a_map), serde_json::Value::Object(b_map)) => {
+            b_map.into_iter().for_each(|(key, value)| {
+                a_map.insert(key, value);
+            });
+        }
+        _ => {}
+    }
+}
