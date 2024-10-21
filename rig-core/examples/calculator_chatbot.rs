@@ -25,7 +25,7 @@ struct MathError;
 #[error("Init error")]
 struct InitError;
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize)]
 struct Add;
 impl Tool for Add {
     const NAME: &'static str = "add";
@@ -77,7 +77,7 @@ impl ToolEmbedding for Add {
     fn context(&self) -> Self::Context {}
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize)]
 struct Subtract;
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
