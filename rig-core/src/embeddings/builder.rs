@@ -1,67 +1,5 @@
 //! The module defines the [EmbeddingsBuilder] struct which accumulates objects to be embedded and generates the embeddings for each object when built.
 //! Only types that implement the [Embeddable] trait can be added to the [EmbeddingsBuilder].
-//!
-//! # Example
-//! ```rust
-//! use std::env;
-//!
-//! use rig::{
-//!     embeddings::EmbeddingsBuilder,
-//!     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-//!     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-//!     Embeddable,
-//! };
-//! use serde::{Deserialize, Serialize};
-//!
-//! // Shape of data that needs to be RAG'ed.
-//! // The definition field will be used to generate embeddings.
-//! #[derive(Embeddable, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
-//! struct FakeDefinition {
-//!     id: String,
-//!     word: String,
-//!     #[embed]
-//!     definitions: Vec<String>,
-//! }
-//!
-//! // Create OpenAI client
-//! let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-//! let openai_client = Client::new(&openai_api_key);
-//!
-//! let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
-//!
-//! let embeddings = EmbeddingsBuilder::new(model.clone())
-//!     .documents(vec![
-//!         FakeDefinition {
-//!             id: "doc0".to_string(),
-//!             word: "flurbo".to_string(),
-//!             definitions: vec![
-//!                 "A green alien that lives on cold planets.".to_string(),
-//!                 "A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
-//!             ]
-//!         },
-//!         FakeDefinition {
-//!             id: "doc1".to_string(),
-//!             word: "glarb-glarb".to_string(),
-//!             definitions: vec![
-//!                 "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-//!                 "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
-//!             ]
-//!         },
-//!         FakeDefinition {
-//!             id: "doc2".to_string(),
-//!             word: "linglingdong".to_string(),
-//!             definitions: vec![
-//!                 "A term used by inhabitants of the sombrero galaxy to describe humans.".to_string(),
-//!                 "A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
-//!             ]
-//!         },
-//!     ])?
-//!     .build()
-//!     .await?;
-//!                                 
-//! // Use the generated embeddings
-//! // ...
-//! ```
 
 use std::{cmp::max, collections::HashMap};
 
@@ -107,11 +45,68 @@ impl<M: EmbeddingModel, T: Embeddable> EmbeddingsBuilder<M, T> {
     }
 }
 
+/// # Example
+/// ```rust
+/// use std::env;
+///
+/// use rig::{
+///     embeddings::EmbeddingsBuilder,
+///     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+///     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
+///     Embeddable,
+/// };
+/// use serde::{Deserialize, Serialize};
+///
+/// // Shape of data that needs to be RAG'ed.
+/// // The definition field will be used to generate embeddings.
+/// #[derive(Embeddable, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
+/// struct FakeDefinition {
+///     id: String,
+///     word: String,
+///     #[embed]
+///     definitions: Vec<String>,
+/// }
+///
+/// // Create OpenAI client
+/// let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
+/// let openai_client = Client::new(&openai_api_key);
+///
+/// let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+///
+/// let embeddings = EmbeddingsBuilder::new(model.clone())
+///     .documents(vec![
+///         FakeDefinition {
+///             id: "doc0".to_string(),
+///             word: "flurbo".to_string(),
+///             definitions: vec![
+///                 "A green alien that lives on cold planets.".to_string(),
+///                 "A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
+///             ]
+///         },
+///         FakeDefinition {
+///             id: "doc1".to_string(),
+///             word: "glarb-glarb".to_string(),
+///             definitions: vec![
+///                 "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+///                 "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
+///             ]
+///         },
+///         FakeDefinition {
+///             id: "doc2".to_string(),
+///             word: "linglingdong".to_string(),
+///             definitions: vec![
+///                 "A term used by inhabitants of the sombrero galaxy to describe humans.".to_string(),
+///                 "A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
+///             ]
+///         },
+///     ])?
+///     .build()
+///     .await?;
+/// ```
 impl<M: EmbeddingModel, T: Embeddable + Send + Sync + Clone> EmbeddingsBuilder<M, T> {
     /// Generate embeddings for all documents in the builder.
-    /// The method only applies when documents in the builder each contain multiple embedding targets.
-    /// Returns a vector of tuples, where the first element is the document and the second element is the vector of embeddings.
-    pub async fn build(&self) -> Result<Vec<(T, OneOrMany<Embedding>)>, EmbeddingError> {
+    /// Returns a vector of tuples, where the first element is the document and the second element is the embeddings (either one embedding or many).
+    pub async fn build(self) -> Result<Vec<(T, OneOrMany<Embedding>)>, EmbeddingError> {
         // Use this for reference later to merge a document back with its embeddings.
         let documents_map = self
             .documents
@@ -152,7 +147,7 @@ impl<M: EmbeddingModel, T: Embeddable + Send + Sync + Clone> EmbeddingsBuilder<M
                 |mut acc: HashMap<_, OneOrMany<Embedding>>, embeddings| async move {
                     embeddings.into_iter().for_each(|(i, embedding)| {
                         acc.entry(i)
-                            .and_modify(|embeddings| embeddings.add(embedding.clone()))
+                            .and_modify(|embeddings| embeddings.push(embedding.clone()))
                             .or_insert(OneOrMany::one(embedding.clone()));
                     });
 
