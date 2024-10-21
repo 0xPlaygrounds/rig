@@ -8,7 +8,10 @@ use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 
 use super::{VectorStoreError, VectorStoreIndex};
-use crate::embeddings::{Embedding, EmbeddingModel};
+use crate::{
+    embeddings::{Embedding, EmbeddingModel},
+    OneOrMany,
+};
 
 /// InMemoryVectorStore is a simple in-memory vector store that stores embeddings
 /// in-memory using a HashMap.
@@ -17,7 +20,7 @@ pub struct InMemoryVectorStore<D: Serialize> {
     /// The embeddings are stored in a HashMap.
     /// Hashmap key is the document id.
     /// Hashmap value is a tuple of the serializable document and its corresponding embeddings.
-    embeddings: HashMap<String, (D, Vec<Embedding>)>,
+    embeddings: HashMap<String, (D, OneOrMany<Embedding>)>,
 }
 
 impl<D: Serialize + Eq> InMemoryVectorStore<D> {
@@ -64,7 +67,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// Returns the store with the added documents.
     pub fn add_documents(
         mut self,
-        documents: Vec<(String, D, Vec<Embedding>)>,
+        documents: Vec<(String, D, OneOrMany<Embedding>)>,
     ) -> Result<Self, VectorStoreError> {
         for (id, doc, embeddings) in documents {
             self.embeddings.insert(id, (doc, embeddings));
@@ -109,7 +112,7 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         InMemoryVectorIndex::new(model, self)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, Vec<Embedding>))> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, OneOrMany<Embedding>))> {
         self.embeddings.iter()
     }
 
@@ -132,7 +135,7 @@ impl<M: EmbeddingModel, D: Serialize> InMemoryVectorIndex<M, D> {
         Self { model, store }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, Vec<Embedding>))> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, OneOrMany<Embedding>))> {
         self.store.iter()
     }
 
@@ -145,7 +148,7 @@ impl<M: EmbeddingModel, D: Serialize> InMemoryVectorIndex<M, D> {
     }
 }
 
-impl<M: EmbeddingModel + std::marker::Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
+impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
     for InMemoryVectorIndex<M, D>
 {
     async fn top_n<T: for<'a> Deserialize<'a>>(
@@ -189,7 +192,7 @@ impl<M: EmbeddingModel + std::marker::Sync, D: Serialize + Sync + Send + Eq> Vec
 mod tests {
     use std::cmp::Reverse;
 
-    use crate::embeddings::embedding::Embedding;
+    use crate::{embeddings::embedding::Embedding, OneOrMany};
 
     use super::{InMemoryVectorStore, RankingItem};
 
@@ -200,26 +203,26 @@ mod tests {
                 (
                     "doc1".to_string(),
                     "glarb-garb",
-                    vec![Embedding {
+                    OneOrMany::one(Embedding {
                         document: "glarb-garb".to_string(),
                         vec: vec![0.1, 0.1, 0.5],
-                    }],
+                    }),
                 ),
                 (
                     "doc2".to_string(),
                     "marble-marble",
-                    vec![Embedding {
+                    OneOrMany::one(Embedding {
                         document: "marble-marble".to_string(),
                         vec: vec![0.7, -0.3, 0.0],
-                    }],
+                    }),
                 ),
                 (
                     "doc3".to_string(),
                     "flumb-flumb",
-                    vec![Embedding {
+                    OneOrMany::one(Embedding {
                         document: "flumb-flumb".to_string(),
                         vec: vec![0.3, 0.7, 0.1],
-                    }],
+                    }),
                 ),
             ])
             .unwrap();
@@ -258,7 +261,7 @@ mod tests {
                 (
                     "doc1".to_string(),
                     "glarb-garb",
-                    vec![
+                    OneOrMany::many(vec![
                         Embedding {
                             document: "glarb-garb".to_string(),
                             vec: vec![0.1, 0.1, 0.5],
@@ -267,12 +270,13 @@ mod tests {
                             document: "don't-choose-me".to_string(),
                             vec: vec![-0.5, 0.9, 0.1],
                         },
-                    ],
+                    ])
+                    .unwrap(),
                 ),
                 (
                     "doc2".to_string(),
                     "marble-marble",
-                    vec![
+                    OneOrMany::many(vec![
                         Embedding {
                             document: "marble-marble".to_string(),
                             vec: vec![0.7, -0.3, 0.0],
@@ -281,12 +285,13 @@ mod tests {
                             document: "sandwich".to_string(),
                             vec: vec![0.5, 0.5, -0.7],
                         },
-                    ],
+                    ])
+                    .unwrap(),
                 ),
                 (
                     "doc3".to_string(),
                     "flumb-flumb",
-                    vec![
+                    OneOrMany::many(vec![
                         Embedding {
                             document: "flumb-flumb".to_string(),
                             vec: vec![0.3, 0.7, 0.1],
@@ -295,7 +300,8 @@ mod tests {
                             document: "banana".to_string(),
                             vec: vec![0.1, -0.5, -0.5],
                         },
-                    ],
+                    ])
+                    .unwrap(),
                 ),
             ])
             .unwrap();

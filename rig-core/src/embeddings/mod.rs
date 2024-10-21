@@ -6,6 +6,7 @@
 pub mod builder;
 pub mod embeddable;
 pub mod embedding;
+pub mod tool;
 
 pub use builder::EmbeddingsBuilder;
 pub use embeddable::Embeddable;

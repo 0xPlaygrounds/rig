@@ -13,6 +13,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 futures = "0.3.30"
 mongodb = "2.8.2"
 rig-core = { path = "../rig-core", version = "0.2.1" }
+
 serde = { version = "1.0.203", features = ["derive"] }
 serde_json = "1.0.117"
 tracing = "0.1.40"
@@ -20,3 +21,7 @@ tracing = "0.1.40"
 [dev-dependencies]
 anyhow = "1.0.86"
 tokio = { version = "1.38.0", features = ["macros"] }
+
+[[example]]
+name = "vector_search_mongodb"
+required-features = ["rig-core/derive"]

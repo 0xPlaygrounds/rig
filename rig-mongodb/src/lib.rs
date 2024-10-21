@@ -2,24 +2,142 @@ use futures::StreamExt;
 use mongodb::bson::{self, doc};
 
 use rig::{
-    embeddings::builder::DocumentEmbeddings,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::embedding::{Embedding, EmbeddingModel},
     vector_store::{VectorStoreError, VectorStoreIndex},
 };
 use serde::Deserialize;
 
-/// A MongoDB vector store.
-pub struct MongoDbVectorStore {
-    collection: mongodb::Collection<DocumentEmbeddings>,
+/// # Example
+/// ```
+/// use mongodb::{bson::doc, options::ClientOptions, Client as MongoClient, Collection};
+/// use rig::providers::openai::TEXT_EMBEDDING_ADA_002;
+/// use serde::{Deserialize, Serialize};
+/// use std::env;
+
+/// use rig::Embeddable;
+/// use rig::{
+///     embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex,
+/// };
+/// use rig_mongodb::{MongoDbVectorStore, SearchParams};
+
+/// // Shape of data that needs to be RAG'ed.
+/// // The definition field will be used to generate embeddings.
+/// #[derive(Embeddable, Clone, Deserialize, Debug)]
+/// struct FakeDefinition {
+///     #[serde(rename = "_id")]
+///     id: String,
+///     #[embed]
+///     definition: String,
+/// }
+
+/// #[derive(Clone, Deserialize, Debug, Serialize)]
+/// struct Link {
+///     word: String,
+///     link: String,
+/// }
+
+/// // Shape of the document to be stored in MongoDB, with embeddings.
+/// #[derive(Serialize, Debug)]
+/// struct Document {
+///     #[serde(rename = "_id")]
+///     id: String,
+///     definition: String,
+///     embedding: Vec<f64>,
+/// }
+/// // Initialize OpenAI client
+/// let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
+/// let openai_client = Client::new(&openai_api_key);
+
+/// // Initialize MongoDB client
+/// let mongodb_connection_string =
+///     env::var("MONGODB_CONNECTION_STRING").expect("MONGODB_CONNECTION_STRING not set");
+/// let options = ClientOptions::parse(mongodb_connection_string)
+///     .await
+///     .expect("MongoDB connection string should be valid");
+
+/// let mongodb_client =
+///     MongoClient::with_options(options).expect("MongoDB client options should be valid");
+
+/// // Initialize MongoDB vector store
+/// let collection: Collection<Document> = mongodb_client
+///     .database("knowledgebase")
+///     .collection("context");
+
+/// // Select the embedding model and generate our embeddings
+/// let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+
+/// let fake_definitions = vec![
+///     FakeDefinition {
+///         id: "doc0".to_string(),
+///         definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
+///     },
+///     FakeDefinition {
+///         id: "doc1".to_string(),
+///         definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+///     },
+///     FakeDefinition {
+///         id: "doc2".to_string(),
+///         definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
+///     }
+/// ];
+
+/// let embeddings = EmbeddingsBuilder::new(model.clone())
+///     .documents(fake_definitions)?
+///     .build()
+///     .await?;
+
+/// let mongo_documents = embeddings
+///     .iter()
+///     .map(
+///         |(FakeDefinition { id, definition, .. }, embedding)| Document {
+///             id: id.clone(),
+///             definition: definition.clone(),
+///             embedding: embedding.first().vec.clone(),
+///         },
+///     )
+///     .collect::<Vec<_>>();
+
+/// match collection.insert_many(mongo_documents, None).await {
+///     Ok(_) => println!("Documents added successfully"),
+///     Err(e) => println!("Error adding documents: {:?}", e),
+/// };
+
+/// // Create a vector index on our vector store.
+/// // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
+/// // IMPORTANT: Reuse the same model that was used to generate the embeddings
+/// let index = MongoDbVectorStore::new(collection).index(
+///     model,
+///     "vector_index",
+///     SearchParams::new("embedding"),
+/// );
+
+/// // Query the index
+/// let results = index
+///     .top_n::<FakeDefinition>("What is a linglingdong?", 1)
+///     .await?;
+
+/// println!("Results: {:?}", results);
+
+/// let id_results = index
+///     .top_n_ids("What is a linglingdong?", 1)
+///     .await?
+///     .into_iter()
+///     .map(|(score, id)| (score, id))
+///     .collect::<Vec<_>>();
+
+/// println!("ID results: {:?}", id_results);
+/// ```
+pub struct MongoDbVectorStore<C> {
+    collection: mongodb::Collection<C>,
 }
 
 fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
     VectorStoreError::DatastoreError(Box::new(e))
 }
 
-impl MongoDbVectorStore {
+impl<C> MongoDbVectorStore<C> {
     /// Create a new `MongoDbVectorStore` from a MongoDB collection.
-    pub fn new(collection: mongodb::Collection<DocumentEmbeddings>) -> Self {
+    pub fn new(collection: mongodb::Collection<C>) -> Self {
         Self { collection }
     }
 
@@ -32,20 +150,20 @@ impl MongoDbVectorStore {
         model: M,
         index_name: &str,
         search_params: SearchParams,
-    ) -> MongoDbVectorIndex<M> {
+    ) -> MongoDbVectorIndex<M, C> {
         MongoDbVectorIndex::new(self.collection.clone(), model, index_name, search_params)
     }
 }
 
 /// A vector index for a MongoDB collection.
-pub struct MongoDbVectorIndex<M: EmbeddingModel> {
-    collection: mongodb::Collection<DocumentEmbeddings>,
+pub struct MongoDbVectorIndex<M: EmbeddingModel, C> {
+    collection: mongodb::Collection<C>,
     model: M,
     index_name: String,
     search_params: SearchParams,
 }
 
-impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
+impl<M: EmbeddingModel, C> MongoDbVectorIndex<M, C> {
     /// Vector search stage of aggregation pipeline of mongoDB collection.
     /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
     fn pipeline_search_stage(&self, prompt_embedding: &Embedding, n: usize) -> bson::Document {
@@ -53,12 +171,13 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
             filter,
             exact,
             num_candidates,
+            path,
         } = &self.search_params;
 
         doc! {
           "$vectorSearch": {
             "index": &self.index_name,
-            "path": "embeddings.vec",
+            "path": path,
             "queryVector": &prompt_embedding.vec,
             "numCandidates": num_candidates.unwrap_or((n * 10) as u32),
             "limit": n as u32,
@@ -79,9 +198,9 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
     }
 }
 
-impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
+impl<M: EmbeddingModel, C> MongoDbVectorIndex<M, C> {
     pub fn new(
-        collection: mongodb::Collection<DocumentEmbeddings>,
+        collection: mongodb::Collection<C>,
         model: M,
         index_name: &str,
         search_params: SearchParams,
@@ -99,17 +218,19 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
 /// on each of the fields
 pub struct SearchParams {
     filter: mongodb::bson::Document,
+    path: String,
     exact: Option<bool>,
     num_candidates: Option<u32>,
 }
 
 impl SearchParams {
     /// Initializes a new `SearchParams` with default values.
-    pub fn new() -> Self {
+    pub fn new(path: &str) -> Self {
         Self {
             filter: doc! {},
             exact: None,
             num_candidates: None,
+            path: path.to_string(),
         }
     }
 
@@ -139,14 +260,10 @@ impl SearchParams {
     }
 }
 
-impl Default for SearchParams {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbVectorIndex<M> {
-    async fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
+impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
+    for MongoDbVectorIndex<M, C>
+{
+    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
         query: &str,
         n: usize,

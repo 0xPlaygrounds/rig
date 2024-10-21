@@ -2,7 +2,6 @@ use anyhow::Result;
 use rig::{
     cli_chatbot::cli_chatbot,
     completion::ToolDefinition,
-    embeddings::builder::DocumentEmbeddings,
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     tool::{Tool, ToolEmbedding, ToolSet},
@@ -248,7 +247,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .tools(&toolset)?
+        .documents(toolset.embedabble_tools()?)?
         .build()
         .await?;
 
@@ -256,13 +255,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .add_documents(
             embeddings
                 .into_iter()
-                .map(
-                    |DocumentEmbeddings {
-                         id,
-                         document,
-                         embeddings,
-                     }| { (id, document, embeddings) },
-                )
+                .map(|(tool, embedding)| (tool.name.clone(), tool, embedding))
                 .collect(),
         )?
         .index(embedding_model);
