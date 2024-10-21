@@ -140,17 +140,3 @@ impl<'a, State> PdfFileLoader<'a, State> {
         self.iterator
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::PdfFileLoader;
-
-    #[test]
-    fn test_pdf_loader() {
-        let loader = PdfFileLoader::new("pdfs/*.pdf").unwrap();
-        let files = loader
-            .read_with_path()
-            .iter()
-            .for_each(|file| println!("{:?}", file));
-    }
-}

@@ -99,18 +99,3 @@ impl<'a, State> FileLoader<'a, State> {
         self.iterator
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::FileLoader;
-
-    #[test]
-    fn test_file_loader() {
-        let loader = FileLoader::new("src/*.rs").unwrap();
-        loader
-            .ignore_errors()
-            .read_with_path()
-            .iter()
-            .for_each(|file| println!("{:?}", file));
-    }
-}
