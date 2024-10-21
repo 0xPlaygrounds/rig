@@ -141,10 +141,10 @@ impl SearchParams {
     }
 }
 
-impl<M: EmbeddingModel + std::marker::Sync + Send, C: std::marker::Sync + Send> VectorStoreIndex
+impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     for MongoDbVectorIndex<M, C>
 {
-    async fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
+    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
         query: &str,
         n: usize,

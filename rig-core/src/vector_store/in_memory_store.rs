@@ -148,7 +148,7 @@ impl<M: EmbeddingModel, D: Serialize> InMemoryVectorIndex<M, D> {
     }
 }
 
-impl<M: EmbeddingModel + std::marker::Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
+impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
     for InMemoryVectorIndex<M, D>
 {
     async fn top_n<T: for<'a> Deserialize<'a>>(

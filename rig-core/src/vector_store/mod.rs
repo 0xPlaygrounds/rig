@@ -23,7 +23,7 @@ pub enum VectorStoreError {
 pub trait VectorStoreIndex: Send + Sync {
     /// Get the top n documents based on the distance to the given query.
     /// The result is a list of tuples of the form (score, id, document)
-    fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
+    fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
         query: &str,
         n: usize,
