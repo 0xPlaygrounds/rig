@@ -1,11 +1,11 @@
 pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
-    match (a.clone(), b) {
-        (serde_json::Value::Object(mut a), serde_json::Value::Object(b)) => {
-            b.into_iter().for_each(|(key, value)| {
-                a.insert(key.clone(), value.clone());
+    match (a, b) {
+        (serde_json::Value::Object(mut a_map), serde_json::Value::Object(b_map)) => {
+            b_map.into_iter().for_each(|(key, value)| {
+                a_map.insert(key, value);
             });
-            serde_json::Value::Object(a)
+            serde_json::Value::Object(a_map)
         }
-        _ => a,
+        (a, _) => a,
     }
 }
