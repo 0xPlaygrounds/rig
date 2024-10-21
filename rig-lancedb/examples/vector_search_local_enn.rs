@@ -7,7 +7,7 @@ use rig::{
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndexDyn,
 };
-use rig_lancedb::{LanceDbVectorStore, SearchParams};
+use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;
@@ -43,7 +43,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .execute()
         .await?;
 
-    let vector_store = LanceDbVectorStore::new(table, model, "id", search_params).await?;
+    let vector_store = LanceDbVectorIndex::new(table, model, "id", search_params).await?;
 
     // Query the index
     let results = vector_store

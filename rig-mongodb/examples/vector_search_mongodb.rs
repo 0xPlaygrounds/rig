@@ -7,7 +7,7 @@ use rig::Embeddable;
 use rig::{
     embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex,
 };
-use rig_mongodb::{MongoDbVectorStore, SearchParams};
+use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
@@ -89,16 +89,17 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .collect::<Vec<_>>();
 
-    match collection.insert_many(mongo_documents, None).await {
-        Ok(_) => println!("Documents added successfully"),
-        Err(e) => println!("Error adding documents: {:?}", e),
-    };
+    // match collection.insert_many(mongo_documents, None).await {
+    //     Ok(_) => println!("Documents added successfully"),
+    //     Err(e) => println!("Error adding documents: {:?}", e),
+    // };
 
     // Create a vector index on our vector store.
     // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = MongoDbVectorStore::new(collection).index::<_, FakeDefinition>(
+    let index = MongoDbVectorIndex::<_, _, FakeDefinition>::new(
         model,
+        collection,
         "vector_index",
         SearchParams::new("embedding"),
     );

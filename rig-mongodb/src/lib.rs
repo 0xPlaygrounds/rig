@@ -9,6 +9,11 @@ use rig::{
 };
 use serde::Deserialize;
 
+fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
+    VectorStoreError::DatastoreError(Box::new(e))
+}
+
+/// A vector index on a MongoDB collection.
 /// # Example
 /// ```
 /// use mongodb::{bson::doc, options::ClientOptions, Client as MongoClient, Collection};
@@ -107,12 +112,13 @@ use serde::Deserialize;
 /// // Create a vector index on our vector store.
 /// // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
 /// // IMPORTANT: Reuse the same model that was used to generate the embeddings
-/// let index = MongoDbVectorStore::new(collection).index(
+/// let index = MongoDbVectorIndex::<_, _, FakeDefinition>::new(
 ///     model,
+///     collection,
 ///     "vector_index",
 ///     SearchParams::new("embedding"),
 /// );
-
+///
 /// // Query the index
 /// let results = index
 ///     .top_n::<FakeDefinition>("What is a linglingdong?", 1)
@@ -129,42 +135,6 @@ use serde::Deserialize;
 
 /// println!("ID results: {:?}", id_results);
 /// ```
-pub struct MongoDbVectorStore<C> {
-    collection: mongodb::Collection<C>,
-}
-
-fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
-    VectorStoreError::DatastoreError(Box::new(e))
-}
-
-impl<I> MongoDbVectorStore<I> {
-    /// Create a new `MongoDbVectorStore` from a MongoDB collection.
-    pub fn new(collection: mongodb::Collection<I>) -> Self {
-        Self { collection }
-    }
-
-    /// Create a new `MongoDbVectorIndex` from an existing `MongoDbVectorStore`.
-    /// Note: this is a rig concept, NOT a mongoDB cloud concept.
-    /// Make sure you have a vector index on your Mongodb collection called `index_name`.
-    ///
-    /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
-    pub fn index<M: EmbeddingModel, T: for<'a> Deserialize<'a>>(
-        &self,
-        model: M,
-        index_name: &str,
-        search_params: SearchParams,
-    ) -> MongoDbVectorIndex<M, I, T> {
-        MongoDbVectorIndex {
-            _t: PhantomData,
-            collection: self.collection.clone(),
-            model,
-            index_name: index_name.to_string(),
-            search_params,
-        }
-    }
-}
-
-/// A vector index for a MongoDB collection.
 pub struct MongoDbVectorIndex<M, I, T> {
     _t: PhantomData<T>,
     collection: mongodb::Collection<I>,
@@ -174,6 +144,26 @@ pub struct MongoDbVectorIndex<M, I, T> {
 }
 
 impl<M: EmbeddingModel, I, T: for<'a> Deserialize<'a>> MongoDbVectorIndex<M, I, T> {
+    /// Create a new `MongoDbVectorIndex` from an existing `MongoDbVectorStore`.
+    /// Note: this is a rig concept, NOT a mongoDB cloud concept.
+    /// Make sure you have a vector index on your Mongodb collection called `index_name`.
+    ///
+    /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
+    pub fn new(
+        model: M,
+        collection: mongodb::Collection<I>,
+        index_name: &str,
+        search_params: SearchParams,
+    ) -> MongoDbVectorIndex<M, I, T> {
+        Self {
+            _t: PhantomData,
+            collection,
+            model,
+            index_name: index_name.to_string(),
+            search_params,
+        }
+    }
+
     /// Vector search stage of aggregation pipeline of mongoDB collection.
     /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
     fn pipeline_search_stage(&self, prompt_embedding: &Embedding, n: usize) -> bson::Document {

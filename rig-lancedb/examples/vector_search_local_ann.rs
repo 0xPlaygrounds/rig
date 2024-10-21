@@ -8,7 +8,7 @@ use rig::{
     embeddings::{builder::EmbeddingsBuilder, embedding::EmbeddingModel},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
 };
-use rig_lancedb::{LanceDbVectorStore, SearchParams};
+use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;
@@ -62,7 +62,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Define search_params params that will be used by the vector store to perform the vector search.
     let search_params = SearchParams::default();
     let vector_store =
-        LanceDbVectorStore::<_, FakeDefinition>::new(table, model, "id", search_params).await?;
+        LanceDbVectorIndex::<_, FakeDefinition>::new(table, model, "id", search_params).await?;
 
     // Query the index. Get entire matching objects as result.
     let results = vector_store

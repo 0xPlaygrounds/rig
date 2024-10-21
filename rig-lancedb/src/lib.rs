@@ -34,7 +34,7 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
 ///     embeddings::{builder::EmbeddingsBuilder, embedding::EmbeddingModel},
 ///     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
 /// };
-/// use rig_lancedb::{LanceDbVectorStore, SearchParams};
+/// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 ///
 /// #[path = "../examples/fixtures/lib.rs"]
 /// mod fixture;
@@ -85,7 +85,7 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
 ///
 /// // Define search_params params that will be used by the vector store to perform the vector search.
 /// let search_params = SearchParams::default();
-/// let vector_store = LanceDbVectorStore::new(table, model, "id", search_params).await?;
+/// let vector_store = LanceDbVectorIndex::new(table, model, "id", search_params).await?;
 ///
 /// // Query the index
 /// let results = vector_store
@@ -94,7 +94,7 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
 ///
 /// println!("Results: {:?}", results);
 /// ```
-pub struct LanceDbVectorStore<M: EmbeddingModel, T> {
+pub struct LanceDbVectorIndex<M: EmbeddingModel, T> {
     _t: PhantomData<T>,
     /// Defines which model is used to generate embeddings for the vector store.
     model: M,
@@ -106,8 +106,8 @@ pub struct LanceDbVectorStore<M: EmbeddingModel, T> {
     search_params: SearchParams,
 }
 
-impl<M: EmbeddingModel, T: for<'a> Deserialize<'a>> LanceDbVectorStore<M, T> {
-    /// Create an instance of `LanceDbVectorStore` with an existing table and model.
+impl<M: EmbeddingModel, T: for<'a> Deserialize<'a>> LanceDbVectorIndex<M, T> {
+    /// Create an instance of `LanceDbVectorIndex` with an existing table and model.
     /// Define the id field name of the table.
     /// Define search parameters that will be used to perform vector searches on the table.
     pub async fn new(
@@ -237,7 +237,7 @@ impl SearchParams {
 }
 
 impl<M: EmbeddingModel + Sync + Send, T: for<'a> Deserialize<'a> + Sync + Send> VectorStoreIndex<T>
-    for LanceDbVectorStore<M, T>
+    for LanceDbVectorIndex<M, T>
 {
     async fn top_n(
         &self,
