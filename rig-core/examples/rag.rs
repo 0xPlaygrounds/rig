@@ -10,8 +10,9 @@ use rig::{
 use serde::Serialize;
 
 // Shape of data that needs to be RAG'ed.
-// The definition field will be used to generate embeddings.
-#[derive(Embeddable, Clone, Debug, Serialize, Eq, PartialEq, Default)]
+// A vector search needs to be performed on the definitions, so we derive the `Embeddable` trait for `FakeDefinition`
+// and tag that field with `#[embed]`.
+#[derive(Embeddable, Serialize, Clone, Debug, Eq, PartialEq, Default)]
 struct FakeDefinition {
     id: String,
     #[embed]
@@ -26,6 +27,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
+    // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(vec![
             FakeDefinition {
@@ -54,14 +56,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     let index = InMemoryVectorStore::default()
-        .add_documents(
-            embeddings
-                .into_iter()
-                .map(|(fake_definition, embedding_vec)| {
-                    (fake_definition.id.clone(), fake_definition, embedding_vec)
-                })
-                .collect(),
-        )?
+        .add_documents_with_id(embeddings, "id")?
         .index(embedding_model);
 
     let rag_agent = openai_client.agent("gpt-4")

@@ -78,7 +78,7 @@ pub mod tool;
 pub mod vector_store;
 
 // Re-export commonly used types and traits
-pub use embeddings::embeddable::Embeddable;
+pub use embeddings::Embeddable;
 pub use one_or_many::OneOrMany;
 
 #[cfg(feature = "derive")]
