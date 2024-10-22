@@ -38,8 +38,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Create a vector index on our vector store
-    // IMPORTANT: Reuse the same model that was used to generate the embeddings
-
+    // ❗IMPORTANT: Reuse the same model that was used to generate the embeddings
     let index = vector_store.index(
         model,
         "moviePlots",

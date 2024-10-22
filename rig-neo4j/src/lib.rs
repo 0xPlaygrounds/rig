@@ -1,12 +1,11 @@
 use neo4rs::*;
-use std::fmt;
 use std::fmt::Debug;
 
 use rig::{
     embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel},
     vector_store::{VectorStore, VectorStoreError, VectorStoreIndex},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 pub struct Neo4jClient {
     pub graph: Graph,
@@ -108,10 +107,12 @@ impl Neo4jVectorStore {
             database_name: database_name.to_string(),
         }
     }
-    /// Create a new `Neo4jVectorIndex` from an existing `Neo4jVectorStore`.
+    /// Creates a `Neo4jVectorIndex` that mirrors an existing Neo4j Vector Index.
     ///
-    /// The index (of type "vector") must already exist for the Neo4j database.
-    /// See the Neo4j [documentation](https://neo4j.com/docs/cypher-manual/current/genai-integrations/#multiple-embeddings) for more information on creating indexes.
+    /// An index (of type "vector") of the same name as `index_name` must already exist for the Neo4j database.
+    /// See the Neo4j [documentation (Create vector index)](https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/setup/vector-index/) for more information on creating indexes.
+    ///
+    /// ❗IMPORTANT: The index must be created with the same embedding model that will be used to query the index.
     pub fn index<M: EmbeddingModel>(
         &self,
         model: M,
@@ -122,28 +123,13 @@ impl Neo4jVectorStore {
     }
 }
 
-/// Available cloud AI providers
-/// https://neo4j.com/docs/cypher-manual/current/genai-integrations/#multiple-embeddings
-#[derive(Clone, Serialize, Debug)]
-pub enum CloudAIProvider {
-    VertexAI,
-    OpenAI,
-    AzureOpenAI,
-    Bedrock,
-}
-/// A vector index for a MongoDB collection.
+/// A vector index for a Neo4j graph.
 pub struct Neo4jVectorIndex<M: EmbeddingModel> {
     //collection: mongodb::Collection<DocumentEmbeddings>,
     graph: Graph,
     embedding_model: M,
     index_name: String,
     search_params: SearchParams,
-}
-
-impl fmt::Display for CloudAIProvider {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        Debug::fmt(self, f)
-    }
 }
 
 impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
@@ -243,6 +229,20 @@ impl Default for SearchParams {
 }
 
 impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for Neo4jVectorIndex<M> {
+    /// Get the top n nodes and scores matching the query.
+    ///
+    /// #### Generic Type Parameters
+    ///
+    /// - `T`: The type used to deserialize the result from the Neo4j query.
+    ///        It must implement the `serde::Deserialize` trait.
+    ///
+    /// #### Returns
+    ///
+    /// Returns a `Result` containing a vector of tuples. Each tuple contains:
+    /// - A `f64` representing the similarity score
+    /// - A `String` representing the node ID
+    /// - A value of type `T` representing the deserialized node data
+    ///
     async fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
         &self,
         query: &str,
