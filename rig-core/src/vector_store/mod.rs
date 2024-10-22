@@ -52,20 +52,20 @@ pub trait VectorStoreIndexDyn: Send + Sync {
     ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>>;
 }
 
-impl<I: VectorStoreIndex<Value>> VectorStoreIndexDyn for I {
-    fn top_n<'a>(
-        &'a self,
-        query: &'a str,
-        n: usize,
-    ) -> BoxFuture<'a, Result<Vec<(f64, String, Value)>, VectorStoreError>> {
-        Box::pin(self.top_n(query, n))
-    }
+// impl<I: VectorStoreIndex<Value>> VectorStoreIndexDyn for I {
+//     fn top_n<'a>(
+//         &'a self,
+//         query: &'a str,
+//         n: usize,
+//     ) -> BoxFuture<'a, Result<Vec<(f64, String, Value)>, VectorStoreError>> {
+//         Box::pin(self.top_n(query, n))
+//     }
 
-    fn top_n_ids<'a>(
-        &'a self,
-        query: &'a str,
-        n: usize,
-    ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        Box::pin(self.top_n_ids(query, n))
-    }
-}
+//     fn top_n_ids<'a>(
+//         &'a self,
+//         query: &'a str,
+//         n: usize,
+//     ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
+//         Box::pin(self.top_n_ids(query, n))
+//     }
+// }

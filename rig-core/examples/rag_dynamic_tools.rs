@@ -161,7 +161,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     let index = InMemoryVectorStore::default()
-        .add_tools(embeddings)?
+        .add_documents(
+            embeddings
+                .into_iter()
+                .map(|(tool, embedding_vec)| (tool.name.clone(), tool, embedding_vec))
+                .collect(),
+        )?
         .index(embedding_model);
 
     // Create RAG agent with a single context prompt and a dynamic tool source

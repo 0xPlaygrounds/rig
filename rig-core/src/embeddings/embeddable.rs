@@ -158,3 +158,47 @@ impl<T: Embeddable> Embeddable for Vec<T> {
         OneOrMany::merge(items).map_err(EmbeddableError::new)
     }
 }
+
+// #[derive(serde::Deserialize, serde::Serialize, Clone, Eq, PartialEq)]
+// pub struct EmbeddableEmbeddable(serde_json::Value);
+
+// impl EmbeddableEmbeddable {
+//     pub fn new(item: impl serde::Serialize) -> serde_json::Result<Self> {
+//         Ok(Self(serde_json::to_value(item)?))
+//     }
+
+//     pub fn cast<T: for<'a> Deserialize<'a>>(&self) -> serde_json::Result<T> {
+//         serde_json::from_value(self.0.clone())
+//     }
+// }
+
+// impl<I> crate::vector_store::VectorStoreIndexDyn for I
+// where
+//     I: crate::vector_store::VectorStoreIndex<EmbeddableEmbeddable>,
+// {
+//     fn top_n<'a>(
+//         &'a self,
+//         query: &'a str,
+//         n: usize,
+//     ) -> futures::future::BoxFuture<'a, crate::vector_store::TopNResults> {
+//         Box::pin(async move {
+//             Ok(self
+//                 .top_n(query, n)
+//                 .await?
+//                 .into_iter()
+//                 .map(|(distance, id, embeddable)| (distance, id, embeddable.0))
+//                 .collect())
+//         })
+//     }
+
+//     fn top_n_ids<'a>(
+//         &'a self,
+//         query: &'a str,
+//         n: usize,
+//     ) -> futures::future::BoxFuture<
+//         'a,
+//         Result<Vec<(f64, String)>, crate::vector_store::VectorStoreError>,
+//     > {
+//         Box::pin(self.top_n_ids(query, n))
+//     }
+// }

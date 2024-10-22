@@ -96,9 +96,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Note: an index of type vector called "vector_index" must exist on the MongoDB collection you are querying.
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = MongoDbVectorIndex::<_, _, FakeDefinition>::new(
+    let index = MongoDbVectorIndex::new(
         model,
-        collection,
+        collection.clone_with_type::<FakeDefinition>(),
         "vector_index",
         SearchParams::new("embedding"),
     );

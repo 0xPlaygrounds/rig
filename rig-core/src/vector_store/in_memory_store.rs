@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use super::{VectorStoreError, VectorStoreIndex};
 use crate::{
-    embeddings::{tool::EmbeddableTool, Embedding, EmbeddingModel},
+    embeddings::{Embedding, EmbeddingModel},
     OneOrMany,
 };
 
@@ -76,27 +76,45 @@ impl<T: for<'a> Deserialize<'a> + Eq + Clone> InMemoryVectorStore<T> {
         Ok(self)
     }
 
+    // pub fn add_documents_test(
+    //     mut self,
+    //     embeddable: Vec<(T, OneOrMany<Embedding>)>,
+    // ) -> Result<Self, VectorStoreError> {
+    //     for (document, embeddings) in embeddable {
+    //         self.embeddings.insert(
+    //             "some_id".to_string(),
+    //             (
+    //                 crate::embeddings::embeddable::EmbeddableEmbeddable::new(document)
+    //                     .map_err(VectorStoreError::JsonError)?,
+    //                 embeddings,
+    //             ),
+    //         );
+    //     }
+
+    //     Ok(self)
+    // }
+
     /// Add objects of type EmbeddableTool to the store.
     /// Returns the store with the added documents.
-    pub fn add_tools(
-        mut self,
-        documents: Vec<(EmbeddableTool, OneOrMany<Embedding>)>,
-    ) -> Result<Self, VectorStoreError> {
-        for (tool, embeddings) in documents {
-            self.embeddings.insert(
-                tool.name.clone(),
-                (
-                    serde_json::from_value(
-                        serde_json::to_value(tool).map_err(VectorStoreError::JsonError)?,
-                    )
-                    .map_err(VectorStoreError::JsonError)?,
-                    embeddings,
-                ),
-            );
-        }
+    // pub fn add_tools(
+    //     mut self,
+    //     documents: Vec<(EmbeddableTool, OneOrMany<Embedding>)>,
+    // ) -> Result<Self, VectorStoreError> {
+    //     for (tool, embeddings) in documents {
+    //         self.embeddings.insert(
+    //             tool.name.clone(),
+    //             (
+    //                 serde_json::from_value(
+    //                     serde_json::to_value(tool).map_err(VectorStoreError::JsonError)?,
+    //                 )
+    //                 .map_err(VectorStoreError::JsonError)?,
+    //                 embeddings,
+    //             ),
+    //         );
+    //     }
 
-        Ok(self)
-    }
+    //     Ok(self)
+    // }
 
     /// Get the document by its id and deserialize it into the given type.
     pub fn get_document(&self, id: &str) -> Result<Option<T>, VectorStoreError> {

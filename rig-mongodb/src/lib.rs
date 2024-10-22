@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use futures::StreamExt;
 use mongodb::bson::{self, doc};
 
@@ -134,15 +132,14 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 ///
 /// println!("ID results: {:?}", id_results);
 /// ```
-pub struct MongoDbVectorIndex<M, I, T> {
-    _t: PhantomData<T>,
-    collection: mongodb::Collection<I>,
+pub struct MongoDbVectorIndex<M, T> {
+    collection: mongodb::Collection<T>,
     model: M,
     index_name: String,
     search_params: SearchParams,
 }
 
-impl<M: EmbeddingModel, I, T: for<'a> Deserialize<'a>> MongoDbVectorIndex<M, I, T> {
+impl<M: EmbeddingModel, T: for<'a> Deserialize<'a>> MongoDbVectorIndex<M, T> {
     /// Create a new `MongoDbVectorIndex` from a mongodb collection and index.
     /// Note: this is a rig concept, NOT a mongoDB cloud concept.
     /// Make sure you have a vector index on your Mongodb collection called `index_name`.
@@ -150,12 +147,11 @@ impl<M: EmbeddingModel, I, T: for<'a> Deserialize<'a>> MongoDbVectorIndex<M, I, 
     /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
     pub fn new(
         model: M,
-        collection: mongodb::Collection<I>,
+        collection: mongodb::Collection<T>,
         index_name: &str,
         search_params: SearchParams,
-    ) -> MongoDbVectorIndex<M, I, T> {
+    ) -> MongoDbVectorIndex<M, T> {
         Self {
-            _t: PhantomData,
             collection,
             model,
             index_name: index_name.to_string(),
@@ -243,8 +239,8 @@ impl SearchParams {
     }
 }
 
-impl<M: EmbeddingModel + Sync + Send, I: Sync + Send, T: for<'a> Deserialize<'a> + Sync + Send>
-    VectorStoreIndex<T> for MongoDbVectorIndex<M, I, T>
+impl<M: EmbeddingModel + Sync + Send, T: for<'a> Deserialize<'a> + Sync + Send> VectorStoreIndex<T>
+    for MongoDbVectorIndex<M, T>
 {
     async fn top_n(
         &self,

@@ -4,14 +4,17 @@ use rig::{
     completion::Prompt,
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::in_memory_store::InMemoryVectorStore,
+    vector_store::{
+        in_memory_store::InMemoryVectorStore, TopNResults, VectorStoreError, VectorStoreIndex,
+        VectorStoreIndexDyn,
+    },
     Embeddable,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
-#[derive(Embeddable, Clone, Debug, Serialize, Eq, PartialEq, Default)]
+#[derive(Embeddable, Clone, Debug, Serialize, Eq, PartialEq, Default, Deserialize)]
 struct FakeDefinition {
     id: String,
     #[embed]
@@ -69,7 +72,7 @@ async fn main() -> Result<(), anyhow::Error> {
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.
         ")
-        .dynamic_context(1, index)
+        .dynamic_context(1, MyVectorStore(index))
         .build();
 
     // Prompt the agent and print the response
@@ -78,4 +81,41 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("{}", response);
 
     Ok(())
+}
+
+struct MyVectorStore<I>(I);
+
+impl<I> VectorStoreIndexDyn for MyVectorStore<I>
+where
+    I: VectorStoreIndex<FakeDefinition>,
+{
+    fn top_n<'a>(
+        &'a self,
+        query: &'a str,
+        n: usize,
+    ) -> futures::future::BoxFuture<'a, TopNResults> {
+        Box::pin(async move {
+            self.0
+                .top_n(query, n)
+                .await?
+                .into_iter()
+                .map(|(distance, id, fake_definition)| {
+                    Ok((
+                        distance,
+                        id,
+                        serde_json::to_value(fake_definition)
+                            .map_err(VectorStoreError::JsonError)?,
+                    ))
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+    }
+
+    fn top_n_ids<'a>(
+        &'a self,
+        query: &'a str,
+        n: usize,
+    ) -> futures::future::BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
+        Box::pin(self.top_n_ids(query, n))
+    }
 }
