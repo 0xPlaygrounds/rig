@@ -73,6 +73,7 @@ impl<M: EmbeddingModel, T: Embeddable> EmbeddingsBuilder<M, T> {
 ///
 /// let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 ///
+/// # tokio_test::block_on(async {
 /// let embeddings = EmbeddingsBuilder::new(model.clone())
 ///     .documents(vec![
 ///         FakeDefinition {
@@ -99,9 +100,16 @@ impl<M: EmbeddingModel, T: Embeddable> EmbeddingsBuilder<M, T> {
 ///                 "A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
 ///             ]
 ///         },
-///     ])?
+///     ])
+///     .unwrap()
 ///     .build()
-///     .await?;
+///     .await
+///     .unwrap();
+///
+/// assert_eq!(embeddings.iter().any(|(doc, embeddings)| doc.id == "doc0" && embeddings.len() == 2), true);
+/// assert_eq!(embeddings.iter().any(|(doc, embeddings)| doc.id == "doc1" && embeddings.len() == 2), true);
+/// assert_eq!(embeddings.iter().any(|(doc, embeddings)| doc.id == "doc2" && embeddings.len() == 2), true);
+/// })
 /// ```
 impl<M: EmbeddingModel, T: Embeddable + Send + Sync + Clone> EmbeddingsBuilder<M, T> {
     /// Generate embeddings for all documents in the builder.

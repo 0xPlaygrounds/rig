@@ -79,7 +79,7 @@ pub mod vector_store;
 
 // Re-export commonly used types and traits
 pub use embeddings::Embeddable;
-pub use one_or_many::OneOrMany;
+pub use one_or_many::{EmptyListError, OneOrMany};
 
 #[cfg(feature = "derive")]
 pub use rig_derive::Embeddable;

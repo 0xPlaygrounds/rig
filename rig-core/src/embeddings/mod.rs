@@ -11,3 +11,4 @@ pub mod tool;
 pub use builder::EmbeddingsBuilder;
 pub use embeddable::Embeddable;
 pub use embedding::{Embedding, EmbeddingError, EmbeddingModel};
+pub use tool::EmbeddableTool;
