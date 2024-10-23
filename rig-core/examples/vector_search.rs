@@ -4,13 +4,13 @@ use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-    Embeddable,
+    ExtractEmbeddingFields,
 };
 use serde::{Deserialize, Serialize};
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
-#[derive(Embeddable, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
+#[derive(ExtractEmbeddingFields, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
 struct FakeDefinition {
     id: String,
     word: String,

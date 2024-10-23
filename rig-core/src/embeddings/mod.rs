@@ -4,11 +4,11 @@
 //! and document similarity.
 
 pub mod builder;
-pub mod embeddable;
+pub mod extract_embedding_fields;
 pub mod embedding;
 pub mod tool;
 
 pub use builder::EmbeddingsBuilder;
-pub use embeddable::Embeddable;
+pub use extract_embedding_fields::ExtractEmbeddingFields;
 pub use embedding::{Embedding, EmbeddingError, EmbeddingModel};
 pub use tool::EmbeddableTool;

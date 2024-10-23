@@ -15,11 +15,11 @@ pub(crate) fn basic_embed_fields(data_struct: &DataStruct) -> impl Iterator<Item
     })
 }
 
-/// Adds bounds to where clause that force all fields tagged with #[embed] to implement the Embeddable trait.
+/// Adds bounds to where clause that force all fields tagged with #[embed] to implement the ExtractEmbeddingFields trait.
 pub(crate) fn add_struct_bounds(generics: &mut syn::Generics, field_type: &syn::Type) {
     let where_clause = generics.make_where_clause();
 
     where_clause.predicates.push(parse_quote! {
-        #field_type: Embeddable
+        #field_type: ExtractEmbeddingFields
     });
 }

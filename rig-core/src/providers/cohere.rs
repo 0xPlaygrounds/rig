@@ -15,7 +15,7 @@ use crate::{
     completion::{self, CompletionError},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     extractor::ExtractorBuilder,
-    json_utils, Embeddable,
+    json_utils, ExtractEmbeddingFields,
 };
 
 use schemars::JsonSchema;
@@ -85,7 +85,7 @@ impl Client {
         EmbeddingModel::new(self.clone(), model, input_type, ndims)
     }
 
-    pub fn embeddings<D: Embeddable>(
+    pub fn embeddings<D: ExtractEmbeddingFields>(
         &self,
         model: &str,
         input_type: &str,

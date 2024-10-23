@@ -1,22 +1,22 @@
 //! The module defines the [EmbeddingsBuilder] struct which accumulates objects to be embedded and generates the embeddings for each object when built.
-//! Only types that implement the [Embeddable] trait can be added to the [EmbeddingsBuilder].
+//! Only types that implement the [ExtractEmbeddingFields] trait can be added to the [EmbeddingsBuilder].
 
 use std::{cmp::max, collections::HashMap};
 
 use futures::{stream, StreamExt, TryStreamExt};
 
 use crate::{
-    embeddings::{Embeddable, Embedding, EmbeddingError, EmbeddingModel},
+    embeddings::{ExtractEmbeddingFields, Embedding, EmbeddingError, EmbeddingModel},
     OneOrMany,
 };
 
 /// Builder for creating a collection of embeddings.
-pub struct EmbeddingsBuilder<M: EmbeddingModel, T: Embeddable> {
+pub struct EmbeddingsBuilder<M: EmbeddingModel, T: ExtractEmbeddingFields> {
     model: M,
     documents: Vec<(T, OneOrMany<String>)>,
 }
 
-impl<M: EmbeddingModel, T: Embeddable> EmbeddingsBuilder<M, T> {
+impl<M: EmbeddingModel, T: ExtractEmbeddingFields> EmbeddingsBuilder<M, T> {
     /// Create a new embedding builder with the given embedding model
     pub fn new(model: M) -> Self {
         Self {
@@ -25,18 +25,18 @@ impl<M: EmbeddingModel, T: Embeddable> EmbeddingsBuilder<M, T> {
         }
     }
 
-    /// Add a document that implements `Embeddable` to the builder.
+    /// Add a document that implements `ExtractEmbeddingFields` to the builder.
     pub fn document(mut self, document: T) -> Result<Self, T::Error> {
-        let embed_targets = document.embeddable()?;
+        let embed_targets = document.extract_embedding_fields()?;
 
         self.documents.push((document, embed_targets));
         Ok(self)
     }
 
-    /// Add many documents that implement `Embeddable` to the builder.
+    /// Add many documents that implement `ExtractEmbeddingFields` to the builder.
     pub fn documents(mut self, documents: Vec<T>) -> Result<Self, T::Error> {
         for doc in documents.into_iter() {
-            let embed_targets = doc.embeddable()?;
+            let embed_targets = doc.extract_embedding_fields()?;
 
             self.documents.push((doc, embed_targets));
         }
@@ -53,13 +53,13 @@ impl<M: EmbeddingModel, T: Embeddable> EmbeddingsBuilder<M, T> {
 ///     embeddings::EmbeddingsBuilder,
 ///     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
 ///     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-///     Embeddable,
+///     ExtractEmbeddingFields,
 /// };
 /// use serde::{Deserialize, Serialize};
 ///
 /// // Shape of data that needs to be RAG'ed.
 /// // The definition field will be used to generate embeddings.
-/// #[derive(Embeddable, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
+/// #[derive(ExtractEmbeddingFields, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
 /// struct FakeDefinition {
 ///     id: String,
 ///     word: String,
@@ -111,7 +111,7 @@ impl<M: EmbeddingModel, T: Embeddable> EmbeddingsBuilder<M, T> {
 /// assert_eq!(embeddings.iter().any(|(doc, embeddings)| doc.id == "doc2" && embeddings.len() == 2), true);
 /// })
 /// ```
-impl<M: EmbeddingModel, T: Embeddable + Send + Sync + Clone> EmbeddingsBuilder<M, T> {
+impl<M: EmbeddingModel, T: ExtractEmbeddingFields + Send + Sync + Clone> EmbeddingsBuilder<M, T> {
     /// Generate embeddings for all documents in the builder.
     /// Returns a vector of tuples, where the first element is the document and the second element is the embeddings (either one embedding or many).
     pub async fn build(self) -> Result<Vec<(T, OneOrMany<Embedding>)>, EmbeddingError> {
@@ -179,8 +179,8 @@ impl<M: EmbeddingModel, T: Embeddable + Send + Sync + Clone> EmbeddingsBuilder<M
 #[cfg(test)]
 mod tests {
     use crate::{
-        embeddings::{embeddable::EmbeddableError, Embedding, EmbeddingModel},
-        Embeddable,
+        embeddings::{extract_embedding_fields::ExtractEmbeddingFieldsError, Embedding, EmbeddingModel},
+        ExtractEmbeddingFields,
     };
 
     use super::EmbeddingsBuilder;
@@ -215,11 +215,11 @@ mod tests {
         definitions: Vec<String>,
     }
 
-    impl Embeddable for FakeDefinition {
-        type Error = EmbeddableError;
+    impl ExtractEmbeddingFields for FakeDefinition {
+        type Error = ExtractEmbeddingFieldsError;
 
-        fn embeddable(&self) -> Result<crate::OneOrMany<String>, Self::Error> {
-            crate::OneOrMany::many(self.definitions.clone()).map_err(EmbeddableError::new)
+        fn extract_embedding_fields(&self) -> Result<crate::OneOrMany<String>, Self::Error> {
+            crate::OneOrMany::many(self.definitions.clone()).map_err(ExtractEmbeddingFieldsError::new)
         }
     }
 
@@ -261,10 +261,10 @@ mod tests {
         definition: String,
     }
 
-    impl Embeddable for FakeDefinitionSingle {
-        type Error = EmbeddableError;
+    impl ExtractEmbeddingFields for FakeDefinitionSingle {
+        type Error = ExtractEmbeddingFieldsError;
 
-        fn embeddable(&self) -> Result<crate::OneOrMany<String>, Self::Error> {
+        fn extract_embedding_fields(&self) -> Result<crate::OneOrMany<String>, Self::Error> {
             Ok(crate::OneOrMany::one(self.definition.clone()))
         }
     }

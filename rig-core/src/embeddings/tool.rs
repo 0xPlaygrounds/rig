@@ -1,7 +1,7 @@
-use crate::{tool::ToolEmbeddingDyn, Embeddable, OneOrMany};
+use crate::{tool::ToolEmbeddingDyn, ExtractEmbeddingFields, OneOrMany};
 use serde::Serialize;
 
-use super::embeddable::EmbeddableError;
+use super::extract_embedding_fields::ExtractEmbeddingFieldsError;
 
 /// Used by EmbeddingsBuilder to embed anything that implements ToolEmbedding.
 #[derive(Clone, Serialize, Default, Eq, PartialEq)]
@@ -11,11 +11,11 @@ pub struct EmbeddableTool {
     pub embedding_docs: Vec<String>,
 }
 
-impl Embeddable for EmbeddableTool {
-    type Error = EmbeddableError;
+impl ExtractEmbeddingFields for EmbeddableTool {
+    type Error = ExtractEmbeddingFieldsError;
 
-    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        OneOrMany::many(self.embedding_docs.clone()).map_err(EmbeddableError::new)
+    fn extract_embedding_fields(&self) -> Result<OneOrMany<String>, Self::Error> {
+        OneOrMany::many(self.embedding_docs.clone()).map_err(ExtractEmbeddingFieldsError::new)
     }
 }
 
@@ -81,10 +81,10 @@ impl EmbeddableTool {
     /// assert_eq!(tool.name, "nothing".to_string());
     /// assert_eq!(tool.embedding_docs, vec!["Do nothing.".to_string()]);
     /// ```
-    pub fn try_from(tool: &dyn ToolEmbeddingDyn) -> Result<Self, EmbeddableError> {
+    pub fn try_from(tool: &dyn ToolEmbeddingDyn) -> Result<Self, ExtractEmbeddingFieldsError> {
         Ok(EmbeddableTool {
             name: tool.name(),
-            context: tool.context().map_err(EmbeddableError::new)?,
+            context: tool.context().map_err(ExtractEmbeddingFieldsError::new)?,
             embedding_docs: tool.embedding_docs(),
         })
     }
