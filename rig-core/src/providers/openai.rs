@@ -121,7 +121,10 @@ impl Client {
     ///     .await
     ///     .expect("Failed to embed documents");
     /// ```
-    pub fn embeddings<D: ExtractEmbeddingFields>(&self, model: &str) -> EmbeddingsBuilder<EmbeddingModel, D> {
+    pub fn embeddings<D: ExtractEmbeddingFields>(
+        &self,
+        model: &str,
+    ) -> EmbeddingsBuilder<EmbeddingModel, D> {
         EmbeddingsBuilder::new(self.embedding_model(model))
     }
 

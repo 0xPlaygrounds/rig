@@ -45,7 +45,7 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
         // Note: `ExtractEmbeddingFields` trait is imported with the macro.
 
         impl #impl_generics ExtractEmbeddingFields for #name #ty_generics #where_clause {
-            type Error = rig::embeddings::embeddable::ExtractEmbeddingFieldsError;
+            type Error = rig::embeddings::extract_embedding_fields::ExtractEmbeddingFieldsError;
 
             fn extract_embedding_fields(&self) -> Result<rig::OneOrMany<String>, Self::Error> {
                 #target_stream;
@@ -53,7 +53,7 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
                 rig::OneOrMany::merge(
                     embed_targets.into_iter()
                         .collect::<Result<Vec<_>, _>>()?
-                ).map_err(rig::embeddings::embeddable::ExtractEmbeddingFieldsError::new)
+                ).map_err(rig::embeddings::extract_embedding_fields::ExtractEmbeddingFieldsError::new)
             }
         }
     };

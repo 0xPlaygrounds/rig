@@ -6,7 +6,7 @@ use std::{cmp::max, collections::HashMap};
 use futures::{stream, StreamExt, TryStreamExt};
 
 use crate::{
-    embeddings::{ExtractEmbeddingFields, Embedding, EmbeddingError, EmbeddingModel},
+    embeddings::{Embedding, EmbeddingError, EmbeddingModel, ExtractEmbeddingFields},
     OneOrMany,
 };
 
@@ -179,7 +179,9 @@ impl<M: EmbeddingModel, T: ExtractEmbeddingFields + Send + Sync + Clone> Embeddi
 #[cfg(test)]
 mod tests {
     use crate::{
-        embeddings::{extract_embedding_fields::ExtractEmbeddingFieldsError, Embedding, EmbeddingModel},
+        embeddings::{
+            extract_embedding_fields::ExtractEmbeddingFieldsError, Embedding, EmbeddingModel,
+        },
         ExtractEmbeddingFields,
     };
 
@@ -219,7 +221,8 @@ mod tests {
         type Error = ExtractEmbeddingFieldsError;
 
         fn extract_embedding_fields(&self) -> Result<crate::OneOrMany<String>, Self::Error> {
-            crate::OneOrMany::many(self.definitions.clone()).map_err(ExtractEmbeddingFieldsError::new)
+            crate::OneOrMany::many(self.definitions.clone())
+                .map_err(ExtractEmbeddingFieldsError::new)
         }
     }
 
