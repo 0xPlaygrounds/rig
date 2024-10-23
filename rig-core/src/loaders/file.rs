@@ -222,30 +222,6 @@ impl<'a, T> Iterator for IntoIter<'a, T> {
     }
 }
 
-pub struct Iter<'a, T> {
-    iterator: std::slice::Iter<'a, T>,
-}
-
-impl<'a, T> Iterator for Iter<'a, T> {
-    type Item = &'a T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iterator.next()
-    }
-}
-
-pub struct IterMut<'a, T> {
-    iterator: std::slice::IterMut<'a, T>,
-}
-
-impl<'a, T> Iterator for IterMut<'a, T> {
-    type Item = &'a mut T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iterator.next()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use assert_fs::prelude::{FileTouch, FileWriteStr, PathChild};
