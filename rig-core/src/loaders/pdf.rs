@@ -282,6 +282,32 @@ impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
     }
 }
 
+impl<'a> PdfFileLoader<'a, ByPage> {
+    /// Ignores errors in the iterator, returning only successful results. This can be used on any
+    ///  `PdfFileLoader` state of iterator whose items are results.
+    ///
+    /// # Example
+    /// Read files in directory "tests/data/*.pdf" and ignore errors from unreadable files.
+    ///
+    /// ```rust
+    /// let content = FileLoader::with_glob("tests/data/*.pdf")?.read().ignore_errors().into_iter();
+    /// for result in content {
+    ///     println!("{}", content)
+    /// }
+    /// ```
+    pub fn ignore_errors(self) -> PdfFileLoader<'a, (PathBuf, Vec<(usize, String)>)> {
+        PdfFileLoader {
+            iterator: Box::new(self.iterator.map(|(path, pages)| {
+                let pages = pages
+                    .into_iter()
+                    .filter_map(|(page_no, res)| res.ok().map(|content| (page_no, content)))
+                    .collect::<Vec<_>>();
+                (path, pages)
+            })),
+        }
+    }
+}
+
 impl<'a, T: 'a> PdfFileLoader<'a, Result<T, PdfLoaderError>> {
     /// Ignores errors in the iterator, returning only successful results. This can be used on any
     ///  `PdfFileLoader` state of iterator whose items are results.
@@ -406,6 +432,7 @@ mod tests {
             .load_with_path()
             .ignore_errors()
             .by_page()
+            .ignore_errors()
             .into_iter()
             .collect::<Vec<_>>();
 
@@ -420,18 +447,25 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let mut expected = vec![(
-            PathBuf::from("tests/data/dummy.pdf"),
-            vec![(0, "Dummy PDF file".to_string())],
-        )];
+        let mut expected = vec![
+            (
+                PathBuf::from("tests/data/dummy.pdf"),
+                vec![(0, "Test\nPDF\nDocument\n".to_string())],
+            ),
+            (
+                PathBuf::from("tests/data/pages.pdf"),
+                vec![
+                    (0, "Page\n1\n".to_string()),
+                    (1, "Page\n2\n".to_string()),
+                    (2, "Page\n3\n".to_string()),
+                ],
+            ),
+        ];
 
-        // actual.sort();
-        // expected.sort();
+        actual.sort();
+        expected.sort();
 
-        println!("Expected: {:?}", expected);
-        println!("Actual: {:?}", actual);
-
-        // assert!(!actual.is_empty());
-        // assert!(expected == actual)
+        assert!(!actual.is_empty());
+        assert!(expected == actual)
     }
 }
