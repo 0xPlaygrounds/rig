@@ -266,7 +266,7 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
-    pub fn prompt_with_context(&self) -> String {
+    pub(crate) fn prompt_with_context(&self) -> String {
         if !self.documents.is_empty() {
             format!(
                 "<attachments>\n{}</attachments>\n\n{}",
