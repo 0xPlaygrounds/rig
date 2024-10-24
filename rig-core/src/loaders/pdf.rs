@@ -18,7 +18,11 @@ pub enum PdfLoaderError {
     PdfError(#[from] LopdfError),
 }
 
-trait Loadable {
+// ================================================================
+// Implementing Loadable trait for loading pdfs
+// ================================================================
+
+pub(crate) trait Loadable {
     fn load(self) -> Result<Document, PdfLoaderError>;
     fn load_with_path(self) -> Result<(PathBuf, Document), PdfLoaderError>;
 }
@@ -41,15 +45,17 @@ impl<T: Loadable> Loadable for Result<T, PdfLoaderError> {
     }
 }
 
-// ## PdfFileLoader definitions and implementations ##
+// ================================================================
+// PdfFileLoader definitions and implementations
+// ================================================================
 
-/// `PdfFileLoader` is a utility for loading pdf files from the filesystem using glob patterns or
+/// [PdfFileLoader] is a utility for loading pdf files from the filesystem using glob patterns or
 ///  directory paths. It provides methods to read file contents and handle errors gracefully.
 ///
 /// # Errors
 ///
-/// This module defines a custom error type `PdfFileLoaderError` which can represent various errors
-///  that might occur during file loading operations, such as any `FileLoaderError` alongside
+/// This module defines a custom error type [PdfFileLoaderError] which can represent various errors
+///  that might occur during file loading operations, such as any [FileLoaderError] alongside
 ///  specific PDF-related errors.
 ///
 /// # Example Usage
@@ -66,8 +72,6 @@ impl<T: Loadable> Loadable for Result<T, PdfLoaderError> {
 ///         .load_with_path()
 ///         .ignore_errors()
 ///         .by_page()
-///         .into_iter()
-///         .collect();
 ///
 ///     for content in contents {
 ///         println!("{}", content);
@@ -77,7 +81,7 @@ impl<T: Loadable> Loadable for Result<T, PdfLoaderError> {
 /// }
 /// ```
 ///
-/// `PdfFileLoader` uses strict typing between the iterator methods to ensure that transitions
+/// [PdfFileLoader] uses strict typing between the iterator methods to ensure that transitions
 ///  between different implementations of the loaders and it's methods are handled properly by
 ///  the compiler.
 pub struct PdfFileLoader<'a, T> {
@@ -85,8 +89,9 @@ pub struct PdfFileLoader<'a, T> {
 }
 
 impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
-    /// Loads the contents of the pdfs within the iterator returned by `with_glob` or `with_dir`.
-    /// Loaded PDF documents are raw PDF instances that can be further processed (by page, etc).
+    /// Loads the contents of the pdfs within the iterator returned by [PdfFileLoader::with_glob]
+    ///  or [PdfFileLoader::with_dir]. Loaded PDF documents are raw PDF instances that can be
+    ///  further processed (by page, etc).
     ///
     /// # Example
     /// Load pdfs in directory "tests/data/*.pdf" and return the loaded documents
@@ -106,8 +111,9 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
         }
     }
 
-    /// Loads the contents of the pdfs within the iterator returned by `with_glob` or `with_dir`.
-    /// Loaded PDF documents are raw PDF instances with their path that can be further processed.
+    /// Loads the contents of the pdfs within the iterator returned by [PdfFileLoader::with_glob]
+    ///  or [PdfFileLoader::with_dir]. Loaded PDF documents are raw PDF instances with their path
+    ///  that can be further processed.
     ///
     /// # Example
     /// Load pdfs in directory "tests/data/*.pdf" and return the loaded documents
@@ -129,8 +135,8 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
 }
 
 impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
-    /// Directly reads the contents of the pdfs within the iterator returned by `with_glob` or
-    ///  `with_dir`.
+    /// Directly reads the contents of the pdfs within the iterator returned by
+    ///  [PdfFileLoader::with_glob] or [PdfFileLoader::with_dir].
     ///
     /// # Example
     /// Read pdfs in directory "tests/data/*.pdf" and return the contents of the documents.
@@ -162,8 +168,9 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
         }
     }
 
-    /// Directly reads the contents of the pdfs within the iterator returned by `with_glob` or
-    ///  `with_dir` and returns the path along with the content.
+    /// Directly reads the contents of the pdfs within the iterator returned by
+    ///  [PdfFileLoader::with_glob] or [PdfFileLoader::with_dir] and returns the path along with
+    ///  the content.
     ///
     /// # Example
     /// Read pdfs in directory "tests/data/*.pdf" and return the content and paths of the documents.
@@ -284,7 +291,7 @@ impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
 
 impl<'a> PdfFileLoader<'a, ByPage> {
     /// Ignores errors in the iterator, returning only successful results. This can be used on any
-    ///  `PdfFileLoader` state of iterator whose items are results.
+    ///  [PdfFileLoader] state of iterator whose items are results.
     ///
     /// # Example
     /// Read files in directory "tests/data/*.pdf" and ignore errors from unreadable files.
@@ -310,7 +317,7 @@ impl<'a> PdfFileLoader<'a, ByPage> {
 
 impl<'a, T: 'a> PdfFileLoader<'a, Result<T, PdfLoaderError>> {
     /// Ignores errors in the iterator, returning only successful results. This can be used on any
-    ///  `PdfFileLoader` state of iterator whose items are results.
+    ///  [PdfFileLoader] state of iterator whose items are results.
     ///
     /// # Example
     /// Read files in directory "tests/data/*.pdf" and ignore errors from unreadable files.
@@ -329,10 +336,10 @@ impl<'a, T: 'a> PdfFileLoader<'a, Result<T, PdfLoaderError>> {
 }
 
 impl<'a> PdfFileLoader<'a, Result<PathBuf, FileLoaderError>> {
-    /// Creates a new `PdfFileLoader` using a glob pattern to match files.
+    /// Creates a new [PdfFileLoader] using a glob pattern to match files.
     ///
     /// # Example
-    /// Create a `PdfFileLoader` for all `.pdf` files that match the glob "tests/data/*.pdf".
+    /// Create a [PdfFileLoader] for all `.pdf` files that match the glob "tests/data/*.pdf".
     ///
     /// ```rust
     /// let loader = FileLoader::with_glob("tests/data/*.txt")?;
@@ -349,10 +356,10 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, FileLoaderError>> {
         })
     }
 
-    /// Creates a new `PdfFileLoader` on all files within a directory.
+    /// Creates a new [PdfFileLoader] on all files within a directory.
     ///
     /// # Example
-    /// Create a `PdfFileLoader` for all files that are in the directory "files".
+    /// Create a [PdfFileLoader] for all files that are in the directory "files".
     ///
     /// ```rust
     /// let loader = PdfFileLoader::with_dir("files")?;
@@ -370,7 +377,9 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, FileLoaderError>> {
     }
 }
 
-// Iterators for PdfFileLoader
+// ================================================================
+// PDFFileLoader iterator implementations
+// ================================================================
 
 pub struct IntoIter<'a, T> {
     iterator: Box<dyn Iterator<Item = T> + 'a>,
