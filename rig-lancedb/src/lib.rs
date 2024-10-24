@@ -26,9 +26,9 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
 /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 /// use rig::embeddings::EmbeddingModel;
 ///
-/// fn create_index(table: lancedb::Table, model: EmbeddingModel) {
-///     let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
-/// }
+/// let table: table: lancedb::Table = \*...\*; // <-- Replace with your lancedb table here.
+/// let model: EmbeddingModel = \*...\*; // <-- Replace with your embedding model here.
+/// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
 /// ```
 pub struct LanceDbVectorIndex<M: EmbeddingModel> {
     /// Defines which model is used to generate embeddings for the vector store.
@@ -181,14 +181,14 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
     /// use rig::embeddings::EmbeddingModel;
     ///
-    /// fn execute_search(table: lancedb::Table, model: EmbeddingModel) {
-    ///     let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
+    /// let table: table: lancedb::Table = \*...\*; // <-- Replace with your lancedb table here.
+    /// let model: EmbeddingModel = \*...\*; // <-- Replace with your embedding model here.
+    /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
     ///
-    ///     // Query the index
-    ///     let result = vector_store_index
-    ///         .top_n::<String>("My boss says I zindle too much, what does that mean?", 1)
-    ///         .await?;
-    /// }
+    /// // Query the index
+    /// let result = vector_store_index
+    ///     .top_n::<String>("My boss says I zindle too much, what does that mean?", 1)
+    ///     .await?;
     /// ```
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
@@ -227,14 +227,14 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
     /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
     /// # Example
     /// ```
-    /// fn execute_search(table: lancedb::Table, model: EmbeddingModel) {
-    ///     let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
+    /// let table: table: lancedb::Table = \*...\*; // <-- Replace with your lancedb table here.
+    /// let model: EmbeddingModel = \*...\*; // <-- Replace with your embedding model here.
+    /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
     ///
-    ///     // Query the index
-    ///     let result = vector_store_index
-    ///         .top_n_ids("My boss says I zindle too much, what does that mean?", 1)
-    ///         .await?;
-    /// }
+    /// // Query the index
+    /// let result = vector_store_index
+    ///     .top_n_ids("My boss says I zindle too much, what does that mean?", 1)
+    ///     .await?;
     /// ```
     async fn top_n_ids(
         &self,

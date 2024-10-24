@@ -185,18 +185,19 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     ///     definition: String,
     /// }
     ///
-    /// fn execute_search(collection: mongodb::Collection<Document>, model: EmbeddingModel) {
-    ///     let vector_store_index = MongoDbVectorStore::new(collection).index(
-    ///         model,
-    ///         "vector_index", // <-- replace with the name of the index in your mongodb collection.
-    ///         SearchParams::new("embedding"), // <-- field name in `Document` that contains the embeddings.
-    ///     );
+    /// let collection: collection: mongodb::Collection<Document> = \* ... \*; // <-- replace with your mongodb collection.
+    /// let model: model: EmbeddingModel = \* ... \*; // <-- replace with your embedding model.
     ///
-    ///     // Query the index
-    ///     vector_store_index
-    ///         .top_n::<Definition>("My boss says I zindle too much, what does that mean?", 1)
-    ///         .await?;
-    /// }
+    /// let vector_store_index = MongoDbVectorStore::new(collection).index(
+    ///     model,
+    ///     "vector_index", // <-- replace with the name of the index in your mongodb collection.
+    ///     SearchParams::new("embedding"), // <-- field name in `Document` that contains the embeddings.
+    /// );
+    ///
+    /// // Query the index
+    /// vector_store_index
+    ///     .top_n::<Definition>("My boss says I zindle too much, what does that mean?", 1)
+    ///     .await?;
     /// ```
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
@@ -252,18 +253,18 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     ///     embedding: Vec<f64>,
     /// }
     ///
-    /// fn execute_search(collection: mongodb::Collection<Document>, model: EmbeddingModel) {
-    ///     let vector_store_index = MongoDbVectorStore::new(collection).index(
-    ///         model,
-    ///         "vector_index", // <-- replace with the name of the index in your mongodb collection.
-    ///         SearchParams::new("embedding"), // <-- field name in `Document` that contains the embeddings.
-    ///     );
+    /// let collection: collection: mongodb::Collection<Document> = \* ... \*; // <-- replace with your mongodb collection.
+    /// let model: model: EmbeddingModel = \* ... \*; // <-- replace with your embedding model.
+    /// let vector_store_index = MongoDbVectorStore::new(collection).index(
+    ///     model,
+    ///     "vector_index", // <-- replace with the name of the index in your mongodb collection.
+    ///     SearchParams::new("embedding"), // <-- field name in `Document` that contains the embeddings.
+    /// );
     ///
-    ///     // Query the index
-    ///     vector_store_index
-    ///         .top_n_ids("My boss says I zindle too much, what does that mean?", 1)
-    ///         .await?;
-    /// }
+    /// // Query the index
+    /// vector_store_index
+    ///     .top_n_ids("My boss says I zindle too much, what does that mean?", 1)
+    ///     .await?;
     /// ```
     async fn top_n_ids(
         &self,

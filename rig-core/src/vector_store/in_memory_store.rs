@@ -76,28 +76,16 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         Ok(self)
     }
 
-    /// Add documents to the store. Define the name of the field in the document that contains the id.
+    /// Add documents to the store. Define a function that takes as input the reference of the document and returns its id.
     /// Returns the store with the added documents.
     pub fn add_documents_with_id(
         mut self,
         documents: Vec<(D, OneOrMany<Embedding>)>,
-        id_field: &str,
+        id_f: fn(&D) -> String,
     ) -> Result<Self, VectorStoreError> {
         for (doc, embeddings) in documents {
-            if let serde_json::Value::Object(o) =
-                serde_json::to_value(&doc).map_err(VectorStoreError::JsonError)?
-            {
-                match o.get(id_field) {
-                    Some(serde_json::Value::String(s)) => {
-                        self.embeddings.insert(s.clone(), (doc, embeddings));
-                    }
-                    _ => {
-                        return Err(VectorStoreError::MissingIdError(format!(
-                            "Document does not have a field {id_field}"
-                        )));
-                    }
-                }
-            };
+            let id = id_f(&doc);
+            self.embeddings.insert(id, (doc, embeddings));
         }
 
         Ok(self)

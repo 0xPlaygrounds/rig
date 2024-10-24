@@ -58,7 +58,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     let index = InMemoryVectorStore::default()
-        .add_documents_with_id(embeddings, "id")?
+        .add_documents_with_id(embeddings, |definition| definition.id.clone())?
         .index(search_model);
 
     let results = index

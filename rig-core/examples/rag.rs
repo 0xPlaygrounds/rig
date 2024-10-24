@@ -56,7 +56,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     let index = InMemoryVectorStore::default()
-        .add_documents_with_id(embeddings, "id")?
+        .add_documents_with_id(embeddings, |definition| definition.id.clone())?
         .index(embedding_model);
 
     let rag_agent = openai_client.agent("gpt-4")
