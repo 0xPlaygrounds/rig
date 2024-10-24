@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.1.2...rig-mongodb-v0.1.3) - 2024-10-24
+
+### Fixed
+
+- make PR changes pt I
+- mongodb vector search - use num_candidates from search params
+
+### Other
+
+- Merge branch 'main' into feat(vector-store)/lancedb
+
 ## [0.1.2](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.1.1...rig-mongodb-v0.1.2) - 2024-10-01
 
 ### Other
