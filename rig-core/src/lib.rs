@@ -73,7 +73,7 @@ pub mod cli_chatbot;
 pub mod completion;
 pub mod embeddings;
 pub mod extractor;
-pub mod json_utils;
+pub(crate) mod json_utils;
 pub mod providers;
 pub mod tool;
 pub mod vector_store;
