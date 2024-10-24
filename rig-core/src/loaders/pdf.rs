@@ -54,7 +54,7 @@ impl<T: Loadable> Loadable for Result<T, PdfLoaderError> {
 ///
 /// # Errors
 ///
-/// This module defines a custom error type [PdfFileLoaderError] which can represent various errors
+/// This module defines a custom error type [PdfLoaderError] which can represent various errors
 ///  that might occur during file loading operations, such as any [FileLoaderError] alongside
 ///  specific PDF-related errors.
 ///
