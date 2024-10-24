@@ -61,17 +61,19 @@
 //! Rig natively supports the following completion and embedding model providers:
 //! - OpenAI
 //! - Cohere
+//! - Anthropic
+//! - Perplexity
 //!
 //! Rig currently has the following integration companion crates:
 //! - `rig-mongodb`: Vector store implementation for MongoDB
-//!
+//! - `rig-lancedb`: Vector store implementation for LanceDB
 
 pub mod agent;
 pub mod cli_chatbot;
 pub mod completion;
 pub mod embeddings;
 pub mod extractor;
-pub mod json_utils;
+pub(crate) mod json_utils;
 pub mod providers;
 pub mod tool;
 pub mod vector_store;
