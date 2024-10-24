@@ -47,16 +47,14 @@ pub struct CompletionResponse {
 pub enum Content {
     String(String),
     Text {
+        r#type: String,
         text: String,
-        #[serde(rename = "type")]
-        content_type: String,
     },
     ToolUse {
+        r#type: String,
         id: String,
         name: String,
-        input: String,
-        #[serde(rename = "type")]
-        content_type: String,
+        input: serde_json::Value,
     },
 }
 
@@ -73,7 +71,6 @@ pub struct ToolDefinition {
     pub name: String,
     pub description: Option<String>,
     pub input_schema: serde_json::Value,
-    pub cache_control: Option<CacheControl>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -94,10 +91,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 })
             }
             [Content::ToolUse { name, input, .. }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::ToolCall(
-                    name.clone(),
-                    serde_json::from_str(input)?,
-                ),
+                choice: completion::ModelChoice::ToolCall(name.clone(), input.clone()),
                 raw_response: response,
             }),
             _ => Err(CompletionError::ResponseError(
@@ -157,9 +151,20 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        // Note: Ideally we'd introduce provider-specific Request models to handle the
+        // specific requirements of each provider. For now, we just manually check while
+        // building the request as a raw JSON document.
+
         let prompt_with_context = completion_request.prompt_with_context();
 
-        let request = json!({
+        // Check if max_tokens is set, required for Anthropic
+        if completion_request.max_tokens.is_none() {
+            return Err(CompletionError::RequestError(
+                "max_tokens must be set for Anthropic".into(),
+            ));
+        }
+
+        let mut request = json!({
             "model": self.model,
             "messages": completion_request
                 .chat_history
@@ -172,38 +177,48 @@ impl completion::CompletionModel for CompletionModel {
                 .collect::<Vec<_>>(),
             "max_tokens": completion_request.max_tokens,
             "system": completion_request.preamble.unwrap_or("".to_string()),
-            "temperature": completion_request.temperature,
-            "tools": completion_request
-                .tools
-                .into_iter()
-                .map(|tool| ToolDefinition {
-                    name: tool.name,
-                    description: Some(tool.description),
-                    input_schema: tool.parameters,
-                    cache_control: None,
-                })
-                .collect::<Vec<_>>(),
         });
 
-        let request = if let Some(ref params) = completion_request.additional_params {
-            json_utils::merge(request, params.clone())
-        } else {
-            request
-        };
+        if let Some(temperature) = completion_request.temperature {
+            json_utils::merge_inplace(&mut request, json!({ "temperature": temperature }));
+        }
+
+        if !completion_request.tools.is_empty() {
+            json_utils::merge_inplace(
+                &mut request,
+                json!({
+                    "tools": completion_request
+                        .tools
+                        .into_iter()
+                        .map(|tool| ToolDefinition {
+                            name: tool.name,
+                            description: Some(tool.description),
+                            input_schema: tool.parameters,
+                        })
+                        .collect::<Vec<_>>(),
+                    "tool_choice": ToolChoice::Auto,
+                }),
+            );
+        }
+
+        if let Some(ref params) = completion_request.additional_params {
+            json_utils::merge_inplace(&mut request, params.clone())
+        }
 
         let response = self
             .client
             .post("/v1/messages")
             .json(&request)
             .send()
-            .await?
-            .error_for_status()?
-            .json::<ApiResponse<CompletionResponse>>()
             .await?;
 
-        match response {
-            ApiResponse::Message(completion) => completion.try_into(),
-            ApiResponse::Error(error) => Err(CompletionError::ProviderError(error.message)),
+        if response.status().is_success() {
+            match response.json::<ApiResponse<CompletionResponse>>().await? {
+                ApiResponse::Message(completion) => completion.try_into(),
+                ApiResponse::Error(error) => Err(CompletionError::ProviderError(error.message)),
+            }
+        } else {
+            Err(CompletionError::ProviderError(response.text().await?))
         }
     }
 }

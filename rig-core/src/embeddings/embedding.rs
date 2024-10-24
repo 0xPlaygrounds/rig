@@ -62,7 +62,7 @@ pub trait EmbeddingModel: Clone + Sync + Send {
     /// Embed multiple documents in a single request
     fn embed_documents(
         &self,
-        documents: Vec<String>,
+        documents: impl IntoIterator<Item = String> + Send,
     ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + Send;
 }
 

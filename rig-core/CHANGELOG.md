@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.2.1...rig-core-v0.3.0) - 2024-10-24
+
+### Added
+
+- Generalize `EmbeddingModel::embed_documents` with `IntoIterator`
+- Add `from_env` constructor to Cohere and Anthropic clients
+- Small optimization to serde_json object merging
+- Add better error handling for provider clients
+
+### Fixed
+
+- Bad Anthropic request/response handling
+- *(vector-index)* In memory vector store index incorrect search
+
+### Other
+
+- Made internal `json_utils` module private
+- Update lib docs
+- Made CompletionRequest helper method private to crate
+- lint + fmt
+- Simplify `agent_with_tools` example
+- Fix docstring links
+- Add nextest test runner to CI
+- Merge pull request [#42](https://github.com/0xPlaygrounds/rig/pull/42) from 0xPlaygrounds/refactor(vector-store)/update-vector-store-index-trait
+
 ## [0.2.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.2.0...rig-core-v0.2.1) - 2024-10-01
 
 ### Fixed
