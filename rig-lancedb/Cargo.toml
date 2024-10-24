@@ -2,6 +2,10 @@
 name = "rig-lancedb"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+readme = "README.md"
+description = "Rig vector store index integration for LanceDB."
+repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
 lancedb = "0.10.0"
