@@ -24,13 +24,13 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 ///     embedding: Vec<f64>,
 /// }
 ///
-/// fn create_index(collection: mongodb::Collection<Document>, model: EmbeddingModel) {
-///     let index = MongoDbVectorStore::new(collection).index(
-///         model,
-///         "vector_index", // <-- replace with the name of the index in your mongodb collection.
-///         SearchParams::new("embedding"), // <-- field name in `Document` that contains the embeddings.
-///     );
-/// }
+/// let collection: collection: mongodb::Collection<Document> = mongodb_client.collection(""); // <-- replace with your mongodb collection.
+/// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
+/// let index = MongoDbVectorStore::new(collection).index(
+///     model,
+///     "vector_index", // <-- replace with the name of the index in your mongodb collection.
+///     SearchParams::new("embedding"), // <-- field name in `Document` that contains the embeddings.
+/// );
 /// ```
 pub struct MongoDbVectorStore<C> {
     collection: mongodb::Collection<C>,
@@ -185,8 +185,8 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     ///     definition: String,
     /// }
     ///
-    /// let collection: collection: mongodb::Collection<Document> = \* ... \*; // <-- replace with your mongodb collection.
-    /// let model: model: EmbeddingModel = \* ... \*; // <-- replace with your embedding model.
+    /// let collection: collection: mongodb::Collection<Document> = mongodb_client.collection(""); // <-- replace with your mongodb collection.
+    /// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
     ///
     /// let vector_store_index = MongoDbVectorStore::new(collection).index(
     ///     model,
@@ -253,8 +253,8 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     ///     embedding: Vec<f64>,
     /// }
     ///
-    /// let collection: collection: mongodb::Collection<Document> = \* ... \*; // <-- replace with your mongodb collection.
-    /// let model: model: EmbeddingModel = \* ... \*; // <-- replace with your embedding model.
+    /// let collection: collection: mongodb::Collection<Document> = mongodb_client.collection(""); // <-- replace with your mongodb collection.
+    /// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
     /// let vector_store_index = MongoDbVectorStore::new(collection).index(
     ///     model,
     ///     "vector_index", // <-- replace with the name of the index in your mongodb collection.

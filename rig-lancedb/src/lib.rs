@@ -26,8 +26,8 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
 /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 /// use rig::embeddings::EmbeddingModel;
 ///
-/// let table: table: lancedb::Table = \*...\*; // <-- Replace with your lancedb table here.
-/// let model: EmbeddingModel = \*...\*; // <-- Replace with your embedding model here.
+/// let table: table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
+/// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
 /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
 /// ```
 pub struct LanceDbVectorIndex<M: EmbeddingModel> {
@@ -181,8 +181,8 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
     /// use rig::embeddings::EmbeddingModel;
     ///
-    /// let table: table: lancedb::Table = \*...\*; // <-- Replace with your lancedb table here.
-    /// let model: EmbeddingModel = \*...\*; // <-- Replace with your embedding model here.
+    /// let table: table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
+    /// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
     /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
     ///
     /// // Query the index
@@ -227,8 +227,8 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
     /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
     /// # Example
     /// ```
-    /// let table: table: lancedb::Table = \*...\*; // <-- Replace with your lancedb table here.
-    /// let model: EmbeddingModel = \*...\*; // <-- Replace with your embedding model here.
+    /// let table: table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
+    /// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
     /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
     ///
     /// // Query the index
