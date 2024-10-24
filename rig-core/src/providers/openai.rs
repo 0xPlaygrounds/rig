@@ -241,8 +241,10 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 
     async fn embed_documents(
         &self,
-        documents: Vec<String>,
+        documents: impl IntoIterator<Item = String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+        let documents = documents.into_iter().collect::<Vec<_>>();
+        
         let response = self
             .client
             .post("/v1/embeddings")
