@@ -1,12 +1,12 @@
 use mongodb::{options::ClientOptions, Client as MongoClient, Collection};
-use std::env;
-
+use rig::vector_store::VectorStore;
 use rig::{
     embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::{VectorStore, VectorStoreIndex},
+    vector_store::VectorStoreIndex,
 };
 use rig_mongodb::{MongoDbVectorStore, SearchParams};
+use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
