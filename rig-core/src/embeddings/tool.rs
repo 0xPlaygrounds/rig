@@ -1,7 +1,7 @@
-use crate::{tool::ToolEmbeddingDyn, Embeddable, OneOrMany};
+use crate::{tool::ToolEmbeddingDyn, ExtractEmbeddingFields, OneOrMany};
 use serde::Serialize;
 
-use super::embeddable::EmbeddableError;
+use super::extract_embedding_fields::ExtractEmbeddingFieldsError;
 
 /// Used by EmbeddingsBuilder to embed anything that implements ToolEmbedding.
 #[derive(Clone, Serialize, Default, Eq, PartialEq)]
@@ -11,20 +11,80 @@ pub struct EmbeddableTool {
     pub embedding_docs: Vec<String>,
 }
 
-impl Embeddable for EmbeddableTool {
-    type Error = EmbeddableError;
+impl ExtractEmbeddingFields for EmbeddableTool {
+    type Error = ExtractEmbeddingFieldsError;
 
-    fn embeddable(&self) -> Result<OneOrMany<String>, Self::Error> {
-        OneOrMany::many(self.embedding_docs.clone()).map_err(EmbeddableError::new)
+    fn extract_embedding_fields(&self) -> Result<OneOrMany<String>, Self::Error> {
+        OneOrMany::many(self.embedding_docs.clone()).map_err(ExtractEmbeddingFieldsError::new)
     }
 }
 
 impl EmbeddableTool {
-    /// Convert item that implements ToolEmbedding to an EmbeddableTool.
-    pub fn try_from(tool: &dyn ToolEmbeddingDyn) -> Result<Self, EmbeddableError> {
+    /// Convert item that implements ToolEmbeddingDyn to an EmbeddableTool.
+    /// # Example
+    /// ```rust
+    /// use rig::{
+    ///     completion::ToolDefinition,
+    ///     embeddings::EmbeddableTool,
+    ///     tool::{Tool, ToolEmbedding, ToolEmbeddingDyn},
+    /// };
+    /// use serde_json::json;
+    ///
+    /// #[derive(Debug, thiserror::Error)]
+    /// #[error("Math error")]
+    /// struct NothingError;
+    ///
+    /// #[derive(Debug, thiserror::Error)]
+    /// #[error("Init error")]
+    /// struct InitError;
+    ///
+    /// struct Nothing;
+    /// impl Tool for Nothing {
+    ///     const NAME: &'static str = "nothing";
+    ///
+    ///     type Error = NothingError;
+    ///     type Args = ();
+    ///     type Output = ();
+    ///
+    ///     async fn definition(&self, _prompt: String) -> ToolDefinition {
+    ///         serde_json::from_value(json!({
+    ///             "name": "nothing",
+    ///             "description": "nothing",
+    ///             "parameters": {}
+    ///         }))
+    ///         .expect("Tool Definition")
+    ///     }
+    ///
+    ///     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    ///         Ok(())
+    ///     }
+    /// }
+    ///
+    /// impl ToolEmbedding for Nothing {
+    ///     type InitError = InitError;
+    ///     type Context = ();
+    ///     type State = ();
+    ///
+    ///     fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
+    ///         Ok(Nothing)
+    ///     }
+    ///
+    ///     fn embedding_docs(&self) -> Vec<String> {
+    ///         vec!["Do nothing.".into()]
+    ///     }
+    ///
+    ///     fn context(&self) -> Self::Context {}
+    /// }
+    ///
+    /// let tool = EmbeddableTool::try_from(&Nothing).unwrap();
+    ///
+    /// assert_eq!(tool.name, "nothing".to_string());
+    /// assert_eq!(tool.embedding_docs, vec!["Do nothing.".to_string()]);
+    /// ```
+    pub fn try_from(tool: &dyn ToolEmbeddingDyn) -> Result<Self, ExtractEmbeddingFieldsError> {
         Ok(EmbeddableTool {
             name: tool.name(),
-            context: tool.context().map_err(EmbeddableError::new)?,
+            context: tool.context().map_err(ExtractEmbeddingFieldsError::new)?,
             embedding_docs: tool.embedding_docs(),
         })
     }

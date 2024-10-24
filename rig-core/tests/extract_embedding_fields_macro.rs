@@ -1,14 +1,14 @@
-use rig::embeddings::embeddable::EmbeddableError;
-use rig::{Embeddable, OneOrMany};
+use rig::embeddings::extract_embedding_fields::ExtractEmbeddingFieldsError;
+use rig::{ExtractEmbeddingFields, OneOrMany};
 use serde::Serialize;
 
-fn serialize(definition: Definition) -> Result<OneOrMany<String>, EmbeddableError> {
+fn serialize(definition: Definition) -> Result<OneOrMany<String>, ExtractEmbeddingFieldsError> {
     Ok(OneOrMany::one(
-        serde_json::to_string(&definition).map_err(EmbeddableError::new)?,
+        serde_json::to_string(&definition).map_err(ExtractEmbeddingFieldsError::new)?,
     ))
 }
 
-#[derive(Embeddable)]
+#[derive(ExtractEmbeddingFields)]
 struct FakeDefinition {
     id: String,
     word: String,
@@ -41,7 +41,7 @@ fn test_custom_embed() {
     );
 
     assert_eq!(
-            fake_definition.embeddable().unwrap(),
+            fake_definition.extract_embedding_fields().unwrap(),
             OneOrMany::one(
                 "{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()
             )
@@ -49,7 +49,7 @@ fn test_custom_embed() {
         )
 }
 
-#[derive(Embeddable)]
+#[derive(ExtractEmbeddingFields)]
 struct FakeDefinition2 {
     id: String,
     #[embed]
@@ -76,17 +76,17 @@ fn test_custom_and_basic_embed() {
     );
 
     assert_eq!(
-        fake_definition.embeddable().unwrap().first(),
+        fake_definition.extract_embedding_fields().unwrap().first(),
         "house".to_string()
     );
 
     assert_eq!(
-        fake_definition.embeddable().unwrap().rest(),
+        fake_definition.extract_embedding_fields().unwrap().rest(),
         vec!["{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()]
     )
 }
 
-#[derive(Embeddable)]
+#[derive(ExtractEmbeddingFields)]
 struct FakeDefinition3 {
     id: String,
     word: String,
@@ -109,12 +109,12 @@ fn test_single_embed() {
     );
 
     assert_eq!(
-        fake_definition.embeddable().unwrap(),
+        fake_definition.extract_embedding_fields().unwrap(),
         OneOrMany::one(definition)
     )
 }
 
-#[derive(Embeddable)]
+#[derive(ExtractEmbeddingFields)]
 struct Company {
     id: String,
     company: String,
@@ -132,7 +132,7 @@ fn test_multiple_embed_strings() {
 
     println!("Company: {}, {}", company.id, company.company);
 
-    let result = company.embeddable().unwrap();
+    let result = company.extract_embedding_fields().unwrap();
 
     assert_eq!(
         result,
@@ -153,7 +153,7 @@ fn test_multiple_embed_strings() {
     )
 }
 
-#[derive(Embeddable)]
+#[derive(ExtractEmbeddingFields)]
 struct Company2 {
     id: String,
     #[embed]
@@ -173,7 +173,7 @@ fn test_multiple_embed_tags() {
     println!("Company: {}", company.id);
 
     assert_eq!(
-        company.embeddable().unwrap(),
+        company.extract_embedding_fields().unwrap(),
         OneOrMany::many(vec![
             "Google".to_string(),
             "25".to_string(),

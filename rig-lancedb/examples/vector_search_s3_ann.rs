@@ -4,11 +4,11 @@ use arrow_array::RecordBatchIterator;
 use fixture::{as_record_batch, fake_definitions, schema, FakeDefinition};
 use lancedb::{index::vector::IvfPqIndexBuilder, DistanceType};
 use rig::{
-    embeddings::{builder::EmbeddingsBuilder, embedding::EmbeddingModel},
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
 };
-use rig_lancedb::{LanceDbVectorStore, SearchParams};
+use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;
@@ -46,12 +46,13 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Create table with embeddings.
-    let record_batch = as_record_batch(embeddings, model.ndims());
     let table = db
         .create_table(
             "definitions",
-            RecordBatchIterator::new(vec![record_batch], Arc::new(schema(model.ndims()))),
+            RecordBatchIterator::new(
+                vec![as_record_batch(embeddings, model.ndims())],
+                Arc::new(schema(model.ndims())),
+            ),
         )
         .execute()
         .await?;
@@ -73,7 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Define search_params params that will be used by the vector store to perform the vector search.
     let search_params = SearchParams::default().distance_type(DistanceType::Cosine);
 
-    let vector_store = LanceDbVectorStore::new(table, model, "id", search_params).await?;
+    let vector_store = LanceDbVectorIndex::new(table, model, "id", search_params).await?;
 
     // Query the index
     let results = vector_store

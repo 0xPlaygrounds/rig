@@ -4,13 +4,13 @@ use rig::{
     embeddings::EmbeddingsBuilder,
     providers::cohere::{Client, EMBED_ENGLISH_V3},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-    Embeddable,
+    ExtractEmbeddingFields,
 };
 use serde::{Deserialize, Serialize};
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
-#[derive(Embeddable, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
+#[derive(ExtractEmbeddingFields, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
 struct FakeDefinition {
     id: String,
     word: String,
@@ -58,14 +58,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     let index = InMemoryVectorStore::default()
-        .add_documents(
-            embeddings
-                .into_iter()
-                .map(|(fake_definition, embedding_vec)| {
-                    (fake_definition.id.clone(), fake_definition, embedding_vec)
-                })
-                .collect(),
-        )?
+        .add_documents_with_id(embeddings, |definition| definition.id.clone())?
         .index(search_model);
 
     let results = index

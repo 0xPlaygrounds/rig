@@ -76,6 +76,21 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         Ok(self)
     }
 
+    /// Add documents to the store. Define a function that takes as input the reference of the document and returns its id.
+    /// Returns the store with the added documents.
+    pub fn add_documents_with_id(
+        mut self,
+        documents: Vec<(D, OneOrMany<Embedding>)>,
+        id_f: fn(&D) -> String,
+    ) -> Result<Self, VectorStoreError> {
+        for (doc, embeddings) in documents {
+            let id = id_f(&doc);
+            self.embeddings.insert(id, (doc, embeddings));
+        }
+
+        Ok(self)
+    }
+
     /// Get the document by its id and deserialize it into the given type.
     pub fn get_document<T: for<'a> Deserialize<'a>>(
         &self,

@@ -18,7 +18,7 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
             let (custom_targets, custom_target_size) = data_struct.custom()?;
 
             // If there are no fields tagged with #[embed] or #[embed(embed_with = "...")], return an empty TokenStream.
-            // ie. do not implement Embeddable trait for the struct.
+            // ie. do not implement `ExtractEmbeddingFields` trait for the struct.
             if basic_target_size + custom_target_size == 0 {
                 return Err(syn::Error::new_spanned(
                     name,
@@ -34,7 +34,7 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
         _ => {
             return Err(syn::Error::new_spanned(
                 input,
-                "Embeddable derive macro should only be used on structs",
+                "ExtractEmbeddingFields derive macro should only be used on structs",
             ))
         }
     };
@@ -42,18 +42,18 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let gen = quote! {
-        // Note: Embeddable trait is imported with the macro.
+        // Note: `ExtractEmbeddingFields` trait is imported with the macro.
 
-        impl #impl_generics Embeddable for #name #ty_generics #where_clause {
-            type Error = rig::embeddings::embeddable::EmbeddableError;
+        impl #impl_generics ExtractEmbeddingFields for #name #ty_generics #where_clause {
+            type Error = rig::embeddings::extract_embedding_fields::ExtractEmbeddingFieldsError;
 
-            fn embeddable(&self) -> Result<rig::OneOrMany<String>, Self::Error> {
+            fn extract_embedding_fields(&self) -> Result<rig::OneOrMany<String>, Self::Error> {
                 #target_stream;
 
                 rig::OneOrMany::merge(
                     embed_targets.into_iter()
                         .collect::<Result<Vec<_>, _>>()?
-                ).map_err(rig::embeddings::embeddable::EmbeddableError::new)
+                ).map_err(rig::embeddings::extract_embedding_fields::ExtractEmbeddingFieldsError::new)
             }
         }
     };
@@ -87,7 +87,7 @@ impl StructParser for DataStruct {
         if !embed_targets.is_empty() {
             (
                 quote! {
-                    vec![#(#embed_targets.embeddable()),*]
+                    vec![#(#embed_targets.extract_embedding_fields()),*]
                 },
                 embed_targets.len(),
             )
