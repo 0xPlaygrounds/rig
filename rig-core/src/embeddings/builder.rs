@@ -191,10 +191,10 @@ mod tests {
 
         async fn embed_documents(
             &self,
-            documents: Vec<String>,
+            documents: impl IntoIterator<Item = String> + Send,
         ) -> Result<Vec<crate::embeddings::Embedding>, crate::embeddings::EmbeddingError> {
             Ok(documents
-                .iter()
+                .into_iter()
                 .map(|doc| Embedding {
                     document: doc.to_string(),
                     vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
