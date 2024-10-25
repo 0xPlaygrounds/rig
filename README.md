@@ -1,21 +1,28 @@
 <p align="center">
 <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="img/rig_logo_dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="img/rig_logo.svg">
-    <img src="img/rig_logo.svg" style="width: 40%; height: 40%;" alt="Rig logo">
+    <source media="(prefers-color-scheme: dark)" srcset="img/rig+playgrounds_dark_blue.svg">
+    <source media="(prefers-color-scheme: light)" srcset="img/rig+playgrounds_light_blue.svg">
+    <img src="img/rig+playgrounds.svg" style="width: 40%; height: 40%;" alt="Rig logo">
 </picture>
 <br>
 <a href="https://crates.io/crates/rig-core"><img src="https://img.shields.io/crates/v/rig-core.svg" /></a>
+&nbsp;
+<a href="https://crates.io/crates/rig-core"><img src="https://img.shields.io/crates/d/rig-core?color=orange" /></a>
 &nbsp;
 <a href="https://discord.gg/playgrounds"><img src="https://img.shields.io/discord/511303648119226382?color=%236d82cc&label=Discord&logo=discord&logoColor=white" /></a>
 &nbsp;
 <a href=""><img src="https://img.shields.io/badge/built_with-Rust-dca282.svg?logo=rust" /></a>
 &nbsp;
-<a href="https://twitter.com/Playgrounds0x"><img src="https://img.shields.io/badge/Twitter-Follow_Us-1d9bf0.svg?style=flat /"></a>
-&nbsp;
-<a href="https://github.com/0xPlaygrounds/rig?tab=MIT-1-ov-file"><img src="https://img.shields.io/badge/license-MIT-00bfff.svg?color=red" /></a>
+<a href="https://twitter.com/Playgrounds0x"><img src="https://img.shields.io/twitter/follow/Playgrounds0x
+"></a>
+<br>
+<a href="https://docs.rs/rig-core/latest/rig/"><img src="https://docs.rs/rig-core/badge.svg" /></a>
+<br>
 </p>
+
 &nbsp;
+
+
 
 > [!WARNING]
 > Here be dragons! Rig is **alpha** software and **will** contain breaking changes as it evolves. We'll annotate them and highlight migration paths as we encounter them.
