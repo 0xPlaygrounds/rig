@@ -1,5 +1,10 @@
 <p align="center">
-<img src="img/rig_logo.svg" alt="Rig Logo" style="width: 75%; height: 75%;"><br>
+<picture>
+    <source media="(prefers-color-scheme: dark)" srcset="img/rig_logo_dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="img/rig_logo.svg">
+    <img src="img/rig_logo.svg" style="width: 40%; height: 40%;" alt="Rig logo">
+</picture>
+<br>
 <a href="https://crates.io/crates/rig-core"><img src="https://img.shields.io/crates/v/rig-core.svg" /></a>
 &nbsp;
 <a href="https://discord.gg/playgrounds"><img src="https://img.shields.io/discord/511303648119226382?color=%236d82cc&label=Discord&logo=discord&logoColor=white" /></a>
@@ -12,7 +17,7 @@
 </p>
 &nbsp;
 
-> [!WARNING]  
+> [!WARNING]
 > Here be dragons! Rig is **alpha** software and **will** contain breaking changes as it evolves. We'll annotate them and highlight migration paths as we encounter them.
 
 
