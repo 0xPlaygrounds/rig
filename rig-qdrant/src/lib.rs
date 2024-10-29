@@ -7,14 +7,13 @@ use rig::{
     vector_store::{VectorStoreError, VectorStoreIndex},
 };
 use serde::Deserialize;
-use std::sync::Arc;
 
 /// Represents a vector store implementation using Qdrant - https://qdrant.tech/ as the backend.
 pub struct QdrantVectorStore<M: EmbeddingModel> {
     /// Model used to generate embeddings for the vector store
-    model: Arc<M>,
+    model: M,
     /// Client instance for Qdrant server communication
-    client: Arc<Qdrant>,
+    client: Qdrant,
     /// Default search parameters
     query_params: QueryPoints,
 }
@@ -29,8 +28,8 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
     ///     Reference: https://api.qdrant.tech/v-1-12-x/api-reference/search/query-points
     pub fn new(client: Qdrant, model: M, query_params: QueryPoints) -> Self {
         Self {
-            client: Arc::new(client),
-            model: Arc::new(model),
+            client,
+            model,
             query_params,
         }
     }
