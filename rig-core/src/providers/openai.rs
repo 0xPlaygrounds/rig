@@ -241,6 +241,8 @@ pub struct EmbeddingModel {
 }
 
 impl embeddings::EmbeddingModel for EmbeddingModel {
+    const MAX_DOCUMENTS: usize = 1024;
+
     fn max_tokens(&self) -> usize {
         self.max_tokens
     }

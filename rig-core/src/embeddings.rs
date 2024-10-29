@@ -70,6 +70,9 @@ pub enum EmbeddingError {
 
 /// Trait for embedding models that can generate embeddings for documents.
 pub trait EmbeddingModel: Clone + Sync + Send {
+    /// The maximum number of documents that can be embedded in a single request.
+    const MAX_DOCUMENTS: usize;
+
     /// The maximum number of tokens that can be embedded in a single request.
     fn max_tokens(&self) -> usize;
 
@@ -336,7 +339,6 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
 
                     chunks
                 })
-                .into_iter(),
         )
         // Generate the embeddings
         .map(|docs| async {
