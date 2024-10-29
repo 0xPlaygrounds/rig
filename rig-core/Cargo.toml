@@ -25,6 +25,7 @@ schemars = "0.8.16"
 thiserror = "1.0.61"
 glob = "0.3.1"
 lopdf = { version = "0.34.0", optional = true }
+tiktoken-rs = "0.6.0"
 
 [dev-dependencies]
 anyhow = "1.0.75"

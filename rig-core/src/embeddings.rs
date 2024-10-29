@@ -38,7 +38,7 @@
 //! // ...
 //! ```
 
-use std::{cmp::max, collections::HashMap};
+use std::{cmp::min, collections::HashMap};
 
 use futures::{stream, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
@@ -70,8 +70,8 @@ pub enum EmbeddingError {
 
 /// Trait for embedding models that can generate embeddings for documents.
 pub trait EmbeddingModel: Clone + Sync + Send {
-    /// The maximum number of documents that can be embedded in a single request.
-    const MAX_DOCUMENTS: usize;
+    /// The maximum number of tokens that can be embedded in a single request.
+    fn max_tokens(&self) -> usize;
 
     /// The number of dimensions in the embedding vector.
     fn ndims(&self) -> usize;
@@ -280,6 +280,9 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
 
     /// Generate the embeddings for the given documents
     pub async fn build(self) -> Result<Embeddings, EmbeddingError> {
+        let core_bpe =
+            tiktoken_rs::cl100k_base().map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
+
         // Create a temporary store for the documents
         let documents_map = self
             .documents
@@ -287,32 +290,73 @@ impl<M: EmbeddingModel> EmbeddingsBuilder<M> {
             .map(|(id, document, docs)| (id, (document, docs)))
             .collect::<HashMap<_, _>>();
 
-        let embeddings = stream::iter(documents_map.iter())
-            // Flatten the documents
-            .flat_map(|(id, (_, docs))| {
-                stream::iter(docs.iter().map(|doc| (id.clone(), doc.clone())))
-            })
-            // Chunk them into N (the emebdding API limit per request)
-            .chunks(M::MAX_DOCUMENTS)
-            // Generate the embeddings
-            .map(|docs| async {
-                let (ids, docs): (Vec<_>, Vec<_>) = docs.into_iter().unzip();
-                Ok::<_, EmbeddingError>(
-                    ids.into_iter()
-                        .zip(self.model.embed_documents(docs).await?.into_iter())
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .boxed()
-            // Parallelize the embeddings generation over 10 concurrent requests
-            .buffer_unordered(max(1, 1024 / M::MAX_DOCUMENTS))
-            .try_fold(vec![], |mut acc, mut embeddings| async move {
-                Ok({
-                    acc.append(&mut embeddings);
-                    acc
+        let mut token_size = 0;
+
+        let embeddings = stream::iter(
+            documents_map
+                .iter()
+                // Flatten the documents
+                .flat_map(|(id, (_, docs))| {
+                    docs.iter()
+                        .map(|doc| (id.clone(), doc.clone()))
+                        .collect::<Vec<_>>()
                 })
+                // Chunk the documents based on token size
+                .fold(vec![], |mut chunks: Vec<Vec<_>>, document| {
+                    let tokens = core_bpe.encode_with_special_tokens(&document.1);
+
+                    if tokens.len() > self.model.max_tokens() {
+                        let parts = (tokens.len() as f64 / self.model.max_tokens() as f64).ceil();
+                        let split_size = (document.1.len() as f64 / parts as f64).ceil() as usize;
+
+                        for i in 0..parts as usize {
+                            let document_chunk = document.1
+                                [(i * split_size)..min((i + 1) * split_size, document.1.len() - 1)]
+                                .to_string();
+
+                            chunks.push(vec![(document.0.clone(), document_chunk.clone())]);
+                        }
+                    } else {
+                        match chunks.last_mut() {
+                            Some(last_chunk) => {
+                                if tokens.len() + token_size <= self.model.max_tokens() {
+                                    last_chunk.push(document);
+                                    token_size += tokens.len();
+                                } else {
+                                    chunks.push(vec![document]);
+                                    token_size = tokens.len();
+                                }
+                            }
+                            None => {
+                                chunks.push(vec![document]);
+                                token_size = tokens.len();
+                            }
+                        }
+                    };
+
+                    chunks
+                })
+                .into_iter(),
+        )
+        // Generate the embeddings
+        .map(|docs| async {
+            let (ids, docs): (Vec<_>, Vec<_>) = docs.into_iter().unzip();
+            Ok::<_, EmbeddingError>(
+                ids.into_iter()
+                    .zip(self.model.embed_documents(docs).await?.into_iter())
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .boxed()
+        // Parallelize the embeddings generation over 10 concurrent requests
+        .buffer_unordered(10)
+        .try_fold(vec![], |mut acc, mut embeddings| async move {
+            Ok({
+                acc.append(&mut embeddings);
+                acc
             })
-            .await?;
+        })
+        .await?;
 
         // Assemble the DocumentEmbeddings
         let mut document_embeddings: HashMap<String, DocumentEmbeddings> = HashMap::new();
