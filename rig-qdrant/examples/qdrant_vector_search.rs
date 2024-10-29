@@ -1,4 +1,9 @@
 // To run this example:
+//
+// export OPENAI_API_KEY=<YOUR-API-KEY>
+//
+// docker run -p 6333:63333 -p 6334:6334 qdrant/qdrant
+//
 // cargo run --release --example qdrant_vector_search
 
 use std::env;
