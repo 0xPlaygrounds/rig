@@ -1,10 +1,10 @@
 // To run this example:
 //
 // export OPENAI_API_KEY=<YOUR-API-KEY>
-//
-// docker run -p 6333:63333 -p 6334:6334 qdrant/qdrant
-//
+// docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
 // cargo run --release --example qdrant_vector_search
+//
+// You can view the data at http://localhost:6333/dashboard
 
 use std::env;
 
