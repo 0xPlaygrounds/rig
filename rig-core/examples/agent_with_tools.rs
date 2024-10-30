@@ -6,7 +6,6 @@ use rig::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::env;
 
 #[derive(Deserialize)]
 struct OperationArgs {
@@ -92,25 +91,13 @@ impl Tool for Subtract {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = providers::openai::Client::new(&openai_api_key);
+    let openai_client = providers::openai::Client::from_env();
 
     // Create agent with a single context prompt and two tools
-    let gpt4_calculator_agent = openai_client
-        .agent("gpt-4")
-        .context("You are a calculator here to help the user perform arithmetic operations.")
-        .tool(Adder)
-        .tool(Subtract)
-        .build();
-
-    // Create OpenAI client
-    let cohere_api_key = env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set");
-    let cohere_client = providers::cohere::Client::new(&cohere_api_key);
-
-    // Create agent with a single context prompt and two tools
-    let coral_calculator_agent = cohere_client
-        .agent("command-r")
-        .preamble("You are a calculator here to help the user perform arithmetic operations.")
+    let calculator_agent = openai_client
+        .agent(providers::openai::GPT_4O)
+        .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
+        .max_tokens(1024)
         .tool(Adder)
         .tool(Subtract)
         .build();
@@ -118,12 +105,8 @@ async fn main() -> Result<(), anyhow::Error> {
     // Prompt the agent and print the response
     println!("Calculate 2 - 5");
     println!(
-        "GPT-4: {}",
-        gpt4_calculator_agent.prompt("Calculate 2 - 5").await?
-    );
-    println!(
-        "Coral: {}",
-        coral_calculator_agent.prompt("Calculate 2 - 5").await?
+        "Calculator Agent: {}",
+        calculator_agent.prompt("Calculate 2 - 5").await?
     );
 
     Ok(())

@@ -57,6 +57,13 @@ impl Client {
         }
     }
 
+    /// Create a new Cohere client from the `COHERE_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    pub fn from_env() -> Self {
+        let api_key = std::env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set");
+        Self::new(&api_key)
+    }
+
     pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.post(url)
@@ -192,8 +199,10 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 
     async fn embed_documents(
         &self,
-        documents: Vec<String>,
+        documents: impl IntoIterator<Item = String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+        let documents = documents.into_iter().collect::<Vec<_>>();
+
         let response = self
             .client
             .post("/v1/embed")
@@ -203,32 +212,33 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 "input_type": self.input_type,
             }))
             .send()
-            .await?
-            .error_for_status()?
-            .json::<ApiResponse<EmbeddingResponse>>()
             .await?;
 
-        match response {
-            ApiResponse::Ok(response) => {
-                if response.embeddings.len() != documents.len() {
-                    return Err(EmbeddingError::DocumentError(format!(
-                        "Expected {} embeddings, got {}",
-                        documents.len(),
-                        response.embeddings.len()
-                    )));
-                }
+        if response.status().is_success() {
+            match response.json::<ApiResponse<EmbeddingResponse>>().await? {
+                ApiResponse::Ok(response) => {
+                    if response.embeddings.len() != documents.len() {
+                        return Err(EmbeddingError::DocumentError(format!(
+                            "Expected {} embeddings, got {}",
+                            documents.len(),
+                            response.embeddings.len()
+                        )));
+                    }
 
-                Ok(response
-                    .embeddings
-                    .into_iter()
-                    .zip(documents.into_iter())
-                    .map(|(embedding, document)| embeddings::Embedding {
-                        document,
-                        vec: embedding,
-                    })
-                    .collect())
+                    Ok(response
+                        .embeddings
+                        .into_iter()
+                        .zip(documents.into_iter())
+                        .map(|(embedding, document)| embeddings::Embedding {
+                            document,
+                            vec: embedding,
+                        })
+                        .collect())
+                }
+                ApiResponse::Err(error) => Err(EmbeddingError::ProviderError(error.message)),
             }
-            ApiResponse::Err(error) => Err(EmbeddingError::ProviderError(error.message)),
+        } else {
+            Err(EmbeddingError::ProviderError(response.text().await?))
         }
     }
 }
@@ -500,14 +510,15 @@ impl completion::CompletionModel for CompletionModel {
                 },
             )
             .send()
-            .await?
-            .error_for_status()?
-            .json::<ApiResponse<CompletionResponse>>()
             .await?;
 
-        match response {
-            ApiResponse::Ok(completion) => Ok(completion.into()),
-            ApiResponse::Err(error) => Err(CompletionError::ProviderError(error.message)),
+        if response.status().is_success() {
+            match response.json::<ApiResponse<CompletionResponse>>().await? {
+                ApiResponse::Ok(completion) => Ok(completion.into()),
+                ApiResponse::Err(error) => Err(CompletionError::ProviderError(error.message)),
+            }
+        } else {
+            Err(CompletionError::ProviderError(response.text().await?))
         }
     }
 }
