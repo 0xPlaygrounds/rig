@@ -67,6 +67,7 @@
 //! Rig currently has the following integration companion crates:
 //! - `rig-mongodb`: Vector store implementation for MongoDB
 //! - `rig-lancedb`: Vector store implementation for LanceDB
+//! - `rig-neo4j`: Vector store implementation for Neo4j
 
 pub mod agent;
 pub mod cli_chatbot;

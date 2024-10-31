@@ -183,8 +183,7 @@ impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
         &self,
         query: Query,
     ) -> Result<Vec<T>, VectorStoreError> {
-        self
-            .graph
+        self.graph
             .execute(query)
             .await
             .map_err(neo4j_to_rig_error)?

@@ -212,7 +212,11 @@ mod tests {
         .await
         .unwrap();
 
-        let index = client.index(model, IndexConfig::new("moviePlotsEmbedding"), SearchParams::default());
+        let index = client.index(
+            model,
+            IndexConfig::new("moviePlotsEmbedding"),
+            SearchParams::default(),
+        );
         Ok(index.top_n::<Movie>("Batman", 3).await?)
     }
 }

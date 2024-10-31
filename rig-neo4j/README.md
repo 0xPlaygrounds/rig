@@ -19,7 +19,7 @@
 
 <br><br>
 
-This companion crate implements a Rig vector store based on Neo4j Graph database. It uses the [neo4rs](https://github.com/neo4j-labs/neo4rs) crate to interact with Neo4j. Note that the neo4rs crate is a work in progress and does not yet support all Neo4j features.
+This companion crate implements a Rig vector store based on Neo4j Graph database. It uses the [neo4rs](https://github.com/neo4j-labs/neo4rs) crate to interact with Neo4j. Note that the neo4rs crate is a work in progress and does not yet support all Neo4j features. Further documentation on Neo4j & vector search integration can be found on the [neo4rs docs](https://neo4j.com/docs/cypher-manual/current/indexes/semantic-indexes/vector-indexes/).
 
 
 ## Usage
@@ -35,9 +35,13 @@ You can also run `cargo add rig-neo4j rig-core` to add the most recent versions 
 
 See the [examples](./examples) folder for usage examples.
 
+- [examples/vector_search_simple.rs](examples/vector_search_simple.rs) shows how to create an index on simple data.
+- [examples/vector_search_movies_consume.rs](examples/vector_search_movies_consume.rs) shows how to query an existing index.
+- [examples/vector_search_movies_create.rs](examples/vector_search_movies_create.rs) shows how to create embeddings & index on a large DB and query it in one go.
+
 ## Notes
 
-- The `Neo4jVectorStore` is designed to work with a pre-existing Neo4j vector index. You can create the index using the Neo4j browser or the Neo4j language. See the [Neo4j documentation](https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/setup/vector-index/) for more information.
+- The `Neo4jVectorIndex` struct is designed to work with a pre-existing Neo4j vector index. You can create the index using the Neo4j browser or the Neo4j language. See the [Neo4j documentation](https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/setup/vector-index/) for more information. Example [examples/vector_search_simple.rs](examples/vector_search_simple.rs) shows how to create an index on existing data.
 
 ```Cypher
 CREATE VECTOR INDEX moviePlots
