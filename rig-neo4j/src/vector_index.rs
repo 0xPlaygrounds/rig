@@ -10,35 +10,145 @@ use rig::{
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{VectorStoreError, VectorStoreIndex},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::neo4j_to_rig_error;
+use crate::{neo4j_to_rig_error, ToBoltType};
 
 pub struct Neo4jVectorIndex<M: EmbeddingModel> {
     graph: Graph,
     embedding_model: M,
-    index_name: String,
     search_params: SearchParams,
+    index_config: IndexConfig,
+}
+
+/// The index name must be unique among both indexes and constraints.
+/// A newly created index is not immediately available but is created in the background.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct IndexConfig {
+    index_name: String,
+    similarity_function: VectorSimilarityFunction,
+}
+
+impl Default for IndexConfig {
+    fn default() -> Self {
+        Self {
+            index_name: "vector_index".to_string(),
+            similarity_function: VectorSimilarityFunction::Cosine,
+        }
+    }
+}
+
+impl IndexConfig {
+    pub fn new(index_name: impl Into<String>) -> Self {
+        Self {
+            index_name: index_name.into(),
+            similarity_function: VectorSimilarityFunction::Cosine,
+        }
+    }
+
+    pub fn index_name(mut self, index_name: impl Into<String>) -> Self {
+        self.index_name = index_name.into();
+        self
+    }
+
+    pub fn similarity_function(mut self, similarity_function: VectorSimilarityFunction) -> Self {
+        self.similarity_function = similarity_function;
+        self
+    }
+}
+
+/// Cosine is most commonly used, but Euclidean is also supported.
+/// See [Neo4j vector similarity functions](https://neo4j.com/docs/cypher-manual/current/indexes/semantic-indexes/vector-indexes/#similarity-functions)
+/// for more information.
+#[derive(Default, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum VectorSimilarityFunction {
+    #[default]
+    Cosine,
+    Euclidean,
 }
 
 impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
     const BASE_VECTOR_SEARCH_QUERY: &str = "
-    CALL db.index.vector.queryNodes($index_name, $num_candidates, $queryVector)
-    YIELD node, score
-    ";
+        CALL db.index.vector.queryNodes($index_name, $num_candidates, $queryVector)
+        YIELD node, score";
 
     pub fn new(
         graph: Graph,
         embedding_model: M,
-        index_name: &str,
+        index_config: IndexConfig,
         search_params: SearchParams,
     ) -> Self {
         Self {
             graph,
             embedding_model,
-            index_name: index_name.to_string(),
+            index_config,
             search_params,
         }
+    }
+
+    /// Calls the `CREATE VECTOR INDEX` Neo4j query and waits for the index to be created.
+    /// A newly created index is not immediately fully available but is created (ie data is indexed) in the background.
+    ///
+    /// ### Arguments
+    /// * `node_label` - The label of the nodes to which the index will be applied. For example, if your nodes have
+    ///                  the label `:Movie`, pass "Movie" as the node_label parameter.
+    ///
+    pub async fn create_and_await_vector_index(
+        &self,
+        node_label: String,
+    ) -> Result<(), VectorStoreError> {
+        // Create a vector index on our vector store
+        tracing::info!("Creating vector index {} ...", self.index_config.index_name);
+
+        let create_vector_index_query = format!(
+            "
+            CREATE VECTOR INDEX $index_name IF NOT EXISTS
+            FOR (m:{})
+            ON m.embedding
+            OPTIONS {{
+                indexConfig: {{
+                    `vector.dimensions`: $dimensions,
+                    `vector.similarity_function`: $similarity_function
+                }}
+            }}",
+            node_label
+        );
+
+        self.graph
+            .run(
+                neo4rs::query(&create_vector_index_query)
+                    .param("index_name", self.index_config.index_name.clone())
+                    .param(
+                        "similarity_function",
+                        self.index_config.similarity_function.clone().to_bolt_type(),
+                    )
+                    .param("dimensions", self.embedding_model.ndims() as i64),
+            )
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+        // Check if the index exists with db.awaitIndex(), the call timeouts if the index is not ready
+        let index_exists = self
+            .graph
+            .run(
+                neo4rs::query("CALL db.awaitIndex($index_name, 10000)")
+                    .param("index_name", self.index_config.index_name.clone()),
+            )
+            .await;
+
+        if index_exists.is_err() {
+            tracing::warn!(
+                "Index with name `{}` is not ready or could not be created.",
+                self.index_config.index_name
+            );
+        }
+
+        tracing::info!(
+            "Index created successfully with name: {}",
+            self.index_config.index_name
+        );
+        Ok(())
     }
 
     /// Build a Neo4j query that performs a vector search against an index.
@@ -66,14 +176,14 @@ impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
         ))
         .param("queryVector", prompt_embedding.vec)
         .param("num_candidates", n as i64)
-        .param("index_name", self.index_name.clone())
+        .param("index_name", self.index_config.index_name.clone())
     }
 
     pub async fn execute_and_collect<T: for<'a> Deserialize<'a>>(
         &self,
         query: Query,
     ) -> Result<Vec<T>, VectorStoreError> {
-        Ok(self
+        self
             .graph
             .execute(query)
             .await
@@ -81,7 +191,7 @@ impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
             .into_stream_as::<T>()
             .try_collect::<Vec<T>>()
             .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?)
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))
     }
 }
 
@@ -184,7 +294,6 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for Neo4jVec
 // Utilities to print results from a vector search
 // ===============================
 
-
 #[cfg(feature = "display")]
 #[allow(dead_code)]
 pub mod display {
@@ -208,12 +317,12 @@ pub mod display {
             let id_width = 10;
             let description_width = width - title_width - id_width - 2; // 2 for spaces
 
-            write!(
+            writeln!(
                 f,
-                "{:<title_width$} {:<id_width$} {:<description_width$}\n",
+                "{:<title_width$} {:<id_width$} {:<description_width$}",
                 "Title", "ID", "Description"
             )?;
-            write!(f, "{}\n", "-".repeat(width))?;
+            writeln!(f, "{}", "-".repeat(width))?;
             for result in self.0 {
                 let wrapped_title = textwrap::fill(&result.title, title_width);
                 let wrapped_description = textwrap::fill(&result.description, description_width);
@@ -225,15 +334,15 @@ pub mod display {
                     let title_line = title_lines.get(i).unwrap_or(&"");
                     let description_line = description_lines.get(i).unwrap_or(&"");
                     if i == 0 {
-                        write!(
+                        writeln!(
                             f,
-                            "{:<title_width$} {:<id_width$} {:<description_width$}\n",
+                            "{:<title_width$} {:<id_width$} {:<description_width$}",
                             title_line, result.id, description_line
                         )?;
                     } else {
-                        write!(
+                        writeln!(
                             f,
-                            "{:<title_width$} {:<id_width$} {:<description_width$}\n",
+                            "{:<title_width$} {:<id_width$} {:<description_width$}",
                             title_line, "", description_line
                         )?;
                     }
