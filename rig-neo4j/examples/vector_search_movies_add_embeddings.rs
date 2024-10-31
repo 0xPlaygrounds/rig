@@ -151,7 +151,7 @@ async fn import_batch(graph: &Graph, nodes: &[Movie], batch_n: i32) -> Result<()
         .map(|node| node.to_encode.clone().unwrap())
         .collect();
 
-    let _ = graph.run(
+    graph.run(
         Query::new(format!(
             "CALL genai.vector.encodeBatch($to_encode_list, 'OpenAI', {{ token: $token }}) YIELD index, vector
              MATCH (m:{} {{title: $movies[index].title, plot: $movies[index].plot}})

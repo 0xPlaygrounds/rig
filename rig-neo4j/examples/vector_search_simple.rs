@@ -8,6 +8,7 @@
 //! 5. Returns the results
 use std::env;
 
+use futures::StreamExt;
 use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
@@ -52,34 +53,37 @@ async fn main() -> Result<(), anyhow::Error> {
         embedding: Vec<f32>,
     }
 
-    let _create_nodes = futures::future::join_all(embeddings.into_iter().map(|doc| {
-        neo4j_client.graph.run(
-            neo4rs::query(
-                "
-                    CREATE
-                        (document:DocumentEmbeddings {
-                            id: $id,
-                            document: $document,
-                            embedding: $embedding})
-                    RETURN document",
+    let create_nodes = futures::stream::iter(embeddings)
+        .map(|doc| {
+            neo4j_client.graph.run(
+                neo4rs::query(
+                    "
+                        CREATE
+                            (document:DocumentEmbeddings {
+                                id: $id,
+                                document: $document,
+                                embedding: $embedding})
+                        RETURN document",
+                )
+                .param("id", doc.id)
+                // Here we use the first embedding but we could use any of them.
+                // Neo4j only takes primitive types or arrays as properties.
+                .param("embedding", doc.embeddings[0].vec.clone())
+                .param("document", doc.document.to_bolt_type()),
             )
-            .param("id", doc.id)
-            // Here we use the first embedding but we could use any of them.
-            // Neo4j only takes primitive types or arrays as properties.
-            .param("embedding", doc.embeddings[0].vec.clone())
-            .param("document", doc.document.to_bolt_type()),
-        )
-    }))
-    .await;
+        })
+        .buffer_unordered(3)
+        .collect::<Vec<_>>()
+        .await;
 
     // Unwrap the results in the vector _create_nodes
-    for result in _create_nodes {
+    for result in create_nodes {
         result.unwrap(); // or handle the error appropriately
     }
 
     // Create a vector index on our vector store
     println!("Creating vector index...");
-    let _ = neo4j_client
+    neo4j_client
         .graph
         .run(neo4rs::query(
             "CREATE VECTOR INDEX vector_index IF NOT EXISTS
