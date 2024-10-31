@@ -38,7 +38,7 @@
 pub mod vector_index;
 use neo4rs::*;
 use rig::{embeddings::EmbeddingModel, vector_store::VectorStoreError};
-use vector_index::{Neo4jVectorIndex, SearchParams};
+use vector_index::{IndexConfig, Neo4jVectorIndex, SearchParams};
 
 pub struct Neo4jClient {
     pub graph: Graph,
@@ -59,7 +59,7 @@ where
     fn to_bolt_type(&self) -> BoltType {
         match serde_json::to_value(self) {
             Ok(json_value) => match json_value {
-                serde_json::Value::Null => BoltType::Null(BoltNull::default()),
+                serde_json::Value::Null => BoltType::Null(BoltNull),
                 serde_json::Value::Bool(b) => BoltType::Boolean(BoltBoolean::new(b)),
                 serde_json::Value::Number(num) => {
                     if let Some(i) = num.as_i64() {
@@ -68,7 +68,7 @@ where
                         BoltType::Float(BoltFloat::new(f))
                     } else {
                         println!("Couldn't map to BoltType, will ignore.");
-                        BoltType::Null(BoltNull::default()) // Handle unexpected number type
+                        BoltType::Null(BoltNull) // Handle unexpected number type
                     }
                 }
                 serde_json::Value::String(s) => BoltType::String(BoltString::new(&s)),
@@ -88,7 +88,7 @@ where
             },
             Err(_) => {
                 println!("Couldn't serialize to JSON, will ignore.");
-                BoltType::Null(BoltNull::default()) // Handle serialization error
+                BoltType::Null(BoltNull) // Handle serialization error
             }
         }
     }
@@ -122,23 +122,25 @@ impl Neo4jClient {
     pub fn index<M: EmbeddingModel>(
         &self,
         model: M,
-        index_name: &str,
+        index_config: IndexConfig,
         search_params: SearchParams,
     ) -> Neo4jVectorIndex<M> {
-        Neo4jVectorIndex::new(self.graph.clone(), model, index_name, search_params)
+        Neo4jVectorIndex::new(self.graph.clone(), model, index_config, search_params)
     }
 }
-
 
 #[allow(dead_code)]
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::vector_index::display::SearchResult;
     use neo4rs::ConfigBuilder;
-    use rig::{providers::openai::{Client, TEXT_EMBEDDING_ADA_002}, vector_store::VectorStoreIndex};
+    use rig::{
+        providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+        vector_store::VectorStoreIndex,
+    };
     use serde::Deserialize;
     use std::env;
-    use crate::vector_index::display::SearchResult;
 
     const NEO4J_URI: &str = "neo4j+s://demo.neo4jlabs.com:7687";
     const NEO4J_DB: &str = "recommendations";
@@ -186,7 +188,10 @@ mod tests {
                 score,
             })
             .collect();
-        println!("{:#}", vector_index::display::SearchResults(&search_results));
+        println!(
+            "{:#}",
+            vector_index::display::SearchResults(&search_results)
+        );
         assert!(search_results.len() > 0);
     }
 
@@ -207,7 +212,7 @@ mod tests {
         .await
         .unwrap();
 
-        let index = client.index(model, "moviePlotsEmbedding", SearchParams::default());
+        let index = client.index(model, IndexConfig::new("moviePlotsEmbedding"), SearchParams::default());
         Ok(index.top_n::<Movie>("Batman", 3).await?)
     }
 }
