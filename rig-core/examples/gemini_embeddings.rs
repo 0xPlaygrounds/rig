@@ -1,4 +1,4 @@
-use rig::providers::gemini::{self};
+use rig::providers::gemini;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {

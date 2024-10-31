@@ -52,7 +52,7 @@ impl Client {
     pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}?key={}", self.base_url, path, self.api_key).replace("//", "/");
 
-        tracing::info!("POST {}", url);
+        tracing::debug!("POST {}", url);
         self.http_client.post(url)
     }
 

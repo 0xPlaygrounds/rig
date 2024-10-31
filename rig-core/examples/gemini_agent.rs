@@ -1,12 +1,11 @@
 use rig::{
     completion::Prompt,
-    providers::gemini::{self, completion::GenerationConfig},
+    providers::gemini::{self, completion::gemini_api_types::GenerationConfig},
 };
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize the Google Gemini client
-    // Create OpenAI client
     let client = gemini::Client::from_env();
 
     // Create agent with a single context prompt

@@ -13,11 +13,86 @@ use super::{client::ApiResponse, Client};
 pub const EMBEDDING_001: &str = "embedding-001";
 /// `text-embedding-004` embedding model
 pub const EMBEDDING_004: &str = "text-embedding-004";
+#[derive(Clone)]
+pub struct EmbeddingModel {
+    client: Client,
+    model: String,
+    ndims: Option<usize>,
+}
 
+impl EmbeddingModel {
+    pub fn new(client: Client, model: &str, ndims: Option<usize>) -> Self {
+        Self {
+            client,
+            model: model.to_string(),
+            ndims,
+        }
+    }
+}
+
+impl embeddings::EmbeddingModel for EmbeddingModel {
+    const MAX_DOCUMENTS: usize = 1024;
+
+    fn ndims(&self) -> usize {
+        match self.model.as_str() {
+            EMBEDDING_001 => 768,
+            EMBEDDING_004 => 1024,
+            _ => 0, // Default to 0 for unknown models
+        }
+    }
+
+    async fn embed_documents(
+        &self,
+        documents: Vec<String>,
+    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+        let mut request_body = json!({
+            "model": format!("models/{}", self.model),
+            "content": {
+                "parts": documents.iter().map(|doc| json!({ "text": doc })).collect::<Vec<_>>(),
+            },
+        });
+
+        if let Some(ndims) = self.ndims {
+            request_body["output_dimensionality"] = json!(ndims);
+        }
+
+        let response = self
+            .client
+            .post(&format!("/v1beta/models/{}:embedContent", self.model))
+            .json(&request_body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<ApiResponse<gemini_api_types::EmbeddingResponse>>()
+            .await?;
+
+        match response {
+            ApiResponse::Ok(response) => {
+                let chunk_size = self.ndims.unwrap_or_else(|| self.ndims());
+                Ok(documents
+                    .into_iter()
+                    .zip(response.embedding.values.chunks(chunk_size))
+                    .map(|(document, embedding)| embeddings::Embedding {
+                        document,
+                        vec: embedding.to_vec(),
+                    })
+                    .collect())
+            }
+            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+        }
+    }
+}
+
+// =================================================================
+// Gemini API Types
+// =================================================================
+/// Rust Implementation of the Gemini Types from [Gemini API Reference](https://ai.google.dev/api/embeddings)
 #[allow(dead_code)]
 mod gemini_api_types {
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
+
+    use crate::providers::gemini::gemini_api_types::{CodeExecutionResult, ExecutableCode};
 
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -97,44 +172,6 @@ mod gemini_api_types {
     }
 
     #[derive(Serialize)]
-    pub struct ExecutableCode {
-        /// The language of the code.
-        language: ExecutionLanguage,
-        /// The code to execute.
-        code: String,
-    }
-
-    #[derive(Serialize)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    pub enum ExecutionLanguage {
-        /// Unspecified language. This value should not be used.
-        LanguageUnspecified,
-        /// Python >= 3.10, with numpy and simpy available.
-        Python,
-    }
-
-    #[derive(Serialize)]
-    pub struct CodeExecutionResult {
-        /// Outcome of the code execution.
-        outcome: CodeExecutionOutcome,
-        /// Contains stdout when code execution is successful, stderr or other description otherwise.
-        output: Option<String>,
-    }
-
-    #[derive(Serialize)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    pub enum CodeExecutionOutcome {
-        /// Unspecified status. This value should not be used.
-        Unspecified,
-        /// Code execution completed successfully.
-        Ok,
-        /// Code execution finished but with a failure. stderr should contain the reason.
-        Failed,
-        /// Code execution ran for too long, and was cancelled. There may or may not be a partial output present.
-        DeadlineExceeded,
-    }
-
-    #[derive(Serialize)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum TaskType {
         /// Unset value, which will default to one of the other enum values.
@@ -163,74 +200,5 @@ mod gemini_api_types {
     #[derive(Debug, Deserialize)]
     pub struct EmbeddingValues {
         pub values: Vec<f64>,
-    }
-}
-#[derive(Clone)]
-pub struct EmbeddingModel {
-    client: Client,
-    model: String,
-    ndims: Option<usize>,
-}
-
-impl EmbeddingModel {
-    pub fn new(client: Client, model: &str, ndims: Option<usize>) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-            ndims,
-        }
-    }
-}
-
-impl embeddings::EmbeddingModel for EmbeddingModel {
-    const MAX_DOCUMENTS: usize = 1024;
-
-    fn ndims(&self) -> usize {
-        match self.model.as_str() {
-            EMBEDDING_001 => 768,
-            EMBEDDING_004 => 1024,
-            _ => 0, // Default to 0 for unknown models
-        }
-    }
-
-    async fn embed_documents(
-        &self,
-        documents: Vec<String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let mut request_body = json!({
-            "model": format!("models/{}", self.model),
-            "content": {
-                "parts": documents.iter().map(|doc| json!({ "text": doc })).collect::<Vec<_>>(),
-            },
-        });
-
-        if let Some(ndims) = self.ndims {
-            request_body["output_dimensionality"] = json!(ndims);
-        }
-
-        let response = self
-            .client
-            .post(&format!("/v1beta/models/{}:embedContent", self.model))
-            .json(&request_body)
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<ApiResponse<gemini_api_types::EmbeddingResponse>>()
-            .await?;
-
-        match response {
-            ApiResponse::Ok(response) => {
-                let chunk_size = self.ndims.unwrap_or_else(|| self.ndims());
-                Ok(documents
-                    .into_iter()
-                    .zip(response.embedding.values.chunks(chunk_size))
-                    .map(|(document, embedding)| embeddings::Embedding {
-                        document,
-                        vec: embedding.to_vec(),
-                    })
-                    .collect())
-            }
-            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
-        }
     }
 }
