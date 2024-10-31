@@ -128,3 +128,86 @@ impl Neo4jClient {
         Neo4jVectorIndex::new(self.graph.clone(), model, index_name, search_params)
     }
 }
+
+
+#[allow(dead_code)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use neo4rs::ConfigBuilder;
+    use rig::{providers::openai::{Client, TEXT_EMBEDDING_ADA_002}, vector_store::VectorStoreIndex};
+    use serde::Deserialize;
+    use std::env;
+    use crate::vector_index::display::SearchResult;
+
+    const NEO4J_URI: &str = "neo4j+s://demo.neo4jlabs.com:7687";
+    const NEO4J_DB: &str = "recommendations";
+    const NEO4J_USERNAME: &str = "recommendations";
+    const NEO4J_PASSWORD: &str = "recommendations";
+
+    #[derive(Debug, Deserialize)]
+    struct Movie {
+        title: String,
+        plot: String,
+    }
+
+    #[tokio::test]
+    async fn test_connect() {
+        let result = Neo4jClient::from_config(
+            ConfigBuilder::default()
+                .uri(NEO4J_URI)
+                .db(NEO4J_DB)
+                .user(NEO4J_USERNAME)
+                .password(NEO4J_PASSWORD)
+                .build()
+                .unwrap(),
+        )
+        .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_vector_search_no_display() {
+        let results = vector_search().await.unwrap();
+        assert!(results.len() > 0);
+    }
+
+    #[cfg(feature = "display")]
+    #[allow(dead_code)]
+    #[tokio::test]
+    async fn test_vector_search_display() {
+        let results = vector_search().await.unwrap();
+        let search_results: Vec<SearchResult> = results
+            .into_iter()
+            .map(|(score, id, doc)| vector_index::display::SearchResult {
+                title: doc.title,
+                id,
+                description: doc.plot,
+                score,
+            })
+            .collect();
+        println!("{:#}", vector_index::display::SearchResults(&search_results));
+        assert!(search_results.len() > 0);
+    }
+
+    async fn vector_search() -> Result<Vec<(f64, String, Movie)>, VectorStoreError> {
+        let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
+        let openai_client = Client::new(&openai_api_key);
+        let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+
+        let client = Neo4jClient::from_config(
+            ConfigBuilder::default()
+                .uri(NEO4J_URI)
+                .db(NEO4J_DB)
+                .user(NEO4J_USERNAME)
+                .password(NEO4J_PASSWORD)
+                .build()
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let index = client.index(model, "moviePlotsEmbedding", SearchParams::default());
+        Ok(index.top_n::<Movie>("Batman", 3).await?)
+    }
+}
