@@ -3,11 +3,11 @@
 //! This crate is a companion crate to the [rig-core crate](https://github.com/rig-ai/rig-core).
 //! It provides a vector store implementation that uses Neo4j as the underlying datastore.
 //!
-//! See the [README](https://github.com/rig-ai/rig-neo4j/blob/main/README.md) for more information.
+//! See the [README](https://github.com/0xPlaygrounds/rig/tree/main/rig-neo4j) for more information.
 //!
-//! # Prerequisites
+//! ## Prerequisites
 //!
-//! ## GenAI Plugin
+//! ### GenAI Plugin
 //! The GenAI plugin is enabled by default in Neo4j Aura.
 //!
 //! The plugin needs to be installed on self-managed instances. This is done by moving the neo4j-genai.jar
@@ -16,7 +16,7 @@
 //!
 //! For more information, see [Operations Manual → Configure plugins](https://neo4j.com/docs/operations-manual/current/plugins/configure/).
 //!
-//! ## Pre-existing Vector Index
+//! ### Pre-existing Vector Index
 //!
 //! The [Neo4jVectorStoreIndex](Neo4jVectorIndex) struct is designed to work with a pre-existing
 //! Neo4j vector index. You can create the index using the Neo4j browser or the Neo4j language.
@@ -35,6 +35,50 @@
 //!         `vector.similarity_function`: 'cosine'
 //!     }}
 //! ```
+//!
+//! ## Simple example:
+//!
+//! More examples can be found in the [/examples](https://github.com/0xPlaygrounds/rig/tree/main/rig-neo4j/examples) folder.
+//! ```
+//! use rig::{providers::openai, vector_store::VectorStoreIndex};
+//! use serde::Deserialize;
+//! use std::env;
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
+//!     let openai_client = Client::new(&openai_api_key);
+//!     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+//!
+//!     let client = Neo4jClient::from_config(
+//!         ConfigBuilder::default()
+//!             .uri(NEO4J_URI)
+//!             .db(NEO4J_DB)
+//!             .user(NEO4J_USERNAME)
+//!             .password(NEO4J_PASSWORD)
+//!             .build()
+//!             .unwrap(),
+//!     )
+//!    .await
+//!    .unwrap();
+//!
+//!     let index = client.index(
+//!         model,
+//!         IndexConfig::new("moviePlotsEmbedding"),
+//!         SearchParams::default(),
+//!     );
+//!
+//!     #[derive(Debug, Deserialize)]
+//!     struct Movie {
+//!         title: String,
+//!         plot: String,
+//!     }
+//!     let results = index.top_n::<Movie>("Batman", 3).await?;
+//!     println!("{:#?}", results);
+//! }
+//! ```
+//!
+//!
 pub mod vector_index;
 use neo4rs::*;
 use rig::{embeddings::EmbeddingModel, vector_store::VectorStoreError};
