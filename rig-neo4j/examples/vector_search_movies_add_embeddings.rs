@@ -108,7 +108,7 @@ async fn main() -> Result<(), anyhow::Error> {
     );
 
     index
-        .create_and_await_vector_index(NODE_LABEL.to_string())
+        .create_and_await_vector_index(NODE_LABEL.to_string(), None)
         .await?;
 
     // Query the index

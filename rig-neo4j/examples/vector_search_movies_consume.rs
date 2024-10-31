@@ -67,7 +67,7 @@ async fn main() -> Result<(), anyhow::Error> {
     );
 
     index
-        .create_and_await_vector_index("Movie".to_string())
+        .create_and_await_vector_index("Movie".to_string(), None)
         .await?;
 
     // Query the index

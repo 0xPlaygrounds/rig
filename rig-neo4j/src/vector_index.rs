@@ -90,29 +90,34 @@ impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
     /// Calls the `CREATE VECTOR INDEX` Neo4j query and waits for the index to be created.
     /// A newly created index is not immediately fully available but is created (ie data is indexed) in the background.
     ///
+    /// ❗ If there is already an index targetting the same node label and property, the new index creation will fail.
+    ///
     /// ### Arguments
     /// * `node_label` - The label of the nodes to which the index will be applied. For example, if your nodes have
     ///                  the label `:Movie`, pass "Movie" as the node_label parameter.
+    /// * `embedding_prop_name`(optional) - The name of the property that contains the embedding vectors. Defaults to "embedding".
     ///
     pub async fn create_and_await_vector_index(
         &self,
         node_label: String,
+        embedding_prop_name: Option<String>,
     ) -> Result<(), VectorStoreError> {
         // Create a vector index on our vector store
         tracing::info!("Creating vector index {} ...", self.index_config.index_name);
 
+        let property = embedding_prop_name.unwrap_or("embedding".to_string());
         let create_vector_index_query = format!(
             "
             CREATE VECTOR INDEX $index_name IF NOT EXISTS
             FOR (m:{})
-            ON m.embedding
+            ON m.{}
             OPTIONS {{
                 indexConfig: {{
                     `vector.dimensions`: $dimensions,
                     `vector.similarity_function`: $similarity_function
                 }}
             }}",
-            node_label
+            node_label, property
         );
 
         self.graph

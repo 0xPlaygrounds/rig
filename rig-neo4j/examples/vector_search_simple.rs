@@ -13,7 +13,10 @@ use rig::{
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex as _,
 };
-use rig_neo4j::{vector_index::SearchParams, Neo4jClient, ToBoltType};
+use rig_neo4j::{
+    vector_index::{IndexConfig, SearchParams},
+    Neo4jClient, ToBoltType,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -53,10 +56,10 @@ async fn main() -> Result<(), anyhow::Error> {
         neo4j_client.graph.run(
             neo4rs::query(
                 "
-                    CREATE 
+                    CREATE
                         (document:DocumentEmbeddings {
-                            id: $id, 
-                            document: $document, 
+                            id: $id,
+                            document: $document,
                             embedding: $embedding})
                     RETURN document",
             )
@@ -106,7 +109,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client.index(model, "vector_index", SearchParams::default());
+    let index = neo4j_client.index(
+        model,
+        IndexConfig::new("vector_index"),
+        SearchParams::default(),
+    );
 
     // Query the index
     let results = index
