@@ -1,43 +1,96 @@
+//! A Rig vector store for Neo4j.
+//!
+//! This crate is a companion crate to the [rig-core crate](https://github.com/rig-ai/rig-core).
+//! It provides a vector store implementation that uses Neo4j as the underlying datastore.
+//!
+//! See the [README](https://github.com/rig-ai/rig-neo4j/blob/main/README.md) for more information.
+//!
+//! # Prerequisites
+//!
+//! ## GenAI Plugin
+//! The GenAI plugin is enabled by default in Neo4j Aura.
+//!
+//! The plugin needs to be installed on self-managed instances. This is done by moving the neo4j-genai.jar
+//! file from /products to /plugins in the Neo4j home directory, or, if you are using Docker, by starting
+//! the Docker container with the extra parameter `--env NEO4J_PLUGINS='["genai"]'`.
+//!
+//! For more information, see [Operations Manual → Configure plugins](https://neo4j.com/docs/operations-manual/current/plugins/configure/).
+//!
+//! ## Pre-existing Vector Index
+//!
+//! The [Neo4jVectorStoreIndex](Neo4jVectorIndex) struct is designed to work with a pre-existing
+//! Neo4j vector index. You can create the index using the Neo4j browser or the Neo4j language.
+//! See the [Neo4j documentation](https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/setup/vector-index/)
+//! for more information.
+//!
+//! The index name must be unique among both indexes and constraints.
+//! A newly created index is not immediately available but is created in the background.
+//!
+//! ```cypher
+//! CREATE VECTOR INDEX moviePlots
+//!     FOR (m:Movie)
+//!     ON m.embedding
+//!     OPTIONS {indexConfig: {
+//!         `vector.dimensions`: 1536,
+//!         `vector.similarity_function`: 'cosine'
+//!     }}
+//! ```
+pub mod vector_index;
 use neo4rs::*;
-use std::fmt::Debug;
-
-use rig::{
-    embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel},
-    vector_store::{VectorStore, VectorStoreError, VectorStoreIndex},
-};
-use serde::Deserialize;
+use rig::{embeddings::EmbeddingModel, vector_store::VectorStoreError};
+use vector_index::{Neo4jVectorIndex, SearchParams};
 
 pub struct Neo4jClient {
     pub graph: Graph,
-}
-
-/// A Neo4j vector store.
-pub struct Neo4jVectorStore {
-    //collection: mongodb::Collection<DocumentEmbeddings>,
-    pub client: Neo4jClient,
-    pub database_name: String,
 }
 
 fn neo4j_to_rig_error(e: neo4rs::Error) -> VectorStoreError {
     VectorStoreError::DatastoreError(Box::new(e))
 }
 
-trait ToBoltType {
+pub trait ToBoltType {
     fn to_bolt_type(&self) -> BoltType;
 }
 
-impl ToBoltType for Embedding {
+impl<T> ToBoltType for T
+where
+    T: serde::Serialize,
+{
     fn to_bolt_type(&self) -> BoltType {
-        let mut bolt_map = BoltMap::new();
-        let bolt_list = BoltType::List(
-            self.vec
-                .iter()
-                .map(|&f| BoltType::Float(BoltFloat::new(f)))
-                .collect::<Vec<BoltType>>()
-                .into(),
-        );
-        bolt_map.put(BoltString::new(&self.document), bolt_list);
-        BoltType::Map(bolt_map)
+        match serde_json::to_value(self) {
+            Ok(json_value) => match json_value {
+                serde_json::Value::Null => BoltType::Null(BoltNull::default()),
+                serde_json::Value::Bool(b) => BoltType::Boolean(BoltBoolean::new(b)),
+                serde_json::Value::Number(num) => {
+                    if let Some(i) = num.as_i64() {
+                        BoltType::Integer(BoltInteger::new(i))
+                    } else if let Some(f) = num.as_f64() {
+                        BoltType::Float(BoltFloat::new(f))
+                    } else {
+                        println!("Couldn't map to BoltType, will ignore.");
+                        BoltType::Null(BoltNull::default()) // Handle unexpected number type
+                    }
+                }
+                serde_json::Value::String(s) => BoltType::String(BoltString::new(&s)),
+                serde_json::Value::Array(arr) => BoltType::List(
+                    arr.iter()
+                        .map(|v| v.to_bolt_type())
+                        .collect::<Vec<BoltType>>()
+                        .into(),
+                ),
+                serde_json::Value::Object(obj) => {
+                    let mut bolt_map = BoltMap::new();
+                    for (k, v) in obj {
+                        bolt_map.put(BoltString::new(&k), v.to_bolt_type());
+                    }
+                    BoltType::Map(bolt_map)
+                }
+            },
+            Err(_) => {
+                println!("Couldn't serialize to JSON, will ignore.");
+                BoltType::Null(BoltNull::default()) // Handle serialization error
+            }
+        }
     }
 }
 
@@ -52,62 +105,15 @@ impl Neo4jClient {
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
         Ok(Self { graph })
     }
-}
 
-impl VectorStore for Neo4jVectorStore {
-    type Q = neo4rs::Query;
-
-    async fn add_documents(
-        &mut self,
-        documents: Vec<DocumentEmbeddings>,
-    ) -> Result<(), VectorStoreError> {
-        for doc in documents {
-            let query = Query::new("CREATE (d:DocumentEmbeddings {id: $id, document: $document, embeddings: $embeddings})".to_string())
-                .param("id", doc.id)
-                .param("document", doc.document.to_string())
-                .param("embeddings", doc.embeddings.iter().map(|e| e.to_bolt_type()).collect::<Vec<BoltType>>());
-            self.client
-                .graph
-                .run(query)
-                .await
-                .map_err(neo4j_to_rig_error)?;
-        }
-        Ok(())
+    pub async fn from_config(config: Config) -> Result<Self, VectorStoreError> {
+        let graph = Graph::connect(config)
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        Ok(Self { graph })
     }
 
-    async fn get_document_embeddings(
-        &self,
-        _id: &str,
-    ) -> Result<Option<DocumentEmbeddings>, VectorStoreError> {
-        // TODO: Implement
-        Ok(None)
-    }
-
-    async fn get_document<T: for<'a> serde::Deserialize<'a>>(
-        &self,
-        _id: &str,
-    ) -> Result<Option<T>, VectorStoreError> {
-        // TODO: Implement
-        Ok(None)
-    }
-
-    async fn get_document_by_query(
-        &self,
-        _query: Self::Q,
-    ) -> Result<Option<DocumentEmbeddings>, VectorStoreError> {
-        // TODO: Implement
-        Ok(None)
-    }
-}
-
-impl Neo4jVectorStore {
-    pub fn new(client: Neo4jClient, database_name: &str) -> Self {
-        Self {
-            client,
-            database_name: database_name.to_string(),
-        }
-    }
-    /// Creates a `Neo4jVectorIndex` that mirrors an existing Neo4j Vector Index.
+    /// Returns a `Neo4jVectorIndex` that mirrors an existing Neo4j Vector Index.
     ///
     /// An index (of type "vector") of the same name as `index_name` must already exist for the Neo4j database.
     /// See the Neo4j [documentation (Create vector index)](https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/setup/vector-index/) for more information on creating indexes.
@@ -119,179 +125,6 @@ impl Neo4jVectorStore {
         index_name: &str,
         search_params: SearchParams,
     ) -> Neo4jVectorIndex<M> {
-        Neo4jVectorIndex::new(self.client.graph.clone(), model, index_name, search_params)
-    }
-}
-
-/// A vector index for a Neo4j graph.
-pub struct Neo4jVectorIndex<M: EmbeddingModel> {
-    //collection: mongodb::Collection<DocumentEmbeddings>,
-    graph: Graph,
-    embedding_model: M,
-    index_name: String,
-    search_params: SearchParams,
-}
-
-impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
-    const BASE_VECTOR_SEARCH_QUERY: &str = "
-    CALL db.index.vector.queryNodes($index_name, $num_candidates, $queryVector)
-    YIELD node, score
-    ";
-
-    pub fn new(
-        graph: Graph,
-        embedding_model: M,
-        index_name: &str,
-        search_params: SearchParams,
-    ) -> Self {
-        Self {
-            graph,
-            embedding_model,
-            index_name: index_name.to_string(),
-            search_params,
-        }
-    }
-
-    /// Build a Neo4j query that performs a vector search against an index.
-    /// See [Query vector index](https://neo4j.com/docs/cypher-manual/current/indexes/semantic-indexes/vector-indexes/#query-vector-index) for more information.
-    pub fn build_vector_search_query(
-        &self,
-        prompt_embedding: Embedding,
-        return_node: bool,
-        n: usize,
-    ) -> Query {
-        let where_clause = match &self.search_params.post_vector_search_filter {
-            Some(filter) => format!("WHERE {}", filter),
-            None => "".to_string(),
-        };
-
-        Query::new(format!(
-            "
-            {}
-            {}
-            RETURN score, ID(node) as element_id {}
-            ",
-            Self::BASE_VECTOR_SEARCH_QUERY,
-            where_clause,
-            if return_node { ", node as node" } else { "" }
-        ))
-        .param("queryVector", prompt_embedding.vec)
-        .param("num_candidates", n as i64)
-        .param("index_name", self.index_name.clone())
-    }
-
-    pub async fn execute_and_collect<T: for<'a> Deserialize<'a>>(
-        &self,
-        query: Query,
-    ) -> Result<Vec<T>, VectorStoreError> {
-        let mut result = self
-            .graph
-            .execute(query)
-            .await
-            .map_err(neo4j_to_rig_error)?;
-        let mut results = Vec::new();
-        while let Ok(Some(row)) = result.next().await {
-            let row_parsed = row
-                .to::<T>()
-                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-            results.push(row_parsed);
-        }
-        Ok(results)
-    }
-}
-
-/// Search parameters for a vector search. Neo4j currently only supports post-vector-search filtering.
-pub struct SearchParams {
-    /// Sets the **post-filter** field of the search params. Uses a WHERE clause.
-    /// See [Neo4j WHERE clause](https://neo4j.com/docs/cypher-manual/current/clauses/where/) for more information.
-    post_vector_search_filter: Option<String>,
-}
-
-impl SearchParams {
-    /// Initializes a new `SearchParams` with default values.
-    pub fn new(filter: Option<String>) -> Self {
-        Self {
-            post_vector_search_filter: filter,
-        }
-    }
-
-    pub fn filter(mut self, filter: String) -> Self {
-        self.post_vector_search_filter = Some(filter);
-        self
-    }
-}
-
-impl Default for SearchParams {
-    fn default() -> Self {
-        Self::new(None)
-    }
-}
-
-impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for Neo4jVectorIndex<M> {
-    /// Get the top n nodes and scores matching the query.
-    ///
-    /// #### Generic Type Parameters
-    ///
-    /// - `T`: The type used to deserialize the result from the Neo4j query.
-    ///        It must implement the `serde::Deserialize` trait.
-    ///
-    /// #### Returns
-    ///
-    /// Returns a `Result` containing a vector of tuples. Each tuple contains:
-    /// - A `f64` representing the similarity score
-    /// - A `String` representing the node ID
-    /// - A value of type `T` representing the deserialized node data
-    ///
-    async fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
-        &self,
-        query: &str,
-        n: usize,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = self.embedding_model.embed_document(query).await?;
-        let query = self.build_vector_search_query(prompt_embedding, true, n);
-
-        #[derive(Debug, Deserialize)]
-        struct RowResult<T> {
-            node: T,
-            score: f64,
-            element_id: i64,
-        }
-
-        let rows = self.execute_and_collect::<RowResult<T>>(query).await?;
-
-        let results = rows
-            .into_iter()
-            .map(|row| (row.score, row.element_id.to_string(), row.node))
-            .collect::<Vec<_>>();
-
-        Ok(results)
-    }
-
-    /// Get the top n ids and scores matching the query. Runs faster than top_n since it doesn't need to transfer and parse
-    /// the full nodes and embeddings to the client.
-    async fn top_n_ids(
-        &self,
-        query: &str,
-        n: usize,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = self.embedding_model.embed_document(query).await?;
-
-        let query = self.build_vector_search_query(prompt_embedding, false, n);
-
-        #[derive(Debug, Deserialize)]
-        struct RowResult {
-            score: f64,
-            element_id: i64,
-        }
-
-        let rows = self.execute_and_collect::<RowResult>(query).await?;
-
-        let results = rows
-            .into_iter()
-            .map(|row| (row.score, row.element_id.to_string()))
-            .collect::<Vec<_>>();
-
-        Ok(results)
+        Neo4jVectorIndex::new(self.graph.clone(), model, index_name, search_params)
     }
 }
