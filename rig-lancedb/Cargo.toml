@@ -1,6 +1,6 @@
 [package]
 name = "rig-lancedb"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -9,7 +9,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
 lancedb = "0.10.0"
-rig-core = { path = "../rig-core", version = "0.3.0" }
+rig-core = { path = "../rig-core", version = "0.3.1" }
 arrow-array = "52.2.0"
 serde_json = "1.0.128"
 serde = "1.0.210"

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.1.0...rig-lancedb-v0.1.1) - 2024-11-01
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.1.0](https://github.com/0xPlaygrounds/rig/releases/tag/rig-lancedb-v0.1.0) - 2024-10-24
 
 ### Added

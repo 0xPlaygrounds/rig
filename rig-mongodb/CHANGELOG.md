@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.1.3...rig-mongodb-v0.1.4) - 2024-11-01
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.1.3](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.1.2...rig-mongodb-v0.1.3) - 2024-10-24
 
 ### Fixed
