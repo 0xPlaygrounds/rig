@@ -40,7 +40,9 @@
 //!
 //! More examples can be found in the [/examples](https://github.com/0xPlaygrounds/rig/tree/main/rig-neo4j/examples) folder.
 //! ```
-//! use rig::{providers::openai, vector_store::VectorStoreIndex};
+//! use rig_neo4j::{vector_index::*, Neo4jClient};
+//! use neo4rs::ConfigBuilder;
+//! use rig::{providers::openai::*, vector_store::VectorStoreIndex};
 //! use serde::Deserialize;
 //! use std::env;
 //!
@@ -49,6 +51,12 @@
 //!     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
 //!     let openai_client = Client::new(&openai_api_key);
 //!     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+//!
+//!
+//!     const NEO4J_URI: &str = "neo4j+s://demo.neo4jlabs.com:7687";
+//!     const NEO4J_DB: &str = "recommendations";
+//!     const NEO4J_USERNAME: &str = "recommendations";
+//!     const NEO4J_PASSWORD: &str = "recommendations";
 //!
 //!     let client = Neo4jClient::from_config(
 //!         ConfigBuilder::default()
@@ -73,12 +81,10 @@
 //!         title: String,
 //!         plot: String,
 //!     }
-//!     let results = index.top_n::<Movie>("Batman", 3).await?;
+//!     let results = index.top_n::<Movie>("Batman", 3).await.unwrap();
 //!     println!("{:#?}", results);
 //! }
 //! ```
-//!
-//!
 pub mod vector_index;
 use neo4rs::*;
 use rig::{embeddings::EmbeddingModel, vector_store::VectorStoreError};
