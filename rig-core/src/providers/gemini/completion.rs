@@ -18,10 +18,7 @@ use gemini_api_types::{
 };
 use std::convert::TryFrom;
 
-use crate::{
-    completion::{self, CompletionError, CompletionRequest},
-    providers::gemini::client::ApiResponse,
-};
+use crate::completion::{self, CompletionError, CompletionRequest};
 
 use super::Client;
 
@@ -75,19 +72,14 @@ impl completion::CompletionModel for CompletionModel {
             generation_config.max_output_tokens = Some(max_tokens);
         }
 
-        /*
-        serde_json::to_value(GenerationConfig {
-            top_k: Some(1),
-            top_p: Some(0.95),
-            candidate_count: Some(1),
-            ..Default::default()
-        })? */
-
         let request = GenerateContentRequest {
             contents: full_history
                 .into_iter()
                 .map(|msg| Content {
-                    parts: vec![Part::Text(msg.content)],
+                    parts: vec![Part {
+                        text: Some(msg.content),
+                        ..Default::default()
+                    }],
                     role: match msg.role.as_str() {
                         "system" => Some(Role::Model),
                         "user" => Some(Role::User),
@@ -107,12 +99,15 @@ impl completion::CompletionModel for CompletionModel {
             ),
             tool_config: None,
             system_instruction: Some(Content {
-                parts: vec![Part::Text("system".to_string())],
+                parts: vec![Part {
+                    text: Some("system".to_string()),
+                    ..Default::default()
+                }],
                 role: Some(Role::Model),
             }),
         };
 
-        tracing::info!("Request: {:?}", request);
+        tracing::debug!("Sending completion request to Gemini API");
 
         let response = self
             .client
@@ -121,13 +116,12 @@ impl completion::CompletionModel for CompletionModel {
             .send()
             .await?
             .error_for_status()?
-            .json::<ApiResponse<GenerateContentResponse>>()
+            .json::<GenerateContentResponse>()
             .await?;
 
-        match response {
-            ApiResponse::Ok(response) => Ok(response.try_into()?),
-            ApiResponse::Err(err) => Err(CompletionError::ResponseError(err.message)),
-        }
+        tracing::debug!("Received response");
+
+        completion::CompletionResponse::try_from(response)
     }
 }
 
@@ -151,8 +145,13 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         match response.candidates.as_slice() {
             [ContentCandidate { content, .. }, ..] => Ok(completion::CompletionResponse {
                 choice: match content.parts.first().unwrap() {
-                    Part::Text(text) => completion::ModelChoice::Message(text.clone()),
-                    Part::FunctionCall(function_call) => {
+                    Part {
+                        text: Some(text), ..
+                    } => completion::ModelChoice::Message(text.clone()),
+                    Part {
+                        function_call: Some(function_call),
+                        ..
+                    } => {
                         let args_value = serde_json::Value::Object(
                             function_call.args.clone().unwrap_or_default(),
                         );
@@ -200,43 +199,41 @@ impl TryFrom<serde_json::Value> for GenerationConfig {
             for (key, value) in obj.iter().filter(|(_, v)| !v.is_null()) {
                 match key.as_str() {
                     "temperature" => {
-                        if !value.is_null() {
-                            if let Some(v) = value.as_f64() {
-                                config.temperature = Some(v);
-                            } else {
-                                return Err(unexpected_type_error("temperature"));
-                            }
+                        if let Some(v) = value.as_f64() {
+                            config.temperature = Some(v);
+                        } else {
+                            return Err(unexpected_type_error("temperature"));
                         }
                     }
-                    "max_output_tokens" => {
+                    "maxOutputTokens" => {
                         if let Some(v) = value.as_u64() {
                             config.max_output_tokens = Some(v);
                         } else {
                             return Err(unexpected_type_error("max_output_tokens"));
                         }
                     }
-                    "top_p" => {
+                    "topP" => {
                         if let Some(v) = value.as_f64() {
                             config.top_p = Some(v);
                         } else {
                             return Err(unexpected_type_error("top_p"));
                         }
                     }
-                    "top_k" => {
+                    "topK" => {
                         if let Some(v) = value.as_i64() {
                             config.top_k = Some(v as i32);
                         } else {
                             return Err(unexpected_type_error("top_k"));
                         }
                     }
-                    "candidate_count" => {
+                    "candidateCount" => {
                         if let Some(v) = value.as_i64() {
                             config.candidate_count = Some(v as i32);
                         } else {
                             return Err(unexpected_type_error("candidate_count"));
                         }
                     }
-                    "stop_sequences" => {
+                    "stopSequences" => {
                         if let Some(v) = value.as_array() {
                             config.stop_sequences = Some(
                                 v.iter()
@@ -247,31 +244,31 @@ impl TryFrom<serde_json::Value> for GenerationConfig {
                             return Err(unexpected_type_error("stop_sequences"));
                         }
                     }
-                    "response_mime_type" => {
+                    "responseMimeType" => {
                         if let Some(v) = value.as_str() {
                             config.response_mime_type = Some(v.to_string());
                         } else {
                             return Err(unexpected_type_error("response_mime_type"));
                         }
                     }
-                    "response_schema" => {
+                    "responseSchema" => {
                         config.response_schema = Some(value.clone().try_into()?);
                     }
-                    "presence_penalty" => {
+                    "presencePenalty" => {
                         if let Some(v) = value.as_f64() {
                             config.presence_penalty = Some(v);
                         } else {
                             return Err(unexpected_type_error("presence_penalty"));
                         }
                     }
-                    "frequency_penalty" => {
+                    "frequencyPenalty" => {
                         if let Some(v) = value.as_f64() {
                             config.frequency_penalty = Some(v);
                         } else {
                             return Err(unexpected_type_error("frequency_penalty"));
                         }
                     }
-                    "response_logprobs" => {
+                    "responseLogprobs" => {
                         if let Some(v) = value.as_bool() {
                             config.response_logprobs = Some(v);
                         } else {
@@ -304,7 +301,6 @@ impl TryFrom<serde_json::Value> for GenerationConfig {
 }
 
 pub mod gemini_api_types {
-
     use std::collections::HashMap;
 
     // =================================================================
@@ -334,6 +330,7 @@ pub mod gemini_api_types {
         pub prompt_feedback: Option<PromptFeedback>,
         /// Output only. Metadata on the generation requests' token usage.
         pub usage_metadata: Option<UsageMetadata>,
+        pub model_version: Option<String>,
     }
 
     /// A response candidate generated from the model.
@@ -361,7 +358,6 @@ pub mod gemini_api_types {
         /// Output only. Index of the candidate in the list of response candidates.
         pub index: Option<i32>,
     }
-
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Content {
         /// Ordered Parts that constitute a single message. Parts may have different MIME types.
@@ -372,6 +368,7 @@ pub mod gemini_api_types {
     }
 
     #[derive(Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "lowercase")]
     pub enum Role {
         User,
         Model,
@@ -380,16 +377,23 @@ pub mod gemini_api_types {
     /// A datatype containing media that is part of a multi-part [Content](Content) message.
     /// A Part consists of data which has an associated datatype. A Part can only contain one of the accepted types in Part.data.
     /// A Part must have a fixed IANA MIME type identifying the type and subtype of the media if the inlineData field is filled with raw bytes.
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Default, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
-    pub enum Part {
-        Text(String),
-        InlineData(Blob),
-        FunctionCall(FunctionCall),
-        FunctionResponse(FunctionResponse),
-        FileData(FileData),
-        ExecutableCode(ExecutableCode),
-        CodeExecutionResult(CodeExecutionResult),
+    pub struct Part {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub text: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub inline_data: Option<Blob>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub function_call: Option<FunctionCall>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub function_response: Option<FunctionResponse>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub file_data: Option<FileData>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub executable_code: Option<ExecutableCode>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub code_execution_result: Option<CodeExecutionResult>,
     }
 
     /// Raw media bytes.
@@ -430,6 +434,7 @@ pub mod gemini_api_types {
 
     /// URI based data.
     #[derive(Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
     pub struct FileData {
         /// Optional. The IANA standard MIME type of the source data.
         pub mime_type: Option<String>,
@@ -474,7 +479,7 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct UsageMetadata {
         pub prompt_token_count: i32,
-        pub cached_content_token_count: i32,
+        pub cached_content_token_count: Option<i32>,
         pub candidates_token_count: i32,
         pub total_token_count: i32,
     }
@@ -533,11 +538,13 @@ pub mod gemini_api_types {
     }
 
     #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
     pub struct CitationMetadata {
         pub citation_sources: Vec<CitationSource>,
     }
 
     #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
     pub struct CitationSource {
         pub uri: Option<String>,
         pub start_index: Option<i32>,
@@ -546,6 +553,7 @@ pub mod gemini_api_types {
     }
 
     #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
     pub struct LogprobsResult {
         pub top_candidate: Vec<TopCandidate>,
         pub chosen_candidate: Vec<LogProbCandidate>,
@@ -567,6 +575,7 @@ pub mod gemini_api_types {
     /// Gemini API Configuration options for model generation and outputs. Not all parameters are
     /// configurable for every model. https://ai.google.dev/api/generate-content#generationconfig
     #[derive(Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
     pub struct GenerationConfig {
         /// The set of character sequences (up to 5) that will stop output generation. If specified, the API will stop
         /// at the first appearance of a stop_sequence. The stop sequence will not be included as part of the response.

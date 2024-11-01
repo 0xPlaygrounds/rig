@@ -3,8 +3,17 @@ use rig::{
     providers::gemini::{self, completion::gemini_api_types::GenerationConfig},
 };
 
+use std::panic;
+use tracing::debug;
+
+#[tracing::instrument(ret)]
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_target(false)
+        .init();
+
     // Initialize the Google Gemini client
     let client = gemini::Client::from_env();
 
@@ -13,7 +22,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .agent(gemini::completion::GEMINI_1_5_PRO)
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)
-        .max_tokens(8192)
         .additional_params(serde_json::to_value(GenerationConfig {
             top_k: Some(1),
             top_p: Some(0.95),
@@ -27,8 +35,17 @@ async fn main() -> Result<(), anyhow::Error> {
     // Prompt the agent and print the response
     let response = agent
         .prompt("How much wood would a woodchuck chuck if a woodchuck could chuck wood? Infer an answer.")
-        .await?;
-    println!("{}", response);
+        .await;
+
+    tracing::info!("Response: {:?}", response);
+
+    match response {
+        Ok(response) => println!("{}", response),
+        Err(e) => {
+            tracing::error!("Error: {:?}", e);
+            return Err(e.into());
+        }
+    }
 
     Ok(())
 }

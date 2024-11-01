@@ -43,8 +43,9 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 
     async fn embed_documents(
         &self,
-        documents: Vec<String>,
+        documents: impl IntoIterator<Item = String> + Send,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+        let documents: Vec<_> = documents.into_iter().collect();
         let mut request_body = json!({
             "model": format!("models/{}", self.model),
             "content": {
