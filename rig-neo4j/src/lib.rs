@@ -176,8 +176,11 @@ impl Neo4jClient {
 #[allow(dead_code)]
 #[cfg(test)]
 mod tests {
+    #[path = "../../examples/display/lib.rs"]
+    mod display;
+
     use super::*;
-    use crate::vector_index::display::SearchResult;
+    use display::SearchResult;
     use neo4rs::ConfigBuilder;
     use rig::{
         providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
@@ -225,17 +228,14 @@ mod tests {
         let results = vector_search().await.unwrap();
         let search_results: Vec<SearchResult> = results
             .into_iter()
-            .map(|(score, id, doc)| vector_index::display::SearchResult {
+            .map(|(score, id, doc)| display::SearchResult {
                 title: doc.title,
                 id,
                 description: doc.plot,
                 score,
             })
             .collect();
-        println!(
-            "{:#}",
-            vector_index::display::SearchResults(&search_results)
-        );
+        println!("{:#}", display::SearchResults(&search_results));
         assert!(search_results.len() > 0);
     }
 

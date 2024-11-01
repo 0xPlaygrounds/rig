@@ -27,6 +27,9 @@ use rig::{
 };
 use serde::{Deserialize, Serialize};
 
+#[path = "./display/lib.rs"]
+mod display;
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize OpenAI client
@@ -75,20 +78,15 @@ async fn main() -> Result<(), anyhow::Error> {
         .top_n::<Movie>("a historical movie on quebec", 5)
         .await?
         .into_iter()
-        .map(
-            |(score, id, doc)| rig_neo4j::vector_index::display::SearchResult {
-                title: doc.title,
-                id,
-                description: doc.plot,
-                score,
-            },
-        )
+        .map(|(score, id, doc)| display::SearchResult {
+            title: doc.title,
+            id,
+            description: doc.plot,
+            score,
+        })
         .collect::<Vec<_>>();
 
-    println!(
-        "{:#}",
-        rig_neo4j::vector_index::display::SearchResults(&results)
-    );
+    println!("{:#}", display::SearchResults(&results));
 
     let id_results = index
         .top_n_ids("A movie where the bad guy wins", 1)
