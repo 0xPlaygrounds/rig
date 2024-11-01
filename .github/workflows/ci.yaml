@@ -5,9 +5,6 @@ on:
   pull_request:
     branches:
       - main
-  push:
-    branches:
-      - main
   workflow_call:
 
 env:
@@ -55,6 +52,8 @@ jobs:
 
       - name: Run clippy action
         uses: clechasseur/rs-clippy-check@v3
+        with:
+          args: --all-features
 
   test:
     name: stable / test
@@ -80,3 +79,24 @@ jobs:
         with:
           command: nextest
           args: run --all-features
+
+  doc:
+    name: stable / doc
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rust-docs
+
+      # Required to compile rig-lancedb
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
+      - name: Run cargo doc
+        run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -D warnings

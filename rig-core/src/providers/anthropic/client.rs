@@ -113,6 +113,13 @@ impl Client {
         }
     }
 
+    /// Create a new Anthropic client from the `ANTHROPIC_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    pub fn from_env() -> Self {
+        let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
+        ClientBuilder::new(&api_key).build()
+    }
+
     pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.post(url)
