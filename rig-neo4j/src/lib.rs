@@ -37,7 +37,6 @@
 //! ```
 //!
 //! ## Simple example:
-//!
 //! More examples can be found in the [/examples](https://github.com/0xPlaygrounds/rig/tree/main/rig-neo4j/examples) folder.
 //! ```
 //! use rig_neo4j::{vector_index::*, Neo4jClient};
@@ -89,6 +88,9 @@ pub mod vector_index;
 use neo4rs::*;
 use rig::{embeddings::EmbeddingModel, vector_store::VectorStoreError};
 use vector_index::{IndexConfig, Neo4jVectorIndex, SearchParams};
+
+#[path = "../examples/display/lib.rs"]
+mod display;
 
 pub struct Neo4jClient {
     pub graph: Graph,
@@ -182,10 +184,8 @@ impl Neo4jClient {
 #[allow(dead_code)]
 #[cfg(test)]
 mod tests {
-    #[path = "../../examples/display/lib.rs"]
-    mod display;
-
     use super::*;
+    use display;
     use display::SearchResult;
     use neo4rs::ConfigBuilder;
     use rig::{

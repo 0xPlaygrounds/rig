@@ -3,7 +3,6 @@
 // =====================================================
 
 use std::fmt::Display;
-use term_size;
 
 #[allow(dead_code)]
 #[derive(Debug)]
