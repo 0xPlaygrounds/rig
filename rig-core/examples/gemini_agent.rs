@@ -2,12 +2,9 @@ use rig::{
     completion::Prompt,
     providers::gemini::{self, completion::gemini_api_types::GenerationConfig},
 };
-
-use std::panic;
-use tracing::debug;
-
 #[tracing::instrument(ret)]
 #[tokio::main]
+
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)

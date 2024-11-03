@@ -1,6 +1,6 @@
 // ================================================================
 //! Google Gemini Completion Integration
-//! https://ai.google.dev/api/generate-content
+//! From [Gemini API Reference](https://ai.google.dev/api/generate-content)
 // ================================================================
 
 /// `gemini-1.5-flash` completion model
@@ -374,7 +374,7 @@ pub mod gemini_api_types {
         Model,
     }
 
-    /// A datatype containing media that is part of a multi-part [Content](Content) message.
+    /// A datatype containing media that is part of a multi-part [Content] message.
     /// A Part consists of data which has an associated datatype. A Part can only contain one of the accepted types in Part.data.
     /// A Part must have a fixed IANA MIME type identifying the type and subtype of the media if the inlineData field is filled with raw bytes.
     #[derive(Debug, Default, Deserialize, Serialize)]
@@ -573,7 +573,7 @@ pub mod gemini_api_types {
     }
 
     /// Gemini API Configuration options for model generation and outputs. Not all parameters are
-    /// configurable for every model. https://ai.google.dev/api/generate-content#generationconfig
+    /// configurable for every model. From [[Gemini API Reference]](https://ai.google.dev/api/generate-content#generationconfig)
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct GenerationConfig {
@@ -653,7 +653,7 @@ pub mod gemini_api_types {
     }
     /// The Schema object allows the definition of input and output data types. These types can be objects, but also
     /// primitives and arrays. Represents a select subset of an OpenAPI 3.0 schema object.
-    /// https://ai.google.dev/api/caching#Schema
+    /// From [Gemini API Reference](https://ai.google.dev/api/caching#Schema)
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Schema {
         pub r#type: String,
@@ -748,7 +748,7 @@ pub mod gemini_api_types {
         /// to learn how to incorporate safety considerations in your AI applications.
         pub safety_settings: Option<Vec<SafetySetting>>,
         /// Optional. Developer set system instruction(s). Currently, text only.
-        /// https://ai.google.dev/gemini-api/docs/system-instructions?lang=rest
+        /// From [Gemini API Reference](https://ai.google.dev/gemini-api/docs/system-instructions?lang=rest)
         pub system_instruction: Option<Content>,
         // cachedContent: Optional<String>
     }

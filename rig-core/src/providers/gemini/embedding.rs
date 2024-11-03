@@ -1,6 +1,6 @@
 // ================================================================
 //! Google Gemini Embeddings Integration
-//! https://ai.google.dev/api/embeddings
+//! From [Gemini API Reference](https://ai.google.dev/api/embeddings)
 // ================================================================
 
 use serde_json::json;
