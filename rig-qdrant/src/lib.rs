@@ -8,7 +8,7 @@ use rig::{
 };
 use serde::Deserialize;
 
-/// Represents a vector store implementation using Qdrant - https://qdrant.tech/ as the backend.
+/// Represents a vector store implementation using Qdrant - <https://qdrant.tech/> as the backend.
 pub struct QdrantVectorStore<M: EmbeddingModel> {
     /// Model used to generate embeddings for the vector store
     model: M,
@@ -25,7 +25,7 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
     /// * `client` - Qdrant client instance
     /// * `model` - Embedding model instance
     /// * `query_params` - Search parameters for vector queries
-    ///     Reference: https://api.qdrant.tech/v-1-12-x/api-reference/search/query-points
+    ///     Reference: <https://api.qdrant.tech/v-1-12-x/api-reference/search/query-points>
     pub fn new(client: Qdrant, model: M, query_params: QueryPoints) -> Self {
         Self {
             client,
