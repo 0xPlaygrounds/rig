@@ -182,8 +182,6 @@ impl Neo4jClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use display;
-    use display::SearchResult;
     use neo4rs::ConfigBuilder;
     use rig::{
         providers::openai::{Client, TEXT_EMBEDDING_ADA_002},

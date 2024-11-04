@@ -141,7 +141,6 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-#[cfg(feature = "display")]
 async fn import_batch(graph: &Graph, nodes: &[Movie], batch_n: i32) -> Result<(), anyhow::Error> {
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     let to_encode_list: Vec<String> = nodes
