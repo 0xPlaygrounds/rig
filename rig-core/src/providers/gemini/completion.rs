@@ -16,6 +16,7 @@ use gemini_api_types::{
     Content, ContentCandidate, FunctionDeclaration, GenerateContentRequest,
     GenerateContentResponse, GenerationConfig, Part, Role, Tool,
 };
+use serde_json::{Map, Value};
 use std::convert::TryFrom;
 
 use crate::completion::{self, CompletionError, CompletionRequest};
@@ -59,8 +60,10 @@ impl completion::CompletionModel for CompletionModel {
         });
 
         // Handle Gemini specific parameters
-        let mut generation_config =
-            GenerationConfig::try_from(completion_request.additional_params.unwrap_or_default())?;
+        let additional_params = completion_request
+            .additional_params
+            .unwrap_or_else(|| Value::Object(Map::new()));
+        let mut generation_config = GenerationConfig::try_from(additional_params)?;
 
         // Set temperature from completion_request or additional_params
         if let Some(temp) = completion_request.temperature {
