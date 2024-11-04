@@ -63,7 +63,7 @@ impl completion::CompletionModel for CompletionModel {
         let additional_params = completion_request
             .additional_params
             .unwrap_or_else(|| Value::Object(Map::new()));
-        let mut generation_config = GenerationConfig::try_from(additional_params)?;
+        let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?;
 
         // Set temperature from completion_request or additional_params
         if let Some(temp) = completion_request.temperature {
@@ -172,134 +172,6 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                 "No candidates found in response".into(),
             )),
         }
-    }
-}
-
-impl TryFrom<serde_json::Value> for GenerationConfig {
-    type Error = CompletionError;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
-        let mut config = GenerationConfig {
-            temperature: None,
-            max_output_tokens: None,
-            stop_sequences: None,
-            response_mime_type: None,
-            response_schema: None,
-            candidate_count: None,
-            top_p: None,
-            top_k: None,
-            presence_penalty: None,
-            frequency_penalty: None,
-            response_logprobs: None,
-            logprobs: None,
-        };
-
-        fn unexpected_type_error(field: &str) -> CompletionError {
-            CompletionError::ResponseError(format!("Unexpected type for field '{}'", field))
-        }
-
-        if let Some(obj) = value.as_object() {
-            for (key, value) in obj.iter().filter(|(_, v)| !v.is_null()) {
-                match key.as_str() {
-                    "temperature" => {
-                        if let Some(v) = value.as_f64() {
-                            config.temperature = Some(v);
-                        } else {
-                            return Err(unexpected_type_error("temperature"));
-                        }
-                    }
-                    "maxOutputTokens" => {
-                        if let Some(v) = value.as_u64() {
-                            config.max_output_tokens = Some(v);
-                        } else {
-                            return Err(unexpected_type_error("max_output_tokens"));
-                        }
-                    }
-                    "topP" => {
-                        if let Some(v) = value.as_f64() {
-                            config.top_p = Some(v);
-                        } else {
-                            return Err(unexpected_type_error("top_p"));
-                        }
-                    }
-                    "topK" => {
-                        if let Some(v) = value.as_i64() {
-                            config.top_k = Some(v as i32);
-                        } else {
-                            return Err(unexpected_type_error("top_k"));
-                        }
-                    }
-                    "candidateCount" => {
-                        if let Some(v) = value.as_i64() {
-                            config.candidate_count = Some(v as i32);
-                        } else {
-                            return Err(unexpected_type_error("candidate_count"));
-                        }
-                    }
-                    "stopSequences" => {
-                        if let Some(v) = value.as_array() {
-                            config.stop_sequences = Some(
-                                v.iter()
-                                    .filter_map(|s| s.as_str().map(String::from))
-                                    .collect(),
-                            );
-                        } else {
-                            return Err(unexpected_type_error("stop_sequences"));
-                        }
-                    }
-                    "responseMimeType" => {
-                        if let Some(v) = value.as_str() {
-                            config.response_mime_type = Some(v.to_string());
-                        } else {
-                            return Err(unexpected_type_error("response_mime_type"));
-                        }
-                    }
-                    "responseSchema" => {
-                        config.response_schema = Some(value.clone().try_into()?);
-                    }
-                    "presencePenalty" => {
-                        if let Some(v) = value.as_f64() {
-                            config.presence_penalty = Some(v);
-                        } else {
-                            return Err(unexpected_type_error("presence_penalty"));
-                        }
-                    }
-                    "frequencyPenalty" => {
-                        if let Some(v) = value.as_f64() {
-                            config.frequency_penalty = Some(v);
-                        } else {
-                            return Err(unexpected_type_error("frequency_penalty"));
-                        }
-                    }
-                    "responseLogprobs" => {
-                        if let Some(v) = value.as_bool() {
-                            config.response_logprobs = Some(v);
-                        } else {
-                            return Err(unexpected_type_error("response_logprobs"));
-                        }
-                    }
-                    "logprobs" => {
-                        if let Some(v) = value.as_i64() {
-                            config.logprobs = Some(v as i32);
-                        } else {
-                            return Err(unexpected_type_error("logprobs"));
-                        }
-                    }
-                    _ => {
-                        tracing::warn!(
-                            "Unknown GenerationConfig parameter, will be ignored: {}",
-                            key
-                        );
-                    }
-                }
-            }
-        } else {
-            return Err(CompletionError::ResponseError(
-                "Expected a JSON object for GenerationConfig".into(),
-            ));
-        }
-
-        Ok(config)
     }
 }
 
