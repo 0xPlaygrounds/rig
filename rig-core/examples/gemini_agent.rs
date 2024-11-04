@@ -19,6 +19,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .agent(gemini::completion::GEMINI_1_5_PRO)
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)
+        // The `GenerationConfig` utility struct helps construct a typesafe `additional_params`
         .additional_params(serde_json::to_value(GenerationConfig {
             top_k: Some(1),
             top_p: Some(0.95),
