@@ -89,9 +89,6 @@ use neo4rs::*;
 use rig::{embeddings::EmbeddingModel, vector_store::VectorStoreError};
 use vector_index::{IndexConfig, Neo4jVectorIndex, SearchParams};
 
-#[path = "../examples/display/lib.rs"]
-mod display;
-
 pub struct Neo4jClient {
     pub graph: Graph,
 }
@@ -225,24 +222,6 @@ mod tests {
     async fn test_vector_search_no_display() {
         let results = vector_search().await.unwrap();
         assert!(results.len() > 0);
-    }
-
-    #[cfg(feature = "display")]
-    #[allow(dead_code)]
-    #[tokio::test]
-    async fn test_vector_search_display() {
-        let results = vector_search().await.unwrap();
-        let search_results: Vec<SearchResult> = results
-            .into_iter()
-            .map(|(score, id, doc)| display::SearchResult {
-                title: doc.title,
-                id,
-                description: doc.plot,
-                score,
-            })
-            .collect();
-        println!("{:#}", display::SearchResults(&search_results));
-        assert!(search_results.len() > 0);
     }
 
     async fn vector_search() -> Result<Vec<(f64, String, Movie)>, VectorStoreError> {
