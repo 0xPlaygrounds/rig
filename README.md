@@ -77,6 +77,7 @@ Rig supports the following LLM providers natively:
 - Cohere
 - Anthropic
 - Perplexity
+- Google Gemini
 
 Additionally, Rig currently has the following integration sub-libraries:
 - MongoDB vector store: `rig-mongodb`
