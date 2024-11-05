@@ -31,4 +31,4 @@ rig-core = "0.2.1"
 
 You can also run `cargo add rig-mongodb rig-core` to add the most recent versions of the dependencies to your project.
 
-See the [examples](./examples) folder for usage examples.
+See the [`/examples`](./examples) folder for usage examples.

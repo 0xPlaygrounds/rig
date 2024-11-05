@@ -1,8 +1,8 @@
 <p align="center">
 <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="img/rig+playgrounds_dark_blue.svg">
-    <source media="(prefers-color-scheme: light)" srcset="img/rig+playgrounds_light_blue.svg">
-    <img src="img/rig+playgrounds.svg" style="width: 40%; height: 40%;" alt="Rig logo">
+    <source media="(prefers-color-scheme: dark)" srcset="img/rig-playgrounds-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="img/rig-playgrounds-light.svg">
+    <img src="img/rig-playgrounds-light.svg" style="width: 40%; height: 40%;" alt="Rig logo">
 </picture>
 <br>
 <a href="https://crates.io/crates/rig-core"><img src="https://img.shields.io/crates/v/rig-core.svg" /></a>
@@ -11,29 +11,28 @@
 &nbsp;
 <a href="https://discord.gg/playgrounds"><img src="https://img.shields.io/discord/511303648119226382?color=%236d82cc&label=Discord&logo=discord&logoColor=white" /></a>
 &nbsp;
+<a href="https://github.com/0xPlaygrounds/rig"><img src="https://img.shields.io/github/stars/0xPlaygrounds/rig?style=social" alt="stars - rig" /></a>
+<br>
 <a href=""><img src="https://img.shields.io/badge/built_with-Rust-dca282.svg?logo=rust" /></a>
 &nbsp;
-<a href="https://twitter.com/Playgrounds0x"><img src="https://img.shields.io/twitter/follow/Playgrounds0x
-"></a>
-<br>
-<a href="https://docs.rs/rig-core/latest/rig/"><img src="https://docs.rs/rig-core/badge.svg" /></a>
+<a href="https://twitter.com/Playgrounds0x"><img src="https://img.shields.io/twitter/follow/Playgrounds0x"></a>
+<a href="https://docs.rs/rig-core/latest/rig/"><img src="https://img.shields.io/badge/📖documentation-docs.rs-dca282.svg" /></a>
 <br>
 </p>
-
 &nbsp;
 
-
+✨ If you would like to help spread the word about Rig, please consider starring the repo!
 
 > [!WARNING]
 > Here be dragons! Rig is **alpha** software and **will** contain breaking changes as it evolves. We'll annotate them and highlight migration paths as we encounter them.
 
 
 ## What is Rig?
-Rig is a Rust library for building scalable, modular, and ergonomic LLM-powered applications.
+Rig is a Rust library for building scalable, modular, and ergonomic **LLM-powered** applications.
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/rig-core/latest/rig/).
 
-We'd love your feedback. Please take a moment to let us know what you think using this [Feedback form](https://bit.ly/Rig-Feeback-Form).
+Help us improve Rig by contributing to our [Feedback form](https://bit.ly/Rig-Feeback-Form).
 
 ## Table of contents
 
@@ -49,12 +48,14 @@ We'd love your feedback. Please take a moment to let us know what you think usin
 - Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, in-memory)
 - Integrate LLMs in your app with minimal boilerplate
 
-## Installation
+
+
+## Get Started
 ```bash
 cargo add rig-core
 ```
 
-## Simple example:
+### Simple example:
 ```rust
 use rig::{completion::Prompt, providers::openai};
 
@@ -78,14 +79,22 @@ async fn main() {
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
 or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 
-## Integrations
-Rig supports the following LLM providers natively:
-- OpenAI
-- Cohere
-- Anthropic
-- Perplexity
-- Google Gemini
+You can find more examples in the [`/examples`](./examples) directory. More detailed use cases walkthroughs are regularly published on our [Dev.to Blog](https://dev.to/0thtachi).
 
-Additionally, Rig currently has the following integration sub-libraries:
-- MongoDB vector store: `rig-mongodb`
-- LanceDB vector store: `rig-lancedb`
+## Integrations
+
+| Model Providers | Vector Stores |
+|:--------------:|:-------------:|
+| <br><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/ChatGPT_logo.svg/1024px-ChatGPT_logo.svg.png" alt="ChatGPT logo" width="50em"> <picture><source media="(prefers-color-scheme: dark)" srcset="https://www.fahimai.com/wp-content/uploads/2024/06/Untitled-design-7.png"><source media="(prefers-color-scheme: light)" srcset="https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Claude_Ai.svg/1024px-Claude_Ai.svg.png"><img src="https://www.fahimai.com/wp-content/uploads/2024/06/Untitled-design-7.png" alt="Claude Anthropic logo" width="50em"></picture> <br> <img src="https://cdn.sanity.io/images/rjtqmwfu/production/0adbf394439f4cd0ab8b5b3b6fe1da10c8099024-201x200.svg" alt="Cohere logo" width="50em"> <img src="https://logospng.org/download/google-gemini/google-gemini-1024.png" style="background-color: white; border-radius: 10px; padding: 5px 5px ; width: 3em;" alt="Gemini logo"> |  <br><img src="https://cdn.prod.website-files.com/6640cd28f51f13175e577c05/664e00a400e23f104ed2b6cd_3b3dd6e8-8a73-5879-84a9-a42d5b910c74.svg" alt="Mongo DB logo" width="50em"> <img src="https://upload.wikimedia.org/wikipedia/commons/e/e5/Neo4j-logo_color.png" alt="Neo4j logo" style="background-color: white; border-radius: 1em; padding: 1em 1em ; width: 4em;"><br><br><img src="https://cdn-images-1.medium.com/max/844/1*Jp6VwF0OcdeyRyW0Ln0RMQ@2x.png" width="100em" alt="Lance DB logo"> |
+
+
+Vector stores are available as separate companion-crates:
+- MongoDB vector store: [`rig-mongodb`](https://github.com/playgrounds-ai/rig-mongodb)
+- LanceDB vector store: [`rig-lancedb`](https://github.com/playgrounds-ai/rig-lancedb)
+
+
+<p align="center">
+<br>
+<br>
+<img src="img/built-by-playgrounds.svg" alt="Build by Playgrounds" width="30%">
+</p>
