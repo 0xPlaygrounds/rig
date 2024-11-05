@@ -74,6 +74,7 @@ pub mod completion;
 pub mod embeddings;
 pub mod extractor;
 pub(crate) mod json_utils;
+pub mod loaders;
 pub mod providers;
 pub mod tool;
 pub mod vector_store;
