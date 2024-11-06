@@ -6,7 +6,7 @@ use rig::embeddings::Embedding;
 use rig::{Embed, OneOrMany};
 use serde::Deserialize;
 
-#[derive(ExtractEmbeddingFields, Clone, Deserialize, Debug)]
+#[derive(Embed, Clone, Deserialize, Debug)]
 pub struct FakeDefinition {
     pub id: String,
     #[embed]

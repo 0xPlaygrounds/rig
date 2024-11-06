@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
-#[derive(ExtractEmbeddingFields, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
+#[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
 struct FakeDefinition {
     id: String,
     word: String,

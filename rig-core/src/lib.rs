@@ -84,4 +84,4 @@ pub use embeddings::Embed;
 pub use one_or_many::{EmptyListError, OneOrMany};
 
 #[cfg(feature = "derive")]
-pub use rig_derive::ExtractEmbeddingFields;
+pub use rig_derive::Embed;

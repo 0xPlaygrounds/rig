@@ -3,15 +3,14 @@ use rig::providers::openai::TEXT_EMBEDDING_ADA_002;
 use serde::{Deserialize, Serialize};
 use std::env;
 
-use rig::Embed;
 use rig::{
-    embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex,
+    embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex, Embed,
 };
 use rig_mongodb::{MongoDbVectorStore, SearchParams};
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
-#[derive(ExtractEmbeddingFields, Clone, Deserialize, Debug)]
+#[derive(Embed, Clone, Deserialize, Debug)]
 struct FakeDefinition {
     #[serde(rename = "_id")]
     id: String,
