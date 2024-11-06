@@ -171,7 +171,7 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
         query: &str,
         n: usize,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = &self.model.embed_document(query).await?;
+        let prompt_embedding = &self.model.embed_text(query).await?;
 
         let docs = self.store.vector_search(prompt_embedding, n);
 
@@ -192,7 +192,7 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
         query: &str,
         n: usize,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = &self.model.embed_document(query).await?;
+        let prompt_embedding = &self.model.embed_text(query).await?;
 
         let docs = self.store.vector_search(prompt_embedding, n);
 

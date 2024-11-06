@@ -15,7 +15,7 @@ use crate::{
     completion::{self, CompletionError},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     extractor::ExtractorBuilder,
-    json_utils, ExtractEmbeddingFields,
+    json_utils, Embed,
 };
 
 use schemars::JsonSchema;
@@ -92,7 +92,7 @@ impl Client {
         EmbeddingModel::new(self.clone(), model, input_type, ndims)
     }
 
-    pub fn embeddings<D: ExtractEmbeddingFields>(
+    pub fn embeddings<D: Embed>(
         &self,
         model: &str,
         input_type: &str,
@@ -201,7 +201,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         self.ndims
     }
 
-    async fn embed_documents(
+    async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
@@ -222,11 +222,14 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             match response.json::<ApiResponse<EmbeddingResponse>>().await? {
                 ApiResponse::Ok(response) => {
                     if response.embeddings.len() != documents.len() {
-                        return Err(EmbeddingError::DocumentError(format!(
-                            "Expected {} embeddings, got {}",
-                            documents.len(),
-                            response.embeddings.len()
-                        )));
+                        return Err(EmbeddingError::DocumentError(
+                            format!(
+                                "Expected {} embeddings, got {}",
+                                documents.len(),
+                                response.embeddings.len()
+                            )
+                            .into(),
+                        ));
                     }
 
                     Ok(response

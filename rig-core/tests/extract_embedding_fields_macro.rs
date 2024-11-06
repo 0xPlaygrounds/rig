@@ -1,5 +1,5 @@
-use rig::embeddings::extract_embedding_fields::ExtractEmbeddingFieldsError;
-use rig::{ExtractEmbeddingFields, OneOrMany};
+use rig::embeddings::embed::ExtractEmbeddingFieldsError;
+use rig::{Embed, OneOrMany};
 use serde::Serialize;
 
 fn serialize(definition: Definition) -> Result<OneOrMany<String>, ExtractEmbeddingFieldsError> {

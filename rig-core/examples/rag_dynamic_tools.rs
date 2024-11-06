@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rig::{
     completion::{Prompt, ToolDefinition},
-    embeddings::EmbeddingsBuilder,
+    embeddings::EmbeddingModel,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     tool::{Tool, ToolEmbedding, ToolSet},
     vector_store::in_memory_store::InMemoryVectorStore,
@@ -155,9 +155,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .dynamic_tool(Subtract)
         .build();
 
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(toolset.embedabble_tools()?)?
-        .build()
+    let embeddings = embedding_model
+        .embed_many(toolset.embedabble_tools()?)
         .await?;
 
     let index = InMemoryVectorStore::default()

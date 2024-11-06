@@ -204,7 +204,7 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
         query: &str,
         n: usize,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_document(query).await?;
+        let prompt_embedding = self.model.embed_text(query).await?;
 
         let mut cursor = self
             .collection
@@ -271,7 +271,7 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
         query: &str,
         n: usize,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_document(query).await?;
+        let prompt_embedding = self.model.embed_text(query).await?;
 
         let mut cursor = self
             .collection

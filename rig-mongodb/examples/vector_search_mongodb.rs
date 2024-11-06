@@ -3,7 +3,7 @@ use rig::providers::openai::TEXT_EMBEDDING_ADA_002;
 use serde::{Deserialize, Serialize};
 use std::env;
 
-use rig::ExtractEmbeddingFields;
+use rig::Embed;
 use rig::{
     embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex,
 };

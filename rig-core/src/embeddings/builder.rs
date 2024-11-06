@@ -3,20 +3,22 @@
 
 use std::{cmp::max, collections::HashMap};
 
-use futures::{stream, StreamExt, TryStreamExt};
+use futures::{stream, StreamExt};
 
 use crate::{
-    embeddings::{Embedding, EmbeddingError, EmbeddingModel, ExtractEmbeddingFields},
+    embeddings::{Embed, Embedding, EmbeddingError, EmbeddingModel},
     OneOrMany,
 };
 
+use super::{embed::EmbedError, Embedder};
+
 /// Builder for creating a collection of embeddings.
-pub struct EmbeddingsBuilder<M: EmbeddingModel, T: ExtractEmbeddingFields> {
+pub struct EmbeddingsBuilder<M: EmbeddingModel, T: Embed> {
     model: M,
     documents: Vec<(T, OneOrMany<String>)>,
 }
 
-impl<M: EmbeddingModel, T: ExtractEmbeddingFields> EmbeddingsBuilder<M, T> {
+impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
     /// Create a new embedding builder with the given embedding model
     pub fn new(model: M) -> Self {
         Self {
@@ -26,22 +28,23 @@ impl<M: EmbeddingModel, T: ExtractEmbeddingFields> EmbeddingsBuilder<M, T> {
     }
 
     /// Add a document that implements `ExtractEmbeddingFields` to the builder.
-    pub fn document(mut self, document: T) -> Result<Self, T::Error> {
-        let embed_targets = document.extract_embedding_fields()?;
+    pub fn document(mut self, document: T) -> Result<Self, EmbedError> {
+        let mut embedder = Embedder::default();
+        document.embed(&mut embedder)?;
 
-        self.documents.push((document, embed_targets));
+        self.documents
+            .push((document, OneOrMany::many(embedder.texts).unwrap()));
+
         Ok(self)
     }
 
     /// Add many documents that implement `ExtractEmbeddingFields` to the builder.
-    pub fn documents(mut self, documents: Vec<T>) -> Result<Self, T::Error> {
-        for doc in documents.into_iter() {
-            let embed_targets = doc.extract_embedding_fields()?;
+    pub fn documents(self, documents: impl IntoIterator<Item = T>) -> Result<Self, EmbedError> {
+        let builder = documents
+            .into_iter()
+            .try_fold(self, |builder, doc| builder.document(doc))?;
 
-            self.documents.push((doc, embed_targets));
-        }
-
-        Ok(self)
+        Ok(builder)
     }
 }
 
@@ -103,45 +106,38 @@ impl<M: EmbeddingModel, T: ExtractEmbeddingFields> EmbeddingsBuilder<M, T> {
 ///     .build()
 ///     .await?;
 /// ```
-impl<M: EmbeddingModel, T: ExtractEmbeddingFields + Send + Sync + Clone> EmbeddingsBuilder<M, T> {
+impl<M: EmbeddingModel, T: Embed + Send> EmbeddingsBuilder<M, T> {
     /// Generate embeddings for all documents in the builder.
     /// Returns a vector of tuples, where the first element is the document and the second element is the embeddings (either one embedding or many).
     pub async fn build(self) -> Result<Vec<(T, OneOrMany<Embedding>)>, EmbeddingError> {
-        // Use this for reference later to merge a document back with its embeddings.
-        let documents_map = self
-            .documents
-            .clone()
-            .into_iter()
-            .enumerate()
-            .map(|(id, (document, _))| (id, document))
-            .collect::<HashMap<_, _>>();
+        use stream::TryStreamExt;
 
-        let embeddings = stream::iter(self.documents.iter().enumerate())
-            // Merge the embedding targets of each document into a single list of embedding targets.
-            .flat_map(|(i, (_, embed_targets))| {
-                stream::iter(
-                    embed_targets
-                        .clone()
-                        .into_iter()
-                        .map(move |target| (i, target)),
-                )
-            })
-            // Chunk them into N (the emebdding API limit per request).
+        let mut docs = HashMap::new();
+        let mut texts = HashMap::new();
+
+        // Gather the texts to embed for each document
+        for (i, (doc, doc_texts)) in self.documents.into_iter().enumerate() {
+            docs.insert(i, doc);
+            texts.insert(i, doc_texts);
+        }
+
+        // Compute the embeddings
+        let mut embeddings = stream::iter(texts.into_iter())
+            // Merge the texts of each document into a single list of texts.
+            .flat_map(|(i, texts)| stream::iter(texts.into_iter().map(move |text| (i, text))))
+            // Chunk them into batches the embedding API limit per request.
             .chunks(M::MAX_DOCUMENTS)
-            // Generate the embeddings for a chunk at a time.
+            // Generate the embeddings for each batch.
             .map(|docs| async {
-                let (document_indices, embed_targets): (Vec<_>, Vec<_>) = docs.into_iter().unzip();
-
-                Ok::<_, EmbeddingError>(
-                    document_indices
-                        .into_iter()
-                        .zip(self.model.embed_documents(embed_targets).await?.into_iter())
-                        .collect::<Vec<_>>(),
-                )
+                let embeddings = self
+                    .model
+                    .embed_texts(docs.into_iter().map(|(_, text)| text))
+                    .await?;
+                Ok::<_, EmbeddingError>(embeddings.into_iter().enumerate().collect::<Vec<_>>())
             })
-            .boxed()
             // Parallelize the embeddings generation over 10 concurrent requests
             .buffer_unordered(max(1, 1024 / M::MAX_DOCUMENTS))
+            // Collect the embeddings into a HashMap.
             .try_fold(
                 HashMap::new(),
                 |mut acc: HashMap<_, OneOrMany<Embedding>>, embeddings| async move {
@@ -154,27 +150,26 @@ impl<M: EmbeddingModel, T: ExtractEmbeddingFields + Send + Sync + Clone> Embeddi
                     Ok(acc)
                 },
             )
-            .await?
-            .iter()
-            .fold(vec![], |mut acc, (i, embeddings_vec)| {
-                acc.push((
-                    documents_map.get(i).cloned().unwrap(),
-                    embeddings_vec.clone(),
-                ));
-                acc
-            });
+            .await?;
 
-        Ok(embeddings)
+        // Merge the embeddings with their respective documents
+        Ok(docs
+            .into_iter()
+            .map(|(i, doc)| {
+                (
+                    doc,
+                    embeddings.remove(&i).expect("Document should be present"),
+                )
+            })
+            .collect())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        embeddings::{
-            extract_embedding_fields::ExtractEmbeddingFieldsError, Embedding, EmbeddingModel,
-        },
-        ExtractEmbeddingFields,
+        embeddings::{embed::EmbedError, Embedder, Embedding, EmbeddingModel},
+        Embed,
     };
 
     use super::EmbeddingsBuilder;
@@ -189,7 +184,7 @@ mod tests {
             10
         }
 
-        async fn embed_documents(
+        async fn embed_texts(
             &self,
             documents: impl IntoIterator<Item = String> + Send,
         ) -> Result<Vec<crate::embeddings::Embedding>, crate::embeddings::EmbeddingError> {
@@ -209,12 +204,12 @@ mod tests {
         definitions: Vec<String>,
     }
 
-    impl ExtractEmbeddingFields for FakeDefinition {
-        type Error = ExtractEmbeddingFieldsError;
-
-        fn extract_embedding_fields(&self) -> Result<crate::OneOrMany<String>, Self::Error> {
-            crate::OneOrMany::many(self.definitions.clone())
-                .map_err(ExtractEmbeddingFieldsError::new)
+    impl Embed for FakeDefinition {
+        fn embed(&self, embedder: &mut Embedder) -> Result<(), EmbedError> {
+            for definition in &self.definitions {
+                embedder.embed(definition.clone());
+            }
+            Ok(())
         }
     }
 
@@ -256,11 +251,10 @@ mod tests {
         definition: String,
     }
 
-    impl ExtractEmbeddingFields for FakeDefinitionSingle {
-        type Error = ExtractEmbeddingFieldsError;
-
-        fn extract_embedding_fields(&self) -> Result<crate::OneOrMany<String>, Self::Error> {
-            Ok(crate::OneOrMany::one(self.definition.clone()))
+    impl Embed for FakeDefinitionSingle {
+        fn embed(&self, embedder: &mut Embedder) -> Result<(), EmbedError> {
+            embedder.embed(self.definition.clone());
+            Ok(())
         }
     }
 

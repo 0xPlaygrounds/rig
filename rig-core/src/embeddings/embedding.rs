@@ -10,6 +10,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::OneOrMany;
+
+use super::{Embed, EmbeddingsBuilder};
+
 #[derive(Debug, thiserror::Error)]
 pub enum EmbeddingError {
     /// Http error (e.g.: connection error, timeout, etc.)
@@ -22,7 +26,7 @@ pub enum EmbeddingError {
 
     /// Error processing the document for embedding
     #[error("DocumentError: {0}")]
-    DocumentError(String),
+    DocumentError(Box<dyn std::error::Error + Send + Sync + 'static>),
 
     /// Error parsing the completion response
     #[error("ResponseError: {0}")]
@@ -41,29 +45,59 @@ pub trait EmbeddingModel: Clone + Sync + Send {
     /// The number of dimensions in the embedding vector.
     fn ndims(&self) -> usize;
 
-    /// Embed a single document
-    fn embed_document(
+    /// Embed multiple text documents in a single request
+    fn embed_texts(
+        &self,
+        documents: impl IntoIterator<Item = String> + Send,
+    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + Send;
+
+    /// Embed a single text document
+    fn embed_text(
         &self,
         document: &str,
-    ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + Send
-    where
-        Self: Sync,
+    ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + Send {
+        async {
+            Ok(self
+                .embed_texts(vec![document.to_string()])
+                .await?
+                .pop()
+                .expect("There should be at least one embedding"))
+        }
+    }
+
+    /// Embed a single document
+    fn embed<T: Embed + Send>(
+        &self,
+        document: T,
+    ) -> impl std::future::Future<Output = Result<OneOrMany<Embedding>, EmbeddingError>> + Send
     {
         async {
             Ok(self
-                .embed_documents(vec![document.to_string()])
+                .embed_many(vec![document])
                 .await?
-                .first()
-                .cloned()
-                .expect("One embedding should be present"))
+                .pop()
+                .map(|(_, embedding)| embedding)
+                .expect("There should be at least one embedding"))
         }
     }
 
     /// Embed multiple documents in a single request
-    fn embed_documents(
+    fn embed_many<T: Embed + Send, I: IntoIterator<Item = T> + Send>(
         &self,
-        documents: impl IntoIterator<Item = String> + Send,
-    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + Send;
+        documents: I,
+    ) -> impl std::future::Future<Output = Result<Vec<(T, OneOrMany<Embedding>)>, EmbeddingError>> + Send
+    where
+        <I as IntoIterator>::IntoIter: std::marker::Send,
+    {
+        async {
+            let builder = EmbeddingsBuilder::new(self.clone());
+            builder
+                .documents(documents)
+                .map_err(|err| EmbeddingError::DocumentError(Box::new(err)))?
+                .build()
+                .await
+        }
+    }
 }
 
 /// Struct that holds a single document and its embedding.

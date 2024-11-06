@@ -4,7 +4,7 @@ use rig::{
     embeddings::EmbeddingsBuilder,
     providers::cohere::{Client, EMBED_ENGLISH_V3},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-    ExtractEmbeddingFields,
+    Embed,
 };
 use serde::{Deserialize, Serialize};
 

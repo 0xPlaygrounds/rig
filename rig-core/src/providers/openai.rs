@@ -13,7 +13,7 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     extractor::ExtractorBuilder,
-    json_utils, ExtractEmbeddingFields,
+    json_utils, Embed,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -121,10 +121,7 @@ impl Client {
     ///     .await
     ///     .expect("Failed to embed documents");
     /// ```
-    pub fn embeddings<D: ExtractEmbeddingFields>(
-        &self,
-        model: &str,
-    ) -> EmbeddingsBuilder<EmbeddingModel, D> {
+    pub fn embeddings<D: Embed>(&self, model: &str) -> EmbeddingsBuilder<EmbeddingModel, D> {
         EmbeddingsBuilder::new(self.embedding_model(model))
     }
 
@@ -242,7 +239,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         self.ndims
     }
 
-    async fn embed_documents(
+    async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {

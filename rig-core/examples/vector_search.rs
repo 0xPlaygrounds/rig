@@ -4,7 +4,7 @@ use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-    ExtractEmbeddingFields,
+    Embed,
 };
 use serde::{Deserialize, Serialize};
 
