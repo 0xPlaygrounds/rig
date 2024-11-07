@@ -23,7 +23,7 @@ Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 
 ```toml
 [dependencies]
-rig-mongodb = "0.1.2"
+rig-lancedb = "0.1.2"
 rig-core = "0.2.1"
 ```
 
