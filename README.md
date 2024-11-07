@@ -65,7 +65,7 @@ async fn main() {
     // This requires the `OPENAI_API_KEY` environment variable to be set.
     let openai_client = openai::Client::from_env();
 
-    let gpt4 = openai_client.model("gpt-4").build();
+    let gpt4 = openai_client.agent("gpt-4").build();
 
     // Prompt the model and print its response
     let response = gpt4
@@ -79,7 +79,7 @@ async fn main() {
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
 or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 
-You can find more examples in the [`/examples`](./examples) directory. More detailed use cases walkthroughs are regularly published on our [Dev.to Blog](https://dev.to/0thtachi).
+You can find more examples each crate's `examples` (ie. [`src/examples`](./src/examples)) directory. More detailed use cases walkthroughs are regularly published on our [Dev.to Blog](https://dev.to/0thtachi).
 
 ## Integrations
 
@@ -89,8 +89,9 @@ You can find more examples in the [`/examples`](./examples) directory. More deta
 
 
 Vector stores are available as separate companion-crates:
-- MongoDB vector store: [`rig-mongodb`](https://github.com/playgrounds-ai/rig-mongodb)
-- LanceDB vector store: [`rig-lancedb`](https://github.com/playgrounds-ai/rig-lancedb)
+- MongoDB vector store: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-mongodb)
+- LanceDB vector store: [`rig-lancedb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-lancedb)
+- Neo4j vector store: [`rig-neo4j`](https://github.com/0xPlaygrounds/rig/tree/main/rig-neo4j)
 
 
 <p align="center">
