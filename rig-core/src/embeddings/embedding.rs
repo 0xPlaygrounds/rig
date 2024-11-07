@@ -10,10 +10,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::OneOrMany;
-
-use super::{Embed, EmbeddingsBuilder};
-
 #[derive(Debug, thiserror::Error)]
 pub enum EmbeddingError {
     /// Http error (e.g.: connection error, timeout, etc.)
@@ -51,7 +47,7 @@ pub trait EmbeddingModel: Clone + Sync + Send {
         documents: impl IntoIterator<Item = String> + Send,
     ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + Send;
 
-    /// Embed a single text document
+    /// Embed a single text document.
     fn embed_text(
         &self,
         document: &str,
@@ -62,40 +58,6 @@ pub trait EmbeddingModel: Clone + Sync + Send {
                 .await?
                 .pop()
                 .expect("There should be at least one embedding"))
-        }
-    }
-
-    /// Embed a single document
-    fn embed<T: Embed + Send>(
-        &self,
-        document: T,
-    ) -> impl std::future::Future<Output = Result<OneOrMany<Embedding>, EmbeddingError>> + Send
-    {
-        async {
-            Ok(self
-                .embed_many(vec![document])
-                .await?
-                .pop()
-                .map(|(_, embedding)| embedding)
-                .expect("There should be at least one embedding"))
-        }
-    }
-
-    /// Embed multiple documents in a single request
-    fn embed_many<T: Embed + Send, I: IntoIterator<Item = T> + Send>(
-        &self,
-        documents: I,
-    ) -> impl std::future::Future<Output = Result<Vec<(T, OneOrMany<Embedding>)>, EmbeddingError>> + Send
-    where
-        <I as IntoIterator>::IntoIter: std::marker::Send,
-    {
-        async {
-            let builder = EmbeddingsBuilder::new(self.clone());
-            builder
-                .documents(documents)
-                .map_err(|err| EmbeddingError::DocumentError(Box::new(err)))?
-                .build()
-                .await
         }
     }
 }

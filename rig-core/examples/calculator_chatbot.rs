@@ -247,7 +247,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(toolset.embedabble_tools()?)?
+        .documents(toolset.schema()?)?
         .build()
         .await?;
 

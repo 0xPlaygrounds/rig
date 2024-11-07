@@ -1,4 +1,5 @@
-//! The module defines the [EmbeddingsBuilder] struct which accumulates objects to be embedded and generates the embeddings for each object when built.
+//! The module defines the [EmbeddingsBuilder] struct which accumulates objects to be embedded
+//! and batch generates the embeddings for each object when built.
 //! Only types that implement the [Embed] trait can be added to the [EmbeddingsBuilder].
 
 use std::{cmp::max, collections::HashMap};
@@ -110,20 +111,21 @@ impl<M: EmbeddingModel, T: Embed + Send> EmbeddingsBuilder<M, T> {
     pub async fn build(self) -> Result<Vec<(T, OneOrMany<Embedding>)>, EmbeddingError> {
         use stream::TryStreamExt;
 
-        // Store the documents and their texts in a HashMap for easy access
+        // Store the documents and their texts in a HashMap for easy access.
         let mut docs = HashMap::new();
         let mut texts = HashMap::new();
 
+        // Iterate over all documents in the builder and insert their docs and texts into the lookup stores.
         for (i, (doc, doc_texts)) in self.documents.into_iter().enumerate() {
             docs.insert(i, doc);
             texts.insert(i, doc_texts);
         }
 
-        // Compute the embeddings
+        // Compute the embeddings.
         let mut embeddings = stream::iter(texts.into_iter())
             // Merge the texts of each document into a single list of texts.
             .flat_map(|(i, texts)| stream::iter(texts.into_iter().map(move |text| (i, text))))
-            // Chunk them into batches the embedding API limit per request.
+            // Chunk them into batches. Each batch size is at most the embedding API limit per request.
             .chunks(M::MAX_DOCUMENTS)
             // Generate the embeddings for each batch.
             .map(|text| async {
@@ -148,8 +150,6 @@ impl<M: EmbeddingModel, T: Embed + Send> EmbeddingsBuilder<M, T> {
                 },
             )
             .await?;
-
-        println!("{:?}", embeddings);
 
         // Merge the embeddings with their respective documents
         Ok(docs

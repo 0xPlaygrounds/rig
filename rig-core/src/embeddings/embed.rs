@@ -1,6 +1,6 @@
-//! The module defines the [Embed] trait, which must be implemented for types that can be embedded.
+//! The module defines the [Embed] trait, which must be implemented for types that can be embedded by the `EmbeddingsBuilder`.
 
-/// Error type used for when the `Embed.embed` method fails.
+/// Error type used for when the `embed` method fo the `Embed` trait fails.
 /// Used by default implementations of `Embed` for common types.
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
@@ -12,7 +12,7 @@ impl EmbedError {
     }
 }
 
-/// Derive this trait for structs whose fields need to be converted to vector embeddings.
+/// Derive this trait for objects that need to be converted to vector embeddings.
 /// The `embed` method accumulates string values that need to be embedded by adding them to the `TextEmbedder`.
 /// If an error occurs, the method should return `EmbedError`.
 /// # Example
@@ -60,6 +60,12 @@ impl TextEmbedder {
     pub fn embed(&mut self, text: String) {
         self.texts.push(text);
     }
+}
+
+pub fn to_text(item: impl Embed) -> Result<Vec<String>, EmbedError> {
+    let mut embedder = TextEmbedder::default();
+    item.embed(&mut embedder)?;
+    Ok(embedder.texts)
 }
 
 // ================================================================
