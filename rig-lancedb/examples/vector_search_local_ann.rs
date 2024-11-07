@@ -35,7 +35,6 @@ async fn main() -> Result<(), anyhow::Error> {
                     id: format!("doc{}", i),
                     definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
                 })
-                .collect(),
         )?
         .build()
         .await?;
