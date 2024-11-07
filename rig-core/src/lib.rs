@@ -64,8 +64,8 @@
 //! - Anthropic
 //! - Perplexity
 //! - Gemini
-//! 
-//! You can also implement your own model provider integration by defining types that 
+//!
+//! You can also implement your own model provider integration by defining types that
 //! implement the [CompletionModel](crate::completion::CompletionModel) and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits.
 //!
 //! ## Vector Stores
@@ -74,8 +74,8 @@
 //! - `rig-lancedb`: Vector store implementation for LanceDB
 //! - `rig-neo4j`: Vector store implementation for Neo4j
 //! - `rig-qdrant`: Vector store implementation for Qdrant
-//! 
-//! You can also implement your own vector store integration by defining types that 
+//!
+//! You can also implement your own vector store integration by defining types that
 //! implement the [VectorStoreIndex](crate::vector_store::VectorStoreIndex) trait.
 
 pub mod agent;
