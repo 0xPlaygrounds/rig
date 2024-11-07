@@ -19,7 +19,7 @@ pub struct QdrantVectorStore<M: EmbeddingModel> {
 }
 
 impl<M: EmbeddingModel> QdrantVectorStore<M> {
-    /// Creates a new instance of QdrantVectorStore.
+    /// Creates a new instance of `QdrantVectorStore`.
     ///
     /// # Arguments
     /// * `client` - Qdrant client instance
@@ -34,11 +34,13 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
         }
     }
 
+    /// Embed query based on `QdrantVectorStore` model and modify the vector in the required format.
     async fn generate_query_vector(&self, query: &str) -> Result<Vec<f32>, VectorStoreError> {
         let embedding = self.model.embed_document(query).await?;
         Ok(embedding.vec.iter().map(|&x| x as f32).collect())
     }
 
+    /// Fill in query parameters with the given query and limit.
     fn prepare_query_params(&self, query: Option<Query>, limit: usize) -> QueryPoints {
         let mut params = self.query_params.clone();
         params.query = query;
@@ -47,7 +49,7 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
     }
 }
 
-/// Converts a PointId to its string representation.
+/// Converts a `PointId` to its string representation.
 fn stringify_id(id: PointId) -> Result<String, VectorStoreError> {
     match id.point_id_options {
         Some(PointIdOptions::Num(num)) => Ok(num.to_string()),
@@ -59,6 +61,8 @@ fn stringify_id(id: PointId) -> Result<String, VectorStoreError> {
 }
 
 impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for QdrantVectorStore<M> {
+    /// Search for the top `n` nearest neighbors to the given query within the Qdrant vector store.
+    /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
         query: &str,
@@ -91,6 +95,8 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for QdrantVe
             .collect()
     }
 
+    /// Search for the top `n` nearest neighbors to the given query within the Qdrant vector store.
+    /// Returns a vector of tuples containing the score and ID of the nearest neighbors.
     async fn top_n_ids(
         &self,
         query: &str,
