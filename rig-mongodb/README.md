@@ -25,8 +25,8 @@ Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 
 ```toml
 [dependencies]
-rig-mongodb = "0.1.2"
-rig-core = "0.2.1"
+rig-mongodb = "0.1.3"
+rig-core = "0.4.0"
 ```
 
 You can also run `cargo add rig-mongodb rig-core` to add the most recent versions of the dependencies to your project.
