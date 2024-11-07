@@ -1,4 +1,4 @@
-<div style="display: flex; align-items: center; justify-content: center;">
+<!-- <div style="display: flex; align-items: center; justify-content: center;">
     <picture>
         <source media="(prefers-color-scheme: dark)" srcset="../img/rig_logo_dark.svg">
         <source media="(prefers-color-scheme: light)" srcset="../img/rig_logo.svg">
@@ -12,7 +12,7 @@
     </picture>
 </div>
 
-<br><br>
+<br><br> -->
 
 ## Rig-Lancedb
 This companion crate implements a Rig vector store based on Lancedb.
