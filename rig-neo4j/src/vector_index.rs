@@ -68,11 +68,11 @@ pub enum VectorSimilarityFunction {
     Euclidean,
 }
 
-impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
-    const BASE_VECTOR_SEARCH_QUERY: &str = "
-        CALL db.index.vector.queryNodes($index_name, $num_candidates, $queryVector)
-        YIELD node, score";
+const BASE_VECTOR_SEARCH_QUERY: &str = "
+    CALL db.index.vector.queryNodes($index_name, $num_candidates, $queryVector)
+    YIELD node, score";
 
+impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
     pub fn new(
         graph: Graph,
         embedding_model: M,
@@ -88,14 +88,14 @@ impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
     }
 
     /// Calls the `CREATE VECTOR INDEX` Neo4j query and waits for the index to be created.
-    /// A newly created index is not immediately fully available but is created (ie data is indexed) in the background.
+    /// A newly created index is not immediately fully available but is created (i.e. data is indexed) in the background.
     ///
     /// ❗ If there is already an index targetting the same node label and property, the new index creation will fail.
     ///
     /// ### Arguments
     /// * `node_label` - The label of the nodes to which the index will be applied. For example, if your nodes have
-    ///                  the label `:Movie`, pass "Movie" as the node_label parameter.
-    /// * `embedding_prop_name`(optional) - The name of the property that contains the embedding vectors. Defaults to "embedding".
+    ///                  the label `:Movie`, pass "Movie" as the `node_label` parameter.
+    /// * `embedding_prop_name` (optional) - The name of the property that contains the embedding vectors. Defaults to "embedding".
     ///
     pub async fn create_and_await_vector_index(
         &self,
@@ -175,7 +175,7 @@ impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
             {}
             RETURN score, ID(node) as element_id {}
             ",
-            Self::BASE_VECTOR_SEARCH_QUERY,
+            BASE_VECTOR_SEARCH_QUERY,
             where_clause,
             if return_node { ", node as node" } else { "" }
         ))
