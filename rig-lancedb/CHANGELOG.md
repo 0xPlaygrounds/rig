@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.1.0...rig-lancedb-v0.1.1) - 2024-11-07
+
+### Fixed
+
+- wrong reference to companion crate
+- missing qdrant readme reference
+
+### Other
+
+- update deps version
+- add coloured logos for integrations
+- *(readme)* test new logo coloration
+
 ## [0.1.0](https://github.com/0xPlaygrounds/rig/releases/tag/rig-lancedb-v0.1.0) - 2024-10-24
 
 ### Added

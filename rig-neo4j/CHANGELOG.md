@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.1.0...rig-neo4j-v0.1.1) - 2024-11-07
+
+### Fixed
+
+- *(neo4j)* last minute doc and const adjustments
+
 ## [0.1.0](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.0.7...rig-mongodb-v0.1.0) - 2024-10-22
 
 ### Features

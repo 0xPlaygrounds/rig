@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.3.0...rig-core-v0.4.0) - 2024-11-07
+
+### Added
+
+- *(gemini)* move system prompt to correct request field
+- *(provider-gemini)* add support for gemini specific completion parameters
+- *(provider-gemini)* add agent support in client
+- *(provider-gemini)* add gemini embedding support
+- *(provider-gemini)* add gemini support for basic completion
+- *(provider-gemini)* add gemini API client
+
+### Fixed
+
+- *(gemini)* issue when additionnal param is empty
+- docs imports and refs
+- *(gemini)* missing param to be marked as optional in completion res
+
+### Other
+
+- Cargo fmt
+- Add module level docs for the `tool` module
+- Fix loaders module docs references
+- Add docstrings to loaders module
+- Improve main lib docs
+- Add `all` feature flag to rig-core
+- *(gemini)* add utility config docstring
+- *(gemini)* remove try_from and use serde deserialization
+- Merge branch 'main' into feat/model-provider/16-add-gemini-completion-embedding-models
+- *(gemini)* separate gemini api types module, fix pr comments
+- add debug trait to embedding struct
+- *(gemini)* add addtionnal types from the official documentation, add embeddings example
+- *(provider-gemini)* test pre-commits
+- *(provider-gemini)* Update readme entries, add gemini agent example
+
 ## [0.3.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.2.1...rig-core-v0.3.0) - 2024-10-24
 
 ### Added
