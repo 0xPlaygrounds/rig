@@ -1,6 +1,4 @@
-# Rig-Neo4j
 
-<br>
 
 <div style="display: flex; align-items: center; justify-content: center;">
     <picture>
