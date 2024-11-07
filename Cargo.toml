@@ -1,3 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["rig-core", "rig-lancedb", "rig-mongodb", "rig-qdrant"]
+members = [
+    "rig-core", "rig-lancedb",
+    "rig-mongodb", "rig-neo4j",
+]
