@@ -1,6 +1,6 @@
 
 
-<div style="display: flex; align-items: center; justify-content: center;">\
+<div style="display: flex; align-items: center; justify-content: center;">
     <picture>
         <source media="(prefers-color-scheme: dark)" srcset="../img/rig_logo_dark.svg">
         <source media="(prefers-color-scheme: light)" srcset="../img/rig_logo.svg">
@@ -25,10 +25,10 @@ Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 
 ```toml
 [dependencies]
-rig-mongodb = "0.1.2"
-rig-core = "0.2.1"
+rig-mongodb = "0.1.3"
+rig-core = "0.4.0"
 ```
 
 You can also run `cargo add rig-mongodb rig-core` to add the most recent versions of the dependencies to your project.
 
-See the [examples](./examples) folder for usage examples.
+See the [`/examples`](./examples) folder for usage examples.
