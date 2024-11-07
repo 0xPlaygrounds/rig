@@ -11,6 +11,7 @@ jobs:
     permissions:
         checks: write
     uses: ./.github/workflows/ci.yaml
+    secrets: inherit
 
   release-plz:
     name: Release-plz
