@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rig::{
     completion::{Prompt, ToolDefinition},
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
+    embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     tool::{Tool, ToolEmbedding, ToolSet},
     vector_store::in_memory_store::InMemoryVectorStore,
