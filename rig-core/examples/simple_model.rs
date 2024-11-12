@@ -1,7 +1,7 @@
 use rig::{completion::Prompt, providers::openai};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client and model
     let openai_client = openai::Client::from_env();
 
@@ -14,4 +14,16 @@ async fn main() {
         .expect("Failed to prompt GPT-4");
 
     println!("GPT-4: {response}");
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn example() -> Result<(), anyhow::Error> {
+        main()
+    }
 }

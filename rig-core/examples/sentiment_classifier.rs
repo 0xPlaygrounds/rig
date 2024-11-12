@@ -17,7 +17,7 @@ struct DocumentSentiment {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
     let openai_client = openai::Client::from_env();
 
@@ -32,4 +32,16 @@ async fn main() {
         .expect("Failed to extract sentiment");
 
     println!("GPT-4: {:?}", sentiment);
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn example() -> Result<(), anyhow::Error> {
+        main()
+    }
 }

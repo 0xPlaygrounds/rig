@@ -2,10 +2,9 @@ use rig::{
     completion::Prompt,
     providers::gemini::{self, completion::gemini_api_types::GenerationConfig},
 };
-#[tracing::instrument(ret)]
-#[tokio::main]
 
-async fn main() -> Result<(), anyhow::Error> {
+#[tokio::main]
+pub async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_target(false)
@@ -46,4 +45,14 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn example() -> Result<(), anyhow::Error> {
+        main()
+    }
 }

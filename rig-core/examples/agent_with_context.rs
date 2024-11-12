@@ -26,3 +26,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn example() -> Result<(), anyhow::Error> {
+        main()
+    }
+}
