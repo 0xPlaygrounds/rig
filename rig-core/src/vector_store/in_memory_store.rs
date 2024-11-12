@@ -257,11 +257,10 @@ impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorI
         // Return n best
         docs.into_iter()
             .map(|Reverse(RankingItem(distance, _, doc, _))| {
-                let doc_value = serde_json::to_value(doc).map_err(VectorStoreError::JsonError)?;
                 Ok((
                     distance.0,
                     doc.id.clone(),
-                    serde_json::from_value(doc_value).map_err(VectorStoreError::JsonError)?,
+                    serde_json::from_value(doc.document.clone()).map_err(VectorStoreError::JsonError)?,
                 ))
             })
             .collect::<Result<Vec<_>, _>>()
