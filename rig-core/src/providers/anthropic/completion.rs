@@ -214,7 +214,13 @@ impl completion::CompletionModel for CompletionModel {
 
         if response.status().is_success() {
             match response.json::<ApiResponse<CompletionResponse>>().await? {
-                ApiResponse::Message(completion) => completion.try_into(),
+                ApiResponse::Message(completion) => {
+                    tracing::info!(target: "rig",
+                        "Anthropic completion token usage: {:?}",
+                        completion.usage
+                    );
+                    completion.try_into()
+                }
                 ApiResponse::Error(error) => Err(CompletionError::ProviderError(error.message)),
             }
         } else {

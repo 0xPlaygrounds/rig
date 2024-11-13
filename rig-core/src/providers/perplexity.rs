@@ -235,7 +235,13 @@ impl completion::CompletionModel for CompletionModel {
 
         if response.status().is_success() {
             match response.json::<ApiResponse<CompletionResponse>>().await? {
-                ApiResponse::Ok(completion) => Ok(completion.try_into()?),
+                ApiResponse::Ok(completion) => {
+                    tracing::info!(target: "rig",
+                        "Perplexity completion token usage: {:?}",
+                        completion.usage
+                    );
+                    Ok(completion.try_into()?)
+                }
                 ApiResponse::Err(error) => Err(CompletionError::ProviderError(error.message)),
             }
         } else {

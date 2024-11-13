@@ -170,7 +170,7 @@ pub struct ApiVersion {
     pub is_experimental: Option<bool>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct BilledUnits {
     #[serde(default)]
     pub input_tokens: u32,
@@ -217,6 +217,11 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         if response.status().is_success() {
             match response.json::<ApiResponse<EmbeddingResponse>>().await? {
                 ApiResponse::Ok(response) => {
+                    tracing::info!(target: "rig",
+                        "Cohere embeddings billed units: {:?}",
+                        response.meta.map(|meta| meta.billed_units)
+                    );
+
                     if response.embeddings.len() != documents.len() {
                         return Err(EmbeddingError::DocumentError(format!(
                             "Expected {} embeddings, got {}",

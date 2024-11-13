@@ -122,6 +122,11 @@ impl completion::CompletionModel for CompletionModel {
             .json::<GenerateContentResponse>()
             .await?;
 
+        tracing::info!(target: "rig",
+            "Gemini completion token usage: {:?}",
+            response.usage_metadata
+        );
+
         tracing::debug!("Received response");
 
         completion::CompletionResponse::try_from(response)
