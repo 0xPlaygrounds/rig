@@ -86,7 +86,8 @@ impl<I: VectorStoreIndex> VectorStoreIndexDyn for I {
         n: usize,
     ) -> BoxFuture<'a, Result<Vec<(f64, String, Value)>, VectorStoreError>> {
         Box::pin(async move {
-            Ok(self.top_n::<serde_json::Value>(query, n)
+            Ok(self
+                .top_n::<serde_json::Value>(query, n)
                 .await?
                 .into_iter()
                 .map(|(score, id, doc)| (score, id, prune_document(doc).unwrap_or_default()))
@@ -106,19 +107,19 @@ impl<I: VectorStoreIndex> VectorStoreIndexDyn for I {
 fn prune_document(document: serde_json::Value) -> Option<serde_json::Value> {
     match document {
         Value::Object(mut map) => {
-            let new_map = map.iter_mut()
+            let new_map = map
+                .iter_mut()
                 .filter_map(|(key, value)| {
-                    prune_document(value.take())
-                        .map(|value| (key.clone(), value))
+                    prune_document(value.take()).map(|value| (key.clone(), value))
                 })
                 .collect::<serde_json::Map<_, _>>();
 
             Some(Value::Object(new_map))
         }
-        Value::Array(vec) if vec.len() > 400 => {
-            None
-        }
-        Value::Array(vec) => Some(Value::Array(vec.into_iter().filter_map(prune_document).collect())),
+        Value::Array(vec) if vec.len() > 400 => None,
+        Value::Array(vec) => Some(Value::Array(
+            vec.into_iter().filter_map(prune_document).collect(),
+        )),
         Value::Number(num) => Some(Value::Number(num)),
         Value::String(s) => Some(Value::String(s)),
         Value::Bool(b) => Some(Value::Bool(b)),

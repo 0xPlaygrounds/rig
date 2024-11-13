@@ -260,7 +260,8 @@ impl<M: EmbeddingModel + std::marker::Sync> VectorStoreIndex for InMemoryVectorI
                 Ok((
                     distance.0,
                     doc.id.clone(),
-                    serde_json::from_value(doc.document.clone()).map_err(VectorStoreError::JsonError)?,
+                    serde_json::from_value(doc.document.clone())
+                        .map_err(VectorStoreError::JsonError)?,
                 ))
             })
             .collect::<Result<Vec<_>, _>>()
