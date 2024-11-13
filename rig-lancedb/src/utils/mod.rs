@@ -26,3 +26,52 @@ impl QueryToJson for lancedb::query::VectorQuery {
         record_batches.deserialize()
     }
 }
+
+pub trait FilterEmbeddings {
+    fn filter(&mut self, embeddings_col: Option<String>) -> serde_json::Result<serde_json::Value>;
+}
+
+impl FilterEmbeddings for serde_json::Value {
+    fn filter(&mut self, embeddings_col: Option<String>) -> serde_json::Result<serde_json::Value> {
+        match self.as_object_mut() {
+            Some(obj) => {
+                obj.remove(&embeddings_col.unwrap_or("embedding".to_string()));
+                serde_json::to_value(obj)
+            }
+            None => Ok(self.clone()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::utils::FilterEmbeddings;
+
+    #[test]
+    fn test_filter_default() {
+        let mut json = serde_json::json!({
+            "id": "doc0",
+            "text": "Hello world",
+            "embedding": vec![0.3889, 0.6987, 0.7758, 0.7750, 0.7289, 0.3380, 0.1165, 0.1551, 0.3783, 0.1458, 
+            0.3060, 0.2155, 0.8966, 0.5498, 0.7419, 0.8120, 0.2306, 0.5155, 0.9947, 0.0805]
+        });
+
+        let filtered_json = json.filter(None).unwrap();
+
+        assert_eq!(filtered_json, serde_json::json!({"id": "doc0", "text": "Hello world"}));
+    }
+
+    #[test]
+    fn test_filter_non_default() {
+        let mut json = serde_json::json!({
+            "id": "doc0",
+            "text": "Hello world",
+            "vectors": vec![0.3889, 0.6987, 0.7758, 0.7750, 0.7289, 0.3380, 0.1165, 0.1551, 0.3783, 0.1458, 
+            0.3060, 0.2155, 0.8966, 0.5498, 0.7419, 0.8120, 0.2306, 0.5155, 0.9947, 0.0805]
+        });
+
+        let filtered_json = json.filter(Some("vectors".to_string())).unwrap();
+
+        assert_eq!(filtered_json, serde_json::json!({"id": "doc0", "text": "Hello world"}));
+    }
+}
