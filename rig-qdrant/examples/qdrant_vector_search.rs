@@ -30,7 +30,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let client = Qdrant::from_url("http://localhost:6334").build()?;
 
     // Create a collection with 1536 dimensions if it doesn't exist
-    // Note: Make sure the dimensions match the size of the embeddings returned by the 
+    // Note: Make sure the dimensions match the size of the embeddings returned by the
     // model you are using
     if !client.collection_exists(COLLECTION_NAME).await? {
         client
