@@ -29,11 +29,11 @@ impl QueryToJson for lancedb::query::VectorQuery {
 }
 
 pub trait FilterEmbeddings {
-    fn filter(&mut self, embeddings_col: Option<String>) -> serde_json::Result<serde_json::Value>;
+    fn filter(self, embeddings_col: Option<String>) -> serde_json::Result<serde_json::Value>;
 }
 
 impl FilterEmbeddings for serde_json::Value {
-    fn filter(&mut self, embeddings_col: Option<String>) -> serde_json::Result<serde_json::Value> {
+    fn filter(mut self, embeddings_col: Option<String>) -> serde_json::Result<serde_json::Value> {
         match self.as_object_mut() {
             Some(obj) => {
                 obj.remove(&embeddings_col.unwrap_or("embedding".to_string()));
