@@ -225,6 +225,16 @@ pub struct Usage {
     pub total_tokens: usize,
 }
 
+impl std::fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Prompt tokens: {}\nTotal tokens: {}",
+            self.prompt_tokens, self.total_tokens
+        )
+    }
+}
+
 #[derive(Clone)]
 pub struct EmbeddingModel {
     client: Client,
@@ -259,7 +269,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             match response.json::<ApiResponse<EmbeddingResponse>>().await? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
-                        "OpenAI embedding token usage: {:?}",
+                        "OpenAI embedding token usage: {}",
                         response.usage
                     );
 
