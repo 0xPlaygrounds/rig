@@ -53,7 +53,7 @@ mod tests {
 
     #[test]
     fn test_filter_default() {
-        let mut json = serde_json::json!({
+        let json = serde_json::json!({
             "id": "doc0",
             "text": "Hello world",
             "embedding": vec![0.3889, 0.6987, 0.7758, 0.7750, 0.7289, 0.3380, 0.1165, 0.1551, 0.3783, 0.1458,
@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn test_filter_non_default() {
-        let mut json = serde_json::json!({
+        let json = serde_json::json!({
             "id": "doc0",
             "text": "Hello world",
             "vectors": vec![0.3889, 0.6987, 0.7758, 0.7750, 0.7289, 0.3380, 0.1165, 0.1551, 0.3783, 0.1458,
