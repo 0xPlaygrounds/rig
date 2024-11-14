@@ -156,7 +156,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(toolset.schema()?)?
+        .documents(toolset.schemas()?)?
         .build()
         .await?;
 

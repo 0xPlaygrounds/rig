@@ -9,7 +9,7 @@ use rig::{
 };
 use serde::Serialize;
 
-// Data to be RAG'ed.
+// Data to be RAGged.
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `FakeDefinition`
 // and tag that field with `#[embed]`.
 #[derive(Embed, Serialize, Clone, Debug, Eq, PartialEq, Default)]

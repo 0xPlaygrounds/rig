@@ -20,7 +20,7 @@ impl EmbedError {
 /// use std::env;
 ///
 /// use serde::{Deserialize, Serialize};
-/// use rig::{EmptyListError, Embed};
+/// use rig::Embed;
 ///
 /// struct FakeDefinition {
 ///     id: String,
@@ -35,8 +35,6 @@ impl EmbedError {
 ///        // That way, different embeddings can be generated for each definition in the definitions string.
 ///        self.definitions
 ///            .split(",")
-///            .collect::<Vec<_>>()
-///            .into_iter()
 ///            .for_each(|s| {
 ///                embedder.embed(s.to_string());
 ///            });
@@ -62,7 +60,9 @@ impl TextEmbedder {
     }
 }
 
-pub fn to_text(item: impl Embed) -> Result<Vec<String>, EmbedError> {
+/// Client-side function to convert an object that implements the `Embed` trait to a vector of strings.
+/// Similar to `serde`'s `serde_json::to_string()` function
+pub fn to_texts(item: impl Embed) -> Result<Vec<String>, EmbedError> {
     let mut embedder = TextEmbedder::default();
     item.embed(&mut embedder)?;
     Ok(embedder.texts)

@@ -330,7 +330,7 @@ impl ToolSet {
     /// Convert tools in self to objects of type ToolSchema.
     /// This is necessary because when adding tools to the EmbeddingBuilder because all
     /// documents added to the builder must all be of the same type.
-    pub fn schema(&self) -> Result<Vec<ToolSchema>, EmbedError> {
+    pub fn schemas(&self) -> Result<Vec<ToolSchema>, EmbedError> {
         self.tools
             .values()
             .filter_map(|tool_type| {

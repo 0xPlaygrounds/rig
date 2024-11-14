@@ -9,6 +9,6 @@ pub mod embedding;
 pub mod tool;
 
 pub use builder::EmbeddingsBuilder;
-pub use embed::{to_text, Embed, EmbedError, TextEmbedder};
+pub use embed::{to_texts, Embed, EmbedError, TextEmbedder};
 pub use embedding::{Embedding, EmbeddingError, EmbeddingModel};
 pub use tool::ToolSchema;
