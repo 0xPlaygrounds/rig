@@ -155,7 +155,7 @@ impl std::fmt::Display for Usage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Prompt tokens: {}\n, Completion tokens: {}\n, Total tokens: {}",
+            "Prompt tokens: {}\nCompletion tokens: {}\nTotal tokens: {}",
             self.prompt_tokens, self.completion_tokens, self.total_tokens
         )
     }

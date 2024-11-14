@@ -186,7 +186,7 @@ impl std::fmt::Display for BilledUnits {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Input tokens: {}\n, Output tokens: {}\n, Search units: {}\n, Classifications: {}",
+            "Input tokens: {}\nOutput tokens: {}\nSearch units: {}\nClassifications: {}",
             self.input_tokens, self.output_tokens, self.search_units, self.classifications
         )
     }

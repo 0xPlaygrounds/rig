@@ -70,7 +70,7 @@ impl std::fmt::Display for Usage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Input tokens: {}\n, Cache read input tokens: {}\n, Cache creation input tokens: {}\n, Output tokens: {}",
+            "Input tokens: {}\nCache read input tokens: {}\nCache creation input tokens: {}\nOutput tokens: {}",
             self.input_tokens,
             match self.cache_read_input_tokens {
                 Some(token) => token.to_string(),
