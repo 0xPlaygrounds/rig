@@ -15,4 +15,4 @@ pub mod embedding;
 
 pub use client::Client;
 pub use completion::GROK_BETA;
-pub use embedding::V1;
+pub use embedding::EMBEDDING_V1;

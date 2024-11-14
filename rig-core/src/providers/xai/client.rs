@@ -6,7 +6,7 @@ use crate::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{completion::CompletionModel, embedding::EmbeddingModel, V1};
+use super::{completion::CompletionModel, embedding::EmbeddingModel, EMBEDDING_V1};
 
 // ================================================================
 // Google Gemini Client
@@ -71,11 +71,11 @@ impl Client {
     /// // Initialize the xAI client
     /// let xai = Client::new("your-xai-api-key");
     ///
-    /// let embedding_model = xai.embedding_model(xai::embedding::v1);
+    /// let embedding_model = xai.embedding_model(xai::embedding::EMBEDDING_V1);
     /// ```
     pub fn embedding_model(&self, model: &str) -> EmbeddingModel {
         let ndims = match model {
-            V1 => 3072,
+            EMBEDDING_V1 => 3072,
             _ => 0,
         };
         EmbeddingModel::new(self.clone(), model, ndims)
@@ -106,7 +106,7 @@ impl Client {
     /// // Initialize the xAI client
     /// let xai = Client::new("your-xai-api-key");
     ///
-    /// let embeddings = xai.embeddings(xai::embedding::v1)
+    /// let embeddings = xai.embeddings(xai::embedding::EMBEDDING_V1)
     ///     .simple_document("doc0", "Hello, world!")
     ///     .simple_document("doc1", "Goodbye, world!")
     ///     .build()
@@ -130,7 +130,7 @@ impl Client {
     /// // Initialize the xAI client
     /// let xai = Client::new("your-xai-api-key");
     ///
-    /// let agent = xai.agent(xai::completion::GROQ_BETA)
+    /// let agent = xai.agent(xai::completion::GROK_BETA)
     ///    .preamble("You are comedian AI with a mission to make people laugh.")
     ///    .temperature(0.0)
     ///    .build();

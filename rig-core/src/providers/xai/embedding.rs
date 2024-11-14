@@ -17,7 +17,7 @@ use super::{
 // OpenAI Embedding API
 // ================================================================
 /// `v1` embedding model
-pub const V1: &str = "v1";
+pub const EMBEDDING_V1: &str = "v1";
 
 #[derive(Debug, Deserialize)]
 pub struct EmbeddingResponse {
