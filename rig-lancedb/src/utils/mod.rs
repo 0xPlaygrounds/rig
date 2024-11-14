@@ -28,7 +28,7 @@ impl QueryToJson for lancedb::query::VectorQuery {
     }
 }
 
-pub trait FilterEmbeddings {
+pub(crate) trait FilterEmbeddings {
     fn filter(self, embeddings_col: Option<String>) -> serde_json::Result<serde_json::Value>;
 }
 
