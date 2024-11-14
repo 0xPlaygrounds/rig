@@ -4,6 +4,7 @@ use deserializer::RecordBatchDeserializer;
 use futures::TryStreamExt;
 use lancedb::query::ExecutableQuery;
 use rig::vector_store::VectorStoreError;
+use serde::de::Error;
 
 use crate::lancedb_to_rig_error;
 
@@ -38,7 +39,10 @@ impl FilterEmbeddings for serde_json::Value {
                 obj.remove(&embeddings_col.unwrap_or("embedding".to_string()));
                 serde_json::to_value(obj)
             }
-            None => Ok(self.clone()),
+            None => Err(serde_json::Error::custom(format!(
+                "{} is not an object",
+                self
+            ))),
         }
     }
 }

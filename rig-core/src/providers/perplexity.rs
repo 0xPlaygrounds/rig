@@ -151,6 +151,16 @@ pub struct Usage {
     pub total_tokens: u32,
 }
 
+impl std::fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Prompt tokens: {}\n, Completion tokens: {}\n, Total tokens: {}",
+            self.prompt_tokens, self.completion_tokens, self.total_tokens
+        )
+    }
+}
+
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
@@ -237,7 +247,7 @@ impl completion::CompletionModel for CompletionModel {
             match response.json::<ApiResponse<CompletionResponse>>().await? {
                 ApiResponse::Ok(completion) => {
                     tracing::info!(target: "rig",
-                        "Perplexity completion token usage: {:?}",
+                        "Perplexity completion token usage: {}",
                         completion.usage
                     );
                     Ok(completion.try_into()?)

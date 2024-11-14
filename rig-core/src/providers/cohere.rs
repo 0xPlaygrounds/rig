@@ -182,6 +182,16 @@ pub struct BilledUnits {
     pub classifications: u32,
 }
 
+impl std::fmt::Display for BilledUnits {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Input tokens: {}\n, Output tokens: {}\n, Search units: {}\n, Classifications: {}",
+            self.input_tokens, self.output_tokens, self.search_units, self.classifications
+        )
+    }
+}
+
 #[derive(Clone)]
 pub struct EmbeddingModel {
     client: Client,
@@ -217,10 +227,15 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         if response.status().is_success() {
             match response.json::<ApiResponse<EmbeddingResponse>>().await? {
                 ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "Cohere embeddings billed units: {:?}",
-                        response.meta.map(|meta| meta.billed_units)
-                    );
+                    match response.meta {
+                        Some(meta) => tracing::info!(target: "rig",
+                            "Cohere embeddings billed units: {}",
+                            meta.billed_units,
+                        ),
+                        None => tracing::info!(target: "rig",
+                            "Cohere embeddings billed units: n/a",
+                        ),
+                    };
 
                     if response.embeddings.len() != documents.len() {
                         return Err(EmbeddingError::DocumentError(format!(
