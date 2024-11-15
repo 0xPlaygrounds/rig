@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     completion::{self, ToolDefinition},
-    embeddings::{extract_embedding_fields::ExtractEmbeddingFieldsError, tool::EmbeddableTool},
+    embeddings::{embed::EmbedError, tool::ToolSchema},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -327,15 +327,15 @@ impl ToolSet {
         Ok(docs)
     }
 
-    /// Convert tools in self to objects of type EmbeddableTool.
+    /// Convert tools in self to objects of type ToolSchema.
     /// This is necessary because when adding tools to the EmbeddingBuilder because all
     /// documents added to the builder must all be of the same type.
-    pub fn embedabble_tools(&self) -> Result<Vec<EmbeddableTool>, ExtractEmbeddingFieldsError> {
+    pub fn schemas(&self) -> Result<Vec<ToolSchema>, EmbedError> {
         self.tools
             .values()
             .filter_map(|tool_type| {
                 if let ToolType::Embedding(tool) = tool_type {
-                    Some(EmbeddableTool::try_from(&**tool))
+                    Some(ToolSchema::try_from(&**tool))
                 } else {
                     None
                 }

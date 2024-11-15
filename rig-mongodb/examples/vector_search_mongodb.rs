@@ -3,15 +3,14 @@ use rig::providers::openai::TEXT_EMBEDDING_ADA_002;
 use serde::{Deserialize, Serialize};
 use std::env;
 
-use rig::ExtractEmbeddingFields;
 use rig::{
-    embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex,
+    embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex, Embed,
 };
-use rig_mongodb::{MongoDbVectorStore, SearchParams};
+use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
-#[derive(ExtractEmbeddingFields, Clone, Deserialize, Debug)]
+#[derive(Embed, Clone, Deserialize, Debug)]
 struct FakeDefinition {
     #[serde(rename = "_id")]
     id: String,
@@ -97,7 +96,8 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create a vector index on our vector store.
     // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = MongoDbVectorStore::new(collection).index(
+    let index = MongoDbVectorIndex::new(
+        collection,
         model,
         "vector_index",
         SearchParams::new("embedding"),

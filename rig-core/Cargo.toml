@@ -35,7 +35,7 @@ tokio-test = "0.4.4"
 derive = ["dep:rig-derive"]
 
 [[test]]
-name = "extract_embedding_fields_macro"
+name = "embed_macro"
 required-features = ["derive"]
 
 [[example]]

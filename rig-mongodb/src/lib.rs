@@ -11,9 +11,10 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
     VectorStoreError::DatastoreError(Box::new(e))
 }
 
+/// A vector index for a MongoDB collection.
 /// # Example
 /// ```
-/// use rig_mongodb::{MongoDbVectorStore, SearchParams};
+/// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 /// use rig::embeddings::EmbeddingModel;
 ///
 /// #[derive(serde::Serialize, Debug)]
@@ -26,37 +27,13 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 ///
 /// let collection: collection: mongodb::Collection<Document> = mongodb_client.collection(""); // <-- replace with your mongodb collection.
 /// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
-/// let index = MongoDbVectorStore::new(collection).index(
+/// let index = MongoDbVectorIndex::new(
+///     collection,
 ///     model,
 ///     "vector_index", // <-- replace with the name of the index in your mongodb collection.
 ///     SearchParams::new("embedding"), // <-- field name in `Document` that contains the embeddings.
 /// );
 /// ```
-pub struct MongoDbVectorStore<C> {
-    collection: mongodb::Collection<C>,
-}
-
-impl<C> MongoDbVectorStore<C> {
-    /// Create a new `MongoDbVectorStore` from a MongoDB collection.
-    pub fn new(collection: mongodb::Collection<C>) -> Self {
-        Self { collection }
-    }
-
-    /// Create a new `MongoDbVectorIndex` from an existing `MongoDbVectorStore`.
-    ///
-    /// The index (of type "vector") must already exist for the MongoDB collection.
-    /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
-    pub fn index<M: EmbeddingModel>(
-        &self,
-        model: M,
-        index_name: &str,
-        search_params: SearchParams,
-    ) -> MongoDbVectorIndex<M, C> {
-        MongoDbVectorIndex::new(self.collection.clone(), model, index_name, search_params)
-    }
-}
-
-/// A vector index for a MongoDB collection.
 pub struct MongoDbVectorIndex<M: EmbeddingModel, C> {
     collection: mongodb::Collection<C>,
     model: M,
@@ -100,6 +77,10 @@ impl<M: EmbeddingModel, C> MongoDbVectorIndex<M, C> {
 }
 
 impl<M: EmbeddingModel, C> MongoDbVectorIndex<M, C> {
+    /// Create a new `MongoDbVectorIndex`.
+    ///
+    /// The index (of type "vector") must already exist for the MongoDB collection.
+    /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
     pub fn new(
         collection: mongodb::Collection<C>,
         model: M,
@@ -167,7 +148,7 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     /// Implement the `top_n` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
     /// # Example
     /// ```
-    /// use rig_mongodb::{MongoDbVectorStore, SearchParams};
+    /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
     /// use rig::embeddings::EmbeddingModel;
     ///
     /// #[derive(serde::Serialize, Debug)]
@@ -188,7 +169,8 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     /// let collection: collection: mongodb::Collection<Document> = mongodb_client.collection(""); // <-- replace with your mongodb collection.
     /// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
     ///
-    /// let vector_store_index = MongoDbVectorStore::new(collection).index(
+    /// let vector_store_index = MongoDbVectorIndex::new(
+    ///     collection,
     ///     model,
     ///     "vector_index", // <-- replace with the name of the index in your mongodb collection.
     ///     SearchParams::new("embedding"), // <-- field name in `Document` that contains the embeddings.
@@ -204,7 +186,7 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
         query: &str,
         n: usize,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_document(query).await?;
+        let prompt_embedding = self.model.embed_text(query).await?;
 
         let mut cursor = self
             .collection
@@ -242,7 +224,7 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
     /// # Example
     /// ```
-    /// use rig_mongodb::{MongoDbVectorStore, SearchParams};
+    /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
     /// use rig::embeddings::EmbeddingModel;
     ///
     /// #[derive(serde::Serialize, Debug)]
@@ -255,7 +237,8 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     ///
     /// let collection: collection: mongodb::Collection<Document> = mongodb_client.collection(""); // <-- replace with your mongodb collection.
     /// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
-    /// let vector_store_index = MongoDbVectorStore::new(collection).index(
+    /// let vector_store_index = MongoDbVectorIndex::new(
+    ///     collection,
     ///     model,
     ///     "vector_index", // <-- replace with the name of the index in your mongodb collection.
     ///     SearchParams::new("embedding"), // <-- field name in `Document` that contains the embeddings.
@@ -271,7 +254,7 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
         query: &str,
         n: usize,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_document(query).await?;
+        let prompt_embedding = self.model.embed_text(query).await?;
 
         let mut cursor = self
             .collection

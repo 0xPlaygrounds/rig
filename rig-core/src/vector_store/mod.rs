@@ -16,7 +16,7 @@ pub enum VectorStoreError {
     JsonError(#[from] serde_json::Error),
 
     #[error("Datastore error: {0}")]
-    DatastoreError(#[from] Box<dyn std::error::Error + Send + Sync>),
+    DatastoreError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 
     #[error("Missing Id: {0}")]
     MissingIdError(String),

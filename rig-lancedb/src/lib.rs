@@ -195,7 +195,7 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
         query: &str,
         n: usize,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_document(query).await?;
+        let prompt_embedding = self.model.embed_text(query).await?;
 
         let query = self
             .table
@@ -241,7 +241,7 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
         query: &str,
         n: usize,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_document(query).await?;
+        let prompt_embedding = self.model.embed_text(query).await?;
 
         let query = self
             .table

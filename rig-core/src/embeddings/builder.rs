@@ -1,22 +1,24 @@
-//! The module defines the [EmbeddingsBuilder] struct which accumulates objects to be embedded and generates the embeddings for each object when built.
-//! Only types that implement the [ExtractEmbeddingFields] trait can be added to the [EmbeddingsBuilder].
+//! The module defines the [EmbeddingsBuilder] struct which accumulates objects to be embedded
+//! and batch generates the embeddings for each object when built.
+//! Only types that implement the [Embed] trait can be added to the [EmbeddingsBuilder].
 
 use std::{cmp::max, collections::HashMap};
 
-use futures::{stream, StreamExt, TryStreamExt};
+use futures::{stream, StreamExt};
 
 use crate::{
-    embeddings::{Embedding, EmbeddingError, EmbeddingModel, ExtractEmbeddingFields},
+    embeddings::{Embed, EmbedError, Embedding, EmbeddingError, EmbeddingModel, TextEmbedder},
     OneOrMany,
 };
 
-/// Builder for creating a collection of embeddings.
-pub struct EmbeddingsBuilder<M: EmbeddingModel, T: ExtractEmbeddingFields> {
+/// Builder for creating a collection of embeddings from a vector of documents of type `T`.
+/// Accumulate documents such that they can be embedded in a single batch to limit api calls to the provider.
+pub struct EmbeddingsBuilder<M: EmbeddingModel, T: Embed> {
     model: M,
-    documents: Vec<(T, OneOrMany<String>)>,
+    documents: Vec<(T, Vec<String>)>,
 }
 
-impl<M: EmbeddingModel, T: ExtractEmbeddingFields> EmbeddingsBuilder<M, T> {
+impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
     /// Create a new embedding builder with the given embedding model
     pub fn new(model: M) -> Self {
         Self {
@@ -25,23 +27,23 @@ impl<M: EmbeddingModel, T: ExtractEmbeddingFields> EmbeddingsBuilder<M, T> {
         }
     }
 
-    /// Add a document that implements `ExtractEmbeddingFields` to the builder.
-    pub fn document(mut self, document: T) -> Result<Self, T::Error> {
-        let embed_targets = document.extract_embedding_fields()?;
+    /// Add a document that implements `Embed` to the builder.
+    pub fn document(mut self, document: T) -> Result<Self, EmbedError> {
+        let mut embedder = TextEmbedder::default();
+        document.embed(&mut embedder)?;
 
-        self.documents.push((document, embed_targets));
+        self.documents.push((document, embedder.texts));
+
         Ok(self)
     }
 
-    /// Add many documents that implement `ExtractEmbeddingFields` to the builder.
-    pub fn documents(mut self, documents: Vec<T>) -> Result<Self, T::Error> {
-        for doc in documents.into_iter() {
-            let embed_targets = doc.extract_embedding_fields()?;
+    /// Add many documents that implement `Embed` to the builder.
+    pub fn documents(self, documents: impl IntoIterator<Item = T>) -> Result<Self, EmbedError> {
+        let builder = documents
+            .into_iter()
+            .try_fold(self, |builder, doc| builder.document(doc))?;
 
-            self.documents.push((doc, embed_targets));
-        }
-
-        Ok(self)
+        Ok(builder)
     }
 }
 
@@ -53,13 +55,13 @@ impl<M: EmbeddingModel, T: ExtractEmbeddingFields> EmbeddingsBuilder<M, T> {
 ///     embeddings::EmbeddingsBuilder,
 ///     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
 ///     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-///     ExtractEmbeddingFields,
+///     Embed,
 /// };
 /// use serde::{Deserialize, Serialize};
 ///
 /// // Shape of data that needs to be RAG'ed.
 /// // The definition field will be used to generate embeddings.
-/// #[derive(ExtractEmbeddingFields, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
+/// #[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
 /// struct FakeDefinition {
 ///     id: String,
 ///     word: String,
@@ -103,45 +105,38 @@ impl<M: EmbeddingModel, T: ExtractEmbeddingFields> EmbeddingsBuilder<M, T> {
 ///     .build()
 ///     .await?;
 /// ```
-impl<M: EmbeddingModel, T: ExtractEmbeddingFields + Send + Sync + Clone> EmbeddingsBuilder<M, T> {
+impl<M: EmbeddingModel, T: Embed + Send> EmbeddingsBuilder<M, T> {
     /// Generate embeddings for all documents in the builder.
     /// Returns a vector of tuples, where the first element is the document and the second element is the embeddings (either one embedding or many).
     pub async fn build(self) -> Result<Vec<(T, OneOrMany<Embedding>)>, EmbeddingError> {
-        // Use this for reference later to merge a document back with its embeddings.
-        let documents_map = self
-            .documents
-            .clone()
-            .into_iter()
-            .enumerate()
-            .map(|(id, (document, _))| (id, document))
-            .collect::<HashMap<_, _>>();
+        use stream::TryStreamExt;
 
-        let embeddings = stream::iter(self.documents.iter().enumerate())
-            // Merge the embedding targets of each document into a single list of embedding targets.
-            .flat_map(|(i, (_, embed_targets))| {
-                stream::iter(
-                    embed_targets
-                        .clone()
-                        .into_iter()
-                        .map(move |target| (i, target)),
-                )
-            })
-            // Chunk them into N (the emebdding API limit per request).
+        // Store the documents and their texts in a HashMap for easy access.
+        let mut docs = HashMap::new();
+        let mut texts = HashMap::new();
+
+        // Iterate over all documents in the builder and insert their docs and texts into the lookup stores.
+        for (i, (doc, doc_texts)) in self.documents.into_iter().enumerate() {
+            docs.insert(i, doc);
+            texts.insert(i, doc_texts);
+        }
+
+        // Compute the embeddings.
+        let mut embeddings = stream::iter(texts.into_iter())
+            // Merge the texts of each document into a single list of texts.
+            .flat_map(|(i, texts)| stream::iter(texts.into_iter().map(move |text| (i, text))))
+            // Chunk them into batches. Each batch size is at most the embedding API limit per request.
             .chunks(M::MAX_DOCUMENTS)
-            // Generate the embeddings for a chunk at a time.
-            .map(|docs| async {
-                let (document_indices, embed_targets): (Vec<_>, Vec<_>) = docs.into_iter().unzip();
+            // Generate the embeddings for each batch.
+            .map(|text| async {
+                let (ids, docs): (Vec<_>, Vec<_>) = text.into_iter().unzip();
 
-                Ok::<_, EmbeddingError>(
-                    document_indices
-                        .into_iter()
-                        .zip(self.model.embed_documents(embed_targets).await?.into_iter())
-                        .collect::<Vec<_>>(),
-                )
+                let embeddings = self.model.embed_texts(docs).await?;
+                Ok::<_, EmbeddingError>(ids.into_iter().zip(embeddings).collect::<Vec<_>>())
             })
-            .boxed()
             // Parallelize the embeddings generation over 10 concurrent requests
             .buffer_unordered(max(1, 1024 / M::MAX_DOCUMENTS))
+            // Collect the embeddings into a HashMap.
             .try_fold(
                 HashMap::new(),
                 |mut acc: HashMap<_, OneOrMany<Embedding>>, embeddings| async move {
@@ -154,27 +149,26 @@ impl<M: EmbeddingModel, T: ExtractEmbeddingFields + Send + Sync + Clone> Embeddi
                     Ok(acc)
                 },
             )
-            .await?
-            .iter()
-            .fold(vec![], |mut acc, (i, embeddings_vec)| {
-                acc.push((
-                    documents_map.get(i).cloned().unwrap(),
-                    embeddings_vec.clone(),
-                ));
-                acc
-            });
+            .await?;
 
-        Ok(embeddings)
+        // Merge the embeddings with their respective documents
+        Ok(docs
+            .into_iter()
+            .map(|(i, doc)| {
+                (
+                    doc,
+                    embeddings.remove(&i).expect("Document should be present"),
+                )
+            })
+            .collect())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        embeddings::{
-            extract_embedding_fields::ExtractEmbeddingFieldsError, Embedding, EmbeddingModel,
-        },
-        ExtractEmbeddingFields,
+        embeddings::{embed::EmbedError, Embedding, EmbeddingModel, TextEmbedder},
+        Embed,
     };
 
     use super::EmbeddingsBuilder;
@@ -189,7 +183,7 @@ mod tests {
             10
         }
 
-        async fn embed_documents(
+        async fn embed_texts(
             &self,
             documents: impl IntoIterator<Item = String> + Send,
         ) -> Result<Vec<crate::embeddings::Embedding>, crate::embeddings::EmbeddingError> {
@@ -209,16 +203,16 @@ mod tests {
         definitions: Vec<String>,
     }
 
-    impl ExtractEmbeddingFields for FakeDefinition {
-        type Error = ExtractEmbeddingFieldsError;
-
-        fn extract_embedding_fields(&self) -> Result<crate::OneOrMany<String>, Self::Error> {
-            crate::OneOrMany::many(self.definitions.clone())
-                .map_err(ExtractEmbeddingFieldsError::new)
+    impl Embed for FakeDefinition {
+        fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
+            for definition in &self.definitions {
+                embedder.embed(definition.clone());
+            }
+            Ok(())
         }
     }
 
-    fn fake_definitions() -> Vec<FakeDefinition> {
+    fn fake_definitions_multiple_text() -> Vec<FakeDefinition> {
         vec![
             FakeDefinition {
                 id: "doc0".to_string(),
@@ -237,7 +231,7 @@ mod tests {
         ]
     }
 
-    fn fake_definitions_2() -> Vec<FakeDefinition> {
+    fn fake_definitions_multiple_text_2() -> Vec<FakeDefinition> {
         vec![
             FakeDefinition {
                 id: "doc2".to_string(),
@@ -256,15 +250,14 @@ mod tests {
         definition: String,
     }
 
-    impl ExtractEmbeddingFields for FakeDefinitionSingle {
-        type Error = ExtractEmbeddingFieldsError;
-
-        fn extract_embedding_fields(&self) -> Result<crate::OneOrMany<String>, Self::Error> {
-            Ok(crate::OneOrMany::one(self.definition.clone()))
+    impl Embed for FakeDefinitionSingle {
+        fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
+            embedder.embed(self.definition.clone());
+            Ok(())
         }
     }
 
-    fn fake_definitions_single() -> Vec<FakeDefinitionSingle> {
+    fn fake_definitions_single_text() -> Vec<FakeDefinitionSingle> {
         vec![
             FakeDefinitionSingle {
                 id: "doc0".to_string(),
@@ -278,8 +271,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_build_many() {
-        let fake_definitions = fake_definitions();
+    async fn test_build_multiple_text() {
+        let fake_definitions = fake_definitions_multiple_text();
 
         let fake_model = FakeModel;
         let mut result = EmbeddingsBuilder::new(fake_model)
@@ -312,8 +305,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_build_single() {
-        let fake_definitions = fake_definitions_single();
+    async fn test_build_single_text() {
+        let fake_definitions = fake_definitions_single_text();
 
         let fake_model = FakeModel;
         let mut result = EmbeddingsBuilder::new(fake_model)
@@ -346,9 +339,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_build_many_and_single() {
-        let fake_definitions = fake_definitions();
-        let fake_definitions_single = fake_definitions_2();
+    async fn test_build_multiple_and_single_text() {
+        let fake_definitions = fake_definitions_multiple_text();
+        let fake_definitions_single = fake_definitions_multiple_text_2();
 
         let fake_model = FakeModel;
         let mut result = EmbeddingsBuilder::new(fake_model)
@@ -379,6 +372,39 @@ mod tests {
         assert_eq!(
             third_definition.1.first().document,
             "Another fake definitions".to_string()
+        )
+    }
+
+    #[tokio::test]
+    async fn test_build_string() {
+        let bindings = fake_definitions_multiple_text();
+        let fake_definitions = bindings.iter().map(|def| def.definitions.clone());
+
+        let fake_model = FakeModel;
+        let mut result = EmbeddingsBuilder::new(fake_model)
+            .documents(fake_definitions)
+            .unwrap()
+            .build()
+            .await
+            .unwrap();
+
+        result.sort_by(|(fake_definition_1, _), (fake_definition_2, _)| {
+            fake_definition_1.cmp(&fake_definition_2)
+        });
+
+        assert_eq!(result.len(), 2);
+
+        let first_definition = &result[0];
+        assert_eq!(first_definition.1.len(), 2);
+        assert_eq!(
+            first_definition.1.first().document,
+            "A green alien that lives on cold planets.".to_string()
+        );
+
+        let second_definition = &result[1];
+        assert_eq!(second_definition.1.len(), 2);
+        assert_eq!(
+            second_definition.1.rest()[0].document, "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
         )
     }
 }

@@ -22,7 +22,7 @@ pub enum EmbeddingError {
 
     /// Error processing the document for embedding
     #[error("DocumentError: {0}")]
-    DocumentError(String),
+    DocumentError(Box<dyn std::error::Error + Send + Sync + 'static>),
 
     /// Error parsing the completion response
     #[error("ResponseError: {0}")]
@@ -41,29 +41,25 @@ pub trait EmbeddingModel: Clone + Sync + Send {
     /// The number of dimensions in the embedding vector.
     fn ndims(&self) -> usize;
 
-    /// Embed a single document
-    fn embed_document(
-        &self,
-        document: &str,
-    ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + Send
-    where
-        Self: Sync,
-    {
-        async {
-            Ok(self
-                .embed_documents(vec![document.to_string()])
-                .await?
-                .first()
-                .cloned()
-                .expect("One embedding should be present"))
-        }
-    }
-
-    /// Embed multiple documents in a single request
-    fn embed_documents(
+    /// Embed multiple text documents in a single request
+    fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String> + Send,
     ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + Send;
+
+    /// Embed a single text document.
+    fn embed_text(
+        &self,
+        document: &str,
+    ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + Send {
+        async {
+            Ok(self
+                .embed_texts(vec![document.to_string()])
+                .await?
+                .pop()
+                .expect("There should be at least one embedding"))
+        }
+    }
 }
 
 /// Struct that holds a single document and its embedding.

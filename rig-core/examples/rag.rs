@@ -5,14 +5,14 @@ use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::in_memory_store::InMemoryVectorStore,
-    ExtractEmbeddingFields,
+    Embed,
 };
 use serde::Serialize;
 
-// Shape of data that needs to be RAG'ed.
-// A vector search needs to be performed on the definitions, so we derive the `ExtractEmbeddingFields` trait for `FakeDefinition`
+// Data to be RAGged.
+// A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `FakeDefinition`
 // and tag that field with `#[embed]`.
-#[derive(ExtractEmbeddingFields, Serialize, Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Embed, Serialize, Clone, Debug, Eq, PartialEq, Default)]
 struct FakeDefinition {
     id: String,
     #[embed]

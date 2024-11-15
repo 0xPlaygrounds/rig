@@ -1,31 +1,32 @@
-use crate::{tool::ToolEmbeddingDyn, ExtractEmbeddingFields, OneOrMany};
+use crate::{tool::ToolEmbeddingDyn, Embed};
 use serde::Serialize;
 
-use super::extract_embedding_fields::ExtractEmbeddingFieldsError;
+use super::embed::EmbedError;
 
 /// Used by EmbeddingsBuilder to embed anything that implements ToolEmbedding.
 #[derive(Clone, Serialize, Default, Eq, PartialEq)]
-pub struct EmbeddableTool {
+pub struct ToolSchema {
     pub name: String,
     pub context: serde_json::Value,
     pub embedding_docs: Vec<String>,
 }
 
-impl ExtractEmbeddingFields for EmbeddableTool {
-    type Error = ExtractEmbeddingFieldsError;
-
-    fn extract_embedding_fields(&self) -> Result<OneOrMany<String>, Self::Error> {
-        OneOrMany::many(self.embedding_docs.clone()).map_err(ExtractEmbeddingFieldsError::new)
+impl Embed for ToolSchema {
+    fn embed(&self, embedder: &mut super::embed::TextEmbedder) -> Result<(), EmbedError> {
+        for doc in &self.embedding_docs {
+            embedder.embed(doc.clone());
+        }
+        Ok(())
     }
 }
 
-impl EmbeddableTool {
-    /// Convert item that implements ToolEmbeddingDyn to an EmbeddableTool.
+impl ToolSchema {
+    /// Convert item that implements ToolEmbeddingDyn to an ToolSchema.
     /// # Example
     /// ```rust
     /// use rig::{
     ///     completion::ToolDefinition,
-    ///     embeddings::EmbeddableTool,
+    ///     embeddings::ToolSchema,
     ///     tool::{Tool, ToolEmbedding, ToolEmbeddingDyn},
     /// };
     /// use serde_json::json;
@@ -76,15 +77,15 @@ impl EmbeddableTool {
     ///     fn context(&self) -> Self::Context {}
     /// }
     ///
-    /// let tool = EmbeddableTool::try_from(&Nothing).unwrap();
+    /// let tool = ToolSchema::try_from(&Nothing).unwrap();
     ///
     /// assert_eq!(tool.name, "nothing".to_string());
     /// assert_eq!(tool.embedding_docs, vec!["Do nothing.".to_string()]);
     /// ```
-    pub fn try_from(tool: &dyn ToolEmbeddingDyn) -> Result<Self, ExtractEmbeddingFieldsError> {
-        Ok(EmbeddableTool {
+    pub fn try_from(tool: &dyn ToolEmbeddingDyn) -> Result<Self, EmbedError> {
+        Ok(ToolSchema {
             name: tool.name(),
-            context: tool.context().map_err(ExtractEmbeddingFieldsError::new)?,
+            context: tool.context().map_err(EmbedError::new)?,
             embedding_docs: tool.embedding_docs(),
         })
     }

@@ -1,14 +1,16 @@
-use rig::embeddings::extract_embedding_fields::ExtractEmbeddingFieldsError;
-use rig::{ExtractEmbeddingFields, OneOrMany};
+use rig::{
+    embeddings::{embed::EmbedError, TextEmbedder},
+    to_texts, Embed,
+};
 use serde::Serialize;
 
-fn serialize(definition: Definition) -> Result<OneOrMany<String>, ExtractEmbeddingFieldsError> {
-    Ok(OneOrMany::one(
-        serde_json::to_string(&definition).map_err(ExtractEmbeddingFieldsError::new)?,
-    ))
+fn serialize(embedder: &mut TextEmbedder, definition: Definition) -> Result<(), EmbedError> {
+    embedder.embed(serde_json::to_string(&definition).map_err(EmbedError::new)?);
+
+    Ok(())
 }
 
-#[derive(ExtractEmbeddingFields)]
+#[derive(Embed)]
 struct FakeDefinition {
     id: String,
     word: String,
@@ -41,15 +43,13 @@ fn test_custom_embed() {
     );
 
     assert_eq!(
-            fake_definition.extract_embedding_fields().unwrap(),
-            OneOrMany::one(
-                "{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()
-            )
+        to_texts(fake_definition).unwrap().first().unwrap().clone(),
+            "{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()
 
         )
 }
 
-#[derive(ExtractEmbeddingFields)]
+#[derive(Embed)]
 struct FakeDefinition2 {
     id: String,
     #[embed]
@@ -75,18 +75,17 @@ fn test_custom_and_basic_embed() {
         fake_definition.id, fake_definition.word
     );
 
-    assert_eq!(
-        fake_definition.extract_embedding_fields().unwrap().first(),
-        "house".to_string()
-    );
+    let texts = to_texts(fake_definition).unwrap();
+
+    assert_eq!(texts.first().unwrap().clone(), "house".to_string());
 
     assert_eq!(
-        fake_definition.extract_embedding_fields().unwrap().rest(),
-        vec!["{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()]
+        texts.last().unwrap().clone(),
+        "{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()
     )
 }
 
-#[derive(ExtractEmbeddingFields)]
+#[derive(Embed)]
 struct FakeDefinition3 {
     id: String,
     word: String,
@@ -109,12 +108,12 @@ fn test_single_embed() {
     );
 
     assert_eq!(
-        fake_definition.extract_embedding_fields().unwrap(),
-        OneOrMany::one(definition)
+        to_texts(fake_definition).unwrap().first().unwrap().clone(),
+        definition
     )
 }
 
-#[derive(ExtractEmbeddingFields)]
+#[derive(Embed)]
 struct Company {
     id: String,
     company: String,
@@ -132,28 +131,18 @@ fn test_multiple_embed_strings() {
 
     println!("Company: {}, {}", company.id, company.company);
 
-    let result = company.extract_embedding_fields().unwrap();
-
     assert_eq!(
-        result,
-        OneOrMany::many(vec![
+        to_texts(company).unwrap(),
+        vec![
             "25".to_string(),
             "30".to_string(),
             "35".to_string(),
             "40".to_string()
-        ])
-        .unwrap()
+        ]
     );
-
-    assert_eq!(result.first(), "25".to_string());
-
-    assert_eq!(
-        result.rest(),
-        vec!["30".to_string(), "35".to_string(), "40".to_string()]
-    )
 }
 
-#[derive(ExtractEmbeddingFields)]
+#[derive(Embed)]
 struct Company2 {
     id: String,
     #[embed]
@@ -173,14 +162,13 @@ fn test_multiple_embed_tags() {
     println!("Company: {}", company.id);
 
     assert_eq!(
-        company.extract_embedding_fields().unwrap(),
-        OneOrMany::many(vec![
+        to_texts(company).unwrap(),
+        vec![
             "Google".to_string(),
             "25".to_string(),
             "30".to_string(),
             "35".to_string(),
             "40".to_string()
-        ])
-        .unwrap()
+        ]
     );
 }
