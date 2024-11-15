@@ -51,7 +51,7 @@ pub trait Embed {
 /// Used by the `Embed` trait.
 #[derive(Default)]
 pub struct TextEmbedder {
-    pub texts: Vec<String>,
+    pub(crate) texts: Vec<String>,
 }
 
 impl TextEmbedder {
