@@ -1,6 +1,6 @@
 use rig::{
     embeddings::{embed::EmbedError, TextEmbedder},
-    Embed,
+    to_texts, Embed,
 };
 use serde::Serialize;
 
@@ -42,11 +42,8 @@ fn test_custom_embed() {
         fake_definition.id, fake_definition.word
     );
 
-    let embedder = &mut TextEmbedder::default();
-    fake_definition.embed(embedder).unwrap();
-
     assert_eq!(
-            embedder.texts.first().unwrap().clone(),
+        to_texts(fake_definition).unwrap().first().unwrap().clone(),
             "{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()
 
         )
@@ -78,13 +75,12 @@ fn test_custom_and_basic_embed() {
         fake_definition.id, fake_definition.word
     );
 
-    let embedder = &mut TextEmbedder::default();
-    fake_definition.embed(embedder).unwrap();
+    let texts = to_texts(fake_definition).unwrap();
 
-    assert_eq!(embedder.texts.first().unwrap().clone(), "house".to_string());
+    assert_eq!(texts.first().unwrap().clone(), "house".to_string());
 
     assert_eq!(
-        embedder.texts.last().unwrap().clone(),
+        texts.last().unwrap().clone(),
         "{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()
     )
 }
@@ -111,10 +107,10 @@ fn test_single_embed() {
         fake_definition.id, fake_definition.word
     );
 
-    let embedder = &mut TextEmbedder::default();
-    fake_definition.embed(embedder).unwrap();
-
-    assert_eq!(embedder.texts.first().unwrap().clone(), definition)
+    assert_eq!(
+        to_texts(fake_definition).unwrap().first().unwrap().clone(),
+        definition
+    )
 }
 
 #[derive(Embed)]
@@ -135,11 +131,8 @@ fn test_multiple_embed_strings() {
 
     println!("Company: {}, {}", company.id, company.company);
 
-    let embedder = &mut TextEmbedder::default();
-    company.embed(embedder).unwrap();
-
     assert_eq!(
-        embedder.texts,
+        to_texts(company).unwrap(),
         vec![
             "25".to_string(),
             "30".to_string(),
@@ -168,11 +161,8 @@ fn test_multiple_embed_tags() {
 
     println!("Company: {}", company.id);
 
-    let embedder = &mut TextEmbedder::default();
-    company.embed(embedder).unwrap();
-
     assert_eq!(
-        embedder.texts,
+        to_texts(company).unwrap(),
         vec![
             "Google".to_string(),
             "25".to_string(),
