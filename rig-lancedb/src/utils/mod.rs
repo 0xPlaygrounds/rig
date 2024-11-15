@@ -1,4 +1,4 @@
-pub mod deserializer;
+mod deserializer;
 
 use deserializer::RecordBatchDeserializer;
 use futures::TryStreamExt;
@@ -10,7 +10,7 @@ use crate::lancedb_to_rig_error;
 
 /// Trait that facilitates the conversion of columnar data returned by a lanceDb query to serde_json::Value.
 /// Used whenever a lanceDb table is queried.
-pub trait QueryToJson {
+pub(crate) trait QueryToJson {
     async fn execute_query(&self) -> Result<Vec<serde_json::Value>, VectorStoreError>;
 }
 
