@@ -8,7 +8,6 @@ use rig::{
 use serde::{Deserialize, Serialize};
 
 const EMBEDDINGS_VECTOR_FIELD: &str = "embeddings.vec";
-const EMBEDDINGS_FIELD: &str = "embeddings";
 
 /// A MongoDB vector store.
 pub struct MongoDbVectorStore {
@@ -158,7 +157,7 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
     }
 }
 
-/// See [MongoDB Vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information
+/// See [MongoDB Vector Search](`https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/`) for more information
 /// on each of the fields
 pub struct SearchParams {
     filter: mongodb::bson::Document,
@@ -222,6 +221,11 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
                 [
                     self.pipeline_search_stage(&prompt_embedding, n),
                     self.pipeline_score_stage(),
+                    doc! {
+                        "$project": {
+                            EMBEDDINGS_VECTOR_FIELD: 0,
+                        },
+                    },
                 ],
                 None,
             )
@@ -234,10 +238,10 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
             let mut doc = doc.map_err(mongodb_to_rig_error)?;
             let score = doc.get("score").expect("score").as_f64().expect("f64");
             let id = doc.get("_id").expect("_id").to_string();
-            // Remove the embeddings field from the document
-            if let Some(val) = doc.get_mut(EMBEDDINGS_FIELD) {
-                val.take();
-            }
+            // // Remove the embeddings field from the document
+            // if let Some(val) = doc.get_mut(EMBEDDINGS_FIELD) {
+            //     val.take();
+            // }
             let doc_t: T = serde_json::from_value(doc).map_err(VectorStoreError::JsonError)?;
             results.push((score, id, doc_t));
         }
