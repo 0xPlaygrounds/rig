@@ -235,13 +235,9 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
 
         let mut results = Vec::new();
         while let Some(doc) = cursor.next().await {
-            let mut doc = doc.map_err(mongodb_to_rig_error)?;
+            let doc = doc.map_err(mongodb_to_rig_error)?;
             let score = doc.get("score").expect("score").as_f64().expect("f64");
             let id = doc.get("_id").expect("_id").to_string();
-            // // Remove the embeddings field from the document
-            // if let Some(val) = doc.get_mut(EMBEDDINGS_FIELD) {
-            //     val.take();
-            // }
             let doc_t: T = serde_json::from_value(doc).map_err(VectorStoreError::JsonError)?;
             results.push((score, id, doc_t));
         }
