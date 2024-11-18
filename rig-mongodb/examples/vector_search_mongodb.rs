@@ -5,7 +5,7 @@ use rig::{
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
 };
-use rig_mongodb::{MongoDbVectorStore, SearchParams};
+use rig_mongodb::{DocumentResponse, MongoDbVectorStore, SearchParams};
 use std::env;
 
 #[tokio::main]
@@ -53,7 +53,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = index
-        .top_n::<DocumentEmbeddings>("What is a linglingdong?", 1)
+        .top_n::<DocumentResponse>("What is a linglingdong?", 1)
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.document))

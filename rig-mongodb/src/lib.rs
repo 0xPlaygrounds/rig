@@ -5,7 +5,10 @@ use rig::{
     embeddings::{DocumentEmbeddings, Embedding, EmbeddingModel},
     vector_store::{VectorStore, VectorStoreError, VectorStoreIndex},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+
+const EMBEDDINGS_VECTOR_FIELD: &str = "embeddings.vec";
+const EMBEDDINGS_FIELD: &str = "embeddings";
 
 /// A MongoDB vector store.
 pub struct MongoDbVectorStore {
@@ -118,7 +121,7 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
         doc! {
           "$vectorSearch": {
             "index": &self.index_name,
-            "path": "embeddings.vec",
+            "path": EMBEDDINGS_VECTOR_FIELD,
             "queryVector": &prompt_embedding.vec,
             "numCandidates": num_candidates.unwrap_or((n * 10) as u32),
             "limit": n as u32,
@@ -228,9 +231,13 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
 
         let mut results = Vec::new();
         while let Some(doc) = cursor.next().await {
-            let doc = doc.map_err(mongodb_to_rig_error)?;
+            let mut doc = doc.map_err(mongodb_to_rig_error)?;
             let score = doc.get("score").expect("score").as_f64().expect("f64");
             let id = doc.get("_id").expect("_id").to_string();
+            // Remove the embeddings field from the document
+            if let Some(val) = doc.get_mut(EMBEDDINGS_FIELD) {
+                val.take();
+            }
             let doc_t: T = serde_json::from_value(doc).map_err(VectorStoreError::JsonError)?;
             results.push((score, id, doc_t));
         }
@@ -290,4 +297,11 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
 
         Ok(results)
     }
+}
+
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+pub struct DocumentResponse {
+    #[serde(rename = "_id")]
+    pub id: String,
+    pub document: serde_json::Value,
 }
