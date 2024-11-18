@@ -66,6 +66,25 @@ pub struct Usage {
     pub output_tokens: u64,
 }
 
+impl std::fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Input tokens: {}\nCache read input tokens: {}\nCache creation input tokens: {}\nOutput tokens: {}",
+            self.input_tokens,
+            match self.cache_read_input_tokens {
+                Some(token) => token.to_string(),
+                None => "n/a".to_string(),
+            },
+            match self.cache_creation_input_tokens {
+                Some(token) => token.to_string(),
+                None => "n/a".to_string(),
+            },
+            self.output_tokens
+        )
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ToolDefinition {
     pub name: String,
@@ -214,7 +233,13 @@ impl completion::CompletionModel for CompletionModel {
 
         if response.status().is_success() {
             match response.json::<ApiResponse<CompletionResponse>>().await? {
-                ApiResponse::Message(completion) => completion.try_into(),
+                ApiResponse::Message(completion) => {
+                    tracing::info!(target: "rig",
+                        "Anthropic completion token usage: {}",
+                        completion.usage
+                    );
+                    completion.try_into()
+                }
                 ApiResponse::Error(error) => Err(CompletionError::ProviderError(error.message)),
             }
         } else {

@@ -27,7 +27,7 @@ fn arrow_to_rig_error(e: ArrowError) -> VectorStoreError {
 
 /// Trait used to deserialize data returned from LanceDB queries into a serde_json::Value vector.
 /// Data returned by LanceDB is a vector of `RecordBatch` items.
-pub trait RecordBatchDeserializer {
+pub(crate) trait RecordBatchDeserializer {
     fn deserialize(&self) -> Result<Vec<serde_json::Value>, VectorStoreError>;
 }
 
