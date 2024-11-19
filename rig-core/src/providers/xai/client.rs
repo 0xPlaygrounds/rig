@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::{completion::CompletionModel, embedding::EmbeddingModel, EMBEDDING_V1};
 
 // ================================================================
-// Google Gemini Client
+// xAI Client
 // ================================================================
 const XAI_BASE_URL: &str = "https://api.x.ai";
 
