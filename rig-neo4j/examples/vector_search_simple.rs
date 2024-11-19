@@ -113,11 +113,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client.index(
-        model,
-        IndexConfig::new("vector_index"),
-        SearchParams::default(),
-    );
+    let index = neo4j_client
+        .index(
+            model,
+            IndexConfig::new("vector_index"),
+            SearchParams::default(),
+        )
+        .await?;
 
     // Query the index
     let results = index
