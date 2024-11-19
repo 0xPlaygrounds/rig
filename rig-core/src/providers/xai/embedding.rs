@@ -14,7 +14,7 @@ use super::{
 };
 
 // ================================================================
-// OpenAI Embedding API
+// xAI Embedding API
 // ================================================================
 /// `v1` embedding model
 pub const EMBEDDING_V1: &str = "v1";

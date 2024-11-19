@@ -10,16 +10,31 @@ use rig::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+/// Runs 4 agents based on grok (dervived from the other examples)
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    basic().await?;
+    tools().await?;
+    loaders().await?;
+    context().await?;
+
+    Ok(())
+}
+
 fn client() -> providers::xai::Client {
     providers::xai::Client::new(&env::var("XAI_API_KEY").expect("XAI_API_KEY not set"))
 }
 
-/// Create an xAI agent (grok)
+/// Create a partial xAI agent (grok)
 fn partial_agent() -> AgentBuilder<providers::xai::completion::CompletionModel> {
     let client = client();
     client.agent(providers::xai::GROK_BETA)
 }
 
+/// Create an xAI agent (grok) with a preamble
+/// Based upon the `agent` example
+///
+/// This example creates a comedian agent with a preamble
 async fn basic() -> Result<(), anyhow::Error> {
     let comedian_agent = partial_agent()
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
@@ -32,6 +47,10 @@ async fn basic() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Create an xAI agent (grok) with tools
+/// Based upon the `tools` example
+///
+/// This example creates a calculator agent with two tools: add and subtract
 async fn tools() -> Result<(), anyhow::Error> {
     // Create agent with a single context prompt and two tools
     let calculator_agent = partial_agent()
@@ -51,6 +70,11 @@ async fn tools() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Create an xAI agent (grok) with loaders
+/// Based upon the `loaders` example
+///
+/// This example loads in all the rust examples from the rig-core crate and uses them as\\
+///  context for the agent
 async fn loaders() -> Result<(), anyhow::Error> {
     let model = client().completion_model(providers::xai::GROK_BETA);
 
@@ -91,16 +115,6 @@ async fn context() -> Result<(), anyhow::Error> {
     let response = agent.prompt("What does \"glarb-glarb\" mean?").await?;
 
     println!("{}", response);
-
-    Ok(())
-}
-
-#[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
-    basic().await?;
-    tools().await?;
-    loaders().await?;
-    context().await?;
 
     Ok(())
 }
