@@ -26,6 +26,7 @@ pub struct Neo4jVectorIndex<M: EmbeddingModel> {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct IndexConfig {
     index_name: String,
+    embedding_properties: Vec<String>,
     similarity_function: VectorSimilarityFunction,
 }
 
@@ -33,6 +34,7 @@ impl Default for IndexConfig {
     fn default() -> Self {
         Self {
             index_name: "vector_index".to_string(),
+            embedding_properties: vec!["embedding".to_string()],
             similarity_function: VectorSimilarityFunction::Cosine,
         }
     }
@@ -42,6 +44,7 @@ impl IndexConfig {
     pub fn new(index_name: impl Into<String>) -> Self {
         Self {
             index_name: index_name.into(),
+            embedding_properties: vec!["embedding".to_string()],
             similarity_function: VectorSimilarityFunction::Cosine,
         }
     }
@@ -53,6 +56,11 @@ impl IndexConfig {
 
     pub fn similarity_function(mut self, similarity_function: VectorSimilarityFunction) -> Self {
         self.similarity_function = similarity_function;
+        self
+    }
+
+    pub fn embedding_properties(mut self, embedding_properties: Vec<String>) -> Self {
+        self.embedding_properties = embedding_properties;
         self
     }
 }
@@ -70,21 +78,44 @@ pub enum VectorSimilarityFunction {
 
 const BASE_VECTOR_SEARCH_QUERY: &str = "
     CALL db.index.vector.queryNodes($index_name, $num_candidates, $queryVector)
-    YIELD node, score";
+    YIELD node, score
+    RETURN score, ID(node) as element_id
+";
+
+const GET_INDEX_EMBEDDING_PROPERTY: &str = "
+    SHOW VECTOR INDEXES
+    YIELD name, properties
+    WHERE name=$index_name
+    RETURN properties[0]
+";
 
 impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
-    pub fn new(
+    pub async fn new(
         graph: Graph,
         embedding_model: M,
         index_config: IndexConfig,
         search_params: SearchParams,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, VectorStoreError> {
+        let mut index = Self {
             graph,
             embedding_model,
             index_config,
             search_params,
-        }
+        };
+        index.index_config.embedding_properties = index.get_index_embedding_properties().await?;
+        Ok(index)
+    }
+
+    pub async fn get_index_embedding_properties(
+        &mut self,
+    ) -> Result<Vec<String>, VectorStoreError> {
+        let property_name = self
+            .execute_and_collect::<Vec<String>>(
+                neo4rs::query(GET_INDEX_EMBEDDING_PROPERTY)
+                    .param("index_name", self.index_config.index_name.clone()),
+            )
+            .await?;
+        Ok(property_name[0].clone())
     }
 
     /// Calls the `CREATE VECTOR INDEX` Neo4j query and waits for the index to be created.
@@ -169,15 +200,28 @@ impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
             None => "".to_string(),
         };
 
+        // Properties containing the embedding vectors are excluded from the returned node
+        let embedding_properties = self
+            .index_config
+            .embedding_properties
+            .iter()
+            .map(|p| format!("{}:null", p))
+            .collect::<Vec<String>>()
+            .join(", ");
+
         Query::new(format!(
             "
             {}
             {}
-            RETURN score, ID(node) as element_id {}
+            {}
             ",
             BASE_VECTOR_SEARCH_QUERY,
             where_clause,
-            if return_node { ", node as node" } else { "" }
+            if return_node {
+                format!(", node {{.*, {} }} as node", embedding_properties)
+            } else {
+                "".to_string()
+            }
         ))
         .param("queryVector", prompt_embedding.vec)
         .param("num_candidates", n as i64)
