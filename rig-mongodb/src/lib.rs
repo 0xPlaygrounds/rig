@@ -7,11 +7,54 @@ use rig::{
 };
 use serde::{Deserialize, Serialize};
 
-const EMBEDDINGS_VECTOR_FIELD: &str = "embeddings.vec";
-
 /// A MongoDB vector store.
 pub struct MongoDbVectorStore {
     collection: mongodb::Collection<DocumentEmbeddings>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchIndex {
+    id: String,
+    name: String,
+    #[serde(rename = "type")]
+    index_type: String,
+    status: String,
+    queryable: bool,
+    latest_definition: LatestDefinition,
+}
+
+impl SearchIndex {
+    async fn get_search_index(
+        collection: mongodb::Collection<DocumentEmbeddings>,
+        index_name: &str,
+    ) -> Result<SearchIndex, VectorStoreError> {
+        collection
+            .list_search_indexes(index_name, None, None)
+            .await
+            .map_err(mongodb_to_rig_error)?
+            .with_type::<SearchIndex>()
+            .next()
+            .await
+            .transpose()
+            .map_err(mongodb_to_rig_error)?
+            .ok_or(VectorStoreError::Error("Index not found".to_string()))
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct LatestDefinition {
+    fields: Vec<Field>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Field {
+    #[serde(rename = "type")]
+    field_type: String,
+    path: String,
+    num_dimensions: i32,
+    similarity: String,
 }
 
 fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
@@ -89,13 +132,13 @@ impl MongoDbVectorStore {
     ///
     /// The index (of type "vector") must already exist for the MongoDB collection.
     /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
-    pub fn index<M: EmbeddingModel>(
+    pub async fn index<M: EmbeddingModel>(
         &self,
         model: M,
         index_name: &str,
         search_params: SearchParams,
-    ) -> MongoDbVectorIndex<M> {
-        MongoDbVectorIndex::new(self.collection.clone(), model, index_name, search_params)
+    ) -> Result<MongoDbVectorIndex<M>, VectorStoreError> {
+        MongoDbVectorIndex::new(self.collection.clone(), model, index_name, search_params).await
     }
 }
 
@@ -104,6 +147,7 @@ pub struct MongoDbVectorIndex<M: EmbeddingModel> {
     collection: mongodb::Collection<DocumentEmbeddings>,
     model: M,
     index_name: String,
+    embedded_field: String,
     search_params: SearchParams,
 }
 
@@ -120,7 +164,7 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
         doc! {
           "$vectorSearch": {
             "index": &self.index_name,
-            "path": EMBEDDINGS_VECTOR_FIELD,
+            "path": self.embedded_field.clone(),
             "queryVector": &prompt_embedding.vec,
             "numCandidates": num_candidates.unwrap_or((n * 10) as u32),
             "limit": n as u32,
@@ -142,18 +186,38 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
 }
 
 impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
-    pub fn new(
+    pub async fn new(
         collection: mongodb::Collection<DocumentEmbeddings>,
         model: M,
         index_name: &str,
         search_params: SearchParams,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, VectorStoreError> {
+        let search_index = SearchIndex::get_search_index(collection.clone(), index_name).await?;
+
+        if !search_index.queryable {
+            return Err(VectorStoreError::Error(
+                "Index is not queryable".to_string(),
+            ));
+        }
+
+        let embedded_field = search_index
+            .latest_definition
+            .fields
+            .into_iter()
+            .map(|field| field.path)
+            .next()
+            // This error shouldn't occur if the index is queryable
+            .ok_or(VectorStoreError::Error(
+                "No embedded fields found".to_string(),
+            ))?;
+
+        Ok(Self {
             collection,
             model,
             index_name: index_name.to_string(),
+            embedded_field,
             search_params,
-        }
+        })
     }
 }
 
@@ -221,10 +285,12 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
                 [
                     self.pipeline_search_stage(&prompt_embedding, n),
                     self.pipeline_score_stage(),
-                    doc! {
-                        "$project": {
-                            EMBEDDINGS_VECTOR_FIELD: 0,
-                        },
+                    {
+                        doc! {
+                            "$project": {
+                                self.embedded_field.clone(): 0,
+                            },
+                        }
                     },
                 ],
                 None,

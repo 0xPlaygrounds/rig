@@ -17,6 +17,9 @@ pub enum VectorStoreError {
 
     #[error("Datastore error: {0}")]
     DatastoreError(#[from] Box<dyn std::error::Error + Send + Sync>),
+
+    #[error("Vector store error: {0}")]
+    Error(String),
 }
 
 /// Trait for vector stores
