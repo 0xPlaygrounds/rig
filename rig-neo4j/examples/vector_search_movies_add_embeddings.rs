@@ -30,6 +30,7 @@ struct Movie {
 }
 
 const NODE_LABEL: &str = "Movie";
+const INDEX_NAME: &str = "moviePlots";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -99,21 +100,21 @@ async fn main() -> Result<(), anyhow::Error> {
         );
     }
 
-    // // Select the embedding model and generate our embeddings
+    // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
-    // Create a vector index on our vector store
-    // ❗IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client
-        .index(
-            model,
-            IndexConfig::new("moviePlots"),
-            SearchParams::new(Some("node.year > 1990".to_string())),
-        )
+    // Since we are starting from scratch, we need to create the DB vector index
+    neo4j_client
+        .create_vector_index(IndexConfig::new(INDEX_NAME), NODE_LABEL, &model)
         .await?;
 
-    index
-        .create_and_await_vector_index(NODE_LABEL.to_string(), None)
+    // ❗IMPORTANT: Reuse the same model that was used to generate the embeddings
+    let index = neo4j_client
+        .get_index(
+            model,
+            INDEX_NAME,
+            SearchParams::new(Some("node.year > 1990".to_string())),
+        )
         .await?;
 
     // Query the index
