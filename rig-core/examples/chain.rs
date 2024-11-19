@@ -1,7 +1,7 @@
 use std::env;
 
 use rig::{
-    chain::{self, Chain},
+    chain::{self, TryChain},
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStore},
@@ -40,7 +40,7 @@ async fn main() -> Result<(), anyhow::Error> {
         // Retrieve top document from the index and return it with the prompt
         .lookup(index, 2)
         // Format the prompt with the context documents
-        .map(|(query, docs): (_, Vec<String>)| {
+        .map_ok(|(query, docs): (_, Vec<String>)| {
             format!(
                 "User question: {}\n\nAdditional word definitions:\n{}",
                 query,
@@ -51,11 +51,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .prompt(&agent);
 
     // Prompt the agent and print the response
-    let response = chain
-        .call("What does \"glarb-glarb\" mean?".to_string())
-        .await;
+    let response = chain.try_call("What does \"glarb-glarb\" mean?").await?;
 
-    println!("{}", response);
+    println!("{:?}", response);
 
     Ok(())
 }

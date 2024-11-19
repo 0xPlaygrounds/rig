@@ -1,12 +1,13 @@
-use std::{future::Future, marker::PhantomData};
+use futures::Future;
+use std::marker::PhantomData;
 
 use crate::{completion, vector_store};
 
 pub trait Chain: Send + Sync {
     type Input: Send;
-    type Output;
+    type Output: Send;
 
-    fn call(self, input: Self::Input) -> impl std::future::Future<Output = Self::Output> + Send;
+    fn call(&self, input: Self::Input) -> impl std::future::Future<Output = Self::Output> + Send;
 
     /// Chain a function to the output of the current chain
     ///
@@ -148,11 +149,17 @@ pub trait Chain: Send + Sync {
 
 pub struct Empty<T>(PhantomData<T>);
 
+impl<T> Default for Empty<T> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
 impl<T: Send + Sync> Chain for Empty<T> {
     type Input = T;
     type Output = T;
 
-    async fn call(self, value: Self::Input) -> Self::Output {
+    async fn call(&self, value: Self::Input) -> Self::Output {
         value
     }
 }
@@ -173,11 +180,12 @@ where
     Ch: Chain,
     F: Fn(Ch::Output) -> Fut + Send + Sync,
     Fut: Future + Send,
+    Fut::Output: Send,
 {
     type Input = Ch::Input;
     type Output = Fut::Output;
 
-    async fn call(self, input: Self::Input) -> Self::Output {
+    async fn call(&self, input: Self::Input) -> Self::Output {
         let output = self.chain.call(input).await;
         (self.f)(output).await
     }
@@ -218,7 +226,7 @@ pub struct Map<Ch, F> {
 }
 
 impl<Ch, F> Map<Ch, F> {
-    fn new(chain: Ch, f: F) -> Self {
+    pub(crate) fn new(chain: Ch, f: F) -> Self {
         Self { chain, f }
     }
 }
@@ -232,7 +240,7 @@ where
     type Input = Ch::Input;
     type Output = T;
 
-    async fn call(self, input: Self::Input) -> Self::Output {
+    async fn call(&self, input: Self::Input) -> Self::Output {
         let output = self.chain.call(input).await;
         (self.f)(output)
     }
@@ -267,21 +275,20 @@ where
     T: Send + Sync + for<'a> serde::Deserialize<'a>,
 {
     type Input = Ch::Input;
-    type Output = (String, Vec<T>);
+    type Output = Result<(String, Vec<T>), vector_store::VectorStoreError>;
 
-    async fn call(self, input: Self::Input) -> Self::Output {
+    async fn call(&self, input: Self::Input) -> Self::Output {
         let query = self.chain.call(input).await.into();
 
         let docs = self
             .index
             .top_n::<T>(&query, self.n)
-            .await
-            .expect("Failed to get top n documents")
+            .await?
             .into_iter()
             .map(|(_, _, doc)| doc)
             .collect();
 
-        (query, docs)
+        Ok((query, docs))
     }
 }
 
@@ -303,18 +310,11 @@ where
     P: completion::Prompt,
 {
     type Input = Ch::Input;
-    type Output = String;
+    type Output = Result<String, completion::PromptError>;
 
-    async fn call(self, input: Self::Input) -> Self::Output {
+    async fn call(&self, input: Self::Input) -> Self::Output {
         let output = self.chain.call(input).await.into();
 
-        self.prompt
-            .prompt(&output)
-            .await
-            .expect("Failed to prompt agent")
+        self.prompt.prompt(&output).await
     }
-}
-
-pub fn new<T>() -> Empty<T> {
-    Empty(PhantomData)
 }
