@@ -14,10 +14,7 @@ use rig::{
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex as _,
 };
-use rig_neo4j::{
-    vector_index::{IndexConfig, SearchParams},
-    Neo4jClient, ToBoltType,
-};
+use rig_neo4j::{vector_index::SearchParams, Neo4jClient, ToBoltType};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
