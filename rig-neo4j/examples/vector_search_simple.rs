@@ -15,10 +15,7 @@ use rig::{
     vector_store::VectorStoreIndex as _,
     Embed,
 };
-use rig_neo4j::{
-    vector_index::{IndexConfig, SearchParams},
-    Neo4jClient, ToBoltType,
-};
+use rig_neo4j::{vector_index::SearchParams, Neo4jClient, ToBoltType};
 
 #[derive(Embed, Clone, Debug)]
 pub struct WordDefinition {
