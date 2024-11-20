@@ -2,7 +2,7 @@ use mongodb::bson;
 use mongodb::{options::ClientOptions, Client as MongoClient, Collection};
 use rig::vector_store::VectorStore;
 use rig::{
-    embeddings::{EmbeddingsBuilder},
+    embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
 };
