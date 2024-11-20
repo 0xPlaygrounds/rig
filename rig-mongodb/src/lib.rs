@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// A MongoDB vector store.
 pub struct MongoDbVectorStore {
-    collection: mongodb::Collection<DocumentEmbeddings>,
+    collection: mongodb::Collection<bson::Document>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,7 +26,7 @@ struct SearchIndex {
 
 impl SearchIndex {
     async fn get_search_index(
-        collection: mongodb::Collection<DocumentEmbeddings>,
+        collection: mongodb::Collection<bson::Document>,
         index_name: &str,
     ) -> Result<SearchIndex, VectorStoreError> {
         collection
@@ -38,7 +38,7 @@ impl SearchIndex {
             .await
             .transpose()
             .map_err(mongodb_to_rig_error)?
-            .ok_or(VectorStoreError::Error("Index not found".to_string()))
+            .ok_or(VectorStoreError::DatastoreError("Index not found".into()))
     }
 }
 
@@ -69,6 +69,7 @@ impl VectorStore for MongoDbVectorStore {
         documents: Vec<DocumentEmbeddings>,
     ) -> Result<(), VectorStoreError> {
         self.collection
+            .clone_with_type::<DocumentEmbeddings>()
             .insert_many(documents, None)
             .await
             .map_err(mongodb_to_rig_error)?;
@@ -80,6 +81,7 @@ impl VectorStore for MongoDbVectorStore {
         id: &str,
     ) -> Result<Option<DocumentEmbeddings>, VectorStoreError> {
         self.collection
+            .clone_with_type::<DocumentEmbeddings>()
             .find_one(doc! { "_id": id }, None)
             .await
             .map_err(mongodb_to_rig_error)
@@ -116,6 +118,7 @@ impl VectorStore for MongoDbVectorStore {
         query: Self::Q,
     ) -> Result<Option<DocumentEmbeddings>, VectorStoreError> {
         self.collection
+            .clone_with_type::<DocumentEmbeddings>()
             .find_one(query, None)
             .await
             .map_err(mongodb_to_rig_error)
@@ -124,7 +127,7 @@ impl VectorStore for MongoDbVectorStore {
 
 impl MongoDbVectorStore {
     /// Create a new `MongoDbVectorStore` from a MongoDB collection.
-    pub fn new(collection: mongodb::Collection<DocumentEmbeddings>) -> Self {
+    pub fn new(collection: mongodb::Collection<bson::document::Document>) -> Self {
         Self { collection }
     }
 
@@ -144,7 +147,7 @@ impl MongoDbVectorStore {
 
 /// A vector index for a MongoDB collection.
 pub struct MongoDbVectorIndex<M: EmbeddingModel> {
-    collection: mongodb::Collection<DocumentEmbeddings>,
+    collection: mongodb::Collection<bson::Document>,
     model: M,
     index_name: String,
     embedded_field: String,
@@ -187,7 +190,7 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
 
 impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
     pub async fn new(
-        collection: mongodb::Collection<DocumentEmbeddings>,
+        collection: mongodb::Collection<bson::Document>,
         model: M,
         index_name: &str,
         search_params: SearchParams,
@@ -195,8 +198,8 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
         let search_index = SearchIndex::get_search_index(collection.clone(), index_name).await?;
 
         if !search_index.queryable {
-            return Err(VectorStoreError::Error(
-                "Index is not queryable".to_string(),
+            return Err(VectorStoreError::DatastoreError(
+                "Index is not queryable".into(),
             ));
         }
 
@@ -207,8 +210,8 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
             .map(|field| field.path)
             .next()
             // This error shouldn't occur if the index is queryable
-            .ok_or(VectorStoreError::Error(
-                "No embedded fields found".to_string(),
+            .ok_or(VectorStoreError::DatastoreError(
+                "No embedded fields found".into(),
             ))?;
 
         Ok(Self {
@@ -363,11 +366,4 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
 
         Ok(results)
     }
-}
-
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-pub struct DocumentResponse {
-    #[serde(rename = "_id")]
-    pub id: String,
-    pub document: serde_json::Value,
 }

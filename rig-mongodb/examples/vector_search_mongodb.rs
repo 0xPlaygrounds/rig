@@ -1,12 +1,21 @@
+use mongodb::bson;
 use mongodb::{options::ClientOptions, Client as MongoClient, Collection};
 use rig::vector_store::VectorStore;
 use rig::{
-    embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
+    embeddings::{EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
 };
-use rig_mongodb::{DocumentResponse, MongoDbVectorStore, SearchParams};
+use rig_mongodb::{MongoDbVectorStore, SearchParams};
+use serde::{Deserialize, Serialize};
 use std::env;
+
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+pub struct DocumentResponse {
+    #[serde(rename = "_id")]
+    pub id: String,
+    pub document: serde_json::Value,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -25,7 +34,7 @@ async fn main() -> Result<(), anyhow::Error> {
         MongoClient::with_options(options).expect("MongoDB client options should be valid");
 
     // Initialize MongoDB vector store
-    let collection: Collection<DocumentEmbeddings> = mongodb_client
+    let collection: Collection<bson::Document> = mongodb_client
         .database("knowledgebase")
         .collection("context");
 
