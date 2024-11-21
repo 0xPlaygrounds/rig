@@ -1,8 +1,9 @@
 use std::env;
 
 use rig::{
-    chain::{self, TryChain},
     embeddings::EmbeddingsBuilder,
+    parallel,
+    pipeline::{self, agent_ops::lookup, passthrough, Op},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStore},
 };
@@ -36,24 +37,78 @@ async fn main() -> Result<(), anyhow::Error> {
         ")
         .build();
 
-    let chain = chain::new()
-        // Retrieve top document from the index and return it with the prompt
-        .lookup(index, 2)
-        // Format the prompt with the context documents
-        .map_ok(|(query, docs): (_, Vec<String>)| {
-            format!(
-                "User question: {}\n\nAdditional word definitions:\n{}",
-                query,
-                docs.join("\n")
-            )
+    let chain = pipeline::new()
+        // Chain a parallel operation to the current chain. The parallel operation will
+        // perform a lookup operation to retrieve additional context from the user prompt
+        // while simultaneously applying a passthrough operation. The latter will allow
+        // us to forward the initial prompt to the next operation in the chain.
+        .chain(parallel!(
+            passthrough(),
+            lookup::<_, _, String>(index, 1), // Required to specify document type
+        ))
+        // Chain a "map" operation to the current chain, which will combine the user
+        // prompt with the retrieved context documents to create the final prompt.
+        // If an error occurs during the lookup operation, we will log the error and
+        // simply return the initial prompt.
+        .map(|(prompt, maybe_docs)| match maybe_docs {
+            Ok(docs) => format!(
+                "Non standard word definitions:\n{}\n\n{}",
+                docs.join("\n"),
+                prompt,
+            ),
+            Err(err) => {
+                println!("Error: {}! Prompting without additional context", err);
+                format!("{prompt}")
+            }
         })
-        // Prompt the agent
-        .prompt(&agent);
+        // Chain a "prompt" operation which will prompt out agent with the final prompt
+        .prompt(agent);
 
     // Prompt the agent and print the response
-    let response = chain.try_call("What does \"glarb-glarb\" mean?").await?;
+    let response = chain.call("What does \"glarb-glarb\" mean?").await?;
 
     println!("{:?}", response);
 
     Ok(())
 }
+
+// trait Foo<T> {
+//     fn foo(&self);
+// }
+
+// impl<F, T, Out> Foo<(T,)> for F
+// where
+//     F: Fn(T) -> Out,
+// {
+//     fn foo(&self) {
+//         todo!()
+//     }
+// }
+
+// impl<F, T1, T2, Out> Foo<(T1, T2)> for F
+// where
+//     F: Fn(T1, T2) -> Out,
+// {
+//     fn foo(&self) {
+//         todo!()
+//     }
+// }
+
+// impl<F, T1, T2, T3, Out> Foo<(T1, T2, T3)> for F
+// where
+//     F: Fn(T1, T2, T3) -> Out,
+// {
+//     fn foo(&self) {
+//         todo!()
+//     }
+// }
+
+// impl<F, T, Fut> Foo<((Fut, T,),)> for F
+// where
+//     F: Fn(T) -> Fut,
+//     Fut: Future,
+// {
+//     fn foo(&self) {
+//         todo!()
+//     }
+// }

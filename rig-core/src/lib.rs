@@ -79,13 +79,13 @@
 //! implement the [VectorStoreIndex](crate::vector_store::VectorStoreIndex) trait.
 
 pub mod agent;
-pub mod chain;
 pub mod cli_chatbot;
 pub mod completion;
 pub mod embeddings;
 pub mod extractor;
 pub(crate) mod json_utils;
 pub mod loaders;
+pub mod pipeline;
 pub mod providers;
 pub mod tool;
 pub mod vector_store;
