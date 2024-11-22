@@ -1,12 +1,21 @@
+use mongodb::bson;
 use mongodb::{options::ClientOptions, Client as MongoClient, Collection};
 use rig::vector_store::VectorStore;
 use rig::{
-    embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
+    embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
 };
 use rig_mongodb::{MongoDbVectorStore, SearchParams};
+use serde::{Deserialize, Serialize};
 use std::env;
+
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+pub struct DocumentResponse {
+    #[serde(rename = "_id")]
+    pub id: String,
+    pub document: serde_json::Value,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -25,7 +34,7 @@ async fn main() -> Result<(), anyhow::Error> {
         MongoClient::with_options(options).expect("MongoDB client options should be valid");
 
     // Initialize MongoDB vector store
-    let collection: Collection<DocumentEmbeddings> = mongodb_client
+    let collection: Collection<bson::Document> = mongodb_client
         .database("knowledgebase")
         .collection("context");
 
@@ -49,11 +58,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = vector_store.index(model, "vector_index", SearchParams::default());
+    let index = vector_store
+        .index(model, "vector_index", SearchParams::default())
+        .await?;
 
     // Query the index
     let results = index
-        .top_n::<DocumentEmbeddings>("What is a linglingdong?", 1)
+        .top_n::<DocumentResponse>("What is a linglingdong?", 1)
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.document))

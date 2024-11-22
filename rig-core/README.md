@@ -4,10 +4,12 @@ Rig is a Rust library for building LLM-powered applications that focuses on ergo
 More information about this crate can be found in the [crate documentation](https://docs.rs/rig-core/latest/rig/).
 ## Table of contents
 
-- [High-level features](#high-level-features)
-- [Installation](#)
-- [Simple Example](#simple-example)
-- [Integrations](#integrations)
+- [Rig](#rig)
+  - [Table of contents](#table-of-contents)
+  - [High-level features](#high-level-features)
+  - [Installation](#installation)
+  - [Simple example:](#simple-example)
+  - [Integrations](#integrations)
 
 ## High-level features
 - Full support for LLM completion and embedding workflows
@@ -48,5 +50,7 @@ Rig supports the following LLM providers natively:
 - OpenAI
 - Cohere
 - Google Gemini
+- xAI
+
 Additionally, Rig currently has the following integration sub-libraries:
 - MongoDB vector store: `rig-mongodb`
