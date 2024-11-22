@@ -1,6 +1,6 @@
 [package]
 name = "rig-core"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
