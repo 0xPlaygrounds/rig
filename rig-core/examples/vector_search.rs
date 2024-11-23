@@ -73,7 +73,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .top_n_ids("I need to buy something in a fictional universe. What type of money can I use for this?", 1)
         .await?
         .into_iter()
-        .map(|(score, id)| (score, id))
         .collect::<Vec<_>>();
 
     println!("ID results: {:?}", id_results);

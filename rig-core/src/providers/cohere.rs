@@ -174,7 +174,7 @@ pub struct ApiVersion {
     pub is_experimental: Option<bool>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct BilledUnits {
     #[serde(default)]
     pub input_tokens: u32,
@@ -184,6 +184,16 @@ pub struct BilledUnits {
     pub search_units: u32,
     #[serde(default)]
     pub classifications: u32,
+}
+
+impl std::fmt::Display for BilledUnits {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Input tokens: {}\nOutput tokens: {}\nSearch units: {}\nClassifications: {}",
+            self.input_tokens, self.output_tokens, self.search_units, self.classifications
+        )
+    }
 }
 
 #[derive(Clone)]
@@ -221,6 +231,16 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         if response.status().is_success() {
             match response.json::<ApiResponse<EmbeddingResponse>>().await? {
                 ApiResponse::Ok(response) => {
+                    match response.meta {
+                        Some(meta) => tracing::info!(target: "rig",
+                            "Cohere embeddings billed units: {}",
+                            meta.billed_units,
+                        ),
+                        None => tracing::info!(target: "rig",
+                            "Cohere embeddings billed units: n/a",
+                        ),
+                    };
+
                     if response.embeddings.len() != documents.len() {
                         return Err(EmbeddingError::DocumentError(
                             format!(

@@ -225,6 +225,16 @@ pub struct Usage {
     pub total_tokens: usize,
 }
 
+impl std::fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Prompt tokens: {}\nTotal tokens: {}",
+            self.prompt_tokens, self.total_tokens
+        )
+    }
+}
+
 #[derive(Clone)]
 pub struct EmbeddingModel {
     client: Client,
@@ -258,6 +268,11 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         if response.status().is_success() {
             match response.json::<ApiResponse<EmbeddingResponse>>().await? {
                 ApiResponse::Ok(response) => {
+                    tracing::info!(target: "rig",
+                        "OpenAI embedding token usage: {}",
+                        response.usage
+                    );
+
                     if response.data.len() != documents.len() {
                         return Err(EmbeddingError::ResponseError(
                             "Response data length does not match input length".into(),
@@ -517,7 +532,13 @@ impl completion::CompletionModel for CompletionModel {
 
         if response.status().is_success() {
             match response.json::<ApiResponse<CompletionResponse>>().await? {
-                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Ok(response) => {
+                    tracing::info!(target: "rig",
+                        "OpenAI completion token usage: {:?}",
+                        response.usage
+                    );
+                    response.try_into()
+                }
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
             }
         } else {
