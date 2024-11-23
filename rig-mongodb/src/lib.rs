@@ -7,11 +7,6 @@ use rig::{
 };
 use serde::{Deserialize, Serialize};
 
-/// A MongoDB vector store.
-pub struct MongoDbVectorStore {
-    collection: mongodb::Collection<bson::Document>,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SearchIndex {
@@ -25,8 +20,8 @@ struct SearchIndex {
 }
 
 impl SearchIndex {
-    async fn get_search_index(
-        collection: mongodb::Collection<bson::Document>,
+    async fn get_search_index<C>(
+        collection: mongodb::Collection<C>,
         index_name: &str,
     ) -> Result<SearchIndex, VectorStoreError> {
         collection
@@ -100,7 +95,6 @@ impl<M: EmbeddingModel, C> MongoDbVectorIndex<M, C> {
             filter,
             exact,
             num_candidates,
-            path,
         } = &self.search_params;
 
         doc! {
@@ -169,21 +163,20 @@ impl<M: EmbeddingModel, C> MongoDbVectorIndex<M, C> {
 
 /// See [MongoDB Vector Search](`https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/`) for more information
 /// on each of the fields
+#[derive(Default)]
 pub struct SearchParams {
     filter: mongodb::bson::Document,
-    path: String,
     exact: Option<bool>,
     num_candidates: Option<u32>,
 }
 
 impl SearchParams {
     /// Initializes a new `SearchParams` with default values.
-    pub fn new(path: &str) -> Self {
+    pub fn new() -> Self {
         Self {
             filter: doc! {},
             exact: None,
             num_candidates: None,
-            path: path.to_string(),
         }
     }
 

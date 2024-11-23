@@ -181,8 +181,8 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
     /// use rig::embeddings::EmbeddingModel;
     ///
-    /// let table: table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
-    /// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
+    /// let table: lancedb::Table = db.create_table("fake_definitions"); // <-- Replace with your lancedb table here.
+    /// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
     /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
     ///
     /// // Query the index

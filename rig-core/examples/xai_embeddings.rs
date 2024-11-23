@@ -1,4 +1,12 @@
 use rig::providers::xai;
+use rig::Embed;
+
+#[derive(Embed, Debug)]
+struct Greetings {
+    id: String,
+    #[embed]
+    message: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -7,8 +15,14 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let embeddings = client
         .embeddings(xai::embedding::EMBEDDING_V1)
-        .simple_document("doc0", "Hello, world!")
-        .simple_document("doc1", "Goodbye, world!")
+        .document(Greetings {
+            id: "doc0".to_string(),
+            message: "Hello, world!".to_string(),
+        })?
+        .document(Greetings {
+            id: "doc1".to_string(),
+            message: "Goodbye, world!".to_string(),
+        })?
         .build()
         .await
         .expect("Failed to embed documents");

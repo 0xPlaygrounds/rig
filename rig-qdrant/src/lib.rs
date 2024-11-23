@@ -36,7 +36,7 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
 
     /// Embed query based on `QdrantVectorStore` model and modify the vector in the required format.
     async fn generate_query_vector(&self, query: &str) -> Result<Vec<f32>, VectorStoreError> {
-        let embedding = self.model.embed_document(query).await?;
+        let embedding = self.model.embed_text(query).await?;
         Ok(embedding.vec.iter().map(|&x| x as f32).collect())
     }
 

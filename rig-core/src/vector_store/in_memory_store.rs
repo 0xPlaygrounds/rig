@@ -181,8 +181,10 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
                 Ok((
                     distance.0,
                     id.clone(),
-                    serde_json::from_value(doc.clone())
-                        .map_err(VectorStoreError::JsonError)?,
+                    serde_json::from_str(
+                        &serde_json::to_string(doc).map_err(VectorStoreError::JsonError)?,
+                    )
+                    .map_err(VectorStoreError::JsonError)?,
                 ))
             })
             .collect::<Result<Vec<_>, _>>()

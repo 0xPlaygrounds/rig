@@ -54,3 +54,11 @@ required-features = ["derive"]
 [[example]]
 name = "vector_search_cohere"
 required-features = ["derive"] 
+
+[[example]]
+name = "gemini_embeddings"
+required-features = ["derive"] 
+
+[[example]]
+name = "xai_embeddings"
+required-features = ["derive"] 

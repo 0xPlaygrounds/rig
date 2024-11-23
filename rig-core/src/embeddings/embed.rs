@@ -1,4 +1,13 @@
-//! The module defines the [Embed] trait, which must be implemented for types that can be embedded by the `EmbeddingsBuilder`.
+//! The module defines the [Embed] trait, which must be implemented for types
+//! that can be embedded by the [crate::embeddings::EmbeddingsBuilder].
+//!
+//! The module also defines the [EmbedError] struct which is used for when the `embed`
+//! method of the `Embed` trait fails.
+//!
+//! The module also defines the [TextEmbedder] struct which accumulates string values that need to be embedded.
+//! It is used directly with the `Embed` trait.
+//!
+//! Finally, the module implements [Embed] for many common primitive types.
 
 /// Error type used for when the `embed` method fo the `Embed` trait fails.
 /// Used by default implementations of `Embed` for common types.
@@ -20,7 +29,7 @@ impl EmbedError {
 /// use std::env;
 ///
 /// use serde::{Deserialize, Serialize};
-/// use rig::Embed;
+/// use rig::{Embed, embeddings::{TextEmbedder, EmbedError, to_texts}};
 ///
 /// struct FakeDefinition {
 ///     id: String,
@@ -42,6 +51,14 @@ impl EmbedError {
 ///        Ok(())
 ///     }
 /// }
+///
+/// let fake_definition = FakeDefinition {
+///    id: "1".to_string(),
+///    word: "apple".to_string(),
+///    definitions: "a fruit, a tech company".to_string(),
+/// };
+///
+/// assert_eq!(to_texts(fake_definition).unwrap(), vec!["a fruit", " a tech company"]);
 /// ```
 pub trait Embed {
     fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError>;
@@ -55,6 +72,7 @@ pub struct TextEmbedder {
 }
 
 impl TextEmbedder {
+    /// Adds input `text` string to the list of texts in the `TextEmbedder` that need to be embedded.
     pub fn embed(&mut self, text: String) {
         self.texts.push(text);
     }
