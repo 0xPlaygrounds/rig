@@ -156,6 +156,9 @@ pub struct Agent<M: CompletionModel> {
     additional_params: Option<serde_json::Value>,
     /// List of vector store, with the sample number
     dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
+    /// Dynamic documents. Similar to `dynamic_context` but directly provides
+    /// the vector search results rather than executing vector search in the agent.
+    dynamic_documents: Vec<Document>,
     /// Dynamic tools
     dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
     /// Actual tool implementations
@@ -168,7 +171,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
         prompt: &str,
         chat_history: Vec<Message>,
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
-        let dynamic_context = stream::iter(self.dynamic_context.iter())
+        let mut dynamic_context = stream::iter(self.dynamic_context.iter())
             .then(|(num_sample, index)| async {
                 Ok::<_, VectorStoreError>(
                     index
@@ -195,6 +198,8 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
             })
             .await
             .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
+
+        dynamic_context.extend(self.dynamic_documents.clone());
 
         let dynamic_tools = stream::iter(self.dynamic_tools.iter())
             .then(|(num_sample, index)| async {
@@ -302,6 +307,8 @@ pub struct AgentBuilder<M: CompletionModel> {
     max_tokens: Option<u64>,
     /// List of vector store, with the sample number
     dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
+    /// Dynamic documents
+    dynamic_documents: Vec<Document>,
     /// Dynamic tools
     dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
     /// Temperature of the model
@@ -321,6 +328,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
             max_tokens: None,
             additional_params: None,
             dynamic_context: vec![],
+            dynamic_documents: vec![],
             dynamic_tools: vec![],
             tools: ToolSet::default(),
         }
@@ -372,6 +380,13 @@ impl<M: CompletionModel> AgentBuilder<M> {
         self
     }
 
+    /// Add some dynamic documents to the agent. This is similar to `dynamic_context`
+    /// except the vector search is executed outside of the agent.
+    pub fn dynamic_documents(mut self, dynamic_documents: impl Iterator<Item = Document>) -> Self {
+        self.dynamic_documents.extend(dynamic_documents);
+        self
+    }
+
     /// Add some dynamic tools to the agent. On each prompt, `sample` tools from the
     /// dynamic toolset will be inserted in the request.
     pub fn dynamic_tools(
@@ -414,6 +429,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
             dynamic_context: self.dynamic_context,
+            dynamic_documents: self.dynamic_documents,
             dynamic_tools: self.dynamic_tools,
             tools: self.tools,
         }
