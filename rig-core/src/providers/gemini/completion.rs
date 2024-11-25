@@ -122,6 +122,16 @@ impl completion::CompletionModel for CompletionModel {
             .json::<GenerateContentResponse>()
             .await?;
 
+        match response.usage_metadata {
+            Some(ref usage) => tracing::info!(target: "rig",
+            "Gemini completion token usage: {}",
+            usage
+            ),
+            None => tracing::info!(target: "rig",
+                "Gemini completion token usage: n/a",
+            ),
+        }
+
         tracing::debug!("Received response");
 
         completion::CompletionResponse::try_from(response)
@@ -357,6 +367,22 @@ pub mod gemini_api_types {
         pub cached_content_token_count: Option<i32>,
         pub candidates_token_count: i32,
         pub total_token_count: i32,
+    }
+
+    impl std::fmt::Display for UsageMetadata {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(
+                f,
+                "Prompt token count: {}\nCached content token count: {}\nCandidates token count: {}\nTotal token count: {}",
+                self.prompt_token_count,
+                match self.cached_content_token_count {
+                    Some(count) => count.to_string(),
+                    None => "n/a".to_string(),
+                },
+                self.candidates_token_count,
+                self.total_token_count
+            )
+        }
     }
 
     /// A set of the feedback metadata the prompt specified in [GenerateContentRequest.contents](GenerateContentRequest).

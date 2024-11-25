@@ -8,7 +8,7 @@ use rig::{
 };
 use serde::Deserialize;
 use serde_json::Value;
-use utils::QueryToJson;
+use utils::{FilterEmbeddings, QueryToJson};
 
 mod utils;
 
@@ -250,16 +250,19 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
             .into_iter()
             .enumerate()
             .map(|(i, value)| {
+                let filtered_value = value
+                    .filter(self.search_params.column.clone())
+                    .map_err(serde_to_rig_error)?;
                 Ok((
-                    match value.get("_distance") {
+                    match filtered_value.get("_distance") {
                         Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
                         _ => 0.0,
                     },
-                    match value.get(self.id_field.clone()) {
+                    match filtered_value.get(self.id_field.clone()) {
                         Some(Value::String(id)) => id.to_string(),
                         _ => format!("unknown{i}"),
                     },
-                    serde_json::from_value(value).map_err(serde_to_rig_error)?,
+                    serde_json::from_value(filtered_value).map_err(serde_to_rig_error)?,
                 ))
             })
             .collect()
