@@ -15,6 +15,7 @@ tokio-rusqlite = { git = "https://github.com/programatik29/tokio-rusqlite", feat
     "bundled",
 ] }
 tracing = "0.1"
+zerocopy = "0.8.10"
 chrono = "0.4"
 
 [dev-dependencies]
