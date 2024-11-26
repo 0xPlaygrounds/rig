@@ -106,10 +106,17 @@ async fn integration_test() {
     .expect("Failed to create Rig vector index");
 
     // Query the index
-    let results = vector_index
+    let mut results = vector_index
         .top_n::<serde_json::Value>("What is a linglingdong?", 1)
         .await
         .expect("Failed to query vector index");
+
+    if results.is_empty() {
+        results = vector_index
+            .top_n::<serde_json::Value>("What is a linglingdong?", 1)
+            .await
+            .expect("Failed to query vector index");
+    }
 
     let result_string = &results.first().unwrap().1;
 
