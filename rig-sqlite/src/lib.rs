@@ -20,7 +20,7 @@ pub struct SqliteVectorStore<E: EmbeddingModel> {
 }
 
 impl<E: EmbeddingModel> SqliteVectorStore<E> {
-    pub async fn new(conn: Connection, embedding_model: E) -> Result<Self, VectorStoreError> {
+    pub async fn new(conn: Connection, embedding_model: &E) -> Result<Self, VectorStoreError> {
         // Run migrations or create tables if they don't exist
         let dims = embedding_model.ndims();
         conn.call(move |conn| {

@@ -43,7 +43,7 @@ async fn main() -> Result<(), anyhow::Error> {
     .await?;
 
     // Initialize SQLite vector store
-    let mut vector_store = SqliteVectorStore::new(conn, model.clone()).await?;
+    let mut vector_store = SqliteVectorStore::new(conn, &model).await?;
 
     // Add embeddings to vector store
     match vector_store.add_documents(embeddings).await {
