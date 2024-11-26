@@ -93,13 +93,11 @@ impl VectorStore for MongoDbVectorStore {
         Ok(self
             .collection
             .clone_with_type::<String>()
-            .aggregate(
-                [
-                    doc! {"$match": { "_id": id}},
-                    doc! {"$project": { "document": 1 }},
-                    doc! {"$replaceRoot": { "newRoot": "$document" }},
-                ],
-            )
+            .aggregate([
+                doc! {"$match": { "_id": id}},
+                doc! {"$project": { "document": 1 }},
+                doc! {"$replaceRoot": { "newRoot": "$document" }},
+            ])
             .await
             .map_err(mongodb_to_rig_error)?
             .with_type::<String>()
@@ -282,19 +280,17 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
 
         let mut cursor = self
             .collection
-            .aggregate(
-                [
-                    self.pipeline_search_stage(&prompt_embedding, n),
-                    self.pipeline_score_stage(),
-                    {
-                        doc! {
-                            "$project": {
-                                self.embedded_field.clone(): 0,
-                            },
-                        }
-                    },
-                ],
-            )
+            .aggregate([
+                self.pipeline_search_stage(&prompt_embedding, n),
+                self.pipeline_score_stage(),
+                {
+                    doc! {
+                        "$project": {
+                            self.embedded_field.clone(): 0,
+                        },
+                    }
+                },
+            ])
             .await
             .map_err(mongodb_to_rig_error)?
             .with_type::<serde_json::Value>();
@@ -328,18 +324,16 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
 
         let mut cursor = self
             .collection
-            .aggregate(
-                [
-                    self.pipeline_search_stage(&prompt_embedding, n),
-                    self.pipeline_score_stage(),
-                    doc! {
-                        "$project": {
-                            "_id": 1,
-                            "score": 1
-                        },
+            .aggregate([
+                self.pipeline_search_stage(&prompt_embedding, n),
+                self.pipeline_score_stage(),
+                doc! {
+                    "$project": {
+                        "_id": 1,
+                        "score": 1
                     },
-                ],
-            )
+                },
+            ])
             .await
             .map_err(mongodb_to_rig_error)?
             .with_type::<serde_json::Value>();

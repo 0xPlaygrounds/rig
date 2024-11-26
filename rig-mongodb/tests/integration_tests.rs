@@ -1,7 +1,19 @@
-use mongodb::{bson::{self, doc}, options::ClientOptions, Collection, SearchIndexModel};
-use rig::{embeddings::{DocumentEmbeddings, EmbeddingsBuilder}, providers::openai, vector_store::VectorStoreIndex};
+use mongodb::{
+    bson::{self, doc},
+    options::ClientOptions,
+    Collection, SearchIndexModel,
+};
+use rig::{
+    embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
+    providers::openai,
+    vector_store::VectorStoreIndex,
+};
 use rig_mongodb::MongoDbVectorIndex;
-use testcontainers::{core::{IntoContainerPort, WaitFor}, runners::AsyncRunner, GenericImage, ImageExt};
+use testcontainers::{
+    core::{IntoContainerPort, WaitFor},
+    runners::AsyncRunner,
+    GenericImage, ImageExt,
+};
 
 const VECTOR_SEARCH_INDEX_NAME: &str = "vector_index";
 
@@ -9,11 +21,13 @@ const VECTOR_SEARCH_INDEX_NAME: &str = "vector_index";
 async fn integration_test() {
     // Initialize OpenAI client
     let openai_client = openai::Client::from_env();
-    
+
     // Setup local MongoDB Atlas
-   let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")
+    let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")
         .with_exposed_port(27017.tcp())
-        .with_wait_for(WaitFor::Duration { length: std::time::Duration::from_secs(10) })
+        .with_wait_for(WaitFor::Duration {
+            length: std::time::Duration::from_secs(10),
+        })
         .with_env_var("MONGODB_INITDB_ROOT_USERNAME", "riguser")
         .with_env_var("MONGODB_INITDB_ROOT_PASSWORD", "rigpassword")
         .start()
@@ -23,9 +37,11 @@ async fn integration_test() {
     let port = container.get_host_port_ipv4(27017).await.unwrap();
 
     // Initialize MongoDB client
-    let options = ClientOptions::parse(format!("mongodb://riguser:rigpassword@localhost:{port}/?directConnection=true"))
-        .await
-        .expect("MongoDB connection string should be valid");
+    let options = ClientOptions::parse(format!(
+        "mongodb://riguser:rigpassword@localhost:{port}/?directConnection=true"
+    ))
+    .await
+    .expect("MongoDB connection string should be valid");
 
     let mongodb_client =
         mongodb::Client::with_options(options).expect("MongoDB client options should be valid");
@@ -43,21 +59,23 @@ async fn integration_test() {
         .collection("fake_definitions");
 
     // Create a vector search index
-    collection.create_search_index(
-        SearchIndexModel::builder()
-            .name(Some(VECTOR_SEARCH_INDEX_NAME.to_string()))
-            .index_type(Some(mongodb::SearchIndexType::VectorSearch)) 
-            .definition(doc! {
-                "fields": [{
-                    "numDimensions": 1536,
-                    "path": "embeddings.vec",
-                    "similarity": "cosine",
-                    "type": "vector"
-                }]
-            })
-            .build()
-    ).await
-    .expect("Failed to create search index");
+    collection
+        .create_search_index(
+            SearchIndexModel::builder()
+                .name(Some(VECTOR_SEARCH_INDEX_NAME.to_string()))
+                .index_type(Some(mongodb::SearchIndexType::VectorSearch))
+                .definition(doc! {
+                    "fields": [{
+                        "numDimensions": 1536,
+                        "path": "embeddings.vec",
+                        "similarity": "cosine",
+                        "type": "vector"
+                    }]
+                })
+                .build(),
+        )
+        .await
+        .expect("Failed to create search index");
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
@@ -83,7 +101,9 @@ async fn integration_test() {
         model,
         VECTOR_SEARCH_INDEX_NAME,
         rig_mongodb::SearchParams::new(),
-    ).await.expect("Failed to create Rig vector index");
+    )
+    .await
+    .expect("Failed to create Rig vector index");
 
     // Query the index
     let results = vector_index
@@ -93,8 +113,5 @@ async fn integration_test() {
 
     let result_string = &results.first().unwrap().1;
 
-    assert_eq!(
-        result_string,
-        "\"doc2\""
-    );
+    assert_eq!(result_string, "\"doc2\"");
 }
