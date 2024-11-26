@@ -27,10 +27,9 @@ struct SearchIndex {
 impl SearchIndex {
     async fn get_search_index(
         collection: mongodb::Collection<bson::Document>,
-        index_name: &str,
     ) -> Result<SearchIndex, VectorStoreError> {
         collection
-            .list_search_indexes(index_name, None, None)
+            .list_search_indexes()
             .await
             .map_err(mongodb_to_rig_error)?
             .with_type::<SearchIndex>()
@@ -70,7 +69,7 @@ impl VectorStore for MongoDbVectorStore {
     ) -> Result<(), VectorStoreError> {
         self.collection
             .clone_with_type::<DocumentEmbeddings>()
-            .insert_many(documents, None)
+            .insert_many(documents)
             .await
             .map_err(mongodb_to_rig_error)?;
         Ok(())
@@ -82,7 +81,7 @@ impl VectorStore for MongoDbVectorStore {
     ) -> Result<Option<DocumentEmbeddings>, VectorStoreError> {
         self.collection
             .clone_with_type::<DocumentEmbeddings>()
-            .find_one(doc! { "_id": id }, None)
+            .find_one(doc! { "_id": id })
             .await
             .map_err(mongodb_to_rig_error)
     }
@@ -100,7 +99,6 @@ impl VectorStore for MongoDbVectorStore {
                     doc! {"$project": { "document": 1 }},
                     doc! {"$replaceRoot": { "newRoot": "$document" }},
                 ],
-                None,
             )
             .await
             .map_err(mongodb_to_rig_error)?
@@ -119,7 +117,7 @@ impl VectorStore for MongoDbVectorStore {
     ) -> Result<Option<DocumentEmbeddings>, VectorStoreError> {
         self.collection
             .clone_with_type::<DocumentEmbeddings>()
-            .find_one(query, None)
+            .find_one(query)
             .await
             .map_err(mongodb_to_rig_error)
     }
@@ -195,7 +193,7 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
         index_name: &str,
         search_params: SearchParams,
     ) -> Result<Self, VectorStoreError> {
-        let search_index = SearchIndex::get_search_index(collection.clone(), index_name).await?;
+        let search_index = SearchIndex::get_search_index(collection.clone()).await?;
 
         if !search_index.queryable {
             return Err(VectorStoreError::DatastoreError(
@@ -296,7 +294,6 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
                         }
                     },
                 ],
-                None,
             )
             .await
             .map_err(mongodb_to_rig_error)?
@@ -342,7 +339,6 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MongoDbV
                         },
                     },
                 ],
-                None,
             )
             .await
             .map_err(mongodb_to_rig_error)?
