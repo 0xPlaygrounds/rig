@@ -4,29 +4,31 @@ use rig::{
 };
 use serde::Serialize;
 
-fn serialize(embedder: &mut TextEmbedder, definition: Definition) -> Result<(), EmbedError> {
-    embedder.embed(serde_json::to_string(&definition).map_err(EmbedError::new)?);
-
-    Ok(())
-}
-
-#[derive(Embed)]
-struct WordDefinition {
-    id: String,
-    word: String,
-    #[embed(embed_with = "serialize")]
-    definition: Definition,
-}
-
-#[derive(Serialize, Clone)]
-struct Definition {
-    word: String,
-    link: String,
-    speech: String,
-}
-
 #[test]
 fn test_custom_embed() {
+    #[derive(Embed)]
+    struct WordDefinition {
+        #[allow(dead_code)]
+        id: String,
+        #[allow(dead_code)]
+        word: String,
+        #[embed(embed_with = "custom_embedding_function")]
+        definition: Definition,
+    }
+    
+    #[derive(Serialize, Clone)]
+    struct Definition {
+        word: String,
+        link: String,
+        speech: String,
+    }    
+
+    fn custom_embedding_function(embedder: &mut TextEmbedder, definition: Definition) -> Result<(), EmbedError> {
+        embedder.embed(serde_json::to_string(&definition).map_err(EmbedError::new)?);
+    
+        Ok(())
+    }
+    
     let fake_definition = WordDefinition {
         id: "doc1".to_string(),
         word: "house".to_string(),
@@ -37,30 +39,38 @@ fn test_custom_embed() {
         },
     };
 
-    println!(
-        "WordDefinition: {}, {}",
-        fake_definition.id, fake_definition.word
-    );
-
     assert_eq!(
         to_texts(fake_definition).unwrap().first().unwrap().clone(),
             "{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()
-
         )
-}
-
-#[derive(Embed)]
-struct WordDefinition2 {
-    id: String,
-    #[embed]
-    word: String,
-    #[embed(embed_with = "serialize")]
-    definition: Definition,
 }
 
 #[test]
 fn test_custom_and_basic_embed() {
-    let fake_definition = WordDefinition2 {
+    #[derive(Embed)]
+    struct WordDefinition {
+        #[allow(dead_code)]
+        id: String,
+        #[embed]
+        word: String,
+        #[embed(embed_with = "custom_embedding_function")]
+        definition: Definition,
+    }
+
+    #[derive(Serialize, Clone)]
+    struct Definition {
+        word: String,
+        link: String,
+        speech: String,
+    }    
+
+    fn custom_embedding_function(embedder: &mut TextEmbedder, definition: Definition) -> Result<(), EmbedError> {
+        embedder.embed(serde_json::to_string(&definition).map_err(EmbedError::new)?);
+    
+        Ok(())
+    }
+
+    let fake_definition = WordDefinition {
         id: "doc1".to_string(),
         word: "house".to_string(),
         definition: Definition {
@@ -69,11 +79,6 @@ fn test_custom_and_basic_embed() {
             link: "https://www.dictionary.com/browse/house".to_string(),
         },
     };
-
-    println!(
-        "WordDefinition: {}, {}",
-        fake_definition.id, fake_definition.word
-    );
 
     let texts = to_texts(fake_definition).unwrap();
 
@@ -85,27 +90,25 @@ fn test_custom_and_basic_embed() {
     )
 }
 
-#[derive(Embed)]
-struct WordDefinition3 {
-    id: String,
-    word: String,
-    #[embed]
-    definition: String,
-}
-
 #[test]
 fn test_single_embed() {
+    #[derive(Embed)]
+    struct WordDefinition {
+        #[allow(dead_code)]
+        id: String,
+        #[allow(dead_code)]
+        word: String,
+        #[embed]
+        definition: String,
+    }
+
     let definition = "a building in which people live; residence for human beings.".to_string();
 
-    let fake_definition = WordDefinition3 {
+    let fake_definition = WordDefinition {
         id: "doc1".to_string(),
         word: "house".to_string(),
         definition: definition.clone(),
     };
-    println!(
-        "WordDefinition3: {}, {}",
-        fake_definition.id, fake_definition.word
-    );
 
     assert_eq!(
         to_texts(fake_definition).unwrap().first().unwrap().clone(),
@@ -113,23 +116,21 @@ fn test_single_embed() {
     )
 }
 
-#[derive(Embed)]
-struct Company {
-    id: String,
-    company: String,
-    #[embed]
-    employee_ages: Vec<i32>,
-}
-
 #[test]
 fn test_multiple_embed_strings() {
+    #[derive(Embed)]
+    struct Company {
+        id: String,
+        company: String,
+        #[embed]
+        employee_ages: Vec<i32>,
+    }
+
     let company = Company {
         id: "doc1".to_string(),
         company: "Google".to_string(),
         employee_ages: vec![25, 30, 35, 40],
     };
-
-    println!("Company: {}, {}", company.id, company.company);
 
     assert_eq!(
         to_texts(company).unwrap(),
@@ -142,24 +143,23 @@ fn test_multiple_embed_strings() {
     );
 }
 
-#[derive(Embed)]
-struct Company2 {
-    id: String,
-    #[embed]
-    company: String,
-    #[embed]
-    employee_ages: Vec<i32>,
-}
-
 #[test]
 fn test_multiple_embed_tags() {
-    let company = Company2 {
+    #[derive(Embed)]
+    struct Company {
+        #[allow(dead_code)]
+        id: String,
+        #[embed]
+        company: String,
+        #[embed]
+        employee_ages: Vec<i32>,
+    }
+    
+    let company = Company {
         id: "doc1".to_string(),
         company: "Google".to_string(),
         employee_ages: vec![25, 30, 35, 40],
     };
-
-    println!("Company: {}", company.id);
 
     assert_eq!(
         to_texts(company).unwrap(),
