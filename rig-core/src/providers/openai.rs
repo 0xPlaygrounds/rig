@@ -219,7 +219,7 @@ pub struct EmbeddingData {
     pub index: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
     pub total_tokens: usize,
@@ -229,7 +229,7 @@ impl std::fmt::Display for Usage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Prompt tokens: {}\nTotal tokens: {}",
+            "Prompt tokens: {} Total tokens: {}",
             self.prompt_tokens, self.total_tokens
         )
     }
@@ -535,7 +535,7 @@ impl completion::CompletionModel for CompletionModel {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "OpenAI completion token usage: {:?}",
-                        response.usage
+                        response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
                     );
                     response.try_into()
                 }
