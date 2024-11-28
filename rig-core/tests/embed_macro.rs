@@ -120,7 +120,9 @@ fn test_single_embed() {
 fn test_multiple_embed_strings() {
     #[derive(Embed)]
     struct Company {
+        #[allow(dead_code)]
         id: String,
+        #[allow(dead_code)]
         company: String,
         #[embed]
         employee_ages: Vec<i32>,
