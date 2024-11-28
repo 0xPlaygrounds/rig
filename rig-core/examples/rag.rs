@@ -22,6 +22,12 @@ struct WordDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    // Initialize tracing
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .with_target(false)
+        .init();
+
     // Create OpenAI client
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     let openai_client = Client::new(&openai_api_key);
