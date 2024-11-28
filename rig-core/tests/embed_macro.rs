@@ -15,21 +15,24 @@ fn test_custom_embed() {
         #[embed(embed_with = "custom_embedding_function")]
         definition: Definition,
     }
-    
+
     #[derive(Serialize, Clone)]
     struct Definition {
         word: String,
         link: String,
         speech: String,
-    }    
+    }
 
-    fn custom_embedding_function(embedder: &mut TextEmbedder, definition: Definition) -> Result<(), EmbedError> {
+    fn custom_embedding_function(
+        embedder: &mut TextEmbedder,
+        definition: Definition,
+    ) -> Result<(), EmbedError> {
         embedder.embed(serde_json::to_string(&definition).map_err(EmbedError::new)?);
-    
+
         Ok(())
     }
-    
-    let fake_definition = WordDefinition {
+
+    let definition = WordDefinition {
         id: "doc1".to_string(),
         word: "house".to_string(),
         definition: Definition {
@@ -40,8 +43,8 @@ fn test_custom_embed() {
     };
 
     assert_eq!(
-        to_texts(fake_definition).unwrap().first().unwrap().clone(),
-            "{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()
+        to_texts(definition).unwrap(),
+            vec!["{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()]
         )
 }
 
@@ -62,15 +65,18 @@ fn test_custom_and_basic_embed() {
         word: String,
         link: String,
         speech: String,
-    }    
+    }
 
-    fn custom_embedding_function(embedder: &mut TextEmbedder, definition: Definition) -> Result<(), EmbedError> {
+    fn custom_embedding_function(
+        embedder: &mut TextEmbedder,
+        definition: Definition,
+    ) -> Result<(), EmbedError> {
         embedder.embed(serde_json::to_string(&definition).map_err(EmbedError::new)?);
-    
+
         Ok(())
     }
 
-    let fake_definition = WordDefinition {
+    let definition = WordDefinition {
         id: "doc1".to_string(),
         word: "house".to_string(),
         definition: Definition {
@@ -80,14 +86,15 @@ fn test_custom_and_basic_embed() {
         },
     };
 
-    let texts = to_texts(fake_definition).unwrap();
-
-    assert_eq!(texts.first().unwrap().clone(), "house".to_string());
+    let texts = to_texts(definition).unwrap();
 
     assert_eq!(
-        texts.last().unwrap().clone(),
-        "{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()
-    )
+        texts,
+        vec![
+            "house".to_string(),
+            "{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()
+        ]
+    );
 }
 
 #[test]
@@ -104,16 +111,13 @@ fn test_single_embed() {
 
     let definition = "a building in which people live; residence for human beings.".to_string();
 
-    let fake_definition = WordDefinition {
+    let word_definition = WordDefinition {
         id: "doc1".to_string(),
         word: "house".to_string(),
         definition: definition.clone(),
     };
 
-    assert_eq!(
-        to_texts(fake_definition).unwrap().first().unwrap().clone(),
-        definition
-    )
+    assert_eq!(to_texts(word_definition).unwrap(), vec![definition])
 }
 
 #[test]
@@ -156,7 +160,7 @@ fn test_multiple_embed_tags() {
         #[embed]
         employee_ages: Vec<i32>,
     }
-    
+
     let company = Company {
         id: "doc1".to_string(),
         company: "Google".to_string(),
