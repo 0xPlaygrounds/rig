@@ -7,23 +7,23 @@ use rig::{Embed, OneOrMany};
 use serde::Deserialize;
 
 #[derive(Embed, Clone, Deserialize, Debug)]
-pub struct FakeDefinition {
+pub struct WordDefinition {
     pub id: String,
     #[embed]
     pub definition: String,
 }
 
-pub fn fake_definitions() -> Vec<FakeDefinition> {
+pub fn fake_definitions() -> Vec<WordDefinition> {
     vec![
-        FakeDefinition {
+        WordDefinition {
             id: "doc0".to_string(),
             definition: "Definition of *flumbrel (noun)*: a small, seemingly insignificant item that you constantly lose or misplace, such as a pen, hair tie, or remote control.".to_string()
         },
-        FakeDefinition {
+        WordDefinition {
             id: "doc1".to_string(),
             definition: "Definition of *zindle (verb)*: to pretend to be working on something important while actually doing something completely unrelated or unproductive.".to_string()
         },
-        FakeDefinition {
+        WordDefinition {
             id: "doc2".to_string(),
             definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string()
         }
@@ -46,22 +46,22 @@ pub fn schema(dims: usize) -> Schema {
     ]))
 }
 
-// Convert FakeDefinition objects and their embedding to a RecordBatch.
+// Convert WordDefinition objects and their embedding to a RecordBatch.
 pub fn as_record_batch(
-    records: Vec<(FakeDefinition, OneOrMany<Embedding>)>,
+    records: Vec<(WordDefinition, OneOrMany<Embedding>)>,
     dims: usize,
 ) -> Result<RecordBatch, lancedb::arrow::arrow_schema::ArrowError> {
     let id = StringArray::from_iter_values(
         records
             .iter()
-            .map(|(FakeDefinition { id, .. }, _)| id)
+            .map(|(WordDefinition { id, .. }, _)| id)
             .collect::<Vec<_>>(),
     );
 
     let definition = StringArray::from_iter_values(
         records
             .iter()
-            .map(|(FakeDefinition { definition, .. }, _)| definition)
+            .map(|(WordDefinition { definition, .. }, _)| definition)
             .collect::<Vec<_>>(),
     );
 

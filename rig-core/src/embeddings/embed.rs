@@ -31,13 +31,13 @@ impl EmbedError {
 /// use serde::{Deserialize, Serialize};
 /// use rig::{Embed, embeddings::{TextEmbedder, EmbedError, to_texts}};
 ///
-/// struct FakeDefinition {
+/// struct WordDefinition {
 ///     id: String,
 ///     word: String,
 ///     definitions: String,
 /// }
 ///
-/// impl Embed for FakeDefinition {
+/// impl Embed for WordDefinition {
 ///     fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
 ///        // Embeddings only need to be generated for `definition` field.
 ///        // Split the definitions by comma and collect them into a vector of strings.
@@ -52,7 +52,7 @@ impl EmbedError {
 ///     }
 /// }
 ///
-/// let fake_definition = FakeDefinition {
+/// let fake_definition = WordDefinition {
 ///    id: "1".to_string(),
 ///    word: "apple".to_string(),
 ///    definitions: "a fruit, a tech company".to_string(),

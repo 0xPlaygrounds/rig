@@ -11,7 +11,7 @@ fn serialize(embedder: &mut TextEmbedder, definition: Definition) -> Result<(), 
 }
 
 #[derive(Embed)]
-struct FakeDefinition {
+struct WordDefinition {
     id: String,
     word: String,
     #[embed(embed_with = "serialize")]
@@ -27,7 +27,7 @@ struct Definition {
 
 #[test]
 fn test_custom_embed() {
-    let fake_definition = FakeDefinition {
+    let fake_definition = WordDefinition {
         id: "doc1".to_string(),
         word: "house".to_string(),
         definition: Definition {
@@ -38,7 +38,7 @@ fn test_custom_embed() {
     };
 
     println!(
-        "FakeDefinition: {}, {}",
+        "WordDefinition: {}, {}",
         fake_definition.id, fake_definition.word
     );
 
@@ -50,7 +50,7 @@ fn test_custom_embed() {
 }
 
 #[derive(Embed)]
-struct FakeDefinition2 {
+struct WordDefinition2 {
     id: String,
     #[embed]
     word: String,
@@ -60,7 +60,7 @@ struct FakeDefinition2 {
 
 #[test]
 fn test_custom_and_basic_embed() {
-    let fake_definition = FakeDefinition2 {
+    let fake_definition = WordDefinition2 {
         id: "doc1".to_string(),
         word: "house".to_string(),
         definition: Definition {
@@ -71,7 +71,7 @@ fn test_custom_and_basic_embed() {
     };
 
     println!(
-        "FakeDefinition: {}, {}",
+        "WordDefinition: {}, {}",
         fake_definition.id, fake_definition.word
     );
 
@@ -86,7 +86,7 @@ fn test_custom_and_basic_embed() {
 }
 
 #[derive(Embed)]
-struct FakeDefinition3 {
+struct WordDefinition3 {
     id: String,
     word: String,
     #[embed]
@@ -97,13 +97,13 @@ struct FakeDefinition3 {
 fn test_single_embed() {
     let definition = "a building in which people live; residence for human beings.".to_string();
 
-    let fake_definition = FakeDefinition3 {
+    let fake_definition = WordDefinition3 {
         id: "doc1".to_string(),
         word: "house".to_string(),
         definition: definition.clone(),
     };
     println!(
-        "FakeDefinition3: {}, {}",
+        "WordDefinition3: {}, {}",
         fake_definition.id, fake_definition.word
     );
 

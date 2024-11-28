@@ -62,7 +62,7 @@ impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
 /// // Shape of data that needs to be RAG'ed.
 /// // The definition field will be used to generate embeddings.
 /// #[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
-/// struct FakeDefinition {
+/// struct WordDefinition {
 ///     id: String,
 ///     word: String,
 ///     #[embed]
@@ -77,7 +77,7 @@ impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
 ///
 /// let embeddings = EmbeddingsBuilder::new(model.clone())
 ///     .documents(vec![
-///         FakeDefinition {
+///         WordDefinition {
 ///             id: "doc0".to_string(),
 ///             word: "flurbo".to_string(),
 ///             definitions: vec![
@@ -85,7 +85,7 @@ impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
 ///                 "A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
 ///             ]
 ///         },
-///         FakeDefinition {
+///         WordDefinition {
 ///             id: "doc1".to_string(),
 ///             word: "glarb-glarb".to_string(),
 ///             definitions: vec![
@@ -93,7 +93,7 @@ impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
 ///                 "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
 ///             ]
 ///         },
-///         FakeDefinition {
+///         WordDefinition {
 ///             id: "doc2".to_string(),
 ///             word: "linglingdong".to_string(),
 ///             definitions: vec![
@@ -198,12 +198,12 @@ mod tests {
     }
 
     #[derive(Clone, Debug)]
-    struct FakeDefinition {
+    struct WordDefinition {
         id: String,
         definitions: Vec<String>,
     }
 
-    impl Embed for FakeDefinition {
+    impl Embed for WordDefinition {
         fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
             for definition in &self.definitions {
                 embedder.embed(definition.clone());
@@ -212,16 +212,16 @@ mod tests {
         }
     }
 
-    fn fake_definitions_multiple_text() -> Vec<FakeDefinition> {
+    fn fake_definitions_multiple_text() -> Vec<WordDefinition> {
         vec![
-            FakeDefinition {
+            WordDefinition {
                 id: "doc0".to_string(),
                 definitions: vec![
                     "A green alien that lives on cold planets.".to_string(),
                     "A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
                 ]
             },
-            FakeDefinition {
+            WordDefinition {
                 id: "doc1".to_string(),
                 definitions: vec![
                     "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
@@ -231,13 +231,13 @@ mod tests {
         ]
     }
 
-    fn fake_definitions_multiple_text_2() -> Vec<FakeDefinition> {
+    fn fake_definitions_multiple_text_2() -> Vec<WordDefinition> {
         vec![
-            FakeDefinition {
+            WordDefinition {
                 id: "doc2".to_string(),
                 definitions: vec!["Another fake definitions".to_string()],
             },
-            FakeDefinition {
+            WordDefinition {
                 id: "doc3".to_string(),
                 definitions: vec!["Some fake definition".to_string()],
             },
@@ -245,25 +245,25 @@ mod tests {
     }
 
     #[derive(Clone, Debug)]
-    struct FakeDefinitionSingle {
+    struct WordDefinitionSingle {
         id: String,
         definition: String,
     }
 
-    impl Embed for FakeDefinitionSingle {
+    impl Embed for WordDefinitionSingle {
         fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
             embedder.embed(self.definition.clone());
             Ok(())
         }
     }
 
-    fn fake_definitions_single_text() -> Vec<FakeDefinitionSingle> {
+    fn fake_definitions_single_text() -> Vec<WordDefinitionSingle> {
         vec![
-            FakeDefinitionSingle {
+            WordDefinitionSingle {
                 id: "doc0".to_string(),
                 definition: "A green alien that lives on cold planets.".to_string(),
             },
-            FakeDefinitionSingle {
+            WordDefinitionSingle {
                 id: "doc1".to_string(),
                 definition: "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
             }
