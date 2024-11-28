@@ -174,6 +174,12 @@ impl Embed for serde_json::Value {
     }
 }
 
+impl<T: Embed> Embed for &T {
+    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
+        (*self).embed(embedder)
+    }
+}
+ 
 impl<T: Embed> Embed for Vec<T> {
     fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
         for item in self {
