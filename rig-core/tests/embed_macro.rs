@@ -121,7 +121,7 @@ fn test_single_embed() {
 }
 
 #[test]
-fn test_multiple_embed_strings() {
+fn test_embed_vec_non_string() {
     #[derive(Embed)]
     struct Company {
         #[allow(dead_code)]
@@ -146,6 +146,40 @@ fn test_multiple_embed_strings() {
             "35".to_string(),
             "40".to_string()
         ]
+    );
+}
+
+#[test]
+fn test_embed_vec_string() {
+    #[derive(Embed)]
+    struct Company {
+        #[allow(dead_code)]
+        id: String,
+        #[allow(dead_code)]
+        company: String,
+        #[embed]
+        employee_names: Vec<String>,
+    }
+
+    let company = Company {
+        id: "doc1".to_string(),
+        company: "Google".to_string(),
+        employee_names: vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+            "David".to_string(),
+        ],
+    };
+
+    assert_eq!(
+        to_texts(company).unwrap(),
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+            "David".to_string()
+       ]
     );
 }
 
