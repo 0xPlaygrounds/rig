@@ -255,7 +255,6 @@ macro_rules! try_parallel_internal {
     })
 }
 
-
 #[macro_export]
 macro_rules! try_parallel {
     ($($es:expr),+ $(,)?) => {

@@ -1,4 +1,8 @@
-use rig::{pipeline::{self, agent_ops, TryOp}, providers::openai, try_parallel};
+use rig::{
+    pipeline::{self, agent_ops, TryOp},
+    providers::openai,
+    try_parallel,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +29,6 @@ pub struct Sentiment {
     pub confidence: f64,
 }
 
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let openai = openai::Client::from_env();
@@ -42,7 +45,9 @@ async fn main() -> anyhow::Result<()> {
 
     let sentiment_extractor = openai
         .extractor::<Sentiment>("gpt-4")
-        .preamble("Extract sentiment (and how confident you are of the sentiment) from the given text.")
+        .preamble(
+            "Extract sentiment (and how confident you are of the sentiment) from the given text.",
+        )
         .build();
 
     let chain = pipeline::new()
@@ -59,7 +64,7 @@ async fn main() -> anyhow::Result<()> {
                 sentiment = sentiment.sentiment,
             )
         });
-    
+
     let response = chain.try_call("Screw you Putin!").await?;
 
     println!("Text analysis:\n{response}");

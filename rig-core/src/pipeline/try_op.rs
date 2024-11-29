@@ -65,7 +65,10 @@ pub trait TryOp: Send + Sync {
         OrElse::new(self, then(f))
     }
 
-    fn chain_ok<T>(self, op: T) -> impl TryOp<Input = Self::Input, Output = T::Output, Error = Self::Error>
+    fn chain_ok<T>(
+        self,
+        op: T,
+    ) -> impl TryOp<Input = Self::Input, Output = T::Output, Error = Self::Error>
     where
         T: op::Op<Input = Self::Output>,
         Self: Sized,

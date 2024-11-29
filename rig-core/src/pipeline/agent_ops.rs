@@ -1,4 +1,8 @@
-use crate::{completion::{self, CompletionModel}, extractor::{ExtractionError, Extractor}, vector_store};
+use crate::{
+    completion::{self, CompletionModel},
+    extractor::{ExtractionError, Extractor},
+    vector_store,
+};
 
 use super::Op;
 
@@ -92,7 +96,7 @@ where
     Prompt::new(prompt)
 }
 
-pub struct Extract<M, T, In> 
+pub struct Extract<M, T, In>
 where
     M: CompletionModel,
     T: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
@@ -101,13 +105,16 @@ where
     _in: std::marker::PhantomData<In>,
 }
 
-impl<M, T, In> Extract<M, T, In> 
+impl<M, T, In> Extract<M, T, In>
 where
     M: CompletionModel,
     T: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
 {
     pub fn new(extractor: Extractor<M, T>) -> Self {
-        Self { extractor, _in: std::marker::PhantomData }
+        Self {
+            extractor,
+            _in: std::marker::PhantomData,
+        }
     }
 }
 
@@ -133,7 +140,6 @@ where
 {
     Extract::new(extractor)
 }
-
 
 #[cfg(test)]
 pub mod tests {
