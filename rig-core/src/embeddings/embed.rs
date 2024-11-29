@@ -29,7 +29,7 @@ impl EmbedError {
 /// use std::env;
 ///
 /// use serde::{Deserialize, Serialize};
-/// use rig::{Embed, embeddings::{TextEmbedder, EmbedError, to_texts}};
+/// use rig::{Embed, embeddings::{TextEmbedder, EmbedError}};
 ///
 /// struct WordDefinition {
 ///     id: String,
@@ -58,7 +58,7 @@ impl EmbedError {
 ///    definitions: "a fruit, a tech company".to_string(),
 /// };
 ///
-/// assert_eq!(to_texts(fake_definition).unwrap(), vec!["a fruit", " a tech company"]);
+/// assert_eq!(embeddings::to_texts(fake_definition).unwrap(), vec!["a fruit", " a tech company"]);
 /// ```
 pub trait Embed {
     fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError>;

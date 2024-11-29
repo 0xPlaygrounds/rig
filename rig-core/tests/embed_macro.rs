@@ -1,6 +1,6 @@
 use rig::{
     embeddings::{embed::EmbedError, TextEmbedder},
-    to_texts, Embed,
+    Embed,
 };
 use serde::Serialize;
 
@@ -43,7 +43,7 @@ fn test_custom_embed() {
     };
 
     assert_eq!(
-        to_texts(definition).unwrap(),
+        embeddings::to_texts(definition).unwrap(),
             vec!["{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()]
         )
 }
@@ -86,7 +86,7 @@ fn test_custom_and_basic_embed() {
         },
     };
 
-    let texts = to_texts(definition).unwrap();
+    let texts = embeddings::to_texts(definition).unwrap();
 
     assert_eq!(
         texts,
@@ -117,7 +117,10 @@ fn test_single_embed() {
         definition: definition.clone(),
     };
 
-    assert_eq!(to_texts(word_definition).unwrap(), vec![definition])
+    assert_eq!(
+        embeddings::to_texts(word_definition).unwrap(),
+        vec![definition]
+    )
 }
 
 #[test]
@@ -139,7 +142,7 @@ fn test_embed_vec_non_string() {
     };
 
     assert_eq!(
-        to_texts(company).unwrap(),
+        embeddings::to_texts(company).unwrap(),
         vec![
             "25".to_string(),
             "30".to_string(),
@@ -173,7 +176,7 @@ fn test_embed_vec_string() {
     };
 
     assert_eq!(
-        to_texts(company).unwrap(),
+        embeddings::to_texts(company).unwrap(),
         vec![
             "Alice".to_string(),
             "Bob".to_string(),
@@ -202,7 +205,7 @@ fn test_multiple_embed_tags() {
     };
 
     assert_eq!(
-        to_texts(company).unwrap(),
+        embeddings::to_texts(company).unwrap(),
         vec![
             "Google".to_string(),
             "25".to_string(),

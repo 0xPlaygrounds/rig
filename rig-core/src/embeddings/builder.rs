@@ -13,40 +13,7 @@ use crate::{
 
 /// Builder for creating a collection of embeddings from a vector of documents of type `T`.
 /// Accumulate documents such that they can be embedded in a single batch to limit api calls to the provider.
-pub struct EmbeddingsBuilder<M: EmbeddingModel, T: Embed> {
-    model: M,
-    documents: Vec<(T, Vec<String>)>,
-}
-
-impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
-    /// Create a new embedding builder with the given embedding model
-    pub fn new(model: M) -> Self {
-        Self {
-            model,
-            documents: vec![],
-        }
-    }
-
-    /// Add a document that implements `Embed` to the builder.
-    pub fn document(mut self, document: T) -> Result<Self, EmbedError> {
-        let mut embedder = TextEmbedder::default();
-        document.embed(&mut embedder)?;
-
-        self.documents.push((document, embedder.texts));
-
-        Ok(self)
-    }
-
-    /// Add many documents that implement `Embed` to the builder.
-    pub fn documents(self, documents: impl IntoIterator<Item = T>) -> Result<Self, EmbedError> {
-        let builder = documents
-            .into_iter()
-            .try_fold(self, |builder, doc| builder.document(doc))?;
-
-        Ok(builder)
-    }
-}
-
+///
 /// # Example
 /// ```rust
 /// use std::env;
@@ -105,6 +72,40 @@ impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
 ///     .build()
 ///     .await?;
 /// ```
+pub struct EmbeddingsBuilder<M: EmbeddingModel, T: Embed> {
+    model: M,
+    documents: Vec<(T, Vec<String>)>,
+}
+
+impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
+    /// Create a new embedding builder with the given embedding model
+    pub fn new(model: M) -> Self {
+        Self {
+            model,
+            documents: vec![],
+        }
+    }
+
+    /// Add a document that implements `Embed` to the builder.
+    pub fn document(mut self, document: T) -> Result<Self, EmbedError> {
+        let mut embedder = TextEmbedder::default();
+        document.embed(&mut embedder)?;
+
+        self.documents.push((document, embedder.texts));
+
+        Ok(self)
+    }
+
+    /// Add many documents that implement `Embed` to the builder.
+    pub fn documents(self, documents: impl IntoIterator<Item = T>) -> Result<Self, EmbedError> {
+        let builder = documents
+            .into_iter()
+            .try_fold(self, |builder, doc| builder.document(doc))?;
+
+        Ok(builder)
+    }
+}
+
 impl<M: EmbeddingModel, T: Embed + Send> EmbeddingsBuilder<M, T> {
     /// Generate embeddings for all documents in the builder.
     /// Returns a vector of tuples, where the first element is the document and the second element is the embeddings (either one embedding or many).
