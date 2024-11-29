@@ -118,6 +118,14 @@ impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
 
     /// Build a Neo4j query that performs a vector search against an index.
     /// See [Query vector index](https://neo4j.com/docs/cypher-manual/current/indexes/semantic-indexes/vector-indexes/#query-vector-index) for more information.
+    ///
+    /// Query template:
+    /// ```
+    /// CALL db.index.vector.queryNodes($index_name, $num_candidates, $queryVector)
+    /// YIELD node, score
+    /// WHERE {where_clause}
+    /// RETURN score, ID(node) as element_id, node {.*, embedding:null } as node
+    /// ```
     pub fn build_vector_search_query(
         &self,
         prompt_embedding: Embedding,
@@ -148,7 +156,7 @@ impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
             }
         );
 
-        tracing::info!("Query before params: {}", query);
+        tracing::debug!("Query before params: {}", query);
 
         Query::new(query)
             .param("queryVector", prompt_embedding.vec)

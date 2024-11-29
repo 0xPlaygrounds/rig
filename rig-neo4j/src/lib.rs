@@ -163,9 +163,11 @@ impl Neo4jClient {
     }
 
     pub async fn connect(uri: &str, user: &str, password: &str) -> Result<Self, VectorStoreError> {
+        tracing::info!("Connecting to Neo4j DB at {} ...", uri);
         let graph = Graph::new(uri, user, password)
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        tracing::info!("Connected to Neo4j");
         Ok(Self { graph })
     }
 
