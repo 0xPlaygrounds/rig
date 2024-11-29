@@ -317,7 +317,7 @@ mod tests {
     #[tokio::test]
     async fn test_try_op() {
         let op = map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") });
-        let result = op.try_call(1).await.unwrap();
+        let result = op.try_call(2).await.unwrap();
         assert_eq!(result, 2);
     }
 
