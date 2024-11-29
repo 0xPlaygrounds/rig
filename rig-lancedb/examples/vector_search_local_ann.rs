@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use arrow_array::RecordBatchIterator;
-use fixture::{as_record_batch, fake_definitions, schema, FakeDefinition};
+use fixture::{as_record_batch, fake_definitions, schema, WordDefinition};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
@@ -31,7 +31,7 @@ async fn main() -> Result<(), anyhow::Error> {
         // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
         .documents(
             (0..256)
-                .map(|i| FakeDefinition {
+                .map(|i| WordDefinition {
                     id: format!("doc{}", i),
                     definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
                 })
@@ -65,7 +65,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = vector_store_index
-        .top_n::<FakeDefinition>("My boss says I zindle too much, what does that mean?", 1)
+        .top_n::<WordDefinition>("My boss says I zindle too much, what does that mean?", 1)
         .await?;
 
     println!("Results: {:?}", results);

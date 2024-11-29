@@ -13,6 +13,65 @@ use crate::{
 
 /// Builder for creating a collection of embeddings from a vector of documents of type `T`.
 /// Accumulate documents such that they can be embedded in a single batch to limit api calls to the provider.
+///
+/// # Example
+/// ```rust
+/// use std::env;
+///
+/// use rig::{
+///     embeddings::EmbeddingsBuilder,
+///     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+///     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
+///     Embed,
+/// };
+/// use serde::{Deserialize, Serialize};
+///
+/// // Shape of data that needs to be RAG'ed.
+/// // The definition field will be used to generate embeddings.
+/// #[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
+/// struct WordDefinition {
+///     id: String,
+///     word: String,
+///     #[embed]
+///     definitions: Vec<String>,
+/// }
+///
+/// // Create OpenAI client
+/// let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
+/// let openai_client = Client::new(&openai_api_key);
+///
+/// let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+///
+/// let embeddings = EmbeddingsBuilder::new(model.clone())
+///     .documents(vec![
+///         WordDefinition {
+///             id: "doc0".to_string(),
+///             word: "flurbo".to_string(),
+///             definitions: vec![
+///                 "A green alien that lives on cold planets.".to_string(),
+///                 "A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
+///             ]
+///         },
+///         WordDefinition {
+///             id: "doc1".to_string(),
+///             word: "glarb-glarb".to_string(),
+///             definitions: vec![
+///                 "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+///                 "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
+///             ]
+///         },
+///         WordDefinition {
+///             id: "doc2".to_string(),
+///             word: "linglingdong".to_string(),
+///             definitions: vec![
+///                 "A term used by inhabitants of the sombrero galaxy to describe humans.".to_string(),
+///                 "A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
+///             ]
+///         },
+///     ])?
+///     .build()
+///     .await?;
+/// ```
 pub struct EmbeddingsBuilder<M: EmbeddingModel, T: Embed> {
     model: M,
     documents: Vec<(T, Vec<String>)>,
@@ -47,64 +106,6 @@ impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
     }
 }
 
-/// # Example
-/// ```rust
-/// use std::env;
-///
-/// use rig::{
-///     embeddings::EmbeddingsBuilder,
-///     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-///     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-///     Embed,
-/// };
-/// use serde::{Deserialize, Serialize};
-///
-/// // Shape of data that needs to be RAG'ed.
-/// // The definition field will be used to generate embeddings.
-/// #[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
-/// struct FakeDefinition {
-///     id: String,
-///     word: String,
-///     #[embed]
-///     definitions: Vec<String>,
-/// }
-///
-/// // Create OpenAI client
-/// let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-/// let openai_client = Client::new(&openai_api_key);
-///
-/// let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
-///
-/// let embeddings = EmbeddingsBuilder::new(model.clone())
-///     .documents(vec![
-///         FakeDefinition {
-///             id: "doc0".to_string(),
-///             word: "flurbo".to_string(),
-///             definitions: vec![
-///                 "A green alien that lives on cold planets.".to_string(),
-///                 "A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
-///             ]
-///         },
-///         FakeDefinition {
-///             id: "doc1".to_string(),
-///             word: "glarb-glarb".to_string(),
-///             definitions: vec![
-///                 "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-///                 "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
-///             ]
-///         },
-///         FakeDefinition {
-///             id: "doc2".to_string(),
-///             word: "linglingdong".to_string(),
-///             definitions: vec![
-///                 "A term used by inhabitants of the sombrero galaxy to describe humans.".to_string(),
-///                 "A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
-///             ]
-///         },
-///     ])?
-///     .build()
-///     .await?;
-/// ```
 impl<M: EmbeddingModel, T: Embed + Send> EmbeddingsBuilder<M, T> {
     /// Generate embeddings for all documents in the builder.
     /// Returns a vector of tuples, where the first element is the document and the second element is the embeddings (either one embedding or many).
@@ -174,9 +175,9 @@ mod tests {
     use super::EmbeddingsBuilder;
 
     #[derive(Clone)]
-    struct FakeModel;
+    struct Model;
 
-    impl EmbeddingModel for FakeModel {
+    impl EmbeddingModel for Model {
         const MAX_DOCUMENTS: usize = 5;
 
         fn ndims(&self) -> usize {
@@ -198,12 +199,12 @@ mod tests {
     }
 
     #[derive(Clone, Debug)]
-    struct FakeDefinition {
+    struct WordDefinition {
         id: String,
         definitions: Vec<String>,
     }
 
-    impl Embed for FakeDefinition {
+    impl Embed for WordDefinition {
         fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
             for definition in &self.definitions {
                 embedder.embed(definition.clone());
@@ -212,16 +213,16 @@ mod tests {
         }
     }
 
-    fn fake_definitions_multiple_text() -> Vec<FakeDefinition> {
+    fn definitions_multiple_text() -> Vec<WordDefinition> {
         vec![
-            FakeDefinition {
+            WordDefinition {
                 id: "doc0".to_string(),
                 definitions: vec![
                     "A green alien that lives on cold planets.".to_string(),
                     "A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
                 ]
             },
-            FakeDefinition {
+            WordDefinition {
                 id: "doc1".to_string(),
                 definitions: vec![
                     "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
@@ -231,13 +232,13 @@ mod tests {
         ]
     }
 
-    fn fake_definitions_multiple_text_2() -> Vec<FakeDefinition> {
+    fn definitions_multiple_text_2() -> Vec<WordDefinition> {
         vec![
-            FakeDefinition {
+            WordDefinition {
                 id: "doc2".to_string(),
                 definitions: vec!["Another fake definitions".to_string()],
             },
-            FakeDefinition {
+            WordDefinition {
                 id: "doc3".to_string(),
                 definitions: vec!["Some fake definition".to_string()],
             },
@@ -245,25 +246,25 @@ mod tests {
     }
 
     #[derive(Clone, Debug)]
-    struct FakeDefinitionSingle {
+    struct WordDefinitionSingle {
         id: String,
         definition: String,
     }
 
-    impl Embed for FakeDefinitionSingle {
+    impl Embed for WordDefinitionSingle {
         fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
             embedder.embed(self.definition.clone());
             Ok(())
         }
     }
 
-    fn fake_definitions_single_text() -> Vec<FakeDefinitionSingle> {
+    fn definitions_single_text() -> Vec<WordDefinitionSingle> {
         vec![
-            FakeDefinitionSingle {
+            WordDefinitionSingle {
                 id: "doc0".to_string(),
                 definition: "A green alien that lives on cold planets.".to_string(),
             },
-            FakeDefinitionSingle {
+            WordDefinitionSingle {
                 id: "doc1".to_string(),
                 definition: "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
             }
@@ -272,9 +273,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_multiple_text() {
-        let fake_definitions = fake_definitions_multiple_text();
+        let fake_definitions = definitions_multiple_text();
 
-        let fake_model = FakeModel;
+        let fake_model = Model;
         let mut result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()
@@ -306,9 +307,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_single_text() {
-        let fake_definitions = fake_definitions_single_text();
+        let fake_definitions = definitions_single_text();
 
-        let fake_model = FakeModel;
+        let fake_model = Model;
         let mut result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()
@@ -340,10 +341,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_multiple_and_single_text() {
-        let fake_definitions = fake_definitions_multiple_text();
-        let fake_definitions_single = fake_definitions_multiple_text_2();
+        let fake_definitions = definitions_multiple_text();
+        let fake_definitions_single = definitions_multiple_text_2();
 
-        let fake_model = FakeModel;
+        let fake_model = Model;
         let mut result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()
@@ -377,10 +378,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_string() {
-        let bindings = fake_definitions_multiple_text();
+        let bindings = definitions_multiple_text();
         let fake_definitions = bindings.iter().map(|def| def.definitions.clone());
 
-        let fake_model = FakeModel;
+        let fake_model = Model;
         let mut result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()

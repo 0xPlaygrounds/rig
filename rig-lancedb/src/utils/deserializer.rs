@@ -356,9 +356,9 @@ fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError>
     }
 }
 
-///////////////////////////////////////////////////////////////////////////////////
-/// Everything below includes helpers for the recursive function `type_matcher`.///
-///////////////////////////////////////////////////////////////////////////////////
+// ================================================================
+// Everything below includes helpers for the recursive function `type_matcher`
+// ================================================================
 
 /// Trait used to "deserialize" an arrow_array::Array as as list of primitive objects.
 trait DeserializePrimitiveArray {

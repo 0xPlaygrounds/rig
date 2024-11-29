@@ -35,8 +35,8 @@ tracing-subscriber = "0.3.18"
 tokio-test = "0.4.4"
 
 [features]
+all = ["derive", "pdf"]
 derive = ["dep:rig-derive"]
-all = ["pdf"]
 pdf = ["dep:lopdf"]
 
 [[test]]

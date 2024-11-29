@@ -29,15 +29,15 @@ impl EmbedError {
 /// use std::env;
 ///
 /// use serde::{Deserialize, Serialize};
-/// use rig::{Embed, embeddings::{TextEmbedder, EmbedError, to_texts}};
+/// use rig::{Embed, embeddings::{TextEmbedder, EmbedError}};
 ///
-/// struct FakeDefinition {
+/// struct WordDefinition {
 ///     id: String,
 ///     word: String,
 ///     definitions: String,
 /// }
 ///
-/// impl Embed for FakeDefinition {
+/// impl Embed for WordDefinition {
 ///     fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
 ///        // Embeddings only need to be generated for `definition` field.
 ///        // Split the definitions by comma and collect them into a vector of strings.
@@ -52,13 +52,13 @@ impl EmbedError {
 ///     }
 /// }
 ///
-/// let fake_definition = FakeDefinition {
+/// let fake_definition = WordDefinition {
 ///    id: "1".to_string(),
 ///    word: "apple".to_string(),
 ///    definitions: "a fruit, a tech company".to_string(),
 /// };
 ///
-/// assert_eq!(to_texts(fake_definition).unwrap(), vec!["a fruit", " a tech company"]);
+/// assert_eq!(embeddings::to_texts(fake_definition).unwrap(), vec!["a fruit", " a tech company"]);
 /// ```
 pub trait Embed {
     fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError>;
@@ -171,6 +171,12 @@ impl Embed for serde_json::Value {
     fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
         embedder.embed(serde_json::to_string(self).map_err(EmbedError::new)?);
         Ok(())
+    }
+}
+
+impl<T: Embed> Embed for &T {
+    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
+        (*self).embed(embedder)
     }
 }
 

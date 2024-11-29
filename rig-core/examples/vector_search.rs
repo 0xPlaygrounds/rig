@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
 #[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
-struct FakeDefinition {
+struct WordDefinition {
     id: String,
     word: String,
     #[embed]
@@ -28,7 +28,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let embeddings = EmbeddingsBuilder::new(model.clone())
         .documents(vec![
-            FakeDefinition {
+            WordDefinition {
                 id: "doc0".to_string(),
                 word: "flurbo".to_string(),
                 definitions: vec![
@@ -36,7 +36,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     "A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
                 ]
             },
-            FakeDefinition {
+            WordDefinition {
                 id: "doc1".to_string(),
                 word: "glarb-glarb".to_string(),
                 definitions: vec![
@@ -44,7 +44,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
                 ]
             },
-            FakeDefinition {
+            WordDefinition {
                 id: "doc2".to_string(),
                 word: "linglingdong".to_string(),
                 definitions: vec![
@@ -61,7 +61,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .index(model);
 
     let results = index
-        .top_n::<FakeDefinition>("I need to buy something in a fictional universe. What type of money can I use for this?", 1)
+        .top_n::<WordDefinition>("I need to buy something in a fictional universe. What type of money can I use for this?", 1)
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.word))

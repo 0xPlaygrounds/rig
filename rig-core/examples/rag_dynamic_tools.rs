@@ -137,11 +137,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_max_level(tracing::Level::INFO)
         // disable printing the name of the module in every log line.
         .with_target(false)
-        // this needs to be set to false, otherwise ANSI color codes will
-        // show up in a confusing manner in CloudWatch logs.
-        .with_ansi(false)
-        // disabling time is handy because CloudWatch will add the ingestion time.
-        .without_time()
         .init();
 
     // Create OpenAI client
