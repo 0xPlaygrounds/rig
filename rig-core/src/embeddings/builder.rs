@@ -16,7 +16,7 @@ use crate::{
 /// Builder for creating embeddings from one or more documents of type `T`.
 /// Note: `T` can be any type that implements the [Embed] trait.
 ///
-/// Using the builder is preferred over using [EmbeddingModel::embed_text] directly as 
+/// Using the builder is preferred over using [EmbeddingModel::embed_text] directly as
 /// it will batch the documents in a single request to the model provider.
 ///
 /// # Example
