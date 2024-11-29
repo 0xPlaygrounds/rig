@@ -57,9 +57,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    let index = InMemoryVectorStore::default()
-        .add_documents_with_id(embeddings, |definition| definition.id.clone())?
-        .index(search_model);
+    // Create vector store with the embeddings
+    let vector_store =
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
+
+    // Create vector store index
+    let index = vector_store.index(search_model);
 
     let results = index
         .top_n::<WordDefinition>(
