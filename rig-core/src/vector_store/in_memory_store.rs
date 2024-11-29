@@ -263,7 +263,7 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
 mod tests {
     use std::cmp::Reverse;
 
-    use crate::{embeddings::embedding::Embedding, vector_store, OneOrMany};
+    use crate::{embeddings::embedding::Embedding, OneOrMany};
 
     use super::{InMemoryVectorStore, RankingItem};
 
