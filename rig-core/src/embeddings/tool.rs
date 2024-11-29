@@ -25,7 +25,7 @@ impl Embed for ToolSchema {
 
 impl ToolSchema {
     /// Convert item that implements [ToolEmbeddingDyn] to an [ToolSchema].
-    /// 
+    ///
     /// # Example
     /// ```rust
     /// use rig::{

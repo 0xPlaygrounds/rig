@@ -7,7 +7,9 @@ use std::{cmp::max, collections::HashMap};
 use futures::{stream, StreamExt};
 
 use crate::{
-    embeddings::{Embed, EmbedError, Embedding, EmbeddingError, EmbeddingModel, embed::TextEmbedder},
+    embeddings::{
+        embed::TextEmbedder, Embed, EmbedError, Embedding, EmbeddingError, EmbeddingModel,
+    },
     OneOrMany,
 };
 
@@ -96,7 +98,7 @@ impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
         Ok(self)
     }
 
-    /// Add multiple documents to be embedded to the builder. `documents` must be iteratable 
+    /// Add multiple documents to be embedded to the builder. `documents` must be iteratable
     /// with items that implement the [Embed] trait.
     pub fn documents(self, documents: impl IntoIterator<Item = T>) -> Result<Self, EmbedError> {
         let builder = documents
@@ -169,7 +171,7 @@ impl<M: EmbeddingModel, T: Embed + Send> EmbeddingsBuilder<M, T> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        embeddings::{embed::EmbedError, Embedding, EmbeddingModel, embed::TextEmbedder},
+        embeddings::{embed::EmbedError, embed::TextEmbedder, Embedding, EmbeddingModel},
         Embed,
     };
 
