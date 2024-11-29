@@ -1,4 +1,4 @@
-use crate::{completion, vector_store};
+use crate::{completion::{self, CompletionModel}, extractor::{ExtractionError, Extractor}, vector_store};
 
 use super::Op;
 
@@ -91,6 +91,49 @@ where
 {
     Prompt::new(prompt)
 }
+
+pub struct Extract<M, T, In> 
+where
+    M: CompletionModel,
+    T: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
+{
+    extractor: Extractor<M, T>,
+    _in: std::marker::PhantomData<In>,
+}
+
+impl<M, T, In> Extract<M, T, In> 
+where
+    M: CompletionModel,
+    T: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
+{
+    pub fn new(extractor: Extractor<M, T>) -> Self {
+        Self { extractor, _in: std::marker::PhantomData }
+    }
+}
+
+impl<M, T, In> Op for Extract<M, T, In>
+where
+    M: CompletionModel,
+    T: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
+    In: Into<String> + Send + Sync,
+{
+    type Input = In;
+    type Output = Result<T, ExtractionError>;
+
+    async fn call(&self, input: Self::Input) -> Self::Output {
+        self.extractor.extract(&input.into()).await
+    }
+}
+
+pub fn extract<M, T, In>(extractor: Extractor<M, T>) -> Extract<M, T, In>
+where
+    M: CompletionModel,
+    T: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
+    In: Into<String> + Send + Sync,
+{
+    Extract::new(extractor)
+}
+
 
 #[cfg(test)]
 pub mod tests {
