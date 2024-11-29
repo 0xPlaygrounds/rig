@@ -42,17 +42,17 @@ pub trait EmbeddingModel: Clone + Sync + Send {
     /// Embed multiple text documents in a single request
     fn embed_texts(
         &self,
-        documents: impl IntoIterator<Item = String> + Send,
+        texts: impl IntoIterator<Item = String> + Send,
     ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + Send;
 
     /// Embed a single text document.
     fn embed_text(
         &self,
-        document: &str,
+        text: &str,
     ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + Send {
         async {
             Ok(self
-                .embed_texts(vec![document.to_string()])
+                .embed_texts(vec![text.to_string()])
                 .await?
                 .pop()
                 .expect("There should be at least one embedding"))
