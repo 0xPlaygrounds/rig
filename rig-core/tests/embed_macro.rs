@@ -179,7 +179,7 @@ fn test_embed_vec_string() {
             "Bob".to_string(),
             "Charlie".to_string(),
             "David".to_string()
-       ]
+        ]
     );
 }
 

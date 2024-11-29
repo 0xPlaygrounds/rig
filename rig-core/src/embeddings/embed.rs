@@ -179,7 +179,7 @@ impl<T: Embed> Embed for &T {
         (*self).embed(embedder)
     }
 }
- 
+
 impl<T: Embed> Embed for Vec<T> {
     fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
         for item in self {
