@@ -235,7 +235,7 @@ mod tests {
 
         assert_eq!(
             result,
-            "User query: What is a flurbo?\n\nTop documents:\nbar"
+            "Top documents:\nbar"
         );
     }
 
