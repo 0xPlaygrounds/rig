@@ -174,9 +174,9 @@ mod tests {
     use super::EmbeddingsBuilder;
 
     #[derive(Clone)]
-    struct FakeModel;
+    struct Model;
 
-    impl EmbeddingModel for FakeModel {
+    impl EmbeddingModel for Model {
         const MAX_DOCUMENTS: usize = 5;
 
         fn ndims(&self) -> usize {
@@ -212,7 +212,7 @@ mod tests {
         }
     }
 
-    fn fake_definitions_multiple_text() -> Vec<WordDefinition> {
+    fn definitions_multiple_text() -> Vec<WordDefinition> {
         vec![
             WordDefinition {
                 id: "doc0".to_string(),
@@ -231,7 +231,7 @@ mod tests {
         ]
     }
 
-    fn fake_definitions_multiple_text_2() -> Vec<WordDefinition> {
+    fn definitions_multiple_text_2() -> Vec<WordDefinition> {
         vec![
             WordDefinition {
                 id: "doc2".to_string(),
@@ -257,7 +257,7 @@ mod tests {
         }
     }
 
-    fn fake_definitions_single_text() -> Vec<WordDefinitionSingle> {
+    fn definitions_single_text() -> Vec<WordDefinitionSingle> {
         vec![
             WordDefinitionSingle {
                 id: "doc0".to_string(),
@@ -272,9 +272,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_multiple_text() {
-        let fake_definitions = fake_definitions_multiple_text();
+        let fake_definitions = definitions_multiple_text();
 
-        let fake_model = FakeModel;
+        let fake_model = Model;
         let mut result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()
@@ -306,9 +306,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_single_text() {
-        let fake_definitions = fake_definitions_single_text();
+        let fake_definitions = definitions_single_text();
 
-        let fake_model = FakeModel;
+        let fake_model = Model;
         let mut result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()
@@ -340,10 +340,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_multiple_and_single_text() {
-        let fake_definitions = fake_definitions_multiple_text();
-        let fake_definitions_single = fake_definitions_multiple_text_2();
+        let fake_definitions = definitions_multiple_text();
+        let fake_definitions_single = definitions_multiple_text_2();
 
-        let fake_model = FakeModel;
+        let fake_model = Model;
         let mut result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()
@@ -377,10 +377,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_string() {
-        let bindings = fake_definitions_multiple_text();
+        let bindings = definitions_multiple_text();
         let fake_definitions = bindings.iter().map(|def| def.definitions.clone());
 
-        let fake_model = FakeModel;
+        let fake_model = Model;
         let mut result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()
