@@ -5,7 +5,7 @@ use rig::{
     parallel,
     pipeline::{self, agent_ops::lookup, passthrough, Op},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::{in_memory_store::InMemoryVectorStore, VectorStore},
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 
 #[tokio::main]
@@ -16,17 +16,16 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
-    // Create vector store, compute embeddings and load them in the store
-    let mut vector_store = InMemoryVectorStore::default();
-
+    // Create embeddings for our documents
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .simple_document("doc0", "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
-        .simple_document("doc1", "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
-        .simple_document("doc2", "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.")
+        .document("Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")?
+        .document("Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")?
+        .document("Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.")?
         .build()
         .await?;
 
-    vector_store.add_documents(embeddings).await?;
+    // Create vector store with the embeddings
+    let vector_store = InMemoryVectorStore::from_documents(embeddings);
 
     // Create vector store index
     let index = vector_store.index(embedding_model);
@@ -71,44 +70,3 @@ async fn main() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
-
-// trait Foo<T> {
-//     fn foo(&self);
-// }
-
-// impl<F, T, Out> Foo<(T,)> for F
-// where
-//     F: Fn(T) -> Out,
-// {
-//     fn foo(&self) {
-//         todo!()
-//     }
-// }
-
-// impl<F, T1, T2, Out> Foo<(T1, T2)> for F
-// where
-//     F: Fn(T1, T2) -> Out,
-// {
-//     fn foo(&self) {
-//         todo!()
-//     }
-// }
-
-// impl<F, T1, T2, T3, Out> Foo<(T1, T2, T3)> for F
-// where
-//     F: Fn(T1, T2, T3) -> Out,
-// {
-//     fn foo(&self) {
-//         todo!()
-//     }
-// }
-
-// impl<F, T, Fut> Foo<((Fut, T,),)> for F
-// where
-//     F: Fn(T) -> Fut,
-//     Fut: Future,
-// {
-//     fn foo(&self) {
-//         todo!()
-//     }
-// }
