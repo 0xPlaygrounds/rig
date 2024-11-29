@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use arrow_array::RecordBatchIterator;
-use fixture::{as_record_batch, fake_definitions, schema, WordDefinition};
+use fixture::{as_record_batch, schema, word_definitions, WordDefinition};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
@@ -27,7 +27,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Generate embeddings for the test data.
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(fake_definitions())?
+        .documents(word_definitions())?
         // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
         .documents(
             (0..256)

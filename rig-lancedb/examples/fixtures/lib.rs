@@ -13,7 +13,7 @@ pub struct WordDefinition {
     pub definition: String,
 }
 
-pub fn fake_definitions() -> Vec<WordDefinition> {
+pub fn word_definitions() -> Vec<WordDefinition> {
     vec![
         WordDefinition {
             id: "doc0".to_string(),
