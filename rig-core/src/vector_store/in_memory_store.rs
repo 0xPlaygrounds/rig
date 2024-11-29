@@ -13,7 +13,7 @@ use crate::{
     OneOrMany,
 };
 
-/// InMemoryVectorStore is a simple in-memory vector store that stores embeddings
+/// [InMemoryVectorStore] is a simple in-memory vector store that stores embeddings
 /// in-memory using a HashMap.
 #[derive(Clone, Default)]
 pub struct InMemoryVectorStore<D: Serialize> {
@@ -24,8 +24,49 @@ pub struct InMemoryVectorStore<D: Serialize> {
 }
 
 impl<D: Serialize + Eq> InMemoryVectorStore<D> {
-    /// Implement vector search on InMemoryVectorStore.
-    /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for InMemoryVectorStore.
+    /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings.
+    /// Ids are automatically generated have will have the form `"doc{n}"` where `n`
+    /// is the index of the document.
+    pub fn from_documents(documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>) -> Self {
+        let mut store = HashMap::new();
+        documents
+            .into_iter()
+            .enumerate()
+            .for_each(|(i, (doc, embeddings))| {
+                store.insert(format!("doc{i}"), (doc, embeddings));
+            });
+
+        Self { embeddings: store }
+    }
+
+    /// Create a new [InMemoryVectorStore] from documents and and their corresponding embeddings with ids.
+    pub fn from_documents_with_ids(
+        documents: impl IntoIterator<Item = (impl ToString, D, OneOrMany<Embedding>)>,
+    ) -> Self {
+        let mut store = HashMap::new();
+        documents.into_iter().for_each(|(i, doc, embeddings)| {
+            store.insert(i.to_string(), (doc, embeddings));
+        });
+
+        Self { embeddings: store }
+    }
+
+    /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings.
+    /// Document ids are generated using the provided function.
+    pub fn from_documents_with_id_f(
+        documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>,
+        f: fn(&D) -> String,
+    ) -> Self {
+        let mut store = HashMap::new();
+        documents.into_iter().for_each(|(doc, embeddings)| {
+            store.insert(f(&doc), (doc, embeddings));
+        });
+
+        Self { embeddings: store }
+    }
+
+    /// Implement vector search on [InMemoryVectorStore].
+    /// To be used by implementations of [VectorStoreIndex::top_n] and [VectorStoreIndex::top_n_ids] methods.
     fn vector_search(&self, prompt_embedding: &Embedding, n: usize) -> EmbeddingRanking<D> {
         // Sort documents by best embedding distance
         let mut docs = BinaryHeap::new();
@@ -63,32 +104,44 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         docs
     }
 
-    /// Add documents to the store.
-    /// Returns the store with the added documents.
+    /// Add documents and their corresponding embeddings to the store.
+    /// Ids are automatically generated have will have the form `"doc{n}"` where `n`
+    /// is the index of the document.
     pub fn add_documents(
-        mut self,
-        documents: Vec<(String, D, OneOrMany<Embedding>)>,
-    ) -> Result<Self, VectorStoreError> {
-        for (id, doc, embeddings) in documents {
-            self.embeddings.insert(id, (doc, embeddings));
-        }
-
-        Ok(self)
+        &mut self,
+        documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>,
+    ) {
+        let current_index = self.embeddings.len();
+        documents
+            .into_iter()
+            .enumerate()
+            .for_each(|(index, (doc, embeddings))| {
+                self.embeddings
+                    .insert(format!("doc{}", index + current_index), (doc, embeddings));
+            });
     }
 
-    /// Add documents to the store. Define a function that takes as input the reference of the document and returns its id.
-    /// Returns the store with the added documents.
-    pub fn add_documents_with_id(
-        mut self,
+    /// Add documents and their corresponding embeddings to the store with ids.
+    pub fn add_documents_with_ids(
+        &mut self,
+        documents: impl IntoIterator<Item = (impl ToString, D, OneOrMany<Embedding>)>,
+    ) {
+        documents.into_iter().for_each(|(id, doc, embeddings)| {
+            self.embeddings.insert(id.to_string(), (doc, embeddings));
+        });
+    }
+
+    /// Add documents and their corresponding embeddings to the store.
+    /// Document ids are generated using the provided function.
+    pub fn add_documents_with_id_f(
+        &mut self,
         documents: Vec<(D, OneOrMany<Embedding>)>,
-        id_f: fn(&D) -> String,
-    ) -> Result<Self, VectorStoreError> {
+        f: fn(&D) -> String,
+    ) {
         for (doc, embeddings) in documents {
-            let id = id_f(&doc);
+            let id = f(&doc);
             self.embeddings.insert(id, (doc, embeddings));
         }
-
-        Ok(self)
     }
 
     /// Get the document by its id and deserialize it into the given type.
@@ -215,37 +268,138 @@ mod tests {
     use super::{InMemoryVectorStore, RankingItem};
 
     #[test]
-    fn test_single_embedding() {
-        let index = InMemoryVectorStore::default()
-            .add_documents(vec![
+    fn test_auto_ids() {
+        let mut vector_store = InMemoryVectorStore::from_documents(vec![
+            (
+                "glarb-garb",
+                OneOrMany::one(Embedding {
+                    document: "glarb-garb".to_string(),
+                    vec: vec![0.1, 0.1, 0.5],
+                }),
+            ),
+            (
+                "marble-marble",
+                OneOrMany::one(Embedding {
+                    document: "marble-marble".to_string(),
+                    vec: vec![0.7, -0.3, 0.0],
+                }),
+            ),
+            (
+                "flumb-flumb",
+                OneOrMany::one(Embedding {
+                    document: "flumb-flumb".to_string(),
+                    vec: vec![0.3, 0.7, 0.1],
+                }),
+            ),
+        ]);
+
+        vector_store.add_documents(vec![
+            (
+                "brotato",
+                OneOrMany::one(Embedding {
+                    document: "brotato".to_string(),
+                    vec: vec![0.3, 0.7, 0.1],
+                }),
+            ),
+            (
+                "ping-pong",
+                OneOrMany::one(Embedding {
+                    document: "ping-pong".to_string(),
+                    vec: vec![0.7, -0.3, 0.0],
+                }),
+            ),
+        ]);
+
+        let mut store = vector_store.embeddings.into_iter().collect::<Vec<_>>();
+        store.sort_by_key(|(id, _)| id.clone());
+
+        assert_eq!(
+            store,
+            vec![
+                (
+                    "doc0".to_string(),
+                    (
+                        "glarb-garb",
+                        OneOrMany::one(Embedding {
+                            document: "glarb-garb".to_string(),
+                            vec: vec![0.1, 0.1, 0.5],
+                        })
+                    )
+                ),
                 (
                     "doc1".to_string(),
-                    "glarb-garb",
-                    OneOrMany::one(Embedding {
-                        document: "glarb-garb".to_string(),
-                        vec: vec![0.1, 0.1, 0.5],
-                    }),
+                    (
+                        "marble-marble",
+                        OneOrMany::one(Embedding {
+                            document: "marble-marble".to_string(),
+                            vec: vec![0.7, -0.3, 0.0],
+                        })
+                    )
                 ),
                 (
                     "doc2".to_string(),
-                    "marble-marble",
-                    OneOrMany::one(Embedding {
-                        document: "marble-marble".to_string(),
-                        vec: vec![0.7, -0.3, 0.0],
-                    }),
+                    (
+                        "flumb-flumb",
+                        OneOrMany::one(Embedding {
+                            document: "flumb-flumb".to_string(),
+                            vec: vec![0.3, 0.7, 0.1],
+                        })
+                    )
                 ),
                 (
                     "doc3".to_string(),
-                    "flumb-flumb",
-                    OneOrMany::one(Embedding {
-                        document: "flumb-flumb".to_string(),
-                        vec: vec![0.3, 0.7, 0.1],
-                    }),
+                    (
+                        "brotato",
+                        OneOrMany::one(Embedding {
+                            document: "brotato".to_string(),
+                            vec: vec![0.3, 0.7, 0.1],
+                        })
+                    )
                 ),
-            ])
-            .unwrap();
+                (
+                    "doc4".to_string(),
+                    (
+                        "ping-pong",
+                        OneOrMany::one(Embedding {
+                            document: "ping-pong".to_string(),
+                            vec: vec![0.7, -0.3, 0.0],
+                        })
+                    )
+                )
+            ]
+        );
+    }
 
-        let ranking = index.vector_search(
+    #[test]
+    fn test_single_embedding() {
+        let vector_store = InMemoryVectorStore::from_documents_with_ids(vec![
+            (
+                "doc1",
+                "glarb-garb",
+                OneOrMany::one(Embedding {
+                    document: "glarb-garb".to_string(),
+                    vec: vec![0.1, 0.1, 0.5],
+                }),
+            ),
+            (
+                "doc2",
+                "marble-marble",
+                OneOrMany::one(Embedding {
+                    document: "marble-marble".to_string(),
+                    vec: vec![0.7, -0.3, 0.0],
+                }),
+            ),
+            (
+                "doc3",
+                "flumb-flumb",
+                OneOrMany::one(Embedding {
+                    document: "flumb-flumb".to_string(),
+                    vec: vec![0.3, 0.7, 0.1],
+                }),
+            ),
+        ]);
+
+        let ranking = vector_store.vector_search(
             &Embedding {
                 document: "glarby-glarble".to_string(),
                 vec: vec![0.0, 0.1, 0.6],
@@ -274,57 +428,55 @@ mod tests {
 
     #[test]
     fn test_multiple_embeddings() {
-        let index = InMemoryVectorStore::default()
-            .add_documents(vec![
-                (
-                    "doc1".to_string(),
-                    "glarb-garb",
-                    OneOrMany::many(vec![
-                        Embedding {
-                            document: "glarb-garb".to_string(),
-                            vec: vec![0.1, 0.1, 0.5],
-                        },
-                        Embedding {
-                            document: "don't-choose-me".to_string(),
-                            vec: vec![-0.5, 0.9, 0.1],
-                        },
-                    ])
-                    .unwrap(),
-                ),
-                (
-                    "doc2".to_string(),
-                    "marble-marble",
-                    OneOrMany::many(vec![
-                        Embedding {
-                            document: "marble-marble".to_string(),
-                            vec: vec![0.7, -0.3, 0.0],
-                        },
-                        Embedding {
-                            document: "sandwich".to_string(),
-                            vec: vec![0.5, 0.5, -0.7],
-                        },
-                    ])
-                    .unwrap(),
-                ),
-                (
-                    "doc3".to_string(),
-                    "flumb-flumb",
-                    OneOrMany::many(vec![
-                        Embedding {
-                            document: "flumb-flumb".to_string(),
-                            vec: vec![0.3, 0.7, 0.1],
-                        },
-                        Embedding {
-                            document: "banana".to_string(),
-                            vec: vec![0.1, -0.5, -0.5],
-                        },
-                    ])
-                    .unwrap(),
-                ),
-            ])
-            .unwrap();
+        let vector_store = InMemoryVectorStore::from_documents_with_ids(vec![
+            (
+                "doc1",
+                "glarb-garb",
+                OneOrMany::many(vec![
+                    Embedding {
+                        document: "glarb-garb".to_string(),
+                        vec: vec![0.1, 0.1, 0.5],
+                    },
+                    Embedding {
+                        document: "don't-choose-me".to_string(),
+                        vec: vec![-0.5, 0.9, 0.1],
+                    },
+                ])
+                .unwrap(),
+            ),
+            (
+                "doc2",
+                "marble-marble",
+                OneOrMany::many(vec![
+                    Embedding {
+                        document: "marble-marble".to_string(),
+                        vec: vec![0.7, -0.3, 0.0],
+                    },
+                    Embedding {
+                        document: "sandwich".to_string(),
+                        vec: vec![0.5, 0.5, -0.7],
+                    },
+                ])
+                .unwrap(),
+            ),
+            (
+                "doc3",
+                "flumb-flumb",
+                OneOrMany::many(vec![
+                    Embedding {
+                        document: "flumb-flumb".to_string(),
+                        vec: vec![0.3, 0.7, 0.1],
+                    },
+                    Embedding {
+                        document: "banana".to_string(),
+                        vec: vec![0.1, -0.5, -0.5],
+                    },
+                ])
+                .unwrap(),
+            ),
+        ]);
 
-        let ranking = index.vector_search(
+        let ranking = vector_store.vector_search(
             &Embedding {
                 document: "glarby-glarble".to_string(),
                 vec: vec![0.0, 0.1, 0.6],

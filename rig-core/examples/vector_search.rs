@@ -24,9 +24,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     let openai_client = Client::new(&openai_api_key);
 
-    let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+    let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
-    let embeddings = EmbeddingsBuilder::new(model.clone())
+    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(vec![
             WordDefinition {
                 id: "doc0".to_string(),
@@ -56,9 +56,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    let index = InMemoryVectorStore::default()
-        .add_documents_with_id(embeddings, |definition| definition.id.clone())?
-        .index(model);
+    // Create vector store with the embeddings
+    let vector_store =
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
+
+    // Create vector store index
+    let index = vector_store.index(embedding_model);
 
     let results = index
         .top_n::<WordDefinition>("I need to buy something in a fictional universe. What type of money can I use for this?", 1)
