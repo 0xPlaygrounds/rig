@@ -58,10 +58,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Create vector store with the embeddings
-    let vector_store = InMemoryVectorStore::from_documents_with_id_f(
-        embeddings,
-        |doc| doc.id.clone()
-    );
+    let vector_store =
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
 
     // Create vector store index
     let index = vector_store.index(search_model);
