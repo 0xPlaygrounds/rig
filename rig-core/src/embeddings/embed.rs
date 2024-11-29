@@ -73,7 +73,7 @@ pub struct TextEmbedder {
 
 impl TextEmbedder {
     /// Adds input `text` string to the list of texts in the [TextEmbedder] that need to be embedded.
-    pub(crate) fn embed(&mut self, text: String) {
+    pub fn embed(&mut self, text: String) {
         self.texts.push(text);
     }
 }
