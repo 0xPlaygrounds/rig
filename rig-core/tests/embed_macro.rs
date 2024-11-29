@@ -1,5 +1,5 @@
 use rig::{
-    embeddings::{embed::EmbedError, TextEmbedder},
+    embeddings::{self, embed::EmbedError, TextEmbedder},
     Embed,
 };
 use serde::Serialize;
