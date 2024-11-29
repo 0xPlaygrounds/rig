@@ -373,7 +373,7 @@ mod tests {
         );
 
         let result = pipeline.call(1).await;
-        assert_eq!(result, (2, 3, "1 is the number!".to_string(), false));
+        assert_eq!(result, (2, 3, "1 is the number!".to_string(), true));
     }
 
     #[tokio::test]
