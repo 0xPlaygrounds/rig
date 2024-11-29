@@ -13,8 +13,11 @@ use crate::{
     OneOrMany,
 };
 
-/// Builder for creating a collection of embeddings from a vector of documents of type `T`.
-/// Accumulate documents such that they can be embedded in a single batch to limit api calls to the model provider.
+/// Builder for creating embeddings from one or more documents of type `T`.
+/// Note: `T` can be any type that implements the [Embed] trait.
+///
+/// Using the builder is preferred over using [EmbeddingModel::embed_text] directly as 
+/// it will batch the documents in a single request to the model provider.
 ///
 /// # Example
 /// ```rust
@@ -23,20 +26,8 @@ use crate::{
 /// use rig::{
 ///     embeddings::EmbeddingsBuilder,
 ///     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-///     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-///     Embed,
 /// };
 /// use serde::{Deserialize, Serialize};
-///
-/// // Shape of data that needs to be RAG'ed.
-/// // The definition field will be used to generate embeddings.
-/// #[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
-/// struct WordDefinition {
-///     id: String,
-///     word: String,
-///     #[embed]
-///     definitions: Vec<String>,
-/// }
 ///
 /// // Create OpenAI client
 /// let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
@@ -46,30 +37,12 @@ use crate::{
 ///
 /// let embeddings = EmbeddingsBuilder::new(model.clone())
 ///     .documents(vec![
-///         WordDefinition {
-///             id: "doc0".to_string(),
-///             word: "flurbo".to_string(),
-///             definitions: vec![
-///                 "A green alien that lives on cold planets.".to_string(),
-///                 "A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
-///             ]
-///         },
-///         WordDefinition {
-///             id: "doc1".to_string(),
-///             word: "glarb-glarb".to_string(),
-///             definitions: vec![
-///                 "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-///                 "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
-///             ]
-///         },
-///         WordDefinition {
-///             id: "doc2".to_string(),
-///             word: "linglingdong".to_string(),
-///             definitions: vec![
-///                 "A term used by inhabitants of the sombrero galaxy to describe humans.".to_string(),
-///                 "A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
-///             ]
-///         },
+///         "1. *flurbo* (noun): A green alien that lives on cold planets.".to_string(),
+///         "2. *flurbo* (noun): A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
+///         "1. *glarb-glarb* (noun): An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+///         "2. *glarb-glarb* (noun): A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
+///         "1. *linlingdong* (noun): A term used by inhabitants of the sombrero galaxy to describe humans.".to_string(),
+///         "2. *linlingdong* (noun): A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
 ///     ])?
 ///     .build()
 ///     .await?;
