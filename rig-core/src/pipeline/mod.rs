@@ -233,10 +233,7 @@ mod tests {
             .await
             .expect("Failed to run chain");
 
-        assert_eq!(
-            result,
-            "Top documents:\nbar"
-        );
+        assert_eq!(result, "Top documents:\nbar");
     }
 
     #[tokio::test]

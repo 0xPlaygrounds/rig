@@ -50,6 +50,9 @@ async fn main() -> anyhow::Result<()> {
         )
         .build();
 
+    // Create a chain that extracts names, topics, and sentiment from a given text
+    // using three different GPT-4 based extractors.
+    // The chain will output a formatted string containing the extracted information.
     let chain = pipeline::new()
         .chain(try_parallel!(
             agent_ops::extract(names_extractor),
@@ -65,9 +68,21 @@ async fn main() -> anyhow::Result<()> {
             )
         });
 
-    let response = chain.try_call("Screw you Putin!").await?;
+    // Batch call the chain with up to 4 inputs concurrently
+    let response = chain
+        .try_batch_call(
+            4,
+            vec![
+                "Screw you Putin!",
+                "I love my dog, but I hate my cat.",
+                "I'm going to the store to buy some milk.",
+            ],
+        )
+        .await?;
 
-    println!("Text analysis:\n{response}");
+    for response in response {
+        println!("Text analysis:\n{response}");
+    }
 
     Ok(())
 }

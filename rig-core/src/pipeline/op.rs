@@ -2,6 +2,7 @@ use std::future::Future;
 
 #[allow(unused_imports)] // Needed since this is used in a macro rule
 use futures::join;
+use futures::{stream, StreamExt};
 
 // ================================================================
 // Core Op trait
@@ -11,6 +12,23 @@ pub trait Op: Send + Sync {
     type Output: Send + Sync;
 
     fn call(&self, input: Self::Input) -> impl Future<Output = Self::Output> + Send;
+
+    /// Execute the current pipeline with the given inputs. `n` is the number of concurrent
+    /// inputs that will be processed concurrently.
+    fn batch_call<I>(&self, n: usize, input: I) -> impl Future<Output = Vec<Self::Output>> + Send
+    where
+        I: IntoIterator<Item = Self::Input> + Send,
+        I::IntoIter: Send,
+        Self: Sized,
+    {
+        async move {
+            stream::iter(input)
+                .map(|input| self.call(input))
+                .buffered(n)
+                .collect()
+                .await
+        }
+    }
 
     /// Chain a function to the current pipeline
     ///

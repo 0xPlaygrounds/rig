@@ -2,6 +2,7 @@ use std::future::Future;
 
 #[allow(unused_imports)] // Needed since this is used in a macro rule
 use futures::try_join;
+use futures::{stream, StreamExt, TryStreamExt};
 
 use super::op::{self, map, then};
 
@@ -17,6 +18,29 @@ pub trait TryOp: Send + Sync {
         &self,
         input: Self::Input,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send;
+
+    /// Execute the current pipeline with the given inputs. `n` is the number of concurrent
+    /// inputs that will be processed concurrently.
+    /// If one of the inputs fails, the entire operation will fail and the error will
+    /// be returned.
+    fn try_batch_call<I>(
+        &self,
+        n: usize,
+        input: I,
+    ) -> impl Future<Output = Result<Vec<Self::Output>, Self::Error>> + Send
+    where
+        I: IntoIterator<Item = Self::Input> + Send,
+        I::IntoIter: Send,
+        Self: Sized,
+    {
+        async move {
+            stream::iter(input)
+                .map(|input| self.try_call(input))
+                .buffered(n)
+                .try_collect()
+                .await
+        }
+    }
 
     fn map_ok<F, T>(self, f: F) -> impl op::Op<Input = Self::Input, Output = Result<T, Self::Error>>
     where
