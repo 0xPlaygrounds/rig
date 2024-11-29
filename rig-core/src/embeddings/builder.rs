@@ -7,12 +7,12 @@ use std::{cmp::max, collections::HashMap};
 use futures::{stream, StreamExt};
 
 use crate::{
-    embeddings::{Embed, EmbedError, Embedding, EmbeddingError, EmbeddingModel, TextEmbedder},
+    embeddings::{Embed, EmbedError, Embedding, EmbeddingError, EmbeddingModel, embed::TextEmbedder},
     OneOrMany,
 };
 
 /// Builder for creating a collection of embeddings from a vector of documents of type `T`.
-/// Accumulate documents such that they can be embedded in a single batch to limit api calls to the provider.
+/// Accumulate documents such that they can be embedded in a single batch to limit api calls to the model provider.
 ///
 /// # Example
 /// ```rust
@@ -86,7 +86,7 @@ impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
         }
     }
 
-    /// Add a document that implements `Embed` to the builder.
+    /// Add a document to be embedded to the builder. `document` must implement the [Embed] trait.
     pub fn document(mut self, document: T) -> Result<Self, EmbedError> {
         let mut embedder = TextEmbedder::default();
         document.embed(&mut embedder)?;
@@ -96,7 +96,8 @@ impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
         Ok(self)
     }
 
-    /// Add many documents that implement `Embed` to the builder.
+    /// Add multiple documents to be embedded to the builder. `documents` must be iteratable 
+    /// with items that implement the [Embed] trait.
     pub fn documents(self, documents: impl IntoIterator<Item = T>) -> Result<Self, EmbedError> {
         let builder = documents
             .into_iter()
@@ -168,7 +169,7 @@ impl<M: EmbeddingModel, T: Embed + Send> EmbeddingsBuilder<M, T> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        embeddings::{embed::EmbedError, Embedding, EmbeddingModel, TextEmbedder},
+        embeddings::{embed::EmbedError, Embedding, EmbeddingModel, embed::TextEmbedder},
         Embed,
     };
 
