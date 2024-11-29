@@ -50,9 +50,9 @@
 //! RAG systems that can be used to answer questions using a knowledge base.
 //!
 //! ## Vector stores and indexes
-//! Rig defines a common interface for working with vector stores and indexes. Specifically, the library
-//! provides the [VectorStore](crate::vector_store::VectorStore) and [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
-//! traits, which can be implemented on a given type to define vector stores and indices respectively.
+//! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
+//! provides the [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
+//! trait, which can be implemented to define vector stores and indices respectively.
 //! Those can then be used as the knowledge base for a RAG enabled [Agent](crate::agent::Agent), or
 //! as a source of context documents in a custom architecture that use multiple LLMs or agents.
 //!
@@ -85,6 +85,14 @@ pub mod embeddings;
 pub mod extractor;
 pub(crate) mod json_utils;
 pub mod loaders;
+pub mod one_or_many;
 pub mod providers;
 pub mod tool;
 pub mod vector_store;
+
+// Re-export commonly used types and traits
+pub use embeddings::Embed;
+pub use one_or_many::{EmptyListError, OneOrMany};
+
+#[cfg(feature = "derive")]
+pub use rig_derive::Embed;

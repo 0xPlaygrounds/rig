@@ -5,7 +5,7 @@ use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     tool::{Tool, ToolEmbedding, ToolSet},
-    vector_store::{in_memory_store::InMemoryVectorStore, VectorStore},
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -247,13 +247,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .tools(&toolset)?
+        .documents(toolset.schemas()?)?
         .build()
         .await?;
 
-    let mut store = InMemoryVectorStore::default();
-    store.add_documents(embeddings).await?;
-    let index = store.index(embedding_model);
+    let index = InMemoryVectorStore::default()
+        .add_documents_with_id(embeddings, |tool| tool.name.clone())?
+        .index(embedding_model);
 
     // Create RAG agent with a single context prompt and a dynamic tool source
     let calculator_rag = openai_client
