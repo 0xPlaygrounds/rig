@@ -1,4 +1,4 @@
-use rig::{parallel, pipeline::{self, agent_ops, Op}, providers::openai};
+use rig::{pipeline::{self, agent_ops, TryOp}, providers::openai, try_parallel};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -46,26 +46,21 @@ async fn main() -> anyhow::Result<()> {
         .build();
 
     let chain = pipeline::new()
-        .chain(parallel!(
+        .chain(try_parallel!(
             agent_ops::extract(names_extractor),
             agent_ops::extract(topics_extractor),
             agent_ops::extract(sentiment_extractor),
         ))
-        .map(|(names, topics, sentiment)| {
-            match (names, topics, sentiment) {
-                (Ok(names), Ok(topics), Ok(sentiment)) => {
-                    format!(
-                        "Extracted names: {names}\nExtracted topics: {topics}\nExtracted sentiment: {sentiment}",
-                        names = names.names.join(", "),
-                        topics = topics.topics.join(", "),
-                        sentiment = sentiment.sentiment,
-                    )
-                }
-                _ => "Failed to extract names, topics, or sentiment".to_string(),
-            }
+        .map_ok(|(names, topics, sentiment)| {
+            format!(
+                "Extracted names: {names}\nExtracted topics: {topics}\nExtracted sentiment: {sentiment}",
+                names = names.names.join(", "),
+                topics = topics.topics.join(", "),
+                sentiment = sentiment.sentiment,
+            )
         });
     
-    let response = chain.call("Screw you Putin!").await;
+    let response = chain.try_call("Screw you Putin!").await?;
 
     println!("Text analysis:\n{response}");
 

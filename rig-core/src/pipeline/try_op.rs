@@ -3,7 +3,7 @@ use std::future::Future;
 #[allow(unused_imports)] // Needed since this is used in a macro rule
 use futures::try_join;
 
-use super::op::{map, then};
+use super::op::{self, map, then};
 
 // ================================================================
 // Core TryOp trait
@@ -18,7 +18,7 @@ pub trait TryOp: Send + Sync {
         input: Self::Input,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send;
 
-    fn map_ok<F, T>(self, f: F) -> impl TryOp<Input = Self::Input, Output = T, Error = Self::Error>
+    fn map_ok<F, T>(self, f: F) -> impl op::Op<Input = Self::Input, Output = Result<T, Self::Error>>
     where
         F: Fn(Self::Output) -> T + Send + Sync,
         T: Send + Sync,
@@ -64,6 +64,14 @@ pub trait TryOp: Send + Sync {
     {
         OrElse::new(self, then(f))
     }
+
+    fn chain_ok<T>(self, op: T) -> impl TryOp<Input = Self::Input, Output = T::Output, Error = Self::Error>
+    where
+        T: op::Op<Input = Self::Output>,
+        Self: Sized,
+    {
+        TrySequential::new(self, op)
+    }
 }
 
 impl<Op, T, E> TryOp for Op
@@ -96,17 +104,34 @@ impl<Op1, Op2> MapOk<Op1, Op2> {
 }
 
 // Result<T1, E> -> Result<T2, E>
-impl<Op1, Op2> TryOp for MapOk<Op1, Op2>
+// impl<Op1, Op2> TryOp for MapOk<Op1, Op2>
+// where
+//     Op1: TryOp,
+//     Op2: super::Op<Input = Op1::Output>,
+// {
+//     type Input = Op1::Input;
+//     type Output = Op2::Output;
+//     type Error = Op1::Error;
+
+//     #[inline]
+//     async fn try_call(&self, input: Self::Input) -> Result<Self::Output, Self::Error> {
+//         match self.prev.try_call(input).await {
+//             Ok(output) => Ok(self.op.call(output).await),
+//             Err(err) => Err(err),
+//         }
+//     }
+// }
+
+impl<Op1, Op2> op::Op for MapOk<Op1, Op2>
 where
     Op1: TryOp,
     Op2: super::Op<Input = Op1::Output>,
 {
     type Input = Op1::Input;
-    type Output = Op2::Output;
-    type Error = Op1::Error;
+    type Output = Result<Op2::Output, Op1::Error>;
 
     #[inline]
-    async fn try_call(&self, input: Self::Input) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, input: Self::Input) -> Self::Output {
         match self.prev.try_call(input).await {
             Ok(output) => Ok(self.op.call(output).await),
             Err(err) => Err(err),
@@ -200,6 +225,35 @@ where
     }
 }
 
+pub struct TrySequential<Op1, Op2> {
+    prev: Op1,
+    op: Op2,
+}
+
+impl<Op1, Op2> TrySequential<Op1, Op2> {
+    pub fn new(prev: Op1, op: Op2) -> Self {
+        Self { prev, op }
+    }
+}
+
+impl<Op1, Op2> TryOp for TrySequential<Op1, Op2>
+where
+    Op1: TryOp,
+    Op2: op::Op<Input = Op1::Output>,
+{
+    type Input = Op1::Input;
+    type Output = Op2::Output;
+    type Error = Op1::Error;
+
+    #[inline]
+    async fn try_call(&self, input: Self::Input) -> Result<Self::Output, Self::Error> {
+        match self.prev.try_call(input).await {
+            Ok(output) => Ok(self.op.call(output).await),
+            Err(err) => Err(err),
+        }
+    }
+}
+
 // TODO: Implement TryParallel
 // pub struct TryParallel<Op1, Op2> {
 //     op1: Op1,
@@ -227,19 +281,6 @@ where
 //         Ok((output1?, output2?))
 //     }
 // }
-#[macro_export]
-macro_rules! try_parallel {
-    ($($ops:ident),+) => {
-        then(|input: i32| {
-            let ($($ops),+) = ($(&$ops),+);
-            async move {
-                try_join!($($ops.try_call(input.clone())),+)
-            }
-        })
-    };
-}
-
-pub use try_parallel;
 
 #[cfg(test)]
 mod tests {
@@ -339,53 +380,5 @@ mod tests {
 
         let result = pipeline.try_call(1).await.unwrap();
         assert_eq!(result, 15);
-    }
-
-    #[tokio::test]
-    async fn test_try_parallel_ok() {
-        let op1 = map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") });
-        let op2 = map(|x: i32| {
-            if x % 3 == 0 {
-                Ok(x)
-            } else {
-                Err("x is not divisible by 3")
-            }
-        });
-        let op3 = map(|x: i32| {
-            if x % 5 == 0 {
-                Ok(x)
-            } else {
-                Err("x is not divisible by 5")
-            }
-        });
-
-        let pipeline = try_parallel!(op1, op2, op3);
-
-        let result = pipeline.try_call(30).await.unwrap();
-        assert_eq!(result, (30, 30, 30));
-    }
-
-    #[tokio::test]
-    async fn test_try_parallel_err() {
-        let op1 = map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") });
-        let op2 = map(|x: i32| {
-            if x % 3 == 0 {
-                Ok(x)
-            } else {
-                Err("x is not divisible by 3")
-            }
-        });
-        let op3 = map(|x: i32| {
-            if x % 5 == 0 {
-                Ok(x)
-            } else {
-                Err("x is not divisible by 5")
-            }
-        });
-
-        let pipeline = try_parallel!(op1, op2, op3);
-
-        let result = pipeline.try_call(31).await;
-        assert_eq!(result, Err("x is odd"));
     }
 }
