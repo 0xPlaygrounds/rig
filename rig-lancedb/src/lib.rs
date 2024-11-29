@@ -3,7 +3,7 @@ use lancedb::{
     DistanceType,
 };
 use rig::{
-    embeddings::EmbeddingModel,
+    embeddings::embedding::EmbeddingModel,
     vector_store::{VectorStoreError, VectorStoreIndex},
 };
 use serde::Deserialize;
@@ -20,75 +20,17 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
     VectorStoreError::JsonError(e)
 }
 
+/// Type on which vector searches can be performed for a lanceDb table.
 /// # Example
 /// ```
-/// use std::{env, sync::Arc};
+/// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
+/// use rig::embeddings::EmbeddingModel;
 ///
-/// use arrow_array::RecordBatchIterator;
-/// use fixture::{as_record_batch, schema};
-/// use rig::{
-///     embeddings::{EmbeddingModel, EmbeddingsBuilder},
-///     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-///     vector_store::VectorStoreIndexDyn,
-/// };
-/// use rig_lancedb::{LanceDbVectorStore, SearchParams};
-/// use serde::Deserialize;
-///
-/// #[derive(Deserialize, Debug)]
-/// pub struct VectorSearchResult {
-///     pub id: String,
-///     pub content: String,
-/// }
-///
-/// // Initialize OpenAI client. Use this to generate embeddings (and generate test data for RAG demo).
-/// let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-/// let openai_client = Client::new(&openai_api_key);
-///
-/// // Select the embedding model and generate our embeddings
-/// let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
-///
-/// let embeddings = EmbeddingsBuilder::new(model.clone())
-///     .simple_document("doc0", "Definition of *flumbrel (noun)*: a small, seemingly insignificant item that you constantly lose or misplace, such as a pen, hair tie, or remote control.")
-///     .simple_document("doc1", "Definition of *zindle (verb)*: to pretend to be working on something important while actually doing something completely unrelated or unproductive")
-///     .simple_document("doc2", "Definition of *glimber (adjective)*: describing a state of excitement mixed with nervousness, often experienced before an important event or decision.")
-///     .build()
-///     .await?;
-///
-/// // Define search_params params that will be used by the vector store to perform the vector search.
-/// let search_params = SearchParams::default();
-///
-/// // Initialize LanceDB locally.
-/// let db = lancedb::connect("data/lancedb-store").execute().await?;
-///
-/// // Create table with embeddings.
-/// let record_batch = as_record_batch(embeddings, model.ndims());
-/// let table = db
-///     .create_table(
-///         "definitions",
-///         RecordBatchIterator::new(vec![record_batch], Arc::new(schema(model.ndims()))),
-///     )
-///     .execute()
-///     .await?;
-///
-/// let vector_store = LanceDbVectorStore::new(table, model, "id", search_params).await?;
-///
-/// // Query the index
-/// let results = vector_store
-/// .top_n("My boss says I zindle too much, what does that mean?", 1)
-/// .await?
-/// .into_iter()
-/// .map(|(score, id, doc)| {
-///     anyhow::Ok((
-///         score,
-///         id,
-///         serde_json::from_value::<VectorSearchResult>(doc)?,
-///     ))
-/// })
-/// .collect::<Result<Vec<_>, _>>()?;
-///
-/// println!("Results: {:?}", results);
+/// let table: table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
+/// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
+/// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
 /// ```
-pub struct LanceDbVectorStore<M: EmbeddingModel> {
+pub struct LanceDbVectorIndex<M: EmbeddingModel> {
     /// Defines which model is used to generate embeddings for the vector store.
     model: M,
     /// LanceDB table containing embeddings.
@@ -99,7 +41,24 @@ pub struct LanceDbVectorStore<M: EmbeddingModel> {
     search_params: SearchParams,
 }
 
-impl<M: EmbeddingModel> LanceDbVectorStore<M> {
+impl<M: EmbeddingModel> LanceDbVectorIndex<M> {
+    /// Create an instance of `LanceDbVectorIndex` with an existing table and model.
+    /// Define the id field name of the table.
+    /// Define search parameters that will be used to perform vector searches on the table.
+    pub async fn new(
+        table: lancedb::Table,
+        model: M,
+        id_field: &str,
+        search_params: SearchParams,
+    ) -> Result<Self, lancedb::Error> {
+        Ok(Self {
+            table,
+            model,
+            id_field: id_field.to_string(),
+            search_params,
+        })
+    }
+
     /// Apply the search_params to the vector query.
     /// This is a helper function used by the methods `top_n` and `top_n_ids` of the `VectorStoreIndex` trait.
     fn build_query(&self, mut query: VectorQuery) -> VectorQuery {
@@ -151,6 +110,10 @@ pub enum SearchType {
 }
 
 /// Parameters used to perform a vector search on a LanceDb table.
+/// # Example
+/// ```
+/// let search_params = SearchParams::default().distance_type(DistanceType::Cosine);
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct SearchParams {
     distance_type: Option<DistanceType>,
@@ -211,32 +174,28 @@ impl SearchParams {
     }
 }
 
-impl<M: EmbeddingModel> LanceDbVectorStore<M> {
-    /// Create an instance of `LanceDbVectorStore` with an existing table and model.
-    /// Define the id field name of the table.
-    /// Define search parameters that will be used to perform vector searches on the table.
-    pub async fn new(
-        table: lancedb::Table,
-        model: M,
-        id_field: &str,
-        search_params: SearchParams,
-    ) -> Result<Self, lancedb::Error> {
-        Ok(Self {
-            table,
-            model,
-            id_field: id_field.to_string(),
-            search_params,
-        })
-    }
-}
-
-impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbVectorStore<M> {
-    async fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
+impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M> {
+    /// Implement the `top_n` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
+    /// # Example
+    /// ```
+    /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
+    /// use rig::embeddings::EmbeddingModel;
+    ///
+    /// let table: lancedb::Table = db.create_table("fake_definitions"); // <-- Replace with your lancedb table here.
+    /// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
+    /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
+    ///
+    /// // Query the index
+    /// let result = vector_store_index
+    ///     .top_n::<String>("My boss says I zindle too much, what does that mean?", 1)
+    ///     .await?;
+    /// ```
+    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
         query: &str,
         n: usize,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_document(query).await?;
+        let prompt_embedding = self.model.embed_text(query).await?;
 
         let query = self
             .table
@@ -268,12 +227,24 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for LanceDbV
             .collect()
     }
 
+    /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
+    /// # Example
+    /// ```
+    /// let table: table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
+    /// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
+    /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
+    ///
+    /// // Query the index
+    /// let result = vector_store_index
+    ///     .top_n_ids("My boss says I zindle too much, what does that mean?", 1)
+    ///     .await?;
+    /// ```
     async fn top_n_ids(
         &self,
         query: &str,
         n: usize,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_document(query).await?;
+        let prompt_embedding = self.model.embed_text(query).await?;
 
         let query = self
             .table

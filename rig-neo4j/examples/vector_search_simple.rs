@@ -13,11 +13,19 @@ use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex as _,
+    Embed,
 };
 use rig_neo4j::{
     vector_index::{IndexConfig, SearchParams},
     Neo4jClient, ToBoltType,
 };
+
+#[derive(Embed, Clone, Debug)]
+pub struct WordDefinition {
+    pub id: String,
+    #[embed]
+    pub definition: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -36,9 +44,18 @@ async fn main() -> Result<(), anyhow::Error> {
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .simple_document("doc0", "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
-        .simple_document("doc1", "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
-        .simple_document("doc2", "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.")
+        .document(WordDefinition {
+            id: "doc0".to_string(),
+            definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
+        })?
+        .document(WordDefinition {
+            id: "doc1".to_string(),
+            definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+        })?
+        .document(WordDefinition {
+            id: "doc2".to_string(),
+            definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
+        })?
         .build()
         .await?;
 
@@ -54,7 +71,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     let create_nodes = futures::stream::iter(embeddings)
-        .map(|doc| {
+        .map(|(doc, embeddings)| {
             neo4j_client.graph.run(
                 neo4rs::query(
                     "
@@ -68,8 +85,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 .param("id", doc.id)
                 // Here we use the first embedding but we could use any of them.
                 // Neo4j only takes primitive types or arrays as properties.
-                .param("embedding", doc.embeddings[0].vec.clone())
-                .param("document", doc.document.to_bolt_type()),
+                .param("embedding", embeddings.first().vec.clone())
+                .param("document", doc.definition.to_bolt_type()),
             )
         })
         .buffer_unordered(3)

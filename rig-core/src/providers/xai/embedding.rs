@@ -69,7 +69,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         self.ndims
     }
 
-    async fn embed_documents(
+    async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {

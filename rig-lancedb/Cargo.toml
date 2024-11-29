@@ -18,3 +18,15 @@ futures = "0.3.30"
 [dev-dependencies]
 tokio = "1.40.0"
 anyhow = "1.0.89"
+
+[[example]]
+name = "vector_search_local_ann"
+required-features = ["rig-core/derive"]
+
+[[example]]
+name = "vector_search_local_enn"
+required-features = ["rig-core/derive"]
+
+[[example]]
+name = "vector_search_s3_ann"
+required-features = ["rig-core/derive"]

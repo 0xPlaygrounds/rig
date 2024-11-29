@@ -2,6 +2,7 @@ use crate::{
     agent::AgentBuilder,
     embeddings::{self},
     extractor::ExtractorBuilder,
+    Embed,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -113,7 +114,10 @@ impl Client {
     ///     .await
     ///     .expect("Failed to embed documents");
     /// ```
-    pub fn embeddings(&self, model: &str) -> embeddings::EmbeddingsBuilder<EmbeddingModel> {
+    pub fn embeddings<D: Embed>(
+        &self,
+        model: &str,
+    ) -> embeddings::EmbeddingsBuilder<EmbeddingModel, D> {
         embeddings::EmbeddingsBuilder::new(self.embedding_model(model))
     }
 

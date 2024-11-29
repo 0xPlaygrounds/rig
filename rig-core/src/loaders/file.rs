@@ -162,7 +162,7 @@ impl<'a, T: 'a> FileLoader<'a, Result<T, FileLoaderError>> {
     }
 }
 
-impl<'a> FileLoader<'a, Result<PathBuf, FileLoaderError>> {
+impl FileLoader<'_, Result<PathBuf, FileLoaderError>> {
     /// Creates a new [FileLoader] using a glob pattern to match files.
     ///
     /// # Example
@@ -227,7 +227,7 @@ impl<'a, T> IntoIterator for FileLoader<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for IntoIter<'a, T> {
+impl<T> Iterator for IntoIter<'_, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {

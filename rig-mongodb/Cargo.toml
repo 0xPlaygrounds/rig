@@ -20,3 +20,7 @@ tracing = "0.1.40"
 [dev-dependencies]
 anyhow = "1.0.86"
 tokio = { version = "1.38.0", features = ["macros"] }
+
+[[example]]
+name = "vector_search_mongodb"
+required-features = ["rig-core/derive"]
