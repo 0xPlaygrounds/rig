@@ -26,34 +26,35 @@ const VECTOR_SEARCH_INDEX_NAME: &str = "vector_index";
 const MONGODB_PORT: u16 = 27017;
 const COLLECTION_NAME: &str = "fake_definitions";
 const DATABASE_NAME: &str = "rig";
+const USERNAME: &str = "riguser";
+const PASSWORD: &str = "rigpassword";
 
 #[tokio::test]
 async fn vector_search_test() {
-    // Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
-    let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")
-        .with_exposed_port(MONGODB_PORT.tcp())
-        .with_wait_for(WaitFor::Duration {
-            length: std::time::Duration::from_secs(5),
-        })
-        .with_env_var("MONGODB_INITDB_ROOT_USERNAME", "riguser")
-        .with_env_var("MONGODB_INITDB_ROOT_PASSWORD", "rigpassword")
-        .start()
-        .await
-        .expect("Failed to start MongoDB Atlas container");
-
     // Initialize OpenAI client
     let openai_client = openai::Client::from_env();
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
-    let port = container.get_host_port_ipv4(MONGODB_PORT).await.unwrap();
+    // Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
+    let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")
+        .with_exposed_port(MONGODB_PORT.tcp())
+        .with_wait_for(WaitFor::Duration {
+            length: std::time::Duration::from_secs(5),
+        })
+        .with_env_var("MONGODB_INITDB_ROOT_USERNAME", USERNAME)
+        .with_env_var("MONGODB_INITDB_ROOT_PASSWORD", PASSWORD)
+        .start()
+        .await
+        .expect("Failed to start MongoDB Atlas container");
 
+    let port = container.get_host_port_ipv4(MONGODB_PORT).await.unwrap();
     let host = container.get_host().await.unwrap().to_string();
 
     // Initialize MongoDB client
     let options = ClientOptions::parse(format!(
-        "mongodb://riguser:rigpassword@{host}:{port}/?directConnection=true"
+        "mongodb://{USERNAME}:{PASSWORD}@{host}:{port}/?directConnection=true"
     ))
     .await
     .expect("MongoDB connection string should be valid");
@@ -61,6 +62,52 @@ async fn vector_search_test() {
     let mongodb_client =
         mongodb::Client::with_options(options).expect("MongoDB client options should be valid");
 
+    let collection = setup_database(mongodb_client).await;
+
+    let embeddings = create_embeddings(model.clone()).await;
+
+    collection.insert_many(embeddings).await.unwrap();
+
+    // Create a vector index on our vector store.
+    // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
+    // IMPORTANT: Reuse the same model that was used to generate the embeddings
+    let index = MongoDbVectorIndex::new(
+        collection,
+        model,
+        VECTOR_SEARCH_INDEX_NAME,
+        SearchParams::new(),
+    )
+    .await
+    .unwrap();
+
+    // Query the index
+    let mut results = index
+        .top_n::<serde_json::Value>("What is a linglingdong?", 1)
+        .await
+        .unwrap();
+
+    let mut i = 1;
+    while results.is_empty() && i <= 3 {
+        results = index
+            .top_n::<serde_json::Value>("What is a linglingdong?", 1)
+            .await
+            .unwrap();
+        i += 1;
+    }
+
+    let (score, _, value) = &results.first().unwrap();
+
+    assert_eq!(
+        *value,
+        json!({
+            "_id": "doc2".to_string(),
+            "definition": "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
+            "score": score
+        })
+    );
+}
+
+async fn setup_database(mongodb_client: mongodb::Client) -> Collection<bson::Document> {
     // Initialize MongoDB database and collection
     mongodb_client
         .database(DATABASE_NAME)
@@ -92,6 +139,10 @@ async fn vector_search_test() {
         .await
         .expect("Failed to create search index");
 
+    collection
+}
+
+async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<bson::Document> {
     let fake_definitions = vec![
         FakeDefinition {
             id: "doc0".to_string(),
@@ -114,7 +165,7 @@ async fn vector_search_test() {
         .await
         .unwrap();
 
-    let mongo_documents = embeddings
+    embeddings
         .iter()
         .map(|(FakeDefinition { id, definition, .. }, embedding)| {
             doc! {
@@ -123,46 +174,5 @@ async fn vector_search_test() {
                 "embedding": embedding.first().vec.clone(),
             }
         })
-        .collect::<Vec<_>>();
-
-    collection.insert_many(mongo_documents).await.unwrap();
-
-    // Create a vector index on our vector store.
-    // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
-    // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = MongoDbVectorIndex::new(
-        collection,
-        model,
-        VECTOR_SEARCH_INDEX_NAME,
-        SearchParams::new(),
-    )
-    .await
-    .unwrap();
-
-    // Query the index
-    let mut results = index
-        .top_n::<serde_json::Value>("What is a linglingdong?", 1)
-        .await
-        .unwrap();
-
-    let mut i = 1;
-
-    while results.is_empty() && i < 5 {
-        results = index
-            .top_n::<serde_json::Value>("What is a linglingdong?", 1)
-            .await
-            .unwrap();
-        i += 1;
-    }
-
-    let (score, _, value) = &results.first().unwrap();
-
-    assert_eq!(
-        *value,
-        json!({
-            "_id": "doc2".to_string(),
-            "definition": "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
-            "score": score
-        })
-    );
+        .collect()
 }
