@@ -145,11 +145,14 @@ async fn vector_search_test() {
         .await
         .unwrap();
 
-    if results.is_empty() {
+    let mut i = 1;
+
+    while results.is_empty() && i < 5 {
         results = index
             .top_n::<serde_json::Value>("What is a linglingdong?", 1)
             .await
-            .expect("Failed to query vector index");
+            .unwrap();
+        i += 1;
     }
 
     let (score, _, value) = &results.first().unwrap();
