@@ -103,7 +103,7 @@ impl<E: EmbeddingModel + 'static, T: SqliteVectorStoreTable + 'static> SqliteVec
         let mut first = true;
         for column in &schema {
             if !first {
-                create_table.push_str(",");
+                create_table.push(',');
             }
             create_table.push_str(&format!("\n    {} {}", column.name, column.col_type));
             first = false;
@@ -174,32 +174,38 @@ impl<E: EmbeddingModel + 'static, T: SqliteVectorStoreTable + 'static> SqliteVec
 
             let values = doc.column_values();
             let columns = values.iter().map(|(col, _)| *col).collect::<Vec<_>>();
+
             let placeholders = (1..=values.len())
                 .map(|i| format!("?{}", i))
                 .collect::<Vec<_>>();
 
+            let insert_sql = format!(
+                "INSERT OR REPLACE INTO {} ({}) VALUES ({})",
+                table_name,
+                columns.join(", "),
+                placeholders.join(", ")
+            );
+
             txn.execute(
-                &format!(
-                    "INSERT OR REPLACE INTO {} ({}) VALUES ({})",
-                    table_name,
-                    columns.join(", "),
-                    placeholders.join(", ")
-                ),
+                &insert_sql,
                 rusqlite::params_from_iter(values.iter().map(|(_, val)| val.to_sql_string())),
             )?;
             last_id = txn.last_insert_rowid();
 
-            let mut stmt = txn.prepare(&format!(
+            let embeddings_sql = format!(
                 "INSERT INTO {}_embeddings (rowid, embedding) VALUES (?1, ?2)",
                 table_name
-            ))?;
-            debug!(
-                "Storing {} embeddings for document {}",
-                embeddings.len(),
-                doc.id()
             );
-            for embedding in embeddings.iter() {
-                let vec = serialize_embedding(&embedding);
+
+            let mut stmt = txn.prepare(&embeddings_sql)?;
+            for (i, embedding) in embeddings.iter().enumerate() {
+                let vec = serialize_embedding(embedding);
+                debug!(
+                    "Storing embedding {} of {} (size: {} bytes)",
+                    i + 1,
+                    embeddings.len(),
+                    vec.len() * 4
+                );
                 let blob = rusqlite::types::Value::Blob(vec.as_bytes().to_vec());
                 stmt.execute(rusqlite::params![last_id, blob])?;
             }
@@ -349,7 +355,7 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                 let mut stmt = conn.prepare(&format!(
                     "SELECT d.{}, e.distance 
                     FROM {}_embeddings e
-                    JOIN {} d ON e.rowid = d.id
+                    JOIN {} d ON e.rowid = d.rowid
                     WHERE e.embedding MATCH ?1 AND k = ?2
                     ORDER BY e.distance",
                     select_cols, table_name, table_name
@@ -409,7 +415,7 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                 let mut stmt = conn.prepare(&format!(
                     "SELECT d.id, e.distance 
                      FROM {0}_embeddings e
-                     JOIN {0} d ON e.rowid = d.id
+                     JOIN {0} d ON e.rowid = d.rowid
                      WHERE e.embedding MATCH ?1 AND k = ?2
                      ORDER BY e.distance",
                     table_name
@@ -448,5 +454,104 @@ impl ColumnValue for String {
 
     fn column_type(&self) -> &'static str {
         "TEXT"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Column, ColumnValue, SqliteVectorStore, SqliteVectorStoreTable};
+    use rig::{
+        embeddings::EmbeddingsBuilder,
+        providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+        Embed,
+    };
+    use rusqlite::ffi::sqlite3_auto_extension;
+    use sqlite_vec::sqlite3_vec_init;
+    use tokio_rusqlite::Connection;
+
+    #[derive(Embed, Clone, Debug, Deserialize)]
+    struct TestDocument {
+        id: String,
+        #[embed]
+        content: String,
+    }
+
+    impl SqliteVectorStoreTable for TestDocument {
+        fn name() -> &'static str {
+            "test_documents"
+        }
+
+        fn schema() -> Vec<Column> {
+            vec![
+                Column::new("id", "TEXT PRIMARY KEY"),
+                Column::new("content", "TEXT"),
+            ]
+        }
+
+        fn id(&self) -> String {
+            self.id.clone()
+        }
+
+        fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+            vec![
+                ("id", Box::new(self.id.clone())),
+                ("content", Box::new(self.content.clone())),
+            ]
+        }
+    }
+
+    #[tokio::test]
+    async fn test_vector_search() -> Result<(), anyhow::Error> {
+        // Initialize the sqlite-vec extension
+        unsafe {
+            sqlite3_auto_extension(Some(std::mem::transmute(sqlite3_vec_init as *const ())));
+        }
+
+        // Initialize in-memory SQLite connection
+        let conn = Connection::open(":memory:").await?;
+
+        // Initialize OpenAI client
+        let openai_api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
+        let openai_client = Client::new(&openai_api_key);
+        let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+
+        let documents = vec![
+            TestDocument {
+                id: "doc0".to_string(),
+                content: "The quick brown fox jumps over the lazy dog".to_string(),
+            },
+            TestDocument {
+                id: "doc1".to_string(),
+                content: "The lazy dog sleeps while the quick brown fox runs".to_string(),
+            },
+        ];
+
+        let embeddings = EmbeddingsBuilder::new(model.clone())
+            .documents(documents)?
+            .build()
+            .await?;
+
+        // Initialize SQLite vector store
+        let vector_store = SqliteVectorStore::new(conn, &model).await?;
+
+        // Add embeddings to vector store
+        vector_store.add_rows(embeddings).await?;
+
+        // Create vector index
+        let index = vector_store.index(model);
+
+        // Query the index
+        let results = index
+            .top_n::<TestDocument>("The quick brown fox jumps over the lazy dog", 1)
+            .await?;
+        assert_eq!(results.len(), 1);
+
+        let id_results = index
+            .top_n_ids("The quick brown fox jumps over the lazy dog", 1)
+            .await?;
+        assert_eq!(id_results.len(), 1);
+
+        Ok(())
     }
 }

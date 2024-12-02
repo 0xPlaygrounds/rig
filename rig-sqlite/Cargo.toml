@@ -6,7 +6,7 @@ description = "SQLite-based vector store implementation for the rig framework"
 license = "MIT"
 
 [dependencies]
-rig-core = { path = "../rig-core" }
+rig-core = { path = "../rig-core", features = ["derive"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
