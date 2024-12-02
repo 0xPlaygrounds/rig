@@ -4,14 +4,18 @@ use testcontainers::{
     GenericImage, ImageExt,
 };
 
+use futures::StreamExt;
 use neo4rs::{ConfigBuilder, Graph};
-use rig::{embeddings::{EmbeddingsBuilder, Embedding}, Embed, providers::openai, OneOrMany};
 use rig::vector_store::VectorStoreIndex;
+use rig::{
+    embeddings::{Embedding, EmbeddingsBuilder},
+    providers::openai,
+    Embed, OneOrMany,
+};
 use rig_neo4j::{
     vector_index::{IndexConfig, SearchParams},
     Neo4jClient, ToBoltType,
 };
-use futures::StreamExt;
 
 const BOLT_PORT: u16 = 7687;
 const HTTP_PORT: u16 = 7474;
@@ -34,7 +38,10 @@ struct Document {
 
 #[tokio::test]
 async fn vector_search_test() {
-    let mount = Mount::volume_mount("data", "./data");
+    let mount = Mount::volume_mount(
+        "data",
+        "/home/garance/Documents/playgrounds_repos/rig/rig-neo4j/data",
+    );
     // Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
     let container = GenericImage::new("neo4j", "latest")
         .with_wait_for(WaitFor::Duration {
@@ -49,15 +56,10 @@ async fn vector_search_test() {
         .expect("Failed to start MongoDB Atlas container");
 
     let port = container.get_host_port_ipv4(BOLT_PORT).await.unwrap();
+    let host = container.get_host().await.unwrap().to_string();
 
-    let config = ConfigBuilder::default()
-        .uri(format!("neo4j://localhost:{port}"))
-        .build()
-        .unwrap();
-
-    let neo4j_client = Neo4jClient {
-        graph: Graph::connect(config).await.unwrap(),
-    };
+    let neo4j_client =
+        Neo4jClient::connect(&format!("neo4j://{host}:{port}"), "", "").await.unwrap();
 
     // Initialize OpenAI client
     let openai_client = openai::Client::from_env();
@@ -108,7 +110,8 @@ async fn vector_search_test() {
                     `vector.similarity_function`: 'cosine'
                     }}",
         ))
-        .await.unwrap();
+        .await
+        .unwrap();
 
     // ℹ️ The index name must be unique among both indexes and constraints.
     // A newly created index is not immediately available but is created in the background.
@@ -136,15 +139,17 @@ async fn vector_search_test() {
     // Query the index
     let results = index
         .top_n::<serde_json::Value>("What is a glarb?", 1)
-        .await.unwrap();
+        .await
+        .unwrap();
 
     println!("Results: {:?}", results);
 
     assert!(false)
 }
 
-
-async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(FakeDefinition, OneOrMany<Embedding>)> {
+async fn create_embeddings(
+    model: openai::EmbeddingModel,
+) -> Vec<(FakeDefinition, OneOrMany<Embedding>)> {
     let fake_definitions = vec![
         FakeDefinition {
             id: "doc0".to_string(),
