@@ -26,7 +26,7 @@ struct FakeDefinition {
 #[tokio::test]
 async fn vector_search_test() {
     let mount = Mount::volume_mount("data", std::env::var("GITHUB_WORKSPACE").unwrap());
-    // Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
+    // Setup a local Neo 4J container for testing. NOTE: docker service must be running.
     let container = GenericImage::new("neo4j", "latest")
         .with_wait_for(WaitFor::Duration {
             length: std::time::Duration::from_secs(5),
@@ -37,7 +37,7 @@ async fn vector_search_test() {
         .with_env_var("NEO4J_AUTH", "none")
         .start()
         .await
-        .expect("Failed to start MongoDB Atlas container");
+        .expect("Failed to start Neo 4J container");
 
     let port = container.get_host_port_ipv4(BOLT_PORT).await.unwrap();
     let host = container.get_host().await.unwrap().to_string();
