@@ -5,17 +5,13 @@ use testcontainers::{
 };
 
 use futures::StreamExt;
-use neo4rs::{ConfigBuilder, Graph};
 use rig::vector_store::VectorStoreIndex;
 use rig::{
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
     Embed, OneOrMany,
 };
-use rig_neo4j::{
-    vector_index::{IndexConfig, SearchParams},
-    Neo4jClient, ToBoltType,
-};
+use rig_neo4j::{vector_index::SearchParams, Neo4jClient, ToBoltType};
 
 const BOLT_PORT: u16 = 7687;
 const HTTP_PORT: u16 = 7474;
@@ -27,20 +23,11 @@ struct FakeDefinition {
     definition: String,
 }
 
-#[derive(serde::Deserialize)]
-struct Document {
-    #[allow(dead_code)]
-    id: String,
-    document: String,
-    #[allow(dead_code)]
-    embedding: Vec<f32>,
-}
-
 #[tokio::test]
 async fn vector_search_test() {
     let mount = Mount::volume_mount(
         "data",
-        "/home/garance/Documents/playgrounds_repos/rig/rig-neo4j/data",
+        std::env::var("GITHUB_WORKSPACE").unwrap(),
     );
     // Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
     let container = GenericImage::new("neo4j", "latest")
@@ -58,8 +45,9 @@ async fn vector_search_test() {
     let port = container.get_host_port_ipv4(BOLT_PORT).await.unwrap();
     let host = container.get_host().await.unwrap().to_string();
 
-    let neo4j_client =
-        Neo4jClient::connect(&format!("neo4j://{host}:{port}"), "", "").await.unwrap();
+    let neo4j_client = Neo4jClient::connect(&format!("neo4j://{host}:{port}"), "", "")
+        .await
+        .unwrap();
 
     // Initialize OpenAI client
     let openai_client = openai::Client::from_env();
@@ -130,11 +118,10 @@ async fn vector_search_test() {
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client.index(
-        model,
-        IndexConfig::new("vector_index"),
-        SearchParams::default(),
-    );
+    let index = neo4j_client
+        .get_index(model, "vector_index", SearchParams::default())
+        .await
+        .unwrap();
 
     // Query the index
     let results = index
@@ -142,9 +129,16 @@ async fn vector_search_test() {
         .await
         .unwrap();
 
-    println!("Results: {:?}", results);
+    let (_, _, value) = &results.first().unwrap();
 
-    assert!(false)
+    assert_eq!(
+        value,
+        &serde_json::json!({
+            "id": "doc1",
+            "document": "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+            "embedding": serde_json::Value::Null
+        })
+    )
 }
 
 async fn create_embeddings(
