@@ -5,6 +5,9 @@ edition = "2021"
 description = "SQLite-based vector store implementation for the rig framework"
 license = "MIT"
 
+[lib]
+doctest = false
+
 [dependencies]
 rig-core = { path = "../rig-core", features = ["derive"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
