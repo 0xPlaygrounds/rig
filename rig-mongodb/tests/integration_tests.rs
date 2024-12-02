@@ -16,15 +16,15 @@ use testcontainers::{
 };
 
 const VECTOR_SEARCH_INDEX_NAME: &str = "vector_index";
+const MONGODB_PORT: u16 = 27017;
 
-#[tokio::test]
-async fn integration_test() {
-    // Initialize OpenAI client
-    let openai_client = openai::Client::from_env();
-
+/// Setup a local MongoDB Atlas container for testing.
+/// This includes running the container with `testcontainers`, and creating a database and collection 
+/// that will be used by integration tests.
+async fn setup_mongo_server() -> Collection<bson::Document> {
     // Setup local MongoDB Atlas
     let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")
-        .with_exposed_port(27017.tcp())
+        .with_exposed_port(MONGODB_PORT.tcp())
         .with_wait_for(WaitFor::Duration {
             length: std::time::Duration::from_secs(10),
         })
@@ -34,7 +34,7 @@ async fn integration_test() {
         .await
         .expect("Failed to start MongoDB Atlas container");
 
-    let port = container.get_host_port_ipv4(27017).await.unwrap();
+    let port = container.get_host_port_ipv4(MONGODB_PORT).await.unwrap();
 
     // Initialize MongoDB client
     let options = ClientOptions::parse(format!(
@@ -46,19 +46,19 @@ async fn integration_test() {
     let mongodb_client =
         mongodb::Client::with_options(options).expect("MongoDB client options should be valid");
 
-    // Initialize MongoDB vector store
+    // Initialize MongoDB database and collection
     mongodb_client
         .database("rig")
         .create_collection("fake_definitions")
         .await
         .expect("Collection should be created");
 
-    // Initialize MongoDB vector store
+    // Get the created collection
     let collection: Collection<bson::Document> = mongodb_client
         .database("rig")
         .collection("fake_definitions");
 
-    // Create a vector search index
+    // Create a vector search index on the collection
     collection
         .create_search_index(
             SearchIndexModel::builder()
@@ -76,6 +76,16 @@ async fn integration_test() {
         )
         .await
         .expect("Failed to create search index");
+
+    collection
+}
+
+#[tokio::test]
+async fn vector_search_test() {
+    // Initialize OpenAI client
+    let openai_client = openai::Client::from_env();
+
+    let collection = setup_mongo_server().await;
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);

@@ -27,9 +27,11 @@ struct SearchIndex {
 impl SearchIndex {
     async fn get_search_index(
         collection: mongodb::Collection<bson::Document>,
+        index_name: &str,
     ) -> Result<SearchIndex, VectorStoreError> {
         collection
             .list_search_indexes()
+            .name(index_name)
             .await
             .map_err(mongodb_to_rig_error)?
             .with_type::<SearchIndex>()
@@ -191,7 +193,7 @@ impl<M: EmbeddingModel> MongoDbVectorIndex<M> {
         index_name: &str,
         search_params: SearchParams,
     ) -> Result<Self, VectorStoreError> {
-        let search_index = SearchIndex::get_search_index(collection.clone()).await?;
+        let search_index = SearchIndex::get_search_index(collection.clone(), index_name).await?;
 
         if !search_index.queryable {
             return Err(VectorStoreError::DatastoreError(
