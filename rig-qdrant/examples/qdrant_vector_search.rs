@@ -22,9 +22,8 @@ use rig::{
     Embed,
 };
 use rig_qdrant::QdrantVectorStore;
-use serde_json::json;
 
-#[derive(Embed)]
+#[derive(Embed, serde::Deserialize, serde::Serialize, Debug)]
 struct FakeDefinition {
     id: String,
     #[embed]
@@ -77,12 +76,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .map(|(d, embeddings)| {
             let vec: Vec<f32> = embeddings.first().vec.iter().map(|&x| x as f32).collect();
             PointStruct::new(
-                d.id,
+                d.id.clone(),
                 vec,
-                Payload::try_from(json!({
-                    "document": d.definition,
-                }))
-                .unwrap(),
+                Payload::try_from(serde_json::to_value(&d).unwrap()).unwrap(),
             )
         })
         .collect();
@@ -95,7 +91,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let vector_store = QdrantVectorStore::new(client, model, query_params.build());
 
     let results = vector_store
-        .top_n::<serde_json::Value>("What is a linglingdong?", 1)
+        .top_n::<FakeDefinition>("What is a linglingdong?", 1)
         .await?;
 
     println!("Results: {:?}", results);

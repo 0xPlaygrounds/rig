@@ -20,7 +20,7 @@ const QDRANT_PORT: u16 = 6333;
 const QDRANT_PORT_SECONDARY: u16 = 6334;
 const COLLECTION_NAME: &str = "rig-collection";
 
-#[derive(Embed, Clone, serde::Deserialize, Debug)]
+#[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug)]
 struct FakeDefinition {
     id: String,
     #[embed]
@@ -88,7 +88,8 @@ async fn vector_search_test() {
     assert_eq!(
         value,
         &serde_json::json!({
-            "document": "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
+            "definition": "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.",
+            "id": "f9e17d59-32e5-440c-be02-b2759a654824"
         })
     )
 }
@@ -121,12 +122,9 @@ async fn create_points(model: openai::EmbeddingModel) -> Vec<PointStruct> {
         .map(|(d, embeddings)| {
             let vec: Vec<f32> = embeddings.first().vec.iter().map(|&x| x as f32).collect();
             PointStruct::new(
-                d.id,
+                d.id.clone(),
                 vec,
-                Payload::try_from(serde_json::json!({
-                    "document": d.definition,
-                }))
-                .unwrap(),
+                Payload::try_from(serde_json::to_value(&d).unwrap()).unwrap(),
             )
         })
         .collect()
