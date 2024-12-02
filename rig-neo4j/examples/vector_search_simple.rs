@@ -15,10 +15,7 @@ use rig::{
     vector_store::VectorStoreIndex as _,
     Embed,
 };
-use rig_neo4j::{
-    vector_index::{IndexConfig, SearchParams},
-    Neo4jClient, ToBoltType,
-};
+use rig_neo4j::{vector_index::SearchParams, Neo4jClient, ToBoltType};
 
 #[derive(Embed, Clone, Debug)]
 pub struct WordDefinition {
@@ -58,17 +55,6 @@ async fn main() -> Result<(), anyhow::Error> {
         })?
         .build()
         .await?;
-
-    // The struct that will reprensent a node in the database. Used to deserialize the results of the query (passed to the `top_n` methods)
-    // ❗IMPORTANT: The field names must match the property names in the database
-    #[derive(serde::Deserialize)]
-    struct Document {
-        #[allow(dead_code)]
-        id: String,
-        document: String,
-        #[allow(dead_code)]
-        embedding: Vec<f32>,
-    }
 
     let create_nodes = futures::stream::iter(embeddings)
         .map(|(doc, embeddings)| {
@@ -130,11 +116,18 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client.index(
-        model,
-        IndexConfig::new("vector_index"),
-        SearchParams::default(),
-    );
+    let index = neo4j_client
+        .get_index(model, "vector_index", SearchParams::default())
+        .await?;
+
+    // The struct that will reprensent a node in the database. Used to deserialize the results of the query (passed to the `top_n` methods)
+    // ❗IMPORTANT: The field names must match the property names in the database
+    #[derive(serde::Deserialize)]
+    struct Document {
+        #[allow(dead_code)]
+        id: String,
+        document: String,
+    }
 
     // Query the index
     let results = index
