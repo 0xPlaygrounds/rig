@@ -25,7 +25,7 @@ use rig_qdrant::QdrantVectorStore;
 use serde_json::json;
 
 #[derive(Embed)]
-struct WordDefinition {
+struct FakeDefinition {
     id: String,
     #[embed]
     definition: String,
@@ -57,15 +57,15 @@ async fn main() -> Result<(), anyhow::Error> {
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     let documents = EmbeddingsBuilder::new(model.clone())
-        .document(WordDefinition {
+        .document(FakeDefinition {
             id: "0981d983-a5f8-49eb-89ea-f7d3b2196d2e".to_string(),
             definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
         })?
-        .document(WordDefinition {
+        .document(FakeDefinition {
             id: "62a36d43-80b6-4fd6-990c-f75bb02287d1".to_string(),
             definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         })?
-        .document(WordDefinition {
+        .document(FakeDefinition {
             id: "f9e17d59-32e5-440c-be02-b2759a654824".to_string(),
             definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         })?
