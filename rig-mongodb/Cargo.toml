@@ -21,3 +21,7 @@ tracing = "0.1.40"
 anyhow = "1.0.86"
 testcontainers = "0.23.1"
 tokio = { version = "1.38.0", features = ["macros"] }
+
+[[example]]
+name = "vector_search_mongodb"
+required-features = ["rig-core/derive"]

@@ -41,7 +41,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         }
     }
 
-    async fn embed_documents(
+    async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String> + Send,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {

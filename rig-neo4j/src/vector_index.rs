@@ -259,7 +259,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for Neo4jVec
         query: &str,
         n: usize,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = self.embedding_model.embed_document(query).await?;
+        let prompt_embedding = self.embedding_model.embed_text(query).await?;
         let query = self.build_vector_search_query(prompt_embedding, true, n);
 
         let rows = self.execute_and_collect::<RowResultNode<T>>(query).await?;
@@ -279,7 +279,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for Neo4jVec
         query: &str,
         n: usize,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = self.embedding_model.embed_document(query).await?;
+        let prompt_embedding = self.embedding_model.embed_text(query).await?;
 
         let query = self.build_vector_search_query(prompt_embedding, false, n);
 

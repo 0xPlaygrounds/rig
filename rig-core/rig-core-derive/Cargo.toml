@@ -1,0 +1,16 @@
+[package]
+name = "rig-derive"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Internal crate that implements Rig derive macros."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[dependencies]
+indoc = "2.0.5"
+proc-macro2 = { version = "1.0.87", features = ["proc-macro"] }
+quote = "1.0.37"
+syn = { version = "2.0.79", features = ["full"]}
+
+[lib]
+proc-macro = true

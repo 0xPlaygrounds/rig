@@ -19,9 +19,17 @@ use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
+    Embed,
 };
 use rig_qdrant::QdrantVectorStore;
 use serde_json::json;
+
+#[derive(Embed)]
+struct WordDefinition {
+    id: String,
+    #[embed]
+    definition: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -49,21 +57,30 @@ async fn main() -> Result<(), anyhow::Error> {
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     let documents = EmbeddingsBuilder::new(model.clone())
-        .simple_document("0981d983-a5f8-49eb-89ea-f7d3b2196d2e", "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
-        .simple_document("62a36d43-80b6-4fd6-990c-f75bb02287d1", "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
-        .simple_document("f9e17d59-32e5-440c-be02-b2759a654824", "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.")
+        .document(WordDefinition {
+            id: "0981d983-a5f8-49eb-89ea-f7d3b2196d2e".to_string(),
+            definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
+        })?
+        .document(WordDefinition {
+            id: "62a36d43-80b6-4fd6-990c-f75bb02287d1".to_string(),
+            definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+        })?
+        .document(WordDefinition {
+            id: "f9e17d59-32e5-440c-be02-b2759a654824".to_string(),
+            definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
+        })?
         .build()
         .await?;
 
     let points: Vec<PointStruct> = documents
         .into_iter()
-        .map(|d| {
-            let vec: Vec<f32> = d.embeddings[0].vec.iter().map(|&x| x as f32).collect();
+        .map(|(d, embeddings)| {
+            let vec: Vec<f32> = embeddings.first().vec.iter().map(|&x| x as f32).collect();
             PointStruct::new(
                 d.id,
                 vec,
                 Payload::try_from(json!({
-                    "document": d.document,
+                    "document": d.definition,
                 }))
                 .unwrap(),
             )

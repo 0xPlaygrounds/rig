@@ -1,20 +1,36 @@
-use mongodb::bson;
-use mongodb::{options::ClientOptions, Client as MongoClient, Collection};
-use rig::vector_store::VectorStore;
-use rig::{
-    embeddings::EmbeddingsBuilder,
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::VectorStoreIndex,
-};
-use rig_mongodb::{MongoDbVectorStore, SearchParams};
+use mongodb::{bson::doc, options::ClientOptions, Client as MongoClient, Collection};
+use rig::providers::openai::TEXT_EMBEDDING_ADA_002;
 use serde::{Deserialize, Serialize};
 use std::env;
 
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-pub struct DocumentResponse {
+use rig::{
+    embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex, Embed,
+};
+use rig_mongodb::{MongoDbVectorIndex, SearchParams};
+
+// Shape of data that needs to be RAG'ed.
+// The definition field will be used to generate embeddings.
+#[derive(Embed, Clone, Deserialize, Debug)]
+struct WordDefinition {
     #[serde(rename = "_id")]
-    pub id: String,
-    pub document: serde_json::Value,
+    id: String,
+    #[embed]
+    definition: String,
+}
+
+#[derive(Clone, Deserialize, Debug, Serialize)]
+struct Link {
+    word: String,
+    link: String,
+}
+
+// Shape of the document to be stored in MongoDB, with embeddings.
+#[derive(Serialize, Debug)]
+struct Document {
+    #[serde(rename = "_id")]
+    id: String,
+    definition: String,
+    embedding: Vec<f64>,
 }
 
 #[tokio::main]
@@ -34,41 +50,59 @@ async fn main() -> Result<(), anyhow::Error> {
         MongoClient::with_options(options).expect("MongoDB client options should be valid");
 
     // Initialize MongoDB vector store
-    let collection: Collection<bson::Document> = mongodb_client
+    let collection: Collection<Document> = mongodb_client
         .database("knowledgebase")
         .collection("context");
-
-    let mut vector_store = MongoDbVectorStore::new(collection);
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
+    let fake_definitions = vec![
+        WordDefinition {
+            id: "doc0".to_string(),
+            definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
+        },
+        WordDefinition {
+            id: "doc1".to_string(),
+            definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+        },
+        WordDefinition {
+            id: "doc2".to_string(),
+            definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
+        }
+    ];
+
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .simple_document("doc0", "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
-        .simple_document("doc1", "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
-        .simple_document("doc2", "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.")
+        .documents(fake_definitions)?
         .build()
         .await?;
 
-    // Add embeddings to vector store
-    match vector_store.add_documents(embeddings).await {
+    let mongo_documents = embeddings
+        .iter()
+        .map(
+            |(WordDefinition { id, definition, .. }, embedding)| Document {
+                id: id.clone(),
+                definition: definition.clone(),
+                embedding: embedding.first().vec.clone(),
+            },
+        )
+        .collect::<Vec<_>>();
+
+    match collection.insert_many(mongo_documents, None).await {
         Ok(_) => println!("Documents added successfully"),
         Err(e) => println!("Error adding documents: {:?}", e),
-    }
+    };
 
-    // Create a vector index on our vector store
+    // Create a vector index on our vector store.
+    // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = vector_store
-        .index(model, "vector_index", SearchParams::default())
-        .await?;
+    let index =
+        MongoDbVectorIndex::new(collection, model, "vector_index", SearchParams::new()).await?;
 
     // Query the index
     let results = index
-        .top_n::<DocumentResponse>("What is a linglingdong?", 1)
-        .await?
-        .into_iter()
-        .map(|(score, id, doc)| (score, id, doc.document))
-        .collect::<Vec<_>>();
+        .top_n::<WordDefinition>("What is a linglingdong?", 1)
+        .await?;
 
     println!("Results: {:?}", results);
 
