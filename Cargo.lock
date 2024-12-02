@@ -4807,6 +4807,7 @@ dependencies = [
  "textwrap",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

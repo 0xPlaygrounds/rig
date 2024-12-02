@@ -4,15 +4,14 @@
 //! It uses the [Neo4j vector index](https://neo4j.com/docs/cypher-manual/current/indexes/semantic-indexes/vector-indexes/)
 //! to search for similar nodes based on a query.
 
-use futures::TryStreamExt;
 use neo4rs::{Graph, Query};
 use rig::{
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{VectorStoreError, VectorStoreIndex},
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::Error, Deserialize, Serialize};
 
-use crate::{neo4j_to_rig_error, ToBoltType};
+use crate::Neo4jClient;
 
 pub struct Neo4jVectorIndex<M: EmbeddingModel> {
     graph: Graph,
@@ -23,16 +22,23 @@ pub struct Neo4jVectorIndex<M: EmbeddingModel> {
 
 /// The index name must be unique among both indexes and constraints.
 /// A newly created index is not immediately available but is created in the background.
+///
+/// #### Default Values
+/// - `index_name`: "vector_index"
+/// - `embedding_property`: "embedding"
+/// - `similarity_function`: VectorSimilarityFunction::Cosine
 #[derive(Serialize, Deserialize, Clone)]
 pub struct IndexConfig {
-    index_name: String,
-    similarity_function: VectorSimilarityFunction,
+    pub index_name: String,
+    pub embedding_property: String,
+    pub similarity_function: VectorSimilarityFunction,
 }
 
 impl Default for IndexConfig {
     fn default() -> Self {
         Self {
             index_name: "vector_index".to_string(),
+            embedding_property: "embedding".to_string(),
             similarity_function: VectorSimilarityFunction::Cosine,
         }
     }
@@ -42,17 +48,23 @@ impl IndexConfig {
     pub fn new(index_name: impl Into<String>) -> Self {
         Self {
             index_name: index_name.into(),
+            embedding_property: "embedding".to_string(),
             similarity_function: VectorSimilarityFunction::Cosine,
         }
     }
 
-    pub fn index_name(mut self, index_name: impl Into<String>) -> Self {
-        self.index_name = index_name.into();
+    pub fn index_name(mut self, index_name: &str) -> Self {
+        self.index_name = index_name.to_string();
         self
     }
 
     pub fn similarity_function(mut self, similarity_function: VectorSimilarityFunction) -> Self {
         self.similarity_function = similarity_function;
+        self
+    }
+
+    pub fn embedding_property(mut self, embedding_property: &str) -> Self {
+        self.embedding_property = embedding_property.to_string();
         self
     }
 }
@@ -68,9 +80,26 @@ pub enum VectorSimilarityFunction {
     Euclidean,
 }
 
+use std::str::FromStr;
+
+impl FromStr for VectorSimilarityFunction {
+    type Err = VectorStoreError;
+
+    fn from_str(s: &str) -> Result<Self, VectorStoreError> {
+        match s.to_lowercase().as_str() {
+            "cosine" => Ok(VectorSimilarityFunction::Cosine),
+            "euclidean" => Ok(VectorSimilarityFunction::Euclidean),
+            _ => Err(VectorStoreError::JsonError(serde_json::Error::custom(
+                format!("Invalid similarity function: {}", s),
+            ))),
+        }
+    }
+}
+
 const BASE_VECTOR_SEARCH_QUERY: &str = "
     CALL db.index.vector.queryNodes($index_name, $num_candidates, $queryVector)
-    YIELD node, score";
+    YIELD node, score
+";
 
 impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
     pub fn new(
@@ -87,77 +116,16 @@ impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
         }
     }
 
-    /// Calls the `CREATE VECTOR INDEX` Neo4j query and waits for the index to be created.
-    /// A newly created index is not immediately fully available but is created (i.e. data is indexed) in the background.
-    ///
-    /// ❗ If there is already an index targetting the same node label and property, the new index creation will fail.
-    ///
-    /// ### Arguments
-    /// * `node_label` - The label of the nodes to which the index will be applied. For example, if your nodes have
-    ///                  the label `:Movie`, pass "Movie" as the `node_label` parameter.
-    /// * `embedding_prop_name` (optional) - The name of the property that contains the embedding vectors. Defaults to "embedding".
-    ///
-    pub async fn create_and_await_vector_index(
-        &self,
-        node_label: String,
-        embedding_prop_name: Option<String>,
-    ) -> Result<(), VectorStoreError> {
-        // Create a vector index on our vector store
-        tracing::info!("Creating vector index {} ...", self.index_config.index_name);
-
-        let property = embedding_prop_name.unwrap_or("embedding".to_string());
-        let create_vector_index_query = format!(
-            "
-            CREATE VECTOR INDEX $index_name IF NOT EXISTS
-            FOR (m:{})
-            ON m.{}
-            OPTIONS {{
-                indexConfig: {{
-                    `vector.dimensions`: $dimensions,
-                    `vector.similarity_function`: $similarity_function
-                }}
-            }}",
-            node_label, property
-        );
-
-        self.graph
-            .run(
-                neo4rs::query(&create_vector_index_query)
-                    .param("index_name", self.index_config.index_name.clone())
-                    .param(
-                        "similarity_function",
-                        self.index_config.similarity_function.clone().to_bolt_type(),
-                    )
-                    .param("dimensions", self.embedding_model.ndims() as i64),
-            )
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        // Check if the index exists with db.awaitIndex(), the call timeouts if the index is not ready
-        let index_exists = self
-            .graph
-            .run(
-                neo4rs::query("CALL db.awaitIndex($index_name, 10000)")
-                    .param("index_name", self.index_config.index_name.clone()),
-            )
-            .await;
-
-        if index_exists.is_err() {
-            tracing::warn!(
-                "Index with name `{}` is not ready or could not be created.",
-                self.index_config.index_name
-            );
-        }
-
-        tracing::info!(
-            "Index created successfully with name: {}",
-            self.index_config.index_name
-        );
-        Ok(())
-    }
-
     /// Build a Neo4j query that performs a vector search against an index.
     /// See [Query vector index](https://neo4j.com/docs/cypher-manual/current/indexes/semantic-indexes/vector-indexes/#query-vector-index) for more information.
+    ///
+    /// Query template:
+    /// ```
+    /// CALL db.index.vector.queryNodes($index_name, $num_candidates, $queryVector)
+    /// YIELD node, score
+    /// WHERE {where_clause}
+    /// RETURN score, ID(node) as element_id, node {.*, embedding:null } as node
+    /// ```
     pub fn build_vector_search_query(
         &self,
         prompt_embedding: Embedding,
@@ -169,33 +137,31 @@ impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
             None => "".to_string(),
         };
 
-        Query::new(format!(
-            "
-            {}
-            {}
-            RETURN score, ID(node) as element_id {}
+        // Propertiy containing the embedding vectors are excluded from the returned node
+        let query = format!(
+            "\
+            {}\
+            \t{}\n\
+            \tRETURN score, ID(node) as element_id {}
             ",
             BASE_VECTOR_SEARCH_QUERY,
             where_clause,
-            if return_node { ", node as node" } else { "" }
-        ))
-        .param("queryVector", prompt_embedding.vec)
-        .param("num_candidates", n as i64)
-        .param("index_name", self.index_config.index_name.clone())
-    }
+            if return_node {
+                format!(
+                    ", node {{.*, {}:null }} as node",
+                    self.index_config.embedding_property
+                )
+            } else {
+                "".to_string()
+            }
+        );
 
-    pub async fn execute_and_collect<T: for<'a> Deserialize<'a>>(
-        &self,
-        query: Query,
-    ) -> Result<Vec<T>, VectorStoreError> {
-        self.graph
-            .execute(query)
-            .await
-            .map_err(neo4j_to_rig_error)?
-            .into_stream_as::<T>()
-            .try_collect::<Vec<T>>()
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))
+        tracing::debug!("Query before params: {}", query);
+
+        Query::new(query)
+            .param("queryVector", prompt_embedding.vec)
+            .param("num_candidates", n as i64)
+            .param("index_name", self.index_config.index_name.clone())
     }
 }
 
@@ -262,7 +228,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for Neo4jVec
         let prompt_embedding = self.embedding_model.embed_text(query).await?;
         let query = self.build_vector_search_query(prompt_embedding, true, n);
 
-        let rows = self.execute_and_collect::<RowResultNode<T>>(query).await?;
+        let rows = Neo4jClient::execute_and_collect::<RowResultNode<T>>(&self.graph, query).await?;
 
         let results = rows
             .into_iter()
@@ -283,7 +249,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for Neo4jVec
 
         let query = self.build_vector_search_query(prompt_embedding, false, n);
 
-        let rows = self.execute_and_collect::<RowResult>(query).await?;
+        let rows = Neo4jClient::execute_and_collect::<RowResult>(&self.graph, query).await?;
 
         let results = rows
             .into_iter()

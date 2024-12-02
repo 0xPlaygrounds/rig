@@ -23,6 +23,7 @@ tokio = { version = "1.38.0", features = ["macros"] }
 textwrap = { version = "0.16.1"}
 term_size = { version = "0.3.2"}
 testcontainers = "0.23.1"
+tracing-subscriber = "0.3.18"
 
 [[example]]
 name = "vector_search_simple"
