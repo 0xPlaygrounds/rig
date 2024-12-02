@@ -158,7 +158,7 @@ async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<bson::Document>
         }
     ];
 
-    let embeddings = EmbeddingsBuilder::new(model.clone())
+    let embeddings = EmbeddingsBuilder::new(model)
         .documents(fake_definitions)
         .unwrap()
         .build()
