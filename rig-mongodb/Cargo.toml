@@ -23,5 +23,9 @@ testcontainers = "0.23.1"
 tokio = { version = "1.38.0", features = ["macros"] }
 
 [[example]]
-name = "vector_search_mongodb"
+name = "vector_search"
+required-features = ["rig-core/derive"]
+
+[[test]]
+name = "integration_tests"
 required-features = ["rig-core/derive"]

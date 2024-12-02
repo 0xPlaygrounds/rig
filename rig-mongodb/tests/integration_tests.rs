@@ -4,22 +4,30 @@ use mongodb::{
     Collection, SearchIndexModel,
 };
 use rig::{
-    embeddings::{DocumentEmbeddings, EmbeddingsBuilder},
-    providers::openai,
-    vector_store::VectorStoreIndex,
+    embeddings::EmbeddingsBuilder, providers::openai, vector_store::VectorStoreIndex, Embed,
 };
-use rig_mongodb::MongoDbVectorIndex;
+use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 use testcontainers::{
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
     GenericImage, ImageExt,
 };
 
+#[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq)]
+struct FakeDefinition {
+    #[serde(rename = "_id")]
+    id: String,
+    #[embed]
+    definition: String,
+}
+
 const VECTOR_SEARCH_INDEX_NAME: &str = "vector_index";
 const MONGODB_PORT: u16 = 27017;
+const COLLECTION_NAME: &str = "fake_definitions";
+const DATABASE_NAME: &str = "rig";
 
-/// Setup a local MongoDB Atlas container for testing.
-/// This includes running the container with `testcontainers`, and creating a database and collection 
+/// Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
+/// This includes running the container with `testcontainers`, and creating a database and collection
 /// that will be used by integration tests.
 async fn setup_mongo_server() -> Collection<bson::Document> {
     // Setup local MongoDB Atlas
@@ -48,15 +56,15 @@ async fn setup_mongo_server() -> Collection<bson::Document> {
 
     // Initialize MongoDB database and collection
     mongodb_client
-        .database("rig")
-        .create_collection("fake_definitions")
+        .database(DATABASE_NAME)
+        .create_collection(COLLECTION_NAME)
         .await
         .expect("Collection should be created");
 
     // Get the created collection
     let collection: Collection<bson::Document> = mongodb_client
-        .database("rig")
-        .collection("fake_definitions");
+        .database(DATABASE_NAME)
+        .collection(COLLECTION_NAME);
 
     // Create a vector search index on the collection
     collection
@@ -90,45 +98,72 @@ async fn vector_search_test() {
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
+    let linglingdong = FakeDefinition {
+        id: "doc2".to_string(),
+        definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
+    };
+
+    let fake_definitions = vec![
+        FakeDefinition {
+            id: "doc0".to_string(),
+            definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
+        },
+        FakeDefinition {
+            id: "doc1".to_string(),
+            definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+        },
+        linglingdong.clone()
+    ];
+
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .simple_document("doc0", "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
-        .simple_document("doc1", "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
-        .simple_document("doc2", "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.")
+        .documents(fake_definitions)
+        .unwrap()
         .build()
         .await
-        .expect("Failed to build embeddings");
+        .unwrap();
 
-    // Add embeddings to vector store
-    collection
-        .clone_with_type::<DocumentEmbeddings>()
-        .insert_many(embeddings)
-        .await
-        .expect("Failed to insert embeddings");
+    let mongo_documents = embeddings
+        .iter()
+        .map(|(FakeDefinition { id, definition, .. }, embedding)| {
+            doc! {
+                "id": id.clone(),
+                "definition": definition.clone(),
+                "embedding": embedding.first().vec.clone(),
+            }
+        })
+        .collect::<Vec<_>>();
 
-    // Create a vector index on our vector store
-    let vector_index = MongoDbVectorIndex::new(
+    collection.insert_many(mongo_documents).await.unwrap();
+
+    // Create a vector index on our vector store.
+    // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
+    // IMPORTANT: Reuse the same model that was used to generate the embeddings
+    let index = MongoDbVectorIndex::new(
         collection,
         model,
         VECTOR_SEARCH_INDEX_NAME,
-        rig_mongodb::SearchParams::new(),
+        SearchParams::new(),
     )
     .await
-    .expect("Failed to create Rig vector index");
+    .unwrap();
 
     // Query the index
-    let mut results = vector_index
+    let mut results = index
         .top_n::<serde_json::Value>("What is a linglingdong?", 1)
         .await
-        .expect("Failed to query vector index");
+        .unwrap();
 
     if results.is_empty() {
-        results = vector_index
+        results = index
             .top_n::<serde_json::Value>("What is a linglingdong?", 1)
             .await
             .expect("Failed to query vector index");
     }
 
-    let result_string = &results.first().unwrap().1;
+    let result_string = &results.first().unwrap();
 
-    assert_eq!(result_string, "\"doc2\"");
+    assert_eq!(
+        result_string.2,
+        serde_json::to_value(&linglingdong).unwrap()
+    );
 }

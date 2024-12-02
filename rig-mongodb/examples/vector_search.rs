@@ -1,6 +1,10 @@
-use mongodb::{bson::doc, options::ClientOptions, Client as MongoClient, Collection};
+use mongodb::{
+    bson::{self, doc},
+    options::ClientOptions,
+    Client as MongoClient, Collection,
+};
 use rig::providers::openai::TEXT_EMBEDDING_ADA_002;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::env;
 
 use rig::{
@@ -11,26 +15,11 @@ use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
 #[derive(Embed, Clone, Deserialize, Debug)]
-struct WordDefinition {
+struct FakeDefinition {
     #[serde(rename = "_id")]
     id: String,
     #[embed]
     definition: String,
-}
-
-#[derive(Clone, Deserialize, Debug, Serialize)]
-struct Link {
-    word: String,
-    link: String,
-}
-
-// Shape of the document to be stored in MongoDB, with embeddings.
-#[derive(Serialize, Debug)]
-struct Document {
-    #[serde(rename = "_id")]
-    id: String,
-    definition: String,
-    embedding: Vec<f64>,
 }
 
 #[tokio::main]
@@ -50,7 +39,7 @@ async fn main() -> Result<(), anyhow::Error> {
         MongoClient::with_options(options).expect("MongoDB client options should be valid");
 
     // Initialize MongoDB vector store
-    let collection: Collection<Document> = mongodb_client
+    let collection: Collection<bson::Document> = mongodb_client
         .database("knowledgebase")
         .collection("context");
 
@@ -58,15 +47,15 @@ async fn main() -> Result<(), anyhow::Error> {
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     let fake_definitions = vec![
-        WordDefinition {
+        FakeDefinition {
             id: "doc0".to_string(),
             definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
         },
-        WordDefinition {
+        FakeDefinition {
             id: "doc1".to_string(),
             definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         },
-        WordDefinition {
+        FakeDefinition {
             id: "doc2".to_string(),
             definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }
@@ -79,16 +68,16 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let mongo_documents = embeddings
         .iter()
-        .map(
-            |(WordDefinition { id, definition, .. }, embedding)| Document {
-                id: id.clone(),
-                definition: definition.clone(),
-                embedding: embedding.first().vec.clone(),
-            },
-        )
+        .map(|(FakeDefinition { id, definition, .. }, embedding)| {
+            doc! {
+                "id": id.clone(),
+                "definition": definition.clone(),
+                "embedding": embedding.first().vec.clone(),
+            }
+        })
         .collect::<Vec<_>>();
 
-    match collection.insert_many(mongo_documents, None).await {
+    match collection.insert_many(mongo_documents).await {
         Ok(_) => println!("Documents added successfully"),
         Err(e) => println!("Error adding documents: {:?}", e),
     };
@@ -101,7 +90,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = index
-        .top_n::<WordDefinition>("What is a linglingdong?", 1)
+        .top_n::<FakeDefinition>("What is a linglingdong?", 1)
         .await?;
 
     println!("Results: {:?}", results);
