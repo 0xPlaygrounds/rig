@@ -14,10 +14,7 @@
 //! [examples/vector_search_movies_add_embeddings.rs](examples/vector_search_movies_add_embeddings.rs) provides an example of
 //! how to add embeddings to an existing `recommendations` database.
 use neo4rs::ConfigBuilder;
-use rig_neo4j::{
-    vector_index::{IndexConfig, SearchParams},
-    Neo4jClient,
-};
+use rig_neo4j::{vector_index::SearchParams, Neo4jClient};
 
 use std::env;
 
@@ -32,20 +29,27 @@ mod display;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_target(false)
+        .init();
+
+    const INDEX_NAME: &str = "moviePlotsEmbedding";
+
     // Initialize OpenAI client
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     let openai_client = Client::new(&openai_api_key);
 
-    let neo4j_uri = env::var("NEO4J_URI").expect("NEO4J_URI not set");
-    let neo4j_username = env::var("NEO4J_USERNAME").expect("NEO4J_USERNAME not set");
-    let neo4j_password = env::var("NEO4J_PASSWORD").expect("NEO4J_PASSWORD not set");
+    let neo4j_uri = "neo4j+s://demo.neo4jlabs.com:7687";
+    let neo4j_username = "recommendations";
+    let neo4j_password = "recommendations";
 
     let neo4j_client = Neo4jClient::from_config(
         ConfigBuilder::default()
             .uri(neo4j_uri)
             .user(neo4j_username)
             .password(neo4j_password)
-            .db("neo4j")
+            .db("recommendations")
             .build()
             .unwrap(),
     )
@@ -63,14 +67,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // ❗IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client.index(
-        model,
-        IndexConfig::default().index_name("moviePlots"),
-        SearchParams::new(Some("node.year > 1990".to_string())),
-    );
-
-    index
-        .create_and_await_vector_index("Movie".to_string(), None)
+    let index = neo4j_client
+        .get_index(
+            model,
+            INDEX_NAME,
+            SearchParams::new(Some("node.year > 1990".to_string())),
+        )
         .await?;
 
     // Query the index
