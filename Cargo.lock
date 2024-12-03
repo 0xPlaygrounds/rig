@@ -4819,6 +4819,7 @@ dependencies = [
  "rig-core",
  "serde",
  "serde_json",
+ "testcontainers",
  "tokio",
 ]
 
