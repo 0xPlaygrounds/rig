@@ -108,7 +108,7 @@ jobs:
           RUSTDOCFLAGS: -D warnings
 
   publish-check:
-    name: stable / doc
+    name: stable / publish dry-run
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
