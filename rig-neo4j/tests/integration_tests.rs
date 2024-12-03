@@ -4,7 +4,7 @@ use testcontainers::{
     GenericImage, ImageExt,
 };
 
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use rig::vector_store::VectorStoreIndex;
 use rig::{
     embeddings::{Embedding, EmbeddingsBuilder},
@@ -74,13 +74,8 @@ async fn vector_search_test() {
             )
         })
         .buffer_unordered(3)
-        .collect::<Vec<_>>()
+        .try_collect::<Vec<_>>()
         .await;
-
-    // Unwrap the results in the vector _create_nodes
-    for result in create_nodes {
-        result.unwrap(); // or handle the error appropriately
-    }
 
     // Create a vector index on our vector store
     println!("Creating vector index...");

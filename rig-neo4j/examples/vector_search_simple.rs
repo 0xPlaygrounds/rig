@@ -8,7 +8,7 @@
 //! 5. Returns the results
 use std::env;
 
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
@@ -76,13 +76,8 @@ async fn main() -> Result<(), anyhow::Error> {
             )
         })
         .buffer_unordered(3)
-        .collect::<Vec<_>>()
+        .try_collect::<Vec<_>>()
         .await;
-
-    // Unwrap the results in the vector _create_nodes
-    for result in create_nodes {
-        result.unwrap(); // or handle the error appropriately
-    }
 
     // Create a vector index on our vector store
     println!("Creating vector index...");

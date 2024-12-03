@@ -149,14 +149,14 @@ where
 }
 
 impl Neo4jClient {
-    const GET_INDEX_QUERY: &str = "
+    const GET_INDEX_QUERY: &'static str = "
     SHOW VECTOR INDEXES
     YIELD name, properties, options
     WHERE name=$index_name
     RETURN name, properties, options
     ";
 
-    const SHOW_INDEXES_QUERY: &str = "SHOW VECTOR INDEXES YIELD name RETURN name";
+    const SHOW_INDEXES_QUERY: &'static str = "SHOW VECTOR INDEXES YIELD name RETURN name";
 
     pub fn new(graph: Graph) -> Self {
         Self { graph }
