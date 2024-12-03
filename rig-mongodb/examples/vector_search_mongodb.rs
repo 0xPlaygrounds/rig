@@ -15,7 +15,7 @@ use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
 #[derive(Embed, Clone, Deserialize, Debug)]
-struct Definition {
+struct Word {
     #[serde(rename = "_id")]
     id: String,
     #[embed]
@@ -46,29 +46,29 @@ async fn main() -> Result<(), anyhow::Error> {
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
-    let fake_definitions = vec![
-        Definition {
+    let words = vec![
+        Word {
             id: "doc0".to_string(),
             definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
         },
-        Definition {
+        Word {
             id: "doc1".to_string(),
             definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         },
-        Definition {
+        Word {
             id: "doc2".to_string(),
             definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }
     ];
 
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(fake_definitions)?
+        .documents(words)?
         .build()
         .await?;
 
     let mongo_documents = embeddings
         .iter()
-        .map(|(Definition { id, definition, .. }, embedding)| {
+        .map(|(Word { id, definition, .. }, embedding)| {
             doc! {
                 "id": id.clone(),
                 "definition": definition.clone(),
@@ -89,9 +89,7 @@ async fn main() -> Result<(), anyhow::Error> {
         MongoDbVectorIndex::new(collection, model, "vector_index", SearchParams::new()).await?;
 
     // Query the index
-    let results = index
-        .top_n::<Definition>("What is a linglingdong?", 1)
-        .await?;
+    let results = index.top_n::<Word>("What is a linglingdong?", 1).await?;
 
     println!("Results: {:?}", results);
 

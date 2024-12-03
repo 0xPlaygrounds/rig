@@ -16,7 +16,7 @@ use testcontainers::{
 use tokio::time::{sleep, Duration};
 
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq)]
-struct Definition {
+struct Word {
     #[serde(rename = "_id")]
     id: String,
     #[embed]
@@ -25,7 +25,7 @@ struct Definition {
 
 const VECTOR_SEARCH_INDEX_NAME: &str = "vector_index";
 const MONGODB_PORT: u16 = 27017;
-const COLLECTION_NAME: &str = "fake_definitions";
+const COLLECTION_NAME: &str = "words";
 const DATABASE_NAME: &str = "rig";
 const USERNAME: &str = "riguser";
 const PASSWORD: &str = "rigpassword";
@@ -137,23 +137,23 @@ async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Docum
 }
 
 async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<bson::Document> {
-    let fake_definitions = vec![
-        Definition {
+    let words = vec![
+        Word {
             id: "doc0".to_string(),
             definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
         },
-        Definition {
+        Word {
             id: "doc1".to_string(),
             definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         },
-        Definition {
+        Word {
             id: "doc2".to_string(),
             definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }
     ];
 
     let embeddings = EmbeddingsBuilder::new(model)
-        .documents(fake_definitions)
+        .documents(words)
         .unwrap()
         .build()
         .await
@@ -161,7 +161,7 @@ async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<bson::Document>
 
     embeddings
         .iter()
-        .map(|(Definition { id, definition, .. }, embedding)| {
+        .map(|(Word { id, definition, .. }, embedding)| {
             doc! {
                 "_id": id.clone(),
                 "definition": definition.clone(),
