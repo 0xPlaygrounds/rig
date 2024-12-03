@@ -15,7 +15,7 @@ use testcontainers::{
 };
 
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq)]
-struct FakeDefinition {
+struct Definition {
     #[serde(rename = "_id")]
     id: String,
     #[embed]
@@ -52,17 +52,7 @@ async fn vector_search_test() {
     let port = container.get_host_port_ipv4(MONGODB_PORT).await.unwrap();
     let host = container.get_host().await.unwrap().to_string();
 
-    // Initialize MongoDB client
-    let options = ClientOptions::parse(format!(
-        "mongodb://{USERNAME}:{PASSWORD}@{host}:{port}/?directConnection=true"
-    ))
-    .await
-    .expect("MongoDB connection string should be valid");
-
-    let mongodb_client =
-        mongodb::Client::with_options(options).expect("MongoDB client options should be valid");
-
-    let collection = setup_database(mongodb_client).await;
+    let collection = bootstrap_collection(host, port).await;
 
     let embeddings = create_embeddings(model.clone()).await;
 
@@ -81,19 +71,10 @@ async fn vector_search_test() {
     .unwrap();
 
     // Query the index
-    let mut results = index
+    let results = index
         .top_n::<serde_json::Value>("What is a linglingdong?", 1)
         .await
         .unwrap();
-
-    let mut i = 1;
-    while results.is_empty() && i <= 3 {
-        results = index
-            .top_n::<serde_json::Value>("What is a linglingdong?", 1)
-            .await
-            .unwrap();
-        i += 1;
-    }
 
     let (score, _, value) = &results.first().unwrap();
 
@@ -104,10 +85,20 @@ async fn vector_search_test() {
             "definition": "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
             "score": score
         })
-    );
+    )
 }
 
-async fn setup_database(mongodb_client: mongodb::Client) -> Collection<bson::Document> {
+async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Document> {
+    // Initialize MongoDB client
+    let options = ClientOptions::parse(format!(
+        "mongodb://{USERNAME}:{PASSWORD}@{host}:{port}/?directConnection=true"
+    ))
+    .await
+    .expect("MongoDB connection string should be valid");
+
+    let mongodb_client =
+        mongodb::Client::with_options(options).expect("MongoDB client options should be valid");
+
     // Initialize MongoDB database and collection
     mongodb_client
         .database(DATABASE_NAME)
@@ -144,15 +135,15 @@ async fn setup_database(mongodb_client: mongodb::Client) -> Collection<bson::Doc
 
 async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<bson::Document> {
     let fake_definitions = vec![
-        FakeDefinition {
+        Definition {
             id: "doc0".to_string(),
             definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
         },
-        FakeDefinition {
+        Definition {
             id: "doc1".to_string(),
             definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         },
-        FakeDefinition {
+        Definition {
             id: "doc2".to_string(),
             definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }
@@ -167,7 +158,7 @@ async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<bson::Document>
 
     embeddings
         .iter()
-        .map(|(FakeDefinition { id, definition, .. }, embedding)| {
+        .map(|(Definition { id, definition, .. }, embedding)| {
             doc! {
                 "_id": id.clone(),
                 "definition": definition.clone(),

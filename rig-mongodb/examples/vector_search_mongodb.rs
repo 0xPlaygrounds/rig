@@ -15,7 +15,7 @@ use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
 #[derive(Embed, Clone, Deserialize, Debug)]
-struct FakeDefinition {
+struct Definition {
     #[serde(rename = "_id")]
     id: String,
     #[embed]
@@ -47,15 +47,15 @@ async fn main() -> Result<(), anyhow::Error> {
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     let fake_definitions = vec![
-        FakeDefinition {
+        Definition {
             id: "doc0".to_string(),
             definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
         },
-        FakeDefinition {
+        Definition {
             id: "doc1".to_string(),
             definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         },
-        FakeDefinition {
+        Definition {
             id: "doc2".to_string(),
             definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }
@@ -68,7 +68,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let mongo_documents = embeddings
         .iter()
-        .map(|(FakeDefinition { id, definition, .. }, embedding)| {
+        .map(|(Definition { id, definition, .. }, embedding)| {
             doc! {
                 "id": id.clone(),
                 "definition": definition.clone(),
@@ -90,7 +90,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = index
-        .top_n::<FakeDefinition>("What is a linglingdong?", 1)
+        .top_n::<Definition>("What is a linglingdong?", 1)
         .await?;
 
     println!("Results: {:?}", results);
