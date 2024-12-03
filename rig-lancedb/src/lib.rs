@@ -24,10 +24,12 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
 /// # Example
 /// ```
 /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-/// use rig::embeddings::EmbeddingModel;
+/// use rig::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
 ///
-/// let table: table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
-/// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
+/// let openai_client = Client::from_env();
+///
+/// let table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
+/// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
 /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
 /// ```
 pub struct LanceDbVectorIndex<M: EmbeddingModel> {
@@ -112,7 +114,7 @@ pub enum SearchType {
 /// Parameters used to perform a vector search on a LanceDb table.
 /// # Example
 /// ```
-/// let search_params = SearchParams::default().distance_type(DistanceType::Cosine);
+/// let search_params = rig_lancedb::SearchParams::default().distance_type(lancedb::DistanceType::Cosine);
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct SearchParams {
@@ -179,7 +181,9 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
     /// # Example
     /// ```
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-    /// use rig::embeddings::EmbeddingModel;
+    /// use rig::providers::openai::{EmbeddingModel, Client, TEXT_EMBEDDING_ADA_002};
+    ///
+    /// let openai_client = Client::from_env();
     ///
     /// let table: lancedb::Table = db.create_table("fake_definitions"); // <-- Replace with your lancedb table here.
     /// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
@@ -234,8 +238,13 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
     /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
     /// # Example
     /// ```
-    /// let table: table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
-    /// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
+    /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
+    /// use rig::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
+    ///
+    /// let openai_client = Client::from_env();
+    ///
+    /// let table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
+    /// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
     /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
     ///
     /// // Query the index

@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use arrow_array::RecordBatchIterator;
-use fixture::{as_record_batch, schema, words, WordDefinition};
+use fixture::{as_record_batch, schema, words, Word};
 use lancedb::{index::vector::IvfPqIndexBuilder, DistanceType};
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
@@ -18,8 +18,7 @@ mod fixture;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize OpenAI client. Use this to generate embeddings (and generate test data for RAG demo).
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = Client::new(&openai_api_key);
+    let openai_client = Client::from_env();
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
@@ -37,7 +36,7 @@ async fn main() -> Result<(), anyhow::Error> {
         // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
         .documents(
             (0..256)
-                .map(|i| WordDefinition {
+                .map(|i| Word {
                     id: format!("doc{}", i),
                     definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
                 })
@@ -77,7 +76,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = vector_store
-        .top_n::<WordDefinition>("I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?", 1)
+        .top_n::<Word>("I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?", 1)
         .await?;
 
     println!("Results: {:?}", results);
