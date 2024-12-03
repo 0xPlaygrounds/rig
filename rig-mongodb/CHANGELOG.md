@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.1.5...rig-mongodb-v0.2.0) - 2024-12-03
+
+### Added
+
+- embeddings API overhaul ([#120](https://github.com/0xPlaygrounds/rig/pull/120))
+
+### Fixed
+
+- *(rig-mongodb)* remove embeddings from `top_n` lookup ([#115](https://github.com/0xPlaygrounds/rig/pull/115))
+
 ## [0.1.5](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.1.4...rig-mongodb-v0.1.5) - 2024-11-13
 
 ### Other
