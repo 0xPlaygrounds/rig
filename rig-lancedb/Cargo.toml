@@ -30,3 +30,7 @@ required-features = ["rig-core/derive"]
 [[example]]
 name = "vector_search_s3_ann"
 required-features = ["rig-core/derive"]
+
+[[test]]
+name = "integration_tests"
+required-features = ["rig-core/derive"]

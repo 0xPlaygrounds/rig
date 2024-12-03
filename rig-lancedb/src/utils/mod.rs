@@ -1,10 +1,14 @@
 mod deserializer;
 
+use std::sync::Arc;
+
 use deserializer::RecordBatchDeserializer;
 use futures::TryStreamExt;
-use lancedb::query::ExecutableQuery;
+use lancedb::{
+    arrow::arrow_schema::{DataType, Schema},
+    query::ExecutableQuery,
+};
 use rig::vector_store::VectorStoreError;
-use serde::de::Error;
 
 use crate::lancedb_to_rig_error;
 
@@ -28,60 +32,82 @@ impl QueryToJson for lancedb::query::VectorQuery {
     }
 }
 
-pub(crate) trait FilterEmbeddings {
-    fn filter(self, embeddings_col: Option<String>) -> serde_json::Result<serde_json::Value>;
+/// Filter out the columns from a table that do not include embeddings. Return the vector of column names.
+pub(crate) trait FilterTableColumns {
+    fn filter_embeddings(self) -> Vec<String>;
 }
 
-impl FilterEmbeddings for serde_json::Value {
-    fn filter(mut self, embeddings_col: Option<String>) -> serde_json::Result<serde_json::Value> {
-        match self.as_object_mut() {
-            Some(obj) => {
-                obj.remove(&embeddings_col.unwrap_or("embedding".to_string()));
-                serde_json::to_value(obj)
-            }
-            None => Err(serde_json::Error::custom(format!(
-                "{} is not an object",
-                self
-            ))),
-        }
+impl FilterTableColumns for Arc<Schema> {
+    fn filter_embeddings(self) -> Vec<String> {
+        self.fields()
+            .iter()
+            .filter_map(|field| match field.data_type() {
+                DataType::FixedSizeList(inner, ..) => match inner.data_type() {
+                    DataType::Float64 => None,
+                    _ => Some(field.name().to_string()),
+                },
+                _ => Some(field.name().to_string()),
+            })
+            .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::FilterEmbeddings;
+    use std::sync::Arc;
 
-    #[test]
-    fn test_filter_default() {
-        let json = serde_json::json!({
-            "id": "doc0",
-            "text": "Hello world",
-            "embedding": vec![0.3889, 0.6987, 0.7758, 0.7750, 0.7289, 0.3380, 0.1165, 0.1551, 0.3783, 0.1458,
-            0.3060, 0.2155, 0.8966, 0.5498, 0.7419, 0.8120, 0.2306, 0.5155, 0.9947, 0.0805]
-        });
+    use lancedb::arrow::arrow_schema::{DataType, Field, Schema};
 
-        let filtered_json = json.filter(None).unwrap();
+    use super::FilterTableColumns;
+
+    #[tokio::test]
+    async fn test_column_filtering() {
+        let field_a = Field::new("id", DataType::Int64, false);
+        let field_b = Field::new("my_bool", DataType::Boolean, false);
+        let field_c = Field::new(
+            "my_embeddings",
+            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float64, true)), 10),
+            false,
+        );
+        let field_d = Field::new(
+            "my_list",
+            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), 10),
+            false,
+        );
+
+        let schema = Schema::new(vec![field_a, field_b, field_c, field_d]);
+
+        let columns = Arc::new(schema).filter_embeddings();
 
         assert_eq!(
-            filtered_json,
-            serde_json::json!({"id": "doc0", "text": "Hello world"})
-        );
+            columns,
+            vec![
+                "id".to_string(),
+                "my_bool".to_string(),
+                "my_list".to_string()
+            ]
+        )
     }
 
-    #[test]
-    fn test_filter_non_default() {
-        let json = serde_json::json!({
-            "id": "doc0",
-            "text": "Hello world",
-            "vectors": vec![0.3889, 0.6987, 0.7758, 0.7750, 0.7289, 0.3380, 0.1165, 0.1551, 0.3783, 0.1458,
-            0.3060, 0.2155, 0.8966, 0.5498, 0.7419, 0.8120, 0.2306, 0.5155, 0.9947, 0.0805]
-        });
-
-        let filtered_json = json.filter(Some("vectors".to_string())).unwrap();
-
-        assert_eq!(
-            filtered_json,
-            serde_json::json!({"id": "doc0", "text": "Hello world"})
+    #[tokio::test]
+    async fn test_column_filtering_2() {
+        let field_a = Field::new("id", DataType::Int64, false);
+        let field_b = Field::new("my_bool", DataType::Boolean, false);
+        let field_c = Field::new(
+            "my_embeddings",
+            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float64, true)), 10),
+            false,
         );
+        let field_d = Field::new(
+            "my_other_embeddings",
+            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float64, true)), 10),
+            false,
+        );
+
+        let schema = Schema::new(vec![field_a, field_b, field_c, field_d]);
+
+        let columns = Arc::new(schema).filter_embeddings();
+
+        assert_eq!(columns, vec!["id".to_string(), "my_bool".to_string()])
     }
 }

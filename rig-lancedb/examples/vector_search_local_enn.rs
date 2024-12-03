@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use arrow_array::RecordBatchIterator;
-use fixture::{as_record_batch, schema, word_definitions};
+use fixture::{as_record_batch, schema, words};
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
@@ -23,7 +23,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Generate embeddings for the test data.
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(word_definitions())?
+        .documents(words())?
         .build()
         .await?;
 

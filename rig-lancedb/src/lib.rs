@@ -8,7 +8,7 @@ use rig::{
 };
 use serde::Deserialize;
 use serde_json::Value;
-use utils::{FilterEmbeddings, QueryToJson};
+use utils::{FilterTableColumns, QueryToJson};
 
 mod utils;
 
@@ -201,7 +201,14 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
             .table
             .vector_search(prompt_embedding.vec.clone())
             .map_err(lancedb_to_rig_error)?
-            .limit(n);
+            .limit(n)
+            .select(lancedb::query::Select::Columns(
+                self.table
+                    .schema()
+                    .await
+                    .map_err(lancedb_to_rig_error)?
+                    .filter_embeddings(),
+            ));
 
         self.build_query(query)
             .execute_query()
@@ -209,19 +216,16 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
             .into_iter()
             .enumerate()
             .map(|(i, value)| {
-                let filtered_value = value
-                    .filter(self.search_params.column.clone())
-                    .map_err(serde_to_rig_error)?;
                 Ok((
-                    match filtered_value.get("_distance") {
+                    match value.get("_distance") {
                         Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
                         _ => 0.0,
                     },
-                    match filtered_value.get(self.id_field.clone()) {
+                    match value.get(self.id_field.clone()) {
                         Some(Value::String(id)) => id.to_string(),
                         _ => format!("unknown{i}"),
                     },
-                    serde_json::from_value(filtered_value).map_err(serde_to_rig_error)?,
+                    serde_json::from_value(value).map_err(serde_to_rig_error)?,
                 ))
             })
             .collect()
