@@ -1,4 +1,4 @@
-use std::{env, sync::Arc};
+use std::sync::Arc;
 
 use arrow_array::RecordBatchIterator;
 use fixture::{as_record_batch, schema, words, Word};
