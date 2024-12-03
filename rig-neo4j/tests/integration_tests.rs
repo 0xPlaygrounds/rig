@@ -134,9 +134,7 @@ async fn vector_search_test() {
     )
 }
 
-async fn create_embeddings(
-    model: openai::EmbeddingModel,
-) -> Vec<(Word, OneOrMany<Embedding>)> {
+async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, OneOrMany<Embedding>)> {
     let words = vec![
         Word {
             id: "doc0".to_string(),
