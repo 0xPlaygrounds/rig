@@ -124,4 +124,4 @@ jobs:
         uses: arduino/setup-protoc@v3
 
       - name: Run cargo publish --dry-run
-        run: find . | grep "\./.\+/Cargo.toml" | xargs -n 1 sh -c 'cargo publish --manifest-path $0 --dry-run || exit 255'
+        run: find . | grep -v "target" | grep "\./.*/Cargo\.toml" | xargs -n 1 sh -c 'cargo publish --manifest-path $0 --dry-run || exit 255'
