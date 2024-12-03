@@ -54,7 +54,7 @@ async fn vector_search_test() {
 
     let embeddings = create_embeddings(model.clone()).await;
 
-    let create_nodes = futures::stream::iter(embeddings)
+    futures::stream::iter(embeddings)
         .map(|(doc, embeddings)| {
             neo4j_client.graph.run(
                 neo4rs::query(
@@ -75,7 +75,8 @@ async fn vector_search_test() {
         })
         .buffer_unordered(3)
         .try_collect::<Vec<_>>()
-        .await;
+        .await
+        .unwrap();
 
     // Create a vector index on our vector store
     println!("Creating vector index...");

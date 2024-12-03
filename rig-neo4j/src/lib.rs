@@ -70,11 +70,11 @@
 //!    .await
 //!    .unwrap();
 //!
-//!     let index = client.index(
+//!     let index = client.get_index(
 //!         model,
-//!         IndexConfig::new("moviePlotsEmbedding"),
-//!         SearchParams::default(),
-//!     );
+//!         "moviePlotsEmbedding",
+//!         SearchParams::default()
+//!     ).await.unwrap();
 //!
 //!     #[derive(Debug, Deserialize)]
 //!     struct Movie {
