@@ -17,7 +17,7 @@ const BOLT_PORT: u16 = 7687;
 const HTTP_PORT: u16 = 7474;
 
 #[derive(Embed, Clone, serde::Deserialize, Debug)]
-struct FakeDefinition {
+struct Definition {
     id: String,
     #[embed]
     definition: String,
@@ -140,17 +140,17 @@ async fn vector_search_test() {
 
 async fn create_embeddings(
     model: openai::EmbeddingModel,
-) -> Vec<(FakeDefinition, OneOrMany<Embedding>)> {
+) -> Vec<(Definition, OneOrMany<Embedding>)> {
     let fake_definitions = vec![
-        FakeDefinition {
+        Definition {
             id: "doc0".to_string(),
             definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
         },
-        FakeDefinition {
+        Definition {
             id: "doc1".to_string(),
             definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         },
-        FakeDefinition {
+        Definition {
             id: "doc2".to_string(),
             definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }
