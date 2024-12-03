@@ -4803,6 +4803,7 @@ dependencies = [
  "serde",
  "serde_json",
  "term_size",
+ "testcontainers",
  "textwrap",
  "tokio",
  "tracing",

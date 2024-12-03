@@ -21,7 +21,7 @@ const QDRANT_PORT_SECONDARY: u16 = 6334;
 const COLLECTION_NAME: &str = "rig-collection";
 
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug)]
-struct Definition {
+struct Word {
     id: String,
     #[embed]
     definition: String,
@@ -95,23 +95,23 @@ async fn vector_search_test() {
 }
 
 async fn create_points(model: openai::EmbeddingModel) -> Vec<PointStruct> {
-    let fake_definitions = vec![
-        Definition {
+    let words = vec![
+        Word {
             id: "0981d983-a5f8-49eb-89ea-f7d3b2196d2e".to_string(),
             definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
         },
-        Definition {
+        Word {
             id: "62a36d43-80b6-4fd6-990c-f75bb02287d1".to_string(),
             definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         },
-        Definition {
+        Word {
             id: "f9e17d59-32e5-440c-be02-b2759a654824".to_string(),
             definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }
     ];
 
     let documents = EmbeddingsBuilder::new(model)
-        .documents(fake_definitions)
+        .documents(words)
         .unwrap()
         .build()
         .await
