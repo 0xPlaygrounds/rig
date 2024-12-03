@@ -20,12 +20,13 @@ struct SearchIndex {
 }
 
 impl SearchIndex {
-    async fn get_search_index<C>(
+    async fn get_search_index<C: Send + Sync>(
         collection: mongodb::Collection<C>,
         index_name: &str,
     ) -> Result<SearchIndex, VectorStoreError> {
         collection
-            .list_search_indexes(index_name, None, None)
+            .list_search_indexes()
+            .name(index_name)
             .await
             .map_err(mongodb_to_rig_error)?
             .with_type::<SearchIndex>()
@@ -79,7 +80,7 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 ///     SearchParams::new("embedding"), // <-- field name in `Document` that contains the embeddings.
 /// );
 /// ```
-pub struct MongoDbVectorIndex<M: EmbeddingModel, C> {
+pub struct MongoDbVectorIndex<M: EmbeddingModel, C: Send + Sync> {
     collection: mongodb::Collection<C>,
     model: M,
     index_name: String,
@@ -87,7 +88,7 @@ pub struct MongoDbVectorIndex<M: EmbeddingModel, C> {
     search_params: SearchParams,
 }
 
-impl<M: EmbeddingModel, C> MongoDbVectorIndex<M, C> {
+impl<M: EmbeddingModel, C: Send + Sync> MongoDbVectorIndex<M, C> {
     /// Vector search stage of aggregation pipeline of mongoDB collection.
     /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
     fn pipeline_search_stage(&self, prompt_embedding: &Embedding, n: usize) -> bson::Document {
@@ -121,7 +122,7 @@ impl<M: EmbeddingModel, C> MongoDbVectorIndex<M, C> {
     }
 }
 
-impl<M: EmbeddingModel, C> MongoDbVectorIndex<M, C> {
+impl<M: EmbeddingModel, C: Send + Sync> MongoDbVectorIndex<M, C> {
     /// Create a new `MongoDbVectorIndex`.
     ///
     /// The index (of type "vector") must already exist for the MongoDB collection.
@@ -254,20 +255,17 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
 
         let mut cursor = self
             .collection
-            .aggregate(
-                [
-                    self.pipeline_search_stage(&prompt_embedding, n),
-                    self.pipeline_score_stage(),
-                    {
-                        doc! {
-                            "$project": {
-                                self.embedded_field.clone(): 0,
-                            },
-                        }
-                    },
-                ],
-                None,
-            )
+            .aggregate([
+                self.pipeline_search_stage(&prompt_embedding, n),
+                self.pipeline_score_stage(),
+                {
+                    doc! {
+                        "$project": {
+                            self.embedded_field.clone(): 0,
+                        },
+                    }
+                },
+            ])
             .await
             .map_err(mongodb_to_rig_error)?
             .with_type::<serde_json::Value>();
@@ -329,19 +327,16 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
 
         let mut cursor = self
             .collection
-            .aggregate(
-                [
-                    self.pipeline_search_stage(&prompt_embedding, n),
-                    self.pipeline_score_stage(),
-                    doc! {
-                        "$project": {
-                            "_id": 1,
-                            "score": 1
-                        },
+            .aggregate([
+                self.pipeline_search_stage(&prompt_embedding, n),
+                self.pipeline_score_stage(),
+                doc! {
+                    "$project": {
+                        "_id": 1,
+                        "score": 1
                     },
-                ],
-                None,
-            )
+                },
+            ])
             .await
             .map_err(mongodb_to_rig_error)?
             .with_type::<serde_json::Value>();
