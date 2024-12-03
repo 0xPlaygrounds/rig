@@ -13,6 +13,7 @@ use testcontainers::{
     runners::AsyncRunner,
     GenericImage, ImageExt,
 };
+use tokio::time::{sleep, Duration};
 
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq)]
 struct Definition {
@@ -69,6 +70,8 @@ async fn vector_search_test() {
     )
     .await
     .unwrap();
+
+    sleep(Duration::from_secs(5)).await;
 
     // Query the index
     let results = index
