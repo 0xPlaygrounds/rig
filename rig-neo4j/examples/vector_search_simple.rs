@@ -18,7 +18,7 @@ use rig::{
 use rig_neo4j::{vector_index::SearchParams, Neo4jClient, ToBoltType};
 
 #[derive(Embed, Clone, Debug)]
-pub struct Definition {
+pub struct Word {
     pub id: String,
     #[embed]
     pub definition: String,
@@ -41,15 +41,15 @@ async fn main() -> Result<(), anyhow::Error> {
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .document(Definition {
+        .document(Word {
             id: "doc0".to_string(),
             definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
         })?
-        .document(Definition {
+        .document(Word {
             id: "doc1".to_string(),
             definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         })?
-        .document(Definition {
+        .document(Word {
             id: "doc2".to_string(),
             definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         })?
