@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{VectorStoreError, VectorStoreIndex};
 use crate::{
-    embeddings::{distance::CalculateDistance, Embedding, EmbeddingModel},
+    embeddings::{distance::VectorDistance, Embedding, EmbeddingModel},
     OneOrMany,
 };
 
@@ -76,11 +76,6 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             if let Some((distance, embed_doc)) = embeddings
                 .iter()
                 .map(|embedding| {
-                    println!(
-                        "Embedding: {:?}: {:?}",
-                        embedding,
-                        embedding.cosine_similarity(prompt_embedding, false)
-                    );
                     (
                         OrderedFloat(embedding.cosine_similarity(prompt_embedding, false)),
                         &embedding.document,

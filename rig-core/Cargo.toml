@@ -36,10 +36,10 @@ tracing-subscriber = "0.3.18"
 tokio-test = "0.4.4"
 
 [features]
-all = ["derive", "pdf", "embedding-distance"]
+all = ["derive", "pdf", "rayon"]
 derive = ["dep:rig-derive"]
 pdf = ["dep:lopdf"]
-embedding-distance = ["dep:rayon"]
+rayon = ["dep:rayon"]
 
 [[test]]
 name = "embed_macro"
@@ -47,23 +47,23 @@ required-features = ["derive"]
 
 [[example]]
 name = "calculator_chatbot"
-required-features = ["derive", "embedding-distance"] 
+required-features = ["derive"] 
 
 [[example]]
 name = "rag_dynamic_tools"
-required-features = ["derive", "embedding-distance"] 
+required-features = ["derive"] 
 
 [[example]]
 name = "rag"
-required-features = ["derive", "embedding-distance"] 
+required-features = ["derive", "rayon"] 
 
 [[example]]
 name = "vector_search"
-required-features = ["derive", "embedding-distance"] 
+required-features = ["derive", "rayon"] 
 
 [[example]]
 name = "vector_search_cohere"
-required-features = ["derive", "embedding-distance"] 
+required-features = ["derive", "rayon"] 
 
 [[example]]
 name = "gemini_embeddings"
