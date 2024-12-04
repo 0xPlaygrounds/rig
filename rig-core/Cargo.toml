@@ -46,14 +46,6 @@ name = "embed_macro"
 required-features = ["derive"]
 
 [[example]]
-name = "calculator_chatbot"
-required-features = ["derive"] 
-
-[[example]]
-name = "rag_dynamic_tools"
-required-features = ["derive"] 
-
-[[example]]
 name = "rag"
 required-features = ["derive"] 
 
