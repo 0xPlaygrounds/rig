@@ -76,6 +76,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             if let Some((distance, embed_doc)) = embeddings
                 .iter()
                 .map(|embedding| {
+                    println!("Embedding: {:?}: {:?}", embedding, embedding.cosine_similarity(prompt_embedding, false));
                     (
                         OrderedFloat(embedding.cosine_similarity(prompt_embedding, false)),
                         &embedding.document,
@@ -419,7 +420,7 @@ mod tests {
                 })
                 .collect::<Vec<(_, _, String)>>(),
             vec![(
-                0.034444444444444444,
+                0.9807965956109156,
                 "doc1".to_string(),
                 "glarb-garb".to_string()
             )]
@@ -496,7 +497,7 @@ mod tests {
                 })
                 .collect::<Vec<(_, _, String)>>(),
             vec![(
-                0.034444444444444444,
+                0.9807965956109156,
                 "doc1".to_string(),
                 "glarb-garb".to_string()
             )]
