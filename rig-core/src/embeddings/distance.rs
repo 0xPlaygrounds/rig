@@ -76,7 +76,8 @@ impl CalculateDistance for Embedding {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
+    use super::CalculateDistance;
     use super::Embedding;
 
     fn embeddings() -> (Embedding, Embedding) {
