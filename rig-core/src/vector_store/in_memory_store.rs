@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{VectorStoreError, VectorStoreIndex};
 use crate::{
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::{distance::CalculateDistance, Embedding, EmbeddingModel},
     OneOrMany,
 };
 
@@ -77,7 +77,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
                 .iter()
                 .map(|embedding| {
                     (
-                        OrderedFloat(embedding.distance(prompt_embedding)),
+                        OrderedFloat(embedding.cosine_similarity(prompt_embedding, false)),
                         &embedding.document,
                     )
                 })

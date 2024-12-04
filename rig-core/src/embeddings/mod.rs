@@ -8,6 +8,9 @@ pub mod embed;
 pub mod embedding;
 pub mod tool;
 
+#[cfg(feature = "embedding-distance")]
+pub mod distance;
+
 pub use builder::EmbeddingsBuilder;
 pub use embed::{to_texts, Embed, EmbedError, TextEmbedder};
 pub use embedding::{Embedding, EmbeddingError, EmbeddingModel};

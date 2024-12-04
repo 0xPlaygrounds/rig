@@ -4,6 +4,7 @@ use serde_json::Value;
 
 use crate::embeddings::EmbeddingError;
 
+#[cfg(feature = "embedding-distance")]
 pub mod in_memory_store;
 
 #[derive(Debug, thiserror::Error)]
