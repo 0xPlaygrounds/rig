@@ -76,7 +76,11 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             if let Some((distance, embed_doc)) = embeddings
                 .iter()
                 .map(|embedding| {
-                    println!("Embedding: {:?}: {:?}", embedding, embedding.cosine_similarity(prompt_embedding, false));
+                    println!(
+                        "Embedding: {:?}: {:?}",
+                        embedding,
+                        embedding.cosine_similarity(prompt_embedding, false)
+                    );
                     (
                         OrderedFloat(embedding.cosine_similarity(prompt_embedding, false)),
                         &embedding.document,
