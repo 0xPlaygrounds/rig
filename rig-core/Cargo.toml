@@ -55,15 +55,15 @@ required-features = ["derive"]
 
 [[example]]
 name = "rag"
-required-features = ["derive", "rayon"] 
+required-features = ["derive"] 
 
 [[example]]
 name = "vector_search"
-required-features = ["derive", "rayon"] 
+required-features = ["derive"] 
 
 [[example]]
 name = "vector_search_cohere"
-required-features = ["derive", "rayon"] 
+required-features = ["derive"] 
 
 [[example]]
 name = "gemini_embeddings"
