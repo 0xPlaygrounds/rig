@@ -24,7 +24,7 @@
 ✨ If you would like to help spread the word about Rig, please consider starring the repo!
 
 > [!WARNING]
-> Here be dragons! As we plan to ship a torrent of features in the following months, future updates **will** contain **breaking changes** as Rig evolves. We'll annotate them and highlight migration paths as we encounter them.
+> Here be dragons! As we plan to ship a torrent of features in the following months, future updates **will** contain **breaking changes**. With Rig evolving, we'll annotate changes and highlight migration paths as we encounter them.
 
 
 ## What is Rig?
