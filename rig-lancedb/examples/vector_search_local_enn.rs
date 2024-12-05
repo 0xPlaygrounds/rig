@@ -1,7 +1,7 @@
-use std::{env, sync::Arc};
+use std::sync::Arc;
 
 use arrow_array::RecordBatchIterator;
-use fixture::{as_record_batch, schema, word_definitions};
+use fixture::{as_record_batch, schema, words};
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
@@ -15,15 +15,14 @@ mod fixture;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize OpenAI client. Use this to generate embeddings (and generate test data for RAG demo).
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = Client::new(&openai_api_key);
+    let openai_client = Client::from_env();
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     // Generate embeddings for the test data.
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(word_definitions())?
+        .documents(words())?
         .build()
         .await?;
 

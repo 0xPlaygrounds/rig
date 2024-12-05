@@ -8,7 +8,7 @@ use rig::{
 };
 use serde::Deserialize;
 use serde_json::Value;
-use utils::{FilterEmbeddings, QueryToJson};
+use utils::{FilterTableColumns, QueryToJson};
 
 mod utils;
 
@@ -24,10 +24,12 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
 /// # Example
 /// ```
 /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-/// use rig::embeddings::EmbeddingModel;
+/// use rig::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
 ///
-/// let table: table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
-/// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
+/// let openai_client = Client::from_env();
+///
+/// let table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
+/// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
 /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
 /// ```
 pub struct LanceDbVectorIndex<M: EmbeddingModel> {
@@ -112,7 +114,7 @@ pub enum SearchType {
 /// Parameters used to perform a vector search on a LanceDb table.
 /// # Example
 /// ```
-/// let search_params = SearchParams::default().distance_type(DistanceType::Cosine);
+/// let search_params = rig_lancedb::SearchParams::default().distance_type(lancedb::DistanceType::Cosine);
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct SearchParams {
@@ -179,7 +181,9 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
     /// # Example
     /// ```
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-    /// use rig::embeddings::EmbeddingModel;
+    /// use rig::providers::openai::{EmbeddingModel, Client, TEXT_EMBEDDING_ADA_002};
+    ///
+    /// let openai_client = Client::from_env();
     ///
     /// let table: lancedb::Table = db.create_table("fake_definitions"); // <-- Replace with your lancedb table here.
     /// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
@@ -201,7 +205,14 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
             .table
             .vector_search(prompt_embedding.vec.clone())
             .map_err(lancedb_to_rig_error)?
-            .limit(n);
+            .limit(n)
+            .select(lancedb::query::Select::Columns(
+                self.table
+                    .schema()
+                    .await
+                    .map_err(lancedb_to_rig_error)?
+                    .filter_embeddings(),
+            ));
 
         self.build_query(query)
             .execute_query()
@@ -209,19 +220,16 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
             .into_iter()
             .enumerate()
             .map(|(i, value)| {
-                let filtered_value = value
-                    .filter(self.search_params.column.clone())
-                    .map_err(serde_to_rig_error)?;
                 Ok((
-                    match filtered_value.get("_distance") {
+                    match value.get("_distance") {
                         Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
                         _ => 0.0,
                     },
-                    match filtered_value.get(self.id_field.clone()) {
+                    match value.get(self.id_field.clone()) {
                         Some(Value::String(id)) => id.to_string(),
                         _ => format!("unknown{i}"),
                     },
-                    serde_json::from_value(filtered_value).map_err(serde_to_rig_error)?,
+                    serde_json::from_value(value).map_err(serde_to_rig_error)?,
                 ))
             })
             .collect()
@@ -230,8 +238,13 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
     /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
     /// # Example
     /// ```
-    /// let table: table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
-    /// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
+    /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
+    /// use rig::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
+    ///
+    /// let openai_client = Client::from_env();
+    ///
+    /// let table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
+    /// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
     /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
     ///
     /// // Query the index
