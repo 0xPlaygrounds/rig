@@ -24,14 +24,14 @@ pub trait TryOp: Send + Sync {
     /// inputs that will be processed concurrently.
     /// If the op fails for one of the inputs, the entire operation will fail and the error will
     /// be returned.
-    /// 
+    ///
     /// # Example
     /// ```rust
     /// use rig::pipeline::{self, TryOp};
-    /// 
+    ///
     /// let op = pipeline::new()
     ///    .map(|x: i32| if x % 2 == 0 { Ok(x + 1) } else { Err("x is odd") });
-    /// 
+    ///
     /// // Execute the pipeline concurrently with 2 inputs
     /// let result = op.try_batch_call(2, vec![2, 4]).await;
     /// assert_eq!(result, Ok(vec![3, 5]));
@@ -57,15 +57,15 @@ pub trait TryOp: Send + Sync {
 
     /// Map the success return value (i.e., `Ok`) of the current op to a different value
     /// using the provided closure.
-    /// 
+    ///
     /// # Example
     /// ```rust
     /// use rig::pipeline::{self, TryOp};
-    /// 
+    ///
     /// let op = pipeline::new()
     ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
     ///     .map_ok(|x| x * 2);
-    /// 
+    ///
     /// let result = op.try_call(2).await;
     /// assert_eq!(result, Ok(4));
     /// ```
@@ -80,15 +80,15 @@ pub trait TryOp: Send + Sync {
 
     /// Map the error return value (i.e., `Err`) of the current op to a different value
     /// using the provided closure.
-    /// 
+    ///
     /// # Example
     /// ```rust
     /// use rig::pipeline::{self, TryOp};
-    /// 
+    ///
     /// let op = pipeline::new()
     ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
     ///     .map_err(|err| format!("Error: {}", err));
-    /// 
+    ///
     /// let result = op.try_call(1).await;
     /// assert_eq!(result, Err("Error: x is odd".to_string()));
     /// ```
@@ -104,18 +104,18 @@ pub trait TryOp: Send + Sync {
         MapErr::new(self, map(f))
     }
 
-    /// Chain a function to the current op. The function will only be called 
-    /// if the current op returns `Ok`. The function must return a `Future` with value 
-    /// `Result<T, E>` where `E` is the same type as the error type of the current. 
-    /// 
+    /// Chain a function to the current op. The function will only be called
+    /// if the current op returns `Ok`. The function must return a `Future` with value
+    /// `Result<T, E>` where `E` is the same type as the error type of the current.
+    ///
     /// # Example
     /// ```rust
     /// use rig::pipeline::{self, TryOp};
-    /// 
+    ///
     /// let op = pipeline::new()
     ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
     ///     .and_then(|x| async move { Ok(x * 2) });
-    /// 
+    ///
     /// let result = op.try_call(2).await;
     /// assert_eq!(result, Ok(4));
     /// ```
@@ -135,15 +135,15 @@ pub trait TryOp: Send + Sync {
     /// Chain a function `f` to the current op. The function `f` will only be called
     /// if the current op returns `Err`. `f` must return a `Future` with value
     /// `Result<T, E>` where `T` is the same type as the output type of the current op.
-    /// 
+    ///
     /// # Example
     /// ```rust
     /// use rig::pipeline::{self, TryOp};
-    /// 
+    ///
     /// let op = pipeline::new()
     ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
     ///     .or_else(|err| async move { Err(format!("Error: {}", err)) });
-    /// 
+    ///
     /// let result = op.try_call(1).await;
     /// assert_eq!(result, Err("Error: x is odd".to_string()));
     /// ```
@@ -163,26 +163,26 @@ pub trait TryOp: Send + Sync {
     /// Chain a new op `op` to the current op. The new op will be called with the success
     /// return value of the current op (i.e.: `Ok` value). The chained op can be any type that
     /// implements the `Op` trait.
-    /// 
+    ///
     /// # Example
     /// ```rust
     /// use rig::pipeline::{self, TryOp};
-    /// 
+    ///
     /// struct AddOne;
-    /// 
+    ///
     /// impl Op for AddOne {
     ///     type Input = i32;
     ///     type Output = i32;
-    /// 
+    ///
     ///     async fn call(&self, input: Self::Input) -> Self::Output {
     ///         input + 1
     ///     }
     /// }
-    /// 
+    ///
     /// let op = pipeline::new()
     ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
     ///     .chain_ok(MyOp);
-    /// 
+    ///
     /// let result = op.try_call(2).await;
     /// assert_eq!(result, Ok(3));
     /// ```
