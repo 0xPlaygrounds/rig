@@ -14,15 +14,28 @@ pub trait TryOp: Send + Sync {
     type Output: Send + Sync;
     type Error: Send + Sync;
 
+    /// Execute the current op with the given input.
     fn try_call(
         &self,
         input: Self::Input,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send;
 
-    /// Execute the current pipeline with the given inputs. `n` is the number of concurrent
+    /// Execute the current op with the given inputs. `n` is the number of concurrent
     /// inputs that will be processed concurrently.
-    /// If one of the inputs fails, the entire operation will fail and the error will
+    /// If the op fails for one of the inputs, the entire operation will fail and the error will
     /// be returned.
+    /// 
+    /// # Example
+    /// ```rust
+    /// use rig::pipeline::{self, TryOp};
+    /// 
+    /// let op = pipeline::new()
+    ///    .map(|x: i32| if x % 2 == 0 { Ok(x + 1) } else { Err("x is odd") });
+    /// 
+    /// // Execute the pipeline concurrently with 2 inputs
+    /// let result = op.try_batch_call(2, vec![2, 4]).await;
+    /// assert_eq!(result, Ok(vec![3, 5]));
+    /// ```
     fn try_batch_call<I>(
         &self,
         n: usize,
@@ -42,6 +55,20 @@ pub trait TryOp: Send + Sync {
         }
     }
 
+    /// Map the success return value (i.e., `Ok`) of the current op to a different value
+    /// using the provided closure.
+    /// 
+    /// # Example
+    /// ```rust
+    /// use rig::pipeline::{self, TryOp};
+    /// 
+    /// let op = pipeline::new()
+    ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
+    ///     .map_ok(|x| x * 2);
+    /// 
+    /// let result = op.try_call(2).await;
+    /// assert_eq!(result, Ok(4));
+    /// ```
     fn map_ok<F, T>(self, f: F) -> impl op::Op<Input = Self::Input, Output = Result<T, Self::Error>>
     where
         F: Fn(Self::Output) -> T + Send + Sync,
@@ -51,10 +78,24 @@ pub trait TryOp: Send + Sync {
         MapOk::new(self, map(f))
     }
 
+    /// Map the error return value (i.e., `Err`) of the current op to a different value
+    /// using the provided closure.
+    /// 
+    /// # Example
+    /// ```rust
+    /// use rig::pipeline::{self, TryOp};
+    /// 
+    /// let op = pipeline::new()
+    ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
+    ///     .map_err(|err| format!("Error: {}", err));
+    /// 
+    /// let result = op.try_call(1).await;
+    /// assert_eq!(result, Err("Error: x is odd".to_string()));
+    /// ```
     fn map_err<F, E>(
         self,
         f: F,
-    ) -> impl TryOp<Input = Self::Input, Output = Self::Output, Error = E>
+    ) -> impl op::Op<Input = Self::Input, Output = Result<Self::Output, E>>
     where
         F: Fn(Self::Error) -> E + Send + Sync,
         E: Send + Sync,
@@ -63,6 +104,21 @@ pub trait TryOp: Send + Sync {
         MapErr::new(self, map(f))
     }
 
+    /// Chain a function to the current op. The function will only be called 
+    /// if the current op returns `Ok`. The function must return a `Future` with value 
+    /// `Result<T, E>` where `E` is the same type as the error type of the current. 
+    /// 
+    /// # Example
+    /// ```rust
+    /// use rig::pipeline::{self, TryOp};
+    /// 
+    /// let op = pipeline::new()
+    ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
+    ///     .and_then(|x| async move { Ok(x * 2) });
+    /// 
+    /// let result = op.try_call(2).await;
+    /// assert_eq!(result, Ok(4));
+    /// ```
     fn and_then<F, Fut, T>(
         self,
         f: F,
@@ -76,6 +132,21 @@ pub trait TryOp: Send + Sync {
         AndThen::new(self, then(f))
     }
 
+    /// Chain a function `f` to the current op. The function `f` will only be called
+    /// if the current op returns `Err`. `f` must return a `Future` with value
+    /// `Result<T, E>` where `T` is the same type as the output type of the current op.
+    /// 
+    /// # Example
+    /// ```rust
+    /// use rig::pipeline::{self, TryOp};
+    /// 
+    /// let op = pipeline::new()
+    ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
+    ///     .or_else(|err| async move { Err(format!("Error: {}", err)) });
+    /// 
+    /// let result = op.try_call(1).await;
+    /// assert_eq!(result, Err("Error: x is odd".to_string()));
+    /// ```
     fn or_else<F, Fut, E>(
         self,
         f: F,
@@ -89,6 +160,32 @@ pub trait TryOp: Send + Sync {
         OrElse::new(self, then(f))
     }
 
+    /// Chain a new op `op` to the current op. The new op will be called with the success
+    /// return value of the current op (i.e.: `Ok` value). The chained op can be any type that
+    /// implements the `Op` trait.
+    /// 
+    /// # Example
+    /// ```rust
+    /// use rig::pipeline::{self, TryOp};
+    /// 
+    /// struct AddOne;
+    /// 
+    /// impl Op for AddOne {
+    ///     type Input = i32;
+    ///     type Output = i32;
+    /// 
+    ///     async fn call(&self, input: Self::Input) -> Self::Output {
+    ///         input + 1
+    ///     }
+    /// }
+    /// 
+    /// let op = pipeline::new()
+    ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
+    ///     .chain_ok(MyOp);
+    /// 
+    /// let result = op.try_call(2).await;
+    /// assert_eq!(result, Ok(3));
+    /// ```
     fn chain_ok<T>(
         self,
         op: T,
@@ -130,25 +227,6 @@ impl<Op1, Op2> MapOk<Op1, Op2> {
     }
 }
 
-// Result<T1, E> -> Result<T2, E>
-// impl<Op1, Op2> TryOp for MapOk<Op1, Op2>
-// where
-//     Op1: TryOp,
-//     Op2: super::Op<Input = Op1::Output>,
-// {
-//     type Input = Op1::Input;
-//     type Output = Op2::Output;
-//     type Error = Op1::Error;
-
-//     #[inline]
-//     async fn try_call(&self, input: Self::Input) -> Result<Self::Output, Self::Error> {
-//         match self.prev.try_call(input).await {
-//             Ok(output) => Ok(self.op.call(output).await),
-//             Err(err) => Err(err),
-//         }
-//     }
-// }
-
 impl<Op1, Op2> op::Op for MapOk<Op1, Op2>
 where
     Op1: TryOp,
@@ -178,17 +256,16 @@ impl<Op1, Op2> MapErr<Op1, Op2> {
 }
 
 // Result<T, E1> -> Result<T, E2>
-impl<Op1, Op2> TryOp for MapErr<Op1, Op2>
+impl<Op1, Op2> op::Op for MapErr<Op1, Op2>
 where
     Op1: TryOp,
     Op2: super::Op<Input = Op1::Error>,
 {
     type Input = Op1::Input;
-    type Output = Op1::Output;
-    type Error = Op2::Output;
+    type Output = Result<Op1::Output, Op2::Output>;
 
     #[inline]
-    async fn try_call(&self, input: Self::Input) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, input: Self::Input) -> Self::Output {
         match self.prev.try_call(input).await {
             Ok(output) => Ok(output),
             Err(err) => Err(self.op.call(err).await),

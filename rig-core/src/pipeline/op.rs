@@ -30,7 +30,7 @@ pub trait Op: Send + Sync {
         }
     }
 
-    /// Chain a function to the current pipeline
+    /// Chain a function `f` to the current op.
     ///
     /// # Example
     /// ```rust
@@ -79,15 +79,15 @@ pub trait Op: Send + Sync {
         Sequential::new(self, then(f))
     }
 
-    /// Chain an arbitrary operation to the current pipeline.
+    /// Chain an arbitrary operation to the current op.
     ///
     /// # Example
     /// ```rust
     /// use rig::pipeline::{self, Op};
     ///
-    /// struct MyOp;
+    /// struct AddOne;
     ///
-    /// impl Op for MyOp {
+    /// impl Op for AddOne {
     ///     type Input = i32;
     ///     type Output = i32;
     ///
@@ -97,7 +97,7 @@ pub trait Op: Send + Sync {
     /// }
     ///
     /// let chain = pipeline::new()
-    ///    .chain(MyOp);
+    ///    .chain(AddOne);
     ///
     /// let result = chain.call(1).await;
     /// assert_eq!(result, 2);
