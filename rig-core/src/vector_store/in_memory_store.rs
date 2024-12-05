@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{VectorStoreError, VectorStoreIndex};
 use crate::{
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::{distance::VectorDistance, Embedding, EmbeddingModel},
     OneOrMany,
 };
 
@@ -77,7 +77,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
                 .iter()
                 .map(|embedding| {
                     (
-                        OrderedFloat(embedding.distance(prompt_embedding)),
+                        OrderedFloat(embedding.cosine_similarity(prompt_embedding, false)),
                         &embedding.document,
                     )
                 })
@@ -419,7 +419,7 @@ mod tests {
                 })
                 .collect::<Vec<(_, _, String)>>(),
             vec![(
-                0.034444444444444444,
+                0.9807965956109156,
                 "doc1".to_string(),
                 "glarb-garb".to_string()
             )]
@@ -496,7 +496,7 @@ mod tests {
                 })
                 .collect::<Vec<(_, _, String)>>(),
             vec![(
-                0.034444444444444444,
+                0.9807965956109156,
                 "doc1".to_string(),
                 "glarb-garb".to_string()
             )]
