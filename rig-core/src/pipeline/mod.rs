@@ -8,10 +8,13 @@
 //! Pipelines are made up of one or more "ops", each of which must implement the [Op] trait.
 //! The [Op] trait requires the implementation of only one method: `call`, which takes an input
 //! and returns an output. The trait provides a wide range of combinators for chaining operations together.
+//! 
 //! One can think of a pipeline as a DAG (Directed Acyclic Graph) where each node is an operation and 
 //! the edges represent the data flow between operations. When invoking the pipeline on some input, 
-//! the input is passed to the root node of the DAG (i.e.: the first op defined in the pipeline) and 
-//! the result of the leaf node is returned as the result of the full pipeline.
+//! the input is passed to the root node of the DAG (i.e.: the first op defined in the pipeline).
+//! The output of each op is then passed to the next op in the pipeline until the output reaches the
+//! leaf node (i.e.: the last op defined in the pipeline). The output of the leaf node is then returned
+//! as the result of the pipeline.
 //! 
 //! ## Basic Example
 //! For example, the pipeline below takes a tuple of two integers, adds them together and then formats 
@@ -32,28 +35,17 @@
 //! 
 //! This pipeline can be visualized as the following DAG:
 //! ```text
-//!    Input                     
-//!      │                       
-//!      ▼                       
-//! ┌─────────┐                  
-//! │   op1   │                  
-//! └────┬────┘                  
-//!      │                       
-//!      ▼                       
-//! ┌─────────┐                  
-//! │   op2   │                  
-//! └────┬────┘                  
-//!      │                       
-//!      ▼                       
-//!    Output     
+//!          ┌─────────┐   ┌─────────┐         
+//! Input───►│   op1   ├──►│   op2   ├──►Output
+//!          └─────────┘   └─────────┘         
 //! ```
 //! 
 //! ## Parallel Operations
 //! The pipeline API also provides a [parallel!](crate::parallel!) and macro for running operations in parallel.
 //! The macro takes a list of ops and turns them into a single op that will duplicate the input 
-//! and run each op in parallel. The results of each op are then collected and returned as a tuple.
+//! and run each op in concurently. The results of each op are then collected and returned as a tuple.
 //! 
-//! For example, the pipeline below runs two operations in parallel:
+//! For example, the pipeline below runs two operations concurently:
 //! ```rust
 //! use rig::{pipeline::{self, Op, map}, parallel};
 //! 
