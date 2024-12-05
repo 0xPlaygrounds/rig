@@ -1,7 +1,7 @@
-use std::{env, sync::Arc};
+use std::sync::Arc;
 
 use arrow_array::RecordBatchIterator;
-use fixture::{as_record_batch, schema, word_definitions, WordDefinition};
+use fixture::{as_record_batch, schema, words, Word};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
@@ -16,8 +16,7 @@ mod fixture;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize OpenAI client. Use this to generate embeddings (and generate test data for RAG demo).
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = Client::new(&openai_api_key);
+    let openai_client = Client::from_env();
 
     // Select an embedding model.
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
@@ -27,11 +26,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Generate embeddings for the test data.
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(word_definitions())?
+        .documents(words())?
         // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
         .documents(
             (0..256)
-                .map(|i| WordDefinition {
+                .map(|i| Word {
                     id: format!("doc{}", i),
                     definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
                 })
@@ -65,7 +64,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Query the index
     let results = vector_store_index
-        .top_n::<WordDefinition>("My boss says I zindle too much, what does that mean?", 1)
+        .top_n::<Word>("My boss says I zindle too much, what does that mean?", 1)
         .await?;
 
     println!("Results: {:?}", results);

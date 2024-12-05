@@ -76,18 +76,3 @@ impl PartialEq for Embedding {
 }
 
 impl Eq for Embedding {}
-
-impl Embedding {
-    pub fn distance(&self, other: &Self) -> f64 {
-        let dot_product: f64 = self
-            .vec
-            .iter()
-            .zip(other.vec.iter())
-            .map(|(x, y)| x * y)
-            .sum();
-
-        let product_of_lengths = (self.vec.len() * other.vec.len()) as f64;
-
-        dot_product / product_of_lengths
-    }
-}

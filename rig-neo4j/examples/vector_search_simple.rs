@@ -8,20 +8,17 @@
 //! 5. Returns the results
 use std::env;
 
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex as _,
     Embed,
 };
-use rig_neo4j::{
-    vector_index::{IndexConfig, SearchParams},
-    Neo4jClient, ToBoltType,
-};
+use rig_neo4j::{vector_index::SearchParams, Neo4jClient, ToBoltType};
 
 #[derive(Embed, Clone, Debug)]
-pub struct WordDefinition {
+pub struct Word {
     pub id: String,
     #[embed]
     pub definition: String,
@@ -44,33 +41,22 @@ async fn main() -> Result<(), anyhow::Error> {
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     let embeddings = EmbeddingsBuilder::new(model.clone())
-        .document(WordDefinition {
+        .document(Word {
             id: "doc0".to_string(),
             definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
         })?
-        .document(WordDefinition {
+        .document(Word {
             id: "doc1".to_string(),
             definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         })?
-        .document(WordDefinition {
+        .document(Word {
             id: "doc2".to_string(),
             definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         })?
         .build()
         .await?;
 
-    // The struct that will reprensent a node in the database. Used to deserialize the results of the query (passed to the `top_n` methods)
-    // ❗IMPORTANT: The field names must match the property names in the database
-    #[derive(serde::Deserialize)]
-    struct Document {
-        #[allow(dead_code)]
-        id: String,
-        document: String,
-        #[allow(dead_code)]
-        embedding: Vec<f32>,
-    }
-
-    let create_nodes = futures::stream::iter(embeddings)
+    futures::stream::iter(embeddings)
         .map(|(doc, embeddings)| {
             neo4j_client.graph.run(
                 neo4rs::query(
@@ -90,13 +76,9 @@ async fn main() -> Result<(), anyhow::Error> {
             )
         })
         .buffer_unordered(3)
-        .collect::<Vec<_>>()
-        .await;
-
-    // Unwrap the results in the vector _create_nodes
-    for result in create_nodes {
-        result.unwrap(); // or handle the error appropriately
-    }
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap();
 
     // Create a vector index on our vector store
     println!("Creating vector index...");
@@ -130,11 +112,18 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client.index(
-        model,
-        IndexConfig::new("vector_index"),
-        SearchParams::default(),
-    );
+    let index = neo4j_client
+        .get_index(model, "vector_index", SearchParams::default())
+        .await?;
+
+    // The struct that will reprensent a node in the database. Used to deserialize the results of the query (passed to the `top_n` methods)
+    // ❗IMPORTANT: The field names must match the property names in the database
+    #[derive(serde::Deserialize)]
+    struct Document {
+        #[allow(dead_code)]
+        id: String,
+        document: String,
+    }
 
     // Query the index
     let results = index

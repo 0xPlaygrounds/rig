@@ -22,10 +22,9 @@ use rig::{
     Embed,
 };
 use rig_qdrant::QdrantVectorStore;
-use serde_json::json;
 
-#[derive(Embed)]
-struct WordDefinition {
+#[derive(Embed, serde::Deserialize, serde::Serialize, Debug)]
+struct Word {
     id: String,
     #[embed]
     definition: String,
@@ -57,15 +56,15 @@ async fn main() -> Result<(), anyhow::Error> {
     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     let documents = EmbeddingsBuilder::new(model.clone())
-        .document(WordDefinition {
+        .document(Word {
             id: "0981d983-a5f8-49eb-89ea-f7d3b2196d2e".to_string(),
             definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
         })?
-        .document(WordDefinition {
+        .document(Word {
             id: "62a36d43-80b6-4fd6-990c-f75bb02287d1".to_string(),
             definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         })?
-        .document(WordDefinition {
+        .document(Word {
             id: "f9e17d59-32e5-440c-be02-b2759a654824".to_string(),
             definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         })?
@@ -77,12 +76,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .map(|(d, embeddings)| {
             let vec: Vec<f32> = embeddings.first().vec.iter().map(|&x| x as f32).collect();
             PointStruct::new(
-                d.id,
+                d.id.clone(),
                 vec,
-                Payload::try_from(json!({
-                    "document": d.definition,
-                }))
-                .unwrap(),
+                Payload::try_from(serde_json::to_value(&d).unwrap()).unwrap(),
             )
         })
         .collect();
@@ -95,7 +91,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let vector_store = QdrantVectorStore::new(client, model, query_params.build());
 
     let results = vector_store
-        .top_n::<serde_json::Value>("What is a linglingdong?", 1)
+        .top_n::<Word>("What is a linglingdong?", 1)
         .await?;
 
     println!("Results: {:?}", results);
