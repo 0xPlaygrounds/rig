@@ -118,14 +118,14 @@ impl<E> PipelineBuilder<E> {
     /// let result = pipeline.call((1, 2)).await;
     /// assert_eq!(result, "Result: 3!");
     /// ```
-    pub fn map<F, In, T>(self, f: F) -> impl Op<Input = In, Output = T>
+    pub fn map<F, Input, Output>(self, f: F) -> op::Map<F, Input>
     where
-        F: Fn(In) -> T + Send + Sync,
-        In: Send + Sync,
-        T: Send + Sync,
+        F: Fn(Input) -> Output + Send + Sync,
+        Input: Send + Sync,
+        Output: Send + Sync,
         Self: Sized,
     {
-        map(f)
+        op::Map::new(f)
     }
 
     /// Same as `map` but for asynchronous functions
@@ -145,15 +145,15 @@ impl<E> PipelineBuilder<E> {
     /// let result = pipeline.call("bob@gmail.com".to_string()).await;
     /// assert_eq!(result, "Hello, bob!");
     /// ```
-    pub fn then<F, In, Fut>(self, f: F) -> impl Op<Input = In, Output = Fut::Output>
+    pub fn then<F, Input, Fut>(self, f: F) -> op::Then<F, Input>
     where
-        F: Fn(In) -> Fut + Send + Sync,
-        In: Send + Sync,
+        F: Fn(Input) -> Fut + Send + Sync,
+        Input: Send + Sync,
         Fut: Future + Send + Sync,
         Fut::Output: Send + Sync,
         Self: Sized,
     {
-        then(f)
+        op::Then::new(f)
     }
 
     /// Add an arbitrary operation to the current pipeline.
@@ -179,7 +179,7 @@ impl<E> PipelineBuilder<E> {
     /// let result = pipeline.call(1).await;
     /// assert_eq!(result, 2);
     /// ```
-    pub fn chain<T>(self, op: T) -> impl Op<Input = T::Input, Output = T::Output>
+    pub fn chain<T>(self, op: T) -> T
     where
         T: Op,
         Self: Sized,
@@ -203,19 +203,19 @@ impl<E> PipelineBuilder<E> {
     ///
     /// let result = pipeline.call("What is a flurbo?".to_string()).await;
     /// ```
-    pub fn lookup<I, In, T>(
+    pub fn lookup<I, Input, Output>(
         self,
         index: I,
         n: usize,
-    ) -> impl Op<Input = In, Output = Result<Vec<T>, vector_store::VectorStoreError>>
+    ) -> agent_ops::Lookup<I, Input, Output>
     where
         I: vector_store::VectorStoreIndex,
-        T: Send + Sync + for<'a> serde::Deserialize<'a>,
-        In: Into<String> + Send + Sync,
+        Output: Send + Sync + for<'a> serde::Deserialize<'a>,
+        Input: Into<String> + Send + Sync,
         // E: From<vector_store::VectorStoreError> + Send + Sync,
         Self: Sized,
     {
-        agent_ops::lookup(index, n)
+        agent_ops::Lookup::new(index, n)
     }
 
     /// Add a prompt operation to the current pipeline/op. The prompt operation expects the
@@ -235,14 +235,14 @@ impl<E> PipelineBuilder<E> {
     ///
     /// let result = pipeline.call("Alice".to_string()).await;
     /// ```
-    pub fn prompt<P, In>(self, agent: P) -> agent_ops::Prompt<P, In>
+    pub fn prompt<P, Input>(self, agent: P) -> agent_ops::Prompt<P, Input>
     where
         P: completion::Prompt,
-        In: Into<String> + Send + Sync,
+        Input: Into<String> + Send + Sync,
         // E: From<completion::PromptError> + Send + Sync,
         Self: Sized,
     {
-        agent_ops::prompt(agent)
+        agent_ops::Prompt::new(agent)
     }
 
     /// Add an extract operation to the current pipeline/op. The extract operation expects the
@@ -268,13 +268,13 @@ impl<E> PipelineBuilder<E> {
     /// let result: Sentiment = pipeline.call("I love ice cream!".to_string()).await?;
     /// assert!(result.score > 0.5);
     /// ```
-    pub fn extract<M, T, In>(self, extractor: Extractor<M, T>) -> agent_ops::Extract<M, T, In>
+    pub fn extract<M, Input, Output>(self, extractor: Extractor<M, Output>) -> agent_ops::Extract<M, Input, Output>
     where
         M: completion::CompletionModel,
-        T: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
-        In: Into<String> + Send + Sync,
+        Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
+        Input: Into<String> + Send + Sync,
     {
-        agent_ops::extract(extractor)
+        agent_ops::Extract::new(extractor)
     }
 }
 

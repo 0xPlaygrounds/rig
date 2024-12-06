@@ -2,9 +2,9 @@ use std::future::Future;
 
 #[allow(unused_imports)] // Needed since this is used in a macro rule
 use futures::try_join;
-use futures::{stream, StreamExt, TryStreamExt};
+use futures::stream;
 
-use super::op::{self, map, then};
+use super::op::{self};
 
 // ================================================================
 // Core TryOp trait
@@ -46,6 +46,8 @@ pub trait TryOp: Send + Sync {
         I::IntoIter: Send,
         Self: Sized,
     {
+        use stream::{StreamExt, TryStreamExt};
+        
         async move {
             stream::iter(input)
                 .map(|input| self.try_call(input))
@@ -69,13 +71,13 @@ pub trait TryOp: Send + Sync {
     /// let result = op.try_call(2).await;
     /// assert_eq!(result, Ok(4));
     /// ```
-    fn map_ok<F, T>(self, f: F) -> impl op::Op<Input = Self::Input, Output = Result<T, Self::Error>>
+    fn map_ok<F, Output>(self, f: F) -> MapOk<Self, op::Map<F, Self::Output>>
     where
-        F: Fn(Self::Output) -> T + Send + Sync,
-        T: Send + Sync,
+        F: Fn(Self::Output) -> Output + Send + Sync,
+        Output: Send + Sync,
         Self: Sized,
     {
-        MapOk::new(self, map(f))
+        MapOk::new(self, op::Map::new(f))
     }
 
     /// Map the error return value (i.e., `Err`) of the current op to a different value
@@ -95,13 +97,13 @@ pub trait TryOp: Send + Sync {
     fn map_err<F, E>(
         self,
         f: F,
-    ) -> impl op::Op<Input = Self::Input, Output = Result<Self::Output, E>>
+    ) -> MapErr<Self, op::Map<F, Self::Error>>
     where
         F: Fn(Self::Error) -> E + Send + Sync,
         E: Send + Sync,
         Self: Sized,
     {
-        MapErr::new(self, map(f))
+        MapErr::new(self, op::Map::new(f))
     }
 
     /// Chain a function to the current op. The function will only be called
@@ -119,17 +121,17 @@ pub trait TryOp: Send + Sync {
     /// let result = op.try_call(2).await;
     /// assert_eq!(result, Ok(4));
     /// ```
-    fn and_then<F, Fut, T>(
+    fn and_then<F, Fut, Output>(
         self,
         f: F,
-    ) -> impl TryOp<Input = Self::Input, Output = T, Error = Self::Error>
+    ) -> AndThen<Self, op::Then<F, Self::Output>>
     where
         F: Fn(Self::Output) -> Fut + Send + Sync,
-        Fut: Future<Output = Result<T, Self::Error>> + Send + Sync,
-        T: Send + Sync,
+        Fut: Future<Output = Result<Output, Self::Error>> + Send + Sync,
+        Output: Send + Sync,
         Self: Sized,
     {
-        AndThen::new(self, then(f))
+        AndThen::new(self, op::Then::new(f))
     }
 
     /// Chain a function `f` to the current op. The function `f` will only be called
@@ -150,14 +152,14 @@ pub trait TryOp: Send + Sync {
     fn or_else<F, Fut, E>(
         self,
         f: F,
-    ) -> impl TryOp<Input = Self::Input, Output = Self::Output, Error = E>
+    ) -> OrElse<Self, op::Then<F, Self::Error>>
     where
         F: Fn(Self::Error) -> Fut + Send + Sync,
         Fut: Future<Output = Result<Self::Output, E>> + Send + Sync,
         E: Send + Sync,
         Self: Sized,
     {
-        OrElse::new(self, then(f))
+        OrElse::new(self, op::Then::new(f))
     }
 
     /// Chain a new op `op` to the current op. The new op will be called with the success
@@ -189,7 +191,7 @@ pub trait TryOp: Send + Sync {
     fn chain_ok<T>(
         self,
         op: T,
-    ) -> impl TryOp<Input = Self::Input, Output = T::Output, Error = Self::Error>
+    ) -> TrySequential<Self, T>
     where
         T: op::Op<Input = Self::Output>,
         Self: Sized,
@@ -222,7 +224,7 @@ pub struct MapOk<Op1, Op2> {
 }
 
 impl<Op1, Op2> MapOk<Op1, Op2> {
-    pub fn new(prev: Op1, op: Op2) -> Self {
+    pub(crate) fn new(prev: Op1, op: Op2) -> Self {
         Self { prev, op }
     }
 }
@@ -250,7 +252,7 @@ pub struct MapErr<Op1, Op2> {
 }
 
 impl<Op1, Op2> MapErr<Op1, Op2> {
-    pub fn new(prev: Op1, op: Op2) -> Self {
+    pub(crate) fn new(prev: Op1, op: Op2) -> Self {
         Self { prev, op }
     }
 }
@@ -279,22 +281,21 @@ pub struct AndThen<Op1, Op2> {
 }
 
 impl<Op1, Op2> AndThen<Op1, Op2> {
-    pub fn new(prev: Op1, op: Op2) -> Self {
+    pub(crate) fn new(prev: Op1, op: Op2) -> Self {
         Self { prev, op }
     }
 }
 
-impl<Op1, Op2> TryOp for AndThen<Op1, Op2>
+impl<Op1, Op2> op::Op for AndThen<Op1, Op2>
 where
     Op1: TryOp,
     Op2: TryOp<Input = Op1::Output, Error = Op1::Error>,
 {
     type Input = Op1::Input;
-    type Output = Op2::Output;
-    type Error = Op1::Error;
+    type Output = Result<Op2::Output, Op1::Error>;
 
     #[inline]
-    async fn try_call(&self, input: Self::Input) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, input: Self::Input) -> Self::Output {
         let output = self.prev.try_call(input).await?;
         self.op.try_call(output).await
     }
@@ -306,22 +307,21 @@ pub struct OrElse<Op1, Op2> {
 }
 
 impl<Op1, Op2> OrElse<Op1, Op2> {
-    pub fn new(prev: Op1, op: Op2) -> Self {
+    pub(crate) fn new(prev: Op1, op: Op2) -> Self {
         Self { prev, op }
     }
 }
 
-impl<Op1, Op2> TryOp for OrElse<Op1, Op2>
+impl<Op1, Op2> op::Op for OrElse<Op1, Op2>
 where
     Op1: TryOp,
     Op2: TryOp<Input = Op1::Error, Output = Op1::Output>,
 {
     type Input = Op1::Input;
-    type Output = Op1::Output;
-    type Error = Op2::Error;
+    type Output = Result<Op1::Output, Op2::Error>;
 
     #[inline]
-    async fn try_call(&self, input: Self::Input) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, input: Self::Input) -> Self::Output {
         match self.prev.try_call(input).await {
             Ok(output) => Ok(output),
             Err(err) => self.op.try_call(err).await,
@@ -335,22 +335,21 @@ pub struct TrySequential<Op1, Op2> {
 }
 
 impl<Op1, Op2> TrySequential<Op1, Op2> {
-    pub fn new(prev: Op1, op: Op2) -> Self {
+    pub(crate) fn new(prev: Op1, op: Op2) -> Self {
         Self { prev, op }
     }
 }
 
-impl<Op1, Op2> TryOp for TrySequential<Op1, Op2>
+impl<Op1, Op2> op::Op for TrySequential<Op1, Op2>
 where
     Op1: TryOp,
     Op2: op::Op<Input = Op1::Output>,
 {
     type Input = Op1::Input;
-    type Output = Op2::Output;
-    type Error = Op1::Error;
+    type Output = Result<Op2::Output, Op1::Error>;
 
     #[inline]
-    async fn try_call(&self, input: Self::Input) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, input: Self::Input) -> Self::Output {
         match self.prev.try_call(input).await {
             Ok(output) => Ok(self.op.call(output).await),
             Err(err) => Err(err),

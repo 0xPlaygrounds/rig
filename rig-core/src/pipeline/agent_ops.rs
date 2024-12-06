@@ -17,7 +17,7 @@ impl<I, In, T> Lookup<I, In, T>
 where
     I: vector_store::VectorStoreIndex,
 {
-    pub fn new(index: I, n: usize) -> Self {
+    pub(crate) fn new(index: I, n: usize) -> Self {
         Self {
             index,
             n,
@@ -66,7 +66,7 @@ pub struct Prompt<P, In> {
 }
 
 impl<P, In> Prompt<P, In> {
-    pub fn new(prompt: P) -> Self {
+    pub(crate) fn new(prompt: P) -> Self {
         Self {
             prompt,
             _in: std::marker::PhantomData,
@@ -96,21 +96,21 @@ where
     Prompt::new(prompt)
 }
 
-pub struct Extract<M, T, In>
+pub struct Extract<M, Input, Output>
 where
     M: CompletionModel,
-    T: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
+    Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
 {
-    extractor: Extractor<M, T>,
-    _in: std::marker::PhantomData<In>,
+    extractor: Extractor<M, Output>,
+    _in: std::marker::PhantomData<Input>,
 }
 
-impl<M, T, In> Extract<M, T, In>
+impl<M, Input, Output> Extract<M, Input, Output>
 where
     M: CompletionModel,
-    T: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
+    Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
 {
-    pub fn new(extractor: Extractor<M, T>) -> Self {
+    pub(crate) fn new(extractor: Extractor<M, Output>) -> Self {
         Self {
             extractor,
             _in: std::marker::PhantomData,
@@ -118,25 +118,25 @@ where
     }
 }
 
-impl<M, T, In> Op for Extract<M, T, In>
+impl<M, Input, Output> Op for Extract<M, Input, Output>
 where
     M: CompletionModel,
-    T: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
-    In: Into<String> + Send + Sync,
+    Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
+    Input: Into<String> + Send + Sync,
 {
-    type Input = In;
-    type Output = Result<T, ExtractionError>;
+    type Input = Input;
+    type Output = Result<Output, ExtractionError>;
 
     async fn call(&self, input: Self::Input) -> Self::Output {
         self.extractor.extract(&input.into()).await
     }
 }
 
-pub fn extract<M, T, In>(extractor: Extractor<M, T>) -> Extract<M, T, In>
+pub fn extract<M, Input, Output>(extractor: Extractor<M, Output>) -> Extract<M, Input, Output>
 where
     M: CompletionModel,
-    T: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
-    In: Into<String> + Send + Sync,
+    Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
+    Input: Into<String> + Send + Sync,
 {
     Extract::new(extractor)
 }

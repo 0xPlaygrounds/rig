@@ -2,7 +2,7 @@ use std::future::Future;
 
 #[allow(unused_imports)] // Needed since this is used in a macro rule
 use futures::join;
-use futures::{stream, StreamExt};
+use futures::stream;
 
 // ================================================================
 // Core Op trait
@@ -21,6 +21,8 @@ pub trait Op: Send + Sync {
         I::IntoIter: Send,
         Self: Sized,
     {
+        use futures::stream::StreamExt;
+        
         async move {
             stream::iter(input)
                 .map(|input| self.call(input))
@@ -43,13 +45,13 @@ pub trait Op: Send + Sync {
     /// let result = chain.call((1, 2)).await;
     /// assert_eq!(result, "Result: 3!");
     /// ```
-    fn map<F, T>(self, f: F) -> impl Op<Input = Self::Input, Output = T>
+    fn map<F, Input>(self, f: F) -> Sequential<Self, Map<F, Self::Output>>
     where
-        F: Fn(Self::Output) -> T + Send + Sync,
-        T: Send + Sync,
+        F: Fn(Self::Output) -> Input + Send + Sync,
+        Input: Send + Sync,
         Self: Sized,
     {
-        Sequential::new(self, map(f))
+        Sequential::new(self, Map::new(f))
     }
 
     /// Same as `map` but for asynchronous functions
@@ -69,14 +71,14 @@ pub trait Op: Send + Sync {
     /// let result = chain.call("bob@gmail.com".to_string()).await;
     /// assert_eq!(result, "Hello, bob!");
     /// ```
-    fn then<F, Fut>(self, f: F) -> impl Op<Input = Self::Input, Output = Fut::Output>
+    fn then<F, Fut>(self, f: F) -> Sequential<Self, Then<F, Fut::Output>>
     where
         F: Fn(Self::Output) -> Fut + Send + Sync,
         Fut: Future + Send + Sync,
         Fut::Output: Send + Sync,
         Self: Sized,
     {
-        Sequential::new(self, then(f))
+        Sequential::new(self, Then::new(f))
     }
 
     /// Chain an arbitrary operation to the current op.
@@ -102,7 +104,7 @@ pub trait Op: Send + Sync {
     /// let result = chain.call(1).await;
     /// assert_eq!(result, 2);
     /// ```
-    fn chain<T>(self, op: T) -> impl Op<Input = Self::Input, Output = T::Output>
+    fn chain<T>(self, op: T) -> Sequential<Self, T>
     where
         T: Op<Input = Self::Output>,
         Self: Sized,
@@ -126,14 +128,14 @@ pub trait Op: Send + Sync {
     ///
     /// let result = chain.call("What is a flurbo?".to_string()).await;
     /// ```
-    fn lookup<I, T>(
+    fn lookup<I, Input>(
         self,
         index: I,
         n: usize,
-    ) -> impl Op<Input = Self::Input, Output = Result<Vec<T>, vector_store::VectorStoreError>>
+    ) -> Sequential<Self, Lookup<I, Self::Output, Input>>
     where
         I: vector_store::VectorStoreIndex,
-        T: Send + Sync + for<'a> serde::Deserialize<'a>,
+        Input: Send + Sync + for<'a> serde::Deserialize<'a>,
         Self::Output: Into<String>,
         Self: Sized,
     {
@@ -160,7 +162,7 @@ pub trait Op: Send + Sync {
     fn prompt<P>(
         self,
         prompt: P,
-    ) -> impl Op<Input = Self::Input, Output = Result<String, completion::PromptError>>
+    ) -> Sequential<Self, Prompt<P, Self::Output>>
     where
         P: completion::Prompt,
         Self::Output: Into<String>,
@@ -189,7 +191,7 @@ pub struct Sequential<Op1, Op2> {
 }
 
 impl<Op1, Op2> Sequential<Op1, Op2> {
-    pub fn new(prev: Op1, op: Op2) -> Self {
+    pub(crate) fn new(prev: Op1, op: Op2) -> Self {
         Self { prev, op }
     }
 }
@@ -216,13 +218,13 @@ use super::agent_ops::{Lookup, Prompt};
 // ================================================================
 // Core Op implementations
 // ================================================================
-pub struct Map<F, T> {
+pub struct Map<F, Input> {
     f: F,
-    _t: std::marker::PhantomData<T>,
+    _t: std::marker::PhantomData<Input>,
 }
 
-impl<F, T> Map<F, T> {
-    pub fn new(f: F) -> Self {
+impl<F, Input> Map<F, Input> {
+    pub(crate) fn new(f: F) -> Self {
         Self {
             f,
             _t: std::marker::PhantomData,
@@ -230,14 +232,14 @@ impl<F, T> Map<F, T> {
     }
 }
 
-impl<F, T, Out> Op for Map<F, T>
+impl<F, Input, Output> Op for Map<F, Input>
 where
-    F: Fn(T) -> Out + Send + Sync,
-    T: Send + Sync,
-    Out: Send + Sync,
+    F: Fn(Input) -> Output + Send + Sync,
+    Input: Send + Sync,
+    Output: Send + Sync,
 {
-    type Input = T;
-    type Output = Out;
+    type Input = Input;
+    type Output = Output;
 
     #[inline]
     async fn call(&self, input: Self::Input) -> Self::Output {
@@ -245,29 +247,53 @@ where
     }
 }
 
-pub fn map<F, T, Out>(f: F) -> impl Op<Input = T, Output = Out>
+pub fn map<F, Input, Output>(f: F) -> Map<F, Input>
 where
-    F: Fn(T) -> Out + Send + Sync,
-    T: Send + Sync,
-    Out: Send + Sync,
+    F: Fn(Input) -> Output + Send + Sync,
+    Input: Send + Sync,
+    Output: Send + Sync,
 {
     Map::new(f)
 }
 
-pub fn passthrough<T>() -> impl Op<Input = T, Output = T>
-where
-    T: Send + Sync,
-{
-    Map::new(|x| x)
-}
-
-pub struct Then<F, T> {
-    f: F,
+pub struct Passthrough<T> {
     _t: std::marker::PhantomData<T>,
 }
 
-impl<F, T> Then<F, T> {
-    fn new(f: F) -> Self {
+impl<T> Passthrough<T> {
+    pub(crate) fn new() -> Self {
+        Self {
+            _t: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T> Op for Passthrough<T> 
+where 
+    T: Send + Sync,
+{
+    type Input = T;
+    type Output = T;
+
+    async fn call(&self, input: Self::Input) -> Self::Output {
+        input
+    }
+}
+
+pub fn passthrough<T>() -> Passthrough<T>
+where
+    T: Send + Sync,
+{
+    Passthrough::new()
+}
+
+pub struct Then<F, Input> {
+    f: F,
+    _t: std::marker::PhantomData<Input>,
+}
+
+impl<F, Input> Then<F, Input> {
+    pub(crate) fn new(f: F) -> Self {
         Self {
             f,
             _t: std::marker::PhantomData,
@@ -275,14 +301,14 @@ impl<F, T> Then<F, T> {
     }
 }
 
-impl<F, T, Fut> Op for Then<F, T>
+impl<F, Input, Fut> Op for Then<F, Input>
 where
-    F: Fn(T) -> Fut + Send + Sync,
-    T: Send + Sync,
+    F: Fn(Input) -> Fut + Send + Sync,
+    Input: Send + Sync,
     Fut: Future + Send,
     Fut::Output: Send + Sync,
 {
-    type Input = T;
+    type Input = Input;
     type Output = Fut::Output;
 
     #[inline]
@@ -291,10 +317,10 @@ where
     }
 }
 
-pub fn then<F, T, Fut>(f: F) -> impl Op<Input = T, Output = Fut::Output>
+pub fn then<F, Input, Fut>(f: F) -> Then<F, Input>
 where
-    F: Fn(T) -> Fut + Send + Sync,
-    T: Send + Sync,
+    F: Fn(Input) -> Fut + Send + Sync,
+    Input: Send + Sync,
     Fut: Future + Send,
     Fut::Output: Send + Sync,
 {
