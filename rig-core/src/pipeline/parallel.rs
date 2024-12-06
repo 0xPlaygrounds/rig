@@ -118,6 +118,8 @@ macro_rules! parallel_internal {
         ]
         munching: []
     ) => ({
+        use $crate::pipeline::op::Op;
+
         $crate::parallel_op!($($val),*)
             .map(|output| {
                 ($(
@@ -243,6 +245,7 @@ macro_rules! try_parallel_internal {
         ]
         munching: []
     ) => ({
+        use $crate::pipeline::try_op::TryOp;
         $crate::parallel_op!($($val),*)
             .map_ok(|output| {
                 ($(
