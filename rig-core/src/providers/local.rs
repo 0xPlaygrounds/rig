@@ -60,7 +60,6 @@ impl Client {
     /// Create a new Local client from the `LOCAL_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     pub fn from_env() -> Self {
-        let api_key = std::env::var("LOCAL_API_KEY").expect("LOCAL_API_KEY not set");
         Self::new()
     }
 
@@ -95,6 +94,12 @@ impl Client {
         model: &str,
     ) -> ExtractorBuilder<T, CompletionModel> {
         ExtractorBuilder::new(self.completion_model(model))
+    }
+}
+
+impl Default for Client {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -280,9 +285,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 );
 
                 // Validate the arguments are valid JSON
-                let parsed_args: serde_json::Value = serde_json::from_str(&call.function.arguments).map_err(|e| {
-                    CompletionError::ResponseError(format!("Invalid tool arguments JSON: {}", e))
-                })?;
+                let parsed_args: serde_json::Value = serde_json::from_str(&call.function.arguments)
+                    .map_err(|e| {
+                        CompletionError::ResponseError(format!(
+                            "Invalid tool arguments JSON: {}",
+                            e
+                        ))
+                    })?;
 
                 // Validate it's a JSON object
                 if !parsed_args.is_object() {
