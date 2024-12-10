@@ -1,6 +1,6 @@
 use anyhow::Result;
 use rig::{
-    completion::{Chat, Prompt, ToolDefinition},
+    completion::{Prompt, ToolDefinition},
     providers,
     tool::Tool,
 };
