@@ -6,7 +6,7 @@ A Rust library that provides a scraper interface for the Twitter API. Easily int
 
 ## Features
 
-- Flexible authentication (credentials or cookies)
+- Authentication with cookies
 - Comprehensive user profile management
 - Timeline retrieval
 - Tweet interactions (like, retweet, post)
