@@ -304,8 +304,9 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     ///     embedding: Vec<f64>,
     /// }
     ///
-    /// let collection: collection: mongodb::Collection<Document> = mongodb_client.collection(""); // <-- replace with your mongodb collection.
+    /// let collection: mongodb::Collection<Document> = mongodb_client.database("db").collection(""); // <-- replace with your mongodb collection.
     /// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
+    /// 
     /// let vector_store_index = MongoDbVectorIndex::new(
     ///     collection,
     ///     model,
