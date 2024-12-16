@@ -1,5 +1,7 @@
 use crate::{
-    completion::{self, CompletionModel}, extractor::{ExtractionError, Extractor}, vector_store
+    completion::{self, CompletionModel},
+    extractor::{ExtractionError, Extractor},
+    vector_store,
 };
 
 use super::Op;
@@ -48,6 +50,10 @@ where
     }
 }
 
+/// Create a new lookup operation.
+/// 
+/// The op will perform semantic search on the provided index and return the top `n` 
+/// results closest results to the input.
 pub fn lookup<I, In, T>(index: I, n: usize) -> Lookup<I, In, T>
 where
     I: vector_store::VectorStoreIndex,
@@ -85,12 +91,15 @@ where
     }
 }
 
-pub fn prompt<P, In>(prompt: P) -> Prompt<P, In>
+/// Create a new prompt operation.
+/// 
+/// The op will prompt the `model` with the input and return the response.
+pub fn prompt<P, In>(model: P) -> Prompt<P, In>
 where
     P: completion::Prompt,
     In: Into<String> + Send + Sync,
 {
-    Prompt::new(prompt)
+    Prompt::new(model)
 }
 
 pub struct Extract<M, Input, Output>
@@ -129,6 +138,9 @@ where
     }
 }
 
+/// Create a new extract operation.
+/// 
+/// The op will extract the structured data from the input using the provided `extractor`.
 pub fn extract<M, Input, Output>(extractor: Extractor<M, Output>) -> Extract<M, Input, Output>
 where
     M: CompletionModel,
@@ -190,9 +202,13 @@ pub mod tests {
         let result = lookup.call("query".to_string()).await.unwrap();
         assert_eq!(
             result,
-            vec![(1.0, "doc1".to_string(), Foo {
-                foo: "bar".to_string()
-            })]
+            vec![(
+                1.0,
+                "doc1".to_string(),
+                Foo {
+                    foo: "bar".to_string()
+                }
+            )]
         );
     }
 

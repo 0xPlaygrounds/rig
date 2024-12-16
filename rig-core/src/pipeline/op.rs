@@ -22,7 +22,7 @@ pub trait Op: Send + Sync {
         Self: Sized,
     {
         use futures::stream::StreamExt;
-        
+
         async move {
             stream::iter(input)
                 .map(|input| self.call(input))
@@ -159,10 +159,7 @@ pub trait Op: Send + Sync {
     ///
     /// let result = chain.call("Alice".to_string()).await;
     /// ```
-    fn prompt<P>(
-        self,
-        prompt: P,
-    ) -> Sequential<Self, Prompt<P, Self::Output>>
+    fn prompt<P>(self, prompt: P) -> Sequential<Self, Prompt<P, Self::Output>>
     where
         P: completion::Prompt,
         Self::Output: Into<String>,
@@ -268,8 +265,8 @@ impl<T> Passthrough<T> {
     }
 }
 
-impl<T> Op for Passthrough<T> 
-where 
+impl<T> Op for Passthrough<T>
+where
     T: Send + Sync,
 {
     type Input = T;

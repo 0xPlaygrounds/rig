@@ -1,8 +1,8 @@
 use std::future::Future;
 
+use futures::stream;
 #[allow(unused_imports)] // Needed since this is used in a macro rule
 use futures::try_join;
-use futures::stream;
 
 use super::op::{self};
 
@@ -47,7 +47,7 @@ pub trait TryOp: Send + Sync {
         Self: Sized,
     {
         use stream::{StreamExt, TryStreamExt};
-        
+
         async move {
             stream::iter(input)
                 .map(|input| self.try_call(input))
@@ -94,10 +94,7 @@ pub trait TryOp: Send + Sync {
     /// let result = op.try_call(1).await;
     /// assert_eq!(result, Err("Error: x is odd".to_string()));
     /// ```
-    fn map_err<F, E>(
-        self,
-        f: F,
-    ) -> MapErr<Self, op::Map<F, Self::Error>>
+    fn map_err<F, E>(self, f: F) -> MapErr<Self, op::Map<F, Self::Error>>
     where
         F: Fn(Self::Error) -> E + Send + Sync,
         E: Send + Sync,
@@ -121,10 +118,7 @@ pub trait TryOp: Send + Sync {
     /// let result = op.try_call(2).await;
     /// assert_eq!(result, Ok(4));
     /// ```
-    fn and_then<F, Fut, Output>(
-        self,
-        f: F,
-    ) -> AndThen<Self, op::Then<F, Self::Output>>
+    fn and_then<F, Fut, Output>(self, f: F) -> AndThen<Self, op::Then<F, Self::Output>>
     where
         F: Fn(Self::Output) -> Fut + Send + Sync,
         Fut: Future<Output = Result<Output, Self::Error>> + Send + Sync,
@@ -149,10 +143,7 @@ pub trait TryOp: Send + Sync {
     /// let result = op.try_call(1).await;
     /// assert_eq!(result, Err("Error: x is odd".to_string()));
     /// ```
-    fn or_else<F, Fut, E>(
-        self,
-        f: F,
-    ) -> OrElse<Self, op::Then<F, Self::Error>>
+    fn or_else<F, Fut, E>(self, f: F) -> OrElse<Self, op::Then<F, Self::Error>>
     where
         F: Fn(Self::Error) -> Fut + Send + Sync,
         Fut: Future<Output = Result<Self::Output, E>> + Send + Sync,
@@ -188,10 +179,7 @@ pub trait TryOp: Send + Sync {
     /// let result = op.try_call(2).await;
     /// assert_eq!(result, Ok(3));
     /// ```
-    fn chain_ok<T>(
-        self,
-        op: T,
-    ) -> TrySequential<Self, T>
+    fn chain_ok<T>(self, op: T) -> TrySequential<Self, T>
     where
         T: op::Op<Input = Self::Output>,
         Self: Sized,

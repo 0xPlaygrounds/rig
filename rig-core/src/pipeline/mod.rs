@@ -203,11 +203,7 @@ impl<E> PipelineBuilder<E> {
     ///
     /// let result = pipeline.call("What is a flurbo?".to_string()).await;
     /// ```
-    pub fn lookup<I, Input, Output>(
-        self,
-        index: I,
-        n: usize,
-    ) -> agent_ops::Lookup<I, Input, Output>
+    pub fn lookup<I, Input, Output>(self, index: I, n: usize) -> agent_ops::Lookup<I, Input, Output>
     where
         I: vector_store::VectorStoreIndex,
         Output: Send + Sync + for<'a> serde::Deserialize<'a>,
@@ -268,7 +264,10 @@ impl<E> PipelineBuilder<E> {
     /// let result: Sentiment = pipeline.call("I love ice cream!".to_string()).await?;
     /// assert!(result.score > 0.5);
     /// ```
-    pub fn extract<M, Input, Output>(self, extractor: Extractor<M, Output>) -> agent_ops::Extract<M, Input, Output>
+    pub fn extract<M, Input, Output>(
+        self,
+        extractor: Extractor<M, Output>,
+    ) -> agent_ops::Extract<M, Input, Output>
     where
         M: completion::CompletionModel,
         Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
