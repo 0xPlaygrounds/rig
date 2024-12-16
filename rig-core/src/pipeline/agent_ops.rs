@@ -51,8 +51,8 @@ where
 }
 
 /// Create a new lookup operation.
-/// 
-/// The op will perform semantic search on the provided index and return the top `n` 
+///
+/// The op will perform semantic search on the provided index and return the top `n`
 /// results closest results to the input.
 pub fn lookup<I, In, T>(index: I, n: usize) -> Lookup<I, In, T>
 where
@@ -92,7 +92,7 @@ where
 }
 
 /// Create a new prompt operation.
-/// 
+///
 /// The op will prompt the `model` with the input and return the response.
 pub fn prompt<P, In>(model: P) -> Prompt<P, In>
 where
@@ -139,7 +139,7 @@ where
 }
 
 /// Create a new extract operation.
-/// 
+///
 /// The op will extract the structured data from the input using the provided `extractor`.
 pub fn extract<M, Input, Output>(extractor: Extractor<M, Output>) -> Extract<M, Input, Output>
 where
