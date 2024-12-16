@@ -343,7 +343,7 @@ mod tests {
 
         let chain = super::new()
             .lookup::<_, _, Foo>(index, 1)
-            .map_ok(|docs| format!("Top documents:\n{}", docs[0].foo));
+            .map_ok(|docs| format!("Top documents:\n{}", docs[0].2.foo));
 
         let result = chain
             .try_call("What is a flurbo?")
@@ -363,7 +363,7 @@ mod tests {
                 agent_ops::lookup::<_, _, Foo>(index, 1),
             ))
             .map(|(query, maybe_docs)| match maybe_docs {
-                Ok(docs) => format!("User query: {}\n\nTop documents:\n{}", query, docs[0].foo),
+                Ok(docs) => format!("User query: {}\n\nTop documents:\n{}", query, docs[0].2.foo),
                 Err(err) => format!("Error: {}", err),
             })
             .prompt(MockModel);

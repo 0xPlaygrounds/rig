@@ -1,7 +1,5 @@
 use crate::{
-    completion::{self, CompletionModel},
-    extractor::{ExtractionError, Extractor},
-    vector_store,
+    completion::{self, CompletionModel}, extractor::{ExtractionError, Extractor}, vector_store
 };
 
 use super::Op;
@@ -34,7 +32,7 @@ where
     T: Send + Sync + for<'a> serde::Deserialize<'a>,
 {
     type Input = In;
-    type Output = Result<Vec<T>, vector_store::VectorStoreError>;
+    type Output = Result<Vec<(f64, String, T)>, vector_store::VectorStoreError>;
 
     async fn call(&self, input: Self::Input) -> Self::Output {
         let query: String = input.into();
@@ -44,7 +42,6 @@ where
             .top_n::<T>(&query, self.n)
             .await?
             .into_iter()
-            .map(|(_, _, doc)| doc)
             .collect();
 
         Ok(docs)
@@ -193,9 +190,9 @@ pub mod tests {
         let result = lookup.call("query".to_string()).await.unwrap();
         assert_eq!(
             result,
-            vec![Foo {
+            vec![(1.0, "doc1".to_string(), Foo {
                 foo: "bar".to_string()
-            }]
+            })]
         );
     }
 
