@@ -52,7 +52,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .map(|(prompt, maybe_docs)| match maybe_docs {
             Ok(docs) => format!(
                 "Non standard word definitions:\n{}\n\n{}",
-                docs.into_iter().map(|(_, _, doc)| doc).collect::<Vec<_>>().join("\n"),
+                docs.into_iter()
+                    .map(|(_, _, doc)| doc)
+                    .collect::<Vec<_>>()
+                    .join("\n"),
                 prompt,
             ),
             Err(err) => {
