@@ -18,7 +18,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .agent(CLAUDE_3_5_SONNET)
         .preamble("Be precise and concise.")
         .temperature(0.5)
-        .max_tokens(8192)
         .build();
 
     // Prompt the agent and print the response
