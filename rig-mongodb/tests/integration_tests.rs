@@ -71,7 +71,7 @@ async fn vector_search_test() {
     .await
     .unwrap();
 
-    sleep(Duration::from_secs(5)).await;
+    sleep(Duration::from_secs(15)).await;
 
     // Query the index
     let results = index
