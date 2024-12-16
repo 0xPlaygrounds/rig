@@ -74,9 +74,9 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 ///
 /// let mongodb_client = mongodb::Client::with_uri_str("mongodb://localhost:27017").await?; // <-- replace with your mongodb uri.
 /// let openai_client = openai::Client::from_env();
-/// 
+///
 /// let collection = mongodb_client.database("db").collection::<WordDefinition>(""); // <-- replace with your mongodb collection.
-/// 
+///
 /// let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
 /// let index = MongoDbVectorIndex::new(
 ///     collection,
@@ -85,7 +85,7 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 ///     SearchParams::new(), // <-- field name in `Document` that contains the embeddings.
 /// )
 /// .await?;
-/// 
+///
 /// // Query the index
 /// let definitions = index
 ///     .top_n::<WordDefinition>("My boss says I zindle too much, what does that mean?", 1)
