@@ -1,6 +1,6 @@
-use thiserror::Error;
 use serde::Deserialize;
-#[derive(Debug, Error, Deserialize )]
+use thiserror::Error;
+#[derive(Debug, Error, Deserialize)]
 pub enum TwitterError {
     #[error("API error: {0}")]
     Api(String),
@@ -23,7 +23,7 @@ pub enum TwitterError {
 
     #[error("Cookie error: {0}")]
     Cookie(String),
-    
+
     #[error("JSON error: {0}")]
     #[serde(skip)]
     Json(#[from] serde_json::Error),

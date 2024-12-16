@@ -1,9 +1,8 @@
-use serde::{Deserialize, Serialize};
-use crate::models::{Profile, Tweet};
+use crate::profile::parse_profile;
 use crate::timeline::v1::{QueryProfilesResponse, QueryTweetsResponse};
 use crate::timeline::v2::{parse_legacy_tweet, SearchEntryRaw};
-use crate::profile::parse_profile;
 use lazy_static::lazy_static;
+use serde::Deserialize;
 
 lazy_static! {
     static ref EMPTY_INSTRUCTIONS: Vec<SearchInstruction> = Vec::new();
@@ -48,7 +47,8 @@ pub fn parse_search_timeline_tweets(timeline: &SearchTimeline) -> QueryTweetsRes
     let mut top_cursor = None;
     let mut tweets = Vec::new();
 
-    let instructions = timeline.data
+    let instructions = timeline
+        .data
         .as_ref()
         .and_then(|data| data.search_by_raw_query.as_ref())
         .and_then(|search| search.search_timeline.as_ref())
@@ -58,7 +58,9 @@ pub fn parse_search_timeline_tweets(timeline: &SearchTimeline) -> QueryTweetsRes
 
     for instruction in instructions {
         if let Some(instruction_type) = &instruction.instruction_type {
-            if instruction_type == "TimelineAddEntries" || instruction_type == "TimelineReplaceEntry" {
+            if instruction_type == "TimelineAddEntries"
+                || instruction_type == "TimelineReplaceEntry"
+            {
                 if let Some(entry) = &instruction.entry {
                     if let Some(content) = &entry.content {
                         match content.cursor_type.as_deref() {
@@ -83,20 +85,23 @@ pub fn parse_search_timeline_tweets(timeline: &SearchTimeline) -> QueryTweetsRes
                             if item_content.tweet_display_type.as_deref() == Some("Tweet") {
                                 if let Some(tweet_results) = &item_content.tweet_results {
                                     if let Some(result) = &tweet_results.result {
-                                        let user_legacy = result.core
+                                        let user_legacy = result
+                                            .core
                                             .as_ref()
                                             .and_then(|core| core.user_results.as_ref())
                                             .and_then(|user_results| user_results.result.as_ref())
                                             .and_then(|result| result.legacy.as_ref());
 
-                                        if let Some(tweet_result) = parse_legacy_tweet(
+                                        if let Ok(tweet_result) = parse_legacy_tweet(
                                             user_legacy,
-                                            result.legacy.as_deref()
-                                        ).ok() {
+                                            result.legacy.as_deref(),
+                                        )
+                                        {
                                             if tweet_result.views.is_none() {
                                                 if let Some(views) = &result.views {
                                                     if let Some(count) = &views.count {
-                                                        if let Ok(view_count) = count.parse::<i32>() {
+                                                        if let Ok(view_count) = count.parse::<i32>()
+                                                        {
                                                             let mut tweet = tweet_result;
                                                             tweet.views = Some(view_count);
                                                             tweets.push(tweet);
@@ -135,7 +140,8 @@ pub fn parse_search_timeline_users(timeline: &SearchTimeline) -> QueryProfilesRe
     let mut top_cursor = None;
     let mut profiles = Vec::new();
 
-    let instructions = timeline.data
+    let instructions = timeline
+        .data
         .as_ref()
         .and_then(|data| data.search_by_raw_query.as_ref())
         .and_then(|search| search.search_timeline.as_ref())
@@ -145,7 +151,9 @@ pub fn parse_search_timeline_users(timeline: &SearchTimeline) -> QueryProfilesRe
 
     for instruction in instructions {
         if let Some(instruction_type) = &instruction.instruction_type {
-            if instruction_type == "TimelineAddEntries" || instruction_type == "TimelineReplaceEntry" {
+            if instruction_type == "TimelineAddEntries"
+                || instruction_type == "TimelineReplaceEntry"
+            {
                 if let Some(entry) = &instruction.entry {
                     if let Some(content) = &entry.content {
                         match content.cursor_type.as_deref() {
@@ -171,10 +179,12 @@ pub fn parse_search_timeline_users(timeline: &SearchTimeline) -> QueryProfilesRe
                                 if let Some(user_results) = &item_content.user_results {
                                     if let Some(result) = &user_results.result {
                                         if let Some(legacy) = &result.legacy {
-                                            let mut profile = parse_profile(legacy, result.is_blue_verified);
-                                            
+                                            let mut profile =
+                                                parse_profile(legacy, result.is_blue_verified);
+
                                             if profile.id.is_empty() {
-                                                profile.id = result.rest_id.clone().unwrap_or_default();
+                                                profile.id =
+                                                    result.rest_id.clone().unwrap_or_default();
                                             }
 
                                             profiles.push(profile);

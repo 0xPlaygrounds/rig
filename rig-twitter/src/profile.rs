@@ -1,15 +1,15 @@
 use crate::api::requests::request_api;
 use crate::auth::TwitterAuth;
 use crate::error::{Result, TwitterError};
-use reqwest::Method;
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use reqwest::header::HeaderMap;
-use std::collections::HashMap;
-use std::sync::Mutex;
-use lazy_static::lazy_static;
 use crate::models::Profile;
 use chrono::{DateTime, Utc};
+use lazy_static::lazy_static;
+use reqwest::header::HeaderMap;
+use reqwest::Method;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserProfile {
@@ -95,19 +95,22 @@ pub fn parse_profile(user: &LegacyUserRaw, is_blue_verified: Option<bool>) -> Pr
         tweets_count: user.statuses_count.unwrap_or(0),
         listed_count: user.listed_count.unwrap_or(0),
         is_blue_verified: Some(is_blue_verified.unwrap_or(false)),
-        created_at: user.created_at
+        created_at: user
+            .created_at
             .as_ref()
             .and_then(|date_str| {
                 DateTime::parse_from_str(date_str, "%a %b %d %H:%M:%S %z %Y")
                     .ok()
                     .map(|dt| dt.with_timezone(&Utc))
             })
-            .unwrap_or_else(|| Utc::now()),
-        profile_image_url: user.profile_image_url_https
+            .unwrap_or_else(Utc::now),
+        profile_image_url: user
+            .profile_image_url_https
             .as_ref()
             .map(|url| url.replace("_normal", "")),
         profile_banner_url: user.profile_banner_url.clone(),
-        pinned_tweet_id: user.pinned_tweet_ids_str
+        pinned_tweet_id: user
+            .pinned_tweet_ids_str
             .as_ref()
             .and_then(|ids| ids.first().cloned()),
     };
@@ -223,8 +226,9 @@ pub async fn get_profile(screen_name: &str, auth: &dyn TwitterAuth) -> Result<Pr
             "variables": variables,
             "features": features,
             "fieldToggles": field_toggles
-        }))
-    ).await?;
+        })),
+    )
+    .await?;
 
     // Check for API errors
     if let Some(errors) = response.errors {
@@ -238,7 +242,10 @@ pub async fn get_profile(screen_name: &str, auth: &dyn TwitterAuth) -> Result<Pr
     let is_blue_verified = user_raw_result.is_blue_verified;
     legacy.user_id = rest_id;
     if legacy.screen_name.is_none() || legacy.screen_name.as_ref().unwrap().is_empty() {
-        return Err(TwitterError::Api(format!("Either {} does not exist or is private.", screen_name)));
+        return Err(TwitterError::Api(format!(
+            "Either {} does not exist or is private.",
+            screen_name
+        )));
     }
     Ok(parse_profile(&legacy, is_blue_verified))
 }
@@ -272,8 +279,9 @@ pub async fn get_screen_name_by_user_id(user_id: &str, auth: &dyn TwitterAuth) -
         Some(json!({
             "variables": variables,
             "features": features
-        }))
-    ).await?;
+        })),
+    )
+    .await?;
 
     if let Some(errors) = response.errors {
         if !errors.is_empty() {
@@ -284,11 +292,17 @@ pub async fn get_screen_name_by_user_id(user_id: &str, auth: &dyn TwitterAuth) -
     if let Some(user) = response.data.user.result.legacy.screen_name {
         Ok(user)
     } else {
-        Err(TwitterError::Api(format!("Either user with ID {} does not exist or is private.", user_id)))
+        Err(TwitterError::Api(format!(
+            "Either user with ID {} does not exist or is private.",
+            user_id
+        )))
     }
 }
 
-pub async fn get_user_id_by_screen_name(screen_name: &str, auth: &dyn TwitterAuth) -> Result<String> {
+pub async fn get_user_id_by_screen_name(
+    screen_name: &str,
+    auth: &dyn TwitterAuth,
+) -> Result<String> {
     // Check cache first
     if let Some(cached_id) = ID_CACHE.lock().unwrap().get(screen_name) {
         return Ok(cached_id.clone());
@@ -298,7 +312,10 @@ pub async fn get_user_id_by_screen_name(screen_name: &str, auth: &dyn TwitterAut
     println!("profile: {:?}", profile);
     if let Some(user_id) = Some(profile.id) {
         // Update cache
-        ID_CACHE.lock().unwrap().insert(screen_name.to_string(), user_id.clone());
+        ID_CACHE
+            .lock()
+            .unwrap()
+            .insert(screen_name.to_string(), user_id.clone());
         Ok(user_id)
     } else {
         Err(TwitterError::Api("User ID is undefined".into()))

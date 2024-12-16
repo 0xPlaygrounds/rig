@@ -1,14 +1,14 @@
 use crate::api::client::TwitterApiClient;
-use crate::auth::TwitterAuth;
 use crate::auth::user_auth::TwitterUserAuth;
-use crate::error::Result;
-use crate::models::{Profile, Tweet};
+use crate::auth::TwitterAuth;
 use crate::constants::BEARER_TOKEN;
+use crate::error::Result;
 use crate::error::TwitterError;
-use serde_json::Value;
+use crate::models::{Profile, Tweet};
 use crate::search::{fetch_search_tweets, SearchMode};
 use crate::timeline::v1::{QueryProfilesResponse, QueryTweetsResponse};
 use crate::timeline::v2::QueryTweetsResponse as V2QueryTweetsResponse;
+use serde_json::Value;
 
 pub struct Scraper {
     client: TwitterApiClient,
@@ -35,9 +35,10 @@ impl Scraper {
                 &username,
                 &password,
                 email.as_deref(),
-                two_factor_secret.as_deref()
-            ).await?;
-            
+                two_factor_secret.as_deref(),
+            )
+            .await?;
+
             self.auth = Box::new(auth.clone());
             self.client = TwitterApiClient::new(Box::new(auth))?;
             Ok(())
@@ -50,8 +51,8 @@ impl Scraper {
         crate::profile::get_profile(username, &*self.auth).await
     }
     pub async fn send_tweet(
-        &self, 
-        text: &str, 
+        &self,
+        text: &str,
         reply_to: Option<&str>,
         media_data: Option<Vec<(Vec<u8>, String)>>,
     ) -> Result<Value> {
@@ -59,11 +60,14 @@ impl Scraper {
     }
 
     pub fn get_auth(&self) -> &Box<dyn TwitterAuth + Send + Sync> {
-        &self.client.get_auth()
+        self.client.get_auth()
     }
 
-    pub async fn get_home_timeline(&self, count: i32, seen_tweet_ids: Vec<String>) -> Result<Vec<Value>> {
-        
+    pub async fn get_home_timeline(
+        &self,
+        count: i32,
+        seen_tweet_ids: Vec<String>,
+    ) -> Result<Vec<Value>> {
         crate::timeline::home::fetch_home_timeline(count, seen_tweet_ids, &*self.auth).await
     }
 
@@ -82,12 +86,12 @@ impl Scraper {
             Err(TwitterError::Auth("Invalid auth type".into()))
         }
     }
-    
+
     pub async fn set_cookies(&mut self, json_str: &str) -> Result<()> {
         if let Some(user_auth) = self.auth.as_any().downcast_ref::<TwitterUserAuth>() {
             let mut auth = user_auth.clone();
             auth.set_cookies(json_str).await?;
-            
+
             self.auth = Box::new(auth.clone());
             self.client = TwitterApiClient::new(Box::new(auth))?;
             Ok(())
@@ -100,7 +104,7 @@ impl Scraper {
         if let Some(user_auth) = self.auth.as_any().downcast_ref::<TwitterUserAuth>() {
             let mut auth = user_auth.clone();
             auth.set_from_cookie_string(cookie_string).await?;
-            
+
             self.auth = Box::new(auth.clone());
             self.client = TwitterApiClient::new(Box::new(auth))?;
             Ok(())
@@ -117,7 +121,7 @@ impl Scraper {
         &self,
         user_id: &str,
         count: i32,
-        cursor: Option<String>
+        cursor: Option<String>,
     ) -> Result<(Vec<Profile>, Option<String>)> {
         crate::relationships::get_followers(user_id, count, cursor, &*self.auth).await
     }
@@ -126,7 +130,7 @@ impl Scraper {
         &self,
         user_id: &str,
         count: i32,
-        cursor: Option<String>
+        cursor: Option<String>,
     ) -> Result<(Vec<Profile>, Option<String>)> {
         crate::relationships::get_following(user_id, count, cursor, &*self.auth).await
     }
@@ -139,10 +143,9 @@ impl Scraper {
         crate::relationships::unfollow_user(username, &*self.auth).await
     }
 
-
     pub async fn send_quote_tweet(
-        &self, 
-        text: &str, 
+        &self,
+        text: &str,
         quoted_tweet_id: &str,
         media_data: Option<Vec<(Vec<u8>, String)>>,
     ) -> Result<Value> {
@@ -153,7 +156,7 @@ impl Scraper {
         &self,
         username: &str,
         max_tweets: i32,
-        cursor: Option<&str>
+        cursor: Option<&str>,
     ) -> Result<V2QueryTweetsResponse> {
         crate::tweets::fetch_tweets_and_replies(username, max_tweets, cursor, &*self.auth).await
     }
@@ -161,15 +164,16 @@ impl Scraper {
         &self,
         user_id: &str,
         max_tweets: i32,
-        cursor: Option<&str>
+        cursor: Option<&str>,
     ) -> Result<V2QueryTweetsResponse> {
-        crate::tweets::fetch_tweets_and_replies_by_user_id(user_id, max_tweets, cursor, &*self.auth).await
+        crate::tweets::fetch_tweets_and_replies_by_user_id(user_id, max_tweets, cursor, &*self.auth)
+            .await
     }
     pub async fn fetch_list_tweets(
         &self,
         list_id: &str,
         max_tweets: i32,
-        cursor: Option<&str>
+        cursor: Option<&str>,
     ) -> Result<Value> {
         crate::tweets::fetch_list_tweets(list_id, max_tweets, cursor, &*self.auth).await
     }
@@ -200,17 +204,11 @@ impl Scraper {
         query: &str,
         max_tweets: i32,
         search_mode: SearchMode,
-        cursor: Option<String>
+        cursor: Option<String>,
     ) -> Result<QueryTweetsResponse> {
         let auth = self.get_auth();
-        
-        fetch_search_tweets(
-            query,
-            max_tweets,
-            search_mode,
-            auth.as_ref(),
-            cursor
-        ).await
+
+        fetch_search_tweets(query, max_tweets, search_mode, auth.as_ref(), cursor).await
     }
 
     pub async fn search_profiles(
@@ -220,27 +218,16 @@ impl Scraper {
         cursor: Option<String>,
     ) -> Result<QueryProfilesResponse> {
         let auth = self.get_auth();
-        
-        crate::search::search_profiles(
-            query,
-            max_profiles,
-            auth.as_ref(),
-            cursor
-        ).await
+
+        crate::search::search_profiles(query, max_profiles, auth.as_ref(), cursor).await
     }
 
     pub async fn get_user_tweets(
         &self,
         user_id: &str,
         count: i32,
-        cursor: Option<String>
+        cursor: Option<String>,
     ) -> Result<V2QueryTweetsResponse> {
-        crate::tweets::fetch_user_tweets(
-            user_id,
-            count,
-            cursor.as_deref(),
-            &*self.auth
-        ).await
+        crate::tweets::fetch_user_tweets(user_id, count, cursor.as_deref(), &*self.auth).await
     }
-
 }

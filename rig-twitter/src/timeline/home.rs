@@ -1,9 +1,8 @@
 use crate::api::requests::request_api;
 use crate::auth::TwitterAuth;
-use crate::error::{Result, TwitterError};
-use serde::{Deserialize, Serialize};
+use crate::error::Result;
+use serde::Deserialize;
 use serde_json::Value;
-use std::collections::HashMap;
 use urlencoding;
 #[derive(Debug, Deserialize)]
 pub struct HomeTimelineResponse {
@@ -104,18 +103,20 @@ pub async fn fetch_home_timeline(
     let mut headers = reqwest::header::HeaderMap::new();
     auth.install_headers(&mut headers).await?;
 
-    let (response, _) = request_api::<HomeTimelineResponse>(&url, headers, reqwest::Method::GET, None).await?;
+    let (response, _) =
+        request_api::<HomeTimelineResponse>(&url, headers, reqwest::Method::GET, None).await?;
 
     let home = response
-        .data
-        .and_then(|data| Some(data.home.home_timeline.instructions));
+        .data.map(|data| data.home.home_timeline.instructions);
 
     let mut entries = Vec::new();
 
     if let Some(instructions) = home {
         for instruction in instructions {
             match instruction {
-                TimelineInstruction::AddEntries { entries: new_entries } => {
+                TimelineInstruction::AddEntries {
+                    entries: new_entries,
+                } => {
                     for entry in new_entries {
                         if let Some(item_content) = entry.content.item_content {
                             if let Some(tweet_results) = item_content.tweet_results {

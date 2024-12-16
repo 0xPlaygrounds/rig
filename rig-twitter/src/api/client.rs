@@ -1,7 +1,7 @@
-use crate::auth::{AuthConfig, TwitterAuth};
+use crate::auth::TwitterAuth;
 use crate::error::{Result, TwitterError};
 use crate::models::Tweet;
-use reqwest::{Client, Method, Response};
+use reqwest::{Client, Method};
 use serde::de::DeserializeOwned;
 use std::time::Duration;
 

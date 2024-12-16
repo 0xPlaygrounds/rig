@@ -1,11 +1,12 @@
-use regex::Regex;
-use crate::models::{Photo, Video, Tweet};
-use crate::timeline::v1::{TimelineMediaExtendedRaw, LegacyTweetRaw};
+use crate::models::{Photo, Video};
+use crate::timeline::v1::{LegacyTweetRaw, TimelineMediaExtendedRaw};
 use lazy_static::lazy_static;
+use regex::Regex;
 lazy_static! {
     static ref RE_HASHTAG: Regex = Regex::new(r"\B(\#\S+\b)").unwrap();
     static ref RE_CASHTAG: Regex = Regex::new(r"\B(\$\S+\b)").unwrap();
-    static ref RE_TWITTER_URL: Regex = Regex::new(r"https:(\/\/t\.co\/([A-Za-z0-9]|[A-Za-z]){10})").unwrap();
+    static ref RE_TWITTER_URL: Regex =
+        Regex::new(r"https:(\/\/t\.co\/([A-Za-z0-9]|[A-Za-z]){10})").unwrap();
     static ref RE_USERNAME: Regex = Regex::new(r"\B(\@\S{1,15}\b)").unwrap();
 }
 
@@ -16,7 +17,10 @@ pub fn parse_media_groups(media: &[TimelineMediaExtendedRaw]) -> (Vec<Photo>, Ve
     let mut videos = Vec::new();
     let mut sensitive_content = false;
 
-    for m in media.iter().filter(|m| m.id_str.is_some() && m.media_url_https.is_some()) {
+    for m in media
+        .iter()
+        .filter(|m| m.id_str.is_some() && m.media_url_https.is_some())
+    {
         match m.r#type.as_deref() {
             Some("photo") => {
                 photos.push(Photo {
@@ -32,7 +36,7 @@ pub fn parse_media_groups(media: &[TimelineMediaExtendedRaw]) -> (Vec<Photo>, Ve
         }
 
         if let Some(warning) = &m.ext_sensitive_media_warning {
-            sensitive_content = warning.adult_content.unwrap_or(false) 
+            sensitive_content = warning.adult_content.unwrap_or(false)
                 || warning.graphic_violence.unwrap_or(false)
                 || warning.other.unwrap_or(false);
         }
@@ -56,7 +60,7 @@ fn parse_video(m: &NonNullableMediaFields) -> Video {
                     if *bitrate > max_bitrate {
                         let mut variant_url = url.clone();
                         if let Some(idx) = variant_url.find("?tag=10") {
-                            variant_url = variant_url[..idx+1].to_string();
+                            variant_url = variant_url[..idx + 1].to_string();
                         }
                         video.url = Some(variant_url);
                         max_bitrate = *bitrate;
@@ -69,17 +73,29 @@ fn parse_video(m: &NonNullableMediaFields) -> Video {
     video
 }
 
-pub fn reconstruct_tweet_html(tweet: &LegacyTweetRaw, photos: &[Photo], videos: &[Video]) -> Option<String> {
+pub fn reconstruct_tweet_html(
+    tweet: &LegacyTweetRaw,
+    photos: &[Photo],
+    videos: &[Video],
+) -> Option<String> {
     let mut html = tweet.full_text.clone().unwrap_or_default();
     let mut media = Vec::new();
 
     // Replace entities with HTML
-    html = RE_HASHTAG.replace_all(&html, |caps: &regex::Captures| link_hashtag_html(&caps[0])).to_string();
-    html = RE_CASHTAG.replace_all(&html, |caps: &regex::Captures| link_cashtag_html(&caps[0])).to_string();
-    html = RE_USERNAME.replace_all(&html, |caps: &regex::Captures| link_username_html(&caps[0])).to_string();
-    html = RE_TWITTER_URL.replace_all(&html, |caps: &regex::Captures| {
-        unwrap_tco_url_html(tweet, &mut media, &caps[0])
-    }).to_string();
+    html = RE_HASHTAG
+        .replace_all(&html, |caps: &regex::Captures| link_hashtag_html(&caps[0]))
+        .to_string();
+    html = RE_CASHTAG
+        .replace_all(&html, |caps: &regex::Captures| link_cashtag_html(&caps[0]))
+        .to_string();
+    html = RE_USERNAME
+        .replace_all(&html, |caps: &regex::Captures| link_username_html(&caps[0]))
+        .to_string();
+    html = RE_TWITTER_URL
+        .replace_all(&html, |caps: &regex::Captures| {
+            unwrap_tco_url_html(tweet, &mut media, &caps[0])
+        })
+        .to_string();
 
     // Add media
     for photo in photos {
@@ -101,18 +117,27 @@ pub fn reconstruct_tweet_html(tweet: &LegacyTweetRaw, photos: &[Photo], videos: 
 }
 
 fn link_hashtag_html(hashtag: &str) -> String {
-    format!("<a href=\"https://twitter.com/hashtag/{}\">{}</a>", 
-        &hashtag[1..], hashtag)
+    format!(
+        "<a href=\"https://twitter.com/hashtag/{}\">{}</a>",
+        &hashtag[1..],
+        hashtag
+    )
 }
 
 fn link_cashtag_html(cashtag: &str) -> String {
-    format!("<a href=\"https://twitter.com/search?q=%24{}\">{}</a>",
-        &cashtag[1..], cashtag)
+    format!(
+        "<a href=\"https://twitter.com/search?q=%24{}\">{}</a>",
+        &cashtag[1..],
+        cashtag
+    )
 }
 
 fn link_username_html(username: &str) -> String {
-    format!("<a href=\"https://twitter.com/{}\">{}</a>",
-        &username[1..], username)
+    format!(
+        "<a href=\"https://twitter.com/{}\">{}</a>",
+        &username[1..],
+        username
+    )
 }
 
 fn unwrap_tco_url_html(tweet: &LegacyTweetRaw, found_media: &mut Vec<String>, tco: &str) -> String {

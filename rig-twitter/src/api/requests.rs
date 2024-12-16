@@ -1,9 +1,9 @@
 use crate::error::Result;
+use lazy_static::lazy_static;
+use reqwest::multipart::Form;
 use reqwest::{header::HeaderMap, Method};
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
-use lazy_static::lazy_static;
-use reqwest::multipart::{Form, Part};
 
 lazy_static! {
     static ref SHARED_CLIENT: Arc<reqwest::Client> = Arc::new(
@@ -23,16 +23,14 @@ pub async fn request_api<T>(
 where
     T: DeserializeOwned,
 {
-    let mut request = SHARED_CLIENT
-        .request(method, url)
-        .headers(headers);
+    let mut request = SHARED_CLIENT.request(method, url).headers(headers);
 
     if let Some(json_body) = body {
         request = request.json(&json_body);
     }
 
     let response = request.send().await?;
-    
+
     if response.status().is_success() {
         let headers = response.headers().clone();
         let text = response.text().await?;
@@ -82,7 +80,7 @@ where
         .multipart(form);
 
     let response = request.send().await?;
-    
+
     if response.status().is_success() {
         let headers = response.headers().clone();
         let text = response.text().await?;
@@ -110,7 +108,7 @@ where
         .form(&form_data);
 
     let response = request.send().await?;
-    
+
     if response.status().is_success() {
         let headers = response.headers().clone();
         let text = response.text().await?;

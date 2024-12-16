@@ -3,15 +3,15 @@ use crate::api::requests::{request_api, request_multipart_api};
 use crate::auth::TwitterAuth;
 use crate::error::{Result, TwitterError};
 use crate::models::tweets::Tweet;
+use crate::profile::get_user_id_by_screen_name;
 use crate::timeline::v2::parse_threaded_conversation;
+use crate::timeline::v2::parse_timeline_tweets_v2;
+use crate::timeline::v2::QueryTweetsResponse;
 use crate::timeline::v2::ThreadedConversation;
-use reqwest::header::{HeaderMap};
+use reqwest::header::HeaderMap;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use crate::timeline::v2::parse_timeline_tweets_v2;
-use crate::timeline::v2::QueryTweetsResponse;
-use crate::profile::get_user_id_by_screen_name;
 
 pub const DEFAULT_EXPANSIONS: &[&str] = &[
     "attachments.poll_ids",
@@ -82,17 +82,12 @@ pub async fn fetch_tweets_and_replies(
     auth.install_headers(&mut headers).await?;
 
     let user_id = get_user_id_by_screen_name(username, auth).await?;
-    
+
     let endpoint = Endpoints::user_tweets_and_replies(&user_id, max_tweets.min(40), cursor);
 
-    let (value, _headers) = request_api(
-        &endpoint.to_request_url(),
-        headers,
-        Method::GET,
-        None,
-    )
-    .await?;
-    
+    let (value, _headers) =
+        request_api(&endpoint.to_request_url(), headers, Method::GET, None).await?;
+
     let parsed_response = parse_timeline_tweets_v2(&value);
     Ok(parsed_response)
 }
@@ -108,14 +103,9 @@ pub async fn fetch_tweets_and_replies_by_user_id(
 
     let endpoint = Endpoints::user_tweets_and_replies(user_id, max_tweets.min(40), cursor);
 
-    let (value, _headers) = request_api(
-        &endpoint.to_request_url(),
-        headers,
-        Method::GET,
-        None,
-    )
-    .await?;
-    
+    let (value, _headers) =
+        request_api(&endpoint.to_request_url(), headers, Method::GET, None).await?;
+
     let parsed_response = parse_timeline_tweets_v2(&value);
     Ok(parsed_response)
 }
@@ -354,7 +344,7 @@ async fn upload_video_in_chunks(
     file_data: Vec<u8>,
     media_type: &str,
     headers: HeaderMap,
-    auth: &dyn TwitterAuth,
+    _auth: &dyn TwitterAuth,
 ) -> Result<String> {
     let upload_url = "https://upload.twitter.com/1.1/media/upload.json";
 
@@ -671,14 +661,9 @@ pub async fn fetch_user_tweets(
 
     let endpoint = Endpoints::user_tweets(user_id, max_tweets.min(200), cursor);
 
-    let (value, _headers) = request_api(
-        &endpoint.to_request_url(),
-        headers,
-        Method::GET,
-        None,
-    )
-    .await?;
-    
+    let (value, _headers) =
+        request_api(&endpoint.to_request_url(), headers, Method::GET, None).await?;
+
     let parsed_response = parse_timeline_tweets_v2(&value);
     Ok(parsed_response)
 }

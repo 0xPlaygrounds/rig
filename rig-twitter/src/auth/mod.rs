@@ -1,9 +1,7 @@
+use crate::error::Result;
 use async_trait::async_trait;
 use reqwest::header::HeaderMap;
-use crate::error::Result;
 use std::any::Any;
-
-pub mod guest_auth;
 pub mod user_auth;
 
 #[async_trait]

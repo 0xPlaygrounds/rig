@@ -1,19 +1,9 @@
-use rig_twitter::{
-    scraper::Scraper,
-    error::Result,
-};
-use serde_json::Value;
+use rig_twitter::{error::Result, scraper::Scraper};
 use std::fs::File;
-use std::io::Read;
-use rig_twitter::timeline::v2::parse_threaded_conversation;
-use rig_twitter::timeline::v2::ThreadedConversation;
 use std::io::Write;
-use rig_twitter::search::SearchMode;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-
-
     // Create a new scraper instance
     let mut scraper = Scraper::new().await?;
     // let username = "".to_string();
@@ -24,7 +14,9 @@ async fn main() -> Result<()> {
     // Perform login
     scraper.set_from_cookie_string("").await?;
     //let is_logged_in = scraper.is_logged_in().await?;
-    let tweets = scraper.fetch_tweets_and_replies("0xleductam", 20, None).await?;
+    let tweets = scraper
+        .fetch_tweets_and_replies("0xleductam", 20, None)
+        .await?;
     let mut file = File::create("result.json")?;
     write!(file, "{}", serde_json::to_string_pretty(&tweets).unwrap())?;
     // println!("Tweet: {:?}", tweets);
@@ -47,7 +39,7 @@ async fn main() -> Result<()> {
     // let tweets: Vec<Value> = scraper.get_home_timeline(20, vec![]).await?;
 
     // println!("Successfully retrieved {} tweets from home timeline", tweets.len());
-    
+
     // // Print tweet details
     // for tweet in tweets {
     //     if let Some(tweet_data) = tweet.get("tweet") {

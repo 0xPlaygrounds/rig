@@ -2,7 +2,7 @@ use super::TwitterAuth;
 use crate::api::requests::request_api;
 use crate::error::{Result, TwitterError};
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use cookie::CookieJar;
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
@@ -38,6 +38,8 @@ struct Subtask {
     subtask_id: String,
 }
 #[derive(Clone)]
+#[allow(dead_code)]
+
 pub struct TwitterUserAuth {
     bearer_token: String,
     guest_token: Option<String>,
@@ -285,7 +287,6 @@ impl TwitterUserAuth {
         flow_token: String,
         secret: &str,
     ) -> Result<FlowResponse> {
-
         let totp = TOTP::new(Algorithm::SHA1, 6, 1, 30, secret.as_bytes().to_vec())
             .map_err(|e| TwitterError::Auth(format!("Failed to create TOTP: {}", e)))?;
 
@@ -356,16 +357,6 @@ impl TwitterUserAuth {
         Ok(())
     }
 
-    fn should_update_guest_token(&self) -> bool {
-        match (&self.guest_token, self.created_at) {
-            (None, _) => true,
-            (Some(_), None) => true,
-            (Some(_), Some(created_at)) => {
-                Utc::now() - created_at > Duration::hours(3)
-            }
-        }
-    }
-
     pub async fn update_cookies(&self, response: &reqwest::Response) -> Result<()> {
         println!("Updating cookies - attempting to lock");
         let mut cookie_jar = self.cookie_jar.lock().await;
@@ -373,7 +364,7 @@ impl TwitterUserAuth {
         for cookie_header in response.headers().get_all("set-cookie") {
             if let Ok(cookie_str) = cookie_header.to_str() {
                 if let Ok(cookie) = cookie::Cookie::parse(cookie_str) {
-                    println!("Adding cookie: {:?}", cookie); 
+                    println!("Adding cookie: {:?}", cookie);
                     cookie_jar.add(cookie.into_owned());
                 }
             }
@@ -410,7 +401,6 @@ impl TwitterUserAuth {
 
     pub async fn load_cookies_from_file(&mut self, file_path: &str) -> Result<()> {
         println!("Loading cookies - attempting to lock");
-        let mut cookie_jar = self.cookie_jar.lock().await;
 
         if !Path::new(file_path).exists() {
             return Err(TwitterError::Cookie("Cookie file does not exist".into()));
@@ -425,7 +415,6 @@ impl TwitterUserAuth {
             .map_err(|e| TwitterError::Cookie(format!("Failed to parse cookie file: {}", e)))?;
         println!("{:?}", cookie_data);
         let mut cookie_jar = self.cookie_jar.lock().await;
-
 
         *cookie_jar = CookieJar::new();
 
@@ -454,10 +443,6 @@ impl TwitterUserAuth {
             .join("; ");
 
         Ok(cookie_string)
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
     }
 
     pub async fn set_cookies(&mut self, json_str: &str) -> Result<()> {

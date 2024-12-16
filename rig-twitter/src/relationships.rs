@@ -4,10 +4,10 @@ use crate::auth::TwitterAuth;
 use crate::error::{Result, TwitterError};
 use crate::models::Profile;
 use crate::timeline::v1::QueryProfilesResponse;
+use chrono::{DateTime, Utc};
 use reqwest::Method;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use chrono::{DateTime, Utc};
 #[derive(Debug, Deserialize)]
 pub struct RelationshipResponse {
     pub data: Option<RelationshipData>,
@@ -173,7 +173,9 @@ pub struct InnerTimeline {
 #[serde(tag = "type")]
 pub enum Instruction {
     #[serde(rename = "TimelineAddEntries")]
-    AddEntries { entries: Vec<RelationshipTimelineEntry> },
+    AddEntries {
+        entries: Vec<RelationshipTimelineEntry>,
+    },
     #[serde(rename = "TimelineReplaceEntry")]
     ReplaceEntry { entry: RelationshipTimelineEntry },
 }
@@ -219,12 +221,7 @@ pub async fn fetch_profile_following(
     auth: &dyn TwitterAuth,
     cursor: Option<String>,
 ) -> Result<QueryProfilesResponse> {
-    let timeline = get_following_timeline(
-        user_id,
-        max_profiles,
-        auth,
-        cursor,
-    ).await?;
+    let timeline = get_following_timeline(user_id, max_profiles, auth, cursor).await?;
 
     Ok(parse_relationship_timeline(&timeline))
 }
@@ -237,7 +234,7 @@ async fn get_following_timeline(
 ) -> Result<RelationshipTimeline> {
     if !auth.is_logged_in().await? {
         return Err(TwitterError::Auth(
-            "Scraper is not logged-in for profile following.".into()
+            "Scraper is not logged-in for profile following.".into(),
         ));
     }
 
@@ -271,12 +268,7 @@ async fn get_following_timeline(
     let mut headers = reqwest::header::HeaderMap::new();
     auth.install_headers(&mut headers).await?;
 
-    let (_data, _) = request_api::<RelationshipTimeline>(
-        &url,
-        headers,
-        Method::GET,
-        None
-    ).await?;
+    let (_data, _) = request_api::<RelationshipTimeline>(&url, headers, Method::GET, None).await?;
 
     Ok(_data)
 }
@@ -297,7 +289,12 @@ fn parse_relationship_timeline(timeline: &RelationshipTimeline) -> QueryProfiles
                                     let profile = Profile {
                                         username: legacy.screen_name.clone().unwrap_or_default(),
                                         name: legacy.name.clone().unwrap_or_default(),
-                                        id: user_results.result.rest_id.as_ref().map(String::from).unwrap_or_default(),
+                                        id: user_results
+                                            .result
+                                            .rest_id
+                                            .as_ref()
+                                            .map(String::from)
+                                            .unwrap_or_default(),
                                         description: legacy.description.clone(),
                                         location: legacy.location.clone(),
                                         url: legacy.url.clone(),
@@ -307,14 +304,24 @@ fn parse_relationship_timeline(timeline: &RelationshipTimeline) -> QueryProfiles
                                         following_count: legacy.friends_count.unwrap_or_default(),
                                         tweets_count: legacy.statuses_count.unwrap_or_default(),
                                         listed_count: legacy.listed_count.unwrap_or_default(),
-                                        created_at: legacy.created_at.as_ref()
-                                            .and_then(|date| DateTime::parse_from_str(date, "%a %b %d %H:%M:%S %z %Y").ok()
-                                            .map(|dt| dt.with_timezone(&Utc)))
+                                        created_at: legacy
+                                            .created_at
+                                            .as_ref()
+                                            .and_then(|date| {
+                                                DateTime::parse_from_str(
+                                                    date,
+                                                    "%a %b %d %H:%M:%S %z %Y",
+                                                )
+                                                .ok()
+                                                .map(|dt| dt.with_timezone(&Utc))
+                                            })
                                             .unwrap_or_default(),
                                         profile_image_url: legacy.profile_image_url_https.clone(),
                                         profile_banner_url: legacy.profile_banner_url.clone(),
                                         pinned_tweet_id: legacy.pinned_tweet_ids_str.clone(),
-                                        is_blue_verified: Some(user_results.result.is_blue_verified.unwrap_or(false)),
+                                        is_blue_verified: Some(
+                                            user_results.result.is_blue_verified.unwrap_or(false),
+                                        ),
                                     };
 
                                     profiles.push(profile);
@@ -351,7 +358,9 @@ fn parse_relationship_timeline(timeline: &RelationshipTimeline) -> QueryProfiles
 
 pub async fn follow_user(username: &str, auth: &dyn TwitterAuth) -> Result<()> {
     if !auth.is_logged_in().await? {
-        return Err(TwitterError::Auth("Must be logged in to follow users".into()));
+        return Err(TwitterError::Auth(
+            "Must be logged in to follow users".into(),
+        ));
     }
 
     let user_id = crate::profile::get_user_id_by_screen_name(username, auth).await?;
@@ -359,9 +368,12 @@ pub async fn follow_user(username: &str, auth: &dyn TwitterAuth) -> Result<()> {
     let url = "https://api.twitter.com/1.1/friendships/create.json";
 
     let form = vec![
-        ("include_profile_interstitial_type".to_string(), "1".to_string()),
+        (
+            "include_profile_interstitial_type".to_string(),
+            "1".to_string(),
+        ),
         ("skip_status".to_string(), "true".to_string()),
-        ("user_id".to_string(), user_id)
+        ("user_id".to_string(), user_id),
     ];
 
     let mut headers = reqwest::header::HeaderMap::new();
@@ -369,37 +381,26 @@ pub async fn follow_user(username: &str, auth: &dyn TwitterAuth) -> Result<()> {
 
     headers.insert(
         "Content-Type",
-        "application/x-www-form-urlencoded".parse().unwrap()
+        "application/x-www-form-urlencoded".parse().unwrap(),
     );
     headers.insert(
-        "Referer", 
-        format!("https://twitter.com/{}", username).parse().unwrap()
+        "Referer",
+        format!("https://twitter.com/{}", username).parse().unwrap(),
     );
-    headers.insert(
-        "X-Twitter-Active-User",
-        "yes".parse().unwrap()
-    );
-    headers.insert(
-        "X-Twitter-Auth-Type",
-        "OAuth2Session".parse().unwrap()
-    );
-    headers.insert(
-        "X-Twitter-Client-Language",
-        "en".parse().unwrap()
-    );
+    headers.insert("X-Twitter-Active-User", "yes".parse().unwrap());
+    headers.insert("X-Twitter-Auth-Type", "OAuth2Session".parse().unwrap());
+    headers.insert("X-Twitter-Client-Language", "en".parse().unwrap());
 
-    let (_, _) = request_form_api::<Value>(
-        url,
-        headers,
-        form
-    ).await?;
+    let (_, _) = request_form_api::<Value>(url, headers, form).await?;
 
     Ok(())
 }
 
 pub async fn unfollow_user(username: &str, auth: &dyn TwitterAuth) -> Result<()> {
     if !auth.is_logged_in().await? {
-        return Err(TwitterError::Auth("Must be logged in to unfollow users".into()));
+        return Err(TwitterError::Auth(
+            "Must be logged in to unfollow users".into(),
+        ));
     }
 
     let user_id = crate::profile::get_user_id_by_screen_name(username, auth).await?;
@@ -407,9 +408,12 @@ pub async fn unfollow_user(username: &str, auth: &dyn TwitterAuth) -> Result<()>
     let url = "https://api.twitter.com/1.1/friendships/destroy.json";
 
     let form = vec![
-        ("include_profile_interstitial_type".to_string(), "1".to_string()),
+        (
+            "include_profile_interstitial_type".to_string(),
+            "1".to_string(),
+        ),
         ("skip_status".to_string(), "true".to_string()),
-        ("user_id".to_string(), user_id)
+        ("user_id".to_string(), user_id),
     ];
 
     let mut headers = reqwest::header::HeaderMap::new();
@@ -417,30 +421,17 @@ pub async fn unfollow_user(username: &str, auth: &dyn TwitterAuth) -> Result<()>
 
     headers.insert(
         "Content-Type",
-        "application/x-www-form-urlencoded".parse().unwrap()
+        "application/x-www-form-urlencoded".parse().unwrap(),
     );
     headers.insert(
         "Referer",
-        format!("https://twitter.com/{}", username).parse().unwrap()
+        format!("https://twitter.com/{}", username).parse().unwrap(),
     );
-    headers.insert(
-        "X-Twitter-Active-User",
-        "yes".parse().unwrap()
-    );
-    headers.insert(
-        "X-Twitter-Auth-Type",
-        "OAuth2Session".parse().unwrap()
-    );
-    headers.insert(
-        "X-Twitter-Client-Language",
-        "en".parse().unwrap()
-    );
+    headers.insert("X-Twitter-Active-User", "yes".parse().unwrap());
+    headers.insert("X-Twitter-Auth-Type", "OAuth2Session".parse().unwrap());
+    headers.insert("X-Twitter-Client-Language", "en".parse().unwrap());
 
-    let (_, _) = request_form_api::<Value>(
-        url,
-        headers,
-        form
-    ).await?;
+    let (_, _) = request_form_api::<Value>(url, headers, form).await?;
 
     Ok(())
 }

@@ -1,14 +1,13 @@
 use crate::error::Result;
 use crate::error::TwitterError;
 use crate::models::tweets::Mention;
-use crate::models::{Profile, Tweet};
-use crate::timeline::tweet_utils::{parse_media_groups, reconstruct_tweet_html};
+use crate::models::Tweet;
+use crate::profile::LegacyUserRaw;
+use crate::timeline::tweet_utils::parse_media_groups;
 use crate::timeline::v1::{LegacyTweetRaw, TimelineResultRaw};
+use chrono::Utc;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use crate::profile::LegacyUserRaw;
-use chrono::Utc;
-use serde_json::Value;
 lazy_static! {
     static ref EMPTY_INSTRUCTIONS: Vec<TimelineInstruction> = Vec::new();
 }
@@ -197,19 +196,32 @@ pub struct SearchEntryItemInnerRaw {
     pub content: Option<TimelineEntryItemContentRaw>,
 }
 
-pub fn parse_legacy_tweet(user: Option<&LegacyUserRaw>, tweet: Option<&LegacyTweetRaw>) -> Result<Tweet> {
-    let tweet = tweet.ok_or(TwitterError::Api("Tweet was not found in the timeline object".into()))?;
-    let user = user.ok_or(TwitterError::Api("User was not found in the timeline object".into()))?;
+pub fn parse_legacy_tweet(
+    user: Option<&LegacyUserRaw>,
+    tweet: Option<&LegacyTweetRaw>,
+) -> Result<Tweet> {
+    let tweet = tweet.ok_or(TwitterError::Api(
+        "Tweet was not found in the timeline object".into(),
+    ))?;
+    let user = user.ok_or(TwitterError::Api(
+        "User was not found in the timeline object".into(),
+    ))?;
 
-    let id_str = tweet.id_str.as_ref().or(tweet.conversation_id_str.as_ref())
+    let id_str = tweet
+        .id_str
+        .as_ref()
+        .or(tweet.conversation_id_str.as_ref())
         .ok_or(TwitterError::Api("Tweet ID was not found in object".into()))?;
 
-    let hashtags = tweet.entities.as_ref()
+    let hashtags = tweet
+        .entities
+        .as_ref()
         .and_then(|e| e.hashtags.as_ref())
         .map(|h| h.iter().filter_map(|h| h.text.clone()).collect())
         .unwrap_or_default();
 
-    let mentions = tweet.entities
+    let mentions = tweet
+        .entities
         .as_ref()
         .and_then(|e| e.user_mentions.as_ref())
         .map(|mentions| {
@@ -225,16 +237,17 @@ pub fn parse_legacy_tweet(user: Option<&LegacyUserRaw>, tweet: Option<&LegacyTwe
                 .collect()
         })
         .unwrap_or_default();
-    
-    let (photos, videos, sensitive_content) = if let Some(extended_entities) = &tweet.extended_entities {
-        if let Some(media) = &extended_entities.media {
-            parse_media_groups(media)
+
+    let (photos, videos, _) =
+        if let Some(extended_entities) = &tweet.extended_entities {
+            if let Some(media) = &extended_entities.media {
+                parse_media_groups(media)
+            } else {
+                (Vec::new(), Vec::new(), false)
+            }
         } else {
             (Vec::new(), Vec::new(), false)
-        }
-    } else {
-        (Vec::new(), Vec::new(), false)
-    };
+        };
 
     let mut tweet = Tweet {
         bookmark_count: tweet.bookmark_count,
@@ -244,14 +257,18 @@ pub fn parse_legacy_tweet(user: Option<&LegacyUserRaw>, tweet: Option<&LegacyTwe
         likes: tweet.favorite_count,
         mentions,
         name: user.name.clone(),
-        permanent_url: Some(format!("https://twitter.com/{}/status/{}", 
-            user.screen_name.as_ref().unwrap_or(&String::new()), id_str)),
+        permanent_url: Some(format!(
+            "https://twitter.com/{}/status/{}",
+            user.screen_name.as_ref().unwrap_or(&String::new()),
+            id_str
+        )),
         photos,
         replies: tweet.reply_count,
         retweets: tweet.retweet_count,
         text: tweet.full_text.clone(),
         thread: Vec::new(),
-        urls: tweet.entities
+        urls: tweet
+            .entities
             .as_ref()
             .and_then(|e| e.urls.as_ref())
             .map(|urls| urls.iter().filter_map(|u| u.expanded_url.clone()).collect())
@@ -260,10 +277,10 @@ pub fn parse_legacy_tweet(user: Option<&LegacyUserRaw>, tweet: Option<&LegacyTwe
         username: user.screen_name.clone(),
         videos,
         is_quoted: Some(false),
-        is_reply:  Some(false),
+        is_reply: Some(false),
         is_retweet: Some(false),
         is_pin: Some(false),
-        sensitive_content:  Some(false),
+        sensitive_content: Some(false),
         quoted_status: None,
         quoted_status_id: tweet.quoted_status_id_str.clone(),
         in_reply_to_status_id: tweet.in_reply_to_status_id_str.clone(),
@@ -300,10 +317,11 @@ pub fn parse_legacy_tweet(user: Option<&LegacyUserRaw>, tweet: Option<&LegacyTwe
 
 pub fn parse_timeline_entry_item_content_raw(
     content: &TimelineEntryItemContent,
-    entry_id: &str,
+    _entry_id: &str,
     is_conversation: bool,
 ) -> Option<Tweet> {
-    let mut result = content.tweet_results
+    let result = content
+        .tweet_results
         .as_ref()
         .or(content.tweet_result.as_ref())
         .and_then(|r| r.result.as_ref())?;
@@ -311,13 +329,11 @@ pub fn parse_timeline_entry_item_content_raw(
     let tweet_result = parse_result(result);
     if tweet_result.success {
         let mut tweet = tweet_result.tweet?;
-        
-        if is_conversation {
-            if content.tweet_display_type.as_deref() == Some("SelfThread") {
-                tweet.is_self_thread = Some(true);
-            }
+
+        if is_conversation && content.tweet_display_type.as_deref() == Some("SelfThread") {
+            tweet.is_self_thread = Some(true);
         }
-        
+
         return Some(tweet);
     }
 
@@ -326,37 +342,44 @@ pub fn parse_timeline_entry_item_content_raw(
 
 pub fn parse_and_push(
     tweets: &mut Vec<Tweet>,
-    content: &TimelineEntryItemContent, 
+    content: &TimelineEntryItemContent,
     entry_id: String,
-    is_conversation: bool
+    is_conversation: bool,
 ) {
-    if let Some(tweet) = parse_timeline_entry_item_content_raw(content, &entry_id, is_conversation) {
+    if let Some(tweet) = parse_timeline_entry_item_content_raw(content, &entry_id, is_conversation)
+    {
         tweets.push(tweet);
     }
 }
 
 pub fn parse_result(result: &TimelineResultRaw) -> ParseTweetResult {
     let tweet_result = parse_legacy_tweet(
-        result.core.as_ref()
+        result
+            .core
+            .as_ref()
             .and_then(|c| c.user_results.as_ref())
             .and_then(|u| u.result.as_ref())
             .and_then(|r| r.legacy.as_ref()),
-        result.legacy.as_deref()
+        result.legacy.as_deref(),
     );
 
     let mut tweet = match tweet_result {
         Ok(tweet) => tweet,
-        Err(e) => return ParseTweetResult {
-            success: false,
-            tweet: None,
-            err: Some(e)
+        Err(e) => {
+            return ParseTweetResult {
+                success: false,
+                tweet: None,
+                err: Some(e),
+            }
         }
     };
 
     if tweet.views.is_none() {
-        if let Some(count) = result.views.as_ref()
+        if let Some(count) = result
+            .views
+            .as_ref()
             .and_then(|v| v.count.as_ref())
-            .and_then(|c| c.parse().ok()) 
+            .and_then(|c| c.parse().ok())
         {
             tweet.views = Some(count);
         }
@@ -374,14 +397,14 @@ pub fn parse_result(result: &TimelineResultRaw) -> ParseTweetResult {
     ParseTweetResult {
         success: true,
         tweet: Some(tweet),
-        err: None
+        err: None,
     }
 }
 
 pub struct ParseTweetResult {
     pub success: bool,
     pub tweet: Option<Tweet>,
-    pub err: Option<TwitterError>
+    pub err: Option<TwitterError>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -396,7 +419,8 @@ pub fn parse_timeline_tweets_v2(timeline: &TimelineV2) -> QueryTweetsResponse {
     let mut bottom_cursor = None;
     let mut top_cursor = None;
 
-    let instructions = timeline.data
+    let instructions = timeline
+        .data
         .as_ref()
         .and_then(|data| data.user.as_ref())
         .and_then(|user| user.result.as_ref())
@@ -408,11 +432,13 @@ pub fn parse_timeline_tweets_v2(timeline: &TimelineV2) -> QueryTweetsResponse {
     let expected_entry_types = ["tweet-", "profile-conversation-"];
 
     for instruction in instructions {
-        let entries = instruction.entries.as_ref()
-            .map(|e| e.as_slice())
+        let entries = instruction
+            .entries.as_deref()
             .unwrap_or_else(|| {
-                instruction.entry.as_ref()
-                    .map(|e| std::slice::from_ref(e))
+                instruction
+                    .entry
+                    .as_ref()
+                    .map(std::slice::from_ref)
                     .unwrap_or_default()
             });
 
@@ -427,11 +453,11 @@ pub fn parse_timeline_tweets_v2(timeline: &TimelineV2) -> QueryTweetsResponse {
                     "Bottom" => {
                         bottom_cursor = content.value.clone();
                         continue;
-                    },
+                    }
                     "Top" => {
                         top_cursor = content.value.clone();
                         continue;
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -440,7 +466,10 @@ pub fn parse_timeline_tweets_v2(timeline: &TimelineV2) -> QueryTweetsResponse {
                 Some(id) => id,
                 None => continue,
             };
-            if !expected_entry_types.iter().any(|prefix| entry_id.starts_with(prefix)) {
+            if !expected_entry_types
+                .iter()
+                .any(|prefix| entry_id.starts_with(prefix))
+            {
                 continue;
             }
 
@@ -471,24 +500,25 @@ pub fn parse_threaded_conversation(conversation: &ThreadedConversation) -> Optio
     let mut main_tweet: Option<Tweet> = None;
     let mut replies: Vec<Tweet> = Vec::new();
 
-    let instructions = conversation.data
+    let instructions = conversation
+        .data
         .as_ref()
         .and_then(|data| data.threaded_conversation_with_injections_v2.as_ref())
         .and_then(|conv| conv.instructions.as_ref())
         .unwrap_or(&EMPTY_INSTRUCTIONS);
 
     for instruction in instructions {
-        let entries = instruction.entries.as_ref()
-            .map(|e| e.as_slice())
+        let entries = instruction
+            .entries.as_deref()
             .unwrap_or_default();
 
         for entry in entries {
             if let Some(content) = &entry.content {
                 if let Some(item_content) = &content.item_content {
                     if let Some(tweet) = parse_timeline_entry_item_content_raw(
-                        item_content, 
+                        item_content,
                         entry.entry_id.as_deref().unwrap_or_default(),
-                        true
+                        true,
                     ) {
                         if main_tweet.is_none() {
                             main_tweet = Some(tweet);
@@ -505,7 +535,7 @@ pub fn parse_threaded_conversation(conversation: &ThreadedConversation) -> Optio
                                 if let Some(tweet) = parse_timeline_entry_item_content_raw(
                                     item_content,
                                     entry.entry_id.as_deref().unwrap_or_default(),
-                                    true
+                                    true,
                                 ) {
                                     replies.push(tweet);
                                 }
@@ -530,11 +560,12 @@ pub fn parse_threaded_conversation(conversation: &ThreadedConversation) -> Optio
         }
 
         if main_tweet.is_self_thread == Some(true) {
-            let mut thread = replies.iter()
+            let thread = replies
+                .iter()
                 .filter(|t| t.is_self_thread == Some(true))
                 .cloned()
                 .collect::<Vec<_>>();
-            
+
             if thread.is_empty() {
                 main_tweet.is_self_thread = Some(false);
             } else {
@@ -542,7 +573,7 @@ pub fn parse_threaded_conversation(conversation: &ThreadedConversation) -> Optio
             }
         }
 
-       // main_tweet.html = reconstruct_tweet_html(&main_tweet);
+        // main_tweet.html = reconstruct_tweet_html(&main_tweet);
 
         Some(main_tweet)
     } else {

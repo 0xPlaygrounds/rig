@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tweet {
-    
     pub ext_views: Option<i32>,
     pub created_at: Option<String>,
     pub bookmark_count: Option<i32>,

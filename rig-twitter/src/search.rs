@@ -1,12 +1,12 @@
-use serde::{Deserialize, Serialize};
-use crate::error::Result;
-use crate::auth::TwitterAuth;
-use crate::models::{Tweet, Profile};
-use crate::timeline::v1::{QueryProfilesResponse, QueryTweetsResponse};
-use crate::timeline::search::{SearchTimeline, parse_search_timeline_tweets, parse_search_timeline_users};
-use serde_json::json;
-use reqwest::Method;
 use crate::api::requests::request_api;
+use crate::auth::TwitterAuth;
+use crate::error::Result;
+use crate::timeline::search::{
+    parse_search_timeline_tweets, parse_search_timeline_users, SearchTimeline,
+};
+use crate::timeline::v1::{QueryProfilesResponse, QueryTweetsResponse};
+use reqwest::Method;
+use serde_json::json;
 
 #[derive(Debug, Clone, Copy)]
 pub enum SearchMode {
@@ -24,13 +24,7 @@ pub async fn fetch_search_tweets(
     auth: &dyn TwitterAuth,
     cursor: Option<String>,
 ) -> Result<QueryTweetsResponse> {
-    let timeline = get_search_timeline(
-        query,
-        max_tweets,
-        search_mode,
-        auth,
-        cursor,
-    ).await?;
+    let timeline = get_search_timeline(query, max_tweets, search_mode, auth, cursor).await?;
 
     Ok(parse_search_timeline_tweets(&timeline))
 }
@@ -38,16 +32,11 @@ pub async fn fetch_search_tweets(
 pub async fn search_profiles(
     query: &str,
     max_profiles: i32,
-    auth: &dyn TwitterAuth, 
+    auth: &dyn TwitterAuth,
     cursor: Option<String>,
 ) -> Result<QueryProfilesResponse> {
-    let timeline = get_search_timeline(
-        query,
-        max_profiles,
-        SearchMode::Users,
-        auth,
-        cursor,
-    ).await?;
+    let timeline =
+        get_search_timeline(query, max_profiles, SearchMode::Users, auth, cursor).await?;
 
     Ok(parse_search_timeline_users(&timeline))
 }
@@ -57,11 +46,11 @@ async fn get_search_timeline(
     max_items: i32,
     search_mode: SearchMode,
     auth: &dyn TwitterAuth,
-    cursor: Option<String>,
+    _cursor: Option<String>,
 ) -> Result<SearchTimeline> {
     if !auth.is_logged_in().await? {
         return Err(crate::error::TwitterError::Auth(
-            "Scraper is not logged-in for search.".into()
+            "Scraper is not logged-in for search.".into(),
         ));
     }
 
@@ -78,16 +67,16 @@ async fn get_search_timeline(
     match search_mode {
         SearchMode::Latest => {
             variables["product"] = json!("Latest");
-        },
+        }
         SearchMode::Photos => {
             variables["product"] = json!("Photos");
-        },
+        }
         SearchMode::Videos => {
             variables["product"] = json!("Videos");
-        },
+        }
         SearchMode::Users => {
             variables["product"] = json!("People");
-        },
+        }
         _ => {}
     }
 
@@ -133,13 +122,12 @@ async fn get_search_timeline(
         "withArticleRichContentState": false
     });
 
-    let mut params = vec![
-        ("variables", serde_json::to_string(&variables)?),
+    let params = [("variables", serde_json::to_string(&variables)?),
         ("features", serde_json::to_string(&features)?),
-        ("fieldToggles", serde_json::to_string(&field_toggles)?),
-    ];
+        ("fieldToggles", serde_json::to_string(&field_toggles)?)];
 
-    let query_string = params.iter()
+    let query_string = params
+        .iter()
         .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
         .collect::<Vec<_>>()
         .join("&");
@@ -148,16 +136,11 @@ async fn get_search_timeline(
     auth.install_headers(&mut headers).await?;
 
     let url = format!(
-        "https://api.twitter.com/graphql/gkjsKepM6gl_HmFWoWKfgg/SearchTimeline?{}", 
+        "https://api.twitter.com/graphql/gkjsKepM6gl_HmFWoWKfgg/SearchTimeline?{}",
         query_string
     );
 
-    let (response, _) = request_api::<SearchTimeline>(
-        &url,
-        headers,
-        Method::GET,
-        None
-    ).await?;
+    let (response, _) = request_api::<SearchTimeline>(&url, headers, Method::GET, None).await?;
 
     Ok(response)
 }
