@@ -86,6 +86,7 @@ pub mod extractor;
 pub(crate) mod json_utils;
 pub mod loaders;
 pub mod one_or_many;
+pub mod pipeline;
 pub mod providers;
 pub mod tool;
 pub mod vector_store;
