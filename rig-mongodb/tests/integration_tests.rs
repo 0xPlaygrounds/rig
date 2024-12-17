@@ -30,39 +30,6 @@ const DATABASE_NAME: &str = "rig";
 const USERNAME: &str = "riguser";
 const PASSWORD: &str = "rigpassword";
 
-async fn create_search_index(collection: &Collection<bson::Document>) {
-    let mut attempts = 0;
-    let max_attempts = 5;
-    
-    while attempts < max_attempts {
-        match collection
-            .create_search_index(
-                SearchIndexModel::builder()
-                    .name(Some(VECTOR_SEARCH_INDEX_NAME.to_string()))
-                    .index_type(Some(mongodb::SearchIndexType::VectorSearch))
-                    .definition(doc! {
-                        "fields": [{
-                            "numDimensions": 1536,
-                            "path": "embedding",
-                            "similarity": "cosine",
-                            "type": "vector"
-                        }]
-                    })
-                    .build(),
-            )
-            .await
-        {
-            Ok(_) => return,
-            Err(_) => {
-                println!("Waiting for MongoDB to be ready... Attempts remaining: {}", max_attempts - attempts - 1);
-                sleep(Duration::from_secs(5)).await;
-                attempts += 1;
-            }
-        }
-    }
-    panic!("Failed to create search index after {} attempts", max_attempts);
-}
-
 #[tokio::test]
 async fn vector_search_test() {
     // Initialize OpenAI client
@@ -104,7 +71,7 @@ async fn vector_search_test() {
     .await
     .unwrap();
 
-    sleep(Duration::from_secs(15)).await;
+    sleep(Duration::from_secs(5)).await;
 
     // Query the index
     let results = index
@@ -122,6 +89,39 @@ async fn vector_search_test() {
             "score": score
         })
     )
+}
+
+async fn create_search_index(collection: &Collection<bson::Document>) {
+    let mut attempts = 0;
+    let max_attempts = 5;
+    
+    while attempts < max_attempts {
+        match collection
+            .create_search_index(
+                SearchIndexModel::builder()
+                    .name(Some(VECTOR_SEARCH_INDEX_NAME.to_string()))
+                    .index_type(Some(mongodb::SearchIndexType::VectorSearch))
+                    .definition(doc! {
+                        "fields": [{
+                            "numDimensions": 1536,
+                            "path": "embedding",
+                            "similarity": "cosine",
+                            "type": "vector"
+                        }]
+                    })
+                    .build(),
+            )
+            .await
+        {
+            Ok(_) => return,
+            Err(_) => {
+                println!("Waiting for MongoDB to be ready... Attempts remaining: {}", max_attempts - attempts - 1);
+                sleep(Duration::from_secs(5)).await;
+                attempts += 1;
+            }
+        }
+    }
+    panic!("Failed to create search index after {} attempts", max_attempts);
 }
 
 async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Document> {
