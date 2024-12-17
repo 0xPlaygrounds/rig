@@ -1,9 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 /// Struct containing either a single item or a list of items of type T.
 /// If a single item is present, `first` will contain it and `rest` will be empty.
 /// If multiple items are present, `first` will contain the first item and `rest` will contain the rest.
 /// IMPORTANT: this struct cannot be created with an empty vector.
 /// OneOrMany objects can only be created using OneOrMany::from() or OneOrMany::try_from().
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 pub struct OneOrMany<T> {
     /// First item in the list.
     first: T,

@@ -67,7 +67,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{json_utils, tool::ToolSetError};
+use crate::{json_utils, tool::ToolSetError, OneOrMany};
 
 // Errors
 #[derive(Debug, Error)]
@@ -106,10 +106,65 @@ pub enum PromptError {
 // Request models
 // ================================================================
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Message {
-    /// "system", "user", or "assistant"
-    pub role: String,
-    pub content: String,
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum Message<T> {
+    System {
+        content: OneOrMany<String>,
+        raw_message: T,
+    },
+    User {
+        content: OneOrMany<String>,
+        raw_message: T,
+    },
+    Assistant {
+        content: OneOrMany<String>,
+        raw_message: T,
+    },
+    Tool {
+        content: String,
+        tool_call_id: String,
+        raw_message: T,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub enum UserContent {
+    #[serde(rename = "text")]
+    Text {
+        text: String,
+    },
+    #[serde(rename = "image_url")]
+    Image {
+        image_url: String,
+        detail: ImageDetail,
+    },
+    #[serde(rename = "input_audio")]
+    Audio {
+        data: String,
+        format: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ImageDetail {
+    Low,
+    High,
+    Auto,
+}
+
+impl std::str::FromStr for ImageDetail {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "low" => Ok(ImageDetail::Low),
+            "high" => Ok(ImageDetail::High),
+            "auto" => Ok(ImageDetail::Auto),
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
