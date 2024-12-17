@@ -61,7 +61,7 @@ async fn vector_search_test() {
     collection.insert_many(embeddings).await.unwrap();
 
     // Wait for the new documents to be indexed
-    sleep(Duration::from_secs(30)).await;
+    sleep(Duration::from_secs(5)).await;
 
     // Create a vector index on our vector store.
     // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
