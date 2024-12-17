@@ -1,3 +1,4 @@
+use futures::StreamExt;
 use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
@@ -14,7 +15,6 @@ use testcontainers::{
     GenericImage, ImageExt,
 };
 use tokio::time::{sleep, Duration};
-use futures::StreamExt;
 
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq)]
 struct Word {
@@ -116,7 +116,31 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
             )
             .await
         {
-            Ok(_) => return,
+            Ok(_) => {
+                // Verify the index was created
+                let mut search_attempts = 0;
+                while search_attempts < max_attempts {
+                    let mut cursor = collection.list_search_indexes().await.unwrap();
+
+                    while let Some(index_result) = cursor.next().await {
+                        match index_result {
+                            Ok(index) => {
+                                if index.get_str("name").unwrap_or("") == VECTOR_SEARCH_INDEX_NAME {
+                                    return;
+                                }
+                            }
+                            Err(e) => {
+                                println!("Error processing index: {}", e);
+                                continue;
+                            }
+                        }
+                    }
+                    sleep(Duration::from_secs(2)).await;
+                    search_attempts += 1;
+                }
+
+                panic!("Failed to create search index",);
+            }
             Err(_) => {
                 println!(
                     "Waiting for MongoDB to be ready... Attempts remaining: {}",
@@ -126,28 +150,6 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
                 attempts += 1;
             }
         }
-    }
-
-    // Verify the index was created
-    attempts = 0;
-    while attempts < max_attempts {
-        let mut cursor = collection.list_search_indexes().await.unwrap();
-    
-        while let Some(index_result) = cursor.next().await {
-            match index_result {
-                Ok(index) => {
-                    if index.get_str("name").unwrap_or("") == VECTOR_SEARCH_INDEX_NAME {
-                        return;
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Error processing index: {}", e);
-                    continue;
-                }
-            }
-        }
-        sleep(Duration::from_secs(2)).await;
-        attempts += 1;
     }
 
     panic!(
