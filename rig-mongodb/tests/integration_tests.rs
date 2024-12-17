@@ -94,11 +94,9 @@ async fn vector_search_test() {
 }
 
 async fn create_search_index(collection: &Collection<bson::Document>) {
-    let mut attempts = 0;
     let max_attempts = 5;
 
-    // Create the search index
-    while attempts < max_attempts {
+    for attempt in 0..max_attempts {
         match collection
             .create_search_index(
                 SearchIndexModel::builder()
@@ -117,45 +115,34 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
             .await
         {
             Ok(_) => {
-                // Verify the index was created
-                let mut search_attempts = 0;
-                while search_attempts < max_attempts {
-                    let mut cursor = collection.list_search_indexes().await.unwrap();
-
-                    while let Some(index_result) = cursor.next().await {
-                        match index_result {
-                            Ok(index) => {
-                                if index.get_str("name").unwrap_or("") == VECTOR_SEARCH_INDEX_NAME {
-                                    return;
-                                }
-                            }
-                            Err(e) => {
-                                println!("Error processing index: {}", e);
-                                continue;
-                            }
-                        }
+                // Wait for index to be available
+                for _ in 0..max_attempts {
+                    let indexes = collection.list_search_indexes()
+                        .await
+                        .unwrap()
+                        .collect::<Vec<_>>()
+                        .await;
+                    
+                    if indexes.iter().any(|idx| {
+                        idx.as_ref()
+                            .ok()
+                            .and_then(|i| i.get_str("name").ok())
+                            .map_or(false, |name| name == VECTOR_SEARCH_INDEX_NAME)
+                    }) {
+                        return;
                     }
                     sleep(Duration::from_secs(2)).await;
-                    search_attempts += 1;
                 }
-
-                panic!("Failed to create search index",);
+                panic!("Index creation verified but index not found");
             }
             Err(_) => {
-                println!(
-                    "Waiting for MongoDB to be ready... Attempts remaining: {}",
-                    max_attempts - attempts - 1
-                );
+                println!("Waiting for MongoDB... {} attempts remaining", max_attempts - attempt - 1);
                 sleep(Duration::from_secs(5)).await;
-                attempts += 1;
             }
         }
     }
 
-    panic!(
-        "Failed to create search index after {} attempts",
-        max_attempts
-    );
+    panic!("Failed to create search index after {} attempts", max_attempts);
 }
 
 async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Document> {
