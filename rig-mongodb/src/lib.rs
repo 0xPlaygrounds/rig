@@ -59,26 +59,39 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 
 /// A vector index for a MongoDB collection.
 /// # Example
-/// ```
+/// ```rust
 /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
-/// use rig::embeddings::EmbeddingModel;
+/// use rig::{providers::openai, vector_store::VectorStoreIndex};
 ///
-/// #[derive(serde::Serialize, Debug)]
-/// struct Document {
+/// # tokio_test::block_on(async {
+/// #[derive(serde::Deserialize, serde::Serialize, Debug)]
+/// struct WordDefinition {
 ///     #[serde(rename = "_id")]
 ///     id: String,
 ///     definition: String,
 ///     embedding: Vec<f64>,
 /// }
 ///
-/// let collection: collection: mongodb::Collection<Document> = mongodb_client.collection(""); // <-- replace with your mongodb collection.
-/// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
+/// let mongodb_client = mongodb::Client::with_uri_str("mongodb://localhost:27017").await?; // <-- replace with your mongodb uri.
+/// let openai_client = openai::Client::from_env();
+///
+/// let collection = mongodb_client.database("db").collection::<WordDefinition>(""); // <-- replace with your mongodb collection.
+///
+/// let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
 /// let index = MongoDbVectorIndex::new(
 ///     collection,
 ///     model,
 ///     "vector_index", // <-- replace with the name of the index in your mongodb collection.
-///     SearchParams::new("embedding"), // <-- field name in `Document` that contains the embeddings.
-/// );
+///     SearchParams::new(), // <-- field name in `Document` that contains the embeddings.
+/// )
+/// .await?;
+///
+/// // Query the index
+/// let definitions = index
+///     .top_n::<WordDefinition>("My boss says I zindle too much, what does that mean?", 1)
+///     .await?;
+/// # Ok::<_, anyhow::Error>(())
+/// # }).unwrap()
 /// ```
 pub struct MongoDbVectorIndex<M: EmbeddingModel, C: Send + Sync> {
     collection: mongodb::Collection<C>,
@@ -211,41 +224,6 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     for MongoDbVectorIndex<M, C>
 {
     /// Implement the `top_n` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
-    /// # Example
-    /// ```
-    /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
-    /// use rig::embeddings::EmbeddingModel;
-    ///
-    /// #[derive(serde::Serialize, Debug)]
-    /// struct Document {
-    ///     #[serde(rename = "_id")]
-    ///     id: String,
-    ///     definition: String,
-    ///     embedding: Vec<f64>,
-    /// }
-    ///
-    /// #[derive(serde::Deserialize, Debug)]
-    /// struct Definition {
-    ///     #[serde(rename = "_id")]
-    ///     id: String,
-    ///     definition: String,
-    /// }
-    ///
-    /// let collection: collection: mongodb::Collection<Document> = mongodb_client.collection(""); // <-- replace with your mongodb collection.
-    /// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
-    ///
-    /// let vector_store_index = MongoDbVectorIndex::new(
-    ///     collection,
-    ///     model,
-    ///     "vector_index", // <-- replace with the name of the index in your mongodb collection.
-    ///     SearchParams::new("embedding"), // <-- field name in `Document` that contains the embeddings.
-    /// );
-    ///
-    /// // Query the index
-    /// vector_store_index
-    ///     .top_n::<Definition>("My boss says I zindle too much, what does that mean?", 1)
-    ///     .await?;
-    /// ```
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
         query: &str,
@@ -291,33 +269,6 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     }
 
     /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
-    /// # Example
-    /// ```
-    /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
-    /// use rig::embeddings::EmbeddingModel;
-    ///
-    /// #[derive(serde::Serialize, Debug)]
-    /// struct Document {
-    ///     #[serde(rename = "_id")]
-    ///     id: String,
-    ///     definition: String,
-    ///     embedding: Vec<f64>,
-    /// }
-    ///
-    /// let collection: collection: mongodb::Collection<Document> = mongodb_client.collection(""); // <-- replace with your mongodb collection.
-    /// let model: model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
-    /// let vector_store_index = MongoDbVectorIndex::new(
-    ///     collection,
-    ///     model,
-    ///     "vector_index", // <-- replace with the name of the index in your mongodb collection.
-    ///     SearchParams::new("embedding"), // <-- field name in `Document` that contains the embeddings.
-    /// );
-    ///
-    /// // Query the index
-    /// vector_store_index
-    ///     .top_n_ids("My boss says I zindle too much, what does that mean?", 1)
-    ///     .await?;
-    /// ```
     async fn top_n_ids(
         &self,
         query: &str,
