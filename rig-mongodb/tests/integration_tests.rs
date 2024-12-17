@@ -14,6 +14,7 @@ use testcontainers::{
     GenericImage, ImageExt,
 };
 use tokio::time::{sleep, Duration};
+use futures::StreamExt;
 
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq)]
 struct Word {
@@ -124,6 +125,29 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
             }
         }
     }
+
+    // Verify the index was created
+    attempts = 0;
+    while attempts < max_attempts {
+        let mut cursor = collection.list_search_indexes().await.unwrap();
+    
+        while let Some(index_result) = cursor.next().await {
+            match index_result {
+                Ok(index) => {
+                    if index.get_str("name").unwrap_or("") == VECTOR_SEARCH_INDEX_NAME {
+                        return;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error processing index: {}", e);
+                    continue;
+                }
+            }
+        }
+        sleep(Duration::from_secs(2)).await;
+        attempts += 1;
+    }
+
     panic!(
         "Failed to create search index after {} attempts",
         max_attempts
