@@ -97,6 +97,7 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
     let mut attempts = 0;
     let max_attempts = 5;
 
+    // Create the search index
     while attempts < max_attempts {
         match collection
             .create_search_index(
