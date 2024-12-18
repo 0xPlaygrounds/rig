@@ -378,17 +378,6 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             [Choice {
                 message:
                     Message {
-                        content: Some(content),
-                        ..
-                    },
-                ..
-            }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::Message(content.to_string()),
-                raw_response: value,
-            }),
-            [Choice {
-                message:
-                    Message {
                         tool_calls: Some(calls),
                         ..
                     },
@@ -406,6 +395,17 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     raw_response: value,
                 })
             }
+            [Choice {
+                message:
+                    Message {
+                        content: Some(content),
+                        ..
+                    },
+                ..
+            }, ..] => Ok(completion::CompletionResponse {
+                choice: completion::ModelChoice::Message(content.to_string()),
+                raw_response: value,
+            }),
             _ => Err(CompletionError::ResponseError(
                 "Response did not contain a message or tool call".into(),
             )),
