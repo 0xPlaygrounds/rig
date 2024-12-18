@@ -119,6 +119,7 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
                 for _ in 0..max_attempts {
                     let indexes = collection
                         .list_search_indexes()
+                        .name(VECTOR_SEARCH_INDEX_NAME)
                         .await
                         .unwrap()
                         .collect::<Vec<_>>()
@@ -127,8 +128,19 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
                     if indexes.iter().any(|idx| {
                         idx.as_ref()
                             .ok()
-                            .and_then(|i| i.get_str("name").ok())
-                            .map_or(false, |name| name == VECTOR_SEARCH_INDEX_NAME)
+                            .and_then(|i| {
+                                // Check both name and status
+                                let name_matches = i
+                                    .get_str("name")
+                                    .ok()
+                                    .map_or(false, |name| name == VECTOR_SEARCH_INDEX_NAME);
+                                let status_ready = i
+                                    .get_str("status")
+                                    .ok()
+                                    .map_or(false, |status| status == "READY");
+                                Some(name_matches && status_ready)
+                            })
+                            .unwrap_or(false)
                     }) {
                         return;
                     }
