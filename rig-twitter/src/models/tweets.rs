@@ -2,6 +2,22 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ReferencedTweetKind {
+    #[serde(rename = "retweeted")]
+    Retweeted,
+    #[serde(rename = "replied_to")]
+    RepliedTo,
+    #[serde(rename = "quoted")]
+    Quoted,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReferencedTweet {
+    pub kind: ReferencedTweetKind,
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Tweet {
     pub ext_views: Option<i32>,
     pub created_at: Option<String>,
@@ -40,6 +56,12 @@ pub struct Tweet {
     pub views: Option<i32>,
     pub sensitive_content: Option<bool>,
     pub poll: Option<PollV2>,
+    pub quote_count: Option<i32>,
+    pub reply_count: Option<i32>,
+    pub retweet_count: Option<i32>,
+    pub screen_name: Option<String>,
+    pub thread_id: Option<String>,
+    pub referenced_tweet: Option<Vec<ReferencedTweet>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

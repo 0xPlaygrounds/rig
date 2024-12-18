@@ -509,6 +509,12 @@ pub fn parse_timeline_tweet(timeline: &TimelineV1, id: &str) -> ParseTweetResult
         poll: None,
         created_at: None,
         ext_views: None,
+        referenced_tweet: None,
+        quote_count: None,
+        reply_count: None,
+        retweet_count: None,
+        screen_name: None,
+        thread_id: None,
     };
 
     if let Some(created_at) = &tweet.created_at {

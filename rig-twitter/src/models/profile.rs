@@ -21,13 +21,3 @@ pub struct Profile {
     pub pinned_tweet_id: Option<String>,
     pub is_blue_verified: Option<bool>,
 }
-
-impl Profile {
-    pub fn is_private(&self) -> bool {
-        self.protected
-    }
-
-    pub fn is_verified(&self) -> bool {
-        self.verified
-    }
-}

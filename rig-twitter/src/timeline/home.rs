@@ -1,9 +1,13 @@
 use crate::api::requests::request_api;
-use crate::auth::TwitterAuth;
+use crate::auth::user_auth::TwitterAuth;
 use crate::error::Result;
 use serde::Deserialize;
 use serde_json::Value;
 use urlencoding;
+use reqwest::Client;
+use reqwest::header::HeaderMap;
+use reqwest::Method;
+
 #[derive(Debug, Deserialize)]
 pub struct HomeTimelineResponse {
     pub data: Option<HomeData>,
@@ -55,9 +59,10 @@ pub struct TweetResults {
 }
 
 pub async fn fetch_home_timeline(
+    client: &Client,
+    auth: &dyn TwitterAuth,
     count: i32,
     seen_tweet_ids: Vec<String>,
-    auth: &(dyn TwitterAuth + Send + Sync),
 ) -> Result<Vec<Value>> {
     let variables = serde_json::json!({
         "count": count,
@@ -100,11 +105,16 @@ pub async fn fetch_home_timeline(
         urlencoding::encode(&features.to_string())
     );
 
-    let mut headers = reqwest::header::HeaderMap::new();
+    let mut headers = HeaderMap::new();
     auth.install_headers(&mut headers).await?;
 
-    let (response, _) =
-        request_api::<HomeTimelineResponse>(&url, headers, reqwest::Method::GET, None).await?;
+    let (response, _) = request_api::<HomeTimelineResponse>(
+        client,
+        &url,
+        headers,
+        Method::GET,
+        None,
+    ).await?;
 
     let home = response
         .data.map(|data| data.home.home_timeline.instructions);

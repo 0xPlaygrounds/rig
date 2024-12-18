@@ -1,5 +1,5 @@
 use crate::api::requests::request_api;
-use crate::auth::TwitterAuth;
+use crate::auth::user_auth::TwitterAuth;
 use crate::error::Result;
 use crate::timeline::search::{
     parse_search_timeline_tweets, parse_search_timeline_users, SearchTimeline,
@@ -7,7 +7,7 @@ use crate::timeline::search::{
 use crate::timeline::v1::{QueryProfilesResponse, QueryTweetsResponse};
 use reqwest::Method;
 use serde_json::json;
-
+use reqwest::Client;
 #[derive(Debug, Clone, Copy)]
 pub enum SearchMode {
     Top,
@@ -18,41 +18,39 @@ pub enum SearchMode {
 }
 
 pub async fn fetch_search_tweets(
+    client: &Client,
+    auth: &dyn TwitterAuth,
     query: &str,
     max_tweets: i32,
     search_mode: SearchMode,
-    auth: &dyn TwitterAuth,
     cursor: Option<String>,
 ) -> Result<QueryTweetsResponse> {
-    let timeline = get_search_timeline(query, max_tweets, search_mode, auth, cursor).await?;
+    let timeline = get_search_timeline(client, query, max_tweets, search_mode, auth, cursor).await?;
 
     Ok(parse_search_timeline_tweets(&timeline))
 }
 
 pub async fn search_profiles(
+    client: &Client,
+    auth: &dyn TwitterAuth,
     query: &str,
     max_profiles: i32,
-    auth: &dyn TwitterAuth,
     cursor: Option<String>,
 ) -> Result<QueryProfilesResponse> {
     let timeline =
-        get_search_timeline(query, max_profiles, SearchMode::Users, auth, cursor).await?;
+        get_search_timeline(client, query, max_profiles, SearchMode::Users, auth, cursor).await?;
 
     Ok(parse_search_timeline_users(&timeline))
 }
 
 async fn get_search_timeline(
+    client: &Client, 
     query: &str,
     max_items: i32,
     search_mode: SearchMode,
     auth: &dyn TwitterAuth,
     _cursor: Option<String>,
 ) -> Result<SearchTimeline> {
-    if !auth.is_logged_in().await? {
-        return Err(crate::error::TwitterError::Auth(
-            "Scraper is not logged-in for search.".into(),
-        ));
-    }
 
     let max_items = if max_items > 50 { 50 } else { max_items };
 
@@ -140,7 +138,7 @@ async fn get_search_timeline(
         query_string
     );
 
-    let (response, _) = request_api::<SearchTimeline>(&url, headers, Method::GET, None).await?;
+    let (response, _) = request_api::<SearchTimeline>(client, &url, headers, Method::GET, None).await?;
 
     Ok(response)
 }

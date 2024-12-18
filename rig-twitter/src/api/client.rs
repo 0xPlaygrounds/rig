@@ -1,4 +1,4 @@
-use crate::auth::TwitterAuth;
+use crate::auth::user_auth::TwitterAuth;
 use crate::error::{Result, TwitterError};
 use crate::models::Tweet;
 use reqwest::{Client, Method};
@@ -6,8 +6,8 @@ use serde::de::DeserializeOwned;
 use std::time::Duration;
 
 pub struct TwitterApiClient {
-    client: Client,
-    auth: Box<dyn TwitterAuth + Send + Sync>,
+    pub client: Client,
+    pub auth: Box<dyn TwitterAuth + Send + Sync>,
 }
 
 impl TwitterApiClient {
@@ -93,8 +93,5 @@ impl TwitterApiClient {
                 response.status()
             )))
         }
-    }
-    pub fn get_auth(&self) -> &Box<dyn TwitterAuth + Send + Sync> {
-        &self.auth
     }
 }

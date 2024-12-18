@@ -1,5 +1,5 @@
 use crate::api::requests::request_api;
-use crate::auth::TwitterAuth;
+use crate::auth::user_auth::TwitterAuth;
 use crate::error::{Result, TwitterError};
 use crate::models::Profile;
 use chrono::{DateTime, Utc};
@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Mutex;
-
+use reqwest::Client;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserProfile {
     pub id: String,
@@ -115,18 +115,14 @@ pub fn parse_profile(user: &LegacyUserRaw, is_blue_verified: Option<bool>) -> Pr
             .and_then(|ids| ids.first().cloned()),
     };
 
-    // Set website URL from entities if available
-    if let Some(entities) = &user.entities {
-        if let Some(url_entity) = &entities.url {
-            if let Some(urls) = &url_entity.urls {
-                if let Some(first_url) = urls.first() {
-                    if let Some(expanded_url) = &first_url.expanded_url {
-                        profile.url = Some(expanded_url.clone());
-                    }
-                }
-            }
-        }
-    }
+    // Set website URL from entities using functional chaining
+    user.entities
+        .as_ref()
+        .and_then(|entities| entities.url.as_ref())
+        .and_then(|url_entity| url_entity.urls.as_ref())
+        .and_then(|urls| urls.first())
+        .and_then(|first_url| first_url.expanded_url.as_ref())
+        .map(|expanded_url| profile.url = Some(expanded_url.clone()));
 
     profile
 }
@@ -192,7 +188,7 @@ pub struct TwitterApiErrorRaw {
     pub code: i32,
 }
 
-pub async fn get_profile(screen_name: &str, auth: &dyn TwitterAuth) -> Result<Profile> {
+pub async fn get_profile(client: &Client, auth: &dyn TwitterAuth,screen_name: &str) -> Result<Profile> {
     let mut headers = HeaderMap::new();
     auth.install_headers(&mut headers).await?;
 
@@ -219,6 +215,7 @@ pub async fn get_profile(screen_name: &str, auth: &dyn TwitterAuth) -> Result<Pr
     });
 
     let (response, _) = request_api::<UserRaw>(
+        client,
         "https://twitter.com/i/api/graphql/G3KGOASz96M-Qu0nwmGXNg/UserByScreenName",
         headers,
         Method::GET,
@@ -230,7 +227,6 @@ pub async fn get_profile(screen_name: &str, auth: &dyn TwitterAuth) -> Result<Pr
     )
     .await?;
 
-    // Check for API errors
     if let Some(errors) = response.errors {
         if !errors.is_empty() {
             return Err(TwitterError::Api(errors[0].message.clone()));
@@ -250,7 +246,7 @@ pub async fn get_profile(screen_name: &str, auth: &dyn TwitterAuth) -> Result<Pr
     Ok(parse_profile(&legacy, is_blue_verified))
 }
 
-pub async fn get_screen_name_by_user_id(user_id: &str, auth: &dyn TwitterAuth) -> Result<String> {
+pub async fn get_screen_name_by_user_id(client: &Client, auth: &dyn TwitterAuth,user_id: &str) -> Result<String> {
     let mut headers = HeaderMap::new();
     auth.install_headers(&mut headers).await?;
 
@@ -273,6 +269,7 @@ pub async fn get_screen_name_by_user_id(user_id: &str, auth: &dyn TwitterAuth) -
     });
 
     let (response, _) = request_api::<UserRaw>(
+        client,
         "https://twitter.com/i/api/graphql/xf3jd90KKBCUxdlI_tNHZw/UserByRestId",
         headers,
         Method::GET,
@@ -300,18 +297,16 @@ pub async fn get_screen_name_by_user_id(user_id: &str, auth: &dyn TwitterAuth) -
 }
 
 pub async fn get_user_id_by_screen_name(
-    screen_name: &str,
+    client: &Client,
     auth: &dyn TwitterAuth,
+    screen_name: &str,
 ) -> Result<String> {
-    // Check cache first
     if let Some(cached_id) = ID_CACHE.lock().unwrap().get(screen_name) {
         return Ok(cached_id.clone());
     }
 
-    let profile = get_profile(screen_name, auth).await?;
-    println!("profile: {:?}", profile);
+    let profile = get_profile(client, auth, screen_name).await?;
     if let Some(user_id) = Some(profile.id) {
-        // Update cache
         ID_CACHE
             .lock()
             .unwrap()
