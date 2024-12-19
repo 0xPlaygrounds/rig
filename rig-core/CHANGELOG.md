@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.5.0...rig-core-v0.6.0) - 2024-12-19
+
+### Added
+
+- agent pipelines (#131)
+- *(rig-anthropic)* Add default `max_tokens` for standard models (#151)
+
+### Fixed
+
+- *(openai)* Make integration more general (#156)
+
+### Other
+
+- *(ollama-example)* implement example showcasing ollama (#148)
+- *(embeddings)* add embedding distance calculator module (#142)
+
 ## [0.5.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.4.1...rig-core-v0.5.0) - 2024-12-03
 
 ### Added
