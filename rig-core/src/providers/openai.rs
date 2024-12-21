@@ -22,7 +22,7 @@ use serde_json::json;
 // ================================================================
 // Main OpenAI Client
 // ================================================================
-const OPENAI_API_BASE_URL: &str = "https://api.openai.com";
+const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
 
 #[derive(Clone)]
 pub struct Client {
@@ -257,7 +257,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 
         let response = self
             .client
-            .post("/v1/embeddings")
+            .post("/embeddings")
             .json(&json!({
                 "model": self.model,
                 "input": documents,
@@ -378,17 +378,6 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             [Choice {
                 message:
                     Message {
-                        content: Some(content),
-                        ..
-                    },
-                ..
-            }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::Message(content.to_string()),
-                raw_response: value,
-            }),
-            [Choice {
-                message:
-                    Message {
                         tool_calls: Some(calls),
                         ..
                     },
@@ -406,6 +395,17 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     raw_response: value,
                 })
             }
+            [Choice {
+                message:
+                    Message {
+                        content: Some(content),
+                        ..
+                    },
+                ..
+            }, ..] => Ok(completion::CompletionResponse {
+                choice: completion::ModelChoice::Message(content.to_string()),
+                raw_response: value,
+            }),
             _ => Err(CompletionError::ResponseError(
                 "Response did not contain a message or tool call".into(),
             )),
@@ -519,7 +519,7 @@ impl completion::CompletionModel for CompletionModel {
 
         let response = self
             .client
-            .post("/v1/chat/completions")
+            .post("/chat/completions")
             .json(
                 &if let Some(params) = completion_request.additional_params {
                     json_utils::merge(request, params)

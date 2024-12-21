@@ -1,3 +1,4 @@
+use futures::StreamExt;
 use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
@@ -59,6 +60,9 @@ async fn vector_search_test() {
 
     collection.insert_many(embeddings).await.unwrap();
 
+    // Wait for the new documents to be indexed
+    sleep(Duration::from_secs(5)).await;
+
     // Create a vector index on our vector store.
     // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
@@ -70,8 +74,6 @@ async fn vector_search_test() {
     )
     .await
     .unwrap();
-
-    sleep(Duration::from_secs(15)).await;
 
     // Query the index
     let results = index
@@ -89,6 +91,77 @@ async fn vector_search_test() {
             "score": score
         })
     )
+}
+
+async fn create_search_index(collection: &Collection<bson::Document>) {
+    let max_attempts = 5;
+
+    for attempt in 0..max_attempts {
+        match collection
+            .create_search_index(
+                SearchIndexModel::builder()
+                    .name(Some(VECTOR_SEARCH_INDEX_NAME.to_string()))
+                    .index_type(Some(mongodb::SearchIndexType::VectorSearch))
+                    .definition(doc! {
+                        "fields": [{
+                            "numDimensions": 1536,
+                            "path": "embedding",
+                            "similarity": "cosine",
+                            "type": "vector"
+                        }]
+                    })
+                    .build(),
+            )
+            .await
+        {
+            Ok(_) => {
+                // Wait for index to be available
+                for _ in 0..max_attempts {
+                    let indexes = collection
+                        .list_search_indexes()
+                        .name(VECTOR_SEARCH_INDEX_NAME)
+                        .await
+                        .unwrap()
+                        .collect::<Vec<_>>()
+                        .await;
+
+                    if indexes.iter().any(|idx| {
+                        idx.as_ref()
+                            .ok()
+                            .and_then(|i| {
+                                // Check both name and status
+                                let name_matches = i
+                                    .get_str("name")
+                                    .ok()
+                                    .map_or(false, |name| name == VECTOR_SEARCH_INDEX_NAME);
+                                let status_ready = i
+                                    .get_str("status")
+                                    .ok()
+                                    .map_or(false, |status| status == "READY");
+                                Some(name_matches && status_ready)
+                            })
+                            .unwrap_or(false)
+                    }) {
+                        return;
+                    }
+                    sleep(Duration::from_secs(2)).await;
+                }
+                panic!("Index creation verified but index not found");
+            }
+            Err(_) => {
+                println!(
+                    "Waiting for MongoDB... {} attempts remaining",
+                    max_attempts - attempt - 1
+                );
+                sleep(Duration::from_secs(5)).await;
+            }
+        }
+    }
+
+    panic!(
+        "Failed to create search index after {} attempts",
+        max_attempts
+    );
 }
 
 async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Document> {
@@ -114,24 +187,8 @@ async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Docum
         .database(DATABASE_NAME)
         .collection(COLLECTION_NAME);
 
-    // Create a vector search index on the collection
-    collection
-        .create_search_index(
-            SearchIndexModel::builder()
-                .name(Some(VECTOR_SEARCH_INDEX_NAME.to_string()))
-                .index_type(Some(mongodb::SearchIndexType::VectorSearch))
-                .definition(doc! {
-                    "fields": [{
-                        "numDimensions": 1536,
-                        "path": "embedding",
-                        "similarity": "cosine",
-                        "type": "vector"
-                    }]
-                })
-                .build(),
-        )
-        .await
-        .expect("Failed to create search index");
+    // Create the search index
+    create_search_index(&collection).await;
 
     collection
 }

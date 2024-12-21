@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.2.0...rig-mongodb-v0.2.1) - 2024-12-19
+
+### Added
+
+- agent pipelines (#131)
+
+### Other
+
+- *(rig-mongodb)* fix mongodb flaky integration test (#154)
+- *(rig-mongodb)* fix flaky test (#153)
+
 ## [0.2.0](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.1.5...rig-mongodb-v0.2.0) - 2024-12-03
 
 ### Added
