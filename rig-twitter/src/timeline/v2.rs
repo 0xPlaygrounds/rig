@@ -296,7 +296,6 @@ pub fn parse_legacy_tweet(
         poll: None,
         created_at: tweet.created_at.clone(),
         ext_views: None,
-        referenced_tweet: None,
         quote_count: None,
         reply_count: None,
         retweet_count: None,

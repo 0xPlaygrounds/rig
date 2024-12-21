@@ -455,10 +455,7 @@ pub async fn get_tweet(client: &Client, auth: &dyn TwitterAuth, id: &str) -> Res
     let data = response.clone();
     let conversation: ThreadedConversation = serde_json::from_value(data)?;
     let tweets = parse_threaded_conversation(&conversation);
-    tweets
-        .into_iter()
-        .find(|tweet| tweet.id.as_ref().map_or(false, |tid| tid == id))
-        .ok_or_else(|| TwitterError::Api("Tweet not found in conversation".into()))
+    tweets.into_iter().next().ok_or_else(|| TwitterError::Api("No tweets found".into()))
 }
 
 fn create_tweet_features() -> Value {
