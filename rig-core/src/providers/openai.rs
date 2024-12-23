@@ -377,7 +377,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         match value.choices.as_slice() {
             [Choice {
                 message:
-                    Message {
+                Message {
                         tool_calls: Some(calls),
                         ..
                     },
@@ -397,13 +397,18 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             }
             [Choice {
                 message:
-                    Message {
+                Message {
                         content: Some(content),
                         ..
                     },
                 ..
             }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::Message(content.to_string()),
+                choice: completion::ModelChoice::Message(
+                    content.iter()
+                        .filter_map(|item| item.text.clone())
+                        .collect::<Vec<_>>()
+                        .join("")
+                ),
                 raw_response: value,
             }),
             _ => Err(CompletionError::ResponseError(
@@ -421,14 +426,56 @@ pub struct Choice {
     pub finish_reason: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ContentItem {
+    #[serde(rename = "type")]
+    pub content_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_url: Option<ImageUrl>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ImageUrl {
+    pub url: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Message {
     pub role: String,
-    pub content: Option<String>,
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_content")]
+    pub content: Option<Vec<ContentItem>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
-#[derive(Debug, Deserialize)]
+// Add this function to handle both string and array content formats
+fn deserialize_content<'de, D>(deserializer: D) -> Result<Option<Vec<ContentItem>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ContentWrapper {
+        String(String),
+        Array(Vec<ContentItem>),
+    }
+
+    let content = Option::<ContentWrapper>::deserialize(deserializer)?;
+    match content {
+        Some(ContentWrapper::String(s)) => Ok(Some(vec![ContentItem {
+            content_type: "text".to_string(),
+            text: Some(s),
+            image_url: None,
+        }])),
+        Some(ContentWrapper::Array(items)) => Ok(Some(items)),
+        None => Ok(None),
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ToolCall {
     pub id: String,
     pub r#type: String,
@@ -450,7 +497,7 @@ impl From<completion::ToolDefinition> for ToolDefinition {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Function {
     pub name: String,
     pub arguments: String,
@@ -477,28 +524,57 @@ impl completion::CompletionModel for CompletionModel {
 
     async fn completion(
         &self,
-        mut completion_request: CompletionRequest,
+         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         // Add preamble to chat history (if available)
         let mut full_history = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
+            vec![Message {
                 role: "system".into(),
-                content: preamble.clone(),
+                content: Some(vec![ContentItem {
+                    content_type: "text".to_string(),
+                    text: Some(preamble.clone()),
+                    image_url: None,
+                }]),
+                tool_calls: None,
             }]
         } else {
             vec![]
         };
 
         // Extend existing chat history
-        full_history.append(&mut completion_request.chat_history);
+        full_history.extend(completion_request.chat_history.clone().into_iter().map(|msg| Message {
+            role: msg.role,
+            content: Some(vec![ContentItem {
+                content_type: "text".to_string(),
+                text: Some(msg.content),
+                image_url: None,
+            }]),
+            tool_calls: None,
+        }));
 
-        // Add context documents to chat history
-        let prompt_with_context = completion_request.prompt_with_context();
+        // Create final message content
+        let mut content = vec![ContentItem {
+            content_type: "text".to_string(),
+            text: Some(completion_request.prompt_with_context()),
+            image_url: None,
+        }];
 
-        // Add context documents to chat history
-        full_history.push(completion::Message {
+        // Add image URLs if present
+        if let Some(urls) = completion_request.image_urls {
+            for url in urls {
+                content.push(ContentItem {
+                    content_type: "image_url".to_string(),
+                    text: None,
+                    image_url: Some(ImageUrl { url }),
+                });
+            }
+        }
+
+        // Add final message
+        full_history.push(Message {
             role: "user".into(),
-            content: prompt_with_context,
+            content: Some(content),
+            tool_calls: None,
         });
 
         let request = if completion_request.tools.is_empty() {

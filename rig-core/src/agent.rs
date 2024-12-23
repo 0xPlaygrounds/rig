@@ -160,6 +160,8 @@ pub struct Agent<M: CompletionModel> {
     dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
     /// Actual tool implementations
     pub tools: ToolSet,
+    /// List of image URLs to be included in completion requests
+    image_urls: Option<Vec<String>>,
 }
 
 impl<M: CompletionModel> Completion<M> for Agent<M> {
@@ -241,7 +243,8 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
             .tools([static_tools.clone(), dynamic_tools].concat())
             .temperature_opt(self.temperature)
             .max_tokens_opt(self.max_tokens)
-            .additional_params_opt(self.additional_params.clone()))
+            .additional_params_opt(self.additional_params.clone())
+            .image_urls_opt(self.image_urls.clone()))
     }
 }
 
@@ -314,6 +317,8 @@ pub struct AgentBuilder<M: CompletionModel> {
     temperature: Option<f64>,
     /// Actual tool implementations
     tools: ToolSet,
+    /// List of image URLs to be added to the completion request
+    image_urls: Option<Vec<String>>,
 }
 
 impl<M: CompletionModel> AgentBuilder<M> {
@@ -329,6 +334,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
             dynamic_context: vec![],
             dynamic_tools: vec![],
             tools: ToolSet::default(),
+            image_urls: None,
         }
     }
 
@@ -409,6 +415,12 @@ impl<M: CompletionModel> AgentBuilder<M> {
         self
     }
 
+    /// Add image URLs to the agent
+    pub fn image_urls(mut self, urls: Vec<String>) -> Self {
+        self.image_urls = Some(urls);
+        self
+    }
+
     /// Build the agent
     pub fn build(self) -> Agent<M> {
         Agent {
@@ -422,6 +434,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
             dynamic_context: self.dynamic_context,
             dynamic_tools: self.dynamic_tools,
             tools: self.tools,
+            image_urls: self.image_urls,
         }
     }
 }
