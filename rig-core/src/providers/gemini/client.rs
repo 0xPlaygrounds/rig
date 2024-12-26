@@ -43,6 +43,15 @@ impl Client {
         }
     }
 
+    pub fn with_proxy(mut self, proxy_url: &str) -> Self {
+        let proxy = reqwest::Proxy::all(proxy_url).expect("Proxy URL should be valid");
+        self.http_client = reqwest::Client::builder()
+            .proxy(proxy)
+            .build()
+            .expect("Gemini reqwest client should build");
+        self
+    }
+
     /// Create a new Google Gemini client from the `GEMINI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     pub fn from_env() -> Self {
