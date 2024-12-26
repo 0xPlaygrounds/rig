@@ -105,21 +105,30 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
-        match response.content.as_slice() {
-            [Content::String(text) | Content::Text { text, .. }, ..] => {
-                Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::Message(text.to_string()),
-                    raw_response: response,
-                })
-            }
-            [Content::ToolUse { name, input, .. }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::ToolCall(name.clone(), input.clone()),
+        if let Some(tool_use) = response.content.iter().find_map(|content| match content {
+            Content::ToolUse { name, input, .. } => Some((name.clone(), input.clone())),
+            _ => None,
+        }) {
+            return Ok(completion::CompletionResponse {
+                choice: completion::ModelChoice::ToolCall(tool_use.0, tool_use.1),
                 raw_response: response,
-            }),
-            _ => Err(CompletionError::ResponseError(
-                "Response did not contain a message or tool call".into(),
-            )),
+            });
         }
+
+        if let Some(text_content) = response.content.iter().find_map(|content| match content {
+            Content::String(text) => Some(text.clone()),
+            Content::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        }) {
+            return Ok(completion::CompletionResponse {
+                choice: completion::ModelChoice::Message(text_content),
+                raw_response: response,
+            });
+        }
+
+        Err(CompletionError::ResponseError(
+            "Response did not contain a message or tool call".into(),
+        ))
     }
 }
 
