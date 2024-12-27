@@ -46,3 +46,4 @@ pub mod gemini;
 pub mod openai;
 pub mod perplexity;
 pub mod xai;
+pub mod eternalai;
