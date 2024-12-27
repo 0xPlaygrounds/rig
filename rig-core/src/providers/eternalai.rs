@@ -8,6 +8,7 @@
 //!
 //! let gpt4o = client.completion_model(eternalai::GPT_4O);
 //! ```
+
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -18,11 +19,12 @@ use crate::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::time::Duration;
 
 // ================================================================
 // Main EternalAI Client
 // ================================================================
-const ETERNALAI_API_BASE_URL: &str = "https://api.eternalai.org/v1/";
+const ETERNALAI_API_BASE_URL: &str = "https://api.eternalai.org/v1";
 
 #[derive(Clone)]
 pub struct Client {
@@ -51,6 +53,7 @@ impl Client {
                     );
                     headers
                 })
+                .timeout(Duration::from_secs(120))
                 .build()
                 .expect("EternalAI reqwest client should build"),
         }
