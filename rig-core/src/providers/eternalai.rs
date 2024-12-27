@@ -320,7 +320,7 @@ pub const UNSLOTH_LLAMA_3_3_70B_INSTRUCT_BNB_4BIT: &str = "unsloth/Llama-3.3-70B
 
 pub const MAPPING_CHAINID: [(&str, &str); 2] = [
     (NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8, "45762"),
-    (UNSLOTH_LLAMA_3_3_70B_INSTRUCT_BNB_4BIT, "33139"),
+    (UNSLOTH_LLAMA_3_3_70B_INSTRUCT_BNB_4BIT, "45762"),
 ];
 
 pub fn get_chain_id(key: &str) -> Option<&str> {
