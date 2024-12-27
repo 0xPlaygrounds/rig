@@ -117,33 +117,44 @@ pub enum Message<T> {
         raw_message: T,
     },
     Assistant {
+        refusal: Option<String>,
         content: OneOrMany<String>,
+        tool_calls: OneOrMany<ToolCall>,
         raw_message: T,
     },
     Tool {
+        id: String,
         content: String,
-        tool_call_id: String,
         raw_message: T,
     },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ToolCall {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    pub function: ToolFunction,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ToolFunction {
+    pub name: String,
+    pub arguments: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum UserContent {
     #[serde(rename = "text")]
-    Text {
-        text: String,
-    },
+    Text { text: String },
     #[serde(rename = "image_url")]
     Image {
         image_url: String,
         detail: ImageDetail,
     },
     #[serde(rename = "input_audio")]
-    Audio {
-        data: String,
-        format: String,
-    },
+    Audio { data: String, format: String },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
