@@ -140,8 +140,8 @@ impl Client {
     ///
     /// let gpt4 = eternalai.completion_model(eternalai::GPT_4);
     /// ```
-    pub fn completion_model(&self, model: &str) -> CompletionModel {
-        CompletionModel::new(self.clone(), model)
+    pub fn completion_model(&self, model: &str, chain_id: Option<&str>) -> CompletionModel {
+        CompletionModel::new(self.clone(), model, chain_id)
     }
 
     /// Create an agent builder with the given completion model.
@@ -158,8 +158,8 @@ impl Client {
     ///    .temperature(0.0)
     ///    .build();
     /// ```
-    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
+    pub fn agent(&mut self, model: &str, chain_id: Option<&str>) -> AgentBuilder<CompletionModel> {
+        AgentBuilder::new(self.completion_model(model, chain_id))
     }
 
     /// Create an extractor builder with the given completion model.
@@ -167,7 +167,7 @@ impl Client {
         &self,
         model: &str,
     ) -> ExtractorBuilder<T, CompletionModel> {
-        ExtractorBuilder::new(self.completion_model(model))
+        ExtractorBuilder::new(self.completion_model(model, None))
     }
 }
 
@@ -440,13 +440,15 @@ pub struct CompletionModel {
     client: Client,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
+    pub chain_id: String,
 }
 
 impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+    pub fn new(client: Client, model: &str, chain_id: Option<&str>) -> Self {
         Self {
             client,
             model: model.to_string(),
+            chain_id: chain_id.unwrap_or("").to_string(),
         }
     }
 }
@@ -480,7 +482,10 @@ impl completion::CompletionModel for CompletionModel {
             content: prompt_with_context,
         });
 
-        let chain_id = get_chain_id(self.model.as_str()).unwrap_or("");
+        let mut chain_id = self.chain_id.clone();
+        if chain_id.is_empty() {
+            chain_id = get_chain_id(self.model.as_str()).unwrap_or("").to_string();
+        }
 
         let request = if completion_request.tools.is_empty() {
             json!({
