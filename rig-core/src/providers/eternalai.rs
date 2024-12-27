@@ -153,7 +153,7 @@ impl Client {
     /// // Initialize the Eternal client
     /// let eternalai = Client::new("your-open-ai-api-key");
     ///
-    /// let agent = eternalai.agent(eternalai::GPT_4)
+    /// let agent = eternalai.agent(eternalai::UNSLOTH_LLAMA_3_3_70B_INSTRUCT_BNB_4BIT, None)
     ///    .preamble("You are comedian AI with a mission to make people laugh.")
     ///    .temperature(0.0)
     ///    .build();
