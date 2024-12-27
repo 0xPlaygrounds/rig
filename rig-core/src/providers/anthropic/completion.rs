@@ -106,11 +106,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 
     fn try_from(response: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
         if let Some(tool_use) = response.content.iter().find_map(|content| match content {
-            Content::ToolUse { name, input, .. } => Some((name.clone(), input.clone())),
+            Content::ToolUse {
+                name, input, id, ..
+            } => Some((name.clone(), id.clone(), input.clone())),
             _ => None,
         }) {
             return Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::ToolCall(tool_use.0, tool_use.1),
+                choice: completion::ModelChoice::ToolCall(tool_use.0, tool_use.1, tool_use.2),
                 raw_response: response,
             });
         }
