@@ -123,7 +123,7 @@ impl<'a> FileLoader<'a, Result<PathBuf, FileLoaderError>> {
     ///  [FileLoader::with_dir] and returns the path along with the content.
     ///
     /// # Example
-    /// Read files in directory "files/*.txt" and print the content for cooresponding path for each
+    /// Read files in directory "files/*.txt" and print the content for corresponding path for each
     ///  file.
     ///
     /// ```rust

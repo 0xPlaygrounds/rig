@@ -71,7 +71,7 @@ impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
         Ok(self)
     }
 
-    /// Add multiple documents to be embedded to the builder. `documents` must be iteratable
+    /// Add multiple documents to be embedded to the builder. `documents` must be iterable
     /// with items that implement the [Embed] trait.
     pub fn documents(self, documents: impl IntoIterator<Item = T>) -> Result<Self, EmbedError> {
         let builder = documents
