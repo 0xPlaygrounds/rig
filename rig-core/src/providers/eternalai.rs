@@ -6,7 +6,7 @@
 //!
 //! let client = eternalai::Client::new("YOUR_API_KEY");
 //!
-//! let gpt4o = client.completion_model(eternalai::GPT_4O);
+//! let gpt4o = client.completion_model(eternalai::NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8);
 //! ```
 
 use crate::{
