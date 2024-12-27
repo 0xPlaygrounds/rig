@@ -327,6 +327,7 @@ impl From<CompletionResponse> for completion::CompletionResponse<CompletionRespo
         let model_response = if !tool_calls.is_empty() {
             completion::ModelChoice::ToolCall(
                 tool_calls.first().unwrap().name.clone(),
+                "".to_owned(),
                 tool_calls.first().unwrap().parameters.clone(),
             )
         } else {

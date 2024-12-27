@@ -221,8 +221,8 @@ pub enum ModelChoice {
     /// Represents a completion response as a message
     Message(String),
     /// Represents a completion response as a tool call of the form
-    /// `ToolCall(function_name, function_params)`.
-    ToolCall(String, serde_json::Value),
+    /// `ToolCall(function_name, id, function_params)`.
+    ToolCall(String, String, serde_json::Value),
 }
 
 /// Trait defining a completion model that can be used to generate completion responses.

@@ -168,7 +168,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                         let args_value = serde_json::Value::Object(
                             function_call.args.clone().unwrap_or_default(),
                         );
-                        completion::ModelChoice::ToolCall(function_call.name.clone(), args_value)
+                        completion::ModelChoice::ToolCall(function_call.name.clone(), "".to_owned(), args_value)
                     }
                     _ => {
                         return Err(CompletionError::ResponseError(

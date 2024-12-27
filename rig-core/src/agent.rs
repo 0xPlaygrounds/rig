@@ -265,7 +265,7 @@ impl<M: CompletionModel> Chat for Agent<M> {
                 ..
             } => Ok(msg),
             CompletionResponse {
-                choice: ModelChoice::ToolCall(toolname, args),
+                choice: ModelChoice::ToolCall(toolname, _, args),
                 ..
             } => Ok(self.tools.call(&toolname, args.to_string()).await?),
         }
