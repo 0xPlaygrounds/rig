@@ -19,6 +19,7 @@ use crate::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
 use std::time::Duration;
 
 // ================================================================
@@ -317,6 +318,20 @@ pub const NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8: &str =
     "NousResearch/Hermes-3-Llama-3.1-70B-FP8";
 pub const UNSLOTH_LLAMA_3_3_70B_INSTRUCT_BNB_4BIT: &str = "unsloth/Llama-3.3-70B-Instruct-bnb-4bit";
 
+pub const MAPPING_CHAINID: [(&str, &str); 2] = [
+    (NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8, "45762"),
+    (UNSLOTH_LLAMA_3_3_70B_INSTRUCT_BNB_4BIT, "33139"),
+];
+
+pub fn get_chain_id(key: &str) -> Option<&str> {
+    for &(k, v) in &MAPPING_CHAINID {
+        if k == key {
+            return Some(v);
+        }
+    }
+    None
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CompletionResponse {
     pub id: String,
@@ -465,15 +480,19 @@ impl completion::CompletionModel for CompletionModel {
             content: prompt_with_context,
         });
 
+        let chain_id = get_chain_id(self.model.as_str()).unwrap_or("");
+
         let request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
+                "chain_id": chain_id,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
             })
         } else {
             json!({
                 "model": self.model,
+                "chain_id": chain_id,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
