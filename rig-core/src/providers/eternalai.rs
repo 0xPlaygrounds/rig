@@ -157,7 +157,7 @@ impl Client {
     ///    .temperature(0.0)
     ///    .build();
     /// ```
-    pub fn agent(&mut self, model: &str, chain_id: Option<&str>) -> AgentBuilder<CompletionModel> {
+    pub fn agent(&self, model: &str, chain_id: Option<&str>) -> AgentBuilder<CompletionModel> {
         AgentBuilder::new(self.completion_model(model, chain_id))
     }
 
