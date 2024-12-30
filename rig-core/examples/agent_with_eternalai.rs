@@ -1,6 +1,5 @@
 use rig::agent::AgentBuilder;
 use rig::completion::ToolDefinition;
-use rig::loaders::FileLoader;
 use rig::providers::eternalai::{CompletionModel, NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8};
 use rig::tool::Tool;
 use rig::{completion::Prompt, providers};
@@ -11,12 +10,6 @@ use serde_json::json;
 async fn main() -> Result<(), anyhow::Error> {
     println!("Running basic agent with eternalai");
     basic_eternalai().await?;
-
-    println!("\nRunning eternalai agent with tools");
-    tools_eternalai().await?;
-
-    println!("\nRunning eternalai agent with loaders");
-    loaders_eternalai().await?;
 
     println!("\nRunning eternalai agent with context");
     context_eternalai().await?;
@@ -50,60 +43,11 @@ async fn basic_eternalai() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-async fn tools_eternalai() -> Result<(), anyhow::Error> {
-    // Create agent with a single context prompt and two tools
-    let calculator_agent = partial_agent_eternalai()
-        .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
-        .max_tokens(1024)
-        .tool(EternalAIAdder)
-        .tool(EternalAISubtract)
-        .build();
-
-    // Prompt the agent and print the response
-    println!("Calculate 2 - 5");
-    println!(
-        "Calculator Agent: {}",
-        calculator_agent.prompt("Calculate 2 - 5").await?
-    );
-
-    Ok(())
-}
-
-async fn loaders_eternalai() -> Result<(), anyhow::Error> {
-    let model = client().completion_model(
-        providers::eternalai::NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8,
-        // Option::from("45762"),
-        None,
-    );
-
-    // Load in all the rust examples
-    let examples = FileLoader::with_glob("rig-core/examples/*.rs")?
-        .read_with_path()
-        .ignore_errors()
-        .into_iter();
-
-    // Create an agent with multiple context documents
-    let agent = examples
-        .fold(AgentBuilder::new(model), |builder, (path, content)| {
-            builder.context(format!("Rust Example {:?}:\n{}", path, content).as_str())
-        })
-        .build();
-
-    // Prompt the agent and print the response
-    let response = agent
-        .prompt("Which rust example is best suited for the operation 1 + 2")
-        .await?;
-
-    println!("{}", response);
-
-    Ok(())
-}
-
 async fn context_eternalai() -> Result<(), anyhow::Error> {
     let model = client().completion_model(
         providers::eternalai::NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8,
-        // Option::from("45762"),
-        None,
+        Option::from("45762"),
+        // None,
     );
 
     // Create an agent with multiple context documents
