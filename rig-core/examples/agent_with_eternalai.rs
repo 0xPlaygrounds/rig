@@ -55,8 +55,8 @@ async fn tools_eternalai() -> Result<(), anyhow::Error> {
     let calculator_agent = partial_agent_eternalai()
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
         .max_tokens(1024)
-        .tool(Adder)
-        .tool(Subtract)
+        .tool(EternalAIAdder)
+        .tool(EternalAISubtract)
         .build();
 
     // Prompt the agent and print the response
@@ -132,8 +132,8 @@ struct OperationArgs {
 struct MathError;
 
 #[derive(Deserialize, Serialize)]
-struct Adder;
-impl Tool for Adder {
+struct EternalAIAdder;
+impl Tool for EternalAIAdder {
     const NAME: &'static str = "add";
 
     type Error = MathError;
@@ -167,8 +167,8 @@ impl Tool for Adder {
 }
 
 #[derive(Deserialize, Serialize)]
-struct Subtract;
-impl Tool for Subtract {
+struct EternalAISubtract;
+impl Tool for EternalAISubtract {
     const NAME: &'static str = "subtract";
 
     type Error = MathError;
