@@ -5,7 +5,7 @@ use rig::{completion::Prompt, providers};
 async fn main() -> Result<(), anyhow::Error> {
     // Create an OpenAI client with a custom base url, a local ollama endpoint
     // The API Key is unnecessary for most local endpoints
-    let client = providers::openai::Client::from_url("ollama", "http://localhost:11434");
+    let client = providers::openai::Client::from_url("ollama", "http://localhost:11434/v1");
 
     // Create agent with a single context prompt
     let comedian_agent = client
