@@ -78,3 +78,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn example() -> Result<(), anyhow::Error> {
+        main()
+    }
+}
