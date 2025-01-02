@@ -263,6 +263,9 @@ pub struct CompletionRequest {
     pub max_tokens: Option<u64>,
     /// Additional provider-specific parameters to be sent to the completion model provider
     pub additional_params: Option<serde_json::Value>,
+
+    /// The image urls to be sent to the completion model provider
+    pub image_urls: Option<Vec<String>>,
 }
 
 impl CompletionRequest {
@@ -337,6 +340,7 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
     temperature: Option<f64>,
     max_tokens: Option<u64>,
     additional_params: Option<serde_json::Value>,
+    image_urls: Option<Vec<String>>,
 }
 
 impl<M: CompletionModel> CompletionRequestBuilder<M> {
@@ -351,6 +355,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             temperature: None,
             max_tokens: None,
             additional_params: None,
+            image_urls: None,
         }
     }
 
@@ -452,6 +457,26 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         self
     }
 
+    /// Adds an image URL to the completion request.
+    pub fn image_url(mut self, url: String) -> Self {
+        match &mut self.image_urls {
+            Some(urls) => urls.push(url),
+            None => self.image_urls = Some(vec![url]),
+        }
+        self
+    }
+
+    /// Adds a list of image URLs to the completion request.
+    pub fn image_urls(self, urls: Vec<String>) -> Self {
+        urls.into_iter().fold(self, |builder, url| builder.image_url(url))
+    }
+
+    /// Sets the image URLs for the completion request.
+    pub fn image_urls_opt(mut self, urls: Option<Vec<String>>) -> Self {
+        self.image_urls = urls;
+        self
+    }
+
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
         CompletionRequest {
@@ -463,6 +488,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
+            image_urls: self.image_urls,
         }
     }
 
@@ -533,6 +559,7 @@ mod tests {
             temperature: None,
             max_tokens: None,
             additional_params: None,
+            image_urls: None,
         };
 
         let expected = concat!(
