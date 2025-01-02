@@ -38,6 +38,7 @@ impl CompletionModel {
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
 
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         mut completion_request: completion::CompletionRequest,
