@@ -7,7 +7,7 @@ use rig::{
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
+    // Create Anthropic client
     let client = anthropic::ClientBuilder::new(
         &env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set"),
     )
