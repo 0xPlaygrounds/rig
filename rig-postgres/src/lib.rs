@@ -149,8 +149,11 @@ impl<E: EmbeddingModel + 'static, T: PostgresVectorStoreTable + 'static> Postgre
                 .collect::<Vec<_>>()
                 .into();
 
-            let values = doc.column_values();
-            let params: Vec<&(dyn ToSql + Sync)> = values
+            // building the parameters we use in the query:
+            // first, we select only the values from the column_values() tuples
+            // and then append the embedding vector as the last parameter for the insert query
+            let column_values = doc.column_values();
+            let params: Vec<&(dyn ToSql + Sync)> = column_values
                 .iter()
                 .map(|(_, v)| &**v)
                 .chain(std::iter::once(&embedding_vector as &(dyn ToSql + Sync)))
