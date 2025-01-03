@@ -292,7 +292,7 @@ impl<E: EmbeddingModel + Sync, T: PostgresVectorStoreTable> VectorStoreIndex
             .join(", ");
 
         let query_string = format!(
-            "SELECT {}, embeddings <=> $1 AS distance FROM {} ORDER BY embeddings <=> $1 LIMIT $2",
+            "SELECT {}, embeddings <=> $1 AS distance FROM {} ORDER BY distance LIMIT $2",
             column_names, table_name
         );
         let rows = self
