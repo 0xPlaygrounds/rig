@@ -382,10 +382,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         ..
                     },
                 ..
-            }, ..] => {
-                let call = calls.first().ok_or(CompletionError::ResponseError(
-                    "Tool selection is empty".into(),
-                ))?;
+            }, ..]
+                if !calls.is_empty() =>
+            {
+                let call = calls.first().unwrap();
 
                 Ok(completion::CompletionResponse {
                     choice: completion::ModelChoice::ToolCall(
