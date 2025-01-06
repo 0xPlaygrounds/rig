@@ -197,7 +197,20 @@ impl completion::CompletionModel for CompletionModel {
         // specific requirements of each provider. For now, we just manually check while
         // building the request as a raw JSON document.
 
-        let prompt_with_context = completion_request.prompt_with_context();
+        let prompt_with_context = if completion_request.documents.is_empty() {
+            completion_request.prompt.clone()
+        } else {
+            let documents = completion_request.documents.into_iter().enumerate().map(|(i, doc)| {
+                format!(
+                    "<document index=\"{}\"><source>{}</source><document_content>{}</document_content></document>",
+                    i, doc.id, doc.text
+                )
+            }).collect::<Vec<_>>().join("\n");
+            format!(
+                "<documents>\n{documents}</documents>\n{}",
+                completion_request.prompt
+            )
+        };
 
         // Check if max_tokens is set, required for Anthropic
         let max_tokens = if let Some(tokens) = completion_request.max_tokens {

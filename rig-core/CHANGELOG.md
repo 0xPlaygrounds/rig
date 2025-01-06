@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - *(openai)* Make integration more general (#156)
+- *(anthropic)* Properly format context documents in prompt (#183)
 
 ### Other
 
