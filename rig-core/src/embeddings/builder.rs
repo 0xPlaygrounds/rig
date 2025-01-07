@@ -90,12 +90,12 @@ impl<M: EmbeddingModel, T: Embed + Send> EmbeddingsBuilder<M, T> {
 
         // Store the documents and their texts in a HashMap for easy access.
         let mut docs = HashMap::new();
-        let mut texts = HashMap::new();
+        let mut texts = Vec::new();
 
         // Iterate over all documents in the builder and insert their docs and texts into the lookup stores.
         for (i, (doc, doc_texts)) in self.documents.into_iter().enumerate() {
             docs.insert(i, doc);
-            texts.insert(i, doc_texts);
+            texts.push((i, doc_texts));
         }
 
         // Compute the embeddings.

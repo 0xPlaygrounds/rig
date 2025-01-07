@@ -18,6 +18,7 @@ futures = "0.3.30"
 [dev-dependencies]
 tokio = "1.40.0"
 anyhow = "1.0.89"
+httpmock = "0.7.0"
 
 [[example]]
 name = "vector_search_local_ann"

@@ -1,3 +1,4 @@
+use serde_json::json;
 use testcontainers::{
     core::{IntoContainerPort, Mount, WaitFor},
     runners::AsyncRunner,
@@ -26,6 +27,7 @@ struct Word {
 #[tokio::test]
 async fn vector_search_test() {
     let mount = Mount::volume_mount("data", std::env::var("GITHUB_WORKSPACE").unwrap());
+
     // Setup a local Neo 4J container for testing. NOTE: docker service must be running.
     let container = GenericImage::new("neo4j", "latest")
         .with_wait_for(WaitFor::Duration {
@@ -46,8 +48,82 @@ async fn vector_search_test() {
         .await
         .unwrap();
 
+    // Setup mock openai API
+    let server = httpmock::MockServer::start();
+
+    server.mock(|when, then| {
+        when.method(httpmock::Method::POST)
+            .path("/embeddings")
+            .header("Authorization", "Bearer TEST")
+            .json_body(json!({
+                "input": [
+                    "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
+                    "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+                    "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
+                ],
+                "model": "text-embedding-ada-002",
+            }));
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                "object": "list",
+                "data": [
+                  {
+                    "object": "embedding",
+                    "embedding": vec![0.1; 1536],
+                    "index": 0
+                  },
+                  {
+                    "object": "embedding",
+                    "embedding": vec![0.0023064255; 1536],
+                    "index": 1
+                  },
+                  {
+                    "object": "embedding",
+                    "embedding": vec![0.2; 1536],
+                    "index": 2
+                  },
+                ],
+                "model": "text-embedding-ada-002",
+                "usage": {
+                  "prompt_tokens": 8,
+                  "total_tokens": 8
+                }
+            }
+        ));
+    });
+    server.mock(|when, then| {
+        when.method(httpmock::Method::POST)
+            .path("/embeddings")
+            .header("Authorization", "Bearer TEST")
+            .json_body(json!({
+                "input": [
+                    "What is a glarb?",
+                ],
+                "model": "text-embedding-ada-002",
+            }));
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                    "object": "list",
+                    "data": [
+                      {
+                        "object": "embedding",
+                        "embedding": vec![0.0023064254; 1536],
+                        "index": 0
+                      }
+                    ],
+                    "model": "text-embedding-ada-002",
+                    "usage": {
+                      "prompt_tokens": 8,
+                      "total_tokens": 8
+                    }
+                }
+            ));
+    });
+
     // Initialize OpenAI client
-    let openai_client = openai::Client::from_env();
+    let openai_client = openai::Client::from_url("TEST", &server.base_url());
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);

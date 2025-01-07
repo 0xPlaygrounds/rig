@@ -17,6 +17,7 @@ qdrant-client = "1.12.1"
 tokio = { version = "1.40.0", features = ["rt-multi-thread"] }
 anyhow = "1.0.89"
 testcontainers = "0.23.1"
+httpmock = "0.7.0"
 
 [[example]]
 name = "qdrant_vector_search"
