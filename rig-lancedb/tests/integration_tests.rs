@@ -73,21 +73,21 @@ async fn vector_search_test() {
         then.status(200)
             .header("content-type", "application/json")
             .json_body(json!({
-                "object": "list",
-                "data": [
-                  {
-                    "object": "embedding",
-                    "embedding": vec![0.0023064254; 1536],
-                    "index": 0
-                  }
-                ],
-                "model": "text-embedding-ada-002",
-                "usage": {
-                  "prompt_tokens": 8,
-                  "total_tokens": 8
+                    "object": "list",
+                    "data": [
+                      {
+                        "object": "embedding",
+                        "embedding": vec![0.0023064254; 1536],
+                        "index": 0
+                      }
+                    ],
+                    "model": "text-embedding-ada-002",
+                    "usage": {
+                      "prompt_tokens": 8,
+                      "total_tokens": 8
+                    }
                 }
-            }
-        ));
+            ));
     });
 
     // Initialize OpenAI client
