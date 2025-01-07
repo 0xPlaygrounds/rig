@@ -86,12 +86,12 @@ async fn vector_search_test() {
                 "data": [
                   {
                     "object": "embedding",
-                    "embedding": vec![0.1; 1536],
+                    "embedding": vec![0.0043064255; 1536],
                     "index": 0
                   },
                   {
                     "object": "embedding",
-                    "embedding": vec![0.2; 1536],
+                    "embedding": vec![0.0043064255; 1536],
                     "index": 1
                   },
                   {
@@ -125,7 +125,7 @@ async fn vector_search_test() {
                     "data": [
                       {
                         "object": "embedding",
-                        "embedding": vec![0.0023064254; 1536],
+                        "embedding": vec![0.002; 1536],
                         "index": 0
                       }
                     ],
@@ -140,13 +140,14 @@ async fn vector_search_test() {
 
     // Initialize OpenAI client
     let openai_client = openai::Client::from_url("TEST", &server.base_url());
+    // let openai_client = openai::Client::from_env();
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     let points = create_points(model.clone()).await;
 
     client
-        .upsert_points(UpsertPointsBuilder::new(COLLECTION_NAME, points))
+        .upsert_points(UpsertPointsBuilder::new(COLLECTION_NAME, points).wait(true))        
         .await
         .unwrap();
 
