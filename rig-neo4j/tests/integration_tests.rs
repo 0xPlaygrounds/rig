@@ -27,6 +27,7 @@ struct Word {
 #[tokio::test]
 async fn vector_search_test() {
     let mount = Mount::volume_mount("data", std::env::var("GITHUB_WORKSPACE").unwrap());
+    
     // Setup a local Neo 4J container for testing. NOTE: docker service must be running.
     let container = GenericImage::new("neo4j", "latest")
         .with_wait_for(WaitFor::Duration {
@@ -74,14 +75,14 @@ async fn vector_search_test() {
                   },
                   {
                     "object": "embedding",
-                    "embedding": vec![0.2; 1536],
+                    "embedding": vec![0.0023064255; 1536],
                     "index": 1
                   },
                   {
                     "object": "embedding",
-                    "embedding": vec![0.0023064255; 1536],
+                    "embedding": vec![0.2; 1536],
                     "index": 2
-                  }
+                  },
                 ],
                 "model": "text-embedding-ada-002",
                 "usage": {
@@ -97,7 +98,7 @@ async fn vector_search_test() {
             .header("Authorization", "Bearer TEST")
             .json_body(json!({
                 "input": [
-                    "What is a linglingdong?"
+                    "What is a glarb?",
                 ],
                 "model": "text-embedding-ada-002",
             }));
