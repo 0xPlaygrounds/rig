@@ -20,38 +20,49 @@ async fn vector_search_test() {
     let server = httpmock::MockServer::start();
 
     server.mock(|when, then| {
+        let mut req_data = vec![
+            "Definition of *flumbrel (noun)*: a small, seemingly insignificant item that you constantly lose or misplace, such as a pen, hair tie, or remote control.",
+            "Definition of *zindle (verb)*: to pretend to be working on something important while actually doing something completely unrelated or unproductive.",
+            "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.",
+        ];
+        req_data.append(vec!["Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason."; 256].as_mut());
+
         when.method(httpmock::Method::POST)
             .path("/embeddings")
             .header("Authorization", "Bearer TEST")
             .json_body(json!({
-                "input": [
-                    "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
-                    "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
-                    "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
-                ],
+                "input": req_data,
                 "model": "text-embedding-ada-002",
             }));
+
+        let mut resp_data = vec![
+            json!({
+                "object": "embedding",
+                "embedding": vec![0.1; 1536],
+                "index": 0
+            }),
+            json!({
+                "object": "embedding",
+                "embedding": vec![0.0023064255; 1536],
+                "index": 2
+            }),
+            json!({
+                "object": "embedding",
+                "embedding": vec![0.2; 1536],
+                "index": 1
+            }),
+        ];
+        resp_data.append(vec![json!({
+            "object": "embedding",
+            "embedding": vec![0.2; 1536],
+            "index": 1
+        }); 256].as_mut());
+
         then.status(200)
             .header("content-type", "application/json")
             .json_body(json!({
                 "object": "list",
-                "data": [
-                  {
-                    "object": "embedding",
-                    "embedding": vec![0.1; 1536],
-                    "index": 0
-                  },
-                  {
-                    "object": "embedding",
-                    "embedding": vec![0.2; 1536],
-                    "index": 1
-                  },
-                  {
-                    "object": "embedding",
-                    "embedding": vec![0.0023064255; 1536],
-                    "index": 2
-                  }
-                ],
+                "data": resp_data,
                 "model": "text-embedding-ada-002",
                 "usage": {
                   "prompt_tokens": 8,
@@ -66,7 +77,7 @@ async fn vector_search_test() {
             .header("Authorization", "Bearer TEST")
             .json_body(json!({
                 "input": [
-                    "What is a linglingdong?"
+                    "My boss says I zindle too much, what does that mean?"
                 ],
                 "model": "text-embedding-ada-002",
             }));
@@ -146,10 +157,7 @@ async fn vector_search_test() {
 
     // Query the index
     let results = vector_store_index
-        .top_n::<serde_json::Value>(
-            "My boss says I zindle too much, what does that mean.unwrap()",
-            1,
-        )
+        .top_n::<serde_json::Value>("My boss says I zindle too much, what does that mean?", 1)
         .await
         .unwrap();
 
