@@ -147,7 +147,7 @@ async fn vector_search_test() {
     let points = create_points(model.clone()).await;
 
     client
-        .upsert_points(UpsertPointsBuilder::new(COLLECTION_NAME, points).wait(true))        
+        .upsert_points(UpsertPointsBuilder::new(COLLECTION_NAME, points).wait(true))
         .await
         .unwrap();
 
