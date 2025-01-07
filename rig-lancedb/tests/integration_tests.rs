@@ -5,7 +5,7 @@ use fixture::{as_record_batch, schema, words, Word};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    providers::openai::{self, Client},
+    providers::openai,
     vector_store::VectorStoreIndex,
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
