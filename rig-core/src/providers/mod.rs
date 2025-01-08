@@ -42,6 +42,7 @@
 //! be used with the Cohere provider client.
 pub mod anthropic;
 pub mod cohere;
+pub mod galadriel;
 pub mod gemini;
 pub mod openai;
 pub mod perplexity;
