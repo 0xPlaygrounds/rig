@@ -1,6 +1,6 @@
 use serde_json::json;
 use testcontainers::{
-    core::{IntoContainerPort, Mount, WaitFor},
+    core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
     GenericImage, ImageExt,
 };
@@ -26,8 +26,6 @@ struct Word {
 
 #[tokio::test]
 async fn vector_search_test() {
-    let mount = Mount::volume_mount("data", std::env::var("GITHUB_WORKSPACE").unwrap());
-
     // Setup a local Neo 4J container for testing. NOTE: docker service must be running.
     let container = GenericImage::new("neo4j", "latest")
         .with_wait_for(WaitFor::Duration {
@@ -35,18 +33,17 @@ async fn vector_search_test() {
         })
         .with_exposed_port(BOLT_PORT.tcp())
         .with_exposed_port(HTTP_PORT.tcp())
-        .with_mount(mount)
         .with_env_var("NEO4J_AUTH", "none")
         .start()
         .await
         .expect("Failed to start Neo 4J container");
 
-    let port = container.get_host_port_ipv4(BOLT_PORT).await.unwrap();
-    let host = container.get_host().await.unwrap().to_string();
+    let port = container.get_host_port_ipv4(BOLT_PORT).await.expect("");
+    let host = container.get_host().await.expect("").to_string();
 
     let neo4j_client = Neo4jClient::connect(&format!("neo4j://{host}:{port}"), "", "")
         .await
-        .unwrap();
+        .expect("");
 
     // Setup mock openai API
     let server = httpmock::MockServer::start();
@@ -70,7 +67,7 @@ async fn vector_search_test() {
                 "data": [
                   {
                     "object": "embedding",
-                    "embedding": vec![0.1; 1536],
+                    "embedding": vec![-0.001; 1536],
                     "index": 0
                   },
                   {
@@ -80,7 +77,7 @@ async fn vector_search_test() {
                   },
                   {
                     "object": "embedding",
-                    "embedding": vec![0.2; 1536],
+                    "embedding": vec![-0.001; 1536],
                     "index": 2
                   },
                 ],
@@ -109,7 +106,7 @@ async fn vector_search_test() {
                     "data": [
                       {
                         "object": "embedding",
-                        "embedding": vec![0.0023064254; 1536],
+                        "embedding": vec![0.0024064254; 1536],
                         "index": 0
                       }
                     ],
@@ -152,7 +149,7 @@ async fn vector_search_test() {
         .buffer_unordered(3)
         .try_collect::<Vec<_>>()
         .await
-        .unwrap();
+        .expect("");
 
     // Create a vector index on our vector store
     println!("Creating vector index...");
@@ -168,7 +165,7 @@ async fn vector_search_test() {
                     }}",
         ))
         .await
-        .unwrap();
+        .expect("");
 
     // ℹ️ The index name must be unique among both indexes and constraints.
     // A newly created index is not immediately available but is created in the background.
@@ -190,15 +187,15 @@ async fn vector_search_test() {
     let index = neo4j_client
         .get_index(model, "vector_index", SearchParams::default())
         .await
-        .unwrap();
+        .expect("");
 
     // Query the index
     let results = index
         .top_n::<serde_json::Value>("What is a glarb?", 1)
         .await
-        .unwrap();
+        .expect("");
 
-    let (_, _, value) = &results.first().unwrap();
+    let (_, _, value) = &results.first().expect("");
 
     assert_eq!(
         value,
@@ -228,8 +225,8 @@ async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, OneOrMan
 
     EmbeddingsBuilder::new(model)
         .documents(words)
-        .unwrap()
+        .expect("")
         .build()
         .await
-        .unwrap()
+        .expect("")
 }
