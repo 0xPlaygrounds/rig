@@ -210,7 +210,7 @@ impl<'a> EpubFileLoader<'a, EpubDoc<BufReader<File>>> {
     /// ```
     pub fn by_chapter(self) -> EpubFileLoader<'a, String> {
         EpubFileLoader {
-            iterator: Box::new(self.iterator.flat_map(|doc| EpubChapterIterator::from(doc))),
+            iterator: Box::new(self.iterator.flat_map(EpubChapterIterator::from)),
         }
     }
 }
