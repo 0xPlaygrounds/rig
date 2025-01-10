@@ -107,25 +107,21 @@ pub enum PromptError {
 // ================================================================
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "role", rename_all = "lowercase")]
-pub enum Message<T> {
+pub enum Message {
     System {
         content: OneOrMany<String>,
-        raw_message: T,
     },
     User {
         content: OneOrMany<String>,
-        raw_message: T,
     },
     Assistant {
         refusal: Option<String>,
         content: OneOrMany<String>,
         tool_calls: OneOrMany<ToolCall>,
-        raw_message: T,
     },
     Tool {
         id: String,
         content: String,
-        raw_message: T,
     },
 }
 
