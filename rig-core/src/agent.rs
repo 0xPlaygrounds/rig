@@ -425,3 +425,18 @@ impl<M: CompletionModel> AgentBuilder<M> {
         }
     }
 }
+
+impl<M: CompletionModel> std::fmt::Debug for Agent<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Agent")
+            .field("preamble", &self.preamble)
+            .field("static_context", &self.static_context)
+            .field("static_tools", &self.static_tools)
+            .field("temperature", &self.temperature)
+            .field("max_tokens", &self.max_tokens)
+            .field("additional_params", &self.additional_params)
+            .field("dynamic_context", &self.dynamic_context.len())
+            .field("dynamic_tools", &self.dynamic_tools.len())
+            .finish_non_exhaustive()
+    }
+}
