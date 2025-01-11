@@ -1,3 +1,4 @@
+use serde_json::json;
 use testcontainers::{
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
@@ -63,15 +64,90 @@ async fn vector_search_test() {
             .unwrap();
     }
 
-    // Initialize OpenAI client.
-    let openai_client = openai::Client::from_env();
+    // Setup mock openai API
+    let server = httpmock::MockServer::start();
+
+    server.mock(|when, then| {
+        when.method(httpmock::Method::POST)
+            .path("/embeddings")
+            .header("Authorization", "Bearer TEST")
+            .json_body(json!({
+                "input": [
+                    "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
+                    "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+                    "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
+                ],
+                "model": "text-embedding-ada-002",
+            }));
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                "object": "list",
+                "data": [
+                  {
+                    "object": "embedding",
+                    "embedding": vec![0.0043064255; 1536],
+                    "index": 0
+                  },
+                  {
+                    "object": "embedding",
+                    "embedding": vec![0.0043064255; 1536],
+                    "index": 1
+                  },
+                  {
+                    "object": "embedding",
+                    "embedding": vec![0.0023064255; 1536],
+                    "index": 2
+                  }
+                ],
+                "model": "text-embedding-ada-002",
+                "usage": {
+                  "prompt_tokens": 8,
+                  "total_tokens": 8
+                }
+            }
+        ));
+    });
+    server.mock(|when, then| {
+        when.method(httpmock::Method::POST)
+            .path("/embeddings")
+            .header("Authorization", "Bearer TEST")
+            .json_body(json!({
+                "input": [
+                    "What is a linglingdong?"
+                ],
+                "model": "text-embedding-ada-002",
+            }));
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                    "object": "list",
+                    "data": [
+                      {
+                        "object": "embedding",
+                        "embedding": vec![0.002; 1536],
+                        "index": 0
+                      }
+                    ],
+                    "model": "text-embedding-ada-002",
+                    "usage": {
+                      "prompt_tokens": 8,
+                      "total_tokens": 8
+                    }
+                }
+            ));
+    });
+
+    // Initialize OpenAI client
+    let openai_client = openai::Client::from_url("TEST", &server.base_url());
+    // let openai_client = openai::Client::from_env();
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     let points = create_points(model.clone()).await;
 
     client
-        .upsert_points(UpsertPointsBuilder::new(COLLECTION_NAME, points))
+        .upsert_points(UpsertPointsBuilder::new(COLLECTION_NAME, points).wait(true))
         .await
         .unwrap();
 
