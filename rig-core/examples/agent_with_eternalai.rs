@@ -1,10 +1,6 @@
 use rig::agent::AgentBuilder;
-use rig::completion::ToolDefinition;
 use rig::providers::eternalai::{CompletionModel, NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8};
-use rig::tool::Tool;
 use rig::{completion::Prompt, providers};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
