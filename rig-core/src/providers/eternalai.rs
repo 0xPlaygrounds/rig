@@ -529,7 +529,7 @@ impl completion::CompletionModel for CompletionModel {
                         Some(data) => {
                             let onchain_data = serde_json::to_string_pretty(data)?;
                             println!("onchain_data: {}", onchain_data);
-                        },
+                        }
                         None => {
                             println!("onchain_data: None");
                         }
