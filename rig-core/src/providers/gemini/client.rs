@@ -25,7 +25,7 @@ impl Client {
     pub fn new(api_key: &str) -> Self {
         Self::from_url(api_key, GEMINI_API_BASE_URL)
     }
-    fn from_url(api_key: &str, base_url: &str) -> Self {
+    pub fn from_url(api_key: &str, base_url: &str) -> Self {
         Self {
             base_url: base_url.to_string(),
             api_key: api_key.to_string(),
