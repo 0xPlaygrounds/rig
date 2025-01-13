@@ -18,7 +18,7 @@ use crate::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::time::Duration;
 
 // ================================================================
@@ -340,6 +340,7 @@ pub struct CompletionResponse {
     pub system_fingerprint: Option<String>,
     pub choices: Vec<Choice>,
     pub usage: Option<Usage>,
+    pub onchain_data: Option<Value>,
 }
 
 impl From<ApiErrorResponse> for CompletionError {
@@ -524,6 +525,15 @@ impl completion::CompletionModel for CompletionModel {
                         "EternalAI completion token usage: {:?}",
                         response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
                     );
+                    match &response.onchain_data {
+                        Some(data) => {
+                            let onchain_data = serde_json::to_string_pretty(data)?;
+                            println!("onchain_data: {}", onchain_data);
+                        },
+                        None => {
+                            println!("onchain_data: None");
+                        }
+                    }
                     response.try_into()
                 }
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
