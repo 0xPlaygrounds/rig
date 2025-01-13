@@ -1,5 +1,6 @@
+use serde_json::json;
 use testcontainers::{
-    core::{IntoContainerPort, Mount, WaitFor},
+    core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
     GenericImage, ImageExt,
 };
@@ -25,7 +26,6 @@ struct Word {
 
 #[tokio::test]
 async fn vector_search_test() {
-    let mount = Mount::volume_mount("data", std::env::var("GITHUB_WORKSPACE").unwrap());
     // Setup a local Neo 4J container for testing. NOTE: docker service must be running.
     let container = GenericImage::new("neo4j", "latest")
         .with_wait_for(WaitFor::Duration {
@@ -33,21 +33,94 @@ async fn vector_search_test() {
         })
         .with_exposed_port(BOLT_PORT.tcp())
         .with_exposed_port(HTTP_PORT.tcp())
-        .with_mount(mount)
         .with_env_var("NEO4J_AUTH", "none")
         .start()
         .await
         .expect("Failed to start Neo 4J container");
 
-    let port = container.get_host_port_ipv4(BOLT_PORT).await.unwrap();
-    let host = container.get_host().await.unwrap().to_string();
+    let port = container.get_host_port_ipv4(BOLT_PORT).await.expect("");
+    let host = container.get_host().await.expect("").to_string();
 
     let neo4j_client = Neo4jClient::connect(&format!("neo4j://{host}:{port}"), "", "")
         .await
-        .unwrap();
+        .expect("");
+
+    // Setup mock openai API
+    let server = httpmock::MockServer::start();
+
+    server.mock(|when, then| {
+        when.method(httpmock::Method::POST)
+            .path("/embeddings")
+            .header("Authorization", "Bearer TEST")
+            .json_body(json!({
+                "input": [
+                    "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
+                    "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+                    "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
+                ],
+                "model": "text-embedding-ada-002",
+            }));
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                "object": "list",
+                "data": [
+                  {
+                    "object": "embedding",
+                    "embedding": vec![-0.001; 1536],
+                    "index": 0
+                  },
+                  {
+                    "object": "embedding",
+                    "embedding": vec![0.0023064255; 1536],
+                    "index": 1
+                  },
+                  {
+                    "object": "embedding",
+                    "embedding": vec![-0.001; 1536],
+                    "index": 2
+                  },
+                ],
+                "model": "text-embedding-ada-002",
+                "usage": {
+                  "prompt_tokens": 8,
+                  "total_tokens": 8
+                }
+            }
+        ));
+    });
+    server.mock(|when, then| {
+        when.method(httpmock::Method::POST)
+            .path("/embeddings")
+            .header("Authorization", "Bearer TEST")
+            .json_body(json!({
+                "input": [
+                    "What is a glarb?",
+                ],
+                "model": "text-embedding-ada-002",
+            }));
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                    "object": "list",
+                    "data": [
+                      {
+                        "object": "embedding",
+                        "embedding": vec![0.0024064254; 1536],
+                        "index": 0
+                      }
+                    ],
+                    "model": "text-embedding-ada-002",
+                    "usage": {
+                      "prompt_tokens": 8,
+                      "total_tokens": 8
+                    }
+                }
+            ));
+    });
 
     // Initialize OpenAI client
-    let openai_client = openai::Client::from_env();
+    let openai_client = openai::Client::from_url("TEST", &server.base_url());
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
@@ -76,7 +149,7 @@ async fn vector_search_test() {
         .buffer_unordered(3)
         .try_collect::<Vec<_>>()
         .await
-        .unwrap();
+        .expect("");
 
     // Create a vector index on our vector store
     println!("Creating vector index...");
@@ -92,7 +165,7 @@ async fn vector_search_test() {
                     }}",
         ))
         .await
-        .unwrap();
+        .expect("");
 
     // ℹ️ The index name must be unique among both indexes and constraints.
     // A newly created index is not immediately available but is created in the background.
@@ -114,15 +187,15 @@ async fn vector_search_test() {
     let index = neo4j_client
         .get_index(model, "vector_index", SearchParams::default())
         .await
-        .unwrap();
+        .expect("");
 
     // Query the index
     let results = index
         .top_n::<serde_json::Value>("What is a glarb?", 1)
         .await
-        .unwrap();
+        .expect("");
 
-    let (_, _, value) = &results.first().unwrap();
+    let (_, _, value) = &results.first().expect("");
 
     assert_eq!(
         value,
@@ -152,8 +225,8 @@ async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, OneOrMan
 
     EmbeddingsBuilder::new(model)
         .documents(words)
-        .unwrap()
+        .expect("")
         .build()
         .await
-        .unwrap()
+        .expect("")
 }

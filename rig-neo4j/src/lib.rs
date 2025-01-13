@@ -272,7 +272,7 @@ impl Neo4jClient {
     /// Calls the `CREATE VECTOR INDEX` Neo4j query and waits for the index to be created.
     /// A newly created index is not immediately fully available but is created (i.e. data is indexed) in the background.
     ///
-    /// ❗ If there is already an index targetting the same node label and property, the new index creation will fail.
+    /// ❗ If there is already an index targeting the same node label and property, the new index creation will fail.
     ///
     /// ### Arguments
     /// * `index_name` - The name of the index to create.

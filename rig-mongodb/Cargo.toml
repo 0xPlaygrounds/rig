@@ -19,6 +19,7 @@ tracing = "0.1.40"
 
 [dev-dependencies]
 anyhow = "1.0.86"
+httpmock = "0.7.0"
 testcontainers = "0.23.1"
 tokio = { version = "1.38.0", features = ["macros"] }
 tokio-test = "0.4.4"

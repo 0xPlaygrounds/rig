@@ -320,6 +320,8 @@ pub const O1_MINI: &str = "o1-mini";
 pub const O1_MINI_2024_09_12: &str = "o1-mini-2024-09-12";
 /// `gpt-4o` completion model
 pub const GPT_4O: &str = "gpt-4o";
+/// `gpt-4o-mini` completion model
+pub const GPT_4O_MINI: &str = "gpt-4o-mini";
 /// `gpt-4o-2024-05-13` completion model
 pub const GPT_4O_2024_05_13: &str = "gpt-4o-2024-05-13";
 /// `gpt-4-turbo` completion model
@@ -382,10 +384,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         ..
                     },
                 ..
-            }, ..] => {
-                let call = calls.first().ok_or(CompletionError::ResponseError(
-                    "Tool selection is empty".into(),
-                ))?;
+            }, ..]
+                if !calls.is_empty() =>
+            {
+                let call = calls.first().unwrap();
 
                 Ok(completion::CompletionResponse {
                     choice: completion::ModelChoice::ToolCall(

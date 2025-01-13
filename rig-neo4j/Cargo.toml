@@ -24,6 +24,7 @@ textwrap = { version = "0.16.1"}
 term_size = { version = "0.3.2"}
 testcontainers = "0.23.1"
 tracing-subscriber = "0.3.18"
+httpmock = "0.7.0"
 
 [[example]]
 name = "vector_search_simple"
