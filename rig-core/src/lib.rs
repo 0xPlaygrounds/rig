@@ -85,6 +85,7 @@ pub mod embeddings;
 pub mod extractor;
 pub(crate) mod json_utils;
 pub mod loaders;
+pub mod message;
 pub mod one_or_many;
 pub mod providers;
 pub mod tool;

@@ -113,8 +113,9 @@ use futures::{stream, StreamExt, TryStreamExt};
 use crate::{
     completion::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder,
-        CompletionResponse, Document, Message, ModelChoice, Prompt, PromptError,
+        CompletionResponse, Document, ModelChoice, Prompt, PromptError,
     },
+    message::Message,
     tool::{Tool, ToolSet},
     vector_store::{VectorStoreError, VectorStoreIndexDyn},
 };
@@ -165,94 +166,109 @@ pub struct Agent<M: CompletionModel> {
 impl<M: CompletionModel> Completion<M> for Agent<M> {
     async fn completion(
         &self,
-        prompt: &str,
+        prompt: impl Into<Message>,
         chat_history: Vec<Message>,
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
-        let dynamic_context = stream::iter(self.dynamic_context.iter())
-            .then(|(num_sample, index)| async {
-                Ok::<_, VectorStoreError>(
-                    index
-                        .top_n(prompt, *num_sample)
-                        .await?
-                        .into_iter()
-                        .map(|(_, id, doc)| {
-                            // Pretty print the document if possible for better readability
-                            let text = serde_json::to_string_pretty(&doc)
-                                .unwrap_or_else(|_| doc.to_string());
-
-                            Document {
-                                id,
-                                text,
-                                additional_props: HashMap::new(),
-                            }
-                        })
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .try_fold(vec![], |mut acc, docs| async {
-                acc.extend(docs);
-                Ok(acc)
-            })
-            .await
-            .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
-
-        let dynamic_tools = stream::iter(self.dynamic_tools.iter())
-            .then(|(num_sample, index)| async {
-                Ok::<_, VectorStoreError>(
-                    index
-                        .top_n_ids(prompt, *num_sample)
-                        .await?
-                        .into_iter()
-                        .map(|(_, id)| id)
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .try_fold(vec![], |mut acc, docs| async {
-                for doc in docs {
-                    if let Some(tool) = self.tools.get(&doc) {
-                        acc.push(tool.definition(prompt.into()).await)
-                    } else {
-                        tracing::warn!("Tool implementation not found in toolset: {}", doc);
-                    }
-                }
-                Ok(acc)
-            })
-            .await
-            .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
-
-        let static_tools = stream::iter(self.static_tools.iter())
-            .filter_map(|toolname| async move {
-                if let Some(tool) = self.tools.get(toolname) {
-                    Some(tool.definition(prompt.into()).await)
-                } else {
-                    tracing::warn!("Tool implementation not found in toolset: {}", toolname);
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
-            .await;
-
-        Ok(self
+        let completion_request = self
             .model
             .completion_request(prompt)
             .preamble(self.preamble.clone())
             .messages(chat_history)
-            .documents([self.static_context.clone(), dynamic_context].concat())
-            .tools([static_tools.clone(), dynamic_tools].concat())
             .temperature_opt(self.temperature)
             .max_tokens_opt(self.max_tokens)
-            .additional_params_opt(self.additional_params.clone()))
+            .additional_params_opt(self.additional_params.clone());
+
+        let agent = match prompt.into().rag_text() {
+            Some(text) => {
+                let dynamic_context = stream::iter(self.dynamic_context.iter())
+                    .then(|(num_sample, index)| async {
+                        Ok::<_, VectorStoreError>(
+                            index
+                                .top_n(&text, *num_sample)
+                                .await?
+                                .into_iter()
+                                .map(|(_, id, doc)| {
+                                    // Pretty print the document if possible for better readability
+                                    let text = serde_json::to_string_pretty(&doc)
+                                        .unwrap_or_else(|_| doc.to_string());
+
+                                    Document {
+                                        id,
+                                        text,
+                                        additional_props: HashMap::new(),
+                                    }
+                                })
+                                .collect::<Vec<_>>(),
+                        )
+                    })
+                    .try_fold(vec![], |mut acc, docs| async {
+                        acc.extend(docs);
+                        Ok(acc)
+                    })
+                    .await
+                    .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
+
+                let dynamic_tools = stream::iter(self.dynamic_tools.iter())
+                    .then(|(num_sample, index)| async {
+                        Ok::<_, VectorStoreError>(
+                            index
+                                .top_n_ids(&text, *num_sample)
+                                .await?
+                                .into_iter()
+                                .map(|(_, id)| id)
+                                .collect::<Vec<_>>(),
+                        )
+                    })
+                    .try_fold(vec![], |mut acc, docs| async {
+                        for doc in docs {
+                            if let Some(tool) = self.tools.get(&doc) {
+                                acc.push(tool.definition(text.into()).await)
+                            } else {
+                                tracing::warn!("Tool implementation not found in toolset: {}", doc);
+                            }
+                        }
+                        Ok(acc)
+                    })
+                    .await
+                    .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
+
+                let static_tools = stream::iter(self.static_tools.iter())
+                    .filter_map(|toolname| async move {
+                        if let Some(tool) = self.tools.get(toolname) {
+                            Some(tool.definition(text.into()).await)
+                        } else {
+                            tracing::warn!(
+                                "Tool implementation not found in toolset: {}",
+                                toolname
+                            );
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .await;
+
+                completion_request
+                    .documents([self.static_context.clone(), dynamic_context].concat())
+                    .tools([static_tools.clone(), dynamic_tools].concat())
+            }
+            None => completion_request,
+        };
+        Ok(agent)
     }
 }
 
 impl<M: CompletionModel> Prompt for Agent<M> {
-    async fn prompt(&self, prompt: &str) -> Result<String, PromptError> {
+    async fn prompt(&self, prompt: impl Into<String>) -> Result<String, PromptError> {
         self.chat(prompt, vec![]).await
     }
 }
 
 impl<M: CompletionModel> Chat for Agent<M> {
-    async fn chat(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String, PromptError> {
+    async fn chat(
+        &self,
+        prompt: impl Into<String>,
+        chat_history: Vec<Message>,
+    ) -> Result<String, PromptError> {
         match self.completion(prompt, chat_history).await?.send().await? {
             CompletionResponse {
                 choice: ModelChoice::Message(msg),

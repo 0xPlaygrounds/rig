@@ -1,6 +1,9 @@
 use std::io::{self, Write};
 
-use crate::completion::{Chat, Message, PromptError};
+use crate::{
+    completion::{Chat, PromptError},
+    message::Message,
+};
 
 /// Utility function to create a simple REPL CLI chatbot from a type that implements the
 /// `Chat` trait.

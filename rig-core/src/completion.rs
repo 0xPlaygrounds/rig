@@ -67,7 +67,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{json_utils, tool::ToolSetError, OneOrMany};
+use crate::{json_utils, message::Message, tool::ToolSetError};
 
 // Errors
 #[derive(Debug, Error)]
@@ -100,78 +100,6 @@ pub enum PromptError {
 
     #[error("ToolCallError: {0}")]
     ToolError(#[from] ToolSetError),
-}
-
-// ================================================================
-// Request models
-// ================================================================
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(tag = "role", rename_all = "lowercase")]
-pub enum Message {
-    System {
-        content: OneOrMany<String>,
-    },
-    User {
-        content: OneOrMany<String>,
-    },
-    Assistant {
-        refusal: Option<String>,
-        content: OneOrMany<String>,
-        tool_calls: OneOrMany<ToolCall>,
-    },
-    Tool {
-        id: String,
-        content: String,
-    },
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ToolCall {
-    pub id: String,
-    #[serde(rename = "type")]
-    pub tool_type: String,
-    pub function: ToolFunction,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ToolFunction {
-    pub name: String,
-    pub arguments: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(tag = "type")]
-pub enum UserContent {
-    #[serde(rename = "text")]
-    Text { text: String },
-    #[serde(rename = "image_url")]
-    Image {
-        image_url: String,
-        detail: ImageDetail,
-    },
-    #[serde(rename = "input_audio")]
-    Audio { data: String, format: String },
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ImageDetail {
-    Low,
-    High,
-    Auto,
-}
-
-impl std::str::FromStr for ImageDetail {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "low" => Ok(ImageDetail::Low),
-            "high" => Ok(ImageDetail::High),
-            "auto" => Ok(ImageDetail::Auto),
-            _ => Err(()),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -226,7 +154,7 @@ pub trait Prompt: Send + Sync {
     /// If the tool does not exist, or the tool call fails, then an error is returned.
     fn prompt(
         &self,
-        prompt: &str,
+        prompt: impl Into<String>,
     ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
 }
 
@@ -242,7 +170,7 @@ pub trait Chat: Send + Sync {
     /// If the tool does not exist, or the tool call fails, then an error is returned.
     fn chat(
         &self,
-        prompt: &str,
+        prompt: impl Into<String>,
         chat_history: Vec<Message>,
     ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
 }
@@ -302,15 +230,15 @@ pub trait CompletionModel: Clone + Send + Sync {
            + Send;
 
     /// Generates a completion request builder for the given `prompt`.
-    fn completion_request(&self, prompt: &str) -> CompletionRequestBuilder<Self> {
-        CompletionRequestBuilder::new(self.clone(), prompt.to_string())
+    fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
+        CompletionRequestBuilder::new(self.clone(), prompt)
     }
 }
 
 /// Struct representing a general completion request that can be sent to a completion model provider.
 pub struct CompletionRequest {
     /// The prompt to be sent to the completion model provider
-    pub prompt: String,
+    pub prompt: Message,
     /// The preamble to be sent to the completion model provider
     pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider
@@ -391,7 +319,7 @@ impl CompletionRequest {
 /// Instead, use the [CompletionModel::completion_request] method.
 pub struct CompletionRequestBuilder<M: CompletionModel> {
     model: M,
-    prompt: String,
+    prompt: Message,
     preamble: Option<String>,
     chat_history: Vec<Message>,
     documents: Vec<Document>,
@@ -402,10 +330,10 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
 }
 
 impl<M: CompletionModel> CompletionRequestBuilder<M> {
-    pub fn new(model: M, prompt: String) -> Self {
+    pub fn new(model: M, prompt: impl Into<Message>) -> Self {
         Self {
             model,
-            prompt,
+            prompt: prompt.into(),
             preamble: None,
             chat_history: Vec::new(),
             documents: Vec::new(),
