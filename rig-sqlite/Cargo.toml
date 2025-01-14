@@ -23,5 +23,6 @@ chrono = "0.4"
 
 [dev-dependencies]
 anyhow = "1.0.86"
+httpmock = "0.7.0"
 tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
