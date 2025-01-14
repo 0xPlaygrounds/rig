@@ -1,6 +1,4 @@
-use futures::{join, try_join};
 
-use super::{Op, TryOp};
 /// Creates an `Op` that conditionally dispatches to one of multiple sub-ops
 /// based on the variant of the input enum.
 ///
@@ -40,13 +38,16 @@ use super::{Op, TryOp};
 macro_rules! conditional {
     ($enum:ident, $( $variant:ident => $op:expr ),+ $(,)?) => {
         {
+            #[allow(non_snake_case)]
             struct ConditionalOp<$($variant),+> {
-                $( $variant: $variant ),+
+                $(
+                    $variant: $variant,
+                )+
             }
 
-            impl<Value, Out, $( $variant ),+> crate::pipeline::Op for ConditionalOp<$($variant),+>
+            impl<Value, Out, $($variant),+> Op for ConditionalOp<$($variant),+>
             where
-                $( $variant: crate::pipeline::Op<Input=Value, Output=Out> ),+,
+                $($variant: Op<Input=Value, Output=Out>),+,
                 Value: Send + Sync,
                 Out: Send + Sync,
             {
@@ -108,13 +109,14 @@ macro_rules! conditional {
 macro_rules! try_conditional {
     ($enum:ident, $( $variant:ident => $op:expr ),+ $(,)?) => {
         {
+            #[allow(non_snake_case)]
             struct TryConditionalOp<$( $variant ),+> {
                 $( $variant: $variant ),+
             }
 
-            impl<Value, Out, Err, $( $variant ),+> crate::pipeline::TryOp for TryConditionalOp<$( $variant ),+>
+            impl<Value, Out, Err, $( $variant ),+> TryOp for TryConditionalOp<$( $variant ),+>
             where
-                $( $variant: crate::pipeline::TryOp<Input=Value, Output=Out, Error=Err> ),+,
+                $( $variant: TryOp<Input=Value, Output=Out, Error=Err> ),+,
                 Value: Send + Sync,
                 Out: Send + Sync,
                 Err: Send + Sync,
@@ -139,7 +141,6 @@ macro_rules! try_conditional {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::pipeline::*;
 
     #[tokio::test]
@@ -152,7 +153,7 @@ mod tests {
 
         let op1 = map(|x: i32| x + 1);
         let op2 = map(|x: i32| x * 2);
-
+        
         let conditional = 
             conditional!(ExampleEnum,
                 Variant1 => op1, 
@@ -168,6 +169,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_try_conditional_op() {
+
         enum ExampleEnum<T> {
             Variant1(T),
             Variant2(T)
