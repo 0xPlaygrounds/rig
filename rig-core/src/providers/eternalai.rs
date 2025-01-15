@@ -9,6 +9,7 @@
 //! let gpt4o = client.completion_model(eternalai::NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8);
 //! ```
 
+use std::sync::Arc;
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -20,6 +21,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::Duration;
+use ethers::prelude::*;
+use crate::tool::ToolDyn;
 
 // ================================================================
 // Main EternalAI Client
@@ -329,6 +332,22 @@ pub fn get_chain_id(key: &str) -> Option<&str> {
         }
     }
     None
+}
+
+pub async fn get_on_chain_system_prompt() -> &'static str {
+    abigen!(
+        MyContract,
+        r#"
+        [{"inputs": [{"internalType": "uint256", "name": "_agentId", "type": "uint256"}], "name": "getAgentSystemPrompt", "outputs": [{"internalType": "bytes[]", "name": "","type": "bytes[]"}], "stateMutability": "view", "type": "function"}]
+        "#
+    );
+    // Connect to an Ethereum node
+    let provider = Provider::<Http>::try_from("https://mainnet.base.org/")?;
+    let client = Arc::new(provider);
+    let contract_address: Address = "0xAed016e060e2fFE3092916b1650Fc558D62e1CCC".parse()?;
+    let contract = MyContract::new(contract_address, client);
+    let value: U256 = contract.get_agent_system_prompt(U256::from(1)).call().await;
+    return "";
 }
 
 #[derive(Debug, Deserialize)]
