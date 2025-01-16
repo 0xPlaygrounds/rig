@@ -7,7 +7,7 @@
     <span style="font-size: 48px; margin: 0 20px; font-weight: regular; font-family: Open Sans, sans-serif;"> + </span>
     <picture>
         <source srcset="https://www.postgresql.org/media/img/about/press/elephant.png">
-        <img src="https://www.postgresql.org/media/img/about/press/elephant.png" width="200" alt="SQLite logo">
+        <img src="https://www.postgresql.org/media/img/about/press/elephant.png" width="200" alt="Postgres logo">
     </picture>
 </div>
 
