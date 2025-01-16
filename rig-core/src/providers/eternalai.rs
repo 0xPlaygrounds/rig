@@ -366,9 +366,10 @@ pub async fn get_on_chain_system_prompt(
         })
         .collect();
 
-    for prompt in decoded_strings {
+    if !decoded_strings.is_empty() {
+        let prompt = decoded_strings[0].clone();
         println!("system prompt : {}", prompt);
-        return fetch_on_chain_system_prompt(&*prompt).await;
+        return fetch_on_chain_system_prompt(&prompt).await;
     }
     None
 }
@@ -553,12 +554,18 @@ impl completion::CompletionModel for CompletionModel {
             );
             let c_value: c_uint = eternal_ai_agent_id.parse::<u32>().unwrap_or(0);
             let prompt =
-                get_on_chain_system_prompt(&*eternal_ai_rpc, &*eternal_ai_contract, c_value).await;
-            if !prompt.is_none() {
-                full_history.push(completion::Message {
-                    role: "system".into(),
-                    content: prompt.unwrap(),
-                });
+                get_on_chain_system_prompt(&eternal_ai_rpc, &eternal_ai_contract, c_value).await;
+            match prompt {
+                None => {
+                    println!("on-chain sytem prompt is none")
+                }
+                Some(value) => {
+                    let temp = completion::Message {
+                        role: "system".into(),
+                        content: value,
+                    };
+                    full_history.push(temp);
+                }
             }
         }
 
