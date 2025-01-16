@@ -1,10 +1,9 @@
 //! Anthropic completion api implementation
 
-use std::iter;
-
 use crate::{
     completion::{self, CompletionError},
     json_utils,
+    message::{self, MessageError},
 };
 
 use serde::{Deserialize, Serialize};
@@ -40,22 +39,6 @@ pub struct CompletionResponse {
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
     pub usage: Usage,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum Content {
-    String(String),
-    Text {
-        r#type: String,
-        text: String,
-    },
-    ToolUse {
-        r#type: String,
-        id: String,
-        name: String,
-        input: serde_json::Value,
-    },
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -103,12 +86,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 
     fn try_from(response: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
         match response.content.as_slice() {
-            [Content::String(text) | Content::Text { text, .. }, ..] => {
-                Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::Message(text.to_string()),
-                    raw_response: response,
-                })
-            }
+            [Content::Text { text, .. }, ..] => Ok(completion::CompletionResponse {
+                choice: completion::ModelChoice::Message(text.to_string()),
+                raw_response: response,
+            }),
             [Content::ToolUse { name, input, .. }, ..] => Ok(completion::CompletionResponse {
                 choice: completion::ModelChoice::ToolCall(name.clone(), input.clone()),
                 raw_response: response,
@@ -123,15 +104,186 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Message {
     pub role: String,
-    pub content: String,
+    pub content: Content,
 }
 
-impl From<completion::Message> for Message {
-    fn from(message: completion::Message) -> Self {
-        Self {
-            role: message.role,
-            content: message.content,
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Content {
+    Text {
+        text: String,
+    },
+    Image {
+        source: ImageSource,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: ToolResultContent,
+        is_error: bool,
+    },
+    Document {
+        source: DocumentSource,
+    },
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ToolResultContent {
+    Text { text: String },
+    Image(ImageSource),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ImageSource {
+    pub data: String,
+    pub format: ImageFormat,
+    pub r#type: SourceType,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DocumentSource {
+    pub data: String,
+    pub format: DocumentFormat,
+    pub r#type: SourceType,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ImageFormat {
+    #[serde(rename = "image/jpeg")]
+    JPEG,
+    #[serde(rename = "image/png")]
+    PNG,
+    #[serde(rename = "image/gif")]
+    GIF,
+    #[serde(rename = "image/webp")]
+    WEBP,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DocumentFormat {
+    #[serde(rename = "application/pdf")]
+    PDF,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SourceType {
+    BASE64,
+}
+
+impl From<String> for Content {
+    fn from(text: String) -> Self {
+        Content::Text { text }
+    }
+}
+
+impl From<String> for ToolResultContent {
+    fn from(text: String) -> Self {
+        ToolResultContent::Text { text }
+    }
+}
+
+impl TryFrom<message::ContentFormat> for SourceType {
+    type Error = MessageError;
+
+    fn try_from(format: message::ContentFormat) -> Result<Self, Self::Error> {
+        match format {
+            message::ContentFormat::Base64 => Ok(SourceType::BASE64),
+            message::ContentFormat::String => Err(MessageError::ConversionError(
+                "Image urls are not supported in Anthropic".to_owned(),
+            )),
         }
+    }
+}
+
+impl From<message::ImageMediaType> for ImageFormat {
+    fn from(media_type: message::ImageMediaType) -> Self {
+        match media_type {
+            message::ImageMediaType::JPEG => ImageFormat::JPEG,
+            message::ImageMediaType::PNG => ImageFormat::PNG,
+            message::ImageMediaType::GIF => ImageFormat::GIF,
+            message::ImageMediaType::WEBP => ImageFormat::WEBP,
+        }
+    }
+}
+
+impl TryFrom<message::Message> for Vec<Message> {
+    type Error = MessageError;
+
+    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
+        Ok(match message {
+            message::Message::User { content } => content
+                .into_iter()
+                .map(|content| match content {
+                    message::UserContent::Text { text } => Ok(Content::Text { text }),
+                    message::UserContent::Image {
+                        data,
+                        format,
+                        media_type,
+                        ..
+                    } => {
+                        let source = ImageSource {
+                            data,
+                            format: media_type.into(),
+                            r#type: format.try_into()?,
+                        };
+                        Ok(Content::Image { source })
+                    }
+                    message::UserContent::Document { data, format, .. } => {
+                        let source = DocumentSource {
+                            data,
+                            format: DocumentFormat::PDF,
+                            r#type: format.try_into()?,
+                        };
+                        Ok(Content::Document { source })
+                    }
+                    message::UserContent::Audio { .. } => Err(MessageError::ConversionError(
+                        "Audio is not supported in Anthropic".to_owned(),
+                    )),
+                })
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .map(|content| Message {
+                    role: "user".to_owned(),
+                    content,
+                })
+                .collect::<Vec<_>>(),
+
+            message::Message::Assistant {
+                content,
+                tool_calls,
+            } => content
+                .into_iter()
+                .map(|content| Message {
+                    role: "assistant".to_owned(),
+                    content: content.into(),
+                })
+                .chain(tool_calls.into_iter().map(|tool_call| Message {
+                    role: "assistant".to_owned(),
+                    content: Content::ToolUse {
+                        id: tool_call.id,
+                        name: tool_call.function.name,
+                        input: tool_call.function.arguments,
+                    },
+                }))
+                .collect::<Vec<_>>(),
+
+            message::Message::Tool { id, content } => vec![Message {
+                role: "assistant".to_owned(),
+                content: Content::ToolResult {
+                    tool_use_id: id,
+                    content: content.into(),
+                    is_error: false,
+                },
+            }],
+        })
     }
 }
 
@@ -174,8 +326,6 @@ impl completion::CompletionModel for CompletionModel {
         // specific requirements of each provider. For now, we just manually check while
         // building the request as a raw JSON document.
 
-        let prompt_with_context = completion_request.prompt_with_context();
-
         // Check if max_tokens is set, required for Anthropic
         if completion_request.max_tokens.is_none() {
             return Err(CompletionError::RequestError(
@@ -183,17 +333,29 @@ impl completion::CompletionModel for CompletionModel {
             ));
         }
 
+        let prompt_message: Vec<Message> = completion_request
+            .prompt_with_context()
+            .try_into()
+            .map_err(|e: MessageError| CompletionError::RequestError(e.to_string().into()))?;
+
+        let mut messages = completion_request
+            .chat_history
+            .into_iter()
+            .map(|message| {
+                message
+                    .try_into()
+                    .map_err(|e: MessageError| CompletionError::RequestError(e.to_string().into()))
+            })
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+        messages.extend(prompt_message);
+
         let mut request = json!({
             "model": self.model,
-            "messages": completion_request
-                .chat_history
-                .into_iter()
-                .map(Message::from)
-                .chain(iter::once(Message {
-                    role: "user".to_owned(),
-                    content: prompt_with_context,
-                }))
-                .collect::<Vec<_>>(),
+            "messages": messages,
             "max_tokens": completion_request.max_tokens,
             "system": completion_request.preamble.unwrap_or("".to_string()),
         });

@@ -67,7 +67,11 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{json_utils, message::Message, tool::ToolSetError};
+use crate::{
+    json_utils,
+    message::{Message, UserContent},
+    tool::ToolSetError,
+};
 
 // Errors
 #[derive(Debug, Error)]
@@ -154,7 +158,7 @@ pub trait Prompt: Send + Sync {
     /// If the tool does not exist, or the tool call fails, then an error is returned.
     fn prompt(
         &self,
-        prompt: impl Into<String>,
+        prompt: impl Into<Message> + Send,
     ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
 }
 
@@ -170,7 +174,7 @@ pub trait Chat: Send + Sync {
     /// If the tool does not exist, or the tool call fails, then an error is returned.
     fn chat(
         &self,
-        prompt: impl Into<String>,
+        prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
     ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
 }
@@ -190,7 +194,7 @@ pub trait Completion<M: CompletionModel> {
     /// contain the `preamble` provided when creating the agent.
     fn completion(
         &self,
-        prompt: &str,
+        prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
     ) -> impl std::future::Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>> + Send;
 }
@@ -256,20 +260,26 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
-    pub(crate) fn prompt_with_context(&self) -> String {
-        if !self.documents.is_empty() {
-            format!(
-                "<attachments>\n{}</attachments>\n\n{}",
-                self.documents
+    pub(crate) fn prompt_with_context(&self) -> Message {
+        let mut new_prompt = self.prompt.clone();
+        if let Message::User { ref mut content } = new_prompt {
+            if !self.documents.is_empty() {
+                let attachments = self
+                    .documents
                     .iter()
                     .map(|doc| doc.to_string())
                     .collect::<Vec<_>>()
-                    .join(""),
-                self.prompt
-            )
-        } else {
-            self.prompt.clone()
+                    .join("");
+                let formatted_content = format!("<attachments>\n{}</attachments>", attachments);
+                content.insert(
+                    0,
+                    UserContent::Text {
+                        text: formatted_content,
+                    },
+                );
+            }
         }
+        new_prompt
     }
 }
 
@@ -465,6 +475,8 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
 #[cfg(test)]
 mod tests {
+    use crate::OneOrMany;
+
     use super::*;
 
     #[test]
@@ -515,7 +527,7 @@ mod tests {
         };
 
         let request = CompletionRequest {
-            prompt: "What is the capital of France?".to_string(),
+            prompt: "What is the capital of France?".into(),
             preamble: None,
             chat_history: Vec::new(),
             documents: vec![doc1, doc2],
@@ -525,14 +537,25 @@ mod tests {
             additional_params: None,
         };
 
-        let expected = concat!(
-            "<attachments>\n",
-            "<file id: doc1>\nDocument 1 text.\n</file>\n",
-            "<file id: doc2>\nDocument 2 text.\n</file>\n",
-            "</attachments>\n\n",
-            "What is the capital of France?"
-        )
-        .to_string();
+        let expected = Message::User {
+            content: OneOrMany::many(vec![
+                UserContent::Text {
+                    text: concat!(
+                        "<attachments>\n",
+                        "<file id: doc1>\nDocument 1 text.\n</file>\n",
+                        "<file id: doc2>\nDocument 2 text.\n</file>\n",
+                        "</attachments>\n"
+                    )
+                    .to_string(),
+                },
+                UserContent::Text {
+                    text: "What is the capital of France?".to_string(),
+                },
+            ])
+            .expect("This has more than 1 item"),
+        };
+
+        request.prompt_with_context();
 
         assert_eq!(request.prompt_with_context(), expected);
     }

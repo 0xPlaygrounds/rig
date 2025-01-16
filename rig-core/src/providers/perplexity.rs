@@ -14,11 +14,13 @@ use crate::{
     completion::{self, CompletionError},
     extractor::ExtractorBuilder,
     json_utils,
+    message::{self, MessageError},
 };
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use thiserror::Error;
 
 // ================================================================
 // Main Cohere Client
@@ -124,15 +126,23 @@ pub struct CompletionResponse {
     pub usage: Usage,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Message {
-    pub role: String,
+    pub role: Role,
     pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    System,
+    User,
+    Assistant,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct Delta {
-    pub role: String,
+    pub role: Role,
     pub content: String,
 }
 
@@ -195,6 +205,52 @@ impl CompletionModel {
     }
 }
 
+impl TryFrom<message::Message> for Vec<Message> {
+    type Error = MessageError;
+
+    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
+        Ok(match message {
+            message::Message::User { content } => content
+                .into_iter()
+                .map(|content| match content {
+                    message::UserContent::Text { text } => Ok(Message {
+                        role: Role::User,
+                        content: text,
+                    }),
+                    _ => Err(MessageError::ConversionError(
+                        "Only text content is supported by Perplexity".to_owned(),
+                    )),
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+
+            message::Message::Assistant {
+                content,
+                tool_calls,
+            } => {
+                if tool_calls.len() > 0 {
+                    return Err(MessageError::ConversionError(
+                        "Tool calls are not supported by Perplexity".to_owned(),
+                    ));
+                }
+
+                content
+                    .into_iter()
+                    .map(|content| Message {
+                        role: Role::Assistant,
+                        content: content.into(),
+                    })
+                    .collect::<Vec<_>>()
+            }
+
+            _ => {
+                return Err(MessageError::ConversionError(
+                    "Only user and assistant messages are supported by Perplexity".to_owned(),
+                ))
+            }
+        })
+    }
+}
+
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
 
@@ -202,28 +258,34 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        // Add context documents to chat history
+        let prompt_with_context = completion_request.prompt_with_context();
+
         // Add preamble to messages (if available)
-        let mut messages = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
-                role: "system".into(),
-                content: preamble.clone(),
-            }]
+        let mut messages: Vec<Message> = if let Some(preamble) = completion_request.preamble {
+            let message: message::Message = preamble.into();
+            message
+                .try_into()
+                .map_err(|e: MessageError| CompletionError::RequestError(e.to_string().into()))?
         } else {
             vec![]
         };
 
-        // Add context documents to chat history
-        let prompt_with_context = completion_request.prompt_with_context();
-
         // Add chat history to messages
-        messages.extend(completion_request.chat_history);
+        for message in completion_request.chat_history {
+            let converted: Vec<Message> = message
+                .try_into()
+                .map_err(|e: MessageError| CompletionError::RequestError(e.to_string().into()))?;
+            messages.extend(converted);
+        }
 
         // Add user prompt to messages
-        messages.push(completion::Message {
-            role: "user".to_string(),
-            content: prompt_with_context,
-        });
+        let user_messages: Vec<Message> = prompt_with_context
+            .try_into()
+            .map_err(|e: MessageError| CompletionError::RequestError(e.to_string().into()))?;
+        messages.extend(user_messages);
 
+        // Compose request
         let request = json!({
             "model": self.model,
             "messages": messages,

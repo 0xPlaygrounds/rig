@@ -1,21 +1,19 @@
 use crate::OneOrMany;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 // ================================================================
 // Request models
 // ================================================================
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
-    System {
-        content: OneOrMany<String>,
-    },
     User {
         content: OneOrMany<UserContent>,
     },
     Assistant {
-        content: OneOrMany<String>,
-        tool_calls: OneOrMany<ToolCall>,
+        content: Vec<String>,
+        tool_calls: Vec<ToolCall>,
     },
     Tool {
         id: String,
@@ -23,7 +21,7 @@ pub enum Message {
     },
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolCall {
     pub id: String,
     #[serde(rename = "type")]
@@ -31,13 +29,13 @@ pub struct ToolCall {
     pub function: ToolFunction,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolFunction {
     pub name: String,
-    pub arguments: String,
+    pub arguments: serde_json::Value,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum UserContent {
     Text {
@@ -47,43 +45,50 @@ pub enum UserContent {
         data: String,
         format: ContentFormat,
         detail: ImageDetail,
-        r#media_type: MediaType,
+        media_type: ImageMediaType,
     },
     Document {
         data: String,
         format: ContentFormat,
-        r#media_type: String,
+        media_type: DocumentMediaType,
     },
     Audio {
         data: String,
         format: ContentFormat,
-        r#media_type: String,
+        media_type: AudioMediaType,
     },
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ContentFormat {
     Base64,
     String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
-pub enum MediaType {
-    #[serde(rename = "application/pdf")]
-    ApplicationPdf,
-    #[serde(rename = "image/jpeg")]
-    ImageJpeg,
-    #[serde(rename = "image/png")]
-    ImagePng,
-    #[serde(rename = "image/gif")]
-    ImageGif,
-    #[serde(rename = "image/webp")]
-    ImageWebp,
+pub enum ImageMediaType {
+    JPEG,
+    PNG,
+    GIF,
+    WEBP,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum DocumentMediaType {
+    PDF,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AudioMediaType {
+    WAV,
+    MP4,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageDetail {
     Low,
@@ -112,11 +117,21 @@ impl From<String> for Message {
     }
 }
 
+impl From<&str> for Message {
+    fn from(text: &str) -> Self {
+        Message::User {
+            content: OneOrMany::<UserContent>::one(UserContent::Text {
+                text: text.to_owned(),
+            }),
+        }
+    }
+}
+
 impl Message {
     pub fn rag_text(&self) -> Option<String> {
         match self {
             Message::User { content } => {
-                if let UserContent::Text { text }= content.first() {
+                if let UserContent::Text { text } = content.first() {
                     Some(text.clone())
                 } else {
                     None
@@ -125,4 +140,10 @@ impl Message {
             _ => None,
         }
     }
+}
+
+#[derive(Debug, Error)]
+pub enum MessageError {
+    #[error("Message conversion error: {0}")]
+    ConversionError(String),
 }

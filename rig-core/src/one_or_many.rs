@@ -34,6 +34,16 @@ impl<T: Clone> OneOrMany<T> {
         self.rest.push(item);
     }
 
+    /// After `OneOrMany<T>` is created, insert an item of type T at an index.
+    pub fn insert(&mut self, index: usize, item: T) {
+        if index == 0 {
+            let old_first = std::mem::replace(&mut self.first, item);
+            self.rest.insert(0, old_first);
+        } else {
+            self.rest.insert(index - 1, item);
+        }
+    }
+
     /// Length of all items in `OneOrMany<T>`.
     pub fn len(&self) -> usize {
         1 + self.rest.len()

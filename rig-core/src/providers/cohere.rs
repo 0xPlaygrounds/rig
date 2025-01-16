@@ -11,11 +11,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    agent::AgentBuilder,
-    completion::{self, CompletionError},
-    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
-    extractor::ExtractorBuilder,
-    json_utils, Embed,
+    agent::AgentBuilder, completion::{self, CompletionError}, embeddings::{self, EmbeddingError, EmbeddingsBuilder}, extractor::ExtractorBuilder, json_utils, message, Embed
 };
 
 use schemars::JsonSchema;
@@ -480,8 +476,10 @@ pub struct Message {
     pub message: String,
 }
 
-impl From<completion::Message> for Message {
-    fn from(message: completion::Message) -> Self {
+impl TryFrom<message::Message> for Message {
+    type Error = 
+    fn from(message: message::Message) -> Self {
+
         Self {
             role: match message.role.as_str() {
                 "system" => "SYSTEM".to_owned(),

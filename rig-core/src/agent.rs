@@ -166,9 +166,12 @@ pub struct Agent<M: CompletionModel> {
 impl<M: CompletionModel> Completion<M> for Agent<M> {
     async fn completion(
         &self,
-        prompt: impl Into<Message>,
+        prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
+        let prompt = prompt.into();
+        let rag_text = prompt.rag_text().clone();
+
         let completion_request = self
             .model
             .completion_request(prompt)
@@ -178,7 +181,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
             .max_tokens_opt(self.max_tokens)
             .additional_params_opt(self.additional_params.clone());
 
-        let agent = match prompt.into().rag_text() {
+        let agent = match &rag_text {
             Some(text) => {
                 let dynamic_context = stream::iter(self.dynamic_context.iter())
                     .then(|(num_sample, index)| async {
@@ -258,7 +261,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 }
 
 impl<M: CompletionModel> Prompt for Agent<M> {
-    async fn prompt(&self, prompt: impl Into<String>) -> Result<String, PromptError> {
+    async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
         self.chat(prompt, vec![]).await
     }
 }
@@ -266,7 +269,7 @@ impl<M: CompletionModel> Prompt for Agent<M> {
 impl<M: CompletionModel> Chat for Agent<M> {
     async fn chat(
         &self,
-        prompt: impl Into<String>,
+        prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
     ) -> Result<String, PromptError> {
         match self.completion(prompt, chat_history).await?.send().await? {
