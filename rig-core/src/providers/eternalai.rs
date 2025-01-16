@@ -9,7 +9,6 @@
 //! let gpt4o = client.completion_model(eternalai::NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8);
 //! ```
 
-use std::sync::Arc;
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -17,18 +16,22 @@ use crate::{
     extractor::ExtractorBuilder,
     json_utils, Embed,
 };
+use ethers::prelude::*;
+use reqwest::get;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::ffi::c_uint;
+use std::sync::Arc;
 use std::time::Duration;
-use ethers::prelude::*;
-use crate::tool::ToolDyn;
 
 // ================================================================
 // Main EternalAI Client
 // ================================================================
 const ETERNALAI_API_BASE_URL: &str = "https://api.eternalai.org/v1";
-
+const IPFS: &str = "ipfs://";
+const LIGHTHOUSE_IPFS: &str = "https://gateway.lighthouse.storage/ipfs/";
+const GCS_ETERNAL_AI_BASE_URL: &str = "https://cdn.eternalai.org/upload/";
 #[derive(Clone)]
 pub struct Client {
     base_url: String,
@@ -334,7 +337,11 @@ pub fn get_chain_id(key: &str) -> Option<&str> {
     None
 }
 
-pub async fn get_on_chain_system_prompt() -> &'static str {
+pub async fn get_on_chain_system_prompt(
+    rpc_url: &str,
+    contract_addr: &str,
+    agent_id: c_uint,
+) -> Option<String> {
     abigen!(
         MyContract,
         r#"
@@ -342,12 +349,53 @@ pub async fn get_on_chain_system_prompt() -> &'static str {
         "#
     );
     // Connect to an Ethereum node
-    let provider = Provider::<Http>::try_from("https://mainnet.base.org/")?;
+    let provider = Provider::<Http>::try_from(rpc_url).expect("Failed to parse url");
     let client = Arc::new(provider);
-    let contract_address: Address = "0xAed016e060e2fFE3092916b1650Fc558D62e1CCC".parse()?;
+    let contract_address: Address = contract_addr.parse().expect("invalid contract address");
     let contract = MyContract::new(contract_address, client);
-    let value: U256 = contract.get_agent_system_prompt(U256::from(1)).call().await;
-    return "";
+    let system_prompts: Vec<Bytes> = contract
+        .get_agent_system_prompt(U256::from(agent_id))
+        .call()
+        .await
+        .expect("invalid agent system prompt");
+
+    let decoded_strings: Vec<String> = system_prompts
+        .iter()
+        .map(|bytes| {
+            String::from_utf8(bytes.to_vec()).unwrap_or_else(|_| "[Invalid UTF-8]".to_string())
+        })
+        .collect();
+
+    for prompt in decoded_strings {
+        println!("system prompt : {}", prompt);
+        return fetch_on_chain_system_prompt(&*prompt).await;
+    }
+    None
+}
+
+pub async fn fetch_on_chain_system_prompt(content: &str) -> Option<String> {
+    if content.contains(IPFS) {
+        let light_house = content.replace(IPFS, LIGHTHOUSE_IPFS);
+        println!("light_house : {}", light_house);
+        let mut response = get(light_house).await.unwrap();
+        if response.status().is_success() {
+            let body = response.text().await.unwrap();
+            println!("light_house body: {}", body);
+            return Some(body);
+        } else {
+            let gcs = content.replace(IPFS, GCS_ETERNAL_AI_BASE_URL);
+            println!("gcs: {}", gcs);
+            response = get(gcs).await.unwrap();
+            if response.status().is_success() {
+                let body = response.text().await.unwrap();
+                println!("gcs body: {}", body);
+                return Some(body);
+            } else {
+                return None;
+            }
+        }
+    }
+    Some(content.to_string())
 }
 
 #[derive(Debug, Deserialize)]
@@ -489,6 +537,31 @@ impl completion::CompletionModel for CompletionModel {
             vec![]
         };
 
+        println!("Try to get on-chain system prompt");
+        let eternal_ai_rpc = std::env::var("ETERNALAI_RPC_URL").unwrap_or_else(|_| "".to_string());
+        let eternal_ai_contract =
+            std::env::var("ETERNALAI_AGENT_CONTRACT_ADDRESS").unwrap_or_else(|_| "".to_string());
+        let eternal_ai_agent_id =
+            std::env::var("ETERNALAI_AGENT_ID").unwrap_or_else(|_| "".to_string());
+        if !eternal_ai_rpc.is_empty()
+            && !eternal_ai_contract.is_empty()
+            && !eternal_ai_agent_id.is_empty()
+        {
+            println!(
+                "get on-chain system prompt with {}, {}, {}",
+                eternal_ai_rpc, eternal_ai_contract, eternal_ai_agent_id
+            );
+            let c_value: c_uint = eternal_ai_agent_id.parse::<u32>().unwrap_or(0);
+            let prompt =
+                get_on_chain_system_prompt(&*eternal_ai_rpc, &*eternal_ai_contract, c_value).await;
+            if !prompt.is_none() {
+                full_history.push(completion::Message {
+                    role: "system".into(),
+                    content: prompt.unwrap(),
+                });
+            }
+        }
+
         // Extend existing chat history
         full_history.append(&mut completion_request.chat_history);
 
@@ -523,6 +596,8 @@ impl completion::CompletionModel for CompletionModel {
                 "tool_choice": "auto",
             })
         };
+
+        println!("request: {:?}", request.to_string());
 
         let response = self
             .client
