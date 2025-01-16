@@ -343,7 +343,7 @@ pub async fn get_on_chain_system_prompt(
     agent_id: c_uint,
 ) -> Option<String> {
     abigen!(
-        MyContract,
+        SystemPromptManagementContract,
         r#"
         [{"inputs": [{"internalType": "uint256", "name": "_agentId", "type": "uint256"}], "name": "getAgentSystemPrompt", "outputs": [{"internalType": "bytes[]", "name": "","type": "bytes[]"}], "stateMutability": "view", "type": "function"}]
         "#
@@ -352,7 +352,7 @@ pub async fn get_on_chain_system_prompt(
     let provider = Provider::<Http>::try_from(rpc_url).expect("Failed to parse url");
     let client = Arc::new(provider);
     let contract_address: Address = contract_addr.parse().expect("invalid contract address");
-    let contract = MyContract::new(contract_address, client);
+    let contract = SystemPromptManagementContract::new(contract_address, client);
     let system_prompts: Vec<Bytes> = contract
         .get_agent_system_prompt(U256::from(agent_id))
         .call()
