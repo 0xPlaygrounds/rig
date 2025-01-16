@@ -37,6 +37,9 @@ impl PostgresVectorStoreTable for Document {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    // use dotvenv to load environment variables
+    dotenvy::dotenv().ok();
+
     // set up postgres connection
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");
     let db_config: tokio_postgres::Config = database_url.parse()?;
