@@ -28,6 +28,7 @@ glob = "0.3.1"
 lopdf = { version = "0.34.0", optional = true }
 rayon = { version = "1.10.0", optional = true}
 worker = { version = "0.5", optional = true }
+ethers = "2.0.14"
 
 [dev-dependencies]
 anyhow = "1.0.75"
