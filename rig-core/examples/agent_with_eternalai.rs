@@ -5,7 +5,7 @@ use rig::{completion::Prompt, providers};
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG) // Đặt mức độ tối đa là DEBUG
+        .with_max_level(tracing::Level::DEBUG)
         .init();
     println!("Running basic agent with eternalai");
     basic_eternalai().await?;
