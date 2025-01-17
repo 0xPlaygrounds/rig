@@ -16,12 +16,12 @@ use crate::{
     extractor::ExtractorBuilder,
     json_utils, Embed,
 };
+use rig_eternalai::eternalai_system_prompt_manager_toolset;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::ffi::c_uint;
 use std::time::Duration;
-use rig_eternalai::eternalai_system_prompt_manager_toolset;
 
 // ================================================================
 // Main EternalAI Client
@@ -488,13 +488,16 @@ impl completion::CompletionModel for CompletionModel {
                 eternal_ai_agent_id
             );
             let c_value: c_uint = eternal_ai_agent_id.parse::<u32>().unwrap_or(0);
-            let prompt =
-                match eternalai_system_prompt_manager_toolset::get_on_chain_system_prompt(&eternal_ai_rpc, &eternal_ai_contract, c_value)
-                    .await
-                {
-                    Ok(value) => value,
-                    Err(e) => return Err(CompletionError::ProviderError(e)),
-                };
+            let prompt = match eternalai_system_prompt_manager_toolset::get_on_chain_system_prompt(
+                &eternal_ai_rpc,
+                &eternal_ai_contract,
+                c_value,
+            )
+            .await
+            {
+                Ok(value) => value,
+                Err(e) => return Err(CompletionError::ProviderError(e)),
+            };
             match prompt {
                 None => {
                     tracing::info!("on-chain sytem prompt is none")
