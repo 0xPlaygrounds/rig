@@ -24,7 +24,6 @@ use serde_json::{json, Value};
 use std::ffi::c_uint;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::trace;
 
 // ================================================================
 // Main EternalAI Client
@@ -342,7 +341,7 @@ pub async fn get_on_chain_system_prompt(
     rpc_url: &str,
     contract_addr: &str,
     agent_id: c_uint,
-) -> Option<String> {
+) -> Result<Option<String>, String> {
     abigen!(
         SystemPromptManagementContract,
         r#"
@@ -350,15 +349,18 @@ pub async fn get_on_chain_system_prompt(
         "#
     );
     // Connect to an Ethereum node
-    let provider = Provider::<Http>::try_from(rpc_url).expect("Failed to parse url");
+    let provider =
+        Provider::<Http>::try_from(rpc_url).map_err(|e| format!("Failed to parse url: {}", e))?;
     let client = Arc::new(provider);
-    let contract_address: Address = contract_addr.parse().expect("invalid contract address");
+    let contract_address: Address = contract_addr
+        .parse()
+        .map_err(|e| format!("invalid contract address: {}", e))?;
     let contract = SystemPromptManagementContract::new(contract_address, client);
     let system_prompts: Vec<Bytes> = contract
         .get_agent_system_prompt(U256::from(agent_id))
         .call()
         .await
-        .expect("invalid agent system prompt");
+        .map_err(|e| format!("invalid agent system prompt: {}", e))?;
 
     let decoded_strings: Vec<String> = system_prompts
         .iter()
@@ -369,28 +371,28 @@ pub async fn get_on_chain_system_prompt(
 
     if !decoded_strings.is_empty() {
         let prompt = decoded_strings[0].clone();
-        tracing::info!("system prompt : {}", prompt);
-        return fetch_on_chain_system_prompt(&prompt).await;
+        tracing::debug!("system prompt : {}", prompt);
+        return Ok(fetch_on_chain_or_ipfs_system_prompt(&prompt).await);
     }
-    None
+    Ok(None)
 }
 
-pub async fn fetch_on_chain_system_prompt(content: &str) -> Option<String> {
+pub async fn fetch_on_chain_or_ipfs_system_prompt(content: &str) -> Option<String> {
     if content.contains(IPFS) {
         let light_house = content.replace(IPFS, LIGHTHOUSE_IPFS);
-        println!("light_house : {}", light_house);
+        tracing::debug!("light_house : {}", light_house);
         let mut response = get(light_house).await.unwrap();
         if response.status().is_success() {
             let body = response.text().await.unwrap();
-            println!("light_house body: {}", body);
+            tracing::debug!("light_house body: {}", body);
             return Some(body);
         } else {
             let gcs = content.replace(IPFS, GCS_ETERNAL_AI_BASE_URL);
-            println!("gcs: {}", gcs);
+            tracing::debug!("gcs: {}", gcs);
             response = get(gcs).await.unwrap();
             if response.status().is_success() {
                 let body = response.text().await.unwrap();
-                println!("gcs body: {}", body);
+                tracing::debug!("gcs body: {}", body);
                 return Some(body);
             } else {
                 return None;
@@ -557,7 +559,12 @@ impl completion::CompletionModel for CompletionModel {
             );
             let c_value: c_uint = eternal_ai_agent_id.parse::<u32>().unwrap_or(0);
             let prompt =
-                get_on_chain_system_prompt(&eternal_ai_rpc, &eternal_ai_contract, c_value).await;
+                match get_on_chain_system_prompt(&eternal_ai_rpc, &eternal_ai_contract, c_value)
+                    .await
+                {
+                    Ok(value) => value,
+                    Err(e) => return Err(CompletionError::ProviderError(e)),
+                };
             match prompt {
                 None => {
                     tracing::info!("on-chain sytem prompt is none")
@@ -632,10 +639,10 @@ impl completion::CompletionModel for CompletionModel {
                     match &response.onchain_data {
                         Some(data) => {
                             let onchain_data = serde_json::to_string_pretty(data)?;
-                            println!("onchain_data: {}", onchain_data);
+                            tracing::info!("onchain_data: {}", onchain_data);
                         }
                         None => {
-                            println!("onchain_data: None");
+                            tracing::info!("onchain_data: None");
                         }
                     }
                     response.try_into()
