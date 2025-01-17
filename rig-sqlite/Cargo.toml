@@ -1,6 +1,6 @@
 [package]
 name = "rig-sqlite"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "SQLite-based vector store implementation for the rig framework"
 license = "MIT"
@@ -9,19 +9,18 @@ license = "MIT"
 doctest = false
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.6.0",  features = ["derive"] }
+rig-core = { path = "../rig-core", version = "0.6.1",  features = ["derive"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sqlite-vec = "0.1"
-tokio-rusqlite = { git = "https://github.com/programatik29/tokio-rusqlite", version = "0.6.0", features = [
-    "bundled",
-] }
+tokio-rusqlite = { version = "0.6.0", features = ["bundled"], default-features = false }
 tracing = "0.1"
 zerocopy = "0.8.10"
 chrono = "0.4"
 
 [dev-dependencies]
 anyhow = "1.0.86"
+httpmock = "0.7.0"
 tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

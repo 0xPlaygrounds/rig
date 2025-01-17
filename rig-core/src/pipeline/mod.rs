@@ -43,9 +43,9 @@
 //! ## Parallel Operations
 //! The pipeline API also provides a [parallel!](crate::parallel!) and macro for running operations in parallel.
 //! The macro takes a list of ops and turns them into a single op that will duplicate the input
-//! and run each op in concurently. The results of each op are then collected and returned as a tuple.
+//! and run each op in concurrently. The results of each op are then collected and returned as a tuple.
 //!
-//! For example, the pipeline below runs two operations concurently:
+//! For example, the pipeline below runs two operations concurrently:
 //! ```rust
 //! use rig::{pipeline::{self, Op, map}, parallel};
 //!

@@ -1,6 +1,6 @@
 [package]
 name = "rig-qdrant"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -8,7 +8,7 @@ description = "Rig vector store index integration for Qdrant. https://qdrant.tec
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.6.0" }
+rig-core = { path = "../rig-core", version = "0.6.1" }
 serde_json = "1.0.128"
 serde = "1.0.210"
 qdrant-client = "1.12.1"
@@ -17,6 +17,7 @@ qdrant-client = "1.12.1"
 tokio = { version = "1.40.0", features = ["rt-multi-thread"] }
 anyhow = "1.0.89"
 testcontainers = "0.23.1"
+httpmock = "0.7.0"
 
 [[example]]
 name = "qdrant_vector_search"
