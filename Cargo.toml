@@ -4,5 +4,5 @@ members = [
     "rig-core", "rig-lancedb",
     "rig-mongodb", "rig-neo4j",
     "rig-qdrant", "rig-core/rig-core-derive",
-    "rig-sqlite"
+    "rig-sqlite", "rig-eternalai", "rig-eternalai"
 ]

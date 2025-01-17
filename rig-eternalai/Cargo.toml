@@ -1,0 +1,10 @@
+[package]
+name = "rig-eternalai"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ethers = "2.0.14"
+reqwest = "0.12.12"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"
