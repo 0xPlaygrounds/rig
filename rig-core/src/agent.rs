@@ -106,16 +106,17 @@
 //! let response = agent.prompt("What does \"glarb-glarb\" mean?").await
 //!     .expect("Failed to prompt the agent");
 //! ```
-use std::collections::HashMap;
+use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use futures::{stream, StreamExt, TryStreamExt};
+use mcp_client_rs::{client::Client, CallToolResult, MessageContent};
 
 use crate::{
     completion::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder,
-        CompletionResponse, Document, Message, ModelChoice, Prompt, PromptError,
+        CompletionResponse, Document, Message, ModelChoice, Prompt, PromptError, ToolDefinition,
     },
-    tool::{Tool, ToolSet},
+    tool::{Tool, ToolDyn, ToolError, ToolSet},
     vector_store::{VectorStoreError, VectorStoreIndexDyn},
 };
 
@@ -391,6 +392,13 @@ impl<M: CompletionModel> AgentBuilder<M> {
         self
     }
 
+    pub fn mcp_tool(mut self, tool: mcp_client_rs::Tool, client: Arc<Client>) -> Self {
+        let toolname = tool.name.clone();
+        self.tools.add_tool(MCPTool::from_mcp_server(tool, client));
+        self.static_tools.push(toolname);
+        self
+    }
+
     /// Set the temperature of the model
     pub fn temperature(mut self, temperature: f64) -> Self {
         self.temperature = Some(temperature);
@@ -423,5 +431,71 @@ impl<M: CompletionModel> AgentBuilder<M> {
             dynamic_tools: self.dynamic_tools,
             tools: self.tools,
         }
+    }
+}
+
+pub struct MCPTool {
+    client: Arc<Client>,
+    definition: mcp_client_rs::Tool,
+}
+
+impl MCPTool {
+    pub fn from_mcp_server(definition: mcp_client_rs::Tool, client: Arc<Client>) -> Self {
+        Self { client, definition }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("MCP tool error")]
+pub struct MCPToolError(String);
+
+impl ToolDyn for MCPTool {
+    fn name(&self) -> String {
+        self.definition.name.clone()
+    }
+
+    fn definition(
+        &self,
+        _prompt: String,
+    ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + Sync + '_>> {
+        Box::pin(async move {
+            ToolDefinition {
+                name: self.definition.name.clone(),
+                description: self.definition.description.clone(),
+                parameters: self.definition.input_schema.clone(),
+            }
+        })
+    }
+
+    fn call(
+        &self,
+        args: String,
+    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
+        let client = self.client.clone();
+        let name = self.definition.name.clone();
+        let args_clone = args.clone();
+        let args: serde_json::Value = serde_json::from_str(&args_clone).unwrap_or_default();
+        Box::pin(async move {
+            let result: CallToolResult = client.call_tool(&name, args).await.map_err(|e| {
+                ToolError::ToolCallError(Box::new(MCPToolError(format!(
+                    "Tool returned an error: {}",
+                    e
+                ))))
+            })?;
+            if result.is_error {
+                return Err(ToolError::ToolCallError(Box::new(MCPToolError(
+                    "Tool returned an error".to_string(),
+                ))));
+            }
+            Ok(result
+                .content
+                .into_iter()
+                .map(|c| match c {
+                    MessageContent::Text { text } => text,
+                    _ => "".to_string(),
+                })
+                .collect::<Vec<_>>()
+                .join(""))
+        })
     }
 }

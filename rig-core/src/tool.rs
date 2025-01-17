@@ -152,7 +152,7 @@ pub trait ToolDyn: Send + Sync {
     fn call(
         &self,
         args: String,
-    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>>;
 }
 
 impl<T: Tool> ToolDyn for T {
@@ -170,7 +170,7 @@ impl<T: Tool> ToolDyn for T {
     fn call(
         &self,
         args: String,
-    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
         Box::pin(async move {
             match serde_json::from_str(&args) {
                 Ok(args) => <Self as Tool>::call(self, args)
@@ -288,10 +288,6 @@ impl ToolSet {
     /// Call a tool with the given name and arguments
     pub async fn call(&self, toolname: &str, args: String) -> Result<String, ToolSetError> {
         if let Some(tool) = self.tools.get(toolname) {
-            tracing::info!(target: "rig",
-                "Calling tool {toolname} with args:\n{}",
-                serde_json::to_string_pretty(&args).unwrap_or_else(|_| args.clone())
-            );
             Ok(tool.call(args).await?)
         } else {
             Err(ToolSetError::ToolNotFoundError(toolname.to_string()))
