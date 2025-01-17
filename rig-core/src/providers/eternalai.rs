@@ -24,6 +24,7 @@ use serde_json::{json, Value};
 use std::ffi::c_uint;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::trace;
 
 // ================================================================
 // Main EternalAI Client
@@ -368,7 +369,7 @@ pub async fn get_on_chain_system_prompt(
 
     if !decoded_strings.is_empty() {
         let prompt = decoded_strings[0].clone();
-        println!("system prompt : {}", prompt);
+        tracing::info!("system prompt : {}", prompt);
         return fetch_on_chain_system_prompt(&prompt).await;
     }
     None
@@ -548,16 +549,18 @@ impl completion::CompletionModel for CompletionModel {
             && !eternal_ai_contract.is_empty()
             && !eternal_ai_agent_id.is_empty()
         {
-            println!(
+            tracing::info!(
                 "get on-chain system prompt with {}, {}, {}",
-                eternal_ai_rpc, eternal_ai_contract, eternal_ai_agent_id
+                eternal_ai_rpc,
+                eternal_ai_contract,
+                eternal_ai_agent_id
             );
             let c_value: c_uint = eternal_ai_agent_id.parse::<u32>().unwrap_or(0);
             let prompt =
                 get_on_chain_system_prompt(&eternal_ai_rpc, &eternal_ai_contract, c_value).await;
             match prompt {
                 None => {
-                    println!("on-chain sytem prompt is none")
+                    tracing::info!("on-chain sytem prompt is none")
                 }
                 Some(value) => {
                     let temp = completion::Message {
@@ -604,7 +607,7 @@ impl completion::CompletionModel for CompletionModel {
             })
         };
 
-        println!("request: {:?}", request.to_string());
+        tracing::debug!("request: {:?}", request.to_string());
 
         let response = self
             .client
