@@ -23,6 +23,19 @@
 </p>
 &nbsp;
 
+
+<div align="center">
+
+[📑 Docs](https://docs.rig.rs)
+<span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+[🌐 Website](https://rig.rs)
+<span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+[🤝 Contribute](https://github.com/0xPlaygrounds/rig/issues/new)
+<span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+[✍🏽 Blogs](https://docs.rig.rs/guides)
+
+</div>
+
 ✨ If you would like to help spread the word about Rig, please consider starring the repo!
 
 > [!WARNING]
