@@ -1,13 +1,14 @@
-//! OpenAI API client and Rig integration
+//! EternalAI API client and Rig integration
 //!
 //! # Example
 //! ```
-//! use rig::providers::openai;
+//! use rig::providers::eternalai;
 //!
-//! let client = openai::Client::new("YOUR_API_KEY");
+//! let client = eternalai::Client::new("YOUR_API_KEY");
 //!
-//! let gpt4o = client.completion_model(openai::GPT_4O);
+//! let gpt4o = client.completion_model(eternalai::NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8);
 //! ```
+
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -17,12 +18,13 @@ use crate::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
+use std::time::Duration;
 
 // ================================================================
-// Main OpenAI Client
+// Main EternalAI Client
 // ================================================================
-const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
+const ETERNALAI_API_BASE_URL: &str = "https://api.eternalai.org/v1";
 
 #[derive(Clone)]
 pub struct Client {
@@ -31,12 +33,12 @@ pub struct Client {
 }
 
 impl Client {
-    /// Create a new OpenAI client with the given API key.
+    /// Create a new EternalAI client with the given API key.
     pub fn new(api_key: &str) -> Self {
-        Self::from_url(api_key, OPENAI_API_BASE_URL)
+        Self::from_url(api_key, ETERNALAI_API_BASE_URL)
     }
 
-    /// Create a new OpenAI client with the given API key and base API URL.
+    /// Create a new EternalAI client with the given API key and base API URL.
     pub fn from_url(api_key: &str, base_url: &str) -> Self {
         Self {
             base_url: base_url.to_string(),
@@ -51,15 +53,16 @@ impl Client {
                     );
                     headers
                 })
+                .timeout(Duration::from_secs(120))
                 .build()
-                .expect("OpenAI reqwest client should build"),
+                .expect("EternalAI reqwest client should build"),
         }
     }
 
-    /// Create a new OpenAI client from the `OPENAI_API_KEY` environment variable.
+    /// Create a new EternalAI client from the `ETERNALAI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     pub fn from_env() -> Self {
-        let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
+        let api_key = std::env::var("ETERNALAI_API_KEY").expect("ETERNALAI_API_KEY not set");
         Self::new(&api_key)
     }
 
@@ -74,12 +77,12 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::openai::{Client, self};
+    /// use rig::providers::eternalai::{Client, self};
     ///
-    /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key");
+    /// // Initialize the EternalAI client
+    /// let eternalai = Client::new("your-open-ai-api-key");
     ///
-    /// let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_3_LARGE);
+    /// let embedding_model = eternalai.embedding_model(eternalai::TEXT_EMBEDDING_3_LARGE);
     /// ```
     pub fn embedding_model(&self, model: &str) -> EmbeddingModel {
         let ndims = match model {
@@ -94,12 +97,12 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::openai::{Client, self};
+    /// use rig::providers::eternalai::{Client, self};
     ///
-    /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key");
+    /// // Initialize the EternalAI client
+    /// let eternalai = Client::new("your-open-ai-api-key");
     ///
-    /// let embedding_model = openai.embedding_model("model-unknown-to-rig", 3072);
+    /// let embedding_model = eternalai.embedding_model("model-unknown-to-rig", 3072);
     /// ```
     pub fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> EmbeddingModel {
         EmbeddingModel::new(self.clone(), model, ndims)
@@ -109,12 +112,12 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::openai::{Client, self};
+    /// use rig::providers::eternalai::{Client, self};
     ///
-    /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key");
+    /// // Initialize the EternalAI client
+    /// let eternalai = Client::new("your-open-ai-api-key");
     ///
-    /// let embeddings = openai.embeddings(openai::TEXT_EMBEDDING_3_LARGE)
+    /// let embeddings = eternalai.embeddings(eternalai::TEXT_EMBEDDING_3_LARGE)
     ///     .simple_document("doc0", "Hello, world!")
     ///     .simple_document("doc1", "Goodbye, world!")
     ///     .build()
@@ -129,33 +132,33 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::openai::{Client, self};
+    /// use rig::providers::eternalai::{Client, self};
     ///
-    /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key");
+    /// // Initialize the EternalAI client
+    /// let eternalai = Client::new("your-open-ai-api-key");
     ///
-    /// let gpt4 = openai.completion_model(openai::GPT_4);
+    /// let gpt4 = eternalai.completion_model(eternalai::GPT_4);
     /// ```
-    pub fn completion_model(&self, model: &str) -> CompletionModel {
-        CompletionModel::new(self.clone(), model)
+    pub fn completion_model(&self, model: &str, chain_id: Option<&str>) -> CompletionModel {
+        CompletionModel::new(self.clone(), model, chain_id)
     }
 
     /// Create an agent builder with the given completion model.
     ///
     /// # Example
     /// ```
-    /// use rig::providers::openai::{Client, self};
+    /// use rig::providers::eternalai::{Client, self};
     ///
-    /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key");
+    /// // Initialize the Eternal client
+    /// let eternalai = Client::new("your-open-ai-api-key");
     ///
-    /// let agent = openai.agent(openai::GPT_4)
+    /// let agent = eternalai.agent(eternalai::UNSLOTH_LLAMA_3_3_70B_INSTRUCT_BNB_4BIT, None)
     ///    .preamble("You are comedian AI with a mission to make people laugh.")
     ///    .temperature(0.0)
     ///    .build();
     /// ```
-    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
+    pub fn agent(&self, model: &str, chain_id: Option<&str>) -> AgentBuilder<CompletionModel> {
+        AgentBuilder::new(self.completion_model(model, chain_id))
     }
 
     /// Create an extractor builder with the given completion model.
@@ -163,7 +166,7 @@ impl Client {
         &self,
         model: &str,
     ) -> ExtractorBuilder<T, CompletionModel> {
-        ExtractorBuilder::new(self.completion_model(model))
+        ExtractorBuilder::new(self.completion_model(model, None))
     }
 }
 
@@ -180,7 +183,7 @@ enum ApiResponse<T> {
 }
 
 // ================================================================
-// OpenAI Embedding API
+// EternalAI Embedding API
 // ================================================================
 /// `text-embedding-3-large` embedding model
 pub const TEXT_EMBEDDING_3_LARGE: &str = "text-embedding-3-large";
@@ -249,7 +252,6 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         self.ndims
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
@@ -270,7 +272,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             match response.json::<ApiResponse<EmbeddingResponse>>().await? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
-                        "OpenAI embedding token usage: {}",
+                        "EternalAI embedding token usage: {}",
                         response.usage
                     );
 
@@ -309,52 +311,25 @@ impl EmbeddingModel {
 }
 
 // ================================================================
-// OpenAI Completion API
+// EternalAI Completion API
 // ================================================================
-/// `o1-preview` completion model
-pub const O1_PREVIEW: &str = "o1-preview";
-/// `o1-preview-2024-09-12` completion model
-pub const O1_PREVIEW_2024_09_12: &str = "o1-preview-2024-09-12";
-/// `o1-mini completion model
-pub const O1_MINI: &str = "o1-mini";
-/// `o1-mini-2024-09-12` completion model
-pub const O1_MINI_2024_09_12: &str = "o1-mini-2024-09-12";
-/// `gpt-4o` completion model
-pub const GPT_4O: &str = "gpt-4o";
-/// `gpt-4o-mini` completion model
-pub const GPT_4O_MINI: &str = "gpt-4o-mini";
-/// `gpt-4o-2024-05-13` completion model
-pub const GPT_4O_2024_05_13: &str = "gpt-4o-2024-05-13";
-/// `gpt-4-turbo` completion model
-pub const GPT_4_TURBO: &str = "gpt-4-turbo";
-/// `gpt-4-turbo-2024-04-09` completion model
-pub const GPT_4_TURBO_2024_04_09: &str = "gpt-4-turbo-2024-04-09";
-/// `gpt-4-turbo-preview` completion model
-pub const GPT_4_TURBO_PREVIEW: &str = "gpt-4-turbo-preview";
-/// `gpt-4-0125-preview` completion model
-pub const GPT_4_0125_PREVIEW: &str = "gpt-4-0125-preview";
-/// `gpt-4-1106-preview` completion model
-pub const GPT_4_1106_PREVIEW: &str = "gpt-4-1106-preview";
-/// `gpt-4-vision-preview` completion model
-pub const GPT_4_VISION_PREVIEW: &str = "gpt-4-vision-preview";
-/// `gpt-4-1106-vision-preview` completion model
-pub const GPT_4_1106_VISION_PREVIEW: &str = "gpt-4-1106-vision-preview";
-/// `gpt-4` completion model
-pub const GPT_4: &str = "gpt-4";
-/// `gpt-4-0613` completion model
-pub const GPT_4_0613: &str = "gpt-4-0613";
-/// `gpt-4-32k` completion model
-pub const GPT_4_32K: &str = "gpt-4-32k";
-/// `gpt-4-32k-0613` completion model
-pub const GPT_4_32K_0613: &str = "gpt-4-32k-0613";
-/// `gpt-3.5-turbo` completion model
-pub const GPT_35_TURBO: &str = "gpt-3.5-turbo";
-/// `gpt-3.5-turbo-0125` completion model
-pub const GPT_35_TURBO_0125: &str = "gpt-3.5-turbo-0125";
-/// `gpt-3.5-turbo-1106` completion model
-pub const GPT_35_TURBO_1106: &str = "gpt-3.5-turbo-1106";
-/// `gpt-3.5-turbo-instruct` completion model
-pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
+pub const NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8: &str =
+    "NousResearch/Hermes-3-Llama-3.1-70B-FP8";
+pub const UNSLOTH_LLAMA_3_3_70B_INSTRUCT_BNB_4BIT: &str = "unsloth/Llama-3.3-70B-Instruct-bnb-4bit";
+
+pub const MAPPING_CHAINID: [(&str, &str); 2] = [
+    (NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8, "45762"),
+    (UNSLOTH_LLAMA_3_3_70B_INSTRUCT_BNB_4BIT, "45762"),
+];
+
+pub fn get_chain_id(key: &str) -> Option<&str> {
+    for &(k, v) in &MAPPING_CHAINID {
+        if k == key {
+            return Some(v);
+        }
+    }
+    None
+}
 
 #[derive(Debug, Deserialize)]
 pub struct CompletionResponse {
@@ -365,6 +340,7 @@ pub struct CompletionResponse {
     pub system_fingerprint: Option<String>,
     pub choices: Vec<Choice>,
     pub usage: Option<Usage>,
+    pub onchain_data: Option<Value>,
 }
 
 impl From<ApiErrorResponse> for CompletionError {
@@ -385,15 +361,15 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         ..
                     },
                 ..
-            }, ..]
-                if !calls.is_empty() =>
-            {
-                let call = calls.first().unwrap();
+            }, ..] => {
+                let call = calls.first().ok_or(CompletionError::ResponseError(
+                    "Tool selection is empty".into(),
+                ))?;
 
                 Ok(completion::CompletionResponse {
                     choice: completion::ModelChoice::ToolCall(
                         call.function.name.clone(),
-                        "".to_owned(),
+                        call.id.clone(),
                         serde_json::from_str(&call.function.arguments)?,
                     ),
                     raw_response: value,
@@ -465,13 +441,15 @@ pub struct CompletionModel {
     client: Client,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
+    pub chain_id: String,
 }
 
 impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+    pub fn new(client: Client, model: &str, chain_id: Option<&str>) -> Self {
         Self {
             client,
             model: model.to_string(),
+            chain_id: chain_id.unwrap_or("").to_string(),
         }
     }
 }
@@ -479,7 +457,6 @@ impl CompletionModel {
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         mut completion_request: CompletionRequest,
@@ -506,15 +483,22 @@ impl completion::CompletionModel for CompletionModel {
             content: prompt_with_context,
         });
 
+        let mut chain_id = self.chain_id.clone();
+        if chain_id.is_empty() {
+            chain_id = get_chain_id(self.model.as_str()).unwrap_or("").to_string();
+        }
+
         let request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
+                "chain_id": chain_id,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
             })
         } else {
             json!({
                 "model": self.model,
+                "chain_id": chain_id,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
@@ -539,9 +523,18 @@ impl completion::CompletionModel for CompletionModel {
             match response.json::<ApiResponse<CompletionResponse>>().await? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
-                        "OpenAI completion token usage: {:?}",
+                        "EternalAI completion token usage: {:?}",
                         response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
                     );
+                    match &response.onchain_data {
+                        Some(data) => {
+                            let onchain_data = serde_json::to_string_pretty(data)?;
+                            println!("onchain_data: {}", onchain_data);
+                        }
+                        None => {
+                            println!("onchain_data: None");
+                        }
+                    }
                     response.try_into()
                 }
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),

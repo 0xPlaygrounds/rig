@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.4...rig-qdrant-v0.1.5) - 2025-01-13
+
+### Other
+
+- Mock provider API in vector store integration tests (#186)
+
 ## [0.1.4](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.3...rig-qdrant-v0.1.4) - 2024-12-19
 
 ### Other
