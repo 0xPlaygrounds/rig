@@ -249,8 +249,10 @@ pub trait CompletionModel: Clone + Send + Sync {
 pub struct CompletionRequest {
     /// The prompt to be sent to the completion model provider
     pub prompt: String,
-    /// The preamble to be sent to the completion model provider
-    pub preamble: Option<String>,
+    /// The preambles to be sent to the completion model provider
+    pub preamble: Option<Vec<String>>,
+    /// The cached preamble to be sent to the completion model provider
+    pub cached_preamble: Option<Vec<String>>,
     /// The chat history to be sent to the completion model provider
     pub chat_history: Vec<Message>,
     /// The documents to be sent to the completion model provider
@@ -330,7 +332,8 @@ impl CompletionRequest {
 pub struct CompletionRequestBuilder<M: CompletionModel> {
     model: M,
     prompt: String,
-    preamble: Option<String>,
+    preamble: Option<Vec<String>>,
+    cached_preamble: Option<Vec<String>>,
     chat_history: Vec<Message>,
     documents: Vec<Document>,
     tools: Vec<ToolDefinition>,
@@ -345,6 +348,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             model,
             prompt,
             preamble: None,
+            cached_preamble: None,
             chat_history: Vec::new(),
             documents: Vec::new(),
             tools: Vec::new(),
@@ -355,7 +359,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     }
 
     /// Sets the preamble for the completion request.
-    pub fn preamble(mut self, preamble: String) -> Self {
+    pub fn preamble(mut self, preamble: Vec<String>) -> Self {
         self.preamble = Some(preamble);
         self
     }
@@ -452,11 +456,18 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         self
     }
 
+    /// Sets the cached preamble for the completion request.
+    pub fn cached_preamble(mut self, cached_preamble: Option<Vec<String>>) -> Self {
+        self.cached_preamble = cached_preamble;
+        self
+    }
+
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
         CompletionRequest {
             prompt: self.prompt,
             preamble: self.preamble,
+            cached_preamble: self.cached_preamble,
             chat_history: self.chat_history,
             documents: self.documents,
             tools: self.tools,
@@ -527,6 +538,7 @@ mod tests {
         let request = CompletionRequest {
             prompt: "What is the capital of France?".to_string(),
             preamble: None,
+            cached_preamble: None,
             chat_history: Vec::new(),
             documents: vec![doc1, doc2],
             tools: Vec::new(),

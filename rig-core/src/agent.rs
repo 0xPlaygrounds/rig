@@ -143,8 +143,10 @@ use crate::{
 pub struct Agent<M: CompletionModel> {
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     model: M,
+    /// Cached preamble
+    cached_preamble: Option<Vec<String>>,
     /// System prompt
-    preamble: String,
+    preamble: Vec<String>,
     /// Context documents always available to the agent
     static_context: Vec<Document>,
     /// Tools that are always available to the agent (identified by their name)
@@ -236,6 +238,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
         Ok(self
             .model
             .completion_request(prompt)
+            .cached_preamble(self.cached_preamble.clone())
             .preamble(self.preamble.clone())
             .messages(chat_history)
             .documents([self.static_context.clone(), dynamic_context].concat())
@@ -297,8 +300,10 @@ impl<M: CompletionModel> Chat for Agent<M> {
 pub struct AgentBuilder<M: CompletionModel> {
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     model: M,
+    /// Cached preamble
+    cached_preamble: Option<Vec<String>>,
     /// System prompt
-    preamble: Option<String>,
+    preamble: Option<Vec<String>>,
     /// Context documents always available to the agent
     static_context: Vec<Document>,
     /// Tools that are always available to the agent (by name)
@@ -321,6 +326,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
     pub fn new(model: M) -> Self {
         Self {
             model,
+            cached_preamble: None,
             preamble: None,
             static_context: vec![],
             static_tools: vec![],
@@ -333,19 +339,25 @@ impl<M: CompletionModel> AgentBuilder<M> {
         }
     }
 
+    pub fn cached_preamble(mut self, cached_preamble: Vec<String>) -> Self {
+        self.cached_preamble = Some(cached_preamble);
+        self
+    }
+
     /// Set the system prompt
     pub fn preamble(mut self, preamble: &str) -> Self {
-        self.preamble = Some(preamble.into());
+        self.preamble = Some(vec![preamble.into()]);
         self
     }
 
     /// Append to the preamble of the agent
     pub fn append_preamble(mut self, doc: &str) -> Self {
-        self.preamble = Some(format!(
-            "{}\n{}",
-            self.preamble.unwrap_or_else(|| "".into()),
-            doc
-        ));
+        self.preamble = if let Some(preamble) = self.preamble.as_mut() {
+            preamble.push(doc.into());
+            Some(preamble.to_vec())
+        } else {
+            Some(vec![doc.into()])
+        };
         self
     }
 
@@ -421,6 +433,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
     pub fn build(self) -> Agent<M> {
         Agent {
             model: self.model,
+            cached_preamble: self.cached_preamble,
             preamble: self.preamble.unwrap_or_default(),
             static_context: self.static_context,
             static_tools: self.static_tools,
