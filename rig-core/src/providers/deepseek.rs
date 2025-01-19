@@ -9,9 +9,7 @@
 //! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_CHAT);
 //! ```
 use crate::{
-    completion::{
-        CompletionModel, CompletionRequest, CompletionResponse
-    },
+    completion::{CompletionModel, CompletionRequest, CompletionResponse},
     json_utils,
 };
 use reqwest::Client as HttpClient;
@@ -22,7 +20,6 @@ use serde_json::json;
 // Main DeepSeek Client
 // ================================================================
 const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com";
-
 
 #[derive(Clone)]
 pub struct Client {
@@ -173,11 +170,9 @@ impl CompletionModel for DeepSeekCompletionModel {
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(
-                crate::completion::CompletionError::ProviderError(format!(
-                    "DeepSeek call failed: {status} - {text}"
-                ))
-            );
+            return Err(crate::completion::CompletionError::ProviderError(format!(
+                "DeepSeek call failed: {status} - {text}"
+            )));
         }
 
         let json_resp: DeepSeekResponse = resp.json().await?;
@@ -185,7 +180,7 @@ impl CompletionModel for DeepSeekCompletionModel {
 
         // If no choices or content, return an empty message
         let content = if let Some(choices) = &json_resp.choices {
-            if let Some(choice) = choices.get(0) {
+            if let Some(choice) = choices.first() {
                 if let Some(msg) = &choice.message {
                     msg.content.clone().unwrap_or_default()
                 } else {
@@ -213,4 +208,3 @@ impl CompletionModel for DeepSeekCompletionModel {
 // ================================================================
 /// `deepseek-chat` completion model
 pub const DEEPSEEK_CHAT: &str = "deepseek-chat";
-
