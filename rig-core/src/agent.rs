@@ -268,6 +268,19 @@ impl<M: CompletionModel> Chat for Agent<M> {
                 choice: ModelChoice::ToolCall(toolname, _, args),
                 ..
             } => Ok(self.tools.call(&toolname, args.to_string()).await?),
+            CompletionResponse {
+                choice: ModelChoice::MultipleToolCalls(tool_calls),
+                ..
+            } => {
+                let mut results = Vec::new();
+                for tool_call in tool_calls {
+                    if let ModelChoice::ToolCall(toolname, _, args) = tool_call {
+                        let result = self.tools.call(&toolname, args.to_string()).await?;
+                        results.push(result);
+                    }
+                }
+                Ok(results.join("\n"))
+            }
         }
     }
 }
