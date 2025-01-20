@@ -1,12 +1,12 @@
-//! Mootshot API client and Rig integration
+//! Moonshot API client and Rig integration
 //!
 //! # Example
 //! ```
-//! use rig::providers::mootshot;
+//! use rig::providers::moonshot;
 //!
-//! let client = mootshot::Client::new("YOUR_API_KEY");
+//! let client = moonshot::Client::new("YOUR_API_KEY");
 //!
-//! let mootshot_model = client.completion_model(mootshot::MOOTSHOT_CHAT);
+//! let moonshot_model = client.completion_model(moonshot::MOONSHOT_CHAT);
 //! ```
 
 use crate::{
@@ -21,9 +21,9 @@ use serde_json::json;
 use std::time::Duration;
 
 // ================================================================
-// Main Mootshot Client
+// Main Moonshot Client
 // ================================================================
-const MOOTSHOT_API_BASE_URL: &str = "https://api.mootshot.com/v1";
+const MOONSHOT_API_BASE_URL: &str = "https://api.moonshot.cn/v1";
 
 #[derive(Clone)]
 pub struct Client {
@@ -32,12 +32,12 @@ pub struct Client {
 }
 
 impl Client {
-    /// Create a new Mootshot client with the given API key.
+    /// Create a new Moonshot client with the given API key.
     pub fn new(api_key: &str) -> Self {
-        Self::from_url(api_key, MOOTSHOT_API_BASE_URL)
+        Self::from_url(api_key, MOONSHOT_API_BASE_URL)
     }
 
-    /// Create a new Mootshot client with the given API key and base API URL.
+    /// Create a new Moonshot client with the given API key and base API URL.
     pub fn from_url(api_key: &str, base_url: &str) -> Self {
         Self {
             base_url: base_url.to_string(),
@@ -54,14 +54,14 @@ impl Client {
                 })
                 .timeout(Duration::from_secs(120))
                 .build()
-                .expect("Mootshot reqwest client should build"),
+                .expect("Moonshot reqwest client should build"),
         }
     }
 
-    /// Create a new Mootshot client from the `MOOTSHOT_API_KEY` environment variable.
+    /// Create a new Moonshot client from the `MOONSHOT_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     pub fn from_env() -> Self {
-        let api_key = std::env::var("MOOTSHOT_API_KEY").expect("MOOTSHOT_API_KEY not set");
+        let api_key = std::env::var("MOONSHOT_API_KEY").expect("MOONSHOT_API_KEY not set");
         Self::new(&api_key)
     }
 
@@ -74,12 +74,12 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::mootshot::{Client, self};
+    /// use rig::providers::moonshot::{Client, self};
     ///
-    /// // Initialize the Mootshot client
-    /// let mootshot = Client::new("your-mootshot-api-key");
+    /// // Initialize the Moonshot client
+    /// let moonshot = Client::new("your-moonshot-api-key");
     ///
-    /// let completion_model = mootshot.completion_model(mootshot::MOOTSHOT_CHAT);
+    /// let completion_model = moonshot.completion_model(moonshot::MOONSHOT_CHAT);
     /// ```
     pub fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
@@ -101,11 +101,11 @@ impl Client {
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
-    error: MootshotError,
+    error: MoonshotError,
 }
 
 #[derive(Debug, Deserialize)]
-struct MootshotError {
+struct MoonshotError {
     message: String,
 }
 
@@ -117,9 +117,9 @@ enum ApiResponse<T> {
 }
 
 // ================================================================
-// Mootshot Completion API
+// Moonshot Completion API
 // ================================================================
-pub const MOOTSHOT_CHAT: &str = "mootshot-chat";
+pub const MOONSHOT_CHAT: &str = "moonshot-v1-128k";
 
 #[derive(Debug, Deserialize)]
 pub struct CompletionResponse {
@@ -250,7 +250,7 @@ impl completion::CompletionModel for CompletionModel {
             match response.json::<ApiResponse<CompletionResponse>>().await? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
-                        "Mootshot completion token usage: {}",
+                        "Moonshot completion token usage: {}",
                         response.usage
                     );
                     response.try_into()

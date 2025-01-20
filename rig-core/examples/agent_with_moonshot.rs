@@ -1,5 +1,5 @@
 use rig::agent::AgentBuilder;
-use rig::providers::mootshot::{CompletionModel, MOOTSHOT_CHAT};
+use rig::providers::moonshot::{CompletionModel, MOONSHOT_CHAT};
 use rig::{completion::Prompt, providers};
 
 #[tokio::main]
@@ -14,13 +14,13 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn client() -> providers::mootshot::Client {
-    providers::mootshot::Client::from_env()
+fn client() -> providers::moonshot::Client {
+    providers::moonshot::Client::from_env()
 }
 
 fn partial_agent_mootshot() -> AgentBuilder<CompletionModel> {
     let client = client();
-    client.agent(MOOTSHOT_CHAT)
+    client.agent(MOONSHOT_CHAT)
 }
 
 async fn basic_mootshot() -> Result<(), anyhow::Error> {
@@ -36,13 +36,11 @@ async fn basic_mootshot() -> Result<(), anyhow::Error> {
 }
 
 async fn context_mootshot() -> Result<(), anyhow::Error> {
-    let model = client().completion_model(MOOTSHOT_CHAT);
+    let model = client().completion_model(MOONSHOT_CHAT);
 
     // Create an agent with multiple context documents
     let agent = AgentBuilder::new(model)
-        .context("Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
-        .context("Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
-        .context("Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.")
+        .preamble("Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
         .build();
 
     // Prompt the agent and print the response
