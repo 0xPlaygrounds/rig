@@ -1,0 +1,29 @@
+[package]
+name = "rig-postgres"
+version = "0.1.0"
+edition = "2021"
+description = "PostgreSQL-based vector store implementation for the rig framework"
+license = "MIT"
+
+[dependencies]
+pgvector = { version = "0.4.0", features = ["postgres"] }
+rig-core = { path = "../rig-core", version = "0.6.0", features = ["derive"] }
+serde = { version = "1.0.215", features = ["derive"] }
+serde_json = "1.0.133"
+tokio-postgres = "0.7.12"
+tracing = "0.1.40"
+sqlx = { version = "0.8", features = [
+  "runtime-tokio",
+  "postgres",
+  "uuid",
+  "json",
+] }
+
+[dev-dependencies]
+anyhow = "1.0.94"
+log = "0.4.22"
+tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread"] }
+tokio-test = "0.4.4"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.11.0", features = ["v4"] }
+testcontainers = "0.23.1"
