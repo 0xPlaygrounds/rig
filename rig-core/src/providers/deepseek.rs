@@ -18,7 +18,7 @@ use crate::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 use std::time::Duration;
 
 // ================================================================
@@ -339,7 +339,7 @@ impl completion::CompletionModel for CompletionModel {
 
     async fn completion(
         &self,
-        completion_request: CompletionRequest,
+        mut completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let mut full_history = if let Some(preamble) = &completion_request.preamble {
             vec![completion::Message {
