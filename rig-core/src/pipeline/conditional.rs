@@ -1,4 +1,3 @@
-
 /// Creates an `Op` that conditionally dispatches to one of multiple sub-ops
 /// based on the variant of the input enum.
 ///
@@ -12,7 +11,7 @@
 ///    ```
 ///    This allows all variants to share the same inner type (`T`).
 /// 2. All sub-ops must have the same `Input` type (this `T`) and the same `Output`.
-///    That is, for each variant, the corresponding op must implement 
+///    That is, for each variant, the corresponding op must implement
 ///    `Op<Input = T, Output = Out>`.
 ///
 /// # Example
@@ -83,7 +82,7 @@ macro_rules! conditional {
 ///    ```
 ///    This allows all variants to share the same inner type (`T`).
 /// 2. All sub-ops must have the same `Input` type (this `T`) and the same `Output`.
-///    That is, for each variant, the corresponding op must implement 
+///    That is, for each variant, the corresponding op must implement
 ///    `TryOp<Input = T, Output = Out, Error = E>`.
 ///
 /// # Example
@@ -145,7 +144,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_conditional_op() {
-        
         enum ExampleEnum<T> {
             Variant1(T),
             Variant2(T),
@@ -153,12 +151,11 @@ mod tests {
 
         let op1 = map(|x: i32| x + 1);
         let op2 = map(|x: i32| x * 2);
-        
-        let conditional = 
-            conditional!(ExampleEnum,
-                Variant1 => op1, 
-                Variant2 => op2
-            );
+
+        let conditional = conditional!(ExampleEnum,
+            Variant1 => op1,
+            Variant2 => op2
+        );
 
         let result1 = conditional.call(ExampleEnum::Variant1(2)).await;
         assert_eq!(result1, 3);
@@ -169,20 +166,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_try_conditional_op() {
-
         enum ExampleEnum<T> {
             Variant1(T),
-            Variant2(T)
+            Variant2(T),
         }
 
         let op1 = map(|x: i32| Ok::<_, String>(x + 1));
         let op2 = map(|x: i32| Ok::<_, String>(x * 2));
 
-        let try_conditional = 
-            try_conditional!(ExampleEnum, 
-                Variant1 => op1,
-                Variant2 => op2
-            );
+        let try_conditional = try_conditional!(ExampleEnum,
+            Variant1 => op1,
+            Variant2 => op2
+        );
 
         let result1 = try_conditional.try_call(ExampleEnum::Variant1(2)).await;
         assert_eq!(result1, Ok(3));
