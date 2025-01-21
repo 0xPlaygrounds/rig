@@ -2,21 +2,20 @@
 //!
 //! # Example
 //! ```
-//! use rig::providers::eternalai;
+//! use rig_eternalai::providers::eternalai;
 //!
 //! let client = eternalai::Client::new("YOUR_API_KEY");
 //!
 //! let gpt4o = client.completion_model(eternalai::NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8);
 //! ```
 
-use crate::{
-    agent::AgentBuilder,
-    completion::{self, CompletionError, CompletionRequest},
-    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
-    extractor::ExtractorBuilder,
-    json_utils, Embed,
-};
-use rig_eternalai::eternalai_system_prompt_manager_toolset;
+use crate::eternalai_system_prompt_manager_toolset;
+use crate::json_utils;
+use rig::agent::AgentBuilder;
+use rig::completion::{CompletionError, CompletionRequest};
+use rig::embeddings::{EmbeddingError, EmbeddingsBuilder};
+use rig::extractor::ExtractorBuilder;
+use rig::{completion, embeddings, Embed};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -78,7 +77,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the EternalAI client
     /// let eternalai = Client::new("your-open-ai-api-key");
@@ -98,7 +97,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the EternalAI client
     /// let eternalai = Client::new("your-open-ai-api-key");
@@ -113,7 +112,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the EternalAI client
     /// let eternalai = Client::new("your-open-ai-api-key");
@@ -133,7 +132,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the EternalAI client
     /// let eternalai = Client::new("your-open-ai-api-key");
@@ -148,7 +147,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the Eternal client
     /// let eternalai = Client::new("your-open-ai-api-key");
