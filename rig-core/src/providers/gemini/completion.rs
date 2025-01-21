@@ -76,6 +76,19 @@ impl completion::CompletionModel for CompletionModel {
             generation_config.max_output_tokens = Some(max_tokens);
         }
 
+        // https://ai.google.dev/api/generate-content 
+        let system_instruction = if let Some(preamble) = completion_request.preamble.clone() {
+            Some(Content {
+                parts: vec![Part {
+                    text: Some(preamble),
+                    ..Default::default()
+                }],
+                role: Some(Role::Model),
+            })
+        } else {
+            None
+        };
+
         let request = GenerateContentRequest {
             contents: full_history
                 .into_iter()
@@ -102,13 +115,7 @@ impl completion::CompletionModel for CompletionModel {
                     .collect(),
             ),
             tool_config: None,
-            system_instruction: Some(Content {
-                parts: vec![Part {
-                    text: Some("system".to_string()),
-                    ..Default::default()
-                }],
-                role: Some(Role::Model),
-            }),
+            system_instruction,
         };
 
         tracing::debug!("Sending completion request to Gemini API");
