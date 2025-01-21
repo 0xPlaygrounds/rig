@@ -115,15 +115,9 @@ impl CompletionModel for DeepSeekCompletionModel {
             }));
         }
 
-        // Add user’s prompt as well
-        messages_json.push(json!({
-            "role": "user",
-            "content": request.prompt_with_context(),
-        }));
-
         // If chat_history is present, we can push them.
         // Typically, a "user" role is "USER" and an "assistant" role is "system" or "assistant"
-        for msg in request.chat_history {
+        for msg in &request.chat_history {
             let role = match msg.role.as_str() {
                 "system" => "system",
                 "assistant" => "assistant",
@@ -134,6 +128,12 @@ impl CompletionModel for DeepSeekCompletionModel {
                 "content": msg.content,
             }));
         }
+
+        // Add user’s prompt as well
+        messages_json.push(json!({
+            "role": "user",
+            "content": request.prompt_with_context(),
+        }));
 
         // 2. Prepare the body as DeepSeek expects
         let body = json!({
