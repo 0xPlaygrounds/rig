@@ -20,7 +20,6 @@ use crate::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use thiserror::Error;
 
 // ================================================================
 // Main Cohere Client
@@ -223,24 +222,20 @@ impl TryFrom<message::Message> for Vec<Message> {
                 })
                 .collect::<Result<Vec<_>, _>>()?,
 
-            message::Message::Assistant {
-                content,
-                tool_calls,
-            } => {
-                if tool_calls.len() > 0 {
-                    return Err(MessageError::ConversionError(
-                        "Tool calls are not supported by Perplexity".to_owned(),
-                    ));
-                }
-
-                content
+            message::Message::Assistant(content) => match content {
+                message::AssistantContent::Content { content } => content
                     .into_iter()
                     .map(|content| Message {
                         role: Role::Assistant,
                         content: content.into(),
                     })
-                    .collect::<Vec<_>>()
-            }
+                    .collect::<Vec<_>>(),
+                _ => {
+                    return Err(MessageError::ConversionError(
+                        "Only text assistant message content is supported by Perplexity".to_owned(),
+                    ))
+                }
+            },
 
             _ => {
                 return Err(MessageError::ConversionError(

@@ -5,7 +5,7 @@
 
 use crate::{
     completion::{self, CompletionError},
-    json_utils,
+    json_utils, message, providers::openai::Message,
 };
 
 use serde_json::json;
@@ -42,22 +42,15 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         mut completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let mut messages = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
-                role: "system".into(),
-                content: preamble.clone(),
-            }]
-        } else {
-            vec![]
+        let mut messages: Vec<message::Message> = match &completion_request.preamble {
+            Some(preamble) => vec![preamble.as_str().into()],
+            None => vec![],
         };
         messages.append(&mut completion_request.chat_history);
+        messages.push(completion_request.prompt_with_context());
 
-        let prompt_with_context = completion_request.prompt_with_context();
-
-        messages.push(completion::Message {
-            role: "user".into(),
-            content: prompt_with_context,
-        });
+        // Convert history to open ai message format
+        let messages = messages.into_iter().map(Message::from).collect::<Vec<_>>();
 
         let mut request = if completion_request.tools.is_empty() {
             json!({
@@ -103,35 +96,35 @@ pub mod xai_api_types {
     use serde::{Deserialize, Serialize};
 
     use crate::completion::{self, CompletionError};
+    use crate::providers::openai::{AssistantContent, AssistantMessage, Message};
 
     impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
         type Error = CompletionError;
 
-        fn try_from(value: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
+        fn try_from(value: CompletionResponse) -> std::result::Result<Self, Self::Error> {
             match value.choices.as_slice() {
                 [Choice {
-                    message:
-                        Message {
-                            content: Some(content),
-                            ..
-                        },
-                    ..
-                }, ..] => Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::Message(content.to_string()),
-                    raw_response: value,
-                }),
-                [Choice {
-                    message:
-                        Message {
-                            tool_calls: Some(calls),
-                            ..
-                        },
+                    message: Message::Assistant(AssistantMessage::Content { content, .. }),
                     ..
                 }, ..] => {
-                    let call = calls.first().ok_or(CompletionError::ResponseError(
-                        "Tool selection is empty".into(),
-                    ))?;
-
+                    let content_str = content
+                        .iter()
+                        .map(|c| match c {
+                            AssistantContent::Text { text } => text.clone(),
+                            AssistantContent::Refusal { refusal } => refusal.clone(),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    Ok(completion::CompletionResponse {
+                        choice: completion::ModelChoice::Message(content_str),
+                        raw_response: value,
+                    })
+                }
+                [Choice {
+                    message: Message::Assistant(AssistantMessage::ToolCalls { tool_calls, .. }),
+                    ..
+                }, ..] => {
+                    let call = tool_calls.first();
                     Ok(completion::CompletionResponse {
                         choice: completion::ModelChoice::ToolCall(
                             call.function.name.clone(),
@@ -141,7 +134,7 @@ pub mod xai_api_types {
                     })
                 }
                 _ => Err(CompletionError::ResponseError(
-                    "Response did not contain a message or tool call".into(),
+                    "Response did not contain a valid message or tool call".into(),
                 )),
             }
         }
@@ -154,13 +147,6 @@ pub mod xai_api_types {
                 function: tool,
             }
         }
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct ToolCall {
-        pub id: String,
-        pub r#type: String,
-        pub function: Function,
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -191,13 +177,6 @@ pub mod xai_api_types {
         pub finish_reason: String,
         pub index: i32,
         pub message: Message,
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct Message {
-        pub role: String,
-        pub content: Option<String>,
-        pub tool_calls: Option<Vec<ToolCall>>,
     }
 
     #[derive(Debug, Deserialize)]

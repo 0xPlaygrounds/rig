@@ -13,7 +13,9 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     extractor::ExtractorBuilder,
-    json_utils, Embed,
+    json_utils,
+    message::{self, AudioMediaType, ImageDetail},
+    Embed, OneOrMany,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -373,31 +375,30 @@ impl From<ApiErrorResponse> for CompletionError {
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
-    fn try_from(value: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
+    fn try_from(value: CompletionResponse) -> std::result::Result<Self, Self::Error> {
         match value.choices.as_slice() {
             [Choice {
-                message:
-                    Message {
-                        content: Some(content),
-                        ..
-                    },
-                ..
-            }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::Message(content.to_string()),
-                raw_response: value,
-            }),
-            [Choice {
-                message:
-                    Message {
-                        tool_calls: Some(calls),
-                        ..
-                    },
+                message: Message::Assistant(AssistantMessage::Content { content, .. }),
                 ..
             }, ..] => {
-                let call = calls.first().ok_or(CompletionError::ResponseError(
-                    "Tool selection is empty".into(),
-                ))?;
-
+                let content_str = content
+                    .iter()
+                    .map(|c| match c {
+                        AssistantContent::Text { text } => text.clone(),
+                        AssistantContent::Refusal { refusal } => refusal.clone(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                Ok(completion::CompletionResponse {
+                    choice: completion::ModelChoice::Message(content_str),
+                    raw_response: value,
+                })
+            }
+            [Choice {
+                message: Message::Assistant(AssistantMessage::ToolCalls { tool_calls, .. }),
+                ..
+            }, ..] => {
+                let call = tool_calls.first();
                 Ok(completion::CompletionResponse {
                     choice: completion::ModelChoice::ToolCall(
                         call.function.name.clone(),
@@ -407,13 +408,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 })
             }
             _ => Err(CompletionError::ResponseError(
-                "Response did not contain a message or tool call".into(),
+                "Response did not contain a valid message or tool call".into(),
             )),
         }
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Choice {
     pub index: usize,
     pub message: Message,
@@ -421,14 +422,73 @@ pub struct Choice {
     pub finish_reason: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Message {
-    pub role: String,
-    pub content: Option<String>,
-    pub tool_calls: Option<Vec<ToolCall>>,
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum Message {
+    System {
+        content: OneOrMany<String>,
+        name: Option<String>,
+    },
+    User {
+        content: OneOrMany<UserContent>,
+        name: Option<String>,
+    },
+    Assistant(AssistantMessage),
+    Tool {
+        tool_call_id: String,
+        content: OneOrMany<String>,
+    },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
+pub enum AssistantMessage {
+    Content {
+        content: OneOrMany<AssistantContent>,
+        refusal: Option<String>,
+        audio: Option<AudioAssistant>,
+        name: Option<String>,
+    },
+    ToolCalls {
+        tool_calls: OneOrMany<ToolCall>,
+        refusal: Option<String>,
+        audio: Option<AudioAssistant>,
+        name: Option<String>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AudioAssistant {
+    id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum AssistantContent {
+    Text { text: String },
+    Refusal { refusal: String },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum UserContent {
+    Text { text: String },
+    Image { image_url: ImageUrl },
+    Audio { input_audio: InputAudio },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ImageUrl {
+    pub url: String,
+    pub detail: ImageDetail,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InputAudio {
+    pub data: String,
+    pub format: AudioMediaType,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ToolCall {
     pub id: String,
     pub r#type: String,
@@ -450,10 +510,82 @@ impl From<completion::ToolDefinition> for ToolDefinition {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Function {
     pub name: String,
     pub arguments: String,
+}
+
+impl From<message::Message> for Message {
+    fn from(message: message::Message) -> Self {
+        match message {
+            message::Message::User { content } => Message::User {
+                content: content.map(|content| content.into()),
+                name: None,
+            },
+            message::Message::Assistant(content) => match content {
+                message::AssistantContent::Content { content } => Message::Assistant {
+                    0: AssistantMessage::Content {
+                        content: content.map(|content| AssistantContent::Text { text: content }),
+                        refusal: None,
+                        audio: None,
+                        name: None,
+                    },
+                },
+                message::AssistantContent::ToolCalls { tool_calls } => Message::Assistant {
+                    0: AssistantMessage::ToolCalls {
+                        tool_calls: tool_calls.map(|tool_call| tool_call.into()),
+                        refusal: None,
+                        audio: None,
+                        name: None,
+                    },
+                },
+            },
+            message::Message::ToolResult { id, content } => Message::Tool {
+                tool_call_id: id,
+                content: OneOrMany::one(content),
+            },
+        }
+    }
+}
+
+impl From<message::ToolCall> for ToolCall {
+    fn from(tool_call: message::ToolCall) -> Self {
+        Self {
+            id: tool_call.id,
+            r#type: "function".into(),
+            function: Function {
+                name: tool_call.function.name,
+                arguments: tool_call.function.arguments.to_string(),
+            },
+        }
+    }
+}
+
+impl From<message::UserContent> for UserContent {
+    fn from(tool: message::UserContent) -> Self {
+        match tool {
+            message::UserContent::Text { text } => UserContent::Text { text },
+            message::UserContent::Image { data, detail, .. } => UserContent::Image {
+                image_url: ImageUrl {
+                    url: data,
+                    detail: detail.unwrap_or_default(),
+                },
+            },
+            message::UserContent::Document { data, .. } => UserContent::Text { text: data },
+            message::UserContent::Audio {
+                data, media_type, ..
+            } => UserContent::Audio {
+                input_audio: InputAudio {
+                    data,
+                    format: match media_type {
+                        Some(media_type) => media_type,
+                        None => AudioMediaType::MP3,
+                    },
+                },
+            },
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -480,26 +612,22 @@ impl completion::CompletionModel for CompletionModel {
         mut completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         // Add preamble to chat history (if available)
-        let mut full_history = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
-                role: "system".into(),
-                content: preamble.clone(),
-            }]
-        } else {
-            vec![]
+        let mut full_history: Vec<message::Message> = match &completion_request.preamble {
+            Some(preamble) => vec![preamble.as_str().into()],
+            None => vec![],
         };
 
         // Extend existing chat history
         full_history.append(&mut completion_request.chat_history);
 
         // Add context documents to chat history
-        let prompt_with_context = completion_request.prompt_with_context();
+        full_history.push(completion_request.prompt_with_context());
 
-        // Add context documents to chat history
-        full_history.push(completion::Message {
-            role: "user".into(),
-            content: prompt_with_context,
-        });
+        // Convert history to open ai message format
+        let full_history = full_history
+            .into_iter()
+            .map(Message::from)
+            .collect::<Vec<_>>();
 
         let request = if completion_request.tools.is_empty() {
             json!({

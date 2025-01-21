@@ -11,7 +11,11 @@
 use std::collections::HashMap;
 
 use crate::{
-    agent::AgentBuilder, completion::{self, CompletionError}, embeddings::{self, EmbeddingError, EmbeddingsBuilder}, extractor::ExtractorBuilder, json_utils, message, Embed
+    agent::AgentBuilder,
+    completion::{self, CompletionError},
+    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
+    extractor::ExtractorBuilder,
+    json_utils, message, Embed,
 };
 
 use schemars::JsonSchema;
@@ -373,7 +377,7 @@ pub struct Connector {
     pub id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ToolCall {
     pub name: String,
     pub parameters: serde_json::Value,
@@ -471,23 +475,59 @@ impl From<completion::ToolDefinition> for ToolDefinition {
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct Message {
-    pub role: String,
-    pub message: String,
+#[serde(tag = "role", rename_all = "UPPERCASE")]
+pub enum Message {
+    User {
+        message: String,
+        tool_calls: Vec<ToolCall>,
+    },
+
+    Chatbot {
+        message: String,
+        tool_calls: Vec<ToolCall>,
+    },
+
+    Tool {
+        tool_results: Vec<ToolResult>,
+    },
+
+    /// According to the documentation, this message type should not be used
+    System {
+        content: String,
+        tool_calls: Vec<ToolCall>,
+    },
 }
 
-impl TryFrom<message::Message> for Message {
-    type Error = 
-    fn from(message: message::Message) -> Self {
+#[derive(Deserialize, Serialize)]
+pub struct ToolResult {
+    pub call: ToolCall,
+    pub outputs: Vec<serde_json::Value>,
+}
 
-        Self {
-            role: match message.role.as_str() {
-                "system" => "SYSTEM".to_owned(),
-                "user" => "USER".to_owned(),
-                "assistant" => "CHATBOT".to_owned(),
-                _ => "USER".to_owned(),
-            },
-            message: message.content,
+impl TryFrom<message::Message> for Vec<Message> {
+    type Error = message::MessageError;
+
+    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
+        match message {
+            message::Message::User { content } => content
+                .into_iter()
+                .map(|content| {
+                    Ok(Message::User {
+                        message: match content {
+                            message::UserContent::Text { text } => text,
+                            _ => {
+                                return Err(message::MessageError::ConversionError(
+                                    "Only text content is supported by Cohere".to_owned(),
+                                ))
+                            }
+                        },
+                        tool_calls: vec![],
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>(),
+            _ => Err(message::MessageError::ConversionError(
+                "Only user messages are supported by Cohere".to_owned(),
+            )),
         }
     }
 }
@@ -514,12 +554,22 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let chat_history = completion_request
+            .chat_history
+            .into_iter()
+            .map(|msg| Vec::<Message>::try_from(msg))
+            .collect::<Result<Vec<Vec<_>>, _>>()
+            .map_err(|e| CompletionError::RequestError(Box::new(e)))?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
         let request = json!({
             "model": self.model,
             "preamble": completion_request.preamble,
             "message": completion_request.prompt,
             "documents": completion_request.documents,
-            "chat_history": completion_request.chat_history.into_iter().map(Message::from).collect::<Vec<_>>(),
+            "chat_history": chat_history,
             "temperature": completion_request.temperature,
             "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
         });

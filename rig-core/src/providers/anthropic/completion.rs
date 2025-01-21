@@ -3,7 +3,7 @@
 use crate::{
     completion::{self, CompletionError},
     json_utils,
-    message::{self, MessageError},
+    message::{self, AssistantContent, MessageError},
 };
 
 use serde::{Deserialize, Serialize};
@@ -203,14 +203,21 @@ impl TryFrom<message::ContentFormat> for SourceType {
     }
 }
 
-impl From<message::ImageMediaType> for ImageFormat {
-    fn from(media_type: message::ImageMediaType) -> Self {
-        match media_type {
+impl TryFrom<message::ImageMediaType> for ImageFormat {
+    type Error = MessageError;
+
+    fn try_from(media_type: message::ImageMediaType) -> Result<Self, Self::Error> {
+        Ok(match media_type {
             message::ImageMediaType::JPEG => ImageFormat::JPEG,
             message::ImageMediaType::PNG => ImageFormat::PNG,
             message::ImageMediaType::GIF => ImageFormat::GIF,
             message::ImageMediaType::WEBP => ImageFormat::WEBP,
-        }
+            _ => {
+                return Err(MessageError::ConversionError(
+                    format!("Unsupported image media type: {:?}", media_type).to_owned(),
+                ))
+            }
+        })
     }
 }
 
@@ -231,8 +238,14 @@ impl TryFrom<message::Message> for Vec<Message> {
                     } => {
                         let source = ImageSource {
                             data,
-                            format: media_type.into(),
-                            r#type: format.try_into()?,
+                            format: match media_type {
+                                Some(media_type) => media_type.try_into()?,
+                                None => ImageFormat::JPEG,
+                            },
+                            r#type: match format {
+                                Some(format) => format.try_into()?,
+                                None => SourceType::BASE64,
+                            },
                         };
                         Ok(Content::Image { source })
                     }
@@ -240,7 +253,10 @@ impl TryFrom<message::Message> for Vec<Message> {
                         let source = DocumentSource {
                             data,
                             format: DocumentFormat::PDF,
-                            r#type: format.try_into()?,
+                            r#type: match format {
+                                Some(format) => format.try_into()?,
+                                None => SourceType::BASE64,
+                            },
                         };
                         Ok(Content::Document { source })
                     }
@@ -256,26 +272,28 @@ impl TryFrom<message::Message> for Vec<Message> {
                 })
                 .collect::<Vec<_>>(),
 
-            message::Message::Assistant {
-                content,
-                tool_calls,
-            } => content
-                .into_iter()
-                .map(|content| Message {
-                    role: "assistant".to_owned(),
-                    content: content.into(),
-                })
-                .chain(tool_calls.into_iter().map(|tool_call| Message {
-                    role: "assistant".to_owned(),
-                    content: Content::ToolUse {
-                        id: tool_call.id,
-                        name: tool_call.function.name,
-                        input: tool_call.function.arguments,
-                    },
-                }))
-                .collect::<Vec<_>>(),
+            message::Message::Assistant(content) => match content {
+                AssistantContent::Content { content } => content
+                    .into_iter()
+                    .map(|content| Message {
+                        role: "assistant".to_owned(),
+                        content: content.into(),
+                    })
+                    .collect::<Vec<_>>(),
+                AssistantContent::ToolCalls { tool_calls } => tool_calls
+                    .into_iter()
+                    .map(|tool_call| Message {
+                        role: "assistant".to_owned(),
+                        content: Content::ToolUse {
+                            id: tool_call.id,
+                            name: tool_call.function.name,
+                            input: tool_call.function.arguments,
+                        },
+                    })
+                    .collect::<Vec<_>>(),
+            },
 
-            message::Message::Tool { id, content } => vec![Message {
+            message::Message::ToolResult { id, content } => vec![Message {
                 role: "assistant".to_owned(),
                 content: Content::ToolResult {
                     tool_use_id: id,

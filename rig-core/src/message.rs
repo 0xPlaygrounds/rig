@@ -8,17 +8,16 @@ use thiserror::Error;
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
-    User {
-        content: OneOrMany<UserContent>,
-    },
-    Assistant {
-        content: Vec<String>,
-        tool_calls: Vec<ToolCall>,
-    },
-    Tool {
-        id: String,
-        content: String,
-    },
+    User { content: OneOrMany<UserContent> },
+    Assistant(AssistantContent),
+    ToolResult { id: String, content: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(untagged)]
+pub enum AssistantContent {
+    Content { content: OneOrMany<String> },
+    ToolCalls { tool_calls: OneOrMany<ToolCall> },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -43,19 +42,19 @@ pub enum UserContent {
     },
     Image {
         data: String,
-        format: ContentFormat,
-        detail: ImageDetail,
-        media_type: ImageMediaType,
-    },
-    Document {
-        data: String,
-        format: ContentFormat,
-        media_type: DocumentMediaType,
+        format: Option<ContentFormat>,
+        media_type: Option<ImageMediaType>,
+        detail: Option<ImageDetail>,
     },
     Audio {
         data: String,
-        format: ContentFormat,
-        media_type: AudioMediaType,
+        format: Option<ContentFormat>,
+        media_type: Option<AudioMediaType>,
+    },
+    Document {
+        data: String,
+        format: Option<ContentFormat>,
+        media_type: Option<DocumentMediaType>,
     },
 }
 
@@ -66,6 +65,12 @@ pub enum ContentFormat {
     String,
 }
 
+impl Default for ContentFormat {
+    fn default() -> Self {
+        ContentFormat::Base64
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageMediaType {
@@ -73,19 +78,116 @@ pub enum ImageMediaType {
     PNG,
     GIF,
     WEBP,
+    HEIC,
+    HEIF,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum DocumentMediaType {
     PDF,
+    TXT,
+    RTF,
+    HTML,
+    CSS,
+    MARKDOWN,
+    CSV,
+    XML,
+    Javascript,
+    Python,
 }
-
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum AudioMediaType {
     WAV,
-    MP4,
+    MP3,
+    AIFF,
+    AAC,
+    OGG,
+    FLAC,
+}
+
+impl ImageMediaType {
+    pub fn from_mime_type(mime_type: &str) -> Option<Self> {
+        match mime_type {
+            "image/jpeg" => Some(ImageMediaType::JPEG),
+            "image/png" => Some(ImageMediaType::PNG),
+            "image/gif" => Some(ImageMediaType::GIF),
+            "image/webp" => Some(ImageMediaType::WEBP),
+            "image/heic" => Some(ImageMediaType::HEIC),
+            "image/heif" => Some(ImageMediaType::HEIF),
+            _ => None,
+        }
+    }
+
+    pub fn to_mime_type(&self) -> &'static str {
+        match self {
+            ImageMediaType::JPEG => "image/jpeg",
+            ImageMediaType::PNG => "image/png",
+            ImageMediaType::GIF => "image/gif",
+            ImageMediaType::WEBP => "image/webp",
+            ImageMediaType::HEIC => "image/heic",
+            ImageMediaType::HEIF => "image/heif",
+        }
+    }
+}
+
+impl DocumentMediaType {
+    pub fn from_mime_type(mime_type: &str) -> Option<Self> {
+        match mime_type {
+            "application/pdf" => Some(DocumentMediaType::PDF),
+            "text/plain" => Some(DocumentMediaType::TXT),
+            "text/rtf" => Some(DocumentMediaType::RTF),
+            "text/html" => Some(DocumentMediaType::HTML),
+            "text/css" => Some(DocumentMediaType::CSS),
+            "text/md" | "text/markdown" => Some(DocumentMediaType::MARKDOWN),
+            "text/csv" => Some(DocumentMediaType::CSV),
+            "text/xml" => Some(DocumentMediaType::XML),
+            "application/x-javascript" | "text/x-javascript" => Some(DocumentMediaType::Javascript),
+            "application/x-python" | "text/x-python" => Some(DocumentMediaType::Python),
+            _ => None,
+        }
+    }
+
+    pub fn to_mime_type(&self) -> &'static str {
+        match self {
+            DocumentMediaType::PDF => "application/pdf",
+            DocumentMediaType::TXT => "text/plain",
+            DocumentMediaType::RTF => "text/rtf",
+            DocumentMediaType::HTML => "text/html",
+            DocumentMediaType::CSS => "text/css",
+            DocumentMediaType::MARKDOWN => "text/markdown",
+            DocumentMediaType::CSV => "text/csv",
+            DocumentMediaType::XML => "text/xml",
+            DocumentMediaType::Javascript => "application/x-javascript",
+            DocumentMediaType::Python => "application/x-python",
+        }
+    }
+}
+
+impl AudioMediaType {
+    pub fn from_mime_type(mime_type: &str) -> Option<Self> {
+        match mime_type {
+            "audio/wav" => Some(AudioMediaType::WAV),
+            "audio/mp3" => Some(AudioMediaType::MP3),
+            "audio/aiff" => Some(AudioMediaType::AIFF),
+            "audio/aac" => Some(AudioMediaType::AAC),
+            "audio/ogg" => Some(AudioMediaType::OGG),
+            "audio/flac" => Some(AudioMediaType::FLAC),
+            _ => None,
+        }
+    }
+
+    pub fn to_mime_type(&self) -> &'static str {
+        match self {
+            AudioMediaType::WAV => "audio/wav",
+            AudioMediaType::MP3 => "audio/mp3",
+            AudioMediaType::AIFF => "audio/aiff",
+            AudioMediaType::AAC => "audio/aac",
+            AudioMediaType::OGG => "audio/ogg",
+            AudioMediaType::FLAC => "audio/flac",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -94,6 +196,12 @@ pub enum ImageDetail {
     Low,
     High,
     Auto,
+}
+
+impl Default for ImageDetail {
+    fn default() -> Self {
+        ImageDetail::Auto
+    }
 }
 
 impl std::str::FromStr for ImageDetail {
@@ -139,6 +247,18 @@ impl Message {
             }
             _ => None,
         }
+    }
+
+    pub fn create_user(text: impl Into<String>) -> Self {
+        Message::User {
+            content: OneOrMany::<UserContent>::one(UserContent::Text { text: text.into() }),
+        }
+    }
+
+    pub fn create_assistant(text: impl Into<String>) -> Self {
+        Message::Assistant(AssistantContent::Content {
+            content: OneOrMany::<String>::one(text.into()),
+        })
     }
 }
 

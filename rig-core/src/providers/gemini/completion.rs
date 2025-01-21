@@ -52,12 +52,7 @@ impl completion::CompletionModel for CompletionModel {
         let mut full_history = Vec::new();
         full_history.append(&mut completion_request.chat_history);
 
-        let prompt_with_context = completion_request.prompt_with_context();
-
-        full_history.push(completion::Message {
-            role: "user".into(),
-            content: prompt_with_context,
-        });
+        full_history.push(completion_request.prompt_with_context());
 
         // Handle Gemini specific parameters
         let additional_params = completion_request
@@ -75,22 +70,23 @@ impl completion::CompletionModel for CompletionModel {
             generation_config.max_output_tokens = Some(max_tokens);
         }
 
+        let system_instruction = if let Some(preamble) = completion_request.preamble.clone() {
+            Some(Content {
+                parts: vec![preamble.into()],
+                role: Some(Role::Model),
+            })
+        } else {
+            None
+        };
+
         let request = GenerateContentRequest {
             contents: full_history
                 .into_iter()
-                .map(|msg| Content {
-                    parts: vec![Part {
-                        text: Some(msg.content),
-                        ..Default::default()
-                    }],
-                    role: match msg.role.as_str() {
-                        "system" => Some(Role::Model),
-                        "user" => Some(Role::User),
-                        "assistant" => Some(Role::Model),
-                        _ => None,
-                    },
+                .map(|msg| {
+                    msg.try_into()
+                        .map_err(|e| CompletionError::RequestError(Box::new(e)))
                 })
-                .collect(),
+                .collect::<Result<Vec<_>, _>>()?,
             generation_config: Some(generation_config),
             safety_settings: None,
             tools: Some(
@@ -101,13 +97,7 @@ impl completion::CompletionModel for CompletionModel {
                     .collect(),
             ),
             tool_config: None,
-            system_instruction: Some(Content {
-                parts: vec![Part {
-                    text: Some("system".to_string()),
-                    ..Default::default()
-                }],
-                role: Some(Role::Model),
-            }),
+            system_instruction,
         };
 
         tracing::debug!("Sending completion request to Gemini API");
@@ -158,13 +148,8 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         match response.candidates.as_slice() {
             [ContentCandidate { content, .. }, ..] => Ok(completion::CompletionResponse {
                 choice: match content.parts.first().unwrap() {
-                    Part {
-                        text: Some(text), ..
-                    } => completion::ModelChoice::Message(text.clone()),
-                    Part {
-                        function_call: Some(function_call),
-                        ..
-                    } => {
+                    Part::Text { text } => completion::ModelChoice::Message(text.clone()),
+                    Part::FunctionCall { function_call } => {
                         let args_value = serde_json::Value::Object(
                             function_call.args.clone().unwrap_or_default(),
                         );
@@ -196,6 +181,7 @@ pub mod gemini_api_types {
 
     use crate::{
         completion::CompletionError,
+        message,
         providers::gemini::gemini_api_types::{CodeExecutionResult, ExecutableCode},
     };
 
@@ -252,6 +238,46 @@ pub mod gemini_api_types {
         pub role: Option<Role>,
     }
 
+    impl TryFrom<message::Message> for Content {
+        type Error = message::MessageError;
+
+        fn try_from(msg: message::Message) -> Result<Self, Self::Error> {
+            Ok(match msg {
+                message::Message::User { content } => Content {
+                    parts: content
+                        .into_iter()
+                        .map(|c| c.try_into())
+                        .collect::<Result<Vec<_>, _>>()?,
+                    role: Some(Role::User),
+                },
+                message::Message::Assistant(content) => match content {
+                    message::AssistantContent::Content { content } => Self {
+                        parts: content.into_iter().map(Part::from).collect(),
+                        role: Some(Role::Model),
+                    },
+                    message::AssistantContent::ToolCalls { tool_calls } => Self {
+                        parts: tool_calls.into_iter().map(Part::from).collect(),
+                        role: Some(Role::Model),
+                    },
+                },
+                message::Message::ToolResult { id, content } => Self {
+                    parts: vec![Part::FunctionResponse {
+                        function_response: FunctionResponse {
+                            name: id,
+                            response: Some(serde_json::from_str(&content).map_err(|e| {
+                                message::MessageError::ConversionError(format!(
+                                    "Failed to parse tool response: {}",
+                                    e
+                                ))
+                            })?),
+                        },
+                    }],
+                    role: Some(Role::Model),
+                },
+            })
+        }
+    }
+
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "lowercase")]
     pub enum Role {
@@ -262,23 +288,123 @@ pub mod gemini_api_types {
     /// A datatype containing media that is part of a multi-part [Content] message.
     /// A Part consists of data which has an associated datatype. A Part can only contain one of the accepted types in Part.data.
     /// A Part must have a fixed IANA MIME type identifying the type and subtype of the media if the inlineData field is filled with raw bytes.
-    #[derive(Debug, Default, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
-    pub struct Part {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub text: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub inline_data: Option<Blob>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub function_call: Option<FunctionCall>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub function_response: Option<FunctionResponse>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub file_data: Option<FileData>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub executable_code: Option<ExecutableCode>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub code_execution_result: Option<CodeExecutionResult>,
+    #[serde(untagged)]
+    pub enum Part {
+        Text {
+            text: String,
+        },
+        InlineData {
+            inline_data: Blob,
+        },
+        FunctionCall {
+            function_call: FunctionCall,
+        },
+        FunctionResponse {
+            function_response: FunctionResponse,
+        },
+        FileData {
+            file_data: FileData,
+        },
+        ExecutableCode {
+            executable_code: ExecutableCode,
+        },
+        CodeExecutionResult {
+            code_execution_result: CodeExecutionResult,
+        },
+    }
+
+    impl From<String> for Part {
+        fn from(text: String) -> Self {
+            Self::Text { text }
+        }
+    }
+
+    impl TryFrom<message::UserContent> for Part {
+        type Error = message::MessageError;
+
+        fn try_from(content: message::UserContent) -> Result<Self, Self::Error> {
+            match content {
+                message::UserContent::Text { text } => Ok(Self::Text { text }),
+                message::UserContent::Image {
+                    data, media_type, ..
+                } => match media_type {
+                    Some(media_type) => match media_type {
+                        message::ImageMediaType::JPEG
+                        | message::ImageMediaType::PNG
+                        | message::ImageMediaType::WEBP
+                        | message::ImageMediaType::HEIC
+                        | message::ImageMediaType::HEIF => Ok(Self::InlineData {
+                            inline_data: Blob {
+                                mime_type: media_type.to_mime_type().to_owned(),
+                                data,
+                            },
+                        }),
+                        _ => Err(message::MessageError::ConversionError(format!(
+                            "Unsupported image media type {:?}",
+                            media_type
+                        ))),
+                    },
+                    None => Err(message::MessageError::ConversionError(
+                        "Media type for image is required for Anthropic".to_string(),
+                    )),
+                },
+                message::UserContent::Document {
+                    data, media_type, ..
+                } => match media_type {
+                    Some(media_type) => match media_type {
+                        message::DocumentMediaType::PDF
+                        | message::DocumentMediaType::TXT
+                        | message::DocumentMediaType::RTF
+                        | message::DocumentMediaType::HTML
+                        | message::DocumentMediaType::CSS
+                        | message::DocumentMediaType::MARKDOWN
+                        | message::DocumentMediaType::CSV
+                        | message::DocumentMediaType::XML => Ok(Self::InlineData {
+                            inline_data: Blob {
+                                mime_type: media_type.to_mime_type().to_owned(),
+                                data,
+                            },
+                        }),
+                        _ => Err(message::MessageError::ConversionError(format!(
+                            "Unsupported document media type {:?}",
+                            media_type
+                        ))),
+                    },
+                    None => Err(message::MessageError::ConversionError(
+                        "Media type for document is required for Anthropic".to_string(),
+                    )),
+                },
+                message::UserContent::Audio {
+                    data, media_type, ..
+                } => match media_type {
+                    Some(media_type) => Ok(Self::InlineData {
+                        inline_data: Blob {
+                            mime_type: media_type.to_mime_type().to_owned(),
+                            data,
+                        },
+                    }),
+                    None => Err(message::MessageError::ConversionError(
+                        "Media type for audio is required for Anthropic".to_string(),
+                    )),
+                },
+            }
+        }
+    }
+
+    impl From<message::ToolCall> for Part {
+        fn from(tool_call: message::ToolCall) -> Self {
+            Self::FunctionCall {
+                function_call: FunctionCall {
+                    name: tool_call.function.name,
+                    args: match tool_call.function.arguments {
+                        Value::Object(map) => Some(map),
+                        _ => None,
+                    },
+                },
+            }
+        }
     }
 
     /// Raw media bytes.
