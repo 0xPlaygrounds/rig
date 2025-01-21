@@ -16,22 +16,33 @@
 ///
 /// # Example
 /// ```rust
-/// #[derive(Debug)]
-/// enum ExampleEnum<T> {
-///     Variant1(T),
-///     Variant2(T),
+/// use rig::pipeline::*;
+/// use rig::conditional;
+/// use tokio;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     #[derive(Debug)]
+///     enum ExampleEnum<T> {
+///         Variant1(T),
+///         Variant2(T),
+///     }
+///
+///     // Creates a pipeline Op that adds 1 if it’s Variant1, or doubles if it’s Variant2
+///     let op1 = map(|x: i32| x + 1);
+///     let op2 = map(|x: i32| x * 2);
+///
+///     let conditional = conditional!(ExampleEnum,
+///         Variant1 => op1,
+///         Variant2 => op2,
+///     );
+///
+///     let result1 = conditional.call(ExampleEnum::Variant1(2)).await;
+///     assert_eq!(result1, 3);
+///
+///     let result2 = conditional.call(ExampleEnum::Variant2(3)).await;
+///     assert_eq!(result2, 6);
 /// }
-///
-/// // Creates a pipeline Op that adds 1 if it’s Variant1, or doubles if it’s Variant2
-/// let op1 = map(|x: i32| x + 1);
-/// let op2 = map(|x: i32| x * 2);
-///
-/// let conditional = conditional!(ExampleEnum,
-///     Variant1 => op1,
-///     Variant2 => op2,
-/// );
-///
-/// let result = conditional.call(ExampleEnum::Variant1(2)).await; // yields 3
 /// ```
 #[macro_export]
 macro_rules! conditional {
@@ -87,22 +98,30 @@ macro_rules! conditional {
 ///
 /// # Example
 /// ```rust
-/// #[derive(Debug)]
-/// enum ExampleEnum<T> {
-///     Variant1(T),
-///     Variant2(T),
+/// use rig::pipeline::*;
+/// use rig::try_conditional;
+/// use tokio;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     #[derive(Debug)]
+///     enum ExampleEnum<T> {
+///         Variant1(T),
+///         Variant2(T),
+///     }
+///
+///     // Creates a pipeline TryOp that adds 1 or doubles, returning Ok(...) or Err(...)
+///     let op1 = map(|x: i32| Ok::<_, String>(x + 1));
+///     let op2 = map(|x: i32| Ok::<_, String>(x * 2));
+///
+///     let try_conditional = try_conditional!(ExampleEnum,
+///         Variant1 => op1,
+///         Variant2 => op2,
+///     );
+///
+///     let result = try_conditional.try_call(ExampleEnum::Variant1(2)).await;
+///     assert_eq!(result, Ok(3));
 /// }
-///
-/// // Creates a pipeline TryOp that adds 1 or doubles, returning Ok(...) or Err(...)
-/// let op1 = map(|x: i32| Ok::<_, String>(x + 1));
-/// let op2 = map(|x: i32| Ok::<_, String>(x * 2));
-///
-/// let try_conditional = try_conditional!(ExampleEnum,
-///     Variant1 => op1,
-///     Variant2 => op2,
-/// );
-///
-/// let result = try_conditional.try_call(ExampleEnum::Variant1(2)).await; // yields Ok(3)
 /// ```
 #[macro_export]
 macro_rules! try_conditional {
