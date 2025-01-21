@@ -393,6 +393,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 Ok(completion::CompletionResponse {
                     choice: completion::ModelChoice::ToolCall(
                         call.function.name.clone(),
+                        "".to_owned(),
                         serde_json::from_str(&call.function.arguments)?,
                     ),
                     raw_response: value,
