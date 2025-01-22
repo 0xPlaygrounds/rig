@@ -106,14 +106,19 @@
 //! let response = agent.prompt("What does \"glarb-glarb\" mean?").await
 //!     .expect("Failed to prompt the agent");
 //! ```
-use std::collections::HashMap;
+use std::{collections::HashMap, pin::Pin};
 
-use futures::{stream, StreamExt, TryStreamExt};
+use futures::{stream, Stream, StreamExt, TryStreamExt};
 
 use crate::{
     completion::{
-        Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder,
-        CompletionResponse, Document, Message, ModelChoice, Prompt, PromptError,
+        Chat, Completion, CompletionError, CompletionModel, CompletionRequest,
+        CompletionRequestBuilder, CompletionResponse, Document, Message, ModelChoice, Prompt,
+        PromptError,
+    },
+    streaming::{
+        StreamingChat, StreamingChoice, StreamingCompletion, StreamingCompletionModel,
+        StreamingPrompt,
     },
     tool::{Tool, ToolSet},
     vector_store::{VectorStoreError, VectorStoreIndexDyn},
@@ -423,5 +428,43 @@ impl<M: CompletionModel> AgentBuilder<M> {
             dynamic_tools: self.dynamic_tools,
             tools: self.tools,
         }
+    }
+}
+
+impl<M: StreamingCompletionModel> StreamingCompletion<M> for Agent<M> {
+    async fn streaming_completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>> + Send>>,
+        CompletionError,
+    > {
+        self.model.stream(request).await
+    }
+}
+
+impl<M: StreamingCompletionModel> StreamingPrompt for Agent<M> {
+    async fn stream_prompt(
+        &self,
+        prompt: &str,
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>> + Send>>,
+        CompletionError,
+    > {
+        self.stream_chat(prompt, vec![]).await
+    }
+}
+
+impl<M: StreamingCompletionModel> StreamingChat for Agent<M> {
+    async fn stream_chat(
+        &self,
+        prompt: &str,
+        chat_history: Vec<Message>,
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>> + Send>>,
+        CompletionError,
+    > {
+        let request = self.completion(prompt, chat_history).await?.build();
+        self.streaming_completion(request).await
     }
 }
