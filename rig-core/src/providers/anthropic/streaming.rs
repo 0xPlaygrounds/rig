@@ -199,16 +199,21 @@ async fn emit_final_tool_call(
     tx: &mpsc::Sender<Result<StreamingChoice, CompletionError>>,
 ) {
     if let Some(tool_call) = current_tool_call.take() {
-        if !tool_call.input_json.is_empty() {
-            if let Ok(json_value) = serde_json::from_str(&tool_call.input_json) {
-                let _ = tx
-                    .send(Ok(StreamingChoice::ToolCall(
-                        tool_call.name,
-                        tool_call.id,
-                        json_value,
-                    )))
-                    .await;
-            }
+        // Default to "{}" if input_json is empty
+        let json_str = if tool_call.input_json.is_empty() {
+            "{}"
+        } else {
+            &tool_call.input_json
+        };
+
+        if let Ok(json_value) = serde_json::from_str(json_str) {
+            let _ = tx
+                .send(Ok(StreamingChoice::ToolCall(
+                    tool_call.name,
+                    tool_call.id,
+                    json_value,
+                )))
+                .await;
         }
     }
 }

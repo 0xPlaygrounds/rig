@@ -89,10 +89,16 @@ impl Tool for Subtract {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    tracing_subscriber::fmt().init();
     // Create agent with a single context prompt and two tools
     let calculator_agent = providers::anthropic::Client::from_env()
         .agent(providers::anthropic::CLAUDE_3_5_SONNET)
-        .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question. make your answer long, so we can test the streaming functionality, like 20 words")
+        .preamble(
+            "You are a calculator here to help the user perform arithmetic 
+            operations. Use the tools provided to answer the user's question. 
+            make your answer long, so we can test the streaming functionality, 
+            like 20 words",
+        )
         .max_tokens(1024)
         .tool(Adder)
         .tool(Subtract)
