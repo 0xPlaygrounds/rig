@@ -50,6 +50,17 @@ pub enum StreamingChoice {
     ToolCall(String, String, serde_json::Value),
 }
 
+impl std::fmt::Display for StreamingChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StreamingChoice::Message(text) => write!(f, "{}", text),
+            StreamingChoice::ToolCall(name, id, params) => {
+                write!(f, "Tool call: {} {} {:?}", name, id, params)
+            }
+        }
+    }
+}
+
 type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>> + Send>>;
 
 /// Trait for high-level streaming prompt interface
