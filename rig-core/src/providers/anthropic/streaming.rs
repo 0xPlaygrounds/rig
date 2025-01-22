@@ -152,7 +152,14 @@ impl StreamingCompletionModel for CompletionModel {
 
         // Spawn a task to process the SSE stream
         tokio::spawn(async move {
-            let mut current_tool_call: Option<(String, String, String)> = None;
+            #[derive(Default)]
+            struct ToolCallState {
+                name: String,
+                id: String,
+                input_json: String,
+            }
+
+            let mut current_tool_call: Option<ToolCallState> = None;
 
             while let Some(chunk_result) = stream.next().await {
                 match chunk_result {
@@ -161,6 +168,22 @@ impl StreamingCompletionModel for CompletionModel {
                             for line in text.lines() {
                                 if let Some(data) = line.strip_prefix("data: ") {
                                     if data.trim() == "[DONE]" {
+                                        // Emit final tool call if any
+                                        if let Some(tool_call) = current_tool_call.take() {
+                                            if !tool_call.input_json.is_empty() {
+                                                if let Ok(json_value) =
+                                                    serde_json::from_str(&tool_call.input_json)
+                                                {
+                                                    let _ = tx
+                                                        .send(Ok(StreamingChoice::ToolCall(
+                                                            tool_call.name,
+                                                            tool_call.id,
+                                                            json_value,
+                                                        )))
+                                                        .await;
+                                                }
+                                            }
+                                        }
                                         break;
                                     }
 
@@ -170,31 +193,24 @@ impl StreamingCompletionModel for CompletionModel {
                                             StreamingEvent::ContentBlockDelta { delta, .. } => {
                                                 match delta {
                                                     ContentDelta::TextDelta { text } => {
-                                                        let _ = tx
-                                                            .send(Ok(StreamingChoice::Message(
-                                                                text,
-                                                            )))
-                                                            .await;
+                                                        // Only stream text if we're not in the middle of a tool call
+                                                        if current_tool_call.is_none() {
+                                                            let _ = tx
+                                                                .send(Ok(StreamingChoice::Message(
+                                                                    text,
+                                                                )))
+                                                                .await;
+                                                        }
                                                     }
                                                     ContentDelta::InputJsonDelta {
                                                         partial_json,
                                                     } => {
-                                                        if let Some((name, id, mut input)) =
-                                                            current_tool_call.clone()
+                                                        if let Some(ref mut tool_call) =
+                                                            current_tool_call
                                                         {
-                                                            input.push_str(&partial_json);
-                                                            let _ = tx
-                                                                .send(Ok(
-                                                                    StreamingChoice::ToolCall(
-                                                                        name,
-                                                                        id,
-                                                                        serde_json::from_str(
-                                                                            &input,
-                                                                        )
-                                                                        .unwrap_or(json!({})),
-                                                                    ),
-                                                                ))
-                                                                .await;
+                                                            tool_call
+                                                                .input_json
+                                                                .push_str(&partial_json);
                                                         }
                                                     }
                                                 }
@@ -206,8 +222,31 @@ impl StreamingCompletionModel for CompletionModel {
                                                 if let ContentBlock::ToolUse { name, id, .. } =
                                                     content_block
                                                 {
-                                                    current_tool_call =
-                                                        Some((name, id, String::new()));
+                                                    current_tool_call = Some(ToolCallState {
+                                                        name,
+                                                        id,
+                                                        input_json: String::new(),
+                                                    });
+                                                }
+                                            }
+                                            StreamingEvent::ContentBlockStop { .. } => {
+                                                // Emit the complete tool call when the content block stops
+                                                if let Some(tool_call) = current_tool_call.take() {
+                                                    if !tool_call.input_json.is_empty() {
+                                                        if let Ok(json_value) = serde_json::from_str(
+                                                            &tool_call.input_json,
+                                                        ) {
+                                                            let _ = tx
+                                                                .send(Ok(
+                                                                    StreamingChoice::ToolCall(
+                                                                        tool_call.name,
+                                                                        tool_call.id,
+                                                                        json_value,
+                                                                    ),
+                                                                ))
+                                                                .await;
+                                                        }
+                                                    }
                                                 }
                                             }
                                             _ => continue,
