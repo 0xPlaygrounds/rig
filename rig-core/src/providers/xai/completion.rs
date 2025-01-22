@@ -5,7 +5,8 @@
 
 use crate::{
     completion::{self, CompletionError},
-    json_utils, message, providers::openai::Message,
+    json_utils, message,
+    providers::openai::Message,
 };
 
 use serde_json::json;
@@ -96,7 +97,7 @@ pub mod xai_api_types {
     use serde::{Deserialize, Serialize};
 
     use crate::completion::{self, CompletionError};
-    use crate::providers::openai::{AssistantContent, AssistantMessage, Message};
+    use crate::providers::openai::{AssistantContent, Message};
 
     impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
         type Error = CompletionError;
@@ -104,7 +105,11 @@ pub mod xai_api_types {
         fn try_from(value: CompletionResponse) -> std::result::Result<Self, Self::Error> {
             match value.choices.as_slice() {
                 [Choice {
-                    message: Message::Assistant(AssistantMessage::Content { content, .. }),
+                    message:
+                        Message::Assistant {
+                            content: Some(content),
+                            ..
+                        },
                     ..
                 }, ..] => {
                     let content_str = content
@@ -121,7 +126,11 @@ pub mod xai_api_types {
                     })
                 }
                 [Choice {
-                    message: Message::Assistant(AssistantMessage::ToolCalls { tool_calls, .. }),
+                    message:
+                        Message::Assistant {
+                            tool_calls: Some(tool_calls),
+                            ..
+                        },
                     ..
                 }, ..] => {
                     let call = tool_calls.first();

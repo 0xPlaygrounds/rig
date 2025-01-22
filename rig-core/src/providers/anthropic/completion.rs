@@ -3,7 +3,8 @@
 use crate::{
     completion::{self, CompletionError},
     json_utils,
-    message::{self, AssistantContent, MessageError},
+    message::{self, MessageError},
+    OneOrMany,
 };
 
 use serde::{Deserialize, Serialize};
@@ -103,11 +104,18 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Message {
-    pub role: String,
-    pub content: Content,
+    pub role: Role,
+    pub content: OneOrMany<Content>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    User,
+    Assistant,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Content {
     Text {
@@ -131,28 +139,28 @@ pub enum Content {
     },
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolResultContent {
     Text { text: String },
     Image(ImageSource),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ImageSource {
     pub data: String,
     pub format: ImageFormat,
     pub r#type: SourceType,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DocumentSource {
     pub data: String,
     pub format: DocumentFormat,
     pub r#type: SourceType,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageFormat {
     #[serde(rename = "image/jpeg")]
@@ -165,14 +173,14 @@ pub enum ImageFormat {
     WEBP,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum DocumentFormat {
     #[serde(rename = "application/pdf")]
     PDF,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum SourceType {
     BASE64,
@@ -221,14 +229,38 @@ impl TryFrom<message::ImageMediaType> for ImageFormat {
     }
 }
 
-impl TryFrom<message::Message> for Vec<Message> {
+impl From<ImageFormat> for message::ImageMediaType {
+    fn from(format: ImageFormat) -> Self {
+        match format {
+            ImageFormat::JPEG => message::ImageMediaType::JPEG,
+            ImageFormat::PNG => message::ImageMediaType::PNG,
+            ImageFormat::GIF => message::ImageMediaType::GIF,
+            ImageFormat::WEBP => message::ImageMediaType::WEBP,
+        }
+    }
+}
+
+impl From<message::AssistantContent> for Content {
+    fn from(text: message::AssistantContent) -> Self {
+        match text {
+            message::AssistantContent::Text { text } => Content::Text { text },
+            message::AssistantContent::ToolCall { tool_call } => Content::ToolUse {
+                id: tool_call.id,
+                name: tool_call.function.name,
+                input: tool_call.function.arguments,
+            },
+        }
+    }
+}
+
+impl TryFrom<message::Message> for Message {
     type Error = MessageError;
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         Ok(match message {
-            message::Message::User { content } => content
-                .into_iter()
-                .map(|content| match content {
+            message::Message::User { content } => Message {
+                role: Role::User,
+                content: content.try_map(|content| match content {
                     message::UserContent::Text { text } => Ok(Content::Text { text }),
                     message::UserContent::Image {
                         data,
@@ -260,47 +292,113 @@ impl TryFrom<message::Message> for Vec<Message> {
                         };
                         Ok(Content::Document { source })
                     }
-                    message::UserContent::Audio { .. } => Err(MessageError::ConversionError(
-                        "Audio is not supported in Anthropic".to_owned(),
-                    )),
-                })
-                .collect::<Result<Vec<_>, _>>()?
-                .into_iter()
-                .map(|content| Message {
-                    role: "user".to_owned(),
-                    content,
-                })
-                .collect::<Vec<_>>(),
-
-            message::Message::Assistant(content) => match content {
-                AssistantContent::Content { content } => content
-                    .into_iter()
-                    .map(|content| Message {
-                        role: "assistant".to_owned(),
-                        content: content.into(),
-                    })
-                    .collect::<Vec<_>>(),
-                AssistantContent::ToolCalls { tool_calls } => tool_calls
-                    .into_iter()
-                    .map(|tool_call| Message {
-                        role: "assistant".to_owned(),
-                        content: Content::ToolUse {
-                            id: tool_call.id,
-                            name: tool_call.function.name,
-                            input: tool_call.function.arguments,
-                        },
-                    })
-                    .collect::<Vec<_>>(),
+                    message::UserContent::Audio { .. } => {
+                        return Err(MessageError::ConversionError(
+                            "Audio is not supported in Anthropic".to_owned(),
+                        ))
+                    }
+                })?,
             },
 
-            message::Message::ToolResult { id, content } => vec![Message {
-                role: "assistant".to_owned(),
-                content: Content::ToolResult {
+            message::Message::Assistant { content } => Message {
+                content: content.map(|content| content.into()),
+                role: Role::Assistant,
+            },
+
+            message::Message::ToolResult { id, content } => Message {
+                role: Role::Assistant,
+                content: OneOrMany::one(Content::ToolResult {
                     tool_use_id: id,
                     content: content.into(),
                     is_error: false,
+                }),
+            },
+        })
+    }
+}
+
+impl TryFrom<Content> for message::AssistantContent {
+    type Error = MessageError;
+
+    fn try_from(content: Content) -> Result<Self, Self::Error> {
+        Ok(match content {
+            Content::Text { text } => message::AssistantContent::Text { text },
+            Content::ToolUse { id, name, input } => message::AssistantContent::ToolCall {
+                tool_call: message::ToolCall {
+                    id,
+                    function: message::ToolFunction {
+                        name,
+                        arguments: input,
+                    },
                 },
-            }],
+            },
+            _ => {
+                return Err(MessageError::ConversionError(
+                    format!("Unsupported content type for Assistant role: {:?}", content)
+                        .to_owned(),
+                ))
+            }
+        })
+    }
+}
+
+impl TryFrom<Message> for message::Message {
+    type Error = MessageError;
+
+    fn try_from(message: Message) -> Result<Self, Self::Error> {
+        Ok(match message.role {
+            Role::User => message::Message::User {
+                content: message.content.try_map(|content| {
+                    Ok(match content {
+                        Content::Text { text } => message::UserContent::Text { text },
+                        Content::Image { source } => message::UserContent::Image {
+                            data: source.data,
+                            format: Some(message::ContentFormat::Base64),
+                            media_type: Some(source.format.into()),
+                            detail: None,
+                        },
+                        Content::Document { source } => message::UserContent::Document {
+                            data: source.data,
+                            format: Some(message::ContentFormat::Base64),
+                            media_type: Some(message::DocumentMediaType::PDF),
+                        },
+                        _ => {
+                            return Err(MessageError::ConversionError(
+                                "Unsupported content type for User role".to_owned(),
+                            ))
+                        }
+                    })
+                })?,
+            },
+            Role::Assistant => match message.content.first() {
+                Content::Text { .. } | Content::ToolUse { .. } => message::Message::Assistant {
+                    content: message.content.try_map(|content| content.try_into())?,
+                },
+                Content::ToolResult {
+                    tool_use_id,
+                    content,
+                    ..
+                } => message::Message::ToolResult {
+                    id: tool_use_id,
+                    content: match content {
+                        ToolResultContent::Text { text } => text,
+                        _ => {
+                            return Err(MessageError::ConversionError(
+                                format!(
+                                    "Unsupported tool result content type for Assistant role: {:?}",
+                                    message.content.first()
+                                )
+                                .to_owned(),
+                            ))
+                        }
+                    },
+                },
+                _ => {
+                    return Err(MessageError::ConversionError(
+                        "Unsupported content type for Assistant role".to_owned(),
+                    ))
+                }
+            },
         })
     }
 }
@@ -351,10 +449,10 @@ impl completion::CompletionModel for CompletionModel {
             ));
         }
 
-        let prompt_message: Vec<Message> = completion_request
+        let prompt_message: Message = completion_request
             .prompt_with_context()
             .try_into()
-            .map_err(|e: MessageError| CompletionError::RequestError(e.to_string().into()))?;
+            .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?;
 
         let mut messages = completion_request
             .chat_history
@@ -362,14 +460,11 @@ impl completion::CompletionModel for CompletionModel {
             .map(|message| {
                 message
                     .try_into()
-                    .map_err(|e: MessageError| CompletionError::RequestError(e.to_string().into()))
+                    .map_err(|e: MessageError| CompletionError::RequestError(e.into()))
             })
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<Message>, _>>()?;
 
-        messages.extend(prompt_message);
+        messages.push(prompt_message);
 
         let mut request = json!({
             "model": self.model,

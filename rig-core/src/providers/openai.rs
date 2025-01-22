@@ -378,7 +378,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     fn try_from(value: CompletionResponse) -> std::result::Result<Self, Self::Error> {
         match value.choices.as_slice() {
             [Choice {
-                message: Message::Assistant(AssistantMessage::Content { content, .. }),
+                message:
+                    Message::Assistant {
+                        content: Some(content),
+                        ..
+                    },
                 ..
             }, ..] => {
                 let content_str = content
@@ -395,7 +399,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 })
             }
             [Choice {
-                message: Message::Assistant(AssistantMessage::ToolCalls { tool_calls, .. }),
+                message:
+                    Message::Assistant {
+                        tool_calls: Some(tool_calls),
+                        ..
+                    },
                 ..
             }, ..] => {
                 let call = tool_calls.first();
@@ -433,26 +441,16 @@ pub enum Message {
         content: OneOrMany<UserContent>,
         name: Option<String>,
     },
-    Assistant(AssistantMessage),
+    Assistant {
+        content: Option<OneOrMany<AssistantContent>>,
+        refusal: Option<String>,
+        audio: Option<AudioAssistant>,
+        name: Option<String>,
+        tool_calls: Option<OneOrMany<ToolCall>>,
+    },
     Tool {
         tool_call_id: String,
         content: OneOrMany<String>,
-    },
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum AssistantMessage {
-    Content {
-        content: OneOrMany<AssistantContent>,
-        refusal: Option<String>,
-        audio: Option<AudioAssistant>,
-        name: Option<String>,
-    },
-    ToolCalls {
-        tool_calls: OneOrMany<ToolCall>,
-        refusal: Option<String>,
-        audio: Option<AudioAssistant>,
-        name: Option<String>,
     },
 }
 
@@ -523,24 +521,41 @@ impl From<message::Message> for Message {
                 content: content.map(|content| content.into()),
                 name: None,
             },
-            message::Message::Assistant(content) => match content {
-                message::AssistantContent::Content { content } => Message::Assistant {
-                    0: AssistantMessage::Content {
-                        content: content.map(|content| AssistantContent::Text { text: content }),
-                        refusal: None,
-                        audio: None,
-                        name: None,
-                    },
-                },
-                message::AssistantContent::ToolCalls { tool_calls } => Message::Assistant {
-                    0: AssistantMessage::ToolCalls {
-                        tool_calls: tool_calls.map(|tool_call| tool_call.into()),
-                        refusal: None,
-                        audio: None,
-                        name: None,
-                    },
-                },
-            },
+            message::Message::Assistant { content } => {
+                let (text_content, tool_calls): (Vec<_>, Vec<_>) =
+                    content.into_iter().partition(|content| match content {
+                        message::AssistantContent::Text { .. } => true,
+                        message::AssistantContent::ToolCall { .. } => false,
+                    });
+
+                let text_content = text_content
+                    .into_iter()
+                    .map(|content| match content {
+                        message::AssistantContent::Text { text } => AssistantContent::Text { text },
+                        _ => unreachable!(),
+                    })
+                    .collect::<Vec<_>>();
+
+                let tool_calls = tool_calls
+                    .into_iter()
+                    .map(|content| match content {
+                        message::AssistantContent::ToolCall { tool_call } => tool_call.into(),
+                        _ => unreachable!(),
+                    })
+                    .collect::<Vec<_>>();
+
+                // We use `.ok()` here since the `OneOrMany` type from the `message::Message::Assistant`
+                //  field guarantees that we have atleast one element that's either
+                // `AssistantContent::Text` or `AssistantContent::ToolCall`. This means that at the
+                //  very least, one of `content`` or `tool_calls`` will be `Some`.
+                Message::Assistant {
+                    content: OneOrMany::many(text_content).ok(),
+                    refusal: None,
+                    audio: None,
+                    name: None,
+                    tool_calls: OneOrMany::many(tool_calls).ok(),
+                }
+            }
             message::Message::ToolResult { id, content } => Message::Tool {
                 tool_call_id: id,
                 content: OneOrMany::one(content),
@@ -583,6 +598,112 @@ impl From<message::UserContent> for UserContent {
                         None => AudioMediaType::MP3,
                     },
                 },
+            },
+        }
+    }
+}
+
+impl TryFrom<Message> for message::Message {
+    type Error = message::MessageError;
+
+    fn try_from(message: Message) -> Result<Self, Self::Error> {
+        Ok(match message {
+            Message::User { content, .. } => message::Message::User {
+                content: content.map(|content| content.into()),
+            },
+            Message::Assistant {
+                content,
+                tool_calls,
+                ..
+            } => {
+                let mut content = if let Some(content) = content {
+                    content
+                        .into_iter()
+                        .map(|content| match content {
+                            AssistantContent::Text { text } => {
+                                message::AssistantContent::Text { text }
+                            }
+                            AssistantContent::Refusal { refusal } => {
+                                message::AssistantContent::Text { text: refusal }
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![]
+                };
+
+                if let Some(tool_calls) = tool_calls {
+                    content.extend(
+                        tool_calls
+                            .into_iter()
+                            .map(|tool_call| {
+                                Ok(message::AssistantContent::ToolCall {
+                                    tool_call: tool_call.try_into().map_err(
+                                        |e: serde_json::Error| {
+                                            message::MessageError::ConversionError(e.to_string())
+                                        },
+                                    )?,
+                                })
+                            })
+                            .collect::<Result<Vec<_>, _>>()?,
+                    )
+                };
+
+                message::Message::Assistant {
+                    content: OneOrMany::many(content).map_err(|_| {
+                        message::MessageError::ConversionError(
+                            "Neither `content` nor `tool_calls` was provided to the Message"
+                                .to_owned(),
+                        )
+                    })?,
+                }
+            }
+
+            Message::Tool {
+                tool_call_id,
+                content,
+            } => message::Message::ToolResult {
+                id: tool_call_id,
+                content: content.into_iter().collect::<Vec<_>>().join("\n"),
+            },
+
+            // System messages should get stripped out when converting message's, this is just a
+            // stop gap to avoid obnoxious error handling or panic occuring.
+            Message::System { content, .. } => message::Message::User {
+                content: content.map(|content| message::UserContent::Text { text: content }),
+            },
+        })
+    }
+}
+
+impl TryFrom<ToolCall> for message::ToolCall {
+    type Error = serde_json::Error;
+
+    fn try_from(tool_call: ToolCall) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: tool_call.id,
+            function: message::ToolFunction {
+                name: tool_call.function.name,
+                arguments: serde_json::from_str(&tool_call.function.arguments)?,
+            },
+        })
+    }
+}
+
+impl From<UserContent> for message::UserContent {
+    fn from(content: UserContent) -> Self {
+        match content {
+            UserContent::Text { text } => message::UserContent::Text { text },
+            UserContent::Image { image_url } => message::UserContent::Image {
+                data: image_url.url,
+                detail: Some(image_url.detail),
+                format: Some(message::ContentFormat::default()),
+                media_type: None,
+            },
+            UserContent::Audio { input_audio } => message::UserContent::Audio {
+                data: input_audio.data,
+                media_type: Some(input_audio.format),
+                format: Some(message::ContentFormat::default()),
             },
         }
     }
@@ -659,7 +780,10 @@ impl completion::CompletionModel for CompletionModel {
             .await?;
 
         if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
+            let raw_json = response.text().await?;
+            tracing::info!("Raw JSON response: {}", raw_json);
+
+            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&raw_json)? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "OpenAI completion token usage: {:?}",

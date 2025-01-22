@@ -8,23 +8,30 @@ use thiserror::Error;
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
-    User { content: OneOrMany<UserContent> },
-    Assistant(AssistantContent),
-    ToolResult { id: String, content: String },
+    User {
+        content: OneOrMany<UserContent>,
+    },
+    Assistant {
+        content: OneOrMany<AssistantContent>,
+    },
+    ToolResult {
+        id: String,
+        content: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum AssistantContent {
-    Content { content: OneOrMany<String> },
-    ToolCalls { tool_calls: OneOrMany<ToolCall> },
+    Text { text: String },
+    ToolCall { tool_call: ToolCall },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolCall {
     pub id: String,
-    #[serde(rename = "type")]
-    pub tool_type: String,
+    // #[serde(rename = "type")]
+    // pub tool_type: String,
     pub function: ToolFunction,
 }
 
@@ -251,14 +258,14 @@ impl Message {
 
     pub fn create_user(text: impl Into<String>) -> Self {
         Message::User {
-            content: OneOrMany::<UserContent>::one(UserContent::Text { text: text.into() }),
+            content: OneOrMany::one(UserContent::Text { text: text.into() }),
         }
     }
 
     pub fn create_assistant(text: impl Into<String>) -> Self {
-        Message::Assistant(AssistantContent::Content {
-            content: OneOrMany::<String>::one(text.into()),
-        })
+        Message::Assistant {
+            content: OneOrMany::one(AssistantContent::Text { text: text.into() }),
+        }
     }
 }
 

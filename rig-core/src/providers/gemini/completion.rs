@@ -250,15 +250,9 @@ pub mod gemini_api_types {
                         .collect::<Result<Vec<_>, _>>()?,
                     role: Some(Role::User),
                 },
-                message::Message::Assistant(content) => match content {
-                    message::AssistantContent::Content { content } => Self {
-                        parts: content.into_iter().map(Part::from).collect(),
-                        role: Some(Role::Model),
-                    },
-                    message::AssistantContent::ToolCalls { tool_calls } => Self {
-                        parts: tool_calls.into_iter().map(Part::from).collect(),
-                        role: Some(Role::Model),
-                    },
+                message::Message::Assistant { content } => Content {
+                    role: Some(Role::Model),
+                    parts: content.into_iter().map(|content| content.into()).collect(),
                 },
                 message::Message::ToolResult { id, content } => Self {
                     parts: vec![Part::FunctionResponse {
@@ -389,6 +383,15 @@ pub mod gemini_api_types {
                         "Media type for audio is required for Anthropic".to_string(),
                     )),
                 },
+            }
+        }
+    }
+
+    impl From<message::AssistantContent> for Part {
+        fn from(content: message::AssistantContent) -> Self {
+            match content {
+                message::AssistantContent::Text { text } => text.into(),
+                message::AssistantContent::ToolCall { tool_call } => tool_call.into(),
             }
         }
     }

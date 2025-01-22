@@ -15,6 +15,7 @@ use crate::{
     extractor::ExtractorBuilder,
     json_utils,
     message::{self, MessageError},
+    OneOrMany,
 };
 
 use schemars::JsonSchema;
@@ -204,38 +205,49 @@ impl CompletionModel {
     }
 }
 
-impl TryFrom<message::Message> for Vec<Message> {
+impl TryFrom<message::Message> for Message {
     type Error = MessageError;
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         Ok(match message {
-            message::Message::User { content } => content
-                .into_iter()
-                .map(|content| match content {
-                    message::UserContent::Text { text } => Ok(Message {
-                        role: Role::User,
-                        content: text,
-                    }),
-                    _ => Err(MessageError::ConversionError(
-                        "Only text content is supported by Perplexity".to_owned(),
-                    )),
-                })
-                .collect::<Result<Vec<_>, _>>()?,
-
-            message::Message::Assistant(content) => match content {
-                message::AssistantContent::Content { content } => content
+            message::Message::User { content } => {
+                let collapsed_content = content
                     .into_iter()
-                    .map(|content| Message {
-                        role: Role::Assistant,
-                        content: content.into(),
+                    .map(|content| match content {
+                        message::UserContent::Text { text } => Ok(text),
+                        _ => Err(MessageError::ConversionError(
+                            "Only text content is supported by Perplexity".to_owned(),
+                        )),
                     })
-                    .collect::<Vec<_>>(),
-                _ => {
-                    return Err(MessageError::ConversionError(
-                        "Only text assistant message content is supported by Perplexity".to_owned(),
-                    ))
+                    .collect::<Result<Vec<_>, _>>()?
+                    .join("\n");
+
+                Message {
+                    role: Role::User,
+                    content: collapsed_content,
                 }
-            },
+            }
+
+            message::Message::Assistant { content } => {
+                let collapsed_content = content
+                    .into_iter()
+                    .map(|content| {
+                        Ok(match content {
+                            message::AssistantContent::Text { text } => text,
+                            _ => return Err(MessageError::ConversionError(
+                                "Only text assistant message content is supported by Perplexity"
+                                    .to_owned(),
+                            )),
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+                    .join("\n");
+
+                Message {
+                    role: Role::Assistant,
+                    content: collapsed_content,
+                }
+            }
 
             _ => {
                 return Err(MessageError::ConversionError(
@@ -243,6 +255,28 @@ impl TryFrom<message::Message> for Vec<Message> {
                 ))
             }
         })
+    }
+}
+
+impl TryFrom<Message> for message::Message {
+    type Error = MessageError;
+
+    fn try_from(message: Message) -> Result<Self, Self::Error> {
+        match message.role {
+            Role::User => Ok(message::Message::User {
+                content: OneOrMany::one(message::UserContent::Text {
+                    text: message.content,
+                }),
+            }),
+            Role::Assistant => Ok(message::Message::Assistant {
+                content: OneOrMany::one(message::AssistantContent::Text {
+                    text: message.content,
+                }),
+            }),
+            _ => Err(MessageError::ConversionError(
+                "Only user and assistant messages are supported by Perplexity".to_owned(),
+            )),
+        }
     }
 }
 
@@ -259,26 +293,28 @@ impl completion::CompletionModel for CompletionModel {
         // Add preamble to messages (if available)
         let mut messages: Vec<Message> = if let Some(preamble) = completion_request.preamble {
             let message: message::Message = preamble.into();
-            message
+            vec![message
                 .try_into()
-                .map_err(|e: MessageError| CompletionError::RequestError(e.to_string().into()))?
+                .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?]
         } else {
             vec![]
         };
 
         // Add chat history to messages
         for message in completion_request.chat_history {
-            let converted: Vec<Message> = message
-                .try_into()
-                .map_err(|e: MessageError| CompletionError::RequestError(e.to_string().into()))?;
-            messages.extend(converted);
+            messages.push(
+                message
+                    .try_into()
+                    .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?,
+            );
         }
 
         // Add user prompt to messages
-        let user_messages: Vec<Message> = prompt_with_context
-            .try_into()
-            .map_err(|e: MessageError| CompletionError::RequestError(e.to_string().into()))?;
-        messages.extend(user_messages);
+        messages.push(
+            prompt_with_context
+                .try_into()
+                .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?,
+        );
 
         // Compose request
         let request = json!({

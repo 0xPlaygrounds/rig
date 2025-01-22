@@ -1,11 +1,14 @@
+use serde::de::{self, Deserializer, IntoDeserializer as _, SeqAccess, Visitor};
+use serde::ser::{SerializeSeq, Serializer};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// Struct containing either a single item or a list of items of type T.
 /// If a single item is present, `first` will contain it and `rest` will be empty.
 /// If multiple items are present, `first` will contain the first item and `rest` will contain the rest.
 /// IMPORTANT: this struct cannot be created with an empty vector.
 /// OneOrMany objects can only be created using OneOrMany::from() or OneOrMany::try_from().
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct OneOrMany<T> {
     /// First item in the list.
     first: T,
@@ -95,6 +98,20 @@ impl<T: Clone> OneOrMany<T> {
             first: op(self.first),
             rest: self.rest.into_iter().map(op).collect(),
         }
+    }
+
+    /// Specialized try map function for OneOrMany objects.
+    ///
+    /// Same as `OneOrMany::map` but fallible.
+    pub fn try_map<U, E, F: FnMut(T) -> Result<U, E>>(self, mut op: F) -> Result<OneOrMany<U>, E> {
+        Ok(OneOrMany {
+            first: op(self.first)?,
+            rest: self
+                .rest
+                .into_iter()
+                .map(op)
+                .collect::<Result<Vec<_>, E>>()?,
+        })
     }
 
     pub fn iter(&self) -> Iter<T> {
@@ -192,6 +209,86 @@ impl<'a, T> Iterator for IterMut<'a, T> {
         } else {
             self.rest.next()
         }
+    }
+}
+
+impl<T: Clone> Serialize for OneOrMany<T>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut seq = serializer.serialize_seq(Some(self.len()))?;
+        for e in self.iter() {
+            seq.serialize_element(e)?;
+        }
+        seq.end()
+    }
+}
+
+impl<'de, T> Deserialize<'de> for OneOrMany<T>
+where
+    T: Deserialize<'de> + Clone,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct OneOrManyVisitor<T>(std::marker::PhantomData<T>);
+
+        impl<'de, T> Visitor<'de> for OneOrManyVisitor<T>
+        where
+            T: Deserialize<'de> + Clone,
+        {
+            type Value = OneOrMany<T>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a sequence of at least one element or a single element")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let first = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let mut rest = Vec::new();
+                while let Some(value) = seq.next_element()? {
+                    rest.push(value);
+                }
+                Ok(OneOrMany { first, rest })
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                let first: T = Deserialize::deserialize(value.into_deserializer())?;
+                Ok(OneOrMany::one(first))
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                let first: T = Deserialize::deserialize(value.into_deserializer())?;
+                Ok(OneOrMany::one(first))
+            }
+
+            fn visit_map<M>(self, map: M) -> Result<Self::Value, M::Error>
+            where
+                M: de::MapAccess<'de>,
+            {
+                let first: T =
+                    Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                Ok(OneOrMany::one(first))
+            }
+        }
+
+        deserializer.deserialize_any(OneOrManyVisitor(std::marker::PhantomData))
     }
 }
 
