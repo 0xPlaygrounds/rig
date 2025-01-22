@@ -529,7 +529,7 @@ pub mod gemini_api_types {
         /// Frequency penalty applied to the next token's logprobs, multiplied by the number of times each token has been
         /// seen in the response so far. A positive penalty will discourage the use of tokens that have already been
         /// used, proportional to the number of times the token has been used: The more a token is used, the more
-        /// dificult it is for the  model to use that token again increasing the vocabulary of responses. Caution: A
+        /// difficult it is for the  model to use that token again increasing the vocabulary of responses. Caution: A
         /// negative penalty will encourage the model to reuse tokens proportional to the number of times the token has
         /// been used. Small negative values will reduce the vocabulary of a response. Larger negative values will cause
         /// the model to  repeating a common token until it hits the maxOutputTokens limit: "...the the the the the...".
