@@ -37,7 +37,9 @@
 //! ```
 
 use crate::completion::{CompletionError, CompletionModel, CompletionRequest, Message};
-use futures::Stream;
+use futures::{Stream, StreamExt};
+use std::fmt::{Display, Formatter};
+use std::future::Future;
 use std::pin::Pin;
 
 /// Enum representing a streaming chunk from the model
@@ -50,8 +52,8 @@ pub enum StreamingChoice {
     ToolCall(String, String, serde_json::Value),
 }
 
-impl std::fmt::Display for StreamingChoice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for StreamingChoice {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             StreamingChoice::Message(text) => write!(f, "{}", text),
             StreamingChoice::ToolCall(name, id, params) => {
@@ -69,7 +71,7 @@ pub trait StreamingPrompt: Send + Sync {
     fn stream_prompt(
         &self,
         prompt: &str,
-    ) -> impl std::future::Future<Output = Result<StreamingResult, CompletionError>> + Send;
+    ) -> impl Future<Output = Result<StreamingResult, CompletionError>> + Send;
 }
 
 /// Trait for high-level streaming chat interface
@@ -79,7 +81,7 @@ pub trait StreamingChat: Send + Sync {
         &self,
         prompt: &str,
         chat_history: Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<StreamingResult, CompletionError>> + Send;
+    ) -> impl Future<Output = Result<StreamingResult, CompletionError>> + Send;
 }
 
 /// Trait for low-level streaming completion interface
@@ -88,7 +90,7 @@ pub trait StreamingCompletion<M: StreamingCompletionModel>: Send + Sync {
     fn streaming_completion(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingResult, CompletionError>> + Send;
+    ) -> impl Future<Output = Result<StreamingResult, CompletionError>> + Send;
 }
 
 /// Trait defining a streaming completion model
@@ -97,5 +99,23 @@ pub trait StreamingCompletionModel: CompletionModel {
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingResult, CompletionError>> + Send;
+    ) -> impl Future<Output = Result<StreamingResult, CompletionError>> + Send;
+}
+
+/// helper function to stream a completion request to stdout
+pub async fn stream_to_stdout(stream: &mut StreamingResult) -> Result<(), std::io::Error> {
+    print!("Response: ");
+    while let Some(chunk) = stream.next().await {
+        match chunk {
+            Ok(chunk) => {
+                print!("{}", chunk);
+                // Flush stdout to ensure immediate printing
+                std::io::Write::flush(&mut std::io::stdout())?;
+            }
+            Err(e) => eprintln!("Error receiving chunk: {}", e),
+        }
+    }
+    println!(); // New line after streaming completes
+
+    Ok(())
 }

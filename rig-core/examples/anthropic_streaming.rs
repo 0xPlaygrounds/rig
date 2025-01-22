@@ -1,7 +1,6 @@
-use futures::StreamExt;
 use rig::{
     providers::anthropic::{self, CLAUDE_3_5_SONNET},
-    streaming::StreamingPrompt,
+    streaming::{stream_to_stdout, StreamingPrompt},
 };
 
 #[tokio::main]
@@ -18,18 +17,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .stream_prompt("When and where and what type is the next solar eclipse?")
         .await?;
 
-    print!("Response: ");
-    while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(chunk) => {
-                print!("{}", chunk);
-                // Flush stdout to ensure immediate printing
-                std::io::Write::flush(&mut std::io::stdout())?;
-            }
-            Err(e) => eprintln!("Error receiving chunk: {}", e),
-        }
-    }
-    println!(); // New line after streaming completes
+    stream_to_stdout(&mut stream).await?;
 
     Ok(())
 }
