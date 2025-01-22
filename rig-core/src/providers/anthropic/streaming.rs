@@ -3,11 +3,12 @@ use serde::Deserialize;
 use serde_json::json;
 use std::iter;
 use std::pin::Pin;
+use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefinition, Usage};
 use crate::completion::{CompletionError, CompletionRequest};
-use crate::json_utils;
+use crate::json_utils::merge_inplace;
 use crate::streaming::{StreamingChoice, StreamingCompletionModel};
 
 #[derive(Debug, Deserialize)]
@@ -116,11 +117,11 @@ impl StreamingCompletionModel for CompletionModel {
         });
 
         if let Some(temperature) = completion_request.temperature {
-            json_utils::merge_inplace(&mut request, json!({ "temperature": temperature }));
+            merge_inplace(&mut request, json!({ "temperature": temperature }));
         }
 
         if !completion_request.tools.is_empty() {
-            json_utils::merge_inplace(
+            merge_inplace(
                 &mut request,
                 json!({
                     "tools": completion_request
@@ -138,7 +139,7 @@ impl StreamingCompletionModel for CompletionModel {
         }
 
         if let Some(ref params) = completion_request.additional_params {
-            json_utils::merge_inplace(&mut request, params.clone())
+            merge_inplace(&mut request, params.clone())
         }
 
         let response = self
@@ -153,7 +154,7 @@ impl StreamingCompletionModel for CompletionModel {
         }
 
         let stream = response.bytes_stream();
-        let (tx, rx) = tokio::sync::mpsc::channel(100);
+        let (tx, rx) = mpsc::channel(100);
 
         tokio::spawn(async move {
             process_stream(stream, tx).await;
@@ -165,7 +166,7 @@ impl StreamingCompletionModel for CompletionModel {
 
 async fn process_stream(
     mut stream: impl StreamExt<Item = Result<bytes::Bytes, reqwest::Error>> + Unpin,
-    tx: tokio::sync::mpsc::Sender<Result<StreamingChoice, CompletionError>>,
+    tx: mpsc::Sender<Result<StreamingChoice, CompletionError>>,
 ) {
     let mut current_tool_call: Option<ToolCallState> = None;
 
@@ -195,7 +196,7 @@ async fn process_stream(
 
 async fn emit_final_tool_call(
     current_tool_call: &mut Option<ToolCallState>,
-    tx: &tokio::sync::mpsc::Sender<Result<StreamingChoice, CompletionError>>,
+    tx: &mpsc::Sender<Result<StreamingChoice, CompletionError>>,
 ) {
     if let Some(tool_call) = current_tool_call.take() {
         if !tool_call.input_json.is_empty() {
@@ -215,7 +216,7 @@ async fn emit_final_tool_call(
 async fn handle_event(
     event: StreamingEvent,
     current_tool_call: &mut Option<ToolCallState>,
-    tx: &tokio::sync::mpsc::Sender<Result<StreamingChoice, CompletionError>>,
+    tx: &mpsc::Sender<Result<StreamingChoice, CompletionError>>,
 ) {
     match event {
         StreamingEvent::ContentBlockDelta { delta, .. } => {
@@ -241,7 +242,7 @@ async fn handle_event(
 async fn handle_content_block_delta(
     delta: ContentDelta,
     current_tool_call: &mut Option<ToolCallState>,
-    tx: &tokio::sync::mpsc::Sender<Result<StreamingChoice, CompletionError>>,
+    tx: &mpsc::Sender<Result<StreamingChoice, CompletionError>>,
 ) {
     match delta {
         ContentDelta::TextDelta { text } => {
