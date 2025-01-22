@@ -36,6 +36,7 @@
 //! }
 //! ```
 
+use crate::agent::Agent;
 use crate::completion::{CompletionError, CompletionModel, CompletionRequest, Message};
 use futures::{Stream, StreamExt};
 use std::fmt::{Display, Formatter};
@@ -103,16 +104,29 @@ pub trait StreamingCompletionModel: CompletionModel {
 }
 
 /// helper function to stream a completion request to stdout
-pub async fn stream_to_stdout(stream: &mut StreamingResult) -> Result<(), std::io::Error> {
+pub async fn stream_to_stdout<M: StreamingCompletionModel>(
+    agent: Agent<M>,
+    stream: &mut StreamingResult,
+) -> Result<(), std::io::Error> {
     print!("Response: ");
     while let Some(chunk) = stream.next().await {
         match chunk {
-            Ok(chunk) => {
-                print!("{}", chunk);
-                // Flush stdout to ensure immediate printing
+            Ok(StreamingChoice::Message(text)) => {
+                print!("{}", text);
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Err(e) => eprintln!("Error receiving chunk: {}", e),
+            Ok(StreamingChoice::ToolCall(name, _, params)) => {
+                let res = agent
+                    .tools
+                    .call(&name, params.to_string())
+                    .await
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                println!("\nResult: {}", res);
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                break;
+            }
         }
     }
     println!(); // New line after streaming completes

@@ -1,6 +1,5 @@
 use anyhow::Result;
-use futures::StreamExt;
-use rig::streaming::StreamingChoice;
+use rig::streaming::stream_to_stdout;
 use rig::{completion::ToolDefinition, providers, streaming::StreamingPrompt, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -101,24 +100,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("Calculate 2 - 5");
     let mut stream = calculator_agent.stream_prompt("Calculate 2 - 5").await?;
-    while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(StreamingChoice::Message(text)) => {
-                print!("{}", text);
-                std::io::Write::flush(&mut std::io::stdout())?;
-            }
-            Ok(StreamingChoice::ToolCall(name, _, params)) => {
-                let res = calculator_agent
-                    .tools
-                    .call(&name, params.to_string())
-                    .await?;
-                println!("\nResult: {}", res);
-            }
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                break;
-            }
-        }
-    }
+    stream_to_stdout(calculator_agent, &mut stream).await?;
     Ok(())
 }
