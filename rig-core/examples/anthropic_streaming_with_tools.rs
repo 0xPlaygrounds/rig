@@ -1,10 +1,7 @@
 use anyhow::Result;
-use rig::{
-    completion::{Prompt, ToolDefinition},
-    providers,
-    streaming::StreamingPrompt,
-    tool::Tool,
-};
+use futures::StreamExt;
+use rig::streaming::StreamingChoice;
+use rig::{completion::ToolDefinition, providers, streaming::StreamingPrompt, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -42,7 +39,8 @@ impl Tool for Adder {
                         "type": "number",
                         "description": "The second number to add"
                     }
-                }
+                },
+                "required": ["x", "y"]
             }),
         }
     }
@@ -77,7 +75,8 @@ impl Tool for Subtract {
                         "type": "number",
                         "description": "The number to substract"
                     }
-                }
+                },
+                "required": ["x", "y"]
             }
         }))
         .expect("Tool Definition")
@@ -94,18 +93,32 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create agent with a single context prompt and two tools
     let calculator_agent = providers::anthropic::Client::from_env()
         .agent(providers::anthropic::CLAUDE_3_5_SONNET)
-        .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
+        .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question. make your answer long, so we can test the streaming functionality, like 20 words")
         .max_tokens(1024)
         .tool(Adder)
         .tool(Subtract)
         .build();
 
-    // Prompt the agent and print the response
     println!("Calculate 2 - 5");
-    println!(
-        "Calculator Agent: {}",
-        calculator_agent.stream_prompt("Calculate 2 - 5").await?
-    );
-
+    let mut stream = calculator_agent.stream_prompt("Calculate 2 - 5").await?;
+    while let Some(chunk) = stream.next().await {
+        match chunk {
+            Ok(StreamingChoice::Message(text)) => {
+                print!("{}", text);
+                std::io::Write::flush(&mut std::io::stdout())?;
+            }
+            Ok(StreamingChoice::ToolCall(name, _, params)) => {
+                let res = calculator_agent
+                    .tools
+                    .call(&name, params.to_string())
+                    .await?;
+                println!("\nResult: {}", res);
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                break;
+            }
+        }
+    }
     Ok(())
 }
