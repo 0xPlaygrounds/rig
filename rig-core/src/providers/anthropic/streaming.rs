@@ -72,6 +72,13 @@ pub struct MessageDelta {
     pub stop_sequence: Option<String>,
 }
 
+#[derive(Default)]
+struct ToolCallState {
+    name: String,
+    id: String,
+    input_json: String,
+}
+
 impl StreamingCompletionModel for CompletionModel {
     async fn stream(
         &self,
@@ -80,7 +87,6 @@ impl StreamingCompletionModel for CompletionModel {
         Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>> + Send>>,
         CompletionError,
     > {
-        // Similar setup to the completion implementation
         let prompt_with_context = completion_request.prompt_with_context();
 
         let max_tokens = if let Some(tokens) = completion_request.max_tokens {
@@ -113,7 +119,6 @@ impl StreamingCompletionModel for CompletionModel {
             json_utils::merge_inplace(&mut request, json!({ "temperature": temperature }));
         }
 
-        // Add tools configuration similar to completion implementation
         if !completion_request.tools.is_empty() {
             json_utils::merge_inplace(
                 &mut request,
@@ -147,123 +152,107 @@ impl StreamingCompletionModel for CompletionModel {
             return Err(CompletionError::ProviderError(response.text().await?));
         }
 
-        let mut stream = response.bytes_stream();
+        let stream = response.bytes_stream();
         let (tx, rx) = tokio::sync::mpsc::channel(100);
 
-        // Spawn a task to process the SSE stream
         tokio::spawn(async move {
-            #[derive(Default)]
-            struct ToolCallState {
-                name: String,
-                id: String,
-                input_json: String,
-            }
-
-            let mut current_tool_call: Option<ToolCallState> = None;
-
-            while let Some(chunk_result) = stream.next().await {
-                match chunk_result {
-                    Ok(chunk) => {
-                        if let Ok(text) = String::from_utf8(chunk.to_vec()) {
-                            for line in text.lines() {
-                                if let Some(data) = line.strip_prefix("data: ") {
-                                    if data.trim() == "[DONE]" {
-                                        // Emit final tool call if any
-                                        if let Some(tool_call) = current_tool_call.take() {
-                                            if !tool_call.input_json.is_empty() {
-                                                if let Ok(json_value) =
-                                                    serde_json::from_str(&tool_call.input_json)
-                                                {
-                                                    let _ = tx
-                                                        .send(Ok(StreamingChoice::ToolCall(
-                                                            tool_call.name,
-                                                            tool_call.id,
-                                                            json_value,
-                                                        )))
-                                                        .await;
-                                                }
-                                            }
-                                        }
-                                        break;
-                                    }
-
-                                    if let Ok(event) = serde_json::from_str::<StreamingEvent>(data)
-                                    {
-                                        match event {
-                                            StreamingEvent::ContentBlockDelta { delta, .. } => {
-                                                match delta {
-                                                    ContentDelta::TextDelta { text } => {
-                                                        // Only stream text if we're not in the middle of a tool call
-                                                        if current_tool_call.is_none() {
-                                                            let _ = tx
-                                                                .send(Ok(StreamingChoice::Message(
-                                                                    text,
-                                                                )))
-                                                                .await;
-                                                        }
-                                                    }
-                                                    ContentDelta::InputJsonDelta {
-                                                        partial_json,
-                                                    } => {
-                                                        if let Some(ref mut tool_call) =
-                                                            current_tool_call
-                                                        {
-                                                            tool_call
-                                                                .input_json
-                                                                .push_str(&partial_json);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            StreamingEvent::ContentBlockStart {
-                                                content_block,
-                                                ..
-                                            } => {
-                                                if let ContentBlock::ToolUse { name, id, .. } =
-                                                    content_block
-                                                {
-                                                    current_tool_call = Some(ToolCallState {
-                                                        name,
-                                                        id,
-                                                        input_json: String::new(),
-                                                    });
-                                                }
-                                            }
-                                            StreamingEvent::ContentBlockStop { .. } => {
-                                                // Emit the complete tool call when the content block stops
-                                                if let Some(tool_call) = current_tool_call.take() {
-                                                    if !tool_call.input_json.is_empty() {
-                                                        if let Ok(json_value) = serde_json::from_str(
-                                                            &tool_call.input_json,
-                                                        ) {
-                                                            let _ = tx
-                                                                .send(Ok(
-                                                                    StreamingChoice::ToolCall(
-                                                                        tool_call.name,
-                                                                        tool_call.id,
-                                                                        json_value,
-                                                                    ),
-                                                                ))
-                                                                .await;
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            _ => continue,
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        let _ = tx.send(Err(CompletionError::from(e))).await;
-                        break;
-                    }
-                }
-            }
+            process_stream(stream, tx).await;
         });
 
         Ok(Box::pin(ReceiverStream::new(rx)))
+    }
+}
+
+async fn process_stream(
+    mut stream: impl StreamExt<Item = Result<bytes::Bytes, reqwest::Error>> + Unpin,
+    tx: tokio::sync::mpsc::Sender<Result<StreamingChoice, CompletionError>>,
+) {
+    let mut current_tool_call: Option<ToolCallState> = None;
+
+    while let Some(chunk_result) = stream.next().await {
+        if let Err(e) = chunk_result {
+            let _ = tx.send(Err(CompletionError::from(e))).await;
+            break;
+        }
+
+        let chunk = chunk_result.unwrap();
+        if let Ok(text) = String::from_utf8(chunk.to_vec()) {
+            for line in text.lines() {
+                if let Some(data) = line.strip_prefix("data: ") {
+                    if data.trim() == "[DONE]" {
+                        emit_final_tool_call(&mut current_tool_call, &tx).await;
+                        break;
+                    }
+
+                    if let Ok(event) = serde_json::from_str::<StreamingEvent>(data) {
+                        handle_event(event, &mut current_tool_call, &tx).await;
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn emit_final_tool_call(
+    current_tool_call: &mut Option<ToolCallState>,
+    tx: &tokio::sync::mpsc::Sender<Result<StreamingChoice, CompletionError>>,
+) {
+    if let Some(tool_call) = current_tool_call.take() {
+        if !tool_call.input_json.is_empty() {
+            if let Ok(json_value) = serde_json::from_str(&tool_call.input_json) {
+                let _ = tx
+                    .send(Ok(StreamingChoice::ToolCall(
+                        tool_call.name,
+                        tool_call.id,
+                        json_value,
+                    )))
+                    .await;
+            }
+        }
+    }
+}
+
+async fn handle_event(
+    event: StreamingEvent,
+    current_tool_call: &mut Option<ToolCallState>,
+    tx: &tokio::sync::mpsc::Sender<Result<StreamingChoice, CompletionError>>,
+) {
+    match event {
+        StreamingEvent::ContentBlockDelta { delta, .. } => {
+            handle_content_block_delta(delta, current_tool_call, tx).await;
+        }
+        StreamingEvent::ContentBlockStart {
+            content_block: ContentBlock::ToolUse { id, name, .. },
+            ..
+        } => {
+            *current_tool_call = Some(ToolCallState {
+                name,
+                id,
+                input_json: String::new(),
+            });
+        }
+        StreamingEvent::ContentBlockStop { .. } => {
+            emit_final_tool_call(current_tool_call, tx).await;
+        }
+        _ => {}
+    }
+}
+
+async fn handle_content_block_delta(
+    delta: ContentDelta,
+    current_tool_call: &mut Option<ToolCallState>,
+    tx: &tokio::sync::mpsc::Sender<Result<StreamingChoice, CompletionError>>,
+) {
+    match delta {
+        ContentDelta::TextDelta { text } => {
+            if current_tool_call.is_none() {
+                let _ = tx.send(Ok(StreamingChoice::Message(text))).await;
+            }
+        }
+        ContentDelta::InputJsonDelta { partial_json } => {
+            if let Some(ref mut tool_call) = current_tool_call {
+                tool_call.input_json.push_str(&partial_json);
+            }
+        }
     }
 }
