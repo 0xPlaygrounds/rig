@@ -8,33 +8,6 @@
 //! - [StreamingCompletion]: Defines a low-level streaming LLM completion interface
 //! - [StreamingCompletionModel]: Defines a streaming completion model interface
 //!
-//! Example Usage:
-//! ```rust
-//! use rig::providers::openai::{Client, self};
-//! use rig::streaming::*;
-//!
-//! let openai = Client::new("your-openai-api-key");
-//! let gpt_4 = openai.streaming_completion_model(openai::GPT_4);
-//!
-//! let mut stream = gpt_4.stream_prompt("Tell me a story")
-//!     .await
-//!     .expect("Failed to create stream");
-//!
-//! while let Some(chunk) = stream.next().await {
-//!     match chunk {
-//!         Ok(StreamingChoice::Message(text)) => {
-//!             print!("{}", text);
-//!         }
-//!         Ok(StreamingChoice::ToolCall(name, id, params)) => {
-//!             println!("Tool call: {} {} {:?}", name, id, params);
-//!         }
-//!         Err(e) => {
-//!             eprintln!("Error: {}", e);
-//!             break;
-//!         }
-//!     }
-//! }
-//! ```
 
 use crate::agent::Agent;
 use crate::completion::{CompletionError, CompletionModel, CompletionRequest, Message};
