@@ -1,6 +1,6 @@
 // ================================================================
 //! Together AI Completion Integration
-//! From [Together AI Reference](https://docs.together.ai/reference/chat-completions)
+//! From [Together AI Reference](https://docs.together.ai/docs/chat-overview)
 // ================================================================
 
 use crate::{
@@ -14,7 +14,7 @@ use together_ai_api_types::{CompletionResponse, ToolDefinition};
 use super::client::{together_ai_api_types::ApiResponse, Client};
 
 /// Example model name for Together AI, you should replace this with actual model names provided by Together AI.
-pub const TOGETHER_MODEL: &str = "together-model-v1";
+pub const TOGETHER_MODEL: &str = "meta-llama/Meta-Llama-3-8B-Instruct-Turbo";
 
 // =================================================================
 // Rig Implementation Types

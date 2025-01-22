@@ -1,6 +1,6 @@
 use crate::{
     agent::AgentBuilder,
-    embeddings::{},
+    embeddings::{self},
     extractor::ExtractorBuilder,
     Embed,
 };
@@ -49,10 +49,10 @@ impl Client {
         }
     }
 
-    /// Create a new Together AI client from the `TOGETHER_AI_API_KEY` environment variable.
+    /// Create a new Together AI client from the `TOGETHER_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     pub fn from_env() -> Self {
-        let api_key = std::env::var("TOGETHER_AI_API_KEY").expect("TOGETHER_AI_API_KEY not set");
+        let api_key = std::env::var("TOGETHER_API_KEY").expect("TOGETHER_API_KEY not set");
         Self::new(&api_key)
     }
 
@@ -156,6 +156,12 @@ impl Client {
 
 pub mod together_ai_api_types {
     use serde::Deserialize;
+
+    impl ApiErrorResponse {
+        pub fn message(&self) -> String {
+            format!("Code `{}`: {}", self.code, self.error)
+        }
+    }
 
     #[derive(Debug, Deserialize)]
     pub struct ApiErrorResponse {

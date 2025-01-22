@@ -1,6 +1,6 @@
 // ================================================================
 //! Together AI Embeddings Integration
-//! From [Together AI Reference](https://docs.together.ai/reference/embeddings)
+//! From [Together AI Reference](https://docs.together.ai/docs/embeddings-overview)
 // ================================================================
 
 use serde::Deserialize;
@@ -17,7 +17,7 @@ use super::{
 // Together AI Embedding API
 // ================================================================
 /// Example embedding model name for Together AI, you should replace this with actual model names provided by Together AI.
-pub const EMBEDDING_V1: &str = "together-embedding-v1";
+pub const EMBEDDING_V1: &str = "togethercomputer/m2-bert-80M-8k-retrieval";
 
 #[derive(Debug, Deserialize)]
 pub struct EmbeddingResponse {
