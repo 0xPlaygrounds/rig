@@ -1,10 +1,13 @@
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
+use serde_json::json;
+use std::iter;
 use std::pin::Pin;
 use tokio_stream::wrappers::ReceiverStream;
 
-use super::completion::{CompletionModel, Content, Usage};
+use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefinition, Usage};
 use crate::completion::{CompletionError, CompletionRequest};
+use crate::json_utils;
 use crate::streaming::{StreamingChoice, StreamingCompletionModel};
 
 #[derive(Debug, Deserialize)]
@@ -72,38 +75,73 @@ pub struct MessageDelta {
 impl StreamingCompletionModel for CompletionModel {
     async fn stream(
         &self,
-        request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>> + Send>>,
         CompletionError,
     > {
-        let prompt_with_context = request.prompt_with_context();
+        // Similar setup to the completion implementation
+        let prompt_with_context = completion_request.prompt_with_context();
 
-        // Similar to the completion implementation, but with stream: true
-        let max_tokens = request.max_tokens.or(Some(2048)).ok_or_else(|| {
-            CompletionError::RequestError("`max_tokens` must be set for Anthropic".into())
-        })?;
+        let max_tokens = if let Some(tokens) = completion_request.max_tokens {
+            tokens
+        } else if let Some(tokens) = self.default_max_tokens {
+            tokens
+        } else {
+            return Err(CompletionError::RequestError(
+                "`max_tokens` must be set for Anthropic".into(),
+            ));
+        };
 
-        let mut body = serde_json::json!({
+        let mut request = json!({
             "model": self.model,
-            "messages": [{
-                "role": "user",
-                "content": prompt_with_context,
-            }],
+            "messages": completion_request
+                .chat_history
+                .into_iter()
+                .map(Message::from)
+                .chain(iter::once(Message {
+                    role: "user".to_owned(),
+                    content: prompt_with_context,
+                }))
+                .collect::<Vec<_>>(),
             "max_tokens": max_tokens,
+            "system": completion_request.preamble.unwrap_or("".to_string()),
             "stream": true,
         });
 
-        if let Some(temperature) = request.temperature {
-            body["temperature"] = serde_json::json!(temperature);
+        if let Some(temperature) = completion_request.temperature {
+            json_utils::merge_inplace(&mut request, json!({ "temperature": temperature }));
         }
 
-        if !request.tools.is_empty() {
-            body["tools"] = serde_json::json!(request.tools);
-            body["tool_choice"] = serde_json::json!({"type": "any"});
+        // Add tools configuration similar to completion implementation
+        if !completion_request.tools.is_empty() {
+            json_utils::merge_inplace(
+                &mut request,
+                json!({
+                    "tools": completion_request
+                        .tools
+                        .into_iter()
+                        .map(|tool| ToolDefinition {
+                            name: tool.name,
+                            description: Some(tool.description),
+                            input_schema: tool.parameters,
+                        })
+                        .collect::<Vec<_>>(),
+                    "tool_choice": ToolChoice::Auto,
+                }),
+            );
         }
 
-        let response = self.client.post("/v1/messages").json(&body).send().await?;
+        if let Some(ref params) = completion_request.additional_params {
+            json_utils::merge_inplace(&mut request, params.clone())
+        }
+
+        let response = self
+            .client
+            .post("/v1/messages")
+            .json(&request)
+            .send()
+            .await?;
 
         if !response.status().is_success() {
             return Err(CompletionError::ProviderError(response.text().await?));
@@ -114,7 +152,7 @@ impl StreamingCompletionModel for CompletionModel {
 
         // Spawn a task to process the SSE stream
         tokio::spawn(async move {
-            let mut current_text = String::new();
+            let mut current_tool_call: Option<(String, String, String)> = None;
 
             while let Some(chunk_result) = stream.next().await {
                 match chunk_result {
@@ -122,15 +160,54 @@ impl StreamingCompletionModel for CompletionModel {
                         if let Ok(text) = String::from_utf8(chunk.to_vec()) {
                             for line in text.lines() {
                                 if let Some(data) = line.strip_prefix("data: ") {
+                                    if data.trim() == "[DONE]" {
+                                        break;
+                                    }
+
                                     if let Ok(event) = serde_json::from_str::<StreamingEvent>(data)
                                     {
                                         match event {
                                             StreamingEvent::ContentBlockDelta { delta, .. } => {
-                                                if let ContentDelta::TextDelta { text } = delta {
-                                                    current_text.push_str(&text);
-                                                    let _ = tx
-                                                        .send(Ok(StreamingChoice::Message(text)))
-                                                        .await;
+                                                match delta {
+                                                    ContentDelta::TextDelta { text } => {
+                                                        let _ = tx
+                                                            .send(Ok(StreamingChoice::Message(
+                                                                text,
+                                                            )))
+                                                            .await;
+                                                    }
+                                                    ContentDelta::InputJsonDelta {
+                                                        partial_json,
+                                                    } => {
+                                                        if let Some((name, id, mut input)) =
+                                                            current_tool_call.clone()
+                                                        {
+                                                            input.push_str(&partial_json);
+                                                            let _ = tx
+                                                                .send(Ok(
+                                                                    StreamingChoice::ToolCall(
+                                                                        name,
+                                                                        id,
+                                                                        serde_json::from_str(
+                                                                            &input,
+                                                                        )
+                                                                        .unwrap_or(json!({})),
+                                                                    ),
+                                                                ))
+                                                                .await;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            StreamingEvent::ContentBlockStart {
+                                                content_block,
+                                                ..
+                                            } => {
+                                                if let ContentBlock::ToolUse { name, id, .. } =
+                                                    content_block
+                                                {
+                                                    current_tool_call =
+                                                        Some((name, id, String::new()));
                                                 }
                                             }
                                             _ => continue,

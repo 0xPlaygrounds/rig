@@ -153,7 +153,7 @@ impl From<completion::Message> for Message {
 pub struct CompletionModel {
     pub client: Client,
     pub model: String,
-    default_max_tokens: Option<u64>,
+    pub default_max_tokens: Option<u64>,
 }
 
 impl CompletionModel {
@@ -191,7 +191,7 @@ struct Metadata {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum ToolChoice {
+pub enum ToolChoice {
     Auto,
     Any,
     Tool { name: String },
