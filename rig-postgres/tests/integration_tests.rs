@@ -1,6 +1,4 @@
-use std::env;
-
-use rig::{embeddings::EmbeddingsBuilder, Embed};
+use rig::{embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex, Embed};
 use rig_postgres::PostgresVectorStore;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -13,7 +11,7 @@ use testcontainers::{
 
 const POSTGRES_PORT: u16 = 5432;
 
-#[derive(Embed, Clone, Serialize, Deserialize, Debug)]
+#[derive(Embed, Clone, Serialize, Deserialize, Debug, PartialEq)]
 struct Word {
     id: String,
     #[embed]
@@ -70,10 +68,10 @@ async fn vector_search_test() {
         .unwrap()
         .build()
         .await
-        .unwrap();
+        .expect("Failed to create embeddings");
 
     // insert documents into vector store
-    let vector_store = PostgresVectorStore::new(model, pg_pool.clone(), None);
+    let vector_store = PostgresVectorStore::default(model, pg_pool.clone());
 
     vector_store
         .insert_documents(documents)
@@ -86,6 +84,21 @@ async fn vector_search_test() {
         .expect("Failed to fetch documents count");
 
     assert_eq!(documents_count, 3);
+
+    // search for a document
+    let results = vector_store
+        .top_n::<Word>("What is a linglingdong?", 1)
+        .await
+        .expect("Failed to search for document");
+
+    let (score, id, doc) = results[0].clone();
+    println!("Score: {}, ID: {}, Document: {:?}", score, id, doc);
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(doc, Word {
+        id: "f9e17d59-32e5-440c-be02-b2759a654824".to_string(),
+        definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
+    });
 }
 
 async fn start_container() -> ContainerAsync<GenericImage> {
@@ -177,7 +190,7 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
                     "data": [
                       {
                         "object": "embedding",
-                        "embedding": vec![0.002; 1536],
+                        "embedding": vec![0.0024; 1536],
                         "index": 0
                       }
                     ],
@@ -191,28 +204,4 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
     });
 
     server
-}
-
-async fn create_test_documents(model: EmbeddingModel) -> Vec<(Work, Vec<Embeddings>)> {
-    let words = vec![
-        Word {
-            id: "0981d983-a5f8-49eb-89ea-f7d3b2196d2e".to_string(),
-            definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
-        },
-        Word {
-            id: "62a36d43-80b6-4fd6-990c-f75bb02287d1".to_string(),
-            definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-        },
-        Word {
-            id: "f9e17d59-32e5-440c-be02-b2759a654824".to_string(),
-            definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
-        }
-    ];
-
-    EmbeddingsBuilder::new(model.clone())
-        .documents(words)
-        .unwrap()
-        .build()
-        .await
-        .expect("Failed to create embeddings")
 }
