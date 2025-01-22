@@ -527,7 +527,7 @@ pub mod gemini_api_types {
         /// encourage the use of tokens that have already been used in the response, decreasing the vocabulary.
         pub presence_penalty: Option<f64>,
         /// Frequency penalty applied to the next token's logprobs, multiplied by the number of times each token has been
-        /// seen in the respponse so far. A positive penalty will discourage the use of tokens that have already been
+        /// seen in the response so far. A positive penalty will discourage the use of tokens that have already been
         /// used, proportional to the number of times the token has been used: The more a token is used, the more
         /// dificult it is for the  model to use that token again increasing the vocabulary of responses. Caution: A
         /// negative penalty will encourage the model to reuse tokens proportional to the number of times the token has
