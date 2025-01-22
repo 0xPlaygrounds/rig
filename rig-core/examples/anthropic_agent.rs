@@ -7,7 +7,7 @@ use rig::{
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
+    // Create Anthropic client
     let client = anthropic::ClientBuilder::new(
         &env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set"),
     )
@@ -18,7 +18,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .agent(CLAUDE_3_5_SONNET)
         .preamble("Be precise and concise.")
         .temperature(0.5)
-        .max_tokens(8192)
         .build();
 
     // Prompt the agent and print the response

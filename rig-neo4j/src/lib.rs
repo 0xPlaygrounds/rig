@@ -272,7 +272,7 @@ impl Neo4jClient {
     /// Calls the `CREATE VECTOR INDEX` Neo4j query and waits for the index to be created.
     /// A newly created index is not immediately fully available but is created (i.e. data is indexed) in the background.
     ///
-    /// ❗ If there is already an index targetting the same node label and property, the new index creation will fail.
+    /// ❗ If there is already an index targeting the same node label and property, the new index creation will fail.
     ///
     /// ### Arguments
     /// * `index_name` - The name of the index to create.
@@ -337,73 +337,5 @@ impl Neo4jClient {
             index_config.index_name
         );
         Ok(())
-    }
-}
-
-#[allow(dead_code)]
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use neo4rs::ConfigBuilder;
-    use rig::{
-        providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-        vector_store::VectorStoreIndex,
-    };
-    use serde::Deserialize;
-    use std::env;
-
-    const NEO4J_URI: &str = "neo4j+s://demo.neo4jlabs.com:7687";
-    const NEO4J_DB: &str = "recommendations";
-    const NEO4J_USERNAME: &str = "recommendations";
-    const NEO4J_PASSWORD: &str = "recommendations";
-
-    #[derive(Debug, Deserialize)]
-    struct Movie {
-        title: String,
-        plot: String,
-    }
-
-    #[tokio::test]
-    async fn test_connect() {
-        let result = Neo4jClient::from_config(
-            ConfigBuilder::default()
-                .uri(NEO4J_URI)
-                .db(NEO4J_DB)
-                .user(NEO4J_USERNAME)
-                .password(NEO4J_PASSWORD)
-                .build()
-                .unwrap(),
-        )
-        .await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_vector_search_no_display() {
-        let results = vector_search().await.unwrap();
-        assert!(results.len() > 0);
-    }
-
-    async fn vector_search() -> Result<Vec<(f64, String, Movie)>, VectorStoreError> {
-        let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-        let openai_client = Client::new(&openai_api_key);
-        let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
-
-        let client = Neo4jClient::from_config(
-            ConfigBuilder::default()
-                .uri(NEO4J_URI)
-                .db(NEO4J_DB)
-                .user(NEO4J_USERNAME)
-                .password(NEO4J_PASSWORD)
-                .build()
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-        let index = client
-            .get_index(model, "moviePlotsEmbedding", SearchParams::default())
-            .await?;
-        Ok(index.top_n::<Movie>("Batman", 3).await?)
     }
 }

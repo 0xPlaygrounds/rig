@@ -283,6 +283,7 @@ impl TryFrom<Message> for message::Message {
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
 
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,

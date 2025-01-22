@@ -1,21 +1,15 @@
 use serde_json::json;
-use testcontainers::{
-    core::{IntoContainerPort, WaitFor},
-    runners::AsyncRunner,
-    GenericImage, ImageExt,
-};
 
-use futures::{StreamExt, TryStreamExt};
 use rig::vector_store::VectorStoreIndex;
 use rig::{
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
     Embed, OneOrMany,
 };
-use rig_neo4j::{vector_index::SearchParams, Neo4jClient, ToBoltType};
-
-const BOLT_PORT: u16 = 7687;
-const HTTP_PORT: u16 = 7474;
+use rig_sqlite::{Column, ColumnValue, SqliteVectorStore, SqliteVectorStoreTable};
+use rusqlite::ffi::sqlite3_auto_extension;
+use sqlite_vec::sqlite3_vec_init;
+use tokio_rusqlite::Connection;
 
 #[derive(Embed, Clone, serde::Deserialize, Debug)]
 struct Word {
@@ -24,26 +18,42 @@ struct Word {
     definition: String,
 }
 
+impl SqliteVectorStoreTable for Word {
+    fn name() -> &'static str {
+        "documents"
+    }
+
+    fn schema() -> Vec<Column> {
+        vec![
+            Column::new("id", "TEXT PRIMARY KEY"),
+            Column::new("definition", "TEXT"),
+        ]
+    }
+
+    fn id(&self) -> String {
+        self.id.clone()
+    }
+
+    fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+        vec![
+            ("id", Box::new(self.id.clone())),
+            ("definition", Box::new(self.definition.clone())),
+        ]
+    }
+}
+
 #[tokio::test]
 async fn vector_search_test() {
-    // Setup a local Neo 4J container for testing. NOTE: docker service must be running.
-    let container = GenericImage::new("neo4j", "latest")
-        .with_wait_for(WaitFor::Duration {
-            length: std::time::Duration::from_secs(5),
-        })
-        .with_exposed_port(BOLT_PORT.tcp())
-        .with_exposed_port(HTTP_PORT.tcp())
-        .with_env_var("NEO4J_AUTH", "none")
-        .start()
-        .await
-        .expect("Failed to start Neo 4J container");
+    // Initialize the `sqlite-vec`extension
+    // See: https://alexgarcia.xyz/sqlite-vec/rust.html
+    unsafe {
+        sqlite3_auto_extension(Some(std::mem::transmute(sqlite3_vec_init as *const ())));
+    }
 
-    let port = container.get_host_port_ipv4(BOLT_PORT).await.expect("");
-    let host = container.get_host().await.expect("").to_string();
-
-    let neo4j_client = Neo4jClient::connect(&format!("neo4j://{host}:{port}"), "", "")
+    // Initialize SQLite connection
+    let conn = Connection::open("vector_store.db")
         .await
-        .expect("");
+        .expect("Could not initialize SQLite connection");
 
     // Setup mock openai API
     let server = httpmock::MockServer::start();
@@ -127,67 +137,19 @@ async fn vector_search_test() {
 
     let embeddings = create_embeddings(model.clone()).await;
 
-    futures::stream::iter(embeddings)
-        .map(|(doc, embeddings)| {
-            neo4j_client.graph.run(
-                neo4rs::query(
-                    "
-                        CREATE
-                            (document:DocumentEmbeddings {
-                                id: $id,
-                                document: $document,
-                                embedding: $embedding})
-                        RETURN document",
-                )
-                .param("id", doc.id)
-                // Here we use the first embedding but we could use any of them.
-                // Neo4j only takes primitive types or arrays as properties.
-                .param("embedding", embeddings.first().vec.clone())
-                .param("document", doc.definition.to_bolt_type()),
-            )
-        })
-        .buffer_unordered(3)
-        .try_collect::<Vec<_>>()
+    // Initialize SQLite vector store
+    let vector_store = SqliteVectorStore::new(conn, &model)
         .await
-        .expect("");
+        .expect("Could not initialize SQLite vector store");
+
+    // Add embeddings to vector store
+    vector_store
+        .add_rows(embeddings)
+        .await
+        .expect("Could not add embeddings to vector store");
 
     // Create a vector index on our vector store
-    println!("Creating vector index...");
-    neo4j_client
-        .graph
-        .run(neo4rs::query(
-            "CREATE VECTOR INDEX vector_index IF NOT EXISTS
-                FOR (m:DocumentEmbeddings)
-                ON m.embedding
-                OPTIONS { indexConfig: {
-                    `vector.dimensions`: 1536,
-                    `vector.similarity_function`: 'cosine'
-                    }}",
-        ))
-        .await
-        .expect("");
-
-    // ℹ️ The index name must be unique among both indexes and constraints.
-    // A newly created index is not immediately available but is created in the background.
-
-    // Check if the index exists with db.awaitIndex(), the call timeouts if the index is not ready
-    let index_exists = neo4j_client
-        .graph
-        .run(neo4rs::query("CALL db.awaitIndex('vector_index')"))
-        .await;
-    if index_exists.is_err() {
-        println!("Index not ready, waiting for index...");
-        std::thread::sleep(std::time::Duration::from_secs(5));
-    }
-
-    println!("Index exists: {:?}", index_exists);
-
-    // Create a vector index on our vector store
-    // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client
-        .get_index(model, "vector_index", SearchParams::default())
-        .await
-        .expect("");
+    let index = vector_store.index(model);
 
     // Query the index
     let results = index
@@ -201,8 +163,7 @@ async fn vector_search_test() {
         value,
         &serde_json::json!({
             "id": "doc1",
-            "document": "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
-            "embedding": serde_json::Value::Null
+            "definition": "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
         })
     )
 }

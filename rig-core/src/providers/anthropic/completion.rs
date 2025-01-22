@@ -15,11 +15,14 @@ use super::client::Client;
 // ================================================================
 // Anthropic Completion API
 // ================================================================
-/// `claude-3-5-sonnet-20240620` completion model
-pub const CLAUDE_3_5_SONNET: &str = "claude-3-5-sonnet-20240620";
+/// `claude-3-5-sonnet-latest` completion model
+pub const CLAUDE_3_5_SONNET: &str = "claude-3-5-sonnet-latest";
 
-/// `claude-3-5-haiku-20240620` completion model
-pub const CLAUDE_3_OPUS: &str = "claude-3-opus-20240229";
+/// `claude-3-5-haiku-latest` completion model
+pub const CLAUDE_3_5_HAIKU: &str = "claude-3-5-haiku-latest";
+
+/// `claude-3-5-haiku-latest` completion model
+pub const CLAUDE_3_OPUS: &str = "claude-3-opus-latest";
 
 /// `claude-3-sonnet-20240229` completion model
 pub const CLAUDE_3_SONNET: &str = "claude-3-sonnet-20240229";
@@ -86,19 +89,31 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
-        match response.content.as_slice() {
-            [Content::Text { text, .. }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::Message(text.to_string()),
+        if let Some(tool_use) = response.content.iter().find_map(|content| match content {
+            Content::ToolUse {
+                name, input, id, ..
+            } => Some((name.clone(), id.clone(), input.clone())),
+            _ => None,
+        }) {
+            return Ok(completion::CompletionResponse {
+                choice: completion::ModelChoice::ToolCall(tool_use.0, tool_use.1, tool_use.2),
                 raw_response: response,
-            }),
-            [Content::ToolUse { name, input, .. }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::ToolCall(name.clone(), input.clone()),
-                raw_response: response,
-            }),
-            _ => Err(CompletionError::ResponseError(
-                "Response did not contain a message or tool call".into(),
-            )),
+            });
         }
+
+        if let Some(text_content) = response.content.iter().find_map(|content| match content {
+            Content::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        }) {
+            return Ok(completion::CompletionResponse {
+                choice: completion::ModelChoice::Message(text_content),
+                raw_response: response,
+            });
+        }
+
+        Err(CompletionError::ResponseError(
+            "Response did not contain a message or tool call".into(),
+        ))
     }
 }
 
@@ -407,6 +422,7 @@ impl TryFrom<Message> for message::Message {
 pub struct CompletionModel {
     client: Client,
     pub model: String,
+    default_max_tokens: Option<u64>,
 }
 
 impl CompletionModel {
@@ -414,7 +430,26 @@ impl CompletionModel {
         Self {
             client,
             model: model.to_string(),
+            default_max_tokens: calculate_max_tokens(model),
         }
+    }
+}
+
+/// Anthropic requires a `max_tokens` parameter to be set, which is dependant on the model. If not
+/// set or if set too high, the request will fail. The following values are based on the models
+/// available at the time of writing.
+///
+/// Dev Note: This is really bad design, I'm not sure why they did it like this..
+fn calculate_max_tokens(model: &str) -> Option<u64> {
+    if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
+        Some(8192)
+    } else if model.starts_with("claude-3-opus")
+        || model.starts_with("claude-3-sonnet")
+        || model.starts_with("claude-3-haiku")
+    {
+        Some(4096)
+    } else {
+        None
     }
 }
 
@@ -434,6 +469,7 @@ enum ToolChoice {
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
 
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
@@ -443,11 +479,15 @@ impl completion::CompletionModel for CompletionModel {
         // building the request as a raw JSON document.
 
         // Check if max_tokens is set, required for Anthropic
-        if completion_request.max_tokens.is_none() {
+        let max_tokens = if let Some(tokens) = completion_request.max_tokens {
+            tokens
+        } else if let Some(tokens) = self.default_max_tokens {
+            tokens
+        } else {
             return Err(CompletionError::RequestError(
-                "max_tokens must be set for Anthropic".into(),
+                "`max_tokens` must be set for Anthropic".into(),
             ));
-        }
+        };
 
         let prompt_message: Message = completion_request
             .prompt_with_context()
@@ -469,7 +509,7 @@ impl completion::CompletionModel for CompletionModel {
         let mut request = json!({
             "model": self.model,
             "messages": messages,
-            "max_tokens": completion_request.max_tokens,
+            "max_tokens": max_tokens,
             "system": completion_request.preamble.unwrap_or("".to_string()),
         });
 

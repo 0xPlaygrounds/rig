@@ -266,6 +266,12 @@ impl<M: CompletionModel> Prompt for Agent<M> {
     }
 }
 
+impl<M: CompletionModel> Prompt for &Agent<M> {
+    async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
+        self.chat(prompt, vec![]).await
+    }
+}
+
 impl<M: CompletionModel> Chat for Agent<M> {
     async fn chat(
         &self,
@@ -278,7 +284,7 @@ impl<M: CompletionModel> Chat for Agent<M> {
                 ..
             } => Ok(msg),
             CompletionResponse {
-                choice: ModelChoice::ToolCall(toolname, args),
+                choice: ModelChoice::ToolCall(toolname, _, args),
                 ..
             } => Ok(self.tools.call(&toolname, args.to_string()).await?),
         }

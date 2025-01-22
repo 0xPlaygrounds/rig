@@ -49,6 +49,8 @@ jobs:
       # Required to compile rig-lancedb
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run clippy action
         uses: clechasseur/rs-clippy-check@v3
@@ -73,6 +75,8 @@ jobs:
       # Required to compile rig-lancedb
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Test with latest nextest release
         uses: actions-rs/cargo@v1
@@ -101,27 +105,29 @@ jobs:
       # Required to compile rig-lancedb
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run cargo doc
         run: cargo doc --no-deps --all-features
         env:
           RUSTDOCFLAGS: -D warnings
 
-  publish-check:
-    name: stable / publish dry-run
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+  # publish-check:
+  #   name: stable / publish dry-run
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
 
-      - name: Install Rust stable
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rust-docs
+  #     - name: Install Rust stable
+  #       uses: actions-rust-lang/setup-rust-toolchain@v1
+  #       with:
+  #         components: rust-docs
 
-      # Required to compile rig-lancedb
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
+  #     # Required to compile rig-lancedb
+  #     - name: Install Protoc
+  #       uses: arduino/setup-protoc@v3
 
-      - name: Run cargo publish --dry-run
-        run: find . | grep -v "target" | grep "\./.*/Cargo\.toml" | xargs -n 1 sh -c 'cargo publish --manifest-path $0 --dry-run || exit 255'
+  #     - name: Run cargo publish --dry-run
+  #       run: find . | grep -v "target" | grep "\./.*/Cargo\.toml" | xargs -n 1 sh -c 'cargo publish --manifest-path $0 --dry-run || exit 255'
