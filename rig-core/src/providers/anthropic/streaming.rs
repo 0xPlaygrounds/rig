@@ -167,11 +167,6 @@ async fn process_stream(
         if let Ok(text) = String::from_utf8(chunk.to_vec()) {
             for line in text.lines() {
                 if let Some(data) = line.strip_prefix("data: ") {
-                    if data.trim() == "[DONE]" {
-                        emit_final_tool_call(&mut current_tool_call, &tx).await;
-                        break;
-                    }
-
                     if let Ok(event) = serde_json::from_str::<StreamingEvent>(data) {
                         handle_event(event, &mut current_tool_call, &tx).await;
                     }
