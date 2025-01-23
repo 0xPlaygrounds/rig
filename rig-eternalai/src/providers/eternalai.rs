@@ -471,7 +471,7 @@ impl completion::CompletionModel for CompletionModel {
             vec![]
         };
 
-        println!("Try to get on-chain system prompt");
+        tracing::info!("Try to get on-chain system prompt");
         let eternal_ai_rpc = std::env::var("ETERNALAI_RPC_URL").unwrap_or_else(|_| "".to_string());
         let eternal_ai_contract =
             std::env::var("ETERNALAI_AGENT_CONTRACT_ADDRESS").unwrap_or_else(|_| "".to_string());
