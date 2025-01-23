@@ -19,7 +19,7 @@ pub enum StreamingEvent {
     },
     ContentBlockStart {
         index: usize,
-        content_block: ContentBlock,
+        content_block: Content,
     },
     ContentBlockDelta {
         index: usize,
@@ -45,19 +45,6 @@ pub struct MessageStart {
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
     pub usage: Usage,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ContentBlock {
-    Text {
-        text: String,
-    },
-    ToolUse {
-        id: String,
-        name: String,
-        input: serde_json::Value,
-    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -228,7 +215,7 @@ async fn handle_event(
             handle_content_block_delta(delta, current_tool_call, tx).await;
         }
         StreamingEvent::ContentBlockStart {
-            content_block: ContentBlock::ToolUse { id, name, .. },
+            content_block: Content::ToolUse { id, name, .. },
             ..
         } => {
             *current_tool_call = Some(ToolCallState {
