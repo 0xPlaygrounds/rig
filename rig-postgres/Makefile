@@ -30,3 +30,7 @@ test:
 .PHONY: fix
 fix:
 	cargo clippy --fix
+
+.PHONY: run
+run:
+	 cargo run --example vector_search_postgres

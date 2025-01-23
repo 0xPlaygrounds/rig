@@ -57,6 +57,10 @@ pub struct SearchResult {
 
 impl SearchResult {
     pub fn into_result<T: DeserializeOwned>(self) -> Result<(f64, String, T), VectorStoreError> {
+        println!(
+            "SearchResults into_result, id: {}, distance: {}",
+            self.id, self.distance
+        );
         let document: T =
             serde_json::from_value(self.document).map_err(VectorStoreError::JsonError)?;
         Ok((self.distance, self.id.to_string(), document))
@@ -150,10 +154,15 @@ impl<Model: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<Model> {
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
+        println!("#rows: {}", rows.len());
+
         let rows: Vec<(f64, String, T)> = rows
             .into_iter()
             .flat_map(SearchResult::into_result)
             .collect();
+
+        println!("#rows: {}", rows.len());
+
         Ok(rows)
     }
 
