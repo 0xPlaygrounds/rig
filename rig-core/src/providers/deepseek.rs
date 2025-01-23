@@ -9,11 +9,11 @@
 //! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_CHAT);
 //! ```
 use crate::{
-    completion::{CompletionModel, CompletionRequest, CompletionResponse},
-    json_utils, message,
+    completion::{self, CompletionModel, CompletionRequest, CompletionResponse},
+    json_utils, message, OneOrMany,
 };
 use reqwest::Client as HttpClient;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 // ================================================================
@@ -69,22 +69,124 @@ impl Client {
 }
 
 /// The response shape from the DeepSeek API
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DeepSeekResponse {
     // We'll match the JSON:
-    pub choices: Option<Vec<Choice>>,
+    pub choices: OneOrMany<Choice>,
     // you may want usage or other fields
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Choice {
-    pub message: Option<DeepSeekMessage>,
+    pub message: Message,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct DeepSeekMessage {
-    pub role: Option<String>,
-    pub content: Option<String>,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum Message {
+    System {
+        content: String,
+        name: Option<String>,
+    },
+    User {
+        content: String,
+        name: Option<String>,
+    },
+    Assistant {
+        content: String,
+    },
+    Tool {
+        tool_call_id: String,
+        content: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ToolDefinition {
+    pub r#type: String,
+    pub function: completion::ToolDefinition,
+}
+
+impl From<completion::ToolDefinition> for ToolDefinition {
+    fn from(tool: completion::ToolDefinition) -> Self {
+        Self {
+            r#type: "function".into(),
+            function: tool,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Function {
+    pub name: String,
+    pub arguments: String,
+}
+
+impl TryFrom<message::Message> for Message {
+    type Error = message::MessageError;
+    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
+        Ok(match message {
+            message::Message::User { content } => Message::User {
+                content: content
+                    .into_iter()
+                    .map(|content| {
+                        Ok(match content {
+                            message::UserContent::Text { text } => text,
+                            _ => {
+                                return Err(message::MessageError::ConversionError(
+                                    "Only text user content is supported by deepseek".to_owned(),
+                                ))
+                            }
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+                    .join("\n"),
+                name: None,
+            },
+            message::Message::Assistant { content } => Message::Assistant {
+                content: content
+                    .into_iter()
+                    .map(|content| {
+                        Ok(match content {
+                            message::AssistantContent::Text { text } => text,
+                            _ => {
+                                return Err(message::MessageError::ConversionError(
+                                    "Only text assistant content is supported by deepseek"
+                                        .to_owned(),
+                                ))
+                            }
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+                    .join("\n"),
+            },
+            message::Message::ToolResult { id, content } => Message::Tool {
+                tool_call_id: id,
+                content,
+            },
+        })
+    }
+}
+
+impl From<Message> for message::Message {
+    fn from(message: Message) -> Self {
+        match message {
+            Message::User { content, .. } => message::Message::create_user(content),
+            Message::Assistant { content, .. } => message::Message::create_assistant(content),
+
+            Message::Tool {
+                tool_call_id,
+                content,
+            } => message::Message::ToolResult {
+                id: tool_call_id,
+                content,
+            },
+
+            // System messages should get stripped out when converting message's, this is just a
+            // stop gap to avoid obnoxious error handling or panic occuring.
+            Message::System { content, .. } => message::Message::create_user(content),
+        }
+    }
 }
 
 /// The struct implementing the `CompletionModel` trait
@@ -105,40 +207,39 @@ impl CompletionModel for DeepSeekCompletionModel {
         // if request.preamble is set, it becomes "system" or the first message.
         // So let's gather them in the style "system" + "user" + chat_history => JSON messages.
 
-        let mut messages_json = vec![];
+        let mut messages: Vec<Message> = vec![];
+        let user_message = request.prompt_with_context();
 
         // If preamble is present, push a system message
-        if let Some(preamble) = &request.preamble {
-            messages_json.push(json!({
-                "role": "system",
-                "content": preamble,
-            }));
+        if let Some(preamble) = request.preamble {
+            messages.push(Message::System {
+                content: preamble,
+                name: None,
+            });
         }
 
         // If chat_history is present, we can push them.
-        // Typically, a "user" role is "USER" and an "assistant" role is "system" or "assistant"
-        for msg in &request.chat_history {
-            let (role, content) = match msg {
-                message::Message::User { content } => ("user", content.first()),
-                message::Message::Assistant { content } => ("assistant", content.first()),
-                message::Message::ToolResult { content, .. } => ("system", content.clone()),
-            };
-            messages_json.push(json!({
-                "role": role,
-                "content": content,
-            }));
+        for msg in request.chat_history {
+            messages.push(msg.try_into().map_err(|e| {
+                crate::completion::CompletionError::ProviderError(format!(
+                    "Message conversion error: {}",
+                    e
+                ))
+            })?);
         }
 
-        // Add user’s prompt as well
-        messages_json.push(json!({
-            "role": "user",
-            "content": request.prompt_with_context(),
-        }));
+        // Add user’s prompt
+        messages.push(user_message.try_into().map_err(|e| {
+            crate::completion::CompletionError::ProviderError(format!(
+                "Message conversion error: {}",
+                e
+            ))
+        })?);
 
         // 2. Prepare the body as DeepSeek expects
         let body = json!({
             "model": self.model,
-            "messages": messages_json,
+            "messages": messages,
             "frequency_penalty": 0,
             "max_tokens": request.max_tokens.unwrap_or(2048),
             "presence_penalty": 0,
@@ -155,6 +256,8 @@ impl CompletionModel for DeepSeekCompletionModel {
         } else {
             body
         };
+
+        tracing::debug!("DeepSeek request: {}", final_body);
 
         // 3. Execute the HTTP call
         let url = format!("{}/chat/completions", self.client.base_url);
@@ -175,22 +278,17 @@ impl CompletionModel for DeepSeekCompletionModel {
             )));
         }
 
-        let json_resp: DeepSeekResponse = resp.json().await?;
+        let text = resp.text().await?;
+        tracing::debug!("DeepSeek response text: {}", text);
+        let json_resp: DeepSeekResponse = serde_json::from_str(&text)?;
         // 4. Convert DeepSeekResponse -> rig’s `CompletionResponse<DeepSeekResponse>`
 
         // If no choices or content, return an empty message
-        let content = if let Some(choices) = &json_resp.choices {
-            if let Some(choice) = choices.first() {
-                if let Some(msg) = &choice.message {
-                    msg.content.clone().unwrap_or_default()
-                } else {
-                    "".to_string()
-                }
-            } else {
-                "".to_string()
-            }
-        } else {
-            "".to_string()
+        let content = match json_resp.choices.first().message {
+            Message::User { content, .. }
+            | Message::Assistant { content, .. }
+            | Message::System { content, .. }
+            | Message::Tool { content, .. } => content,
         };
 
         // For now, we just treat it as a normal text message
@@ -208,3 +306,130 @@ impl CompletionModel for DeepSeekCompletionModel {
 // ================================================================
 /// `deepseek-chat` completion model
 pub const DEEPSEEK_CHAT: &str = "deepseek-chat";
+
+// Tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_serialize_message() {
+        let message = Message::Assistant {
+            content: "Hello, world!".to_string(),
+        };
+        let serialized = serde_json::to_string(&message).unwrap();
+        let expected = r#"{"role":"assistant","content":"Hello, world!"}"#;
+        assert_eq!(serialized, expected);
+    }
+
+    #[test]
+    fn test_deserialize_message() {
+        let data = r#"{"role":"assistant","content":"Hello, world!"}"#;
+        let message: Message = serde_json::from_str(data).unwrap();
+        match message {
+            Message::Assistant { content } => assert_eq!(content, "Hello, world!"),
+            _ => panic!("Expected assistant message"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_vec_choice() {
+        let choices = vec![Choice {
+            message: Message::Assistant {
+                content: "Hello, world!".to_string(),
+            },
+        }];
+        let serialized = serde_json::to_string(&choices).unwrap();
+        let expected = r#"[{"message":{"role":"assistant","content":"Hello, world!"}}]"#;
+        assert_eq!(serialized, expected);
+    }
+
+    #[test]
+    fn test_deserialize_vec_choice() {
+        let data = r#"[{"message":{"role":"assistant","content":"Hello, world!"}}]"#;
+        let choices: Vec<Choice> = serde_json::from_str(data).unwrap();
+        assert_eq!(choices.len(), 1);
+        match &choices[0].message {
+            Message::Assistant { content } => assert_eq!(content, "Hello, world!"),
+            _ => panic!("Expected assistant message"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_deepseek_response() {
+        let response = DeepSeekResponse {
+            choices: OneOrMany::one(Choice {
+                message: Message::Assistant {
+                    content: "Hello, world!".to_string(),
+                },
+            }),
+        };
+        let serialized = serde_json::to_string(&response).unwrap();
+        let expected = r#"{"choices":[{"role":"assistant","content":"Hello, world!"}]}"#;
+        assert_eq!(serialized, expected);
+    }
+
+    #[test]
+    fn test_deserialize_deepseek_response() {
+        let data = r#"{"choices":[{"role":"assistant","content":"Hello, world!"}]}"#;
+        let jd = &mut serde_json::Deserializer::from_str(data);
+        let result: Result<DeepSeekResponse, _> = serde_path_to_error::deserialize(jd);
+        match result {
+            Ok(response) => match &response.choices.first().message {
+                Message::Assistant { ref content } => assert_eq!(content, "Hello, world!"),
+                _ => panic!("Expected assistant message"),
+            },
+            Err(err) => {
+                panic!("Deserialization error at {}: {}", err.path(), err);
+            }
+        }
+    }
+
+    #[test]
+    fn test_deserialize_example_response() {
+        let data = r#"
+        {
+            "id": "e45f6c68-9d9e-43de-beb4-4f402b850feb",
+            "object": "chat.completion",
+            "created": 0,
+            "model": "deepseek-chat",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "Why don’t skeletons fight each other?  \nBecause they don’t have the guts! 😄"
+                    },
+                    "logprobs": null,
+                    "finish_reason": "stop"
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 13,
+                "completion_tokens": 32,
+                "total_tokens": 45,
+                "prompt_tokens_details": {
+                    "cached_tokens": 0
+                },
+                "prompt_cache_hit_tokens": 0,
+                "prompt_cache_miss_tokens": 13
+            },
+            "system_fingerprint": "fp_4b6881f2c5"
+        }
+        "#;
+        let jd = &mut serde_json::Deserializer::from_str(data);
+        let result: Result<DeepSeekResponse, _> = serde_path_to_error::deserialize(jd);
+        match result {
+            Ok(response) => match &response.choices.first().message {
+                Message::Assistant { content } => assert_eq!(
+                    content,
+                    "Why don’t skeletons fight each other?  \nBecause they don’t have the guts! 😄"
+                ),
+                _ => panic!("Expected assistant message"),
+            },
+            Err(err) => {
+                panic!("Deserialization error at {}: {}", err.path(), err);
+            }
+        }
+    }
+}
