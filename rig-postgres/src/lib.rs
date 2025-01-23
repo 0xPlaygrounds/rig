@@ -47,7 +47,7 @@ impl Display for PgVectorDistanceFunction {
     }
 }
 
-#[derive(Deserialize, sqlx::FromRow)]
+#[derive(Debug, Deserialize, sqlx::FromRow)]
 pub struct SearchResult {
     id: Uuid,
     document: Value,
@@ -57,10 +57,6 @@ pub struct SearchResult {
 
 impl SearchResult {
     pub fn into_result<T: DeserializeOwned>(self) -> Result<(f64, String, T), VectorStoreError> {
-        println!(
-            "SearchResults into_result, id: {}, distance: {}",
-            self.id, self.distance
-        );
         let document: T =
             serde_json::from_value(self.document).map_err(VectorStoreError::JsonError)?;
         Ok((self.distance, self.id.to_string(), document))
@@ -88,8 +84,12 @@ impl<Model: EmbeddingModel> PostgresVectorStore<Model> {
 
     fn search_query(&self) -> String {
         format!(
-            "SELECT id, document, embedded_text, embedding {} $1 as distance \
-            FROM {} \
+            "
+            SELECT id, document, distance FROM ( \
+              SELECT DISTINCT ON (id) id, document, embedding {} $1 as distance \
+              FROM {} \
+              ORDER BY id, distance \
+            ) \
             ORDER BY distance \
             LIMIT $2",
             self.distance_function, self.documents_table
@@ -154,14 +154,10 @@ impl<Model: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<Model> {
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
-        println!("#rows: {}", rows.len());
-
         let rows: Vec<(f64, String, T)> = rows
             .into_iter()
             .flat_map(SearchResult::into_result)
             .collect();
-
-        println!("#rows: {}", rows.len());
 
         Ok(rows)
     }

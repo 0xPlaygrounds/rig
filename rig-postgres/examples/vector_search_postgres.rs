@@ -90,9 +90,9 @@ async fn main() -> Result<(), anyhow::Error> {
     for (distance, _id, doc) in results.iter() {
         println!("Result distance {} for word: {}", distance, doc);
 
-        // expected output as we have 2 definitions for the word "glarb-glarb"
-        //Result distance 0.2988138616792033 for word: glarb-glarb
-        //Result distance 0.3107331580360614 for word: glarb-glarb
+        // expected output (even if we have 2 entries on glarb-glarb the index only gives closest match)
+        // Result distance 0.2988549857990437 for word: glarb-glarb
+        //Result distance 0.7072261746390949 for word: linglingdong
     }
 
     Ok(())
