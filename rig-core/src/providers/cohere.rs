@@ -211,6 +211,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         self.ndims
     }
 
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
@@ -327,6 +328,7 @@ impl From<CompletionResponse> for completion::CompletionResponse<CompletionRespo
         let model_response = if !tool_calls.is_empty() {
             completion::ModelChoice::ToolCall(
                 tool_calls.first().unwrap().name.clone(),
+                "".to_owned(),
                 tool_calls.first().unwrap().parameters.clone(),
             )
         } else {
@@ -512,6 +514,7 @@ impl CompletionModel {
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
 
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,

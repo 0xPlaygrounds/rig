@@ -38,6 +38,7 @@ impl CompletionModel {
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
 
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         mut completion_request: completion::CompletionRequest,
@@ -135,6 +136,7 @@ pub mod xai_api_types {
                     Ok(completion::CompletionResponse {
                         choice: completion::ModelChoice::ToolCall(
                             call.function.name.clone(),
+                            "".to_owned(),
                             serde_json::from_str(&call.function.arguments)?,
                         ),
                         raw_response: value,

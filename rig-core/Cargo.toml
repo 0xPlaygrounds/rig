@@ -1,6 +1,6 @@
 [package]
 name = "rig-core"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -27,6 +27,7 @@ rig-derive = { version = "0.1.0", path = "./rig-core-derive", optional = true }
 glob = "0.3.1"
 lopdf = { version = "0.34.0", optional = true }
 rayon = { version = "1.10.0", optional = true}
+worker = { version = "0.5", optional = true }
 
 [dev-dependencies]
 anyhow = "1.0.75"
@@ -40,6 +41,7 @@ all = ["derive", "pdf", "rayon"]
 derive = ["dep:rig-derive"]
 pdf = ["dep:lopdf"]
 rayon = ["dep:rayon"]
+worker = ["dep:worker"]
 
 [[test]]
 name = "embed_macro"
@@ -47,20 +49,20 @@ required-features = ["derive"]
 
 [[example]]
 name = "rag"
-required-features = ["derive"] 
+required-features = ["derive"]
 
 [[example]]
 name = "vector_search"
-required-features = ["derive"] 
+required-features = ["derive"]
 
 [[example]]
 name = "vector_search_cohere"
-required-features = ["derive"] 
+required-features = ["derive"]
 
 [[example]]
 name = "gemini_embeddings"
-required-features = ["derive"] 
+required-features = ["derive"]
 
 [[example]]
 name = "xai_embeddings"
-required-features = ["derive"] 
+required-features = ["derive"]

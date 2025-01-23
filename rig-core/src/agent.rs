@@ -119,7 +119,7 @@ use crate::{
     vector_store::{VectorStoreError, VectorStoreIndexDyn},
 };
 
-/// Struct reprensenting an LLM agent. An agent is an LLM model combined with a preamble
+/// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
 /// (i.e.: system prompt) and a static set of context documents and tools.
 /// All context documents and tools are always provided to the agent when prompted.
 ///
@@ -265,7 +265,7 @@ impl<M: CompletionModel> Chat for Agent<M> {
                 ..
             } => Ok(msg),
             CompletionResponse {
-                choice: ModelChoice::ToolCall(toolname, args),
+                choice: ModelChoice::ToolCall(toolname, _, args),
                 ..
             } => Ok(self.tools.call(&toolname, args.to_string()).await?),
         }

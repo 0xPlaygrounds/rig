@@ -45,6 +45,7 @@ impl CompletionModel {
 impl completion::CompletionModel for CompletionModel {
     type Response = GenerateContentResponse;
 
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         mut completion_request: CompletionRequest,
@@ -168,7 +169,11 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                         let args_value = serde_json::Value::Object(
                             function_call.args.clone().unwrap_or_default(),
                         );
-                        completion::ModelChoice::ToolCall(function_call.name.clone(), args_value)
+                        completion::ModelChoice::ToolCall(
+                            function_call.name.clone(),
+                            "".to_owned(),
+                            args_value,
+                        )
                     }
                     _ => {
                         return Err(CompletionError::ResponseError(
@@ -522,9 +527,9 @@ pub mod gemini_api_types {
         /// encourage the use of tokens that have already been used in the response, decreasing the vocabulary.
         pub presence_penalty: Option<f64>,
         /// Frequency penalty applied to the next token's logprobs, multiplied by the number of times each token has been
-        /// seen in the respponse so far. A positive penalty will discourage the use of tokens that have already been
+        /// seen in the response so far. A positive penalty will discourage the use of tokens that have already been
         /// used, proportional to the number of times the token has been used: The more a token is used, the more
-        /// dificult it is for the  model to use that token again increasing the vocabulary of responses. Caution: A
+        /// difficult it is for the  model to use that token again increasing the vocabulary of responses. Caution: A
         /// negative penalty will encourage the model to reuse tokens proportional to the number of times the token has
         /// been used. Small negative values will reduce the vocabulary of a response. Larger negative values will cause
         /// the model to  repeating a common token until it hits the maxOutputTokens limit: "...the the the the the...".

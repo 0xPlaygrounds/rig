@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.6.0...rig-core-v0.6.1) - 2025-01-13
+
+### Added
+
+- Add `from_url` method to Gemini client (#194)
+- Feature flag for CF worker compatibility (#176) (#175)
+- *(eternal-ai)* Eternal-AI provider for rig (#171)
+- Add gpt-4o-mini to openai model list (#187)
+
+### Fixed
+
+- *(example)* ollama example uses wrong url
+
+### Other
+
+- Add additional check for empty tool_calls ([#166](https://github.com/0xPlaygrounds/rig/pull/166))
+- Mock provider API in vector store integration tests (#186)
+- fix comment (#182)
+- fix various typos
+
 ## [0.6.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.5.0...rig-core-v0.6.0) - 2024-12-19
 
 ### Added
