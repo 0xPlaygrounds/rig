@@ -175,7 +175,7 @@ pub const DEEPSEEK_R1: &str = "deepseek-ai/DeepSeek-R1";
 
 /// A Hyperbolic completion object.
 ///
-/// For more information, see this link: https://docs.hyperbolic.xyz/reference/create_chat_completion_v1_chat_completions_post
+/// For more information, see this link: <https://docs.hyperbolic.xyz/reference/create_chat_completion_v1_chat_completions_post>
 #[derive(Debug, Deserialize)]
 pub struct CompletionResponse {
     pub id: String,
