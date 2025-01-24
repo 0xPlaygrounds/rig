@@ -8,6 +8,8 @@
 //!
 //! let gpt4o = client.completion_model(openai::GPT_4O);
 //! ```
+use std::{convert::Infallible, str::FromStr};
+
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -15,6 +17,7 @@ use crate::{
     extractor::ExtractorBuilder,
     json_utils,
     message::{self, AudioMediaType, ImageDetail},
+    one_or_many::{string_or_one_or_many, string_or_option_one_or_many},
     Embed, OneOrMany,
 };
 use schemars::JsonSchema;
@@ -434,22 +437,31 @@ pub struct Choice {
     pub finish_reason: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
     System {
-        content: OneOrMany<String>,
+        #[serde(deserialize_with = "string_or_one_or_many")]
+        content: OneOrMany<SystemContent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
     User {
+        #[serde(deserialize_with = "string_or_one_or_many")]
         content: OneOrMany<UserContent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
     Assistant {
+        #[serde(deserialize_with = "string_or_option_one_or_many")]
         content: Option<OneOrMany<AssistantContent>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         refusal: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         audio: Option<AudioAssistant>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         tool_calls: Option<OneOrMany<ToolCall>>,
     },
     Tool {
@@ -458,19 +470,47 @@ pub enum Message {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+impl Message {
+    pub(crate) fn system(content: &str) -> Self {
+        Message::System {
+            content: OneOrMany::one(SystemContent::from_str(content).expect("Infalliable")),
+            name: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct AudioAssistant {
     id: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct SystemContent {
+    #[serde(default)]
+    r#type: SystemContentType,
+    text: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum SystemContentType {
+    Text,
+}
+
+impl Default for SystemContentType {
+    fn default() -> Self {
+        SystemContentType::Text
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum AssistantContent {
     Text { text: String },
     Refusal { refusal: String },
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum UserContent {
     Text { text: String },
@@ -478,26 +518,40 @@ pub enum UserContent {
     Audio { input_audio: InputAudio },
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ImageUrl {
     pub url: String,
+    #[serde(default)]
     pub detail: ImageDetail,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct InputAudio {
     pub data: String,
     pub format: AudioMediaType,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolCall {
     pub id: String,
-    pub r#type: String,
+    #[serde(default)]
+    pub r#type: ToolType,
     pub function: Function,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolType {
+    Function,
+}
+
+impl Default for ToolType {
+    fn default() -> Self {
+        ToolType::Function
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ToolDefinition {
     pub r#type: String,
     pub function: completion::ToolDefinition,
@@ -512,7 +566,7 @@ impl From<completion::ToolDefinition> for ToolDefinition {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Function {
     pub name: String,
     pub arguments: String,
@@ -548,10 +602,8 @@ impl From<message::Message> for Message {
                     })
                     .collect::<Vec<_>>();
 
-                // We use `.ok()` here since the `OneOrMany` type from the `message::Message::Assistant`
-                //  field guarantees that we have atleast one element that's either
-                // `AssistantContent::Text` or `AssistantContent::ToolCall`. This means that at the
-                //  very least, one of `content`` or `tool_calls`` will be `Some`.
+                // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall`, so
+                //  `content` or `tool_calls` will *always* be `Some`.
                 Message::Assistant {
                     content: OneOrMany::many(text_content).ok(),
                     refusal: None,
@@ -572,7 +624,7 @@ impl From<message::ToolCall> for ToolCall {
     fn from(tool_call: message::ToolCall) -> Self {
         Self {
             id: tool_call.id,
-            r#type: "function".into(),
+            r#type: ToolType::default(),
             function: Function {
                 name: tool_call.function.name,
                 arguments: tool_call.function.arguments.to_string(),
@@ -627,6 +679,9 @@ impl TryFrom<Message> for message::Message {
                             AssistantContent::Text { text } => {
                                 message::AssistantContent::Text { text }
                             }
+
+                            // TODO: Currently, refusals are converted into text, but should be
+                            //  investigated for generalization.
                             AssistantContent::Refusal { refusal } => {
                                 message::AssistantContent::Text { text: refusal }
                             }
@@ -668,13 +723,14 @@ impl TryFrom<Message> for message::Message {
                 content,
             } => message::Message::ToolResult {
                 id: tool_call_id,
+                // Multiple tool call content is merged into one.
                 content: content.into_iter().collect::<Vec<_>>().join("\n"),
             },
 
             // System messages should get stripped out when converting message's, this is just a
             // stop gap to avoid obnoxious error handling or panic occuring.
             Message::System { content, .. } => message::Message::User {
-                content: content.map(|content| message::UserContent::Text { text: content }),
+                content: content.map(|content| message::UserContent::Text { text: content.text }),
             },
         })
     }
@@ -713,6 +769,37 @@ impl From<UserContent> for message::UserContent {
     }
 }
 
+impl FromStr for UserContent {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(UserContent::Text {
+            text: s.to_string(),
+        })
+    }
+}
+
+impl FromStr for AssistantContent {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(AssistantContent::Text {
+            text: s.to_string(),
+        })
+    }
+}
+
+impl FromStr for SystemContent {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(SystemContent {
+            r#type: SystemContentType::default(),
+            text: s.to_string(),
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct CompletionModel {
     client: Client,
@@ -735,25 +822,27 @@ impl completion::CompletionModel for CompletionModel {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
-        mut completion_request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         // Add preamble to chat history (if available)
-        let mut full_history: Vec<message::Message> = match &completion_request.preamble {
-            Some(preamble) => vec![preamble.as_str().into()],
+        let mut full_history: Vec<Message> = match &completion_request.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
         };
 
-        // Extend existing chat history
-        full_history.append(&mut completion_request.chat_history);
+        // Convert prompt to user message
+        let prompt: Message = completion_request.prompt_with_context().into();
 
-        // Add context documents to chat history
-        full_history.push(completion_request.prompt_with_context());
-
-        // Convert history to open ai message format
-        let full_history = full_history
+        // Convert existing chat history
+        let chat_history: Vec<Message> = completion_request
+            .chat_history
             .into_iter()
             .map(Message::from)
-            .collect::<Vec<_>>();
+            .collect();
+
+        // Combine all messages into a single history
+        full_history.extend(chat_history);
+        full_history.push(prompt);
 
         let request = if completion_request.tools.is_empty() {
             json!({
@@ -785,10 +874,7 @@ impl completion::CompletionModel for CompletionModel {
             .await?;
 
         if response.status().is_success() {
-            let raw_json = response.text().await?;
-            tracing::info!("Raw JSON response: {}", raw_json);
-
-            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&raw_json)? {
+            match response.json::<ApiResponse<CompletionResponse>>().await? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "OpenAI completion token usage: {:?}",
@@ -801,5 +887,249 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_path_to_error::deserialize;
+
+    #[test]
+    fn test_deserialize_message() {
+        let assistant_message_json = r#"
+        {
+            "role": "assistant",
+            "content": "\n\nHello there, how may I assist you today?"
+        }
+        "#;
+
+        let assistant_message_json2 = r#"
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "\n\nHello there, how may I assist you today?"
+                }
+            ],
+            "tool_calls": [
+                {
+                    "id": "tacosauce",
+                    "type": "function",
+                    "function": {
+                        "name": "taco",
+                        "arguments": "{\"sauce\": \"hot\"}"
+                    }
+                }
+            ]
+        }
+        "#;
+
+        let user_message_json = r#"
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "What's in this image?"
+                },
+                {
+                    "type": "image",
+                    "image_url": {
+                        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
+                    }
+                },
+                {
+                    "type": "audio",
+                    "input_audio": {
+                        "data": "...",
+                        "format": "mp3"
+                    }
+                }
+            ]
+        }
+        "#;
+
+        let assistant_message: Message = {
+            let jd = &mut serde_json::Deserializer::from_str(assistant_message_json);
+            deserialize(jd).unwrap_or_else(|err| {
+                panic!("Deserialization error at {}: {}", err.path(), err);
+            })
+        };
+
+        let assistant_message2: Message = {
+            let jd = &mut serde_json::Deserializer::from_str(assistant_message_json2);
+            deserialize(jd).unwrap_or_else(|err| {
+                panic!("Deserialization error at {}: {}", err.path(), err);
+            })
+        };
+
+        let user_message: Message = {
+            let jd = &mut serde_json::Deserializer::from_str(user_message_json);
+            deserialize(jd).unwrap_or_else(|err| {
+                panic!("Deserialization error at {}: {}", err.path(), err);
+            })
+        };
+
+        match assistant_message {
+            Message::Assistant { content, .. } => {
+                assert_eq!(
+                    content.unwrap().first(),
+                    AssistantContent::Text {
+                        text: "\n\nHello there, how may I assist you today?".to_string()
+                    }
+                );
+            }
+            _ => panic!("Expected assistant message"),
+        }
+
+        match assistant_message2 {
+            Message::Assistant {
+                content,
+                tool_calls,
+                ..
+            } => {
+                assert_eq!(
+                    content.unwrap().first(),
+                    AssistantContent::Text {
+                        text: "\n\nHello there, how may I assist you today?".to_string()
+                    }
+                );
+
+                assert_eq!(
+                    tool_calls.unwrap().first(),
+                    ToolCall {
+                        id: "tacosauce".to_string(),
+                        r#type: ToolType::Function,
+                        function: Function {
+                            name: "taco".to_string(),
+                            arguments: "{\"sauce\": \"hot\"}".to_string()
+                        }
+                    }
+                );
+            }
+            _ => panic!("Expected assistant message"),
+        }
+
+        match user_message {
+            Message::User { content, .. } => {
+                let (first, second) = {
+                    let mut iter = content.into_iter();
+                    (iter.next().unwrap(), iter.next().unwrap())
+                };
+                assert_eq!(
+                    first,
+                    UserContent::Text {
+                        text: "What's in this image?".to_string()
+                    }
+                );
+                assert_eq!(second, UserContent::Image { image_url: ImageUrl { url: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg".to_string(), detail: ImageDetail::default() } });
+            }
+            _ => panic!("Expected user message"),
+        }
+    }
+
+    #[test]
+    fn test_message_to_message_conversion() {
+        let user_message = message::Message::User {
+            content: OneOrMany::one(message::UserContent::Text {
+                text: "Hello".to_string(),
+            }),
+        };
+
+        let assistant_message = message::Message::Assistant {
+            content: OneOrMany::one(message::AssistantContent::Text {
+                text: "Hi there!".to_string(),
+            }),
+        };
+
+        let converted_user_message: Message = user_message.clone().into();
+        let converted_assistant_message: Message = assistant_message.clone().into();
+
+        match converted_user_message.clone() {
+            Message::User { content, .. } => {
+                assert_eq!(
+                    content.first(),
+                    UserContent::Text {
+                        text: "Hello".to_string()
+                    }
+                );
+            }
+            _ => panic!("Expected user message"),
+        }
+
+        match converted_assistant_message.clone() {
+            Message::Assistant { content, .. } => {
+                assert_eq!(
+                    content.unwrap().first(),
+                    AssistantContent::Text {
+                        text: "Hi there!".to_string()
+                    }
+                );
+            }
+            _ => panic!("Expected assistant message"),
+        }
+
+        let original_user_message: message::Message = converted_user_message.try_into().unwrap();
+        let original_assistant_message: message::Message =
+            converted_assistant_message.try_into().unwrap();
+
+        assert_eq!(original_user_message, user_message);
+        assert_eq!(original_assistant_message, assistant_message);
+    }
+
+    #[test]
+    fn test_message_from_message_conversion() {
+        let user_message = Message::User {
+            content: OneOrMany::one(UserContent::Text {
+                text: "Hello".to_string(),
+            }),
+            name: None,
+        };
+
+        let assistant_message = Message::Assistant {
+            content: Some(OneOrMany::one(AssistantContent::Text {
+                text: "Hi there!".to_string(),
+            })),
+            refusal: None,
+            audio: None,
+            name: None,
+            tool_calls: None,
+        };
+
+        let converted_user_message: message::Message = user_message.clone().try_into().unwrap();
+        let converted_assistant_message: message::Message =
+            assistant_message.clone().try_into().unwrap();
+
+        match converted_user_message.clone() {
+            message::Message::User { content } => {
+                assert_eq!(
+                    content.first(),
+                    message::UserContent::Text {
+                        text: "Hello".to_string()
+                    }
+                );
+            }
+            _ => panic!("Expected user message"),
+        }
+
+        match converted_assistant_message.clone() {
+            message::Message::Assistant { content } => {
+                assert_eq!(
+                    content.first(),
+                    message::AssistantContent::Text {
+                        text: "Hi there!".to_string()
+                    }
+                );
+            }
+            _ => panic!("Expected assistant message"),
+        }
+
+        let original_user_message: Message = converted_user_message.try_into().unwrap();
+        let original_assistant_message: Message = converted_assistant_message.try_into().unwrap();
+
+        assert_eq!(original_user_message, user_message);
+        assert_eq!(original_assistant_message, assistant_message);
     }
 }

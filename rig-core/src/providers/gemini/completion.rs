@@ -186,7 +186,7 @@ pub mod gemini_api_types {
 
     use crate::{
         completion::CompletionError,
-        message,
+        message::{self, MimeType as _},
         providers::gemini::gemini_api_types::{CodeExecutionResult, ExecutableCode},
     };
 
@@ -277,7 +277,7 @@ pub mod gemini_api_types {
         }
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
     #[serde(rename_all = "lowercase")]
     pub enum Role {
         User,
@@ -287,7 +287,7 @@ pub mod gemini_api_types {
     /// A datatype containing media that is part of a multi-part [Content] message.
     /// A Part consists of data which has an associated datatype. A Part can only contain one of the accepted types in Part.data.
     /// A Part must have a fixed IANA MIME type identifying the type and subtype of the media if the inlineData field is filled with raw bytes.
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
     #[serde(rename_all = "camelCase")]
     #[serde(untagged)]
     pub enum Part {
@@ -417,7 +417,7 @@ pub mod gemini_api_types {
 
     /// Raw media bytes.
     /// Text should not be sent as raw bytes, use the 'text' field.
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
     #[serde(rename_all = "camelCase")]
     pub struct Blob {
         /// The IANA standard MIME type of the source data. Examples: - image/png - image/jpeg
@@ -430,7 +430,7 @@ pub mod gemini_api_types {
     /// A predicted FunctionCall returned from the model that contains a string representing the
     /// FunctionDeclaration.name with the arguments and their values.
     ///     #[derive(Debug, Deserialize, Serialize)]
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
     pub struct FunctionCall {
         /// Required. The name of the function to call. Must be a-z, A-Z, 0-9, or contain underscores
         /// and dashes, with a maximum length of 63.
@@ -442,7 +442,7 @@ pub mod gemini_api_types {
     /// The result output from a FunctionCall that contains a string representing the FunctionDeclaration.name
     /// and a structured JSON object containing any output from the function is used as context to the model.
     /// This should contain the result of aFunctionCall made based on model prediction.
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
     pub struct FunctionResponse {
         /// The name of the function to call. Must be a-z, A-Z, 0-9, or contain underscores and dashes,
         /// with a maximum length of 63.
@@ -452,7 +452,7 @@ pub mod gemini_api_types {
     }
 
     /// URI based data.
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
     #[serde(rename_all = "camelCase")]
     pub struct FileData {
         /// Optional. The IANA standard MIME type of the source data.
@@ -461,13 +461,13 @@ pub mod gemini_api_types {
         pub file_uri: String,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
     pub struct SafetyRating {
         pub category: HarmCategory,
         pub probability: HarmProbability,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum HarmProbability {
         HarmProbabilityUnspecified,
@@ -477,7 +477,7 @@ pub mod gemini_api_types {
         High,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum HarmCategory {
         HarmCategoryUnspecified,
@@ -831,5 +831,174 @@ pub mod gemini_api_types {
         BlockOnlyHigh,
         BlockNone,
         Off,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::message;
+
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_deserialize_message_user() {
+        let json_data = json!({
+            "parts": [
+                {"text": "Hello, world!"},
+                {"inlineData": {"mimeType": "image/png", "data": "base64encodeddata"}},
+                {"functionCall": {"name": "test_function", "args": {"arg1": "value1"}}},
+                {"functionResponse": {"name": "test_function", "response": {"result": "success"}}},
+                {"fileData": {"mimeType": "application/pdf", "fileUri": "http://example.com/file.pdf"}},
+                {"executableCode": {"code": "print('Hello, world!')"}},
+                {"codeExecutionResult": {"result": "Hello, world!"}}
+            ],
+            "role": "user"
+        });
+
+        let content: Content = serde_json::from_value(json_data).unwrap();
+        assert_eq!(content.role, Some(Role::User));
+        assert_eq!(content.parts.len(), 7);
+
+        if let Part::Text { text } = &content.parts[0] {
+            assert_eq!(text, "Hello, world!");
+        } else {
+            panic!("Expected text part");
+        }
+
+        if let Part::InlineData { inline_data } = &content.parts[1] {
+            assert_eq!(inline_data.mime_type, "image/png");
+            assert_eq!(inline_data.data, "base64encodeddata");
+        } else {
+            panic!("Expected inline data part");
+        }
+
+        if let Part::FunctionCall { function_call } = &content.parts[2] {
+            assert_eq!(function_call.name, "test_function");
+            assert_eq!(
+                function_call.args.as_ref().unwrap().get("arg1").unwrap(),
+                "value1"
+            );
+        } else {
+            panic!("Expected function call part");
+        }
+
+        if let Part::FunctionResponse { function_response } = &content.parts[3] {
+            assert_eq!(function_response.name, "test_function");
+            assert_eq!(
+                function_response
+                    .response
+                    .as_ref()
+                    .unwrap()
+                    .get("result")
+                    .unwrap(),
+                "success"
+            );
+        } else {
+            panic!("Expected function response part");
+        }
+
+        if let Part::FileData { file_data } = &content.parts[4] {
+            assert_eq!(file_data.mime_type.as_ref().unwrap(), "application/pdf");
+            assert_eq!(file_data.file_uri, "http://example.com/file.pdf");
+        } else {
+            panic!("Expected file data part");
+        }
+
+        if let Part::ExecutableCode { executable_code } = &content.parts[5] {
+            assert_eq!(executable_code.code, "print('Hello, world!')");
+        } else {
+            panic!("Expected executable code part");
+        }
+
+        if let Part::CodeExecutionResult {
+            code_execution_result,
+        } = &content.parts[6]
+        {
+            assert_eq!(code_execution_result.output.unwrap().clone(), "Hello, world!");
+        } else {
+            panic!("Expected code execution result part");
+        }
+    }
+
+    #[test]
+    fn test_deserialize_message_model() {
+        let json_data = json!({
+            "parts": [{"text": "Hello, user!"}],
+            "role": "model"
+        });
+
+        let content: Content = serde_json::from_value(json_data).unwrap();
+        assert_eq!(content.role, Some(Role::Model));
+        assert_eq!(content.parts.len(), 1);
+        if let Part::Text { text } = &content.parts[0] {
+            assert_eq!(text, "Hello, user!");
+        } else {
+            panic!("Expected text part");
+        }
+    }
+
+    #[test]
+    fn test_message_conversion_user() {
+        let msg = message::Message::User {
+            content: vec![message::UserContent::Text {
+                text: "Hello, world!".to_string(),
+            }],
+        };
+
+        let content: Content = msg.try_into().unwrap();
+        assert_eq!(content.role, Some(Role::User));
+        assert_eq!(content.parts.len(), 1);
+        if let Part::Text { text } = &content.parts[0] {
+            assert_eq!(text, "Hello, world!");
+        } else {
+            panic!("Expected text part");
+        }
+    }
+
+    #[test]
+    fn test_message_conversion_model() {
+        let msg = message::Message::Assistant {
+            content: vec![message::AssistantContent::Text {
+                text: "Hello, user!".to_string(),
+            }],
+        };
+
+        let content: Content = msg.try_into().unwrap();
+        assert_eq!(content.role, Some(Role::Model));
+        assert_eq!(content.parts.len(), 1);
+        if let Part::Text { text } = &content.parts[0] {
+            assert_eq!(text, "Hello, user!");
+        } else {
+            panic!("Expected text part");
+        }
+    }
+
+    #[test]
+    fn test_message_conversion_tool_call() {
+        let tool_call = message::ToolCall {
+            id: "test_tool".to_string(),
+            function: message::ToolFunction {
+                name: "test_function".to_string(),
+                arguments: json!({"arg1": "value1"}),
+            },
+        };
+
+        let msg = message::Message::Assistant {
+            content: vec![message::AssistantContent::ToolCall { tool_call }],
+        };
+
+        let content: Content = msg.into();
+        assert_eq!(content.role, Some(Role::Model));
+        assert_eq!(content.parts.len(), 1);
+        if let Part::FunctionCall { function_call } = &content.parts[0] {
+            assert_eq!(function_call.name, "test_function");
+            assert_eq!(
+                function_call.args.as_ref().unwrap().get("arg1").unwrap(),
+                "value1"
+            );
+        } else {
+            panic!("Expected function call part");
+        }
     }
 }

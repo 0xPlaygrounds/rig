@@ -113,9 +113,8 @@ use futures::{stream, StreamExt, TryStreamExt};
 use crate::{
     completion::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder,
-        CompletionResponse, Document, ModelChoice, Prompt, PromptError,
+        CompletionResponse, Document, Message, ModelChoice, Prompt, PromptError,
     },
-    message::Message,
     tool::{Tool, ToolSet},
     vector_store::{VectorStoreError, VectorStoreIndexDyn},
 };

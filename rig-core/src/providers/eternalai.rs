@@ -14,7 +14,7 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     extractor::ExtractorBuilder,
-    json_utils, message, Embed,
+    json_utils, Embed,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -461,25 +461,27 @@ impl completion::CompletionModel for CompletionModel {
 
     async fn completion(
         &self,
-        mut completion_request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         // Add preamble to chat history (if available)
-        let mut full_history: Vec<message::Message> = match &completion_request.preamble {
-            Some(preamble) => vec![preamble.as_str().into()],
+        let mut full_history: Vec<Message> = match &completion_request.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
         };
 
-        // Extend existing chat history
-        full_history.append(&mut completion_request.chat_history);
+        // Convert prompt to user message
+        let prompt: Message = completion_request.prompt_with_context().into();
 
-        // Add context documents to chat history
-        full_history.push(completion_request.prompt_with_context());
-
-        // Convert history to open ai message format
-        let full_history = full_history
+        // Convert existing chat history
+        let chat_history: Vec<Message> = completion_request
+            .chat_history
             .into_iter()
             .map(Message::from)
-            .collect::<Vec<_>>();
+            .collect();
+
+        // Combine all messages into a single history
+        full_history.extend(chat_history);
+        full_history.push(prompt);
 
         let request = if completion_request.tools.is_empty() {
             json!({
@@ -496,6 +498,8 @@ impl completion::CompletionModel for CompletionModel {
                 "tool_choice": "auto",
             })
         };
+
+        tracing::debug!(target: "rig", "Sending completion request: {}", request);
 
         let response = self
             .client

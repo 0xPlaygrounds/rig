@@ -1,9 +1,12 @@
 //! Anthropic completion api implementation
 
+use std::{convert::Infallible, str::FromStr};
+
 use crate::{
     completion::{self, CompletionError},
     json_utils,
     message::{self, MessageError},
+    one_or_many::string_or_one_or_many,
     OneOrMany,
 };
 
@@ -117,20 +120,21 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Message {
     pub role: Role,
+    #[serde(deserialize_with = "string_or_one_or_many")]
     pub content: OneOrMany<Content>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     User,
     Assistant,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Content {
     Text {
@@ -146,36 +150,54 @@ pub enum Content {
     },
     ToolResult {
         tool_use_id: String,
-        content: ToolResultContent,
-        is_error: bool,
+        #[serde(deserialize_with = "string_or_one_or_many")]
+        content: OneOrMany<ToolResultContent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        is_error: Option<bool>,
     },
     Document {
         source: DocumentSource,
     },
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+impl FromStr for Content {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Content::Text { text: s.to_owned() })
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolResultContent {
     Text { text: String },
     Image(ImageSource),
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+impl FromStr for ToolResultContent {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(ToolResultContent::Text { text: s.to_owned() })
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ImageSource {
     pub data: String,
     pub format: ImageFormat,
     pub r#type: SourceType,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct DocumentSource {
     pub data: String,
     pub format: DocumentFormat,
     pub r#type: SourceType,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageFormat {
     #[serde(rename = "image/jpeg")]
@@ -188,14 +210,14 @@ pub enum ImageFormat {
     WEBP,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum DocumentFormat {
     #[serde(rename = "application/pdf")]
     PDF,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum SourceType {
     BASE64,
@@ -287,7 +309,11 @@ impl TryFrom<message::Message> for Message {
                             data,
                             format: match media_type {
                                 Some(media_type) => media_type.try_into()?,
-                                None => ImageFormat::JPEG,
+                                None => {
+                                    return Err(MessageError::ConversionError(
+                                        "Image media type is required".to_owned(),
+                                    ))
+                                }
                             },
                             r#type: match format {
                                 Some(format) => format.try_into()?,
@@ -324,8 +350,8 @@ impl TryFrom<message::Message> for Message {
                 role: Role::Assistant,
                 content: OneOrMany::one(Content::ToolResult {
                     tool_use_id: id,
-                    content: content.into(),
-                    is_error: false,
+                    content: OneOrMany::one(content.into()),
+                    is_error: None,
                 }),
             },
         })
@@ -389,24 +415,31 @@ impl TryFrom<Message> for message::Message {
                 Content::Text { .. } | Content::ToolUse { .. } => message::Message::Assistant {
                     content: message.content.try_map(|content| content.try_into())?,
                 },
+
                 Content::ToolResult {
                     tool_use_id,
                     content,
                     ..
                 } => message::Message::ToolResult {
                     id: tool_use_id,
-                    content: match content {
-                        ToolResultContent::Text { text } => text,
-                        _ => {
-                            return Err(MessageError::ConversionError(
-                                format!(
+                    content: content
+                        .into_iter()
+                        .map(|tool_content| {
+                            Ok(match tool_content {
+                                ToolResultContent::Text { text } => text,
+                                _ => {
+                                    return Err(MessageError::ConversionError(
+                                        format!(
                                     "Unsupported tool result content type for Assistant role: {:?}",
                                     message.content.first()
                                 )
-                                .to_owned(),
-                            ))
-                        }
-                    },
+                                        .to_owned(),
+                                    ))
+                                }
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?
+                        .join("\n"),
                 },
                 _ => {
                     return Err(MessageError::ConversionError(
@@ -464,6 +497,12 @@ enum ToolChoice {
     Auto,
     Any,
     Tool { name: String },
+}
+
+impl Default for ToolChoice {
+    fn default() -> Self {
+        ToolChoice::Auto
+    }
 }
 
 impl completion::CompletionModel for CompletionModel {
@@ -573,4 +612,312 @@ struct ApiErrorResponse {
 enum ApiResponse<T> {
     Message(T),
     Error(ApiErrorResponse),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_path_to_error::deserialize;
+
+    #[test]
+    fn test_deserialize_message() {
+        let assistant_message_json = r#"
+        {
+            "role": "assistant",
+            "content": "\n\nHello there, how may I assist you today?"
+        }
+        "#;
+
+        let assistant_message_json2 = r#"
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "\n\nHello there, how may I assist you today?"
+                },
+                {
+                    "type": "tool_use",
+                    "id": "toolu_01A09q90qw90lq917835lq9",
+                    "name": "get_weather",
+                    "input": {"location": "San Francisco, CA"}
+                }
+            ]
+        }
+        "#;
+
+        let user_message_json = r#"
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "format": "image/jpeg",
+                        "data": "/9j/4AAQSkZJRg..."
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": "What is in this image?"
+                },
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_01A09q90qw90lq917835lq9",
+                    "content": "15 degrees"
+                }
+            ]
+        }
+        "#;
+
+        let assistant_message: Message = {
+            let jd = &mut serde_json::Deserializer::from_str(assistant_message_json);
+            deserialize(jd).unwrap_or_else(|err| {
+                panic!("Deserialization error at {}: {}", err.path(), err);
+            })
+        };
+
+        let assistant_message2: Message = {
+            let jd = &mut serde_json::Deserializer::from_str(assistant_message_json2);
+            deserialize(jd).unwrap_or_else(|err| {
+                panic!("Deserialization error at {}: {}", err.path(), err);
+            })
+        };
+
+        let user_message: Message = {
+            let jd = &mut serde_json::Deserializer::from_str(user_message_json);
+            deserialize(jd).unwrap_or_else(|err| {
+                panic!("Deserialization error at {}: {}", err.path(), err);
+            })
+        };
+
+        match assistant_message {
+            Message { role, content } => {
+                assert_eq!(role, Role::Assistant);
+                assert_eq!(
+                    content.first(),
+                    Content::Text {
+                        text: "\n\nHello there, how may I assist you today?".to_owned()
+                    }
+                );
+            }
+        }
+
+        match assistant_message2 {
+            Message { role, content } => {
+                assert_eq!(role, Role::Assistant);
+                assert_eq!(content.len(), 2);
+
+                let mut iter = content.into_iter();
+
+                match iter.next().unwrap() {
+                    Content::Text { text } => {
+                        assert_eq!(text, "\n\nHello there, how may I assist you today?");
+                    }
+                    _ => panic!("Expected text content"),
+                }
+
+                match iter.next().unwrap() {
+                    Content::ToolUse { id, name, input } => {
+                        assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
+                        assert_eq!(name, "get_weather");
+                        assert_eq!(input, json!({"location": "San Francisco, CA"}));
+                    }
+                    _ => panic!("Expected tool use content"),
+                }
+
+                assert_eq!(iter.next(), None);
+            }
+        }
+
+        match user_message {
+            Message { role, content } => {
+                assert_eq!(role, Role::User);
+                assert_eq!(content.len(), 3);
+
+                let mut iter = content.into_iter();
+
+                match iter.next().unwrap() {
+                    Content::Image { source } => {
+                        assert_eq!(
+                            source,
+                            ImageSource {
+                                data: "/9j/4AAQSkZJRg...".to_owned(),
+                                format: ImageFormat::JPEG,
+                                r#type: SourceType::BASE64,
+                            }
+                        );
+                    }
+                    _ => panic!("Expected image content"),
+                }
+
+                match iter.next().unwrap() {
+                    Content::Text { text } => {
+                        assert_eq!(text, "What is in this image?");
+                    }
+                    _ => panic!("Expected text content"),
+                }
+
+                match iter.next().unwrap() {
+                    Content::ToolResult {
+                        tool_use_id,
+                        content,
+                        is_error,
+                    } => {
+                        assert_eq!(tool_use_id, "toolu_01A09q90qw90lq917835lq9");
+                        assert_eq!(
+                            content.first(),
+                            ToolResultContent::Text {
+                                text: "15 degrees".to_owned()
+                            }
+                        );
+                        assert_eq!(is_error, None);
+                    }
+                    _ => panic!("Expected tool result content"),
+                }
+
+                assert_eq!(iter.next(), None);
+            }
+        }
+    }
+
+    #[test]
+    fn test_message_to_message_conversion() {
+        let user_message: Message = serde_json::from_str(
+            r#"
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "format": "image/jpeg",
+                        "data": "/9j/4AAQSkZJRg..."
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": "What is in this image?"
+                },
+                {
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "data": "base64_encoded_pdf_data",
+                        "format": "application/pdf"
+                    }
+                }
+            ]
+        }
+        "#,
+        )
+        .unwrap();
+
+        let assistant_message = Message {
+            role: Role::Assistant,
+            content: OneOrMany::one(Content::ToolUse {
+                id: "toolu_01A09q90qw90lq917835lq9".to_string(),
+                name: "get_weather".to_string(),
+                input: json!({"location": "San Francisco, CA"}),
+            }),
+        };
+
+        let tool_message = Message {
+            role: Role::Assistant,
+            content: OneOrMany::one(Content::ToolResult {
+                tool_use_id: "toolu_01A09q90qw90lq917835lq9".to_string(),
+                content: OneOrMany::one(ToolResultContent::Text {
+                    text: "15 degrees".to_string(),
+                }),
+                is_error: None,
+            }),
+        };
+
+        let converted_user_message: message::Message = user_message.clone().try_into().unwrap();
+        let converted_assistant_message: message::Message =
+            assistant_message.clone().try_into().unwrap();
+        let converted_tool_message: message::Message = tool_message.clone().try_into().unwrap();
+
+        match converted_user_message.clone() {
+            message::Message::User { content } => {
+                assert_eq!(content.len(), 3);
+
+                let mut iter = content.into_iter();
+
+                match iter.next().unwrap() {
+                    message::UserContent::Image {
+                        data,
+                        format,
+                        media_type,
+                        ..
+                    } => {
+                        assert_eq!(data, "/9j/4AAQSkZJRg...");
+                        assert_eq!(format.unwrap(), message::ContentFormat::Base64);
+                        assert_eq!(media_type, Some(message::ImageMediaType::JPEG));
+                    }
+                    _ => panic!("Expected image content"),
+                }
+
+                match iter.next().unwrap() {
+                    message::UserContent::Text { text } => {
+                        assert_eq!(text, "What is in this image?");
+                    }
+                    _ => panic!("Expected text content"),
+                }
+
+                match iter.next().unwrap() {
+                    message::UserContent::Document {
+                        data,
+                        format,
+                        media_type,
+                    } => {
+                        assert_eq!(data, "base64_encoded_pdf_data");
+                        assert_eq!(format.unwrap(), message::ContentFormat::Base64);
+                        assert_eq!(media_type, Some(message::DocumentMediaType::PDF));
+                    }
+                    _ => panic!("Expected document content"),
+                }
+
+                assert_eq!(iter.next(), None);
+            }
+            _ => panic!("Expected user message"),
+        }
+
+        match converted_tool_message.clone() {
+            message::Message::ToolResult { id, content } => {
+                assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
+                assert_eq!(content, "15 degrees");
+            }
+            _ => panic!("Expected tool result content"),
+        }
+
+        match converted_assistant_message.clone() {
+            message::Message::Assistant { content } => {
+                assert_eq!(content.len(), 1);
+
+                match content.first() {
+                    message::AssistantContent::ToolCall { tool_call } => {
+                        assert_eq!(tool_call.id, "toolu_01A09q90qw90lq917835lq9");
+                        assert_eq!(tool_call.function.name, "get_weather");
+                        assert_eq!(
+                            tool_call.function.arguments,
+                            json!({"location": "San Francisco, CA"})
+                        );
+                    }
+                    _ => panic!("Expected tool call content"),
+                }
+            }
+            _ => panic!("Expected assistant message"),
+        }
+
+        let original_user_message: Message = converted_user_message.try_into().unwrap();
+        let original_assistant_message: Message = converted_assistant_message.try_into().unwrap();
+        let original_tool_message: Message = converted_tool_message.try_into().unwrap();
+
+        assert_eq!(user_message, original_user_message);
+        assert_eq!(assistant_message, original_assistant_message);
+        assert_eq!(tool_message, original_tool_message);
+    }
 }

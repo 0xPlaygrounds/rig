@@ -11,11 +11,9 @@
 
 use crate::{
     agent::AgentBuilder,
-    completion::{self, CompletionError},
+    completion::{self, message, CompletionError, MessageError},
     extractor::ExtractorBuilder,
-    json_utils,
-    message::{self, MessageError},
-    OneOrMany,
+    json_utils, OneOrMany,
 };
 
 use schemars::JsonSchema;
@@ -100,20 +98,10 @@ enum ApiResponse<T> {
 // ================================================================
 // Perplexity Completion API
 // ================================================================
-/// `llama-3.1-sonar-small-128k-online` completion model
-pub const LLAMA_3_1_SONAR_SMALL_ONLINE: &str = "llama-3.1-sonar-small-128k-online";
-/// `llama-3.1-sonar-large-128k-online` completion model
-pub const LLAMA_3_1_SONAR_LARGE_ONLINE: &str = "llama-3.1-sonar-large-128k-online";
-/// `llama-3.1-sonar-huge-128k-online` completion model
-pub const LLAMA_3_1_SONAR_HUGE_ONLINE: &str = "llama-3.1-sonar-huge-128k-online";
-/// `llama-3.1-sonar-small-128k-chat` completion model
-pub const LLAMA_3_1_SONAR_SMALL_CHAT: &str = "llama-3.1-sonar-small-128k-chat";
-/// `llama-3.1-sonar-large-128k-chat` completion model
-pub const LLAMA_3_1_SONAR_LARGE_CHAT: &str = "llama-3.1-sonar-large-128k-chat";
-/// `llama-3.1-8b-instruct` completion model
-pub const LLAMA_3_1_8B_INSTRUCT: &str = "llama-3.1-8b-instruct";
-/// `llama-3.1-70b-instruct` completion model
-pub const LLAMA_3_1_70B_INSTRUCT: &str = "llama-3.1-70b-instruct";
+/// `sonar-pro` completion model
+pub const SONAR_PRO: &str = "sonar-pro";
+/// `sonar` completion model
+pub const SONAR: &str = "sonar";
 
 #[derive(Debug, Deserialize)]
 pub struct CompletionResponse {
@@ -126,13 +114,13 @@ pub struct CompletionResponse {
     pub usage: Usage,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Message {
     pub role: Role,
     pub content: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     System,
@@ -288,15 +276,15 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        // Add context documents to chat history
+        // Add context documents to current prompt
         let prompt_with_context = completion_request.prompt_with_context();
 
         // Add preamble to messages (if available)
         let mut messages: Vec<Message> = if let Some(preamble) = completion_request.preamble {
-            let message: message::Message = preamble.into();
-            vec![message
-                .try_into()
-                .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?]
+            vec![Message {
+                role: Role::System,
+                content: preamble,
+            }]
         } else {
             vec![]
         };
@@ -351,5 +339,67 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::completion::message::{AssistantContent, UserContent};
+
+    #[test]
+    fn test_deserialize_message() {
+        let json_data = r#"
+        {
+            "role": "user",
+            "content": "Hello, how can I help you?"
+        }
+        "#;
+
+        let message: Message = serde_json::from_str(json_data).unwrap();
+        assert_eq!(message.role, Role::User);
+        assert_eq!(message.content, "Hello, how can I help you?");
+    }
+
+    #[test]
+    fn test_serialize_message() {
+        let message = Message {
+            role: Role::Assistant,
+            content: "I am here to assist you.".to_string(),
+        };
+
+        let json_data = serde_json::to_string(&message).unwrap();
+        let expected_json = r#"{"role":"assistant","content":"I am here to assist you."}"#;
+        assert_eq!(json_data, expected_json);
+    }
+
+    #[test]
+    fn test_message_to_message_conversion() {
+        let user_message = message::Message::User {
+            content: OneOrMany::one(UserContent::Text {
+                text: "User message".to_string(),
+            }),
+        };
+
+        let assistant_message = message::Message::Assistant {
+            content: OneOrMany::one(AssistantContent::Text {
+                text: "Assistant message".to_string(),
+            }),
+        };
+
+        let converted_user_message: Message = user_message.clone().try_into().unwrap();
+        let converted_assistant_message: Message = assistant_message.clone().try_into().unwrap();
+
+        assert_eq!(converted_user_message.role, Role::User);
+        assert_eq!(converted_user_message.content, "User message");
+
+        assert_eq!(converted_assistant_message.role, Role::Assistant);
+        assert_eq!(converted_assistant_message.content, "Assistant message");
+
+        let back_to_user_message: message::Message = converted_user_message.try_into().unwrap();
+        let back_to_assistant_message: message::Message =
+            converted_assistant_message.try_into().unwrap();
+
+        assert_eq!(user_message, back_to_user_message);
+        assert_eq!(assistant_message, back_to_assistant_message);
     }
 }

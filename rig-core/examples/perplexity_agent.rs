@@ -2,7 +2,7 @@ use std::env;
 
 use rig::{
     completion::Prompt,
-    providers::{self, perplexity::LLAMA_3_1_70B_INSTRUCT},
+    providers::{self, perplexity::SONAR},
 };
 use serde_json::json;
 
@@ -15,7 +15,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let agent = client
-        .agent(LLAMA_3_1_70B_INSTRUCT)
+        .agent(SONAR)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .additional_params(json!({

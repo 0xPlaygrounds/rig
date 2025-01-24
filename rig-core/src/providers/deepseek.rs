@@ -171,8 +171,8 @@ impl TryFrom<message::Message> for Message {
 impl From<Message> for message::Message {
     fn from(message: Message) -> Self {
         match message {
-            Message::User { content, .. } => message::Message::create_user(content),
-            Message::Assistant { content, .. } => message::Message::create_assistant(content),
+            Message::User { content, .. } => message::Message::user(content),
+            Message::Assistant { content, .. } => message::Message::assistant(content),
 
             Message::Tool {
                 tool_call_id,
@@ -184,7 +184,7 @@ impl From<Message> for message::Message {
 
             // System messages should get stripped out when converting message's, this is just a
             // stop gap to avoid obnoxious error handling or panic occuring.
-            Message::System { content, .. } => message::Message::create_user(content),
+            Message::System { content, .. } => message::Message::user(content),
         }
     }
 }

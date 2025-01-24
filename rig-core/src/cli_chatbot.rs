@@ -1,9 +1,6 @@
 use std::io::{self, Write};
 
-use crate::{
-    completion::{Chat, PromptError},
-    message::Message,
-};
+use crate::completion::{Chat, Message, PromptError};
 
 /// Utility function to create a simple REPL CLI chatbot from a type that implements the
 /// `Chat` trait.
@@ -30,8 +27,8 @@ pub async fn cli_chatbot(chatbot: impl Chat) -> Result<(), PromptError> {
                 tracing::info!("Prompt:\n{}\n", input);
 
                 let response = chatbot.chat(input, chat_log.clone()).await?;
-                chat_log.push(Message::create_user(input));
-                chat_log.push(Message::create_assistant(response.clone()));
+                chat_log.push(Message::user(input));
+                chat_log.push(Message::assistant(response.clone()));
 
                 println!("========================== Response ============================");
                 println!("{response}");

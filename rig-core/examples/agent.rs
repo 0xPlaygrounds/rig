@@ -4,11 +4,6 @@ use rig::{completion::Prompt, providers};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .with_target(false)
-        .init();
-
     // Create OpenAI client
     let client = providers::openai::Client::new(
         &env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"),
