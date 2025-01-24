@@ -151,7 +151,7 @@ impl From<completion::Message> for Message {
 
 #[derive(Clone)]
 pub struct CompletionModel {
-    pub client: Client,
+    pub(crate) client: Client,
     pub model: String,
     pub default_max_tokens: Option<u64>,
 }
