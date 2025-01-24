@@ -10,7 +10,9 @@
 //!
 
 use crate::agent::Agent;
-use crate::completion::{CompletionError, CompletionModel, CompletionRequest, Message};
+use crate::completion::{
+    CompletionError, CompletionModel, CompletionRequest, CompletionRequestBuilder, Message,
+};
 use futures::stream::BoxStream;
 use futures::StreamExt;
 use std::fmt::{Display, Formatter};
@@ -63,8 +65,9 @@ pub trait StreamingCompletion<M: StreamingCompletionModel> {
     /// Generate a streaming completion from a request
     fn stream_completion(
         &self,
-        request: CompletionRequest,
-    ) -> impl Future<Output = Result<StreamingResult, CompletionError>>;
+        prompt: &str,
+        chat_history: Vec<Message>,
+    ) -> impl Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>;
 }
 
 /// Trait defining a streaming completion model

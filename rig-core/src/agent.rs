@@ -112,9 +112,8 @@ use futures::{stream, StreamExt, TryStreamExt};
 
 use crate::{
     completion::{
-        Chat, Completion, CompletionError, CompletionModel, CompletionRequest,
-        CompletionRequestBuilder, CompletionResponse, Document, Message, ModelChoice, Prompt,
-        PromptError,
+        Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder,
+        CompletionResponse, Document, Message, ModelChoice, Prompt, PromptError,
     },
     streaming::{
         StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingPrompt,
@@ -434,9 +433,12 @@ impl<M: CompletionModel> AgentBuilder<M> {
 impl<M: StreamingCompletionModel> StreamingCompletion<M> for Agent<M> {
     async fn stream_completion(
         &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingResult, CompletionError> {
-        self.model.stream(request).await
+        prompt: &str,
+        chat_history: Vec<Message>,
+    ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
+        // Reuse the existing completion implementation to build the request
+        // This ensures streaming and non-streaming use the same request building logic
+        self.completion(prompt, chat_history).await
     }
 }
 
@@ -452,7 +454,9 @@ impl<M: StreamingCompletionModel> StreamingChat for Agent<M> {
         prompt: &str,
         chat_history: Vec<Message>,
     ) -> Result<StreamingResult, CompletionError> {
-        let request = self.completion(prompt, chat_history).await?.build();
-        self.stream_completion(request).await
+        self.stream_completion(prompt, chat_history)
+            .await?
+            .stream()
+            .await
     }
 }
