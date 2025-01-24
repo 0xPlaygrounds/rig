@@ -37,7 +37,7 @@ impl Display for StreamingChoice {
     }
 }
 
-type StreamingResult = BoxStream<'static, Result<StreamingChoice, CompletionError>>;
+pub type StreamingResult = BoxStream<'static, Result<StreamingChoice, CompletionError>>;
 
 /// Trait for high-level streaming prompt interface
 pub trait StreamingPrompt: Send + Sync {
@@ -45,7 +45,7 @@ pub trait StreamingPrompt: Send + Sync {
     fn stream_prompt(
         &self,
         prompt: &str,
-    ) -> impl Future<Output = Result<StreamingResult, CompletionError>> + Send;
+    ) -> impl Future<Output = Result<StreamingResult, CompletionError>>;
 }
 
 /// Trait for high-level streaming chat interface
@@ -55,16 +55,16 @@ pub trait StreamingChat: Send + Sync {
         &self,
         prompt: &str,
         chat_history: Vec<Message>,
-    ) -> impl Future<Output = Result<StreamingResult, CompletionError>> + Send;
+    ) -> impl Future<Output = Result<StreamingResult, CompletionError>>;
 }
 
 /// Trait for low-level streaming completion interface
-pub trait StreamingCompletion<M: StreamingCompletionModel>: Send + Sync {
+pub trait StreamingCompletion<M: StreamingCompletionModel> {
     /// Generate a streaming completion from a request
     fn streaming_completion(
         &self,
         request: CompletionRequest,
-    ) -> impl Future<Output = Result<StreamingResult, CompletionError>> + Send;
+    ) -> impl Future<Output = Result<StreamingResult, CompletionError>>;
 }
 
 /// Trait defining a streaming completion model
@@ -73,7 +73,7 @@ pub trait StreamingCompletionModel: CompletionModel {
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl Future<Output = Result<StreamingResult, CompletionError>> + Send;
+    ) -> impl Future<Output = Result<StreamingResult, CompletionError>>;
 }
 
 /// helper function to stream a completion request to stdout

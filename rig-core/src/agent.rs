@@ -106,9 +106,9 @@
 //! let response = agent.prompt("What does \"glarb-glarb\" mean?").await
 //!     .expect("Failed to prompt the agent");
 //! ```
-use std::{collections::HashMap, pin::Pin};
+use std::collections::HashMap;
 
-use futures::{stream, Stream, StreamExt, TryStreamExt};
+use futures::{stream, StreamExt, TryStreamExt};
 
 use crate::{
     completion::{
@@ -117,8 +117,8 @@ use crate::{
         PromptError,
     },
     streaming::{
-        StreamingChat, StreamingChoice, StreamingCompletion, StreamingCompletionModel,
-        StreamingPrompt,
+        StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingPrompt,
+        StreamingResult,
     },
     tool::{Tool, ToolSet},
     vector_store::{VectorStoreError, VectorStoreIndexDyn},
@@ -435,22 +435,13 @@ impl<M: StreamingCompletionModel> StreamingCompletion<M> for Agent<M> {
     async fn streaming_completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>> + Send>>,
-        CompletionError,
-    > {
+    ) -> Result<StreamingResult, CompletionError> {
         self.model.stream(request).await
     }
 }
 
 impl<M: StreamingCompletionModel> StreamingPrompt for Agent<M> {
-    async fn stream_prompt(
-        &self,
-        prompt: &str,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>> + Send>>,
-        CompletionError,
-    > {
+    async fn stream_prompt(&self, prompt: &str) -> Result<StreamingResult, CompletionError> {
         self.stream_chat(prompt, vec![]).await
     }
 }
@@ -460,10 +451,7 @@ impl<M: StreamingCompletionModel> StreamingChat for Agent<M> {
         &self,
         prompt: &str,
         chat_history: Vec<Message>,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>> + Send>>,
-        CompletionError,
-    > {
+    ) -> Result<StreamingResult, CompletionError> {
         let request = self.completion(prompt, chat_history).await?.build();
         self.streaming_completion(request).await
     }
