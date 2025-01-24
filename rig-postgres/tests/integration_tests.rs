@@ -75,7 +75,7 @@ async fn vector_search_test() {
         .expect("Failed to create embeddings");
 
     // insert documents into vector store
-    let vector_store = PostgresVectorStore::default(model, pg_pool.clone());
+    let vector_store = PostgresVectorStore::with_defaults(model, pg_pool.clone());
 
     vector_store
         .insert_documents(documents)
@@ -102,10 +102,31 @@ async fn vector_search_test() {
         results.len()
     );
 
-    let (distance, id, doc) = results[0].clone();
-    println!("Distance: {}, id: {}, document: {:?}", distance, id, doc);
+    let (distance, full_query_id, doc) = results[0].clone();
+    println!(
+        "Distance: {}, id: {}, document: {:?}",
+        distance, full_query_id, doc
+    );
 
     assert_eq!(doc.name, "glarb-glarb");
+
+    // search only ids
+    let results = vector_store
+        .top_n_ids("What does \"glarb-glarb\" mean?", 1)
+        .await
+        .expect("Failed to search for document ids");
+
+    assert_eq!(
+        results.len(),
+        1,
+        "Expected one (id) result, got {}",
+        results.len()
+    );
+
+    let (distance, id) = results[0].clone();
+    println!("Distance: {}, id: {}", distance, id);
+
+    assert_eq!(id, full_query_id);
 }
 
 async fn start_container() -> ContainerAsync<GenericImage> {

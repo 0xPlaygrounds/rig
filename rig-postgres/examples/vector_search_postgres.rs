@@ -76,9 +76,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .await
         .expect("Failed to create embeddings");
 
-    // init vector store
+    // delete documents from table to have a clean start (optional, not recommended for production)
     sqlx::query("TRUNCATE documents").execute(&pool).await?;
-    let vector_store = PostgresVectorStore::default(model, pool);
+
+    // init vector store
+    let vector_store = PostgresVectorStore::with_defaults(model, pool);
     vector_store.insert_documents(documents).await?;
 
     // query vector

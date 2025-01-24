@@ -104,6 +104,13 @@ Example usage
     let openai_client = rig::providers::openai::Client::from_env();
     let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_3_SMALL);
 
+    // connect to Postgres
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");
+    let pool = PgPoolOptions::new() .connect(&database_url) .await?;
+
+    // run migrations (optional but recommended)
+    sqlx::migrate!("./migrations").run(&pool).await?;
+
     // init documents
     let products: Vec<Product> = ...;
 

@@ -6510,7 +6510,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dotenvy",
- "futures",
  "httpmock",
  "log",
  "pgvector",
@@ -6520,7 +6519,6 @@ dependencies = [
  "sqlx",
  "testcontainers",
  "tokio",
- "tokio-stream",
  "tokio-test",
  "tracing",
  "tracing-subscriber",
