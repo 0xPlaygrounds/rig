@@ -1,15 +1,14 @@
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 use serde::Deserialize;
 use serde_json::json;
 use std::iter;
-use std::pin::Pin;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefinition, Usage};
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils::merge_inplace;
-use crate::streaming::{StreamingChoice, StreamingCompletionModel};
+use crate::streaming::{StreamingChoice, StreamingCompletionModel, StreamingResult};
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -71,10 +70,7 @@ impl StreamingCompletionModel for CompletionModel {
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>> + Send>>,
-        CompletionError,
-    > {
+    ) -> Result<StreamingResult, CompletionError> {
         let prompt_with_context = completion_request.prompt_with_context();
 
         let max_tokens = if let Some(tokens) = completion_request.max_tokens {
