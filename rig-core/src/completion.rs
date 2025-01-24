@@ -223,6 +223,8 @@ pub enum ModelChoice {
     /// Represents a completion response as a tool call of the form
     /// `ToolCall(function_name, id, function_params)`.
     ToolCall(String, String, serde_json::Value),
+    /// Represents a completion response with multiple tool calls
+    MultipleToolCalls(Vec<ModelChoice>),
 }
 
 /// Trait defining a completion model that can be used to generate completion responses.

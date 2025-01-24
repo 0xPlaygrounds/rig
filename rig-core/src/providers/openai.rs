@@ -385,17 +385,26 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         ..
                     },
                 ..
-            }, ..]
-                if !calls.is_empty() =>
-            {
-                let call = calls.first().unwrap();
+            }, ..] => {
+                if calls.is_empty() {
+                    return Err(CompletionError::ResponseError(
+                        "Tool selection is empty".into(),
+                    ));
+                }
+
+                let tool_calls = calls
+                    .iter()
+                    .map(|call| {
+                        Ok(completion::ModelChoice::ToolCall(
+                            call.function.name.clone(),
+                            "".to_owned(),
+                            serde_json::from_str(&call.function.arguments)?,
+                        ))
+                    })
+                    .collect::<Result<Vec<_>, CompletionError>>()?;
 
                 Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::ToolCall(
-                        call.function.name.clone(),
-                        "".to_owned(),
-                        serde_json::from_str(&call.function.arguments)?,
-                    ),
+                    choice: completion::ModelChoice::MultipleToolCalls(tool_calls),
                     raw_response: value,
                 })
             }
