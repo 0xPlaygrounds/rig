@@ -46,7 +46,6 @@
 pub mod anthropic;
 pub mod cohere;
 pub mod deepseek;
-pub mod eternalai;
 pub mod gemini;
 pub mod openai;
 pub mod perplexity;
