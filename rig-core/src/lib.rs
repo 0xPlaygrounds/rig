@@ -63,7 +63,9 @@
 //! - Cohere
 //! - Anthropic
 //! - Perplexity
-//! - Gemini
+//! - Google Gemini
+//! - xAI
+//! - DeepSeek
 //!
 //! You can also implement your own model provider integration by defining types that
 //! implement the [CompletionModel](crate::completion::CompletionModel) and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits.
