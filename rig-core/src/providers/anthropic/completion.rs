@@ -104,7 +104,7 @@ pub enum CacheControl {
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
-    fn try_from(response: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
+    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
         if let Some(tool_use) = response.content.iter().find_map(|content| match content {
             Content::ToolUse {
                 name, input, id, ..
