@@ -432,7 +432,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
 }
 
 impl<M: StreamingCompletionModel> StreamingCompletion<M> for Agent<M> {
-    async fn streaming_completion(
+    async fn stream_completion(
         &self,
         request: CompletionRequest,
     ) -> Result<StreamingResult, CompletionError> {
@@ -453,6 +453,6 @@ impl<M: StreamingCompletionModel> StreamingChat for Agent<M> {
         chat_history: Vec<Message>,
     ) -> Result<StreamingResult, CompletionError> {
         let request = self.completion(prompt, chat_history).await?.build();
-        self.streaming_completion(request).await
+        self.stream_completion(request).await
     }
 }

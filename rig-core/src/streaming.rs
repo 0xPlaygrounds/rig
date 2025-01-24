@@ -61,7 +61,7 @@ pub trait StreamingChat: Send + Sync {
 /// Trait for low-level streaming completion interface
 pub trait StreamingCompletion<M: StreamingCompletionModel> {
     /// Generate a streaming completion from a request
-    fn streaming_completion(
+    fn stream_completion(
         &self,
         request: CompletionRequest,
     ) -> impl Future<Output = Result<StreamingResult, CompletionError>>;
