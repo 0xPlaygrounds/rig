@@ -166,7 +166,7 @@ impl CompletionModel {
     }
 }
 
-/// Anthropic requires a `max_tokens` parameter to be set, which is dependant on the model. If not
+/// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on the models
 /// available at the time of writing.
 ///
