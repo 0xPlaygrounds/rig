@@ -9,11 +9,11 @@
 //! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_CHAT);
 //! ```
 use crate::{
-    completion::{CompletionModel, CompletionRequest, CompletionResponse},
+    completion::{CompletionModel as CompletionModelTrait, CompletionRequest, CompletionResponse},
     json_utils,
 };
 use reqwest::Client as HttpClient;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 // ================================================================
@@ -55,46 +55,47 @@ impl Client {
     }
 
     /// Creates a DeepSeek completion model with the given `model_name`.
-    pub fn completion_model(&self, model_name: &str) -> DeepSeekCompletionModel {
-        DeepSeekCompletionModel {
+    pub fn completion_model(&self, model_name: &str) -> CompletionModel {
+        CompletionModel {
             client: self.clone(),
             model: model_name.to_string(),
         }
     }
 
     /// Optionally add an agent() convenience:
-    pub fn agent(&self, model_name: &str) -> crate::agent::AgentBuilder<DeepSeekCompletionModel> {
+    pub fn agent(&self, model_name: &str) -> crate::agent::AgentBuilder<CompletionModel> {
         crate::agent::AgentBuilder::new(self.completion_model(model_name))
     }
 }
 
 /// The response shape from the DeepSeek API
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct DeepSeekResponse {
     // We'll match the JSON:
     pub choices: Option<Vec<Choice>>,
     // you may want usage or other fields
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Choice {
     pub message: Option<DeepSeekMessage>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct DeepSeekMessage {
     pub role: Option<String>,
     pub content: Option<String>,
+    pub reasoning_content: Option<String>,
 }
 
 /// The struct implementing the `CompletionModel` trait
 #[derive(Clone)]
-pub struct DeepSeekCompletionModel {
+pub struct CompletionModel {
     pub client: Client,
     pub model: String,
 }
 
-impl CompletionModel for DeepSeekCompletionModel {
+impl CompletionModelTrait for CompletionModel {
     type Response = DeepSeekResponse;
 
     async fn completion(
@@ -107,11 +108,20 @@ impl CompletionModel for DeepSeekCompletionModel {
 
         let mut messages_json = vec![];
 
+        if let Some(cached_preamble) = &request.cached_preamble {
+            for preamble in cached_preamble {
+                messages_json.push(json!({
+                    "role": "system",
+                    "content": preamble.clone(),
+                }));
+            }
+        }
+
         // If preamble is present, push a system message
         if let Some(preamble) = &request.preamble {
             messages_json.push(json!({
                 "role": "system",
-                "content": preamble,
+                "content": preamble.join("\n"),
             }));
         }
 
