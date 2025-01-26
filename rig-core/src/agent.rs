@@ -120,7 +120,7 @@ use crate::{
     vector_store::{VectorStoreError, VectorStoreIndexDyn},
 };
 
-/// Struct reprensenting an LLM agent. An agent is an LLM model combined with a preamble
+/// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
 /// (i.e.: system prompt) and a static set of context documents and tools.
 /// All context documents and tools are always provided to the agent when prompted.
 ///
