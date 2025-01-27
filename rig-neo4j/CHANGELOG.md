@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.2.2...rig-neo4j-v0.2.3) - 2025-01-27
+
+### Other
+
+- Fix typos (#233)
+
 ## [0.2.2](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.2.1...rig-neo4j-v0.2.2) - 2025-01-13
 
 ### Other
