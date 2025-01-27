@@ -42,6 +42,8 @@ jobs:
 
       - name: Install Rust stable
         uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-unknown-unknown
 
       - name: Run cargo check wasm target
         run: cargo check --package rig-core --features worker --target wasm32-unknown-unknown
