@@ -197,6 +197,7 @@ pub struct DeepSeekCompletionModel {
 impl CompletionModel for DeepSeekCompletionModel {
     type Response = DeepSeekResponse;
 
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         request: CompletionRequest,

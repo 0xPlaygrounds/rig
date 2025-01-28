@@ -260,7 +260,7 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
-    pub(crate) fn prompt_with_context(&self) -> Message {
+    pub fn prompt_with_context(&self) -> Message {
         let mut new_prompt = self.prompt.clone();
         if let Message::User { ref mut content } = new_prompt {
             if !self.documents.is_empty() {
@@ -269,8 +269,8 @@ impl CompletionRequest {
                     .iter()
                     .map(|doc| doc.to_string())
                     .collect::<Vec<_>>()
-                    .join("");
-                let formatted_content = format!("<attachments>\n{}</attachments>\n", attachments);
+                    .join("\n");
+                let formatted_content = format!("<attachments>\n{}</attachments>", attachments);
                 content.insert(0, UserContent::text(formatted_content));
             }
         }

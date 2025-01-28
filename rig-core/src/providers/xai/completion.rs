@@ -116,7 +116,7 @@ pub mod xai_api_types {
     impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
         type Error = CompletionError;
 
-        fn try_from(value: CompletionResponse) -> std::result::Result<Self, Self::Error> {
+        fn try_from(value: CompletionResponse) -> Result<Self, Self::Error> {
             match value.choices.as_slice() {
                 [Choice {
                     message:
