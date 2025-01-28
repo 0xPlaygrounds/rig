@@ -90,6 +90,7 @@ pub mod loaders;
 pub mod one_or_many;
 pub mod pipeline;
 pub mod providers;
+pub mod streaming;
 pub mod tool;
 pub mod vector_store;
 
