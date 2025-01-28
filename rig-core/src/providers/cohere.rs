@@ -516,7 +516,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                 .map(|content| {
                     Ok(Message::User {
                         message: match content {
-                            message::UserContent::Text { text } => text,
+                            message::UserContent::Text(message::Text { text }) => text,
                             _ => {
                                 return Err(message::MessageError::ConversionError(
                                     "Only text content is supported by Cohere".to_owned(),

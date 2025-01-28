@@ -280,12 +280,14 @@ impl From<ImageFormat> for message::ImageMediaType {
 impl From<message::AssistantContent> for Content {
     fn from(text: message::AssistantContent) -> Self {
         match text {
-            message::AssistantContent::Text { text } => Content::Text { text },
-            message::AssistantContent::ToolCall { tool_call } => Content::ToolUse {
-                id: tool_call.id,
-                name: tool_call.function.name,
-                input: tool_call.function.arguments,
-            },
+            message::AssistantContent::Text(message::Text { text }) => Content::Text { text },
+            message::AssistantContent::ToolCall(message::ToolCall { id, function }) => {
+                Content::ToolUse {
+                    id,
+                    name: function.name,
+                    input: function.arguments,
+                }
+            }
         }
     }
 }
@@ -298,13 +300,41 @@ impl TryFrom<message::Message> for Message {
             message::Message::User { content } => Message {
                 role: Role::User,
                 content: content.try_map(|content| match content {
-                    message::UserContent::Text { text } => Ok(Content::Text { text }),
-                    message::UserContent::Image {
+                    message::UserContent::Text(message::Text { text }) => {
+                        Ok(Content::Text { text })
+                    }
+                    message::UserContent::ToolResult(message::ToolResult { id, content }) => {
+                        Ok(Content::ToolResult {
+                            tool_use_id: id,
+                            content: content.try_map(|content| match content {
+                                message::ToolResultContent::Text(message::Text { text }) => {
+                                    Ok(ToolResultContent::Text { text })
+                                }
+                                message::ToolResultContent::Image(image) => {
+                                    let media_type =
+                                        image.media_type.ok_or(MessageError::ConversionError(
+                                            "Image media type is required".to_owned(),
+                                        ))?;
+                                    let format =
+                                        image.format.ok_or(MessageError::ConversionError(
+                                            "Image format is required".to_owned(),
+                                        ))?;
+                                    Ok(ToolResultContent::Image(ImageSource {
+                                        data: image.data,
+                                        format: media_type.try_into()?,
+                                        r#type: format.try_into()?,
+                                    }))
+                                }
+                            })?,
+                            is_error: None,
+                        })
+                    }
+                    message::UserContent::Image(message::Image {
                         data,
                         format,
                         media_type,
                         ..
-                    } => {
+                    }) => {
                         let source = ImageSource {
                             data,
                             format: match media_type {
@@ -322,7 +352,7 @@ impl TryFrom<message::Message> for Message {
                         };
                         Ok(Content::Image { source })
                     }
-                    message::UserContent::Document { data, format, .. } => {
+                    message::UserContent::Document(message::Document { data, format, .. }) => {
                         let source = DocumentSource {
                             data,
                             format: DocumentFormat::PDF,
@@ -345,15 +375,6 @@ impl TryFrom<message::Message> for Message {
                 content: content.map(|content| content.into()),
                 role: Role::Assistant,
             },
-
-            message::Message::ToolResult { id, content } => Message {
-                role: Role::Assistant,
-                content: OneOrMany::one(Content::ToolResult {
-                    tool_use_id: id,
-                    content: OneOrMany::one(content.into()),
-                    is_error: None,
-                }),
-            },
         })
     }
 }
@@ -363,16 +384,10 @@ impl TryFrom<Content> for message::AssistantContent {
 
     fn try_from(content: Content) -> Result<Self, Self::Error> {
         Ok(match content {
-            Content::Text { text } => message::AssistantContent::Text { text },
-            Content::ToolUse { id, name, input } => message::AssistantContent::ToolCall {
-                tool_call: message::ToolCall {
-                    id,
-                    function: message::ToolFunction {
-                        name,
-                        arguments: input,
-                    },
-                },
-            },
+            Content::Text { text } => message::AssistantContent::text(text),
+            Content::ToolUse { id, name, input } => {
+                message::AssistantContent::tool_call(id, name, input)
+            }
             _ => {
                 return Err(MessageError::ConversionError(
                     format!("Unsupported content type for Assistant role: {:?}", content)
@@ -391,18 +406,18 @@ impl TryFrom<Message> for message::Message {
             Role::User => message::Message::User {
                 content: message.content.try_map(|content| {
                     Ok(match content {
-                        Content::Text { text } => message::UserContent::Text { text },
-                        Content::Image { source } => message::UserContent::Image {
+                        Content::Text { text } => message::UserContent::text(text),
+                        Content::Image { source } => message::UserContent::Image(message::Image {
                             data: source.data,
                             format: Some(message::ContentFormat::Base64),
                             media_type: Some(source.format.into()),
                             detail: None,
-                        },
-                        Content::Document { source } => message::UserContent::Document {
-                            data: source.data,
-                            format: Some(message::ContentFormat::Base64),
-                            media_type: Some(message::DocumentMediaType::PDF),
-                        },
+                        }),
+                        Content::Document { source } => message::UserContent::document(
+                            source.data,
+                            Some(message::ContentFormat::Base64),
+                            Some(message::DocumentMediaType::PDF),
+                        ),
                         _ => {
                             return Err(MessageError::ConversionError(
                                 "Unsupported content type for User role".to_owned(),
@@ -416,34 +431,9 @@ impl TryFrom<Message> for message::Message {
                     content: message.content.try_map(|content| content.try_into())?,
                 },
 
-                Content::ToolResult {
-                    tool_use_id,
-                    content,
-                    ..
-                } => message::Message::ToolResult {
-                    id: tool_use_id,
-                    content: content
-                        .into_iter()
-                        .map(|tool_content| {
-                            Ok(match tool_content {
-                                ToolResultContent::Text { text } => text,
-                                _ => {
-                                    return Err(MessageError::ConversionError(
-                                        format!(
-                                    "Unsupported tool result content type for Assistant role: {:?}",
-                                    message.content.first()
-                                )
-                                        .to_owned(),
-                                    ))
-                                }
-                            })
-                        })
-                        .collect::<Result<Vec<_>, _>>()?
-                        .join("\n"),
-                },
                 _ => {
                     return Err(MessageError::ConversionError(
-                        "Unsupported content type for Assistant role".to_owned(),
+                        format!("Unsupported message for Assistant role: {:?}", message).to_owned(),
                     ))
                 }
             },
@@ -825,7 +815,7 @@ mod tests {
         };
 
         let tool_message = Message {
-            role: Role::Assistant,
+            role: Role::User,
             content: OneOrMany::one(Content::ToolResult {
                 tool_use_id: "toolu_01A09q90qw90lq917835lq9".to_string(),
                 content: OneOrMany::one(ToolResultContent::Text {
@@ -847,12 +837,12 @@ mod tests {
                 let mut iter = content.into_iter();
 
                 match iter.next().unwrap() {
-                    message::UserContent::Image {
+                    message::UserContent::Image(message::Image {
                         data,
                         format,
                         media_type,
                         ..
-                    } => {
+                    }) => {
                         assert_eq!(data, "/9j/4AAQSkZJRg...");
                         assert_eq!(format.unwrap(), message::ContentFormat::Base64);
                         assert_eq!(media_type, Some(message::ImageMediaType::JPEG));
@@ -861,18 +851,18 @@ mod tests {
                 }
 
                 match iter.next().unwrap() {
-                    message::UserContent::Text { text } => {
+                    message::UserContent::Text(message::Text { text }) => {
                         assert_eq!(text, "What is in this image?");
                     }
                     _ => panic!("Expected text content"),
                 }
 
                 match iter.next().unwrap() {
-                    message::UserContent::Document {
+                    message::UserContent::Document(message::Document {
                         data,
                         format,
                         media_type,
-                    } => {
+                    }) => {
                         assert_eq!(data, "base64_encoded_pdf_data");
                         assert_eq!(format.unwrap(), message::ContentFormat::Base64);
                         assert_eq!(media_type, Some(message::DocumentMediaType::PDF));
@@ -886,9 +876,18 @@ mod tests {
         }
 
         match converted_tool_message.clone() {
-            message::Message::ToolResult { id, content } => {
+            message::Message::User { content } => {
+                let message::ToolResult { id, content, .. } = match content.first() {
+                    message::UserContent::ToolResult(tool_result) => tool_result,
+                    _ => panic!("Expected tool result content"),
+                };
                 assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
-                assert_eq!(content, "15 degrees");
+                match content.first() {
+                    message::ToolResultContent::Text(message::Text { text }) => {
+                        assert_eq!(text, "15 degrees");
+                    }
+                    _ => panic!("Expected text content"),
+                }
             }
             _ => panic!("Expected tool result content"),
         }
@@ -898,13 +897,10 @@ mod tests {
                 assert_eq!(content.len(), 1);
 
                 match content.first() {
-                    message::AssistantContent::ToolCall { tool_call } => {
-                        assert_eq!(tool_call.id, "toolu_01A09q90qw90lq917835lq9");
-                        assert_eq!(tool_call.function.name, "get_weather");
-                        assert_eq!(
-                            tool_call.function.arguments,
-                            json!({"location": "San Francisco, CA"})
-                        );
+                    message::AssistantContent::ToolCall(message::ToolCall { id, function }) => {
+                        assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
+                        assert_eq!(function.name, "get_weather");
+                        assert_eq!(function.arguments, json!({"location": "San Francisco, CA"}));
                     }
                     _ => panic!("Expected tool call content"),
                 }

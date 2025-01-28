@@ -1,15 +1,20 @@
+use std::{convert::Infallible, str::FromStr};
+
 use crate::OneOrMany;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+use super::CompletionError;
 
 // ================================================================
 // Request models
 // ================================================================
 
-/// A message represents a run of input (the user) and output (assistant or tool result).
+/// A message represents a run of input (user) and output (assistant).
 /// Each message type (based on it's `role`) can contain a atleast one bit of content such as text,
-///  images, audio, documents, or tool calls. While each message type can contain multiple content,
-///  most often, you'll only see one content type per message (an image w/ a description, etc).
+///  images, audio, documents, or tool related information. While each message type can contain
+///  multiple content, most often, you'll only see one content type per message
+///  (an image w/ a description, etc).
 ///
 /// Each provider is responsible with converting the generic message into it's provider specific
 ///  type using `From` or `TryFrom` traits. Since not every provider supports every feature, the
@@ -25,17 +30,79 @@ pub enum Message {
     Assistant {
         content: OneOrMany<AssistantContent>,
     },
+}
 
-    /// Tool result message containing information about a tool call and it's resulting content.
-    ToolResult { id: String, content: String }, // TODO: Investigate parallel tool results
+/// Describes the content of a message, which can be text, a tool result, an image, audio, or
+///  a document. Dependent on provider supporting the content type. Multimedia content is generally
+///  base64 (defined by it's format) encoded but additionally supports urls (for some providers).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum UserContent {
+    Text(Text),
+    ToolResult(ToolResult),
+    Image(Image),
+    Audio(Audio),
+    Document(Document),
 }
 
 /// Describes responses from a provider which is either text or a tool call.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum AssistantContent {
-    Text { text: String },
-    ToolCall { tool_call: ToolCall },
+    Text(Text),
+    ToolCall(ToolCall),
+}
+
+/// Basic text content.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Text {
+    pub text: String,
+}
+
+/// Tool result content containing information about a tool call and it's resulting content.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ToolResult {
+    pub id: String,
+    pub content: OneOrMany<ToolResultContent>,
+}
+
+/// Describes the content of a tool result, which can be text or an image.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub enum ToolResultContent {
+    Text(Text),
+    Image(Image),
+}
+
+/// Image content containing image data and metadata about it.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Image {
+    pub data: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<ContentFormat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<ImageMediaType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<ImageDetail>,
+}
+
+/// Audio content containing audio data and metadata about it.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Audio {
+    pub data: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<ContentFormat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<AudioMediaType>,
+}
+
+/// Document content containing document data and metadata about it.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Document {
+    pub data: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<ContentFormat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<DocumentMediaType>,
 }
 
 /// Describes a tool call with an id and function to call, generally produced by a provider.
@@ -52,39 +119,6 @@ pub struct ToolFunction {
     pub arguments: serde_json::Value,
 }
 
-/// Describes the content of a message, which can be text, an image, audio, or document. Dependent
-///  on provider supporting the content type.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum UserContent {
-    Text {
-        text: String,
-    },
-    Image {
-        data: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        format: Option<ContentFormat>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        media_type: Option<ImageMediaType>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        detail: Option<ImageDetail>,
-    },
-    Audio {
-        data: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        format: Option<ContentFormat>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        media_type: Option<AudioMediaType>,
-    },
-    Document {
-        data: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        format: Option<ContentFormat>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        media_type: Option<DocumentMediaType>,
-    },
-}
-
 /// Describes the format of the content, which can be base64 or string.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -96,6 +130,34 @@ pub enum ContentFormat {
 impl Default for ContentFormat {
     fn default() -> Self {
         ContentFormat::Base64
+    }
+}
+
+/// Helper enum that tracks the media type of the content.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub enum MediaType {
+    Image(ImageMediaType),
+    Audio(AudioMediaType),
+    Document(DocumentMediaType),
+}
+
+impl MimeType for MediaType {
+    fn from_mime_type(mime_type: &str) -> Option<Self> {
+        ImageMediaType::from_mime_type(mime_type)
+            .map(MediaType::Image)
+            .or_else(|| {
+                DocumentMediaType::from_mime_type(mime_type)
+                    .map(MediaType::Document)
+                    .or_else(|| AudioMediaType::from_mime_type(mime_type).map(MediaType::Audio))
+            })
+    }
+
+    fn to_mime_type(&self) -> &'static str {
+        match self {
+            MediaType::Image(media_type) => media_type.to_mime_type(),
+            MediaType::Audio(media_type) => media_type.to_mime_type(),
+            MediaType::Document(media_type) => media_type.to_mime_type(),
+        }
     }
 }
 
@@ -262,10 +324,30 @@ impl std::str::FromStr for ImageDetail {
     }
 }
 
+impl From<String> for Text {
+    fn from(text: String) -> Self {
+        Text { text }
+    }
+}
+
+impl From<&str> for Text {
+    fn from(text: &str) -> Self {
+        text.to_owned().into()
+    }
+}
+
+impl FromStr for Text {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(s.into())
+    }
+}
+
 impl From<String> for Message {
     fn from(text: String) -> Self {
         Message::User {
-            content: OneOrMany::<UserContent>::one(UserContent::Text { text }),
+            content: OneOrMany::one(UserContent::Text(text.into())),
         }
     }
 }
@@ -273,9 +355,7 @@ impl From<String> for Message {
 impl From<&str> for Message {
     fn from(text: &str) -> Self {
         Message::User {
-            content: OneOrMany::<UserContent>::one(UserContent::Text {
-                text: text.to_owned(),
-            }),
+            content: OneOrMany::one(UserContent::Text(text.into())),
         }
     }
 }
@@ -284,7 +364,7 @@ impl Message {
     pub(crate) fn rag_text(&self) -> Option<String> {
         match self {
             Message::User { content } => {
-                if let UserContent::Text { text } = content.first() {
+                if let UserContent::Text(Text { text }) = content.first() {
                     Some(text.clone())
                 } else {
                     None
@@ -296,14 +376,111 @@ impl Message {
 
     pub fn user(text: impl Into<String>) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Text { text: text.into() }),
+            content: OneOrMany::one(UserContent::text(text)),
         }
     }
 
     pub fn assistant(text: impl Into<String>) -> Self {
         Message::Assistant {
-            content: OneOrMany::one(AssistantContent::Text { text: text.into() }),
+            content: OneOrMany::one(AssistantContent::text(text)),
         }
+    }
+}
+
+impl UserContent {
+    pub fn text(text: impl Into<String>) -> Self {
+        UserContent::Text(text.into().into())
+    }
+
+    pub fn image(
+        data: impl Into<String>,
+        format: Option<ContentFormat>,
+        media_type: Option<ImageMediaType>,
+        detail: Option<ImageDetail>,
+    ) -> Self {
+        UserContent::Image(Image {
+            data: data.into(),
+            format,
+            media_type,
+            detail,
+        })
+    }
+
+    pub fn audio(
+        data: impl Into<String>,
+        format: Option<ContentFormat>,
+        media_type: Option<AudioMediaType>,
+    ) -> Self {
+        UserContent::Audio(Audio {
+            data: data.into(),
+            format,
+            media_type,
+        })
+    }
+
+    pub fn document(
+        data: impl Into<String>,
+        format: Option<ContentFormat>,
+        media_type: Option<DocumentMediaType>,
+    ) -> Self {
+        UserContent::Document(Document {
+            data: data.into(),
+            format,
+            media_type,
+        })
+    }
+
+    pub fn tool_result(id: impl Into<String>, content: OneOrMany<ToolResultContent>) -> Self {
+        UserContent::ToolResult(ToolResult {
+            id: id.into(),
+            content,
+        })
+    }
+}
+
+impl AssistantContent {
+    pub fn text(text: impl Into<String>) -> Self {
+        AssistantContent::Text(text.into().into())
+    }
+
+    pub fn tool_call(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        arguments: serde_json::Value,
+    ) -> Self {
+        AssistantContent::ToolCall(ToolCall {
+            id: id.into(),
+            function: ToolFunction {
+                name: name.into(),
+                arguments,
+            },
+        })
+    }
+}
+
+impl ToolResultContent {
+    pub fn text(text: impl Into<String>) -> Self {
+        ToolResultContent::Text(text.into().into())
+    }
+
+    pub fn image(
+        data: impl Into<String>,
+        format: Option<ContentFormat>,
+        media_type: Option<ImageMediaType>,
+        detail: Option<ImageDetail>,
+    ) -> Self {
+        ToolResultContent::Image(Image {
+            data: data.into(),
+            format,
+            media_type,
+            detail,
+        })
+    }
+}
+
+impl From<String> for ToolResultContent {
+    fn from(text: String) -> Self {
+        ToolResultContent::text(text)
     }
 }
 
@@ -312,4 +489,10 @@ impl Message {
 pub enum MessageError {
     #[error("Message conversion error: {0}")]
     ConversionError(String),
+}
+
+impl From<MessageError> for CompletionError {
+    fn from(error: MessageError) -> Self {
+        CompletionError::RequestError(error.into())
+    }
 }

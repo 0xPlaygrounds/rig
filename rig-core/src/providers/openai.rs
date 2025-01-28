@@ -417,7 +417,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     choice: completion::ModelChoice::ToolCall(
                         call.function.name.clone(),
                         "".to_string(),
-                        serde_json::from_str(&call.function.arguments)?,
+                        call.function.arguments,
                     ),
                     raw_response: value,
                 })
@@ -473,7 +473,7 @@ pub enum Message {
 impl Message {
     pub(crate) fn system(content: &str) -> Self {
         Message::System {
-            content: OneOrMany::one(SystemContent::from_str(content).expect("Infalliable")),
+            content: OneOrMany::one(content.to_owned().into()),
             name: None,
         }
     }
@@ -569,53 +569,120 @@ impl From<completion::ToolDefinition> for ToolDefinition {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Function {
     pub name: String,
-    pub arguments: String,
+    #[serde(with = "json_utils::stringified_json")]
+    pub arguments: serde_json::Value,
 }
 
-impl From<message::Message> for Message {
-    fn from(message: message::Message) -> Self {
+impl TryFrom<message::Message> for Vec<Message> {
+    type Error = message::MessageError;
+
+    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
-            message::Message::User { content } => Message::User {
-                content: content.map(|content| content.into()),
-                name: None,
-            },
+            message::Message::User { content } => {
+                let (tool_results, other_content): (Vec<_>, Vec<_>) = content
+                    .into_iter()
+                    .partition(|content| matches!(content, message::UserContent::ToolResult(_)));
+
+                // If there are messages with both tool results and user content, openai will only
+                //  handle tool results. It's unlikely that there will be both.
+                if !tool_results.is_empty() {
+                    tool_results
+                        .into_iter()
+                        .map(|content| match content {
+                            message::UserContent::ToolResult(message::ToolResult {
+                                id,
+                                content,
+                            }) => Ok::<_, message::MessageError>(Message::Tool {
+                                tool_call_id: id,
+                                content: content.try_map(|content| match content {
+                                    message::ToolResultContent::Text(message::Text { text }) => {
+                                        Ok(text)
+                                    }
+                                    _ => Err(message::MessageError::ConversionError(
+                                        "Tool result content does not support non-text".into(),
+                                    )),
+                                })?,
+                            }),
+                            _ => unreachable!(),
+                        })
+                        .collect::<Result<Vec<_>, _>>()
+                } else {
+                    let other_content = OneOrMany::many(other_content).expect(
+                        "There must be other content here if there were no tool result content",
+                    );
+
+                    Ok(vec![Message::User {
+                        content: other_content.map(|content| match content {
+                            message::UserContent::Text(message::Text { text }) => {
+                                UserContent::Text { text }
+                            }
+                            message::UserContent::Image(message::Image {
+                                data, detail, ..
+                            }) => UserContent::Image {
+                                image_url: ImageUrl {
+                                    url: data,
+                                    detail: detail.unwrap_or_default(),
+                                },
+                            },
+                            message::UserContent::Document(message::Document { data, .. }) => {
+                                UserContent::Text { text: data }
+                            }
+                            message::UserContent::Audio(message::Audio {
+                                data,
+                                media_type,
+                                ..
+                            }) => UserContent::Audio {
+                                input_audio: InputAudio {
+                                    data,
+                                    format: match media_type {
+                                        Some(media_type) => media_type,
+                                        None => AudioMediaType::MP3,
+                                    },
+                                },
+                            },
+                            _ => unreachable!(),
+                        }),
+                        name: None,
+                    }])
+                }
+            }
             message::Message::Assistant { content } => {
-                let (text_content, tool_calls): (Vec<_>, Vec<_>) =
-                    content.into_iter().partition(|content| match content {
-                        message::AssistantContent::Text { .. } => true,
-                        message::AssistantContent::ToolCall { .. } => false,
-                    });
+                let (text_content, tool_calls) = content.into_iter().fold(
+                    (Vec::new(), Vec::new()),
+                    |(mut texts, mut tools), content| {
+                        match content {
+                            message::AssistantContent::Text(text) => texts.push(text),
+                            message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
+                        }
+                        (texts, tools)
+                    },
+                );
 
-                let text_content = text_content
-                    .into_iter()
-                    .map(|content| match content {
-                        message::AssistantContent::Text { text } => AssistantContent::Text { text },
-                        _ => unreachable!(),
-                    })
-                    .collect::<Vec<_>>();
-
-                let tool_calls = tool_calls
-                    .into_iter()
-                    .map(|content| match content {
-                        message::AssistantContent::ToolCall { tool_call } => tool_call.into(),
-                        _ => unreachable!(),
-                    })
-                    .collect::<Vec<_>>();
+                let text_content = OneOrMany::many(
+                    text_content
+                        .into_iter()
+                        .map(|content| content.text.into())
+                        .collect::<Vec<_>>(),
+                )
+                .ok();
+                let tool_calls = OneOrMany::many(
+                    tool_calls
+                        .into_iter()
+                        .map(|tool_call| tool_call.into())
+                        .collect::<Vec<_>>(),
+                )
+                .ok();
 
                 // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall`, so
-                //  `content` or `tool_calls` will *always* be `Some`.
-                Message::Assistant {
-                    content: OneOrMany::many(text_content).ok(),
+                //   either `content` or `tool_calls` will `Some`.
+                Ok(vec![Message::Assistant {
+                    content: text_content,
                     refusal: None,
                     audio: None,
                     name: None,
-                    tool_calls: OneOrMany::many(tool_calls).ok(),
-                }
+                    tool_calls,
+                }])
             }
-            message::Message::ToolResult { id, content } => Message::Tool {
-                tool_call_id: id,
-                content: OneOrMany::one(content),
-            },
         }
     }
 }
@@ -627,33 +694,19 @@ impl From<message::ToolCall> for ToolCall {
             r#type: ToolType::default(),
             function: Function {
                 name: tool_call.function.name,
-                arguments: tool_call.function.arguments.to_string(),
+                arguments: tool_call.function.arguments,
             },
         }
     }
 }
 
-impl From<message::UserContent> for UserContent {
-    fn from(tool: message::UserContent) -> Self {
-        match tool {
-            message::UserContent::Text { text } => UserContent::Text { text },
-            message::UserContent::Image { data, detail, .. } => UserContent::Image {
-                image_url: ImageUrl {
-                    url: data,
-                    detail: detail.unwrap_or_default(),
-                },
-            },
-            message::UserContent::Document { data, .. } => UserContent::Text { text: data },
-            message::UserContent::Audio {
-                data, media_type, ..
-            } => UserContent::Audio {
-                input_audio: InputAudio {
-                    data,
-                    format: match media_type {
-                        Some(media_type) => media_type,
-                        None => AudioMediaType::MP3,
-                    },
-                },
+impl From<ToolCall> for message::ToolCall {
+    fn from(tool_call: ToolCall) -> Self {
+        Self {
+            id: tool_call.id,
+            function: message::ToolFunction {
+                name: tool_call.function.name,
+                arguments: tool_call.function.arguments,
             },
         }
     }
@@ -677,13 +730,13 @@ impl TryFrom<Message> for message::Message {
                         .into_iter()
                         .map(|content| match content {
                             AssistantContent::Text { text } => {
-                                message::AssistantContent::Text { text }
+                                message::AssistantContent::text(text)
                             }
 
                             // TODO: Currently, refusals are converted into text, but should be
                             //  investigated for generalization.
                             AssistantContent::Refusal { refusal } => {
-                                message::AssistantContent::Text { text: refusal }
+                                message::AssistantContent::text(refusal)
                             }
                         })
                         .collect::<Vec<_>>()
@@ -696,13 +749,7 @@ impl TryFrom<Message> for message::Message {
                         tool_calls
                             .into_iter()
                             .map(|tool_call| {
-                                Ok(message::AssistantContent::ToolCall {
-                                    tool_call: tool_call.try_into().map_err(
-                                        |e: serde_json::Error| {
-                                            message::MessageError::ConversionError(e.to_string())
-                                        },
-                                    )?,
-                                })
+                                Ok(message::AssistantContent::ToolCall(tool_call.into()))
                             })
                             .collect::<Result<Vec<_>, _>>()?,
                     )
@@ -721,30 +768,17 @@ impl TryFrom<Message> for message::Message {
             Message::Tool {
                 tool_call_id,
                 content,
-            } => message::Message::ToolResult {
-                id: tool_call_id,
-                // Multiple tool call content is merged into one.
-                content: content.into_iter().collect::<Vec<_>>().join("\n"),
+            } => message::Message::User {
+                content: OneOrMany::one(message::UserContent::tool_result(
+                    tool_call_id,
+                    content.map(|content| message::ToolResultContent::text(content)),
+                )),
             },
 
             // System messages should get stripped out when converting message's, this is just a
             // stop gap to avoid obnoxious error handling or panic occuring.
             Message::System { content, .. } => message::Message::User {
-                content: content.map(|content| message::UserContent::Text { text: content.text }),
-            },
-        })
-    }
-}
-
-impl TryFrom<ToolCall> for message::ToolCall {
-    type Error = serde_json::Error;
-
-    fn try_from(tool_call: ToolCall) -> Result<Self, Self::Error> {
-        Ok(Self {
-            id: tool_call.id,
-            function: message::ToolFunction {
-                name: tool_call.function.name,
-                arguments: serde_json::from_str(&tool_call.function.arguments)?,
+                content: content.map(|content| message::UserContent::text(content.text)),
             },
         })
     }
@@ -753,19 +787,25 @@ impl TryFrom<ToolCall> for message::ToolCall {
 impl From<UserContent> for message::UserContent {
     fn from(content: UserContent) -> Self {
         match content {
-            UserContent::Text { text } => message::UserContent::Text { text },
-            UserContent::Image { image_url } => message::UserContent::Image {
-                data: image_url.url,
-                detail: Some(image_url.detail),
-                format: Some(message::ContentFormat::default()),
-                media_type: None,
-            },
-            UserContent::Audio { input_audio } => message::UserContent::Audio {
-                data: input_audio.data,
-                media_type: Some(input_audio.format),
-                format: Some(message::ContentFormat::default()),
-            },
+            UserContent::Text { text } => message::UserContent::text(text),
+            UserContent::Image { image_url } => message::UserContent::image(
+                image_url.url,
+                Some(message::ContentFormat::default()),
+                None,
+                Some(image_url.detail),
+            ),
+            UserContent::Audio { input_audio } => message::UserContent::audio(
+                input_audio.data,
+                Some(message::ContentFormat::default()),
+                Some(input_audio.format),
+            ),
         }
+    }
+}
+
+impl From<String> for UserContent {
+    fn from(s: String) -> Self {
+        UserContent::Text { text: s }
     }
 }
 
@@ -779,6 +819,12 @@ impl FromStr for UserContent {
     }
 }
 
+impl From<String> for AssistantContent {
+    fn from(s: String) -> Self {
+        AssistantContent::Text { text: s }
+    }
+}
+
 impl FromStr for AssistantContent {
     type Err = Infallible;
 
@@ -786,6 +832,15 @@ impl FromStr for AssistantContent {
         Ok(AssistantContent::Text {
             text: s.to_string(),
         })
+    }
+}
+
+impl From<String> for SystemContent {
+    fn from(s: String) -> Self {
+        SystemContent {
+            r#type: SystemContentType::default(),
+            text: s,
+        }
     }
 }
 
@@ -831,18 +886,21 @@ impl completion::CompletionModel for CompletionModel {
         };
 
         // Convert prompt to user message
-        let prompt: Message = completion_request.prompt_with_context().into();
+        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
 
         // Convert existing chat history
         let chat_history: Vec<Message> = completion_request
             .chat_history
             .into_iter()
-            .map(Message::from)
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
             .collect();
 
         // Combine all messages into a single history
         full_history.extend(chat_history);
-        full_history.push(prompt);
+        full_history.extend(prompt);
 
         let request = if completion_request.tools.is_empty() {
             json!({
@@ -1004,7 +1062,7 @@ mod tests {
                         r#type: ToolType::Function,
                         function: Function {
                             name: "taco".to_string(),
-                            arguments: "{\"sauce\": \"hot\"}".to_string()
+                            arguments: serde_json::json!({"sauce": "hot"})
                         }
                     }
                 );
@@ -1033,21 +1091,18 @@ mod tests {
     #[test]
     fn test_message_to_message_conversion() {
         let user_message = message::Message::User {
-            content: OneOrMany::one(message::UserContent::Text {
-                text: "Hello".to_string(),
-            }),
+            content: OneOrMany::one(message::UserContent::text("Hello")),
         };
 
         let assistant_message = message::Message::Assistant {
-            content: OneOrMany::one(message::AssistantContent::Text {
-                text: "Hi there!".to_string(),
-            }),
+            content: OneOrMany::one(message::AssistantContent::text("Hi there!")),
         };
 
-        let converted_user_message: Message = user_message.clone().into();
-        let converted_assistant_message: Message = assistant_message.clone().into();
+        let converted_user_message: Vec<Message> = user_message.clone().try_into().unwrap();
+        let converted_assistant_message: Vec<Message> =
+            assistant_message.clone().try_into().unwrap();
 
-        match converted_user_message.clone() {
+        match converted_user_message[0].clone() {
             Message::User { content, .. } => {
                 assert_eq!(
                     content.first(),
@@ -1059,7 +1114,7 @@ mod tests {
             _ => panic!("Expected user message"),
         }
 
-        match converted_assistant_message.clone() {
+        match converted_assistant_message[0].clone() {
             Message::Assistant { content, .. } => {
                 assert_eq!(
                     content.unwrap().first(),
@@ -1071,9 +1126,10 @@ mod tests {
             _ => panic!("Expected assistant message"),
         }
 
-        let original_user_message: message::Message = converted_user_message.try_into().unwrap();
+        let original_user_message: message::Message =
+            converted_user_message[0].clone().try_into().unwrap();
         let original_assistant_message: message::Message =
-            converted_assistant_message.try_into().unwrap();
+            converted_assistant_message[0].clone().try_into().unwrap();
 
         assert_eq!(original_user_message, user_message);
         assert_eq!(original_assistant_message, assistant_message);
@@ -1104,12 +1160,7 @@ mod tests {
 
         match converted_user_message.clone() {
             message::Message::User { content } => {
-                assert_eq!(
-                    content.first(),
-                    message::UserContent::Text {
-                        text: "Hello".to_string()
-                    }
-                );
+                assert_eq!(content.first(), message::UserContent::text("Hello"));
             }
             _ => panic!("Expected user message"),
         }
@@ -1118,18 +1169,17 @@ mod tests {
             message::Message::Assistant { content } => {
                 assert_eq!(
                     content.first(),
-                    message::AssistantContent::Text {
-                        text: "Hi there!".to_string()
-                    }
+                    message::AssistantContent::text("Hi there!")
                 );
             }
             _ => panic!("Expected assistant message"),
         }
 
-        let original_user_message: Message = converted_user_message.try_into().unwrap();
-        let original_assistant_message: Message = converted_assistant_message.try_into().unwrap();
+        let original_user_message: Vec<Message> = converted_user_message.try_into().unwrap();
+        let original_assistant_message: Vec<Message> =
+            converted_assistant_message.try_into().unwrap();
 
-        assert_eq!(original_user_message, user_message);
-        assert_eq!(original_assistant_message, assistant_message);
+        assert_eq!(original_user_message[0], user_message);
+        assert_eq!(original_assistant_message[0], assistant_message);
     }
 }

@@ -5,7 +5,7 @@
 
 use crate::{
     completion::{self, CompletionError},
-    json_utils, message,
+    json_utils,
     providers::openai::Message,
 };
 
@@ -42,28 +42,41 @@ impl completion::CompletionModel for CompletionModel {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
-        mut completion_request: completion::CompletionRequest,
+        completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let mut messages: Vec<message::Message> = match &completion_request.preamble {
-            Some(preamble) => vec![preamble.as_str().into()],
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<Message> = match &completion_request.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
         };
-        messages.append(&mut completion_request.chat_history);
-        messages.push(completion_request.prompt_with_context());
 
-        // Convert history to open ai message format
-        let messages = messages.into_iter().map(Message::from).collect::<Vec<_>>();
+        // Convert prompt to user message
+        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
+
+        // Convert existing chat history
+        let chat_history: Vec<Message> = completion_request
+            .chat_history
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        // Combine all messages into a single history
+        full_history.extend(chat_history);
+        full_history.extend(prompt);
 
         let mut request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
-                "messages": messages,
+                "messages": full_history,
                 "temperature": completion_request.temperature,
             })
         } else {
             json!({
                 "model": self.model,
-                "messages": messages,
+                "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
                 "tool_choice": "auto",
@@ -139,7 +152,7 @@ pub mod xai_api_types {
                         choice: completion::ModelChoice::ToolCall(
                             call.function.name.clone(),
                             "".to_owned(),
-                            serde_json::from_str(&call.function.arguments)?,
+                            call.function.arguments,
                         ),
                         raw_response: value,
                     })

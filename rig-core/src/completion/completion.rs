@@ -270,13 +270,8 @@ impl CompletionRequest {
                     .map(|doc| doc.to_string())
                     .collect::<Vec<_>>()
                     .join("");
-                let formatted_content = format!("<attachments>\n{}</attachments>", attachments);
-                content.insert(
-                    0,
-                    UserContent::Text {
-                        text: formatted_content,
-                    },
-                );
+                let formatted_content = format!("<attachments>\n{}</attachments>\n", attachments);
+                content.insert(0, UserContent::text(formatted_content));
             }
         }
         new_prompt
@@ -539,18 +534,13 @@ mod tests {
 
         let expected = Message::User {
             content: OneOrMany::many(vec![
-                UserContent::Text {
-                    text: concat!(
-                        "<attachments>\n",
-                        "<file id: doc1>\nDocument 1 text.\n</file>\n",
-                        "<file id: doc2>\nDocument 2 text.\n</file>\n",
-                        "</attachments>\n"
-                    )
-                    .to_string(),
-                },
-                UserContent::Text {
-                    text: "What is the capital of France?".to_string(),
-                },
+                UserContent::text(concat!(
+                    "<attachments>\n",
+                    "<file id: doc1>\nDocument 1 text.\n</file>\n",
+                    "<file id: doc2>\nDocument 2 text.\n</file>\n",
+                    "</attachments>\n"
+                )),
+                UserContent::text("What is the capital of France?"),
             ])
             .expect("This has more than 1 item"),
         };

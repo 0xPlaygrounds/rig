@@ -390,7 +390,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     choice: completion::ModelChoice::ToolCall(
                         call.function.name.clone(),
                         "".to_string(),
-                        serde_json::from_str(&call.function.arguments)?,
+                        call.function.arguments,
                     ),
                     raw_response: value,
                 })
@@ -470,18 +470,21 @@ impl completion::CompletionModel for CompletionModel {
         };
 
         // Convert prompt to user message
-        let prompt: Message = completion_request.prompt_with_context().into();
+        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
 
         // Convert existing chat history
         let chat_history: Vec<Message> = completion_request
             .chat_history
             .into_iter()
-            .map(Message::from)
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
             .collect();
 
         // Combine all messages into a single history
         full_history.extend(chat_history);
-        full_history.push(prompt);
+        full_history.extend(prompt);
 
         let request = if completion_request.tools.is_empty() {
             json!({

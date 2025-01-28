@@ -13,7 +13,7 @@ use crate::{
     agent::AgentBuilder,
     completion::{self, message, CompletionError, MessageError},
     extractor::ExtractorBuilder,
-    json_utils, OneOrMany,
+    json_utils,
 };
 
 use schemars::JsonSchema;
@@ -202,7 +202,7 @@ impl TryFrom<message::Message> for Message {
                 let collapsed_content = content
                     .into_iter()
                     .map(|content| match content {
-                        message::UserContent::Text { text } => Ok(text),
+                        message::UserContent::Text(message::Text { text }) => Ok(text),
                         _ => Err(MessageError::ConversionError(
                             "Only text content is supported by Perplexity".to_owned(),
                         )),
@@ -221,7 +221,7 @@ impl TryFrom<message::Message> for Message {
                     .into_iter()
                     .map(|content| {
                         Ok(match content {
-                            message::AssistantContent::Text { text } => text,
+                            message::AssistantContent::Text(message::Text { text }) => text,
                             _ => return Err(MessageError::ConversionError(
                                 "Only text assistant message content is supported by Perplexity"
                                     .to_owned(),
@@ -236,34 +236,19 @@ impl TryFrom<message::Message> for Message {
                     content: collapsed_content,
                 }
             }
-
-            _ => {
-                return Err(MessageError::ConversionError(
-                    "Only user and assistant messages are supported by Perplexity".to_owned(),
-                ))
-            }
         })
     }
 }
 
-impl TryFrom<Message> for message::Message {
-    type Error = MessageError;
-
-    fn try_from(message: Message) -> Result<Self, Self::Error> {
+impl From<Message> for message::Message {
+    fn from(message: Message) -> Self {
         match message.role {
-            Role::User => Ok(message::Message::User {
-                content: OneOrMany::one(message::UserContent::Text {
-                    text: message.content,
-                }),
-            }),
-            Role::Assistant => Ok(message::Message::Assistant {
-                content: OneOrMany::one(message::AssistantContent::Text {
-                    text: message.content,
-                }),
-            }),
-            _ => Err(MessageError::ConversionError(
-                "Only user and assistant messages are supported by Perplexity".to_owned(),
-            )),
+            Role::User => message::Message::user(message.content),
+            Role::Assistant => message::Message::assistant(message.content),
+
+            // System messages get coerced into user messages for ease of error handling.
+            // They should be handled on the outside of `Message` conversions via the preamble.
+            Role::System => message::Message::user(message.content),
         }
     }
 }
@@ -344,7 +329,6 @@ impl completion::CompletionModel for CompletionModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::completion::message::{AssistantContent, UserContent};
 
     #[test]
     fn test_deserialize_message() {
@@ -374,17 +358,8 @@ mod tests {
 
     #[test]
     fn test_message_to_message_conversion() {
-        let user_message = message::Message::User {
-            content: OneOrMany::one(UserContent::Text {
-                text: "User message".to_string(),
-            }),
-        };
-
-        let assistant_message = message::Message::Assistant {
-            content: OneOrMany::one(AssistantContent::Text {
-                text: "Assistant message".to_string(),
-            }),
-        };
+        let user_message = message::Message::user("User message");
+        let assistant_message = message::Message::assistant("Assistant message");
 
         let converted_user_message: Message = user_message.clone().try_into().unwrap();
         let converted_assistant_message: Message = assistant_message.clone().try_into().unwrap();

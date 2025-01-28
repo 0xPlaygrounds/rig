@@ -131,7 +131,7 @@ impl TryFrom<message::Message> for Message {
                     .into_iter()
                     .map(|content| {
                         Ok(match content {
-                            message::UserContent::Text { text } => text,
+                            message::UserContent::Text(message::Text { text }) => text,
                             _ => {
                                 return Err(message::MessageError::ConversionError(
                                     "Only text user content is supported by deepseek".to_owned(),
@@ -148,7 +148,7 @@ impl TryFrom<message::Message> for Message {
                     .into_iter()
                     .map(|content| {
                         Ok(match content {
-                            message::AssistantContent::Text { text } => text,
+                            message::AssistantContent::Text(message::Text { text }) => text,
                             _ => {
                                 return Err(message::MessageError::ConversionError(
                                     "Only text assistant content is supported by deepseek"
@@ -159,10 +159,6 @@ impl TryFrom<message::Message> for Message {
                     })
                     .collect::<Result<Vec<_>, _>>()?
                     .join("\n"),
-            },
-            message::Message::ToolResult { id, content } => Message::Tool {
-                tool_call_id: id,
-                content,
             },
         })
     }
@@ -177,9 +173,11 @@ impl From<Message> for message::Message {
             Message::Tool {
                 tool_call_id,
                 content,
-            } => message::Message::ToolResult {
-                id: tool_call_id,
-                content,
+            } => message::Message::User {
+                content: OneOrMany::one(message::UserContent::tool_result(
+                    tool_call_id,
+                    OneOrMany::one(content.into()),
+                )),
             },
 
             // System messages should get stripped out when converting message's, this is just a
@@ -365,13 +363,13 @@ mod tests {
             }),
         };
         let serialized = serde_json::to_string(&response).unwrap();
-        let expected = r#"{"choices":[{"role":"assistant","content":"Hello, world!"}]}"#;
+        let expected = r#"{"choices":[{"message":{"role":"assistant","content":"Hello, world!"}}]}"#;
         assert_eq!(serialized, expected);
     }
 
     #[test]
     fn test_deserialize_deepseek_response() {
-        let data = r#"{"choices":[{"role":"assistant","content":"Hello, world!"}]}"#;
+        let data = r#"{"choices":[{"message":{"role":"assistant","content":"Hello, world!"}}]}"#;
         let jd = &mut serde_json::Deserializer::from_str(data);
         let result: Result<DeepSeekResponse, _> = serde_path_to_error::deserialize(jd);
         match result {
