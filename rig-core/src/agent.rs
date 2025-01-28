@@ -186,7 +186,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
                     .then(|(num_sample, index)| async {
                         Ok::<_, VectorStoreError>(
                             index
-                                .top_n(&text, *num_sample)
+                                .top_n(text, *num_sample)
                                 .await?
                                 .into_iter()
                                 .map(|(_, id, doc)| {
@@ -214,7 +214,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
                     .then(|(num_sample, index)| async {
                         Ok::<_, VectorStoreError>(
                             index
-                                .top_n_ids(&text, *num_sample)
+                                .top_n_ids(text, *num_sample)
                                 .await?
                                 .into_iter()
                                 .map(|(_, id)| id)

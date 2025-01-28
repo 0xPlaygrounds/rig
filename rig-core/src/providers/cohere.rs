@@ -560,9 +560,8 @@ impl completion::CompletionModel for CompletionModel {
         let chat_history = completion_request
             .chat_history
             .into_iter()
-            .map(|msg| Vec::<Message>::try_from(msg))
-            .collect::<Result<Vec<Vec<_>>, _>>()
-            .map_err(|e| CompletionError::RequestError(Box::new(e)))?
+            .map(Vec::<Message>::try_from)
+            .collect::<Result<Vec<Vec<_>>, _>>()?
             .into_iter()
             .flatten()
             .collect::<Vec<_>>();

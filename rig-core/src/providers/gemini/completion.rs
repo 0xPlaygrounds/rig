@@ -74,14 +74,10 @@ impl completion::CompletionModel for CompletionModel {
             generation_config.max_output_tokens = Some(max_tokens);
         }
 
-        let system_instruction = if let Some(preamble) = completion_request.preamble.clone() {
-            Some(Content {
-                parts: OneOrMany::one(preamble.into()),
-                role: Some(Role::Model),
-            })
-        } else {
-            None
-        };
+        let system_instruction = completion_request.preamble.clone().map(|preamble| Content {
+            parts: OneOrMany::one(preamble.into()),
+            role: Some(Role::Model),
+        });
 
         let request = GenerateContentRequest {
             contents: full_history

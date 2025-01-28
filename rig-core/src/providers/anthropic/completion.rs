@@ -363,11 +363,9 @@ impl TryFrom<message::Message> for Message {
                         };
                         Ok(Content::Document { source })
                     }
-                    message::UserContent::Audio { .. } => {
-                        return Err(MessageError::ConversionError(
-                            "Audio is not supported in Anthropic".to_owned(),
-                        ))
-                    }
+                    message::UserContent::Audio { .. } => Err(MessageError::ConversionError(
+                        "Audio is not supported in Anthropic".to_owned(),
+                    )),
                 })?,
             },
 
@@ -481,18 +479,15 @@ struct Metadata {
     user_id: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ToolChoice {
+    #[default]
     Auto,
     Any,
-    Tool { name: String },
-}
-
-impl Default for ToolChoice {
-    fn default() -> Self {
-        ToolChoice::Auto
-    }
+    Tool {
+        name: String,
+    },
 }
 
 impl completion::CompletionModel for CompletionModel {

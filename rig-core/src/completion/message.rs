@@ -120,17 +120,12 @@ pub struct ToolFunction {
 }
 
 /// Describes the format of the content, which can be base64 or string.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ContentFormat {
+    #[default]
     Base64,
     String,
-}
-
-impl Default for ContentFormat {
-    fn default() -> Self {
-        ContentFormat::Base64
-    }
 }
 
 /// Helper enum that tracks the media type of the content.
@@ -297,18 +292,13 @@ impl MimeType for AudioMediaType {
 }
 
 /// Describes the detail of the image content, which can be low, high, or auto (open-ai specific).
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageDetail {
     Low,
     High,
+    #[default]
     Auto,
-}
-
-impl Default for ImageDetail {
-    fn default() -> Self {
-        ImageDetail::Auto
-    }
 }
 
 impl std::str::FromStr for ImageDetail {

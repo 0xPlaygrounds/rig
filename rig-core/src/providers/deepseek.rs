@@ -364,7 +364,8 @@ mod tests {
             }),
         };
         let serialized = serde_json::to_string(&response).unwrap();
-        let expected = r#"{"choices":[{"message":{"role":"assistant","content":"Hello, world!"}}]}"#;
+        let expected =
+            r#"{"choices":[{"message":{"role":"assistant","content":"Hello, world!"}}]}"#;
         assert_eq!(serialized, expected);
     }
 

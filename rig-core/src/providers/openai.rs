@@ -491,16 +491,11 @@ pub struct SystemContent {
     text: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum SystemContentType {
+    #[default]
     Text,
-}
-
-impl Default for SystemContentType {
-    fn default() -> Self {
-        SystemContentType::Text
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -539,16 +534,11 @@ pub struct ToolCall {
     pub function: Function,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum ToolType {
+    #[default]
     Function,
-}
-
-impl Default for ToolType {
-    fn default() -> Self {
-        ToolType::Function
-    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -771,7 +761,7 @@ impl TryFrom<Message> for message::Message {
             } => message::Message::User {
                 content: OneOrMany::one(message::UserContent::tool_result(
                     tool_call_id,
-                    content.map(|content| message::ToolResultContent::text(content)),
+                    content.map(message::ToolResultContent::text),
                 )),
             },
 
