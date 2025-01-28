@@ -471,7 +471,7 @@ pub enum Message {
 }
 
 impl Message {
-    pub(crate) fn system(content: &str) -> Self {
+    pub fn system(content: &str) -> Self {
         Message::System {
             content: OneOrMany::one(content.to_owned().into()),
             name: None,

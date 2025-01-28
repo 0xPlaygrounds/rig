@@ -15,14 +15,13 @@ use rig::agent::AgentBuilder;
 use rig::completion::{CompletionError, CompletionRequest};
 use rig::embeddings::{EmbeddingError, EmbeddingsBuilder};
 use rig::extractor::ExtractorBuilder;
+use rig::providers::openai::{AssistantContent, Message};
 use rig::{completion, embeddings, Embed};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::ffi::c_uint;
 use std::time::Duration;
-
-use super::openai::{AssistantContent, Message};
 
 // ================================================================
 // Main EternalAI Client
@@ -504,13 +503,10 @@ impl completion::CompletionModel for CompletionModel {
                     tracing::info!("on-chain sytem prompt is none")
                 }
                 Some(value) => {
-                    full_history.push(Message::system(preamble));
+                    full_history.push(Message::system(&value));
                 }
             }
         }
-
-        // Extend existing chat history
-        full_history.append(&mut completion_request.chat_history);
 
         // Convert existing chat history
         let chat_history: Vec<Message> = completion_request
