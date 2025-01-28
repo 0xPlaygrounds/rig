@@ -269,7 +269,7 @@ impl CompletionRequest {
                     .iter()
                     .map(|doc| doc.to_string())
                     .collect::<Vec<_>>()
-                    .join("\n");
+                    .join("");
                 let formatted_content = format!("<attachments>\n{}</attachments>", attachments);
                 content.insert(0, UserContent::text(formatted_content));
             }
@@ -538,7 +538,7 @@ mod tests {
                     "<attachments>\n",
                     "<file id: doc1>\nDocument 1 text.\n</file>\n",
                     "<file id: doc2>\nDocument 2 text.\n</file>\n",
-                    "</attachments>\n"
+                    "</attachments>"
                 )),
                 UserContent::text("What is the capital of France?"),
             ])
