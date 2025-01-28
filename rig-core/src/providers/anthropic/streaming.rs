@@ -135,11 +135,9 @@ impl StreamingCompletionModel for CompletionModel {
             return Err(CompletionError::ProviderError(response.text().await?));
         }
 
-        let stream = response.bytes_stream();
-
         Ok(Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
-            let mut stream = stream;
+            let mut stream = response.bytes_stream();
 
             while let Some(chunk_result) = stream.next().await {
                 let chunk = match chunk_result {
