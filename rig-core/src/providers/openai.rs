@@ -453,7 +453,7 @@ pub enum Message {
         name: Option<String>,
     },
     Assistant {
-        #[serde(deserialize_with = "string_or_option_one_or_many")]
+        #[serde(default, deserialize_with = "string_or_option_one_or_many")]
         content: Option<OneOrMany<AssistantContent>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         refusal: Option<String>,
@@ -461,7 +461,7 @@ pub enum Message {
         audio: Option<AudioAssistant>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         tool_calls: Option<OneOrMany<ToolCall>>,
     },
     Tool {
@@ -922,7 +922,10 @@ impl completion::CompletionModel for CompletionModel {
             .await?;
 
         if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
+            let t = response.text().await?;
+            tracing::debug!(target: "rig", "OpenAI completion error: {}", t);
+
+            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "OpenAI completion token usage: {:?}",
@@ -961,16 +964,25 @@ mod tests {
                     "text": "\n\nHello there, how may I assist you today?"
                 }
             ],
+            "tool_calls": null
+        }
+        "#;
+
+        let assistant_message_json3 = r#"
+        {
+            "role": "assistant",
             "tool_calls": [
                 {
-                    "id": "tacosauce",
+                    "id": "call_h89ipqYUjEpCPI6SxspMnoUU",
                     "type": "function",
                     "function": {
-                        "name": "taco",
-                        "arguments": "{\"sauce\": \"hot\"}"
+                        "name": "subtract",
+                        "arguments": "{\"x\": 2, \"y\": 5}"
                     }
                 }
-            ]
+            ],
+            "content": null,
+            "refusal": null
         }
         "#;
 
@@ -1013,6 +1025,14 @@ mod tests {
             })
         };
 
+        let assistant_message3: Message = {
+            let jd: &mut serde_json::Deserializer<serde_json::de::StrRead<'_>> =
+                &mut serde_json::Deserializer::from_str(assistant_message_json3);
+            deserialize(jd).unwrap_or_else(|err| {
+                panic!("Deserialization error at {}: {}", err.path(), err);
+            })
+        };
+
         let user_message: Message = {
             let jd = &mut serde_json::Deserializer::from_str(user_message_json);
             deserialize(jd).unwrap_or_else(|err| {
@@ -1045,15 +1065,29 @@ mod tests {
                     }
                 );
 
+                assert_eq!(tool_calls, None);
+            }
+            _ => panic!("Expected assistant message"),
+        }
+
+        match assistant_message3 {
+            Message::Assistant {
+                content,
+                tool_calls,
+                refusal,
+                ..
+            } => {
+                assert!(content.is_none());
+                assert!(refusal.is_none());
                 assert_eq!(
                     tool_calls.unwrap().first(),
                     ToolCall {
-                        id: "tacosauce".to_string(),
+                        id: "call_h89ipqYUjEpCPI6SxspMnoUU".to_string(),
                         r#type: ToolType::Function,
                         function: Function {
-                            name: "taco".to_string(),
-                            arguments: serde_json::json!({"sauce": "hot"})
-                        }
+                            name: "subtract".to_string(),
+                            arguments: serde_json::json!({"x": 2, "y": 5}),
+                        },
                     }
                 );
             }

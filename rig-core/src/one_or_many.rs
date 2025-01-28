@@ -271,11 +271,13 @@ where
                 let first = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+
                 // Collect the rest of the elements.
                 let mut rest = Vec::new();
                 while let Some(value) = seq.next_element()? {
                     rest.push(value);
                 }
+
                 // Return the deserialized OneOrMany object.
                 Ok(OneOrMany { first, rest })
             }
@@ -369,6 +371,7 @@ where
         where
             E: de::Error,
         {
+            println!("NONE");
             Ok(None)
         }
 
@@ -376,6 +379,7 @@ where
         where
             D: Deserializer<'de>,
         {
+            println!("SOME");
             string_or_one_or_many(deserializer).map(Some)
         }
     }
@@ -385,9 +389,10 @@ where
 
 #[cfg(test)]
 mod test {
+    use serde::{self, Deserialize};
     use serde_json::json;
 
-    use super::OneOrMany;
+    use super::*;
 
     #[test]
     fn test_single() {
@@ -535,5 +540,57 @@ mod test {
         assert_eq!(one_or_many.len(), 2);
         assert_eq!(one_or_many.first(), json!({"key": "value1"}));
         assert_eq!(one_or_many.rest(), vec![json!({"key": "value2"})]);
+    }
+
+    #[derive(Deserialize)]
+    struct DummyStruct {
+        #[serde(deserialize_with = "string_or_one_or_many")]
+        field: OneOrMany<String>,
+    }
+
+    #[derive(Deserialize)]
+    struct DummyStructOption {
+        #[serde(deserialize_with = "string_or_option_one_or_many")]
+        field: Option<OneOrMany<String>>,
+    }
+
+    #[test]
+    fn test_deserialize_string() {
+        let json_data = json!({"field": "hello"});
+        let dummy: DummyStruct = serde_json::from_value(json_data).unwrap();
+
+        assert_eq!(dummy.field.len(), 1);
+        assert_eq!(dummy.field.first(), "hello");
+    }
+
+    #[test]
+    fn test_deserialize_string_option() {
+        let json_data = json!({"field": "hello"});
+        let dummy: DummyStructOption = serde_json::from_value(json_data).unwrap();
+
+        assert!(dummy.field.is_some());
+        let field = dummy.field.unwrap();
+        assert_eq!(field.len(), 1);
+        assert_eq!(field.first(), "hello");
+    }
+
+    #[test]
+    fn test_deserialize_list_option() {
+        let json_data = json!({"field": ["hello", "world"]});
+        let dummy: DummyStructOption = serde_json::from_value(json_data).unwrap();
+
+        assert!(dummy.field.is_some());
+        let field = dummy.field.unwrap();
+        assert_eq!(field.len(), 2);
+        assert_eq!(field.first(), "hello");
+        assert_eq!(field.rest(), vec!["world".to_string()]);
+    }
+
+    #[test]
+    fn test_deserialize_null_option() {
+        let json_data = json!({"field": null});
+        let dummy: DummyStructOption = serde_json::from_value(json_data).unwrap();
+
+        assert!(dummy.field.is_none());
     }
 }

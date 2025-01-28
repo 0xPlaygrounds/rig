@@ -566,10 +566,27 @@ impl completion::CompletionModel for CompletionModel {
             .flatten()
             .collect::<Vec<_>>();
 
+        let message = match completion_request.prompt {
+            message::Message::User { content } => Ok(content
+                .into_iter()
+                .map(|content| match content {
+                    message::UserContent::Text(message::Text { text }) => Ok(text),
+                    _ => Err(CompletionError::RequestError(
+                        "Only text content is supported by Cohere".into(),
+                    )),
+                })
+                .collect::<Result<Vec<_>, _>>()?
+                .join("\n")),
+
+            _ => Err(CompletionError::RequestError(
+                "Only user messages are supported by Cohere".into(),
+            )),
+        }?;
+
         let request = json!({
             "model": self.model,
             "preamble": completion_request.preamble,
-            "message": completion_request.prompt,
+            "message": message,
             "documents": completion_request.documents,
             "chat_history": chat_history,
             "temperature": completion_request.temperature,
