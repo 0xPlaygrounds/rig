@@ -2,30 +2,30 @@
 //!
 //! # Example
 //! ```
-//! use rig::providers::eternalai;
+//! use rig_eternalai::providers::eternalai;
 //!
 //! let client = eternalai::Client::new("YOUR_API_KEY");
 //!
 //! let gpt4o = client.completion_model(eternalai::NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8);
 //! ```
 
-use crate::{
-    agent::AgentBuilder,
-    completion::{self, CompletionError, CompletionRequest},
-    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
-    extractor::ExtractorBuilder,
-    json_utils, Embed,
-};
+use crate::eternalai_system_prompt_manager_toolset;
+use crate::json_utils;
+use rig::agent::AgentBuilder;
+use rig::completion::{CompletionError, CompletionRequest};
+use rig::embeddings::{EmbeddingError, EmbeddingsBuilder};
+use rig::extractor::ExtractorBuilder;
+use rig::{completion, embeddings, Embed};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::ffi::c_uint;
 use std::time::Duration;
 
 // ================================================================
 // Main EternalAI Client
 // ================================================================
 const ETERNALAI_API_BASE_URL: &str = "https://api.eternalai.org/v1";
-
 #[derive(Clone)]
 pub struct Client {
     base_url: String,
@@ -77,7 +77,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the EternalAI client
     /// let eternalai = Client::new("your-open-ai-api-key");
@@ -97,7 +97,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the EternalAI client
     /// let eternalai = Client::new("your-open-ai-api-key");
@@ -112,7 +112,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the EternalAI client
     /// let eternalai = Client::new("your-open-ai-api-key");
@@ -132,7 +132,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the EternalAI client
     /// let eternalai = Client::new("your-open-ai-api-key");
@@ -147,7 +147,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the Eternal client
     /// let eternalai = Client::new("your-open-ai-api-key");
@@ -352,7 +352,7 @@ impl From<ApiErrorResponse> for CompletionError {
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
-    fn try_from(value: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
+    fn try_from(value: CompletionResponse) -> Result<Self, Self::Error> {
         match value.choices.as_slice() {
             [Choice {
                 message:
@@ -471,6 +471,47 @@ impl completion::CompletionModel for CompletionModel {
             vec![]
         };
 
+        tracing::info!("Try to get on-chain system prompt");
+        let eternal_ai_rpc = std::env::var("ETERNALAI_RPC_URL").unwrap_or_else(|_| "".to_string());
+        let eternal_ai_contract =
+            std::env::var("ETERNALAI_AGENT_CONTRACT_ADDRESS").unwrap_or_else(|_| "".to_string());
+        let eternal_ai_agent_id =
+            std::env::var("ETERNALAI_AGENT_ID").unwrap_or_else(|_| "".to_string());
+        if !eternal_ai_rpc.is_empty()
+            && !eternal_ai_contract.is_empty()
+            && !eternal_ai_agent_id.is_empty()
+        {
+            tracing::info!(
+                "get on-chain system prompt with {}, {}, {}",
+                eternal_ai_rpc,
+                eternal_ai_contract,
+                eternal_ai_agent_id
+            );
+            let c_value: c_uint = eternal_ai_agent_id.parse::<u32>().unwrap_or(0);
+            let prompt = match eternalai_system_prompt_manager_toolset::get_on_chain_system_prompt(
+                &eternal_ai_rpc,
+                &eternal_ai_contract,
+                c_value,
+            )
+            .await
+            {
+                Ok(value) => value,
+                Err(e) => return Err(CompletionError::ProviderError(e)),
+            };
+            match prompt {
+                None => {
+                    tracing::info!("on-chain sytem prompt is none")
+                }
+                Some(value) => {
+                    let temp = completion::Message {
+                        role: "system".into(),
+                        content: value,
+                    };
+                    full_history.push(temp);
+                }
+            }
+        }
+
         // Extend existing chat history
         full_history.append(&mut completion_request.chat_history);
 
@@ -506,6 +547,8 @@ impl completion::CompletionModel for CompletionModel {
             })
         };
 
+        tracing::debug!("request: {:?}", request.to_string());
+
         let response = self
             .client
             .post("/chat/completions")
@@ -529,10 +572,10 @@ impl completion::CompletionModel for CompletionModel {
                     match &response.onchain_data {
                         Some(data) => {
                             let onchain_data = serde_json::to_string_pretty(data)?;
-                            println!("onchain_data: {}", onchain_data);
+                            tracing::info!("onchain_data: {}", onchain_data);
                         }
                         None => {
-                            println!("onchain_data: None");
+                            tracing::info!("onchain_data: None");
                         }
                     }
                     response.try_into()

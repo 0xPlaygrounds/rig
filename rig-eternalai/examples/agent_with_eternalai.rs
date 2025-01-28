@@ -1,9 +1,14 @@
 use rig::agent::AgentBuilder;
-use rig::providers::eternalai::{CompletionModel, NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8};
-use rig::{completion::Prompt, providers};
+use rig::completion::Prompt;
+use rig_eternalai::providers::eternalai::{
+    Client, CompletionModel, NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
     println!("Running basic agent with eternalai");
     basic_eternalai().await?;
 
@@ -14,8 +19,8 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn client() -> providers::eternalai::Client {
-    providers::eternalai::Client::from_env()
+fn client() -> Client {
+    Client::from_env()
 }
 
 fn partial_agent_eternalai() -> AgentBuilder<CompletionModel> {
@@ -41,7 +46,7 @@ async fn basic_eternalai() -> Result<(), anyhow::Error> {
 
 async fn context_eternalai() -> Result<(), anyhow::Error> {
     let model = client().completion_model(
-        providers::eternalai::NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8,
+        NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8,
         Option::from("45762"),
         // None,
     );
