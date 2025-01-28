@@ -1,11 +1,8 @@
 use std::env;
 
 use rig::{
-    embeddings::EmbeddingsBuilder,
-    parallel,
-    pipeline::{self, agent_ops::lookup, passthrough, Op},
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::in_memory_store::InMemoryVectorStore,
+    pipeline::{self, Op, TryOp},
+    providers::openai::Client,
 };
 
 #[tokio::main]
@@ -24,31 +21,26 @@ async fn main() -> Result<(), anyhow::Error> {
         ")
         .build();
 
-    let default_agent = openai_client.agent("gpt-4")
-        .build();
+    let default_agent = openai_client.agent("gpt-4").build();
 
     let chain = pipeline::new()
         // Use our classifier agent to classify the agent under a number of fixed topics
         .prompt(animal_agent)
         // Change the prompt depending on the output from the prompt
-        .map(|x: String| {
-            match x.trim() {
-                "cow" => Ok("Tell me a fact about the United States of America.".into()),
-                "sheep" => Ok("Calculate 5+5 for me. Return only the number.".into()),
-                "dog" => Ok("Write me a poem about cashews".into()),
-                message => Err(format!("Could not process - received category: {message}"))
-            }
+        .map_ok(|x: String| match x.trim() {
+            "cow" => Ok("Tell me a fact about the United States of America.".to_string()),
+            "sheep" => Ok("Calculate 5+5 for me. Return only the number.".to_string()),
+            "dog" => Ok("Write me a poem about cashews".to_string()),
+            message => Err(format!("Could not process - received category: {message}")),
         })
+        .map(|x| x.unwrap().unwrap())
         // Send the prompt back into another agent with no pre-amble
         .prompt(default_agent);
 
     // Prompt the agent and print the response
     let response = chain.try_call("Sheep can self-medicate").await?;
 
-    match response {
-        Ok(res) => println!("Successful pipeline run: {res:?}"),
-        Err(e) => println!("Unsuccessful pipeline run: {res:?}")
-    }
+    println!("Pipeline result: {response:?}");
 
     Ok(())
 }

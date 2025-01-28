@@ -1,26 +1,19 @@
 use std::env;
 
-use rig::{
-    embeddings::EmbeddingsBuilder,
-    parallel,
-    pipeline::{self, agent_ops::lookup, passthrough, Op},
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::in_memory_store::InMemoryVectorStore,
-    completion::Prompt
-};
+use rig::{completion::Prompt, providers::openai::Client};
 use schemars::JsonSchema;
 
 #[derive(serde::Deserialize, JsonSchema, serde::Serialize, Debug)]
 struct Evaluation {
     evaluation_status: EvalStatus,
-    feedback: String
+    feedback: String,
 }
 
 #[derive(serde::Deserialize, JsonSchema, serde::Serialize, Debug, PartialEq)]
 enum EvalStatus {
     Pass,
     NeedsImprovement,
-    Fail
+    Fail,
 }
 const TASK: &str = "Implement a Stack with:
 1. push(x)
@@ -35,8 +28,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     let openai_client = Client::new(&openai_api_key);
 
-    let generator_agent = openai_client.agent("gpt-4")
-        .preamble("
+    let generator_agent = openai_client
+        .agent("gpt-4")
+        .preamble(
+            "
             Your goal is to complete the task based on <user input>. If there are feedback
             from your previous generations, you should reflect on them to improve your solution
 
@@ -47,7 +42,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
             Response:
             [Your code implementation here]
-        ")
+        ",
+        )
         .build();
 
     let evaluator_agent = openai_client.extractor::<Evaluation>("gpt-4")
@@ -73,10 +69,13 @@ async fn main() -> Result<(), anyhow::Error> {
     memories.push(response.clone());
 
     loop {
-        let eval_result = evaluator_agent.extract(&format!("{TASK}\n\n{response}")).await.unwrap();
+        let eval_result = evaluator_agent
+            .extract(&format!("{TASK}\n\n{response}"))
+            .await
+            .unwrap();
 
         if eval_result.evaluation_status == EvalStatus::Pass {
-            break
+            break;
         } else {
             let context = format!("{TASK}\n\n{}", eval_result.feedback);
 

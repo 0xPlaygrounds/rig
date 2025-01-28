@@ -1,13 +1,6 @@
-use std::env;
-use rig::{
-    embeddings::EmbeddingsBuilder,
-    parallel,
-    pipeline::{self, agent_ops::lookup, passthrough, Op, TryOp},
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::in_memory_store::InMemoryVectorStore,
-};
+use rig::providers::openai::Client;
 use schemars::JsonSchema;
-use rig::pipeline::agent_ops::extract;
+use std::env;
 
 #[derive(Debug, serde::Deserialize, JsonSchema, serde::Serialize)]
 struct Counter {
@@ -39,7 +32,7 @@ async fn main() -> Result<(), anyhow::Error> {
         let response = agent.extract(&number.to_string()).await.unwrap();
 
         if response.number >= 2000 {
-            break
+            break;
         } else {
             number += response.number
         }

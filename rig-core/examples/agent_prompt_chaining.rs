@@ -1,11 +1,8 @@
 use std::env;
 
 use rig::{
-    embeddings::EmbeddingsBuilder,
-    parallel,
-    pipeline::{self, agent_ops::lookup, passthrough, Op},
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::in_memory_store::InMemoryVectorStore,
+    pipeline::{self, Op},
+    providers::openai::Client,
 };
 
 #[tokio::main]
@@ -22,27 +19,22 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let adder_agent = openai_client.agent("gpt-4")
         .preamble("
-            You are a mathematician who adds 1000 to every number passed into the context. Only return the number.
+            You are a mathematician who adds 1000 to every number passed into the context, except if the number is 0 - in which case don't add anything. Only return the number.
         ")
         .build();
 
     let chain = pipeline::new()
         // Generate a whole number that is either 0 and 1
         .prompt(rng_agent)
-        // If zero, return early. If not, continue
-        .map(|x: u32| {
-            if x == u32 { Ok(x + 1)} else { Err("x is 0")}
-        })
-        // Extra prompt here to add 1000 to the resultant number if Ok
+        .map(|x| x.unwrap())
         .prompt(adder_agent);
 
     // Prompt the agent and print the response
-    let response = chain.try_call("Please generate a single whole integer that is 0 or 1").await;
+    let response = chain
+        .call("Please generate a single whole integer that is 0 or 1".to_string())
+        .await;
 
-    match response {
-        Ok(res) => println!("Successful pipeline run: {res:?}"),
-        Err(e) => println!("Unsuccessful pipeline run: {res:?}")
-    }
+    println!("Pipeline result: {response:?}");
 
     Ok(())
 }
