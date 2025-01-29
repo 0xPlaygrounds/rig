@@ -90,6 +90,9 @@ impl Tool for Subtract {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    // load env from .env file
+    dotenvy::dotenv().ok();
+
     // Create OpenAI client
     let openai_client = providers::openai::Client::from_env();
 
