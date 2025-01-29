@@ -1,6 +1,6 @@
 [package]
 name = "rig-core"
-version = "0.6.1"
+version = "0.7.0"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -15,7 +15,7 @@ doctest = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reqwest = { version = "0.11.22", features = ["json"] }
+reqwest = { version = "0.11.22", features = ["json", "stream"] }
 serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0.108"
 tracing = "0.1.40"
@@ -29,6 +29,8 @@ lopdf = { version = "0.34.0", optional = true }
 rayon = { version = "1.10.0", optional = true}
 mcp_client_rs = { git = "https://github.com/edisontim/mcp_client_rust", branch = "ref/cleanup", default-features = false }
 worker = { version = "0.5", optional = true }
+bytes = "1.9.0"
+async-stream = "0.3.6"
 
 [dev-dependencies]
 anyhow = "1.0.75"
