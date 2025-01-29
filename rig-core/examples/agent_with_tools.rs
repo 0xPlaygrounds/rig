@@ -47,6 +47,7 @@ impl Tool for Adder {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        println!("Adding {} and {}", args.x, args.y);
         let result = args.x + args.y;
         Ok(result)
     }
@@ -83,6 +84,7 @@ impl Tool for Subtract {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        println!("Subtracting {} from {}", args.y, args.x);
         let result = args.x - args.y;
         Ok(result)
     }
@@ -106,9 +108,34 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Prompt the agent and print the response
+    println!("\n\n####################################################");
+    println!("OpenAI example");
+    println!("####################################################");
     println!("Calculate 2 - 5");
     println!(
-        "Calculator Agent: {}",
+        "OpenAI Calculator Agent: {}",
+        calculator_agent.prompt("Calculate 2 - 5").await?
+    );
+
+    // Create a DeepSeek client
+    let deepseek_client = providers::deepseek::Client::from_env();
+
+    // Create agent with a single context prompt and two tools
+    let calculator_agent = deepseek_client
+            .agent(providers::deepseek::DEEPSEEK_CHAT)
+            .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
+            .max_tokens(1024)
+            .tool(Adder)
+            .tool(Subtract)
+            .build();
+
+    // Prompt the agent and print the response
+    println!("\n\n####################################################");
+    println!("DeepSeek example");
+    println!("####################################################");
+    println!("Calculate 2 - 5");
+    println!(
+        "DeepSeek Calculator Agent: {}",
         calculator_agent.prompt("Calculate 2 - 5").await?
     );
 
