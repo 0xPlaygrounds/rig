@@ -94,7 +94,7 @@ impl StreamingCompletionModel for CompletionModel {
                 }))
                 .collect::<Vec<_>>(),
             "max_tokens": max_tokens,
-            "system": completion_request.preamble.unwrap_or("".to_string()),
+            "system": completion_request.preamble.unwrap_or_default().join("\n"),
             "stream": true,
         });
 
