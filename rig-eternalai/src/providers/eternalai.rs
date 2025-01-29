@@ -465,7 +465,7 @@ impl completion::CompletionModel for CompletionModel {
         let mut full_history = if let Some(preamble) = &completion_request.preamble {
             vec![completion::Message {
                 role: "system".into(),
-                content: preamble.clone(),
+                content: preamble.join("\n"),
             }]
         } else {
             vec![]
