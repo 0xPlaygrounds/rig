@@ -43,28 +43,17 @@ impl Debater {
 
             let resp_a = self.gpt_4.chat(&prompt_a, history_a.clone()).await?;
             println!("GPT-4:\n{}", resp_a);
-            history_a.push(Message {
-                role: "user".into(),
-                content: prompt_a.clone(),
-            });
-            history_a.push(Message {
-                role: "assistant".into(),
-                content: resp_a.clone(),
-            });
+            history_a.push(Message::user(&prompt_a));
+
+            history_a.push(Message::assistant(&resp_a));
             println!("================================================================");
 
             let resp_b = self.coral.chat(&resp_a, history_b.clone()).await?;
             println!("Coral:\n{}", resp_b);
             println!("================================================================");
 
-            history_b.push(Message {
-                role: "user".into(),
-                content: resp_a.clone(),
-            });
-            history_b.push(Message {
-                role: "assistant".into(),
-                content: resp_b.clone(),
-            });
+            history_b.push(Message::user(&resp_a));
+            history_b.push(Message::assistant(&resp_b));
 
             last_resp_b = Some(resp_b)
         }

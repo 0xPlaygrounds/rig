@@ -60,7 +60,7 @@ async fn main() -> Result<(), anyhow::Error> {
             ),
             Err(err) => {
                 println!("Error: {}! Prompting without additional context", err);
-                format!("{prompt}")
+                String::from(prompt)
             }
         })
         // Chain a "prompt" operation which will prompt out agent with the final prompt

@@ -111,6 +111,41 @@ pub struct Message {
     /// "system", "user", or "assistant"
     pub role: String,
     pub content: String,
+    #[serde(default)]
+    pub tool_calls: Vec<ToolCall>,
+}
+
+impl Message {
+    pub fn system(content: &str) -> Self {
+        Self {
+            role: "system".to_string(),
+            content: content.to_string(),
+            tool_calls: Vec::new(),
+        }
+    }
+
+    pub fn user(content: &str) -> Self {
+        Self {
+            role: "user".to_string(),
+            content: content.to_string(),
+            tool_calls: Vec::new(),
+        }
+    }
+
+    pub fn assistant(content: &str) -> Self {
+        Self {
+            role: "assistant".to_string(),
+            content: content.to_string(),
+            tool_calls: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ToolCall {
+    pub call_id: String,
+    pub function_name: String,
+    pub function_params: serde_json::Value,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -208,7 +243,7 @@ pub trait Completion<M: CompletionModel> {
 
 /// General completion response struct that contains the high-level completion choice
 /// and the raw response.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CompletionResponse<T> {
     /// The completion choice returned by the completion model provider
     pub choice: ModelChoice,
@@ -217,7 +252,7 @@ pub struct CompletionResponse<T> {
 }
 
 /// Enum representing the high-level completion choice returned by the completion model provider.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ModelChoice {
     /// Represents a completion response as a message
     Message(String),

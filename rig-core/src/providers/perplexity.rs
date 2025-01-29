@@ -205,10 +205,7 @@ impl completion::CompletionModel for CompletionModel {
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         // Add preamble to messages (if available)
         let mut messages = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
-                role: "system".into(),
-                content: preamble.clone(),
-            }]
+            vec![completion::Message::system(preamble)]
         } else {
             vec![]
         };
@@ -220,10 +217,7 @@ impl completion::CompletionModel for CompletionModel {
         messages.extend(completion_request.chat_history);
 
         // Add user prompt to messages
-        messages.push(completion::Message {
-            role: "user".to_string(),
-            content: prompt_with_context,
-        });
+        messages.push(completion::Message::user(&prompt_with_context));
 
         let request = json!({
             "model": self.model,

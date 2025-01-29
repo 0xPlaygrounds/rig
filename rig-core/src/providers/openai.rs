@@ -219,7 +219,7 @@ pub struct EmbeddingData {
     pub index: usize,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
     pub total_tokens: usize,
@@ -356,7 +356,7 @@ pub const GPT_35_TURBO_1106: &str = "gpt-3.5-turbo-1106";
 /// `gpt-3.5-turbo-instruct` completion model
 pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CompletionResponse {
     pub id: String,
     pub object: String,
@@ -417,7 +417,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Choice {
     pub index: usize,
     pub message: Message,
@@ -425,21 +425,21 @@ pub struct Choice {
     pub finish_reason: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Message {
     pub role: String,
     pub content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ToolCall {
     pub id: String,
     pub r#type: String,
     pub function: Function,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ToolDefinition {
     pub r#type: String,
     pub function: completion::ToolDefinition,
@@ -454,7 +454,7 @@ impl From<completion::ToolDefinition> for ToolDefinition {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Function {
     pub name: String,
     pub arguments: String,
@@ -486,10 +486,7 @@ impl completion::CompletionModel for CompletionModel {
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         // Add preamble to chat history (if available)
         let mut full_history = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
-                role: "system".into(),
-                content: preamble.clone(),
-            }]
+            vec![completion::Message::system(preamble)]
         } else {
             vec![]
         };
@@ -501,10 +498,7 @@ impl completion::CompletionModel for CompletionModel {
         let prompt_with_context = completion_request.prompt_with_context();
 
         // Add context documents to chat history
-        full_history.push(completion::Message {
-            role: "user".into(),
-            content: prompt_with_context,
-        });
+        full_history.push(completion::Message::user(&prompt_with_context));
 
         let request = if completion_request.tools.is_empty() {
             json!({
@@ -542,6 +536,7 @@ impl completion::CompletionModel for CompletionModel {
                         "OpenAI completion token usage: {:?}",
                         response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
                     );
+
                     response.try_into()
                 }
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),

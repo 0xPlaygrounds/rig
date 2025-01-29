@@ -44,10 +44,7 @@ impl completion::CompletionModel for CompletionModel {
         mut completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let mut messages = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
-                role: "system".into(),
-                content: preamble.clone(),
-            }]
+            vec![completion::Message::system(preamble)]
         } else {
             vec![]
         };
@@ -55,10 +52,7 @@ impl completion::CompletionModel for CompletionModel {
 
         let prompt_with_context = completion_request.prompt_with_context();
 
-        messages.push(completion::Message {
-            role: "user".into(),
-            content: prompt_with_context,
-        });
+        messages.push(completion::Message::user(&prompt_with_context));
 
         let mut request = if completion_request.tools.is_empty() {
             json!({

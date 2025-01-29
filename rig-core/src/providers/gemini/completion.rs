@@ -55,10 +55,7 @@ impl completion::CompletionModel for CompletionModel {
 
         let prompt_with_context = completion_request.prompt_with_context();
 
-        full_history.push(completion::Message {
-            role: "user".into(),
-            content: prompt_with_context,
-        });
+        full_history.push(completion::Message::user(&prompt_with_context));
 
         // Handle Gemini specific parameters
         let additional_params = completion_request
