@@ -13,7 +13,7 @@ use crate::{
     json_utils,
 };
 use reqwest::Client as HttpClient;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 // ================================================================
@@ -72,8 +72,52 @@ impl Client {
 #[derive(Debug, Deserialize)]
 pub struct DeepSeekResponse {
     // We'll match the JSON:
-    pub choices: Option<Vec<Choice>>,
+    pub choices: Vec<Choice>,
     // you may want usage or other fields
+}
+
+impl TryFrom<DeepSeekResponse> for CompletionResponse<DeepSeekResponse> {
+    type Error = crate::completion::CompletionError;
+
+    fn try_from(value: DeepSeekResponse) -> Result<Self, Self::Error> {
+        match value.choices.as_slice() {
+            [Choice {
+                message:
+                    Some(DeepSeekMessage {
+                        tool_calls: Some(calls),
+                        ..
+                    }),
+                ..
+            }, ..]
+                if !calls.is_empty() =>
+            {
+                let call = calls.first().unwrap();
+
+                Ok(crate::completion::CompletionResponse {
+                    choice: crate::completion::ModelChoice::ToolCall(
+                        call.function.name.clone(),
+                        "".to_owned(),
+                        serde_json::from_str(&call.function.arguments)?,
+                    ),
+                    raw_response: value,
+                })
+            }
+            [Choice {
+                message:
+                    Some(DeepSeekMessage {
+                        content: Some(content),
+                        ..
+                    }),
+                ..
+            }, ..] => Ok(crate::completion::CompletionResponse {
+                choice: crate::completion::ModelChoice::Message(content.to_string()),
+                raw_response: value,
+            }),
+            _ => Err(crate::completion::CompletionError::ResponseError(
+                "Response did not contain a message or tool call".into(),
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,6 +129,35 @@ pub struct Choice {
 pub struct DeepSeekMessage {
     pub role: Option<String>,
     pub content: Option<String>,
+    pub tool_calls: Option<Vec<DeepSeekToolCall>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeepSeekToolCall {
+    pub id: String,
+    pub r#type: String,
+    pub function: DeepSeekFunction,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeepSeekFunction {
+    pub name: String,
+    pub arguments: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DeepSeekToolDefinition {
+    pub r#type: String,
+    pub function: crate::completion::ToolDefinition,
+}
+
+impl From<crate::completion::ToolDefinition> for DeepSeekToolDefinition {
+    fn from(tool: crate::completion::ToolDefinition) -> Self {
+        Self {
+            r#type: "function".into(),
+            function: tool,
+        }
+    }
 }
 
 /// The struct implementing the `CompletionModel` trait
@@ -145,10 +218,23 @@ impl CompletionModel for DeepSeekCompletionModel {
             "presence_penalty": 0,
             "temperature": request.temperature.unwrap_or(1.0),
             "top_p": 1,
-            "tool_choice": "none",
             "logprobs": false,
             "stream": false,
         });
+
+        // prepare tools
+        let tools = if request.tools.is_empty() {
+            json!({
+                "tool_choice": "none",
+            })
+        } else {
+            json!({
+                "tools": request.tools.into_iter().map(DeepSeekToolDefinition::from).collect::<Vec<_>>(),
+                "tool_choice": "auto",
+            })
+        };
+
+        let body = json_utils::merge(body, tools);
 
         // if user set additional_params, merge them:
         let final_body = if let Some(params) = request.additional_params {
@@ -176,31 +262,10 @@ impl CompletionModel for DeepSeekCompletionModel {
             )));
         }
 
-        let json_resp: DeepSeekResponse = resp.json().await?;
+        let deep_seek_response: DeepSeekResponse = resp.json().await?;
+
         // 4. Convert DeepSeekResponse -> rig’s `CompletionResponse<DeepSeekResponse>`
-
-        // If no choices or content, return an empty message
-        let content = if let Some(choices) = &json_resp.choices {
-            if let Some(choice) = choices.first() {
-                if let Some(msg) = &choice.message {
-                    msg.content.clone().unwrap_or_default()
-                } else {
-                    "".to_string()
-                }
-            } else {
-                "".to_string()
-            }
-        } else {
-            "".to_string()
-        };
-
-        // For now, we just treat it as a normal text message
-        let model_choice = crate::completion::ModelChoice::Message(content);
-
-        Ok(CompletionResponse {
-            choice: model_choice,
-            raw_response: json_resp,
-        })
+        deep_seek_response.try_into()
     }
 }
 
