@@ -824,7 +824,6 @@ impl FromStr for AssistantContent {
         })
     }
 }
-
 impl From<String> for SystemContent {
     fn from(s: String) -> Self {
         SystemContent {

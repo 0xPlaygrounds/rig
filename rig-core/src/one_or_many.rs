@@ -371,7 +371,13 @@ where
         where
             E: de::Error,
         {
-            println!("NONE");
+            Ok(None)
+        }
+
+        fn visit_unit<E>(self) -> Result<Option<OneOrMany<T>>, E>
+        where
+            E: de::Error,
+        {
             Ok(None)
         }
 
@@ -379,7 +385,6 @@ where
         where
             D: Deserializer<'de>,
         {
-            println!("SOME");
             string_or_one_or_many(deserializer).map(Some)
         }
     }
@@ -542,13 +547,13 @@ mod test {
         assert_eq!(one_or_many.rest(), vec![json!({"key": "value2"})]);
     }
 
-    #[derive(Deserialize)]
+    #[derive(Debug, Deserialize, PartialEq)]
     struct DummyStruct {
         #[serde(deserialize_with = "string_or_one_or_many")]
         field: OneOrMany<DummyString>,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Debug, Deserialize, PartialEq)]
     struct DummyStructOption {
         #[serde(deserialize_with = "string_or_option_one_or_many")]
         field: Option<OneOrMany<DummyString>>,
@@ -567,6 +572,28 @@ mod test {
                 string: s.to_string(),
             })
         }
+    }
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    #[serde(tag = "role", rename_all = "lowercase")]
+    enum DummyMessage {
+        Assistant {
+            #[serde(deserialize_with = "string_or_option_one_or_many")]
+            content: Option<OneOrMany<DummyString>>,
+        },
+    }
+
+    #[test]
+    fn test_deserialize_unit() {
+        let raw_json = r#"
+        {
+            "role": "assistant",
+            "content": null
+        }
+        "#;
+        let dummy: DummyMessage = serde_json::from_str(raw_json).unwrap();
+
+        assert_eq!(dummy, DummyMessage::Assistant { content: None });
     }
 
     #[test]

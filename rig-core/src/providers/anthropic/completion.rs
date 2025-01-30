@@ -515,7 +515,7 @@ struct Metadata {
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum ToolChoice {
+pub enum ToolChoice {
     #[default]
     Auto,
     Any,

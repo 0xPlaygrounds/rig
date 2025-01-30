@@ -9,8 +9,10 @@
 //! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_CHAT);
 //! ```
 use crate::{
-    completion::{self, CompletionModel, CompletionRequest, CompletionResponse},
-    json_utils, message, OneOrMany,
+    completion::{self, CompletionError, CompletionModel, CompletionRequest},
+    json_utils,
+    providers::openai::{self, Message},
+    OneOrMany,
 };
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
@@ -54,6 +56,11 @@ impl Client {
         }
     }
 
+    fn post(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        self.http_client.post(url)
+    }
+
     /// Creates a DeepSeek completion model with the given `model_name`.
     pub fn completion_model(&self, model_name: &str) -> DeepSeekCompletionModel {
         DeepSeekCompletionModel {
@@ -68,9 +75,27 @@ impl Client {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct ApiErrorResponse {
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum ApiResponse<T> {
+    Ok(T),
+    Err(ApiErrorResponse),
+}
+
+impl From<ApiErrorResponse> for CompletionError {
+    fn from(err: ApiErrorResponse) -> Self {
+        CompletionError::ProviderError(err.message)
+    }
+}
+
 /// The response shape from the DeepSeek API
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct DeepSeekResponse {
+pub struct CompletionResponse {
     // We'll match the JSON:
     pub choices: OneOrMany<Choice>,
     // you may want usage or other fields
@@ -81,25 +106,26 @@ pub struct Choice {
     pub message: Message,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "role", rename_all = "lowercase")]
-pub enum Message {
-    System {
-        content: String,
-        name: Option<String>,
-    },
-    User {
-        content: String,
-        name: Option<String>,
-    },
-    Assistant {
-        content: String,
-    },
-    Tool {
-        tool_call_id: String,
-        content: String,
-    },
-}
+// #[derive(Clone, Debug, Serialize, Deserialize)]
+// #[serde(tag = "role", rename_all = "lowercase")]
+// pub enum Message {
+//     System {
+//         content: String,
+//         name: Option<String>,
+//     },
+//     User {
+//         content: String,
+//         name: Option<String>,
+//     },
+//     Assistant {
+//         content: String,
+//         tool_calls: Option<Vec<DeepSeekToolCall>>,
+//     },
+//     Tool {
+//         tool_call_id: String,
+//         content: String,
+//     },
+// }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ToolDefinition {
@@ -107,8 +133,34 @@ pub struct ToolDefinition {
     pub function: completion::ToolDefinition,
 }
 
-impl From<completion::ToolDefinition> for ToolDefinition {
-    fn from(tool: completion::ToolDefinition) -> Self {
+// #[derive(Debug, Deserialize)]
+// pub struct DeepSeekMessage {
+//     pub role: Option<String>,
+//     pub content: Option<String>,
+//     pub tool_calls: Option<Vec<DeepSeekToolCall>>,
+// }
+
+// #[derive(Debug, Deserialize)]
+// pub struct DeepSeekToolCall {
+//     pub id: String,
+//     pub r#type: String,
+//     pub function: DeepSeekFunction,
+// }
+
+// #[derive(Debug, Deserialize)]
+// pub struct DeepSeekFunction {
+//     pub name: String,
+//     pub arguments: String,
+// }
+
+// #[derive(Clone, Debug, Deserialize, Serialize)]
+// pub struct DeepSeekToolDefinition {
+//     pub r#type: String,
+//     pub function: crate::completion::ToolDefinition,
+// }
+
+impl From<crate::completion::ToolDefinition> for ToolDefinition {
+    fn from(tool: crate::completion::ToolDefinition) -> Self {
         Self {
             r#type: "function".into(),
             function: tool,
@@ -116,73 +168,124 @@ impl From<completion::ToolDefinition> for ToolDefinition {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Function {
-    pub name: String,
-    pub arguments: String,
-}
+// #[derive(Debug, Serialize, Deserialize, Clone)]
+// pub struct Function {
+//     pub name: String,
+//     pub arguments: String,
+// }
 
-impl TryFrom<message::Message> for Message {
-    type Error = message::MessageError;
-    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
-        Ok(match message {
-            message::Message::User { content } => Message::User {
-                content: content
-                    .into_iter()
-                    .map(|content| {
-                        Ok(match content {
-                            message::UserContent::Text(message::Text { text }) => text,
-                            _ => {
-                                return Err(message::MessageError::ConversionError(
-                                    "Only text user content is supported by deepseek".to_owned(),
-                                ))
-                            }
-                        })
+// impl TryFrom<message::Message> for Message {
+//     type Error = message::MessageError;
+//     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
+//         Ok(match message {
+//             message::Message::User { content } => Message::User {
+//                 content: content
+//                     .into_iter()
+//                     .map(|content| {
+//                         Ok(match content {
+//                             message::UserContent::Text(message::Text { text }) => text,
+//                             _ => {
+//                                 return Err(message::MessageError::ConversionError(
+//                                     "Only text user content is supported by deepseek".to_owned(),
+//                                 ))
+//                             }
+//                         })
+//                     })
+//                     .collect::<Result<Vec<_>, _>>()?
+//                     .join("\n"),
+//                 name: None,
+//             },
+//             message::Message::Assistant { content } => Message::Assistant {
+//                 content: content
+//                     .into_iter()
+//                     .map(|content| {
+//                         Ok(match content {
+//                             message::AssistantContent::Text(message::Text { text }) => text,
+//                             _ => {
+//                                 return Err(message::MessageError::ConversionError(
+//                                     "Only text assistant content is supported by deepseek"
+//                                         .to_owned(),
+//                                 ))
+//                             }
+//                         })
+//                     })
+//                     .collect::<Result<Vec<_>, _>>()?
+//                     .join("\n"),
+//             },
+//         })
+//     }
+// }
+
+// impl From<Message> for message::Message {
+//     fn from(message: Message) -> Self {
+//         match message {
+//             Message::User { content, .. } => message::Message::user(content),
+//             Message::Assistant { content, .. } => message::Message::assistant(content),
+
+//             Message::Tool {
+//                 tool_call_id,
+//                 content,
+//             } => message::Message::User {
+//                 content: OneOrMany::one(message::UserContent::tool_result(
+//                     tool_call_id,
+//                     OneOrMany::one(content.into()),
+//                 )),
+//             },
+
+//             // System messages should get stripped out when converting message's, this is just a
+//             // stop gap to avoid obnoxious error handling or panic occuring.
+//             Message::System { content, .. } => message::Message::user(content),
+//         }
+//     }
+// }
+
+impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+    type Error = CompletionError;
+
+    fn try_from(value: CompletionResponse) -> Result<Self, Self::Error> {
+        match value.choices.first() {
+            Choice {
+                message:
+                    Message::Assistant {
+                        content: Some(content),
+                        ..
+                    },
+                ..
+            } => {
+                let content_str = content
+                    .iter()
+                    .map(|c| match c {
+                        openai::AssistantContent::Text { text } => text.clone(),
+                        openai::AssistantContent::Refusal { refusal } => refusal.clone(),
                     })
-                    .collect::<Result<Vec<_>, _>>()?
-                    .join("\n"),
-                name: None,
-            },
-            message::Message::Assistant { content } => Message::Assistant {
-                content: content
-                    .into_iter()
-                    .map(|content| {
-                        Ok(match content {
-                            message::AssistantContent::Text(message::Text { text }) => text,
-                            _ => {
-                                return Err(message::MessageError::ConversionError(
-                                    "Only text assistant content is supported by deepseek"
-                                        .to_owned(),
-                                ))
-                            }
-                        })
-                    })
-                    .collect::<Result<Vec<_>, _>>()?
-                    .join("\n"),
-            },
-        })
-    }
-}
-
-impl From<Message> for message::Message {
-    fn from(message: Message) -> Self {
-        match message {
-            Message::User { content, .. } => message::Message::user(content),
-            Message::Assistant { content, .. } => message::Message::assistant(content),
-
-            Message::Tool {
-                tool_call_id,
-                content,
-            } => message::Message::User {
-                content: OneOrMany::one(message::UserContent::tool_result(
-                    tool_call_id,
-                    OneOrMany::one(content.into()),
-                )),
-            },
-
-            // System messages should get stripped out when converting message's, this is just a
-            // stop gap to avoid obnoxious error handling or panic occuring.
-            Message::System { content, .. } => message::Message::user(content),
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                Ok(completion::CompletionResponse {
+                    choice: completion::ModelChoice::Message(content_str),
+                    raw_response: value,
+                })
+            }
+            Choice {
+                message:
+                    Message::Assistant {
+                        tool_calls: Some(tool_calls),
+                        ..
+                    },
+                ..
+            } => {
+                let call = tool_calls.first();
+                Ok(completion::CompletionResponse {
+                    choice: completion::ModelChoice::ToolCall(
+                        call.function.name.clone(),
+                        "".to_string(),
+                        call.function.arguments,
+                    ),
+                    raw_response: value,
+                })
+            }
+            _ => Err(completion::CompletionError::ResponseError(
+                "Response did not contain a valid message or tool call".into(),
+            )),
         }
     }
 }
@@ -195,121 +298,79 @@ pub struct DeepSeekCompletionModel {
 }
 
 impl CompletionModel for DeepSeekCompletionModel {
-    type Response = DeepSeekResponse;
+    type Response = CompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
-        request: CompletionRequest,
-    ) -> Result<CompletionResponse<DeepSeekResponse>, crate::completion::CompletionError> {
-        // 1. Build the array of messages from request.chat_history + user prompt
-        // if request.preamble is set, it becomes "system" or the first message.
-        // So let's gather them in the style "system" + "user" + chat_history => JSON messages.
+        completion_request: CompletionRequest,
+    ) -> Result<
+        completion::CompletionResponse<CompletionResponse>,
+        crate::completion::CompletionError,
+    > {
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<Message> = match &completion_request.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
+        };
 
-        let mut messages: Vec<Message> = vec![];
-        let user_message = request.prompt_with_context();
+        // Convert prompt to user message
+        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
 
-        // If preamble is present, push a system message
-        if let Some(preamble) = request.preamble {
-            messages.push(Message::System {
-                content: preamble,
-                name: None,
-            });
-        }
+        // Convert existing chat history
+        let chat_history: Vec<Message> = completion_request
+            .chat_history
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
 
-        // If chat_history is present, we can push them.
-        for msg in request.chat_history {
-            messages.push(msg.try_into().map_err(|e| {
-                crate::completion::CompletionError::ProviderError(format!(
-                    "Message conversion error: {}",
-                    e
-                ))
-            })?);
-        }
+        // Combine all messages into a single history
+        full_history.extend(chat_history);
+        full_history.extend(prompt);
 
-        // Add user’s prompt
-        messages.push(user_message.try_into().map_err(|e| {
-            crate::completion::CompletionError::ProviderError(format!(
-                "Message conversion error: {}",
-                e
-            ))
-        })?);
-
-        // 2. Prepare the body as DeepSeek expects
-        let body = json!({
-            "model": self.model,
-            "messages": messages,
-            "frequency_penalty": 0,
-            "max_tokens": request.max_tokens.unwrap_or(2048),
-            "presence_penalty": 0,
-            "temperature": request.temperature.unwrap_or(1.0),
-            "top_p": 1,
-            "logprobs": false,
-            "stream": false,
-        });
-
-        // prepare tools
-        let tools = if request.tools.is_empty() {
+        let request = if completion_request.tools.is_empty() {
             json!({
-                "tool_choice": "none",
+                "model": self.model,
+                "messages": full_history,
+                "temperature": completion_request.temperature,
             })
         } else {
             json!({
-                "tools": request.tools.into_iter().map(DeepSeekToolDefinition::from).collect::<Vec<_>>(),
+                "model": self.model,
+                "messages": full_history,
+                "temperature": completion_request.temperature,
+                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
                 "tool_choice": "auto",
             })
         };
 
-        let body = json_utils::merge(body, tools);
-
-        // if user set additional_params, merge them:
-        let final_body = if let Some(params) = request.additional_params {
-            json_utils::merge(body, params)
-        } else {
-            body
-        };
-
-        tracing::debug!("DeepSeek request: {}", final_body);
-
-        // 3. Execute the HTTP call
-        let url = format!("{}/chat/completions", self.client.base_url);
-        let resp = self
+        let response = self
             .client
-            .http_client
-            .post(url)
-            .bearer_auth(&self.client.api_key)
-            .json(&final_body)
+            .post("/chat/completions")
+            .json(
+                &if let Some(params) = completion_request.additional_params {
+                    json_utils::merge(request, params)
+                } else {
+                    request
+                },
+            )
             .send()
             .await?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(crate::completion::CompletionError::ProviderError(format!(
-                "DeepSeek call failed: {status} - {text}"
-            )));
+        if response.status().is_success() {
+            let t = response.text().await?;
+            tracing::debug!(target: "rig", "OpenAI completion error: {}", t);
+
+            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
+                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+            }
+        } else {
+            Err(CompletionError::ProviderError(response.text().await?))
         }
-
-        let text = resp.text().await?;
-        tracing::debug!("DeepSeek response text: {}", text);
-        let json_resp: DeepSeekResponse = serde_json::from_str(&text)?;
-        // 4. Convert DeepSeekResponse -> rig’s `CompletionResponse<DeepSeekResponse>`
-
-        // If no choices or content, return an empty message
-        let content = match json_resp.choices.first().message {
-            Message::User { content, .. }
-            | Message::Assistant { content, .. }
-            | Message::System { content, .. }
-            | Message::Tool { content, .. } => content,
-        };
-
-        // For now, we just treat it as a normal text message
-        let model_choice = crate::completion::ModelChoice::Message(content);
-
-        Ok(CompletionResponse {
-            choice: model_choice,
-            raw_response: json_resp,
-        })
     }
 }
 
@@ -325,71 +386,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_serialize_message() {
-        let message = Message::Assistant {
-            content: "Hello, world!".to_string(),
-        };
-        let serialized = serde_json::to_string(&message).unwrap();
-        let expected = r#"{"role":"assistant","content":"Hello, world!"}"#;
-        assert_eq!(serialized, expected);
-    }
-
-    #[test]
-    fn test_deserialize_message() {
-        let data = r#"{"role":"assistant","content":"Hello, world!"}"#;
-        let message: Message = serde_json::from_str(data).unwrap();
-        match message {
-            Message::Assistant { content } => assert_eq!(content, "Hello, world!"),
-            _ => panic!("Expected assistant message"),
-        }
-    }
-
-    #[test]
-    fn test_serialize_vec_choice() {
-        let choices = vec![Choice {
-            message: Message::Assistant {
-                content: "Hello, world!".to_string(),
-            },
-        }];
-        let serialized = serde_json::to_string(&choices).unwrap();
-        let expected = r#"[{"message":{"role":"assistant","content":"Hello, world!"}}]"#;
-        assert_eq!(serialized, expected);
-    }
-
-    #[test]
     fn test_deserialize_vec_choice() {
         let data = r#"[{"message":{"role":"assistant","content":"Hello, world!"}}]"#;
-        let choices: Vec<Choice> = serde_json::from_str(data).unwrap();
+        let choices: OneOrMany<Choice> = serde_json::from_str(data).unwrap();
         assert_eq!(choices.len(), 1);
-        match &choices[0].message {
-            Message::Assistant { content } => assert_eq!(content, "Hello, world!"),
+        match choices.first().message {
+            Message::Assistant { content, .. } => assert_eq!(
+                content.unwrap().first(),
+                openai::AssistantContent::Text {
+                    text: "Hello, world!".to_owned()
+                }
+            ),
             _ => panic!("Expected assistant message"),
         }
-    }
-
-    #[test]
-    fn test_serialize_deepseek_response() {
-        let response = DeepSeekResponse {
-            choices: OneOrMany::one(Choice {
-                message: Message::Assistant {
-                    content: "Hello, world!".to_string(),
-                },
-            }),
-        };
-        let serialized = serde_json::to_string(&response).unwrap();
-        let expected =
-            r#"{"choices":[{"message":{"role":"assistant","content":"Hello, world!"}}]}"#;
-        assert_eq!(serialized, expected);
     }
 
     #[test]
     fn test_deserialize_deepseek_response() {
         let data = r#"{"choices":[{"message":{"role":"assistant","content":"Hello, world!"}}]}"#;
         let jd = &mut serde_json::Deserializer::from_str(data);
-        let result: Result<DeepSeekResponse, _> = serde_path_to_error::deserialize(jd);
+        let result: Result<CompletionResponse, _> = serde_path_to_error::deserialize(jd);
         match result {
-            Ok(response) => match &response.choices.first().message {
-                Message::Assistant { ref content } => assert_eq!(content, "Hello, world!"),
+            Ok(response) => match response.choices.first().message {
+                Message::Assistant { content, .. } => assert_eq!(
+                    content.unwrap().first(),
+                    openai::AssistantContent::Text {
+                        text: "Hello, world!".to_owned()
+                    }
+                ),
                 _ => panic!("Expected assistant message"),
             },
             Err(err) => {
@@ -431,12 +455,14 @@ mod tests {
         }
         "#;
         let jd = &mut serde_json::Deserializer::from_str(data);
-        let result: Result<DeepSeekResponse, _> = serde_path_to_error::deserialize(jd);
+        let result: Result<CompletionResponse, _> = serde_path_to_error::deserialize(jd);
         match result {
-            Ok(response) => match &response.choices.first().message {
-                Message::Assistant { content } => assert_eq!(
-                    content,
-                    "Why don’t skeletons fight each other?  \nBecause they don’t have the guts! 😄"
+            Ok(response) => match response.choices.first().message {
+                Message::Assistant { content, .. } => assert_eq!(
+                    content.unwrap().first(),
+                    openai::AssistantContent::Text {
+                        text: "Why don’t skeletons fight each other?  \nBecause they don’t have the guts! 😄".to_owned()
+                    }
                 ),
                 _ => panic!("Expected assistant message"),
             },
