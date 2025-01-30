@@ -500,7 +500,7 @@ impl completion::CompletionModel for CompletionModel {
             };
             match prompt {
                 None => {
-                    tracing::info!("on-chain sytem prompt is none")
+                    tracing::info!("on-chain system prompt is none")
                 }
                 Some(value) => {
                     let temp = completion::Message {
