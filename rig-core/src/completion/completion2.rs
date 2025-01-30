@@ -68,6 +68,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
+use crate::OneOrMany;
 use crate::{
     json_utils,
     message::{Message, UserContent},
@@ -272,7 +273,9 @@ impl CompletionRequest {
                     .collect::<Vec<_>>()
                     .join("");
                 let formatted_content = format!("<attachments>\n{}</attachments>", attachments);
-                content.insert(0, UserContent::text(formatted_content));
+                let mut new_content = vec![UserContent::text(formatted_content)];
+                new_content.extend(content.clone());
+                *content = OneOrMany::many(new_content).expect("This has more than 1 item");
             }
         }
         new_prompt
