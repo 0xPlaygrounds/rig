@@ -6409,6 +6409,7 @@ version = "0.7.0"
 dependencies = [
  "anyhow",
  "assert_fs",
+ "base64 0.22.1",
  "futures",
  "glob",
  "lopdf",

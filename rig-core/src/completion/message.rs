@@ -74,7 +74,7 @@ pub enum ToolResultContent {
 }
 
 /// Image content containing image data and metadata about it.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Image {
     pub data: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -86,7 +86,7 @@ pub struct Image {
 }
 
 /// Audio content containing audio data and metadata about it.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Audio {
     pub data: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -96,7 +96,7 @@ pub struct Audio {
 }
 
 /// Document content containing document data and metadata about it.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Document {
     pub data: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -346,6 +346,38 @@ impl From<&str> for Message {
     fn from(text: &str) -> Self {
         Message::User {
             content: OneOrMany::one(UserContent::Text(text.into())),
+        }
+    }
+}
+
+impl From<Text> for Message {
+    fn from(text: Text) -> Self {
+        Message::User {
+            content: OneOrMany::one(UserContent::Text(text)),
+        }
+    }
+}
+
+impl From<Image> for Message {
+    fn from(image: Image) -> Self {
+        Message::User {
+            content: OneOrMany::one(UserContent::Image(image)),
+        }
+    }
+}
+
+impl From<Audio> for Message {
+    fn from(audio: Audio) -> Self {
+        Message::User {
+            content: OneOrMany::one(UserContent::Audio(audio)),
+        }
+    }
+}
+
+impl From<Document> for Message {
+    fn from(document: Document) -> Self {
+        Message::User {
+            content: OneOrMany::one(UserContent::Document(document)),
         }
     }
 }

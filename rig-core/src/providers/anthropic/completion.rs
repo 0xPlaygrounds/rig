@@ -186,14 +186,14 @@ impl FromStr for ToolResultContent {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ImageSource {
     pub data: String,
-    pub format: ImageFormat,
+    pub media_type: ImageFormat,
     pub r#type: SourceType,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct DocumentSource {
     pub data: String,
-    pub format: DocumentFormat,
+    pub media_type: DocumentFormat,
     pub r#type: SourceType,
 }
 
@@ -329,7 +329,7 @@ impl TryFrom<message::Message> for Message {
                                         ))?;
                                     Ok(ToolResultContent::Image(ImageSource {
                                         data: image.data,
-                                        format: media_type.try_into()?,
+                                        media_type: media_type.try_into()?,
                                         r#type: format.try_into()?,
                                     }))
                                 }
@@ -345,7 +345,7 @@ impl TryFrom<message::Message> for Message {
                     }) => {
                         let source = ImageSource {
                             data,
-                            format: match media_type {
+                            media_type: match media_type {
                                 Some(media_type) => media_type.try_into()?,
                                 None => {
                                     return Err(MessageError::ConversionError(
@@ -363,7 +363,7 @@ impl TryFrom<message::Message> for Message {
                     message::UserContent::Document(message::Document { data, format, .. }) => {
                         let source = DocumentSource {
                             data,
-                            format: DocumentFormat::PDF,
+                            media_type: DocumentFormat::PDF,
                             r#type: match format {
                                 Some(format) => format.try_into()?,
                                 None => SourceType::BASE64,
@@ -410,7 +410,7 @@ impl From<ToolResultContent> for message::ToolResultContent {
             ToolResultContent::Text { text } => message::ToolResultContent::text(text),
             ToolResultContent::Image(ImageSource {
                 data,
-                format,
+                media_type: format,
                 r#type,
             }) => message::ToolResultContent::image(
                 data,
@@ -442,7 +442,7 @@ impl TryFrom<Message> for message::Message {
                         Content::Image { source } => message::UserContent::Image(message::Image {
                             data: source.data,
                             format: Some(message::ContentFormat::Base64),
-                            media_type: Some(source.format.into()),
+                            media_type: Some(source.media_type.into()),
                             detail: None,
                         }),
                         Content::Document { source } => message::UserContent::document(
@@ -597,6 +597,8 @@ impl completion::CompletionModel for CompletionModel {
             json_utils::merge_inplace(&mut request, params.clone())
         }
 
+        tracing::debug!("Anthropic completion request: {request}");
+
         let response = self
             .client
             .post("/v1/messages")
@@ -673,7 +675,7 @@ mod tests {
                     "type": "image",
                     "source": {
                         "type": "base64",
-                        "format": "image/jpeg",
+                        "media_type": "image/jpeg",
                         "data": "/9j/4AAQSkZJRg..."
                     }
                 },
@@ -763,7 +765,7 @@ mod tests {
                             source,
                             ImageSource {
                                 data: "/9j/4AAQSkZJRg...".to_owned(),
-                                format: ImageFormat::JPEG,
+                                media_type: ImageFormat::JPEG,
                                 r#type: SourceType::BASE64,
                             }
                         );
@@ -812,7 +814,7 @@ mod tests {
                     "type": "image",
                     "source": {
                         "type": "base64",
-                        "format": "image/jpeg",
+                        "media_type": "image/jpeg",
                         "data": "/9j/4AAQSkZJRg..."
                     }
                 },
@@ -825,7 +827,7 @@ mod tests {
                     "source": {
                         "type": "base64",
                         "data": "base64_encoded_pdf_data",
-                        "format": "application/pdf"
+                        "media_type": "application/pdf"
                     }
                 }
             ]

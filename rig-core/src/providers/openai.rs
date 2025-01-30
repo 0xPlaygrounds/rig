@@ -1014,14 +1014,26 @@ mod tests {
         let assistant_message: Message = {
             let jd = &mut serde_json::Deserializer::from_str(assistant_message_json);
             deserialize(jd).unwrap_or_else(|err| {
-                panic!("Deserialization error at {}: {}", err.path(), err);
+                panic!(
+                    "Deserialization error at {} ({}:{}): {}",
+                    err.path(),
+                    err.inner().line(),
+                    err.inner().column(),
+                    err
+                );
             })
         };
 
         let assistant_message2: Message = {
             let jd = &mut serde_json::Deserializer::from_str(assistant_message_json2);
             deserialize(jd).unwrap_or_else(|err| {
-                panic!("Deserialization error at {}: {}", err.path(), err);
+                panic!(
+                    "Deserialization error at {} ({}:{}): {}",
+                    err.path(),
+                    err.inner().line(),
+                    err.inner().column(),
+                    err
+                );
             })
         };
 
@@ -1029,14 +1041,26 @@ mod tests {
             let jd: &mut serde_json::Deserializer<serde_json::de::StrRead<'_>> =
                 &mut serde_json::Deserializer::from_str(assistant_message_json3);
             deserialize(jd).unwrap_or_else(|err| {
-                panic!("Deserialization error at {}: {}", err.path(), err);
+                panic!(
+                    "Deserialization error at {} ({}:{}): {}",
+                    err.path(),
+                    err.inner().line(),
+                    err.inner().column(),
+                    err
+                );
             })
         };
 
         let user_message: Message = {
             let jd = &mut serde_json::Deserializer::from_str(user_message_json);
             deserialize(jd).unwrap_or_else(|err| {
-                panic!("Deserialization error at {}: {}", err.path(), err);
+                panic!(
+                    "Deserialization error at {} ({}:{}): {}",
+                    err.path(),
+                    err.inner().line(),
+                    err.inner().column(),
+                    err
+                );
             })
         };
 
