@@ -6413,7 +6413,6 @@ dependencies = [
  "assert_fs",
  "async-stream",
  "bytes",
- "dotenvy",
  "futures",
  "glob",
  "lopdf",
