@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.2.3...rig-neo4j-v0.2.4) - 2025-01-30
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.2.3](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.2.2...rig-neo4j-v0.2.3) - 2025-01-27
 
 ### Other

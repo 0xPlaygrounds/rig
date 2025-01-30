@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.7.0...rig-core-v0.7.1) - 2025-01-30
+
+### Added
+
+- streaming API implementation for Anthropic provider (#232)
+
+### Other
+
+- add more provider notes (#237)
+
 ## [0.7.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.6.1...rig-core-v0.7.0) - 2025-01-27
 
 ### Added
