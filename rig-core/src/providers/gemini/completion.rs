@@ -148,8 +148,8 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         match response.candidates.as_slice() {
             [ContentCandidate { content, .. }, ..] => Ok(completion::CompletionResponse {
                 choice: match content.parts.first() {
-                    Part::Text { text } => completion::ModelChoice::Message(text.clone()),
-                    Part::FunctionCall { function_call } => completion::ModelChoice::ToolCall(
+                    Part::Text(text) => completion::ModelChoice::Message(text.clone()),
+                    Part::FunctionCall(function_call) => completion::ModelChoice::ToolCall(
                         function_call.name.clone(),
                         function_call.name.clone(),
                         function_call.args.clone(),
@@ -265,8 +265,8 @@ pub mod gemini_api_types {
                 Some(Role::User) | None => Ok(message::Message::User {
                     content: content.parts.try_map(|part| {
                         Ok(match part {
-                            Part::Text { text } => message::UserContent::text(text),
-                            Part::InlineData { inline_data } => {
+                            Part::Text(text) => message::UserContent::text(text),
+                            Part::InlineData(inline_data) => {
                                 let mime_type =
                                     message::MediaType::from_mime_type(&inline_data.mime_type);
 
@@ -312,8 +312,8 @@ pub mod gemini_api_types {
                 Some(Role::Model) => Ok(message::Message::Assistant {
                     content: content.parts.try_map(|part| {
                         Ok(match part {
-                            Part::Text { text } => message::AssistantContent::text(text),
-                            Part::FunctionCall { function_call } => {
+                            Part::Text(text) => message::AssistantContent::text(text),
+                            Part::FunctionCall(function_call) => {
                                 message::AssistantContent::ToolCall(function_call.into())
                             }
                             _ => {
@@ -341,42 +341,25 @@ pub mod gemini_api_types {
     /// A Part must have a fixed IANA MIME type identifying the type and subtype of the media if the inlineData field is filled with raw bytes.
     #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
     #[serde(rename_all = "camelCase")]
-    #[serde(untagged)]
     pub enum Part {
-        Text {
-            text: String,
-        },
-        InlineData {
-            inline_data: Blob,
-        },
-        FunctionCall {
-            function_call: FunctionCall,
-        },
-        FunctionResponse {
-            function_response: FunctionResponse,
-        },
-        FileData {
-            file_data: FileData,
-        },
-        ExecutableCode {
-            executable_code: ExecutableCode,
-        },
-        CodeExecutionResult {
-            code_execution_result: CodeExecutionResult,
-        },
+        Text(String),
+        InlineData(Blob),
+        FunctionCall(FunctionCall),
+        FunctionResponse(FunctionResponse),
+        FileData(FileData),
+        ExecutableCode(ExecutableCode),
+        CodeExecutionResult(CodeExecutionResult),
     }
 
     impl From<String> for Part {
         fn from(text: String) -> Self {
-            Self::Text { text }
+            Self::Text(text)
         }
     }
 
     impl From<&str> for Part {
         fn from(text: &str) -> Self {
-            Self::Text {
-                text: text.to_owned(),
-            }
+            Self::Text(text.to_string())
         }
     }
 
@@ -393,7 +376,7 @@ pub mod gemini_api_types {
 
         fn try_from(content: message::UserContent) -> Result<Self, Self::Error> {
             match content {
-                message::UserContent::Text(message::Text { text }) => Ok(Self::Text { text }),
+                message::UserContent::Text(message::Text { text }) => Ok(Self::Text(text)),
                 message::UserContent::ToolResult(message::ToolResult { id, content }) => {
                     let content = match content.first() {
                         message::ToolResultContent::Text(text) => text.text,
@@ -403,17 +386,15 @@ pub mod gemini_api_types {
                             ))
                         }
                     };
-                    Ok(Part::FunctionResponse {
-                        function_response: FunctionResponse {
-                            name: id,
-                            response: Some(serde_json::from_str(&content).map_err(|e| {
-                                message::MessageError::ConversionError(format!(
-                                    "Failed to parse tool response: {}",
-                                    e
-                                ))
-                            })?),
-                        },
-                    })
+                    Ok(Part::FunctionResponse(FunctionResponse {
+                        name: id,
+                        response: Some(serde_json::from_str(&content).map_err(|e| {
+                            message::MessageError::ConversionError(format!(
+                                "Failed to parse tool response: {}",
+                                e
+                            ))
+                        })?),
+                    }))
                 }
                 message::UserContent::Image(message::Image {
                     data, media_type, ..
@@ -423,12 +404,10 @@ pub mod gemini_api_types {
                         | message::ImageMediaType::PNG
                         | message::ImageMediaType::WEBP
                         | message::ImageMediaType::HEIC
-                        | message::ImageMediaType::HEIF => Ok(Self::InlineData {
-                            inline_data: Blob {
-                                mime_type: media_type.to_mime_type().to_owned(),
-                                data,
-                            },
-                        }),
+                        | message::ImageMediaType::HEIF => Ok(Self::InlineData(Blob {
+                            mime_type: media_type.to_mime_type().to_owned(),
+                            data,
+                        })),
                         _ => Err(message::MessageError::ConversionError(format!(
                             "Unsupported image media type {:?}",
                             media_type
@@ -449,12 +428,10 @@ pub mod gemini_api_types {
                         | message::DocumentMediaType::CSS
                         | message::DocumentMediaType::MARKDOWN
                         | message::DocumentMediaType::CSV
-                        | message::DocumentMediaType::XML => Ok(Self::InlineData {
-                            inline_data: Blob {
-                                mime_type: media_type.to_mime_type().to_owned(),
-                                data,
-                            },
-                        }),
+                        | message::DocumentMediaType::XML => Ok(Self::InlineData(Blob {
+                            mime_type: media_type.to_mime_type().to_owned(),
+                            data,
+                        })),
                         _ => Err(message::MessageError::ConversionError(format!(
                             "Unsupported document media type {:?}",
                             media_type
@@ -467,12 +444,10 @@ pub mod gemini_api_types {
                 message::UserContent::Audio(message::Audio {
                     data, media_type, ..
                 }) => match media_type {
-                    Some(media_type) => Ok(Self::InlineData {
-                        inline_data: Blob {
-                            mime_type: media_type.to_mime_type().to_owned(),
-                            data,
-                        },
-                    }),
+                    Some(media_type) => Ok(Self::InlineData(Blob {
+                        mime_type: media_type.to_mime_type().to_owned(),
+                        data,
+                    })),
                     None => Err(message::MessageError::ConversionError(
                         "Media type for audio is required for Anthropic".to_string(),
                     )),
@@ -492,12 +467,10 @@ pub mod gemini_api_types {
 
     impl From<message::ToolCall> for Part {
         fn from(tool_call: message::ToolCall) -> Self {
-            Self::FunctionCall {
-                function_call: FunctionCall {
-                    name: tool_call.function.name,
-                    args: tool_call.function.arguments,
-                },
-            }
+            Self::FunctionCall(FunctionCall {
+                name: tool_call.function.name,
+                args: tool_call.function.arguments,
+            })
         }
     }
 
@@ -949,31 +922,37 @@ mod tests {
 
     #[test]
     fn test_deserialize_message_user() {
-        let json_data = json!({
+        let raw_message = r#"{
             "parts": [
                 {"text": "Hello, world!"},
                 {"inlineData": {"mimeType": "image/png", "data": "base64encodeddata"}},
                 {"functionCall": {"name": "test_function", "args": {"arg1": "value1"}}},
                 {"functionResponse": {"name": "test_function", "response": {"result": "success"}}},
                 {"fileData": {"mimeType": "application/pdf", "fileUri": "http://example.com/file.pdf"}},
-                {"executableCode": {"code": "print('Hello, world!')"}},
-                {"codeExecutionResult": {"result": "Hello, world!"}}
+                {"executableCode": {"code": "print('Hello, world!')", "language": "PYTHON"}},
+                {"codeExecutionResult": {"output": "Hello, world!", "outcome": "OUTCOME_OK"}}
             ],
             "role": "user"
-        });
+        }"#;
 
-        let content: Content = serde_json::from_value(json_data).unwrap();
+        let content: Content = {
+            let jd = &mut serde_json::Deserializer::from_str(raw_message);
+            serde_path_to_error::deserialize(jd).unwrap_or_else(|err| {
+                panic!("Deserialization error at {}: {}", err.path(), err);
+            })
+        };
         assert_eq!(content.role, Some(Role::User));
         assert_eq!(content.parts.len(), 7);
+
         let parts: Vec<Part> = content.parts.into_iter().collect();
 
-        if let Part::Text { text } = &parts[0] {
+        if let Part::Text(text) = &parts[0] {
             assert_eq!(text, "Hello, world!");
         } else {
             panic!("Expected text part");
         }
 
-        if let Part::InlineData { inline_data } = &parts[1] {
+        if let Part::InlineData(inline_data) = &parts[1] {
             assert_eq!(inline_data.mime_type, "image/png");
             assert_eq!(inline_data.data, "base64encodeddata");
         } else {
@@ -990,7 +969,7 @@ mod tests {
         //     panic!("Expected function call part");
         // }
 
-        if let Part::FunctionResponse { function_response } = &parts[3] {
+        if let Part::FunctionResponse(function_response) = &parts[3] {
             assert_eq!(function_response.name, "test_function");
             assert_eq!(
                 function_response
@@ -1005,23 +984,20 @@ mod tests {
             panic!("Expected function response part");
         }
 
-        if let Part::FileData { file_data } = &parts[4] {
+        if let Part::FileData(file_data) = &parts[4] {
             assert_eq!(file_data.mime_type.as_ref().unwrap(), "application/pdf");
             assert_eq!(file_data.file_uri, "http://example.com/file.pdf");
         } else {
             panic!("Expected file data part");
         }
 
-        if let Part::ExecutableCode { executable_code } = &parts[5] {
+        if let Part::ExecutableCode(executable_code) = &parts[5] {
             assert_eq!(executable_code.code, "print('Hello, world!')");
         } else {
             panic!("Expected executable code part");
         }
 
-        if let Part::CodeExecutionResult {
-            code_execution_result,
-        } = &parts[6]
-        {
+        if let Part::CodeExecutionResult(code_execution_result) = &parts[6] {
             assert_eq!(
                 code_execution_result.clone().output.unwrap(),
                 "Hello, world!"
@@ -1041,7 +1017,7 @@ mod tests {
         let content: Content = serde_json::from_value(json_data).unwrap();
         assert_eq!(content.role, Some(Role::Model));
         assert_eq!(content.parts.len(), 1);
-        if let Part::Text { text } = &content.parts.first() {
+        if let Part::Text(text) = &content.parts.first() {
             assert_eq!(text, "Hello, user!");
         } else {
             panic!("Expected text part");
@@ -1054,7 +1030,7 @@ mod tests {
         let content: Content = msg.try_into().unwrap();
         assert_eq!(content.role, Some(Role::User));
         assert_eq!(content.parts.len(), 1);
-        if let Part::Text { text } = &content.parts.first() {
+        if let Part::Text(text) = &content.parts.first() {
             assert_eq!(text, "Hello, world!");
         } else {
             panic!("Expected text part");
@@ -1068,7 +1044,7 @@ mod tests {
         let content: Content = msg.try_into().unwrap();
         assert_eq!(content.role, Some(Role::Model));
         assert_eq!(content.parts.len(), 1);
-        if let Part::Text { text } = &content.parts.first() {
+        if let Part::Text(text) = &content.parts.first() {
             assert_eq!(text, "Hello, user!");
         } else {
             panic!("Expected text part");

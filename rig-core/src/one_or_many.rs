@@ -545,13 +545,28 @@ mod test {
     #[derive(Deserialize)]
     struct DummyStruct {
         #[serde(deserialize_with = "string_or_one_or_many")]
-        field: OneOrMany<String>,
+        field: OneOrMany<DummyString>,
     }
 
     #[derive(Deserialize)]
     struct DummyStructOption {
         #[serde(deserialize_with = "string_or_option_one_or_many")]
-        field: Option<OneOrMany<String>>,
+        field: Option<OneOrMany<DummyString>>,
+    }
+
+    #[derive(Debug, Clone, Deserialize, PartialEq)]
+    struct DummyString {
+        pub string: String,
+    }
+
+    impl FromStr for DummyString {
+        type Err = Infallible;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            Ok(DummyString {
+                string: s.to_string(),
+            })
+        }
     }
 
     #[test]
@@ -560,7 +575,7 @@ mod test {
         let dummy: DummyStruct = serde_json::from_value(json_data).unwrap();
 
         assert_eq!(dummy.field.len(), 1);
-        assert_eq!(dummy.field.first(), "hello");
+        assert_eq!(dummy.field.first(), DummyString::from_str("hello").unwrap());
     }
 
     #[test]
@@ -571,19 +586,19 @@ mod test {
         assert!(dummy.field.is_some());
         let field = dummy.field.unwrap();
         assert_eq!(field.len(), 1);
-        assert_eq!(field.first(), "hello");
+        assert_eq!(field.first(), DummyString::from_str("hello").unwrap());
     }
 
     #[test]
     fn test_deserialize_list_option() {
-        let json_data = json!({"field": ["hello", "world"]});
+        let json_data = json!({"field": [{"string": "hello"}, {"string": "world"}]});
         let dummy: DummyStructOption = serde_json::from_value(json_data).unwrap();
 
         assert!(dummy.field.is_some());
         let field = dummy.field.unwrap();
         assert_eq!(field.len(), 2);
-        assert_eq!(field.first(), "hello");
-        assert_eq!(field.rest(), vec!["world".to_string()]);
+        assert_eq!(field.first(), DummyString::from_str("hello").unwrap());
+        assert_eq!(field.rest(), vec![DummyString::from_str("world").unwrap()]);
     }
 
     #[test]

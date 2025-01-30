@@ -41,19 +41,23 @@ pub mod gemini_api_types {
         /// Outcome of the code execution.
         pub outcome: CodeExecutionOutcome,
         /// Contains stdout when code execution is successful, stderr or other description otherwise.
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub output: Option<String>,
     }
 
     #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum CodeExecutionOutcome {
         /// Unspecified status. This value should not be used.
+        #[serde(rename = "OUTCOME_UNSPECIFIED")]
         Unspecified,
         /// Code execution completed successfully.
+        #[serde(rename = "OUTCOME_OK")]
         Ok,
         /// Code execution finished but with a failure. stderr should contain the reason.
+        #[serde(rename = "OUTCOME_FAILED")]
         Failed,
         /// Code execution ran for too long, and was cancelled. There may or may not be a partial output present.
+        #[serde(rename = "OUTCOME_DEADLINE_EXCEEDED")]
         DeadlineExceeded,
     }
 }

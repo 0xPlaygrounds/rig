@@ -248,6 +248,14 @@ impl TryFrom<message::ContentFormat> for SourceType {
     }
 }
 
+impl From<SourceType> for message::ContentFormat {
+    fn from(source_type: SourceType) -> Self {
+        match source_type {
+            SourceType::BASE64 => message::ContentFormat::Base64,
+        }
+    }
+}
+
 impl TryFrom<message::ImageMediaType> for ImageFormat {
     type Error = MessageError;
 
@@ -396,6 +404,24 @@ impl TryFrom<Content> for message::AssistantContent {
     }
 }
 
+impl From<ToolResultContent> for message::ToolResultContent {
+    fn from(content: ToolResultContent) -> Self {
+        match content {
+            ToolResultContent::Text { text } => message::ToolResultContent::text(text),
+            ToolResultContent::Image(ImageSource {
+                data,
+                format,
+                r#type,
+            }) => message::ToolResultContent::image(
+                data,
+                Some(r#type.into()),
+                Some(format.into()),
+                None,
+            ),
+        }
+    }
+}
+
 impl TryFrom<Message> for message::Message {
     type Error = MessageError;
 
@@ -405,6 +431,14 @@ impl TryFrom<Message> for message::Message {
                 content: message.content.try_map(|content| {
                     Ok(match content {
                         Content::Text { text } => message::UserContent::text(text),
+                        Content::ToolResult {
+                            tool_use_id,
+                            content,
+                            ..
+                        } => message::UserContent::tool_result(
+                            tool_use_id,
+                            content.map(|content| content.into()),
+                        ),
                         Content::Image { source } => message::UserContent::Image(message::Image {
                             data: source.data,
                             format: Some(message::ContentFormat::Base64),

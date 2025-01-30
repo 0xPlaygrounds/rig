@@ -160,7 +160,15 @@ pub mod tests {
 
     impl Prompt for MockModel {
         async fn prompt(&self, prompt: impl Into<message::Message>) -> Result<String, PromptError> {
-            Ok(format!("Mock response: {:?}", prompt.into()))
+            let msg: message::Message = prompt.into();
+            let prompt = match msg {
+                message::Message::User { content } => match content.first() {
+                    message::UserContent::Text(message::Text { text }) => text,
+                    _ => unreachable!(),
+                },
+                _ => unreachable!(),
+            };
+            Ok(format!("Mock response: {}", prompt))
         }
     }
 
