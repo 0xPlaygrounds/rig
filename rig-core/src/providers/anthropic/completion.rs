@@ -475,9 +475,9 @@ impl TryFrom<Message> for message::Message {
 
 #[derive(Clone)]
 pub struct CompletionModel {
-    client: Client,
+    pub(crate) client: Client,
     pub model: String,
-    default_max_tokens: Option<u64>,
+    pub default_max_tokens: Option<u64>,
 }
 
 impl CompletionModel {
@@ -490,7 +490,7 @@ impl CompletionModel {
     }
 }
 
-/// Anthropic requires a `max_tokens` parameter to be set, which is dependant on the model. If not
+/// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on the models
 /// available at the time of writing.
 ///

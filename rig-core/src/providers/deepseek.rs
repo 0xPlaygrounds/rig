@@ -244,10 +244,23 @@ impl CompletionModel for DeepSeekCompletionModel {
             "presence_penalty": 0,
             "temperature": request.temperature.unwrap_or(1.0),
             "top_p": 1,
-            "tool_choice": "none",
             "logprobs": false,
             "stream": false,
         });
+
+        // prepare tools
+        let tools = if request.tools.is_empty() {
+            json!({
+                "tool_choice": "none",
+            })
+        } else {
+            json!({
+                "tools": request.tools.into_iter().map(DeepSeekToolDefinition::from).collect::<Vec<_>>(),
+                "tool_choice": "auto",
+            })
+        };
+
+        let body = json_utils::merge(body, tools);
 
         // if user set additional_params, merge them:
         let final_body = if let Some(params) = request.additional_params {

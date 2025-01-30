@@ -1,40 +1,8 @@
-use rig::{
-    completion::{Prompt, ToolDefinition},
-    providers,
-    tool::Tool,
-};
+use anyhow::Result;
+use rig::streaming::stream_to_stdout;
+use rig::{completion::ToolDefinition, providers, streaming::StreamingPrompt, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
-#[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
-    let client = providers::deepseek::Client::from_env();
-    let agent = client
-        .agent("deepseek-chat")
-        .preamble("You are a helpful assistant.")
-        .build();
-
-    let answer = agent.prompt("Tell me a joke").await?;
-    println!("Answer: {}", answer);
-
-    // Create agent with a single context prompt and two tools
-    let calculator_agent = client
-        .agent(providers::deepseek::DEEPSEEK_CHAT)
-        .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
-        .max_tokens(1024)
-        .tool(Adder)
-        .tool(Subtract)
-        .build();
-
-    // Prompt the agent and print the response
-    println!("Calculate 2 - 5");
-    println!(
-        "DeepSeek Calculator Agent: {}",
-        calculator_agent.prompt("Calculate 2 - 5").await?
-    );
-
-    Ok(())
-}
 
 #[derive(Deserialize)]
 struct OperationArgs {
@@ -70,13 +38,13 @@ impl Tool for Adder {
                         "type": "number",
                         "description": "The second number to add"
                     }
-                }
+                },
+                "required": ["x", "y"]
             }),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        println!("[tool-call] Adding {} and {}", args.x, args.y);
         let result = args.x + args.y;
         Ok(result)
     }
@@ -106,15 +74,38 @@ impl Tool for Subtract {
                         "type": "number",
                         "description": "The number to substract"
                     }
-                }
+                },
+                "required": ["x", "y"]
             }
         }))
         .expect("Tool Definition")
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        println!("[tool-call] Subtracting {} from {}", args.y, args.x);
         let result = args.x - args.y;
         Ok(result)
     }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    tracing_subscriber::fmt().init();
+    // Create agent with a single context prompt and two tools
+    let calculator_agent = providers::anthropic::Client::from_env()
+        .agent(providers::anthropic::CLAUDE_3_5_SONNET)
+        .preamble(
+            "You are a calculator here to help the user perform arithmetic 
+            operations. Use the tools provided to answer the user's question. 
+            make your answer long, so we can test the streaming functionality, 
+            like 20 words",
+        )
+        .max_tokens(1024)
+        .tool(Adder)
+        .tool(Subtract)
+        .build();
+
+    println!("Calculate 2 - 5");
+    let mut stream = calculator_agent.stream_prompt("Calculate 2 - 5").await?;
+    stream_to_stdout(calculator_agent, &mut stream).await?;
+    Ok(())
 }

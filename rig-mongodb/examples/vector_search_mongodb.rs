@@ -4,7 +4,8 @@ use mongodb::{
     Client as MongoClient, Collection,
 };
 use rig::providers::openai::TEXT_EMBEDDING_ADA_002;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
+use serde_json::Value;
 use std::env;
 
 use rig::{
@@ -16,10 +17,32 @@ use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 // The definition field will be used to generate embeddings.
 #[derive(Embed, Clone, Deserialize, Debug)]
 struct Word {
-    #[serde(rename = "_id")]
+    #[serde(rename = "_id", deserialize_with = "deserialize_object_id")]
     id: String,
     #[embed]
     definition: String,
+}
+
+fn deserialize_object_id<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    match value {
+        Value::String(s) => Ok(s),
+        Value::Object(map) => {
+            if let Some(Value::String(oid)) = map.get("$oid") {
+                Ok(oid.to_string())
+            } else {
+                Err(serde::de::Error::custom(
+                    "Expected $oid field with string value",
+                ))
+            }
+        }
+        _ => Err(serde::de::Error::custom(
+            "Expected string or object with $oid field",
+        )),
+    }
 }
 
 #[tokio::main]

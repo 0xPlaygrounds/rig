@@ -67,6 +67,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
     json_utils,
     message::{Message, UserContent},
@@ -465,6 +466,14 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     pub async fn send(self) -> Result<CompletionResponse<M::Response>, CompletionError> {
         let model = self.model.clone();
         model.completion(self.build()).await
+    }
+}
+
+impl<M: StreamingCompletionModel> CompletionRequestBuilder<M> {
+    /// Stream the completion request
+    pub async fn stream(self) -> Result<StreamingResult, CompletionError> {
+        let model = self.model.clone();
+        model.stream(self.build()).await
     }
 }
 

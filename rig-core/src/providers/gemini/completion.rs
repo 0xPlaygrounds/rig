@@ -729,7 +729,7 @@ pub mod gemini_api_types {
         /// that the model doesn't apply top-k sampling and doesn't allow setting topK on requests.
         pub top_k: Option<i32>,
         /// Presence penalty applied to the next token's logprobs if the token has already been seen in the response.
-        /// This penalty is binary on/off and not dependant on the number of times the token is used (after the first).
+        /// This penalty is binary on/off and not dependent on the number of times the token is used (after the first).
         /// Use frequencyPenalty for a penalty that increases with each use. A positive penalty will discourage the use
         /// of tokens that have already been used in the response, increasing the vocabulary. A negative penalty will
         /// encourage the use of tokens that have already been used in the response, decreasing the vocabulary.
