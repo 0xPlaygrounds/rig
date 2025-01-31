@@ -284,3 +284,5 @@ impl CompletionModel for DeepSeekCompletionModel {
 // ================================================================
 /// `deepseek-chat` completion model
 pub const DEEPSEEK_CHAT: &str = "deepseek-chat";
+/// `deepseek-reasoner` completion model
+pub const DEEPSEEK_REASONER: &str = "deepseek-reasoner";
