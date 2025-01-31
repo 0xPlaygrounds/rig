@@ -100,11 +100,11 @@ impl Tool for Subtract {
                 "properties": {
                     "x": {
                         "type": "number",
-                        "description": "The number to substract from"
+                        "description": "The number to subtract from"
                     },
                     "y": {
                         "type": "number",
-                        "description": "The number to substract"
+                        "description": "The number to subtract"
                     }
                 }
             }
