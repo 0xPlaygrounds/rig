@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.7.0...rig-core-v0.8.0) - 2025-01-31
+
+### Added
+
+- support tools for DeepSeek provider (#251)
+- streaming API implementation for Anthropic provider (#232)
+
+### Other
+
+- Fix typos  "substract" → "subtract" ([#256](https://github.com/0xPlaygrounds/rig/pull/256))
+- fix typos (#242)
+- add more provider notes (#237)
+
 ## [0.7.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.6.1...rig-core-v0.7.0) - 2025-01-27
 
 ### Added
