@@ -13,8 +13,8 @@ use crate::{
     extractor::ExtractorBuilder,
     json_utils,
 };
-use schemars::JsonSchema;
 use reqwest::Client as HttpClient;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 

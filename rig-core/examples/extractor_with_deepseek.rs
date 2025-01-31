@@ -25,7 +25,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .extract("Hello my name is John Doe! I am a software engineer.")
         .await?;
 
-    println!("DeepSeek: {}", serde_json::to_string_pretty(&person).unwrap());
+    println!(
+        "DeepSeek: {}",
+        serde_json::to_string_pretty(&person).unwrap()
+    );
 
     Ok(())
 }
