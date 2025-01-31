@@ -10,9 +10,11 @@
 //! ```
 use crate::{
     completion::{CompletionModel, CompletionRequest, CompletionResponse},
+    extractor::ExtractorBuilder,
     json_utils,
 };
 use reqwest::Client as HttpClient;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -65,6 +67,14 @@ impl Client {
     /// Optionally add an agent() convenience:
     pub fn agent(&self, model_name: &str) -> crate::agent::AgentBuilder<DeepSeekCompletionModel> {
         crate::agent::AgentBuilder::new(self.completion_model(model_name))
+    }
+
+    /// Create an extractor builder with the given completion model.
+    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
+        &self,
+        model: &str,
+    ) -> ExtractorBuilder<T, DeepSeekCompletionModel> {
+        ExtractorBuilder::new(self.completion_model(model))
     }
 }
 
@@ -274,3 +284,5 @@ impl CompletionModel for DeepSeekCompletionModel {
 // ================================================================
 /// `deepseek-chat` completion model
 pub const DEEPSEEK_CHAT: &str = "deepseek-chat";
+/// `deepseek-reasoner` completion model
+pub const DEEPSEEK_REASONER: &str = "deepseek-reasoner";
