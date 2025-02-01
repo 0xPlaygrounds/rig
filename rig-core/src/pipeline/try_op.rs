@@ -480,14 +480,11 @@ mod tests {
     async fn test_try_parallel() {
         let op1 = map(|x: i32| if x % 2 == 0 { Ok(x + 1) } else { Err("x is odd") });
         let op2 = map(|x: i32| if x % 2 == 0 { Ok(x * 2) } else { Err("x is odd") });
-        
         let pipeline = TryParallel::new(op1, op2);
-        
-        // Test success case
+
         let result = pipeline.try_call(2).await;
         assert_eq!(result, Ok((3, 4)));
-        
-        // Test error case
+
         let result = pipeline.try_call(1).await;
         assert_eq!(result, Err("x is odd"));
     }
@@ -497,12 +494,8 @@ mod tests {
         let op1 = map(|x: i32| Ok::<_, &str>(x + 1));
         let op2 = map(|x: i32| Ok::<_, &str>(x * 2));
         let op3 = map(|x: i32| Ok::<_, &str>(x * 3));
-        
-        let pipeline = TryParallel::new(
-            TryParallel::new(op1, op2),
-            op3
-        );
-        
+        let pipeline = TryParallel::new(TryParallel::new(op1, op2), op3);
+
         let result = pipeline.try_call(2).await;
         assert_eq!(result, Ok(((3, 4), 6)));
     }
