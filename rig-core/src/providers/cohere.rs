@@ -15,7 +15,7 @@ use crate::{
     completion::{self, CompletionError},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     extractor::ExtractorBuilder,
-    json_utils, message, Embed,
+    json_utils, message, Embed, OneOrMany,
 };
 
 use schemars::JsonSchema;
@@ -326,17 +326,19 @@ impl From<CompletionResponse> for completion::CompletionResponse<CompletionRespo
         } = &response;
 
         let model_response = if !tool_calls.is_empty() {
-            completion::ModelChoice::ToolCall(
-                tool_calls.first().unwrap().name.clone(),
-                "".to_owned(),
-                tool_calls.first().unwrap().parameters.clone(),
-            )
+            tool_calls.iter().map(|tool_call| {
+                completion::AssistantContent::tool_call(
+                    tool_call.name.clone(),
+                    tool_call.name.clone(),
+                    tool_call.parameters.clone(),
+                )
+            }).collect::<Vec<_>>()
         } else {
-            completion::ModelChoice::Message(text.clone())
+            vec![completion::AssistantContent::text(text.clone())]
         };
 
         completion::CompletionResponse {
-            choice: model_response,
+            choice: OneOrMany::many(model_response).expect("There is atleast one content"),
             raw_response: response,
         }
     }

@@ -92,31 +92,34 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        if let Some(tool_use) = response.content.iter().find_map(|content| match content {
-            Content::ToolUse {
-                name, input, id, ..
-            } => Some((name.clone(), id.clone(), input.clone())),
-            _ => None,
-        }) {
-            return Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::ToolCall(tool_use.0, tool_use.1, tool_use.2),
-                raw_response: response,
-            });
-        }
+        let content = response
+            .content
+            .iter()
+            .map(|content| {
+                Ok(match content {
+                    Content::Text { text } => completion::AssistantContent::text(text),
+                    Content::ToolUse { id, name, input } => {
+                        completion::AssistantContent::tool_call(id, name, input.clone())
+                    }
+                    _ => {
+                        return Err(CompletionError::ResponseError(
+                            "Response did not contain a message or tool call".into(),
+                        ))
+                    }
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
-        if let Some(text_content) = response.content.iter().find_map(|content| match content {
-            Content::Text { text, .. } => Some(text.clone()),
-            _ => None,
-        }) {
-            return Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::Message(text_content),
-                raw_response: response,
-            });
-        }
+        let choice = OneOrMany::many(content).map_err(|_| {
+            CompletionError::ResponseError(
+                "Response contained no message or tool call (empty)".to_owned(),
+            )
+        })?;
 
-        Err(CompletionError::ResponseError(
-            "Response did not contain a message or tool call".into(),
-        ))
+        return Ok(completion::CompletionResponse {
+            choice,
+            raw_response: response,
+        });
     }
 }
 

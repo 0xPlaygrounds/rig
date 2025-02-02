@@ -11,12 +11,14 @@
 use crate::{
     completion::{self, CompletionError, CompletionModel, CompletionRequest},
     json_utils,
-    providers::openai::{self, Message},
+    providers::openai::Message,
     OneOrMany,
 };
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+use super::openai::AssistantContent;
 
 // ================================================================
 // Main DeepSeek Client
@@ -97,7 +99,7 @@ impl From<ApiErrorResponse> for CompletionError {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompletionResponse {
     // We'll match the JSON:
-    pub choices: OneOrMany<Choice>,
+    pub choices: Vec<Choice>,
     // you may want usage or other fields
 }
 
@@ -106,58 +108,11 @@ pub struct Choice {
     pub message: Message,
 }
 
-// #[derive(Clone, Debug, Serialize, Deserialize)]
-// #[serde(tag = "role", rename_all = "lowercase")]
-// pub enum Message {
-//     System {
-//         content: String,
-//         name: Option<String>,
-//     },
-//     User {
-//         content: String,
-//         name: Option<String>,
-//     },
-//     Assistant {
-//         content: String,
-//         tool_calls: Option<Vec<DeepSeekToolCall>>,
-//     },
-//     Tool {
-//         tool_call_id: String,
-//         content: String,
-//     },
-// }
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ToolDefinition {
     pub r#type: String,
     pub function: completion::ToolDefinition,
 }
-
-// #[derive(Debug, Deserialize)]
-// pub struct DeepSeekMessage {
-//     pub role: Option<String>,
-//     pub content: Option<String>,
-//     pub tool_calls: Option<Vec<DeepSeekToolCall>>,
-// }
-
-// #[derive(Debug, Deserialize)]
-// pub struct DeepSeekToolCall {
-//     pub id: String,
-//     pub r#type: String,
-//     pub function: DeepSeekFunction,
-// }
-
-// #[derive(Debug, Deserialize)]
-// pub struct DeepSeekFunction {
-//     pub name: String,
-//     pub arguments: String,
-// }
-
-// #[derive(Clone, Debug, Deserialize, Serialize)]
-// pub struct DeepSeekToolDefinition {
-//     pub r#type: String,
-//     pub function: crate::completion::ToolDefinition,
-// }
 
 impl From<crate::completion::ToolDefinition> for ToolDefinition {
     fn from(tool: crate::completion::ToolDefinition) -> Self {
@@ -168,125 +123,58 @@ impl From<crate::completion::ToolDefinition> for ToolDefinition {
     }
 }
 
-// #[derive(Debug, Serialize, Deserialize, Clone)]
-// pub struct Function {
-//     pub name: String,
-//     pub arguments: String,
-// }
-
-// impl TryFrom<message::Message> for Message {
-//     type Error = message::MessageError;
-//     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
-//         Ok(match message {
-//             message::Message::User { content } => Message::User {
-//                 content: content
-//                     .into_iter()
-//                     .map(|content| {
-//                         Ok(match content {
-//                             message::UserContent::Text(message::Text { text }) => text,
-//                             _ => {
-//                                 return Err(message::MessageError::ConversionError(
-//                                     "Only text user content is supported by deepseek".to_owned(),
-//                                 ))
-//                             }
-//                         })
-//                     })
-//                     .collect::<Result<Vec<_>, _>>()?
-//                     .join("\n"),
-//                 name: None,
-//             },
-//             message::Message::Assistant { content } => Message::Assistant {
-//                 content: content
-//                     .into_iter()
-//                     .map(|content| {
-//                         Ok(match content {
-//                             message::AssistantContent::Text(message::Text { text }) => text,
-//                             _ => {
-//                                 return Err(message::MessageError::ConversionError(
-//                                     "Only text assistant content is supported by deepseek"
-//                                         .to_owned(),
-//                                 ))
-//                             }
-//                         })
-//                     })
-//                     .collect::<Result<Vec<_>, _>>()?
-//                     .join("\n"),
-//             },
-//         })
-//     }
-// }
-
-// impl From<Message> for message::Message {
-//     fn from(message: Message) -> Self {
-//         match message {
-//             Message::User { content, .. } => message::Message::user(content),
-//             Message::Assistant { content, .. } => message::Message::assistant(content),
-
-//             Message::Tool {
-//                 tool_call_id,
-//                 content,
-//             } => message::Message::User {
-//                 content: OneOrMany::one(message::UserContent::tool_result(
-//                     tool_call_id,
-//                     OneOrMany::one(content.into()),
-//                 )),
-//             },
-
-//             // System messages should get stripped out when converting message's, this is just a
-//             // stop gap to avoid obnoxious error handling or panic occuring.
-//             Message::System { content, .. } => message::Message::user(content),
-//         }
-//     }
-// }
-
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
-    fn try_from(value: CompletionResponse) -> Result<Self, Self::Error> {
-        match value.choices.first() {
-            Choice {
-                message:
-                    Message::Assistant {
-                        content: Some(content),
-                        ..
-                    },
+    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        let choice = response.choices.first().ok_or_else(|| {
+            CompletionError::ResponseError("Response contained no choices".to_owned())
+        })?;
+        let content = match &choice.message {
+            Message::Assistant {
+                content,
+                tool_calls,
                 ..
             } => {
-                let content_str = content
+                let mut content = content
                     .iter()
                     .map(|c| match c {
-                        openai::AssistantContent::Text { text } => text.clone(),
-                        openai::AssistantContent::Refusal { refusal } => refusal.clone(),
+                        AssistantContent::Text { text } => completion::AssistantContent::text(text),
+                        AssistantContent::Refusal { refusal } => {
+                            completion::AssistantContent::text(refusal)
+                        }
                     })
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::Message(content_str),
-                    raw_response: value,
-                })
+                    .collect::<Vec<_>>();
+
+                content.extend(
+                    tool_calls
+                        .iter()
+                        .map(|call| {
+                            completion::AssistantContent::tool_call(
+                                &call.function.name,
+                                &call.function.name,
+                                call.function.arguments.clone(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                );
+                Ok(content)
             }
-            Choice {
-                message:
-                    Message::Assistant {
-                        tool_calls: Some(tool_calls),
-                        ..
-                    },
-                ..
-            } => {
-                let call = tool_calls.first();
-                Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::ToolCall(
-                        call.function.name.clone(),
-                        "".to_string(),
-                        call.function.arguments,
-                    ),
-                    raw_response: value,
-                })
-            }
-            _ => Err(completion::CompletionError::ResponseError(
+            _ => Err(CompletionError::ResponseError(
                 "Response did not contain a valid message or tool call".into(),
             )),
-        }
+        }?;
+
+        let choice = OneOrMany::many(content).map_err(|_| {
+            CompletionError::ResponseError(
+                "Response contained no message or tool call (empty)".to_owned(),
+            )
+        })?;
+
+        Ok(completion::CompletionResponse {
+            choice,
+            raw_response: response,
+        })
     }
 }
 
@@ -383,20 +271,20 @@ pub const DEEPSEEK_CHAT: &str = "deepseek-chat";
 // Tests
 #[cfg(test)]
 mod tests {
+    use crate::providers::openai;
+
     use super::*;
 
     #[test]
     fn test_deserialize_vec_choice() {
         let data = r#"[{"message":{"role":"assistant","content":"Hello, world!"}}]"#;
-        let choices: OneOrMany<Choice> = serde_json::from_str(data).unwrap();
+        let choices: Vec<Choice> = serde_json::from_str(data).unwrap();
         assert_eq!(choices.len(), 1);
-        match choices.first().message {
-            Message::Assistant { content, .. } => assert_eq!(
-                content.unwrap().first(),
-                openai::AssistantContent::Text {
-                    text: "Hello, world!".to_owned()
-                }
-            ),
+        match &choices.first().unwrap().message {
+            Message::Assistant { content, .. } => match &content[0] {
+                openai::AssistantContent::Text { text } => assert_eq!(text, "Hello, world!"),
+                _ => panic!("Expected text content"),
+            },
             _ => panic!("Expected assistant message"),
         }
     }
@@ -407,13 +295,11 @@ mod tests {
         let jd = &mut serde_json::Deserializer::from_str(data);
         let result: Result<CompletionResponse, _> = serde_path_to_error::deserialize(jd);
         match result {
-            Ok(response) => match response.choices.first().message {
-                Message::Assistant { content, .. } => assert_eq!(
-                    content.unwrap().first(),
-                    openai::AssistantContent::Text {
-                        text: "Hello, world!".to_owned()
-                    }
-                ),
+            Ok(response) => match &response.choices.first().unwrap().message {
+                Message::Assistant { content, .. } => match &content[0] {
+                    openai::AssistantContent::Text { text } => assert_eq!(text, "Hello, world!"),
+                    _ => panic!("Expected text content"),
+                },
                 _ => panic!("Expected assistant message"),
             },
             Err(err) => {
@@ -456,14 +342,16 @@ mod tests {
         "#;
         let jd = &mut serde_json::Deserializer::from_str(data);
         let result: Result<CompletionResponse, _> = serde_path_to_error::deserialize(jd);
+
         match result {
-            Ok(response) => match response.choices.first().message {
-                Message::Assistant { content, .. } => assert_eq!(
-                    content.unwrap().first(),
-                    openai::AssistantContent::Text {
-                        text: "Why don’t skeletons fight each other?  \nBecause they don’t have the guts! 😄".to_owned()
-                    }
-                ),
+            Ok(response) => match &response.choices.first().unwrap().message {
+                Message::Assistant { content, .. } => match &content[0] {
+                    openai::AssistantContent::Text { text } => assert_eq!(
+                        text,
+                        "Why don’t skeletons fight each other?  \nBecause they don’t have the guts! 😄"
+                    ),
+                    _ => panic!("Expected text content"),
+                },
                 _ => panic!("Expected assistant message"),
             },
             Err(err) => {

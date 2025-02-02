@@ -75,6 +75,8 @@ use crate::{
     tool::ToolSetError,
 };
 
+use super::message::AssistantContent;
+
 // Errors
 #[derive(Debug, Error)]
 pub enum CompletionError {
@@ -181,7 +183,7 @@ pub trait Chat: Send + Sync {
     ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
 }
 
-/// Trait defininig a low-level LLM completion interface
+/// Trait defining a low-level LLM completion interface
 pub trait Completion<M: CompletionModel> {
     /// Generates a completion request builder for the given `prompt` and `chat_history`.
     /// This function is meant to be called by the user to further customize the
@@ -206,19 +208,9 @@ pub trait Completion<M: CompletionModel> {
 #[derive(Debug)]
 pub struct CompletionResponse<T> {
     /// The completion choice returned by the completion model provider
-    pub choice: ModelChoice,
+    pub choice: OneOrMany<AssistantContent>,
     /// The raw response returned by the completion model provider
     pub raw_response: T,
-}
-
-/// Enum representing the high-level completion choice returned by the completion model provider.
-#[derive(Debug)]
-pub enum ModelChoice {
-    /// Represents a completion response as a message
-    Message(String),
-    /// Represents a completion response as a tool call of the form
-    /// `ToolCall(function_name, id, function_params)`.
-    ToolCall(String, String, serde_json::Value),
 }
 
 /// Trait defining a completion model that can be used to generate completion responses.

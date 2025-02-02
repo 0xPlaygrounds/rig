@@ -13,7 +13,7 @@ use crate::{
     agent::AgentBuilder,
     completion::{self, message, CompletionError, MessageError},
     extractor::ExtractorBuilder,
-    json_utils,
+    json_utils, OneOrMany,
 };
 
 use schemars::JsonSchema;
@@ -162,17 +162,21 @@ impl std::fmt::Display for Usage {
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
-    fn try_from(value: CompletionResponse) -> Result<Self, Self::Error> {
-        match value.choices.as_slice() {
-            [Choice {
-                message: Message { content, .. },
-                ..
-            }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::Message(content.to_string()),
-                raw_response: value,
+    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        let choice = response.choices.first().ok_or_else(|| {
+            CompletionError::ResponseError("Response contained no choices".to_owned())
+        })?;
+
+        match &choice.message {
+            Message {
+                role: Role::Assistant,
+                content,
+            } => Ok(completion::CompletionResponse {
+                choice: OneOrMany::one(content.clone().into()),
+                raw_response: response,
             }),
             _ => Err(CompletionError::ResponseError(
-                "Response did not contain a message or tool call".into(),
+                "Response contained no assistant message".to_owned(),
             )),
         }
     }

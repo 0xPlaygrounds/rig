@@ -112,9 +112,10 @@ use futures::{stream, StreamExt, TryStreamExt};
 
 use crate::{
     completion::{
-        Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder,
-        CompletionResponse, Document, Message, ModelChoice, Prompt, PromptError,
+        Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
+        Message, Prompt, PromptError,
     },
+    message::AssistantContent,
     streaming::{
         StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingPrompt,
         StreamingResult,
@@ -182,7 +183,8 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
             .messages(chat_history)
             .temperature_opt(self.temperature)
             .max_tokens_opt(self.max_tokens)
-            .additional_params_opt(self.additional_params.clone());
+            .additional_params_opt(self.additional_params.clone())
+            .documents(self.static_context.clone());
 
         let agent = match &rag_text {
             Some(text) => {
@@ -254,11 +256,30 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
                     .await;
 
                 completion_request
-                    .documents([self.static_context.clone(), dynamic_context].concat())
+                    .documents(dynamic_context)
                     .tools([static_tools.clone(), dynamic_tools].concat())
             }
-            None => completion_request,
+            None => {
+                let static_tools = stream::iter(self.static_tools.iter())
+                    .filter_map(|toolname| async move {
+                        if let Some(tool) = self.tools.get(toolname) {
+                            // TODO: tool definitions should likely take an `Option<String>`
+                            Some(tool.definition("".into()).await)
+                        } else {
+                            tracing::warn!(
+                                "Tool implementation not found in toolset: {}",
+                                toolname
+                            );
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .await;
+
+                completion_request.tools(static_tools)
+            }
         };
+
         Ok(agent)
     }
 }
@@ -281,15 +302,18 @@ impl<M: CompletionModel> Chat for Agent<M> {
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
     ) -> Result<String, PromptError> {
-        match self.completion(prompt, chat_history).await?.send().await? {
-            CompletionResponse {
-                choice: ModelChoice::Message(msg),
-                ..
-            } => Ok(msg),
-            CompletionResponse {
-                choice: ModelChoice::ToolCall(toolname, _, args),
-                ..
-            } => Ok(self.tools.call(&toolname, args.to_string()).await?),
+        let resp = self.completion(prompt, chat_history).await?.send().await?;
+
+        // TODO: consider returning a `Message` instead of `String` for parallel responses / tool calls
+        match resp.choice.first() {
+            AssistantContent::Text(text) => Ok(text.text.clone()),
+            AssistantContent::ToolCall(tool_call) => Ok(self
+                .tools
+                .call(
+                    &tool_call.function.name,
+                    tool_call.function.arguments.to_string(),
+                )
+                .await?),
         }
     }
 }

@@ -14,11 +14,14 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     extractor::ExtractorBuilder,
     json_utils,
-    providers::openai::{self, Message},
+    providers::openai::Message,
+    OneOrMany,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+use super::openai::AssistantContent;
 
 // ================================================================
 // Main Hyperbolic Client
@@ -196,51 +199,56 @@ impl From<ApiErrorResponse> for CompletionError {
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
-    fn try_from(value: CompletionResponse) -> Result<Self, Self::Error> {
-        match value.choices.as_slice() {
-            [Choice {
-                message:
-                    Message::Assistant {
-                        content: Some(content),
-                        ..
-                    },
+    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        let choice = response.choices.first().ok_or_else(|| {
+            CompletionError::ResponseError("Response contained no choices".to_owned())
+        })?;
+
+        let content = match &choice.message {
+            Message::Assistant {
+                content,
+                tool_calls,
                 ..
-            }, ..] => {
-                let content_str = content
+            } => {
+                let mut content = content
                     .iter()
                     .map(|c| match c {
-                        openai::AssistantContent::Text { text } => text.clone(),
-                        openai::AssistantContent::Refusal { refusal } => refusal.clone(),
+                        AssistantContent::Text { text } => completion::AssistantContent::text(text),
+                        AssistantContent::Refusal { refusal } => {
+                            completion::AssistantContent::text(refusal)
+                        }
                     })
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::Message(content_str),
-                    raw_response: value,
-                })
-            }
-            [Choice {
-                message:
-                    Message::Assistant {
-                        tool_calls: Some(tool_calls),
-                        ..
-                    },
-                ..
-            }, ..] => {
-                let call = tool_calls.first();
-                Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::ToolCall(
-                        call.function.name.clone(),
-                        "".to_string(),
-                        call.function.arguments,
-                    ),
-                    raw_response: value,
-                })
+                    .collect::<Vec<_>>();
+
+                content.extend(
+                    tool_calls
+                        .iter()
+                        .map(|call| {
+                            completion::AssistantContent::tool_call(
+                                &call.function.name,
+                                &call.function.name,
+                                call.function.arguments.clone(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                );
+                Ok(content)
             }
             _ => Err(CompletionError::ResponseError(
                 "Response did not contain a valid message or tool call".into(),
             )),
-        }
+        }?;
+
+        let choice = OneOrMany::many(content).map_err(|_| {
+            CompletionError::ResponseError(
+                "Response contained no message or tool call (empty)".to_owned(),
+            )
+        })?;
+
+        Ok(completion::CompletionResponse {
+            choice,
+            raw_response: response,
+        })
     }
 }
 

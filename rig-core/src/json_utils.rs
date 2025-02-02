@@ -1,3 +1,10 @@
+use serde::de::{self, Deserializer, SeqAccess, Visitor};
+use serde::Deserialize;
+use std::convert::Infallible;
+use std::fmt;
+use std::marker::PhantomData;
+use std::str::FromStr;
+
 pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
     match (a, b) {
         (serde_json::Value::Object(mut a_map), serde_json::Value::Object(b_map)) => {
@@ -40,6 +47,104 @@ pub mod stringified_json {
         serde_json::from_str(&s).map_err(serde::de::Error::custom)
     }
 }
+
+
+
+pub fn string_or_vec<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    T: Deserialize<'de> + FromStr<Err = Infallible>,
+    D: Deserializer<'de>,
+{
+    struct StringOrVec<T>(PhantomData<fn() -> T>);
+
+    impl<'de, T> Visitor<'de> for StringOrVec<T>
+    where
+        T: Deserialize<'de> + FromStr<Err = Infallible>,
+    {
+        type Value = Vec<T>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a string, sequence, or null")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Vec<T>, E>
+        where
+            E: de::Error,
+        {
+            let item = FromStr::from_str(value).map_err(de::Error::custom)?;
+            Ok(vec![item])
+        }
+
+        fn visit_seq<A>(self, seq: A) -> Result<Vec<T>, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
+        }
+
+        fn visit_none<E>(self) -> Result<Vec<T>, E>
+        where
+            E: de::Error,
+        {
+            Ok(vec![])
+        }
+
+        fn visit_unit<E>(self) -> Result<Vec<T>, E>
+        where
+            E: de::Error,
+        {
+            Ok(vec![])
+        }
+    }
+
+    deserializer.deserialize_any(StringOrVec(PhantomData))
+}
+
+pub fn null_or_vec<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    struct NullOrVec<T>(PhantomData<fn() -> T>);
+
+    impl<'de, T> Visitor<'de> for NullOrVec<T>
+    where
+        T: Deserialize<'de>,
+    {
+        type Value = Vec<T>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a sequence or null")
+        }
+
+        fn visit_seq<A>(self, seq: A) -> Result<Vec<T>, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
+        }
+
+        fn visit_none<E>(self) -> Result<Vec<T>, E>
+        where
+            E: de::Error,
+        {
+            Ok(vec![])
+        }
+
+        fn visit_unit<E>(self) -> Result<Vec<T>, E>
+        where
+            E: de::Error,
+        {
+            Ok(vec![])
+        }
+    }
+
+    deserializer.deserialize_any(NullOrVec(PhantomData))
+}
+
+
+
+
 
 #[cfg(test)]
 mod tests {

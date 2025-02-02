@@ -13,8 +13,8 @@ pub const GEMINI_1_5_PRO_8B: &str = "gemini-1.5-pro-8b";
 pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 
 use gemini_api_types::{
-    Content, ContentCandidate, FunctionDeclaration, GenerateContentRequest,
-    GenerateContentResponse, GenerationConfig, Part, Role, Tool,
+    Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
+    GenerationConfig, Part, Role, Tool,
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
@@ -145,27 +145,41 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
-        match response.candidates.as_slice() {
-            [ContentCandidate { content, .. }, ..] => Ok(completion::CompletionResponse {
-                choice: match content.parts.first() {
-                    Part::Text(text) => completion::ModelChoice::Message(text.clone()),
-                    Part::FunctionCall(function_call) => completion::ModelChoice::ToolCall(
-                        function_call.name.clone(),
-                        function_call.name.clone(),
+        let candidate = response.candidates.get(0).ok_or_else(|| {
+            CompletionError::ResponseError("No response candidates in response".into())
+        })?;
+
+        let content = candidate
+            .content
+            .parts
+            .iter()
+            .map(|part| {
+                Ok(match part {
+                    Part::Text(text) => completion::AssistantContent::text(text),
+                    Part::FunctionCall(function_call) => completion::AssistantContent::tool_call(
+                        &function_call.name,
+                        &function_call.name,
                         function_call.args.clone(),
                     ),
                     _ => {
                         return Err(CompletionError::ResponseError(
-                            "Unsupported response by the model of type ".into(),
+                            "Response did not contain a message or tool call".into(),
                         ))
                     }
-                },
-                raw_response: response,
-            }),
-            _ => Err(CompletionError::ResponseError(
-                "No candidates found in response".into(),
-            )),
-        }
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let choice = OneOrMany::many(content).map_err(|_| {
+            CompletionError::ResponseError(
+                "Response contained no message or tool call (empty)".to_owned(),
+            )
+        })?;
+
+        Ok(completion::CompletionResponse {
+            choice,
+            raw_response: response,
+        })
     }
 }
 

@@ -17,7 +17,7 @@ use crate::{
     extractor::ExtractorBuilder,
     json_utils,
     message::{self, AudioMediaType, ImageDetail},
-    one_or_many::{string_or_one_or_many, string_or_option_one_or_many},
+    one_or_many::string_or_one_or_many,
     Embed, OneOrMany,
 };
 use schemars::JsonSchema;
@@ -381,51 +381,56 @@ impl From<ApiErrorResponse> for CompletionError {
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
-    fn try_from(value: CompletionResponse) -> Result<Self, Self::Error> {
-        match value.choices.as_slice() {
-            [Choice {
-                message:
-                    Message::Assistant {
-                        content: Some(content),
-                        ..
-                    },
+    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        let choice = response.choices.first().ok_or_else(|| {
+            CompletionError::ResponseError("Response contained no choices".to_owned())
+        })?;
+        
+        let content = match &choice.message {
+            Message::Assistant {
+                content,
+                tool_calls,
                 ..
-            }, ..] => {
-                let content_str = content
+            } => {
+                let mut content = content
                     .iter()
                     .map(|c| match c {
-                        AssistantContent::Text { text } => text.clone(),
-                        AssistantContent::Refusal { refusal } => refusal.clone(),
+                        AssistantContent::Text { text } => completion::AssistantContent::text(text),
+                        AssistantContent::Refusal { refusal } => {
+                            completion::AssistantContent::text(refusal)
+                        }
                     })
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::Message(content_str),
-                    raw_response: value,
-                })
-            }
-            [Choice {
-                message:
-                    Message::Assistant {
-                        tool_calls: Some(tool_calls),
-                        ..
-                    },
-                ..
-            }, ..] => {
-                let call = tool_calls.first();
-                Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::ToolCall(
-                        call.function.name.clone(),
-                        "".to_string(),
-                        call.function.arguments,
-                    ),
-                    raw_response: value,
-                })
+                    .collect::<Vec<_>>();
+
+                content.extend(
+                    tool_calls
+                        .iter()
+                        .map(|call| {
+                            completion::AssistantContent::tool_call(
+                                &call.function.name,
+                                &call.function.name,
+                                call.function.arguments.clone(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                );
+                Ok(content)
             }
             _ => Err(CompletionError::ResponseError(
                 "Response did not contain a valid message or tool call".into(),
             )),
-        }
+        }?;
+
+        let choice = OneOrMany::many(content).map_err(|_| {
+            CompletionError::ResponseError(
+                "Response contained no message or tool call (empty)".to_owned(),
+            )
+        })?;
+
+        Ok(completion::CompletionResponse {
+            choice,
+            raw_response: response,
+        })
     }
 }
 
@@ -453,20 +458,21 @@ pub enum Message {
         name: Option<String>,
     },
     Assistant {
-        #[serde(default, deserialize_with = "string_or_option_one_or_many")]
-        content: Option<OneOrMany<AssistantContent>>,
+        #[serde(default, deserialize_with = "json_utils::string_or_vec")]
+        content: Vec<AssistantContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         refusal: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         audio: Option<AudioAssistant>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        tool_calls: Option<OneOrMany<ToolCall>>,
+        #[serde(default, deserialize_with = "json_utils::null_or_vec")]
+        tool_calls: Vec<ToolCall>,
     },
-    Tool {
+    #[serde(rename = "Tool")]
+    ToolResult {
         tool_call_id: String,
-        content: OneOrMany<String>,
+        content: OneOrMany<ToolResultContent>,
     },
 }
 
@@ -527,6 +533,25 @@ pub struct InputAudio {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct ToolResultContent {
+    text: String,
+}
+
+impl FromStr for ToolResultContent {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(s.to_owned().into())
+    }
+}
+
+impl From<String> for ToolResultContent {
+    fn from(s: String) -> Self {
+        ToolResultContent { text: s }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolCall {
     pub id: String,
     #[serde(default)]
@@ -582,11 +607,11 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::UserContent::ToolResult(message::ToolResult {
                                 id,
                                 content,
-                            }) => Ok::<_, message::MessageError>(Message::Tool {
+                            }) => Ok::<_, message::MessageError>(Message::ToolResult {
                                 tool_call_id: id,
                                 content: content.try_map(|content| match content {
                                     message::ToolResultContent::Text(message::Text { text }) => {
-                                        Ok(text)
+                                        Ok(text.into())
                                     }
                                     _ => Err(message::MessageError::ConversionError(
                                         "Tool result content does not support non-text".into(),
@@ -648,29 +673,20 @@ impl TryFrom<message::Message> for Vec<Message> {
                     },
                 );
 
-                let text_content = OneOrMany::many(
-                    text_content
+                // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
+                //  so either `content` or `tool_calls` will have some content.
+                Ok(vec![Message::Assistant {
+                    content: text_content
                         .into_iter()
                         .map(|content| content.text.into())
                         .collect::<Vec<_>>(),
-                )
-                .ok();
-                let tool_calls = OneOrMany::many(
-                    tool_calls
-                        .into_iter()
-                        .map(|tool_call| tool_call.into())
-                        .collect::<Vec<_>>(),
-                )
-                .ok();
-
-                // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall`, so
-                //   either `content` or `tool_calls` will `Some`.
-                Ok(vec![Message::Assistant {
-                    content: text_content,
                     refusal: None,
                     audio: None,
                     name: None,
-                    tool_calls,
+                    tool_calls: tool_calls
+                        .into_iter()
+                        .map(|tool_call| tool_call.into())
+                        .collect::<Vec<_>>(),
                 }])
             }
         }
@@ -715,35 +731,25 @@ impl TryFrom<Message> for message::Message {
                 tool_calls,
                 ..
             } => {
-                let mut content = if let Some(content) = content {
-                    content
+                let mut content = content
+                    .into_iter()
+                    .map(|content| match content {
+                        AssistantContent::Text { text } => message::AssistantContent::text(text),
+
+                        // TODO: Currently, refusals are converted into text, but should be
+                        //  investigated for generalization.
+                        AssistantContent::Refusal { refusal } => {
+                            message::AssistantContent::text(refusal)
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                content.extend(
+                    tool_calls
                         .into_iter()
-                        .map(|content| match content {
-                            AssistantContent::Text { text } => {
-                                message::AssistantContent::text(text)
-                            }
-
-                            // TODO: Currently, refusals are converted into text, but should be
-                            //  investigated for generalization.
-                            AssistantContent::Refusal { refusal } => {
-                                message::AssistantContent::text(refusal)
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                } else {
-                    vec![]
-                };
-
-                if let Some(tool_calls) = tool_calls {
-                    content.extend(
-                        tool_calls
-                            .into_iter()
-                            .map(|tool_call| {
-                                Ok(message::AssistantContent::ToolCall(tool_call.into()))
-                            })
-                            .collect::<Result<Vec<_>, _>>()?,
-                    )
-                };
+                        .map(|tool_call| Ok(message::AssistantContent::ToolCall(tool_call.into())))
+                        .collect::<Result<Vec<_>, _>>()?,
+                );
 
                 message::Message::Assistant {
                     content: OneOrMany::many(content).map_err(|_| {
@@ -755,13 +761,13 @@ impl TryFrom<Message> for message::Message {
                 }
             }
 
-            Message::Tool {
+            Message::ToolResult {
                 tool_call_id,
                 content,
             } => message::Message::User {
                 content: OneOrMany::one(message::UserContent::tool_result(
                     tool_call_id,
-                    content.map(message::ToolResultContent::text),
+                    content.map(|content| message::ToolResultContent::text(content.text)),
                 )),
             },
 
@@ -1066,7 +1072,7 @@ mod tests {
         match assistant_message {
             Message::Assistant { content, .. } => {
                 assert_eq!(
-                    content.unwrap().first(),
+                    content[0],
                     AssistantContent::Text {
                         text: "\n\nHello there, how may I assist you today?".to_string()
                     }
@@ -1082,13 +1088,13 @@ mod tests {
                 ..
             } => {
                 assert_eq!(
-                    content.unwrap().first(),
+                    content[0],
                     AssistantContent::Text {
                         text: "\n\nHello there, how may I assist you today?".to_string()
                     }
                 );
 
-                assert_eq!(tool_calls, None);
+                assert_eq!(tool_calls, vec![]);
             }
             _ => panic!("Expected assistant message"),
         }
@@ -1100,10 +1106,10 @@ mod tests {
                 refusal,
                 ..
             } => {
-                assert!(content.is_none());
+                assert!(content.is_empty());
                 assert!(refusal.is_none());
                 assert_eq!(
-                    tool_calls.unwrap().first(),
+                    tool_calls[0],
                     ToolCall {
                         id: "call_h89ipqYUjEpCPI6SxspMnoUU".to_string(),
                         r#type: ToolType::Function,
@@ -1164,7 +1170,7 @@ mod tests {
         match converted_assistant_message[0].clone() {
             Message::Assistant { content, .. } => {
                 assert_eq!(
-                    content.unwrap().first(),
+                    content[0].clone(),
                     AssistantContent::Text {
                         text: "Hi there!".to_string()
                     }
@@ -1192,13 +1198,13 @@ mod tests {
         };
 
         let assistant_message = Message::Assistant {
-            content: Some(OneOrMany::one(AssistantContent::Text {
+            content: vec![AssistantContent::Text {
                 text: "Hi there!".to_string(),
-            })),
+            }],
             refusal: None,
             audio: None,
             name: None,
-            tool_calls: None,
+            tool_calls: vec![],
         };
 
         let converted_user_message: message::Message = user_message.clone().try_into().unwrap();
