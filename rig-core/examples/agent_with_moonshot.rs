@@ -4,11 +4,11 @@ use rig::{completion::Prompt, providers};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    println!("Running basic agent with mootshot");
-    basic_mootshot().await?;
+    println!("Running basic agent with moonshot");
+    basic_moonshot().await?;
 
-    println!("\nRunning mootshot agent with context");
-    context_mootshot().await?;
+    println!("\nRunning moonshot agent with context");
+    context_moonshot().await?;
 
     println!("\n\nAll agents ran successfully");
     Ok(())
@@ -18,13 +18,13 @@ fn client() -> providers::moonshot::Client {
     providers::moonshot::Client::from_env()
 }
 
-fn partial_agent_mootshot() -> AgentBuilder<CompletionModel> {
+fn partial_agent_moonshot() -> AgentBuilder<CompletionModel> {
     let client = client();
     client.agent(MOONSHOT_CHAT)
 }
 
-async fn basic_mootshot() -> Result<(), anyhow::Error> {
-    let comedian_agent = partial_agent_mootshot()
+async fn basic_moonshot() -> Result<(), anyhow::Error> {
+    let comedian_agent = partial_agent_moonshot()
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 
@@ -35,7 +35,7 @@ async fn basic_mootshot() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-async fn context_mootshot() -> Result<(), anyhow::Error> {
+async fn context_moonshot() -> Result<(), anyhow::Error> {
     let model = client().completion_model(MOONSHOT_CHAT);
 
     // Create an agent with multiple context documents
