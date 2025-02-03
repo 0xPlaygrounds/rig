@@ -48,8 +48,6 @@ pub mod stringified_json {
     }
 }
 
-
-
 pub fn string_or_vec<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     T: Deserialize<'de> + FromStr<Err = Infallible>,
@@ -141,10 +139,6 @@ where
 
     deserializer.deserialize_any(NullOrVec(PhantomData))
 }
-
-
-
-
 
 #[cfg(test)]
 mod tests {

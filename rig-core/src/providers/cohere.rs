@@ -326,13 +326,16 @@ impl From<CompletionResponse> for completion::CompletionResponse<CompletionRespo
         } = &response;
 
         let model_response = if !tool_calls.is_empty() {
-            tool_calls.iter().map(|tool_call| {
-                completion::AssistantContent::tool_call(
-                    tool_call.name.clone(),
-                    tool_call.name.clone(),
-                    tool_call.parameters.clone(),
-                )
-            }).collect::<Vec<_>>()
+            tool_calls
+                .iter()
+                .map(|tool_call| {
+                    completion::AssistantContent::tool_call(
+                        tool_call.name.clone(),
+                        tool_call.name.clone(),
+                        tool_call.parameters.clone(),
+                    )
+                })
+                .collect::<Vec<_>>()
         } else {
             vec![completion::AssistantContent::text(text.clone())]
         };

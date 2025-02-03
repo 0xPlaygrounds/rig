@@ -385,7 +385,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
-        
+
         let content = match &choice.message {
             Message::Assistant {
                 content,

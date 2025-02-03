@@ -116,10 +116,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
-        return Ok(completion::CompletionResponse {
+        Ok(completion::CompletionResponse {
             choice,
             raw_response: response,
-        });
+        })
     }
 }
 

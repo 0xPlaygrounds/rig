@@ -145,7 +145,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
-        let candidate = response.candidates.get(0).ok_or_else(|| {
+        let candidate = response.candidates.first().ok_or_else(|| {
             CompletionError::ResponseError("No response candidates in response".into())
         })?;
 

@@ -9,7 +9,7 @@
 //! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_CHAT);
 //! ```
 use crate::{
-    completion::{self, CompletionModel, CompletionRequest, CompletionError},
+    completion::{self, CompletionError, CompletionModel, CompletionRequest},
     extractor::ExtractorBuilder,
     json_utils,
     providers::openai::Message,
