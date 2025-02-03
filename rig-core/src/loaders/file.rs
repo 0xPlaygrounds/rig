@@ -268,6 +268,6 @@ mod tests {
         expected.sort();
 
         assert!(!actual.is_empty());
-        assert!(expected == actual)
+        assert_eq!(expected, actual);
     }
 }
