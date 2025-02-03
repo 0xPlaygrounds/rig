@@ -510,16 +510,27 @@ impl completion::CompletionModel for CompletionModel {
             json!({
                 "model": self.model,
                 "messages": full_history,
-                "temperature": completion_request.temperature,
+
             })
         } else {
             json!({
                 "model": self.model,
                 "messages": full_history,
-                "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
                 "tool_choice": "auto",
             })
+        };
+
+        // o3-mini doesn't support temperature value
+        let request = if !self.model.starts_with("o3-mini") {
+            json_utils::merge(
+                request,
+                json!({
+                    "temperature": completion_request.temperature,
+                }),
+            )
+        } else {
+            request
         };
 
         let response = self
