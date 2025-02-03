@@ -48,6 +48,7 @@ pub mod cohere;
 pub mod deepseek;
 pub mod galadriel;
 pub mod gemini;
+pub mod groq;
 pub mod hyperbolic;
 pub mod openai;
 pub mod perplexity;
