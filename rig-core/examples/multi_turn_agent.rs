@@ -42,21 +42,20 @@ impl<M: rig::completion::CompletionModel> MultiTurnAgent<M> {
                         };
                         self.chat_history.push(response_message);
                     }
-                    AssistantContent::ToolCall(ToolCall {
-                        id,
-                        function: ToolFunction { name, arguments },
-                    }) => {
+                    AssistantContent::ToolCall(content) => {
                         self.chat_history.push(current_prompt.clone());
-                        let tool_call_msg = Message::Assistant {
-                            content: OneOrMany::one(AssistantContent::tool_call(
-                                &id,
-                                &name,
-                                arguments.clone(),
-                            )),
-                        };
+                        let tool_call_msg = AssistantContent::ToolCall(content.clone());
                         println!("Tool Call Msg: {:?}\n", tool_call_msg);
 
-                        self.chat_history.push(tool_call_msg);
+                        self.chat_history.push(Message::Assistant {
+                            content: OneOrMany::one(tool_call_msg),
+                        });
+
+                        let ToolCall {
+                            id,
+                            function: ToolFunction { name, arguments },
+                        } = content;
+
                         let tool_result =
                             self.agent.tools.call(&name, arguments.to_string()).await?;
 

@@ -204,10 +204,11 @@ pub trait Completion<M: CompletionModel> {
 }
 
 /// General completion response struct that contains the high-level completion choice
-/// and the raw response.
+/// and the raw response. The completion choice contains one or more assistant content.
 #[derive(Debug)]
 pub struct CompletionResponse<T> {
-    /// The completion choice returned by the completion model provider
+    /// The completion choice (represented by one or more assistant message content)
+    /// returned by the completion model provider
     pub choice: OneOrMany<AssistantContent>,
     /// The raw response returned by the completion model provider
     pub raw_response: T,
