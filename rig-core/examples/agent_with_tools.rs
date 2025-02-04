@@ -47,6 +47,7 @@ impl Tool for Adder {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        println!("[tool-call] Adding {} and {}", args.x, args.y);
         let result = args.x + args.y;
         Ok(result)
     }
@@ -70,11 +71,11 @@ impl Tool for Subtract {
                 "properties": {
                     "x": {
                         "type": "number",
-                        "description": "The number to substract from"
+                        "description": "The number to subtract from"
                     },
                     "y": {
                         "type": "number",
-                        "description": "The number to substract"
+                        "description": "The number to subtract"
                     }
                 }
             }
@@ -83,6 +84,7 @@ impl Tool for Subtract {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        println!("[tool-call] Subtracting {} from {}", args.y, args.x);
         let result = args.x - args.y;
         Ok(result)
     }
@@ -105,7 +107,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Prompt the agent and print the response
     println!("Calculate 2 - 5");
     println!(
-        "Calculator Agent: {}",
+        "OpenAI Calculator Agent: {}",
         calculator_agent.prompt("Calculate 2 - 5").await?
     );
 

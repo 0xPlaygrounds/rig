@@ -116,7 +116,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .get_index(model, "vector_index", SearchParams::default())
         .await?;
 
-    // The struct that will reprensent a node in the database. Used to deserialize the results of the query (passed to the `top_n` methods)
+    // The struct that will represent a node in the database. Used to deserialize the results of the query (passed to the `top_n` methods)
     // ❗IMPORTANT: The field names must match the property names in the database
     #[derive(serde::Deserialize)]
     struct Document {

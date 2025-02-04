@@ -8,6 +8,7 @@
 //! - Google Gemini
 //! - xAI
 //! - EternalAI
+//! - DeepSeek
 //!
 //! Each provider has its own module, which contains a `Client` implementation that can
 //! be used to initialize completion and embedding models and execute requests to those models.
@@ -44,8 +45,10 @@
 //! be used with the Cohere provider client.
 pub mod anthropic;
 pub mod cohere;
-pub mod eternalai;
+pub mod deepseek;
+pub mod galadriel;
 pub mod gemini;
+pub mod hyperbolic;
 pub mod openai;
 pub mod perplexity;
 pub mod xai;
