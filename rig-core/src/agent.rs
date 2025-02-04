@@ -115,11 +115,15 @@ use crate::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder,
         CompletionResponse, Document, Message, ModelChoice, Prompt, PromptError,
     },
+    streaming::{
+        StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingPrompt,
+        StreamingResult,
+    },
     tool::{Tool, ToolSet},
     vector_store::{VectorStoreError, VectorStoreIndexDyn},
 };
 
-/// Struct reprensenting an LLM agent. An agent is an LLM model combined with a preamble
+/// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
 /// (i.e.: system prompt) and a static set of context documents and tools.
 /// All context documents and tools are always provided to the agent when prompted.
 ///
@@ -423,5 +427,36 @@ impl<M: CompletionModel> AgentBuilder<M> {
             dynamic_tools: self.dynamic_tools,
             tools: self.tools,
         }
+    }
+}
+
+impl<M: StreamingCompletionModel> StreamingCompletion<M> for Agent<M> {
+    async fn stream_completion(
+        &self,
+        prompt: &str,
+        chat_history: Vec<Message>,
+    ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
+        // Reuse the existing completion implementation to build the request
+        // This ensures streaming and non-streaming use the same request building logic
+        self.completion(prompt, chat_history).await
+    }
+}
+
+impl<M: StreamingCompletionModel> StreamingPrompt for Agent<M> {
+    async fn stream_prompt(&self, prompt: &str) -> Result<StreamingResult, CompletionError> {
+        self.stream_chat(prompt, vec![]).await
+    }
+}
+
+impl<M: StreamingCompletionModel> StreamingChat for Agent<M> {
+    async fn stream_chat(
+        &self,
+        prompt: &str,
+        chat_history: Vec<Message>,
+    ) -> Result<StreamingResult, CompletionError> {
+        self.stream_completion(prompt, chat_history)
+            .await?
+            .stream()
+            .await
     }
 }

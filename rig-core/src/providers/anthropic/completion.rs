@@ -104,7 +104,7 @@ pub enum CacheControl {
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
-    fn try_from(response: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
+    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
         if let Some(tool_use) = response.content.iter().find_map(|content| match content {
             Content::ToolUse {
                 name, input, id, ..
@@ -151,9 +151,9 @@ impl From<completion::Message> for Message {
 
 #[derive(Clone)]
 pub struct CompletionModel {
-    client: Client,
+    pub(crate) client: Client,
     pub model: String,
-    default_max_tokens: Option<u64>,
+    pub default_max_tokens: Option<u64>,
 }
 
 impl CompletionModel {
@@ -166,7 +166,7 @@ impl CompletionModel {
     }
 }
 
-/// Anthropic requires a `max_tokens` parameter to be set, which is dependant on the model. If not
+/// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on the models
 /// available at the time of writing.
 ///
@@ -191,7 +191,7 @@ struct Metadata {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum ToolChoice {
+pub enum ToolChoice {
     Auto,
     Any,
     Tool { name: String },
