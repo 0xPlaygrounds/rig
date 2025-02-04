@@ -246,6 +246,52 @@ pub trait CompletionModel: Clone + Send + Sync {
     }
 }
 
+/// A way to get the final prompt of a completion request.
+///
+/// Example usage:
+/// ```rust
+/// use rig::{
+///     providers::openai::{Client, self},
+///     completion::CompletionRequestBuilder,
+/// };
+///
+/// let openai = Client::new("your-openai-api-key");
+/// let model = openai.completion_model(openai::GPT_4O).build();
+///
+/// // Create the completion request and execute it separately
+/// let request = CompletionRequestBuilder::new(model, "Who are you?".to_string())
+///     .preamble("You are Marvin from the Hitchhiker's Guide to the Galaxy.".to_string())
+///     .temperature(0.5)
+///     .build();
+///
+/// let prompt_data = PromptData::from_completion_request(&request);
+/// println!("Preamble: {:?}\n\nPrompt: {:?}", prompt_data.preamble(), prompt_data.prompt())
+///
+/// // .. the rest of your code here
+/// ```
+pub struct PromptData {
+    preamble: Option<String>,
+    prompt: String,
+}
+
+impl PromptData {
+    pub fn from_completion_request(req: &CompletionRequest) -> Self {
+        let preamble = req.preamble.to_owned();
+        // Add context documents to chat history
+        let prompt = req.prompt_with_context();
+
+        Self { preamble, prompt }
+    }
+
+    pub fn preamble<'a>(&'a self) -> &'a Option<String> {
+        &self.preamble
+    }
+
+    pub fn prompt<'a>(&'a self) -> &'a str {
+        &self.prompt
+    }
+}
+
 /// Struct representing a general completion request that can be sent to a completion model provider.
 pub struct CompletionRequest {
     /// The prompt to be sent to the completion model provider
