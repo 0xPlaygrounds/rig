@@ -102,6 +102,46 @@ where
     Prompt::new(model)
 }
 
+pub struct TracePrompt<P, In> {
+    prompt: P,
+    _in: std::marker::PhantomData<In>,
+}
+
+impl<P, In> TracePrompt<P, In> {
+    pub(crate) fn new(prompt: P) -> Self {
+        Self {
+            prompt,
+            _in: std::marker::PhantomData,
+        }
+    }
+}
+
+/// Create a new prompt operation.
+///
+/// The op will prompt the `model` with the input and return the response.
+pub fn prompt_with_tracing<P, In>(model: P) -> TracePrompt<P, In>
+where
+    P: completion::Prompt,
+    In: Into<String> + Send + Sync,
+{
+    TracePrompt::new(model)
+}
+
+impl<P, In> Op for TracePrompt<P, In>
+where
+    P: completion::Prompt,
+    In: Into<String> + Send + Sync,
+{
+    type Input = In;
+    type Output = Result<String, completion::PromptError>;
+
+    async fn call(&self, input: Self::Input) -> Self::Output {
+        let prompt: String = input.into();
+        tracing::info!("Sending prompt: {prompt}");
+        self.prompt.prompt(&prompt).await
+    }
+}
+
 pub struct Extract<M, Input, Output>
 where
     M: CompletionModel,
