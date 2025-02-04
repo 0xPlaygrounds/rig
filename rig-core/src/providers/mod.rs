@@ -49,6 +49,7 @@ pub mod deepseek;
 pub mod galadriel;
 pub mod gemini;
 pub mod hyperbolic;
+pub mod moonshot;
 pub mod openai;
 pub mod perplexity;
 pub mod xai;
