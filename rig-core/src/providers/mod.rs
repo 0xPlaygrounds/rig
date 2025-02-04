@@ -46,7 +46,7 @@ pub mod anthropic;
 pub mod cohere;
 pub mod eternalai;
 pub mod gemini;
+pub mod moonshot;
 pub mod openai;
 pub mod perplexity;
 pub mod xai;
-pub mod moonshot;

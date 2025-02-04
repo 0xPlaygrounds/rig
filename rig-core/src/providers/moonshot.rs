@@ -18,7 +18,6 @@ use crate::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::time::Duration;
 
 // ================================================================
 // Main Moonshot Client
@@ -52,7 +51,6 @@ impl Client {
                     );
                     headers
                 })
-                .timeout(Duration::from_secs(120))
                 .build()
                 .expect("Moonshot reqwest client should build"),
         }
