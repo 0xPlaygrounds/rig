@@ -1,0 +1,20 @@
+[package]
+name = "rig-fastembed"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rig-core = { path = "../rig-core", version = "0.7.0" }
+serde = { version = "1.0.193", features = ["derive"] }
+serde_json = "1.0.108"
+tracing = "0.1.40"
+schemars = "0.8.16"
+fastembed = "4.4.0"
+
+[dev-dependencies]
+anyhow = "1.0.75"
+tokio = { version = "1.34.0", features = ["full"] }
+
+[[example]]
+name = "rig-fastembed"
+required-features = ["rig-core/derive"]
