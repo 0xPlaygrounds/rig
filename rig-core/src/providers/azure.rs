@@ -31,15 +31,14 @@ pub struct Client {
 }
 
 impl Client {
-    /// Create a new Azure OpenAI client with the given API key.
+    /// Creates a new Azure OpenAI client.
+    ///
+    /// # Arguments
+    ///
+    /// * `api_key` - Azure OpenAI API key required for authentication
+    /// * `api_version` - API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
+    /// * `azure_endpoint` - Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
     pub fn new(api_key: &str, api_version: &str, azure_endpoint: &str) -> Self {
-        let azure_endpoint = azure_endpoint.trim().trim_end_matches("/");
-        // Validate the endpoint format
-        if !azure_endpoint.starts_with("https://") || !azure_endpoint.ends_with(".openai.azure.com")
-        {
-            panic!("Azure endpoint does not match the https://your-resource-name.openai.azure.com pattern");
-        }
-
         Self {
             api_version: api_version.to_string(),
             azure_endpoint: azure_endpoint.to_string(),
