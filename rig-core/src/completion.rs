@@ -283,11 +283,11 @@ impl PromptData {
         Self { preamble, prompt }
     }
 
-    pub fn preamble<'a>(&'a self) -> &'a Option<String> {
-        &self.preamble
+    pub fn preamble(&self) -> Option<String> {
+        self.preamble.to_owned()
     }
 
-    pub fn prompt<'a>(&'a self) -> &'a str {
+    pub fn prompt(&self) -> &str {
         &self.prompt
     }
 }
