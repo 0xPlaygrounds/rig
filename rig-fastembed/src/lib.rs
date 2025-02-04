@@ -17,7 +17,7 @@ impl Default for Client {
 }
 
 impl Client {
-    /// Create a new OpenAI client with the given API key.
+    /// Create a new Fastembed client.
     pub fn new() -> Self {
         Self
     }
@@ -28,12 +28,12 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::openai::{Client, self};
+    /// use rig_fastembed::{Client, FastembedModel};
     ///
     /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key");
+    /// let fastembed_client = Client::new("your-open-ai-api-key");
     ///
-    /// let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_3_LARGE);
+    /// let embedding_model = fastembed_client.embedding_model(&FastembedModel::AllMiniLML6V2Q);
     /// ```
     pub fn embedding_model(&self, model: &FastembedModel) -> EmbeddingModel {
         let ndims = fetch_model_ndims(model);
@@ -45,12 +45,12 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::openai::{Client, self};
+    /// use rig_fastembed::{Client, FastembedModel};
     ///
-    /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key");
+    /// // Initialize the Fastembed client
+    /// let fastembed_client = Client::new();
     ///
-    /// let embeddings = openai.embeddings(openai::TEXT_EMBEDDING_3_LARGE)
+    /// let embeddings = fastembed_client.embeddings(FastembedModel::AllMiniLML6V2Q)
     ///     .simple_document("doc0", "Hello, world!")
     ///     .simple_document("doc1", "Goodbye, world!")
     ///     .build()
