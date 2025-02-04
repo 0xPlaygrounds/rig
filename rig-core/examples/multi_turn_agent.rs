@@ -31,8 +31,8 @@ impl<M: rig::completion::CompletionModel> MultiTurnAgent<M> {
 
             let mut final_text = None;
 
-            for choice in resp.choice.into_iter() {
-                match choice {
+            for content in resp.choice.into_iter() {
+                match content {
                     AssistantContent::Text(text) => {
                         println!("Intermediate Response: {:?}\n", text.text);
                         final_text = Some(text.text.clone());
