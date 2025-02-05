@@ -521,12 +521,13 @@ impl completion::CompletionModel for CompletionModel {
             })
         };
 
-        // o3-mini doesn't support temperature value
-        let request = if !self.model.starts_with("o3-mini") {
+        // only include temperature if it exists
+        // because some models don't support temperature
+        let request = if let Some(temperature) = completion_request.temperature {
             json_utils::merge(
                 request,
                 json!({
-                    "temperature": completion_request.temperature,
+                    "temperature": temperature,
                 }),
             )
         } else {
