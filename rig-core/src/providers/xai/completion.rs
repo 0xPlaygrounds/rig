@@ -6,6 +6,7 @@
 use crate::{
     completion::{self, CompletionError},
     json_utils,
+    providers::openai::Message,
 };
 
 use serde_json::json;
@@ -41,35 +42,41 @@ impl completion::CompletionModel for CompletionModel {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
-        mut completion_request: completion::CompletionRequest,
+        completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let mut messages = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
-                role: "system".into(),
-                content: preamble.clone(),
-            }]
-        } else {
-            vec![]
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<Message> = match &completion_request.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
         };
-        messages.append(&mut completion_request.chat_history);
 
-        let prompt_with_context = completion_request.prompt_with_context();
+        // Convert prompt to user message
+        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
 
-        messages.push(completion::Message {
-            role: "user".into(),
-            content: prompt_with_context,
-        });
+        // Convert existing chat history
+        let chat_history: Vec<Message> = completion_request
+            .chat_history
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        // Combine all messages into a single history
+        full_history.extend(chat_history);
+        full_history.extend(prompt);
 
         let mut request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
-                "messages": messages,
+                "messages": full_history,
                 "temperature": completion_request.temperature,
             })
         } else {
             json!({
                 "model": self.model,
-                "messages": messages,
+                "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
                 "tool_choice": "auto",
@@ -104,48 +111,63 @@ pub mod xai_api_types {
     use serde::{Deserialize, Serialize};
 
     use crate::completion::{self, CompletionError};
+    use crate::providers::openai::{AssistantContent, Message};
+    use crate::OneOrMany;
 
     impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
         type Error = CompletionError;
 
-        fn try_from(value: CompletionResponse) -> Result<Self, Self::Error> {
-            match value.choices.as_slice() {
-                [Choice {
-                    message:
-                        Message {
-                            content: Some(content),
-                            ..
-                        },
+        fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+            let choice = response.choices.first().ok_or_else(|| {
+                CompletionError::ResponseError("Response contained no choices".to_owned())
+            })?;
+            let content = match &choice.message {
+                Message::Assistant {
+                    content,
+                    tool_calls,
                     ..
-                }, ..] => Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::Message(content.to_string()),
-                    raw_response: value,
-                }),
-                [Choice {
-                    message:
-                        Message {
-                            tool_calls: Some(calls),
-                            ..
-                        },
-                    ..
-                }, ..] => {
-                    let call = calls.first().ok_or(CompletionError::ResponseError(
-                        "Tool selection is empty".into(),
-                    ))?;
+                } => {
+                    let mut content = content
+                        .iter()
+                        .map(|c| match c {
+                            AssistantContent::Text { text } => {
+                                completion::AssistantContent::text(text)
+                            }
+                            AssistantContent::Refusal { refusal } => {
+                                completion::AssistantContent::text(refusal)
+                            }
+                        })
+                        .collect::<Vec<_>>();
 
-                    Ok(completion::CompletionResponse {
-                        choice: completion::ModelChoice::ToolCall(
-                            call.function.name.clone(),
-                            "".to_owned(),
-                            serde_json::from_str(&call.function.arguments)?,
-                        ),
-                        raw_response: value,
-                    })
+                    content.extend(
+                        tool_calls
+                            .iter()
+                            .map(|call| {
+                                completion::AssistantContent::tool_call(
+                                    &call.function.name,
+                                    &call.function.name,
+                                    call.function.arguments.clone(),
+                                )
+                            })
+                            .collect::<Vec<_>>(),
+                    );
+                    Ok(content)
                 }
                 _ => Err(CompletionError::ResponseError(
-                    "Response did not contain a message or tool call".into(),
+                    "Response did not contain a valid message or tool call".into(),
                 )),
-            }
+            }?;
+
+            let choice = OneOrMany::many(content).map_err(|_| {
+                CompletionError::ResponseError(
+                    "Response contained no message or tool call (empty)".to_owned(),
+                )
+            })?;
+
+            Ok(completion::CompletionResponse {
+                choice,
+                raw_response: response,
+            })
         }
     }
 
@@ -156,13 +178,6 @@ pub mod xai_api_types {
                 function: tool,
             }
         }
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct ToolCall {
-        pub id: String,
-        pub r#type: String,
-        pub function: Function,
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -193,13 +208,6 @@ pub mod xai_api_types {
         pub finish_reason: String,
         pub index: i32,
         pub message: Message,
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct Message {
-        pub role: String,
-        pub content: Option<String>,
-        pub tool_calls: Option<Vec<ToolCall>>,
     }
 
     #[derive(Debug, Deserialize)]

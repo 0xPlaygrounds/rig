@@ -15,7 +15,7 @@ use crate::{
     completion::{self, CompletionError},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     extractor::ExtractorBuilder,
-    json_utils, Embed,
+    json_utils, message, Embed, OneOrMany,
 };
 
 use schemars::JsonSchema;
@@ -326,17 +326,22 @@ impl From<CompletionResponse> for completion::CompletionResponse<CompletionRespo
         } = &response;
 
         let model_response = if !tool_calls.is_empty() {
-            completion::ModelChoice::ToolCall(
-                tool_calls.first().unwrap().name.clone(),
-                "".to_owned(),
-                tool_calls.first().unwrap().parameters.clone(),
-            )
+            tool_calls
+                .iter()
+                .map(|tool_call| {
+                    completion::AssistantContent::tool_call(
+                        tool_call.name.clone(),
+                        tool_call.name.clone(),
+                        tool_call.parameters.clone(),
+                    )
+                })
+                .collect::<Vec<_>>()
         } else {
-            completion::ModelChoice::Message(text.clone())
+            vec![completion::AssistantContent::text(text.clone())]
         };
 
         completion::CompletionResponse {
-            choice: model_response,
+            choice: OneOrMany::many(model_response).expect("There is atleast one content"),
             raw_response: response,
         }
     }
@@ -379,7 +384,7 @@ pub struct Connector {
     pub id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ToolCall {
     pub name: String,
     pub parameters: serde_json::Value,
@@ -477,21 +482,59 @@ impl From<completion::ToolDefinition> for ToolDefinition {
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct Message {
-    pub role: String,
-    pub message: String,
+#[serde(tag = "role", rename_all = "UPPERCASE")]
+pub enum Message {
+    User {
+        message: String,
+        tool_calls: Vec<ToolCall>,
+    },
+
+    Chatbot {
+        message: String,
+        tool_calls: Vec<ToolCall>,
+    },
+
+    Tool {
+        tool_results: Vec<ToolResult>,
+    },
+
+    /// According to the documentation, this message type should not be used
+    System {
+        content: String,
+        tool_calls: Vec<ToolCall>,
+    },
 }
 
-impl From<completion::Message> for Message {
-    fn from(message: completion::Message) -> Self {
-        Self {
-            role: match message.role.as_str() {
-                "system" => "SYSTEM".to_owned(),
-                "user" => "USER".to_owned(),
-                "assistant" => "CHATBOT".to_owned(),
-                _ => "USER".to_owned(),
-            },
-            message: message.content,
+#[derive(Deserialize, Serialize)]
+pub struct ToolResult {
+    pub call: ToolCall,
+    pub outputs: Vec<serde_json::Value>,
+}
+
+impl TryFrom<message::Message> for Vec<Message> {
+    type Error = message::MessageError;
+
+    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
+        match message {
+            message::Message::User { content } => content
+                .into_iter()
+                .map(|content| {
+                    Ok(Message::User {
+                        message: match content {
+                            message::UserContent::Text(message::Text { text }) => text,
+                            _ => {
+                                return Err(message::MessageError::ConversionError(
+                                    "Only text content is supported by Cohere".to_owned(),
+                                ))
+                            }
+                        },
+                        tool_calls: vec![],
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>(),
+            _ => Err(message::MessageError::ConversionError(
+                "Only user messages are supported by Cohere".to_owned(),
+            )),
         }
     }
 }
@@ -519,12 +562,38 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let chat_history = completion_request
+            .chat_history
+            .into_iter()
+            .map(Vec::<Message>::try_from)
+            .collect::<Result<Vec<Vec<_>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+        let message = match completion_request.prompt {
+            message::Message::User { content } => Ok(content
+                .into_iter()
+                .map(|content| match content {
+                    message::UserContent::Text(message::Text { text }) => Ok(text),
+                    _ => Err(CompletionError::RequestError(
+                        "Only text content is supported by Cohere".into(),
+                    )),
+                })
+                .collect::<Result<Vec<_>, _>>()?
+                .join("\n")),
+
+            _ => Err(CompletionError::RequestError(
+                "Only user messages are supported by Cohere".into(),
+            )),
+        }?;
+
         let request = json!({
             "model": self.model,
             "preamble": completion_request.preamble,
-            "message": completion_request.prompt,
+            "message": message,
             "documents": completion_request.documents,
-            "chat_history": completion_request.chat_history.into_iter().map(Message::from).collect::<Vec<_>>(),
+            "chat_history": chat_history,
             "temperature": completion_request.temperature,
             "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
         });
