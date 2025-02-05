@@ -92,6 +92,11 @@ impl Tool for Subtract {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_target(false)
+        .init();
+
     // Create OpenAI client
     let openai_client = providers::openai::Client::from_env();
 

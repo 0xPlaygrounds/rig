@@ -3,7 +3,8 @@ use std::env;
 use rig::{
     agent::{Agent, AgentBuilder},
     cli_chatbot::cli_chatbot,
-    completion::{Chat, CompletionModel, Message, PromptError},
+    completion::{Chat, CompletionModel, PromptError},
+    message::Message,
     providers::openai::Client as OpenAIClient,
 };
 
@@ -34,7 +35,11 @@ impl<M: CompletionModel> EnglishTranslator<M> {
 }
 
 impl<M: CompletionModel> Chat for EnglishTranslator<M> {
-    async fn chat(&self, prompt: &str, chat_history: Vec<Message>) -> Result<String, PromptError> {
+    async fn chat(
+        &self,
+        prompt: impl Into<Message> + Send,
+        chat_history: Vec<Message>,
+    ) -> Result<String, PromptError> {
         // Translate the prompt using the translator agent
         let translated_prompt = self
             .translator_agent
@@ -44,7 +49,9 @@ impl<M: CompletionModel> Chat for EnglishTranslator<M> {
         println!("Translated prompt: {}", translated_prompt);
 
         // Answer the prompt using gpt4
-        self.gpt4.chat(&translated_prompt, chat_history).await
+        self.gpt4
+            .chat(translated_prompt.as_str(), chat_history)
+            .await
     }
 }
 

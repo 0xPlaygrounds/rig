@@ -37,6 +37,8 @@ assert_fs = "1.1.2"
 tokio = { version = "1.34.0", features = ["full"] }
 tracing-subscriber = "0.3.18"
 tokio-test = "0.4.4"
+serde_path_to_error = "0.1.16"
+base64 = "0.22.1"
 
 [features]
 all = ["derive", "pdf", "rayon"]
@@ -67,4 +69,8 @@ required-features = ["derive"]
 
 [[example]]
 name = "xai_embeddings"
+required-features = ["derive"]
+
+[[example]]
+name = "agent_with_moonshot"
 required-features = ["derive"]
