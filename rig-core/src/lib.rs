@@ -63,7 +63,9 @@
 //! - Cohere
 //! - Anthropic
 //! - Perplexity
-//! - Gemini
+//! - Google Gemini
+//! - xAI
+//! - DeepSeek
 //!
 //! You can also implement your own model provider integration by defining types that
 //! implement the [CompletionModel](crate::completion::CompletionModel) and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits.
@@ -88,10 +90,12 @@ pub mod loaders;
 pub mod one_or_many;
 pub mod pipeline;
 pub mod providers;
+pub mod streaming;
 pub mod tool;
 pub mod vector_store;
 
 // Re-export commonly used types and traits
+pub use completion::message;
 pub use embeddings::Embed;
 pub use one_or_many::{EmptyListError, OneOrMany};
 

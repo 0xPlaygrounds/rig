@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.1.2...rig-sqlite-v0.1.3) - 2025-01-27
+
+### Fixed
+
+- *(rig-sqlite)* Use tokio-rusqlite from crates.io instead of custom crate (#158)
+
+### Other
+
+- *(rig-sqlite)* Add integration test (#202)
+
 ## [0.1.2](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.1.1...rig-sqlite-v0.1.2) - 2025-01-13
 
 ### Other
