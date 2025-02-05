@@ -70,7 +70,10 @@ impl<T: Clone> OneOrMany<T> {
     }
 
     /// Create a `OneOrMany` object with a vector of items of any type.
-    pub fn many(items: Vec<T>) -> Result<Self, EmptyListError> {
+    pub fn many<I>(items: I) -> Result<Self, EmptyListError>
+    where
+        I: IntoIterator<Item = T>,
+    {
         let mut iter = items.into_iter();
         Ok(OneOrMany {
             first: match iter.next() {
@@ -82,7 +85,10 @@ impl<T: Clone> OneOrMany<T> {
     }
 
     /// Merge a list of OneOrMany items into a single OneOrMany item.
-    pub fn merge(one_or_many_items: Vec<OneOrMany<T>>) -> Result<Self, EmptyListError> {
+    pub fn merge<I>(one_or_many_items: I) -> Result<Self, EmptyListError>
+    where
+        I: IntoIterator<Item = OneOrMany<T>>,
+    {
         let items = one_or_many_items
             .into_iter()
             .flat_map(|one_or_many| one_or_many.into_iter())
