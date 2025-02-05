@@ -110,6 +110,9 @@ Vector stores are available as separate companion-crates:
 - Qdrant vector store: [`rig-qdrant`](https://github.com/0xPlaygrounds/rig/tree/main/rig-qdrant)
 - SQLite vector store: [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/rig-sqlite)
 
+The following providers are available as separate companion-crates:
+- Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/rig-fastembed)
+
 
 <p align="center">
 <br>
