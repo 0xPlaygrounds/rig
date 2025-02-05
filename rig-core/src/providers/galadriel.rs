@@ -14,11 +14,13 @@ use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
     extractor::ExtractorBuilder,
-    json_utils,
+    json_utils, message, OneOrMany,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+use super::openai;
 
 // ================================================================
 // Main Galadriel Client
@@ -222,44 +224,35 @@ impl From<ApiErrorResponse> for CompletionError {
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
-    fn try_from(value: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
-        match value.choices.as_slice() {
-            [Choice {
-                message:
-                    Message {
-                        tool_calls: Some(calls),
-                        ..
-                    },
-                ..
-            }, ..] => {
-                let call = calls.first().ok_or(CompletionError::ResponseError(
-                    "Tool selection is empty".into(),
-                ))?;
+    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        let Choice { message, .. } = response.choices.first().ok_or_else(|| {
+            CompletionError::ResponseError("Response contained no choices".to_owned())
+        })?;
 
-                Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::ToolCall(
-                        call.function.name.clone(),
-                        "".to_owned(),
-                        serde_json::from_str(&call.function.arguments)?,
-                    ),
-                    raw_response: value,
-                })
-            }
-            [Choice {
-                message:
-                    Message {
-                        content: Some(content),
-                        ..
-                    },
-                ..
-            }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::Message(content.to_string()),
-                raw_response: value,
-            }),
-            _ => Err(CompletionError::ResponseError(
-                "Response did not contain a message or tool call".into(),
-            )),
-        }
+        let mut content = message
+            .content
+            .as_ref()
+            .map(|c| vec![completion::AssistantContent::text(c)])
+            .unwrap_or_default();
+
+        content.extend(message.tool_calls.iter().map(|call| {
+            completion::AssistantContent::tool_call(
+                &call.function.name,
+                &call.function.name,
+                call.function.arguments.clone(),
+            )
+        }));
+
+        let choice = OneOrMany::many(content).map_err(|_| {
+            CompletionError::ResponseError(
+                "Response contained no message or tool call (empty)".to_owned(),
+            )
+        })?;
+
+        Ok(completion::CompletionResponse {
+            choice,
+            raw_response: response,
+        })
     }
 }
 
@@ -271,18 +264,103 @@ pub struct Choice {
     pub finish_reason: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Message {
     pub role: String,
     pub content: Option<String>,
-    pub tool_calls: Option<Vec<ToolCall>>,
+    #[serde(default, deserialize_with = "json_utils::null_or_vec")]
+    pub tool_calls: Vec<openai::ToolCall>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ToolCall {
-    pub id: String,
-    pub r#type: String,
-    pub function: Function,
+impl TryFrom<Message> for message::Message {
+    type Error = message::MessageError;
+
+    fn try_from(message: Message) -> Result<Self, Self::Error> {
+        let tool_calls: Vec<message::ToolCall> = message
+            .tool_calls
+            .into_iter()
+            .map(|tool_call| tool_call.into())
+            .collect();
+
+        match message.role.as_str() {
+            "user" => Ok(Self::User {
+                content: OneOrMany::one(
+                    message
+                        .content
+                        .map(|content| message::UserContent::text(&content))
+                        .ok_or_else(|| {
+                            message::MessageError::ConversionError("Empty user message".to_string())
+                        })?,
+                ),
+            }),
+            "assistant" => Ok(Self::Assistant {
+                content: OneOrMany::many(
+                    tool_calls
+                        .into_iter()
+                        .map(message::AssistantContent::ToolCall)
+                        .chain(
+                            message
+                                .content
+                                .map(|content| message::AssistantContent::text(&content))
+                                .into_iter(),
+                        ),
+                )
+                .map_err(|_| {
+                    message::MessageError::ConversionError("Empty assistant message".to_string())
+                })?,
+            }),
+            _ => Err(message::MessageError::ConversionError(format!(
+                "Unknown role: {}",
+                message.role
+            ))),
+        }
+    }
+}
+
+impl TryFrom<message::Message> for Message {
+    type Error = message::MessageError;
+
+    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
+        match message {
+            message::Message::User { content } => Ok(Self {
+                role: "user".to_string(),
+                content: content.iter().find_map(|c| match c {
+                    message::UserContent::Text(text) => Some(text.text.clone()),
+                    _ => None,
+                }),
+                tool_calls: vec![],
+            }),
+            message::Message::Assistant { content } => {
+                let mut text_content: Option<String> = None;
+                let mut tool_calls = vec![];
+
+                for c in content.iter() {
+                    match c {
+                        message::AssistantContent::Text(text) => {
+                            text_content = Some(
+                                text_content
+                                    .map(|mut existing| {
+                                        existing.push('\n');
+                                        existing.push_str(&text.text);
+                                        existing
+                                    })
+                                    .unwrap_or_else(|| text.text.clone()),
+                            );
+                        }
+                        message::AssistantContent::ToolCall(tool_call) => {
+                            tool_calls.push(tool_call.clone().into());
+                        }
+                    }
+                }
+
+                Ok(Self {
+                    role: "assistant".to_string(),
+                    content: text_content,
+                    tool_calls,
+                })
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -328,29 +406,31 @@ impl completion::CompletionModel for CompletionModel {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
-        mut completion_request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         // Add preamble to chat history (if available)
-        let mut full_history = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
-                role: "system".into(),
-                content: preamble.clone(),
-            }]
-        } else {
-            vec![]
+        let mut full_history: Vec<Message> = match &completion_request.preamble {
+            Some(preamble) => vec![Message {
+                role: "system".to_string(),
+                content: Some(preamble.to_string()),
+                tool_calls: vec![],
+            }],
+            None => vec![],
         };
 
-        // Extend existing chat history
-        full_history.append(&mut completion_request.chat_history);
+        // Convert prompt to user message
+        let prompt: Message = completion_request.prompt_with_context().try_into()?;
 
-        // Add context documents to chat history
-        let prompt_with_context = completion_request.prompt_with_context();
+        // Convert existing chat history
+        let chat_history: Vec<Message> = completion_request
+            .chat_history
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Message>, _>>()?;
 
-        // Add context documents to chat history
-        full_history.push(completion::Message {
-            role: "user".into(),
-            content: prompt_with_context,
-        });
+        // Combine all messages into a single history
+        full_history.extend(chat_history);
+        full_history.push(prompt);
 
         let request = if completion_request.tools.is_empty() {
             json!({
@@ -382,7 +462,10 @@ impl completion::CompletionModel for CompletionModel {
             .await?;
 
         if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
+            let t = response.text().await?;
+            tracing::debug!(target: "rig", "Galadriel completion error: {}", t);
+
+            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "Galadriel completion token usage: {:?}",

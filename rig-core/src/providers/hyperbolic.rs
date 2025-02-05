@@ -14,10 +14,14 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     extractor::ExtractorBuilder,
     json_utils,
+    providers::openai::Message,
+    OneOrMany,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+use super::openai::AssistantContent;
 
 // ================================================================
 // Main Hyperbolic Client
@@ -195,23 +199,56 @@ impl From<ApiErrorResponse> for CompletionError {
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
-    fn try_from(value: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
-        match value.choices.as_slice() {
-            [Choice {
-                message:
-                    Message {
-                        content: Some(content),
-                        ..
-                    },
+    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        let choice = response.choices.first().ok_or_else(|| {
+            CompletionError::ResponseError("Response contained no choices".to_owned())
+        })?;
+
+        let content = match &choice.message {
+            Message::Assistant {
+                content,
+                tool_calls,
                 ..
-            }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::Message(content.to_string()),
-                raw_response: value,
-            }),
+            } => {
+                let mut content = content
+                    .iter()
+                    .map(|c| match c {
+                        AssistantContent::Text { text } => completion::AssistantContent::text(text),
+                        AssistantContent::Refusal { refusal } => {
+                            completion::AssistantContent::text(refusal)
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                content.extend(
+                    tool_calls
+                        .iter()
+                        .map(|call| {
+                            completion::AssistantContent::tool_call(
+                                &call.function.name,
+                                &call.function.name,
+                                call.function.arguments.clone(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                );
+                Ok(content)
+            }
             _ => Err(CompletionError::ResponseError(
-                "Response did not contain a message".into(),
+                "Response did not contain a valid message or tool call".into(),
             )),
-        }
+        }?;
+
+        let choice = OneOrMany::many(content).map_err(|_| {
+            CompletionError::ResponseError(
+                "Response contained no message or tool call (empty)".to_owned(),
+            )
+        })?;
+
+        Ok(completion::CompletionResponse {
+            choice,
+            raw_response: response,
+        })
     }
 }
 
@@ -220,12 +257,6 @@ pub struct Choice {
     pub index: usize,
     pub message: Message,
     pub finish_reason: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Message {
-    pub role: String,
-    pub content: Option<String>,
 }
 
 #[derive(Clone)]
@@ -250,29 +281,30 @@ impl completion::CompletionModel for CompletionModel {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
-        mut completion_request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         // Add preamble to chat history (if available)
-        let mut full_history = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
-                role: "system".into(),
-                content: preamble.clone(),
-            }]
-        } else {
-            vec![]
+        let mut full_history: Vec<Message> = match &completion_request.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
         };
 
-        // Extend existing chat history
-        full_history.append(&mut completion_request.chat_history);
+        // Convert prompt to user message
+        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
 
-        // Add context documents to chat history
-        let prompt_with_context = completion_request.prompt_with_context();
+        // Convert existing chat history
+        let chat_history: Vec<Message> = completion_request
+            .chat_history
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
 
-        // Add context documents to chat history
-        full_history.push(completion::Message {
-            role: "user".into(),
-            content: prompt_with_context,
-        });
+        // Combine all messages into a single history
+        full_history.extend(chat_history);
+        full_history.extend(prompt);
 
         let request = json!({
             "model": self.model,

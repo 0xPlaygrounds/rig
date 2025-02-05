@@ -68,7 +68,14 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
-use crate::{json_utils, tool::ToolSetError};
+use crate::OneOrMany;
+use crate::{
+    json_utils,
+    message::{Message, UserContent},
+    tool::ToolSetError,
+};
+
+use super::message::AssistantContent;
 
 // Errors
 #[derive(Debug, Error)]
@@ -101,16 +108,6 @@ pub enum PromptError {
 
     #[error("ToolCallError: {0}")]
     ToolError(#[from] ToolSetError),
-}
-
-// ================================================================
-// Request models
-// ================================================================
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Message {
-    /// "system", "user", or "assistant"
-    pub role: String,
-    pub content: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -165,7 +162,7 @@ pub trait Prompt: Send + Sync {
     /// If the tool does not exist, or the tool call fails, then an error is returned.
     fn prompt(
         &self,
-        prompt: &str,
+        prompt: impl Into<Message> + Send,
     ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
 }
 
@@ -181,12 +178,12 @@ pub trait Chat: Send + Sync {
     /// If the tool does not exist, or the tool call fails, then an error is returned.
     fn chat(
         &self,
-        prompt: &str,
+        prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
     ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
 }
 
-/// Trait defininig a low-level LLM completion interface
+/// Trait defining a low-level LLM completion interface
 pub trait Completion<M: CompletionModel> {
     /// Generates a completion request builder for the given `prompt` and `chat_history`.
     /// This function is meant to be called by the user to further customize the
@@ -201,29 +198,20 @@ pub trait Completion<M: CompletionModel> {
     /// contain the `preamble` provided when creating the agent.
     fn completion(
         &self,
-        prompt: &str,
+        prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
     ) -> impl std::future::Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>> + Send;
 }
 
 /// General completion response struct that contains the high-level completion choice
-/// and the raw response.
+/// and the raw response. The completion choice contains one or more assistant content.
 #[derive(Debug)]
 pub struct CompletionResponse<T> {
-    /// The completion choice returned by the completion model provider
-    pub choice: ModelChoice,
+    /// The completion choice (represented by one or more assistant message content)
+    /// returned by the completion model provider
+    pub choice: OneOrMany<AssistantContent>,
     /// The raw response returned by the completion model provider
     pub raw_response: T,
-}
-
-/// Enum representing the high-level completion choice returned by the completion model provider.
-#[derive(Debug)]
-pub enum ModelChoice {
-    /// Represents a completion response as a message
-    Message(String),
-    /// Represents a completion response as a tool call of the form
-    /// `ToolCall(function_name, id, function_params)`.
-    ToolCall(String, String, serde_json::Value),
 }
 
 /// Trait defining a completion model that can be used to generate completion responses.
@@ -241,15 +229,15 @@ pub trait CompletionModel: Clone + Send + Sync {
            + Send;
 
     /// Generates a completion request builder for the given `prompt`.
-    fn completion_request(&self, prompt: &str) -> CompletionRequestBuilder<Self> {
-        CompletionRequestBuilder::new(self.clone(), prompt.to_string())
+    fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
+        CompletionRequestBuilder::new(self.clone(), prompt)
     }
 }
 
 /// Struct representing a general completion request that can be sent to a completion model provider.
 pub struct CompletionRequest {
     /// The prompt to be sent to the completion model provider
-    pub prompt: String,
+    pub prompt: Message,
     /// The preamble to be sent to the completion model provider
     pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider
@@ -267,20 +255,23 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
-    pub fn prompt_with_context(&self) -> String {
-        if !self.documents.is_empty() {
-            format!(
-                "<attachments>\n{}</attachments>\n\n{}",
-                self.documents
+    pub fn prompt_with_context(&self) -> Message {
+        let mut new_prompt = self.prompt.clone();
+        if let Message::User { ref mut content } = new_prompt {
+            if !self.documents.is_empty() {
+                let attachments = self
+                    .documents
                     .iter()
                     .map(|doc| doc.to_string())
                     .collect::<Vec<_>>()
-                    .join(""),
-                self.prompt
-            )
-        } else {
-            self.prompt.clone()
+                    .join("");
+                let formatted_content = format!("<attachments>\n{}</attachments>", attachments);
+                let mut new_content = vec![UserContent::text(formatted_content)];
+                new_content.extend(content.clone());
+                *content = OneOrMany::many(new_content).expect("This has more than 1 item");
+            }
         }
+        new_prompt
     }
 }
 
@@ -330,7 +321,7 @@ impl CompletionRequest {
 /// Instead, use the [CompletionModel::completion_request] method.
 pub struct CompletionRequestBuilder<M: CompletionModel> {
     model: M,
-    prompt: String,
+    prompt: Message,
     preamble: Option<String>,
     chat_history: Vec<Message>,
     documents: Vec<Document>,
@@ -341,10 +332,10 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
 }
 
 impl<M: CompletionModel> CompletionRequestBuilder<M> {
-    pub fn new(model: M, prompt: String) -> Self {
+    pub fn new(model: M, prompt: impl Into<Message>) -> Self {
         Self {
             model,
-            prompt,
+            prompt: prompt.into(),
             preamble: None,
             chat_history: Vec::new(),
             documents: Vec::new(),
@@ -484,6 +475,8 @@ impl<M: StreamingCompletionModel> CompletionRequestBuilder<M> {
 
 #[cfg(test)]
 mod tests {
+    use crate::OneOrMany;
+
     use super::*;
 
     #[test]
@@ -534,7 +527,7 @@ mod tests {
         };
 
         let request = CompletionRequest {
-            prompt: "What is the capital of France?".to_string(),
+            prompt: "What is the capital of France?".into(),
             preamble: None,
             chat_history: Vec::new(),
             documents: vec![doc1, doc2],
@@ -544,14 +537,20 @@ mod tests {
             additional_params: None,
         };
 
-        let expected = concat!(
-            "<attachments>\n",
-            "<file id: doc1>\nDocument 1 text.\n</file>\n",
-            "<file id: doc2>\nDocument 2 text.\n</file>\n",
-            "</attachments>\n\n",
-            "What is the capital of France?"
-        )
-        .to_string();
+        let expected = Message::User {
+            content: OneOrMany::many(vec![
+                UserContent::text(concat!(
+                    "<attachments>\n",
+                    "<file id: doc1>\nDocument 1 text.\n</file>\n",
+                    "<file id: doc2>\nDocument 2 text.\n</file>\n",
+                    "</attachments>"
+                )),
+                UserContent::text("What is the capital of France?"),
+            ])
+            .expect("This has more than 1 item"),
+        };
+
+        request.prompt_with_context();
 
         assert_eq!(request.prompt_with_context(), expected);
     }
