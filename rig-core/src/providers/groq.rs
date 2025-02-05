@@ -14,7 +14,7 @@ use crate::{
     extractor::ExtractorBuilder,
     json_utils,
     message::{self, MessageError},
-    providers::{self, openai::ToolDefinition},
+    providers::openai::ToolDefinition,
     OneOrMany,
 };
 use schemars::JsonSchema;
