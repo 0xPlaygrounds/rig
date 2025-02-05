@@ -79,7 +79,7 @@ async fn main() -> Result<(), anyhow::Error> {
         } else {
             let context = format!("{TASK}\n\n{}", eval_result.feedback);
 
-            response = generator_agent.prompt(&context).await.unwrap();
+            response = generator_agent.prompt(context).await.unwrap();
             memories.push(response.clone());
         }
     }
