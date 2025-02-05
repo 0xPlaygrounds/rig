@@ -16,5 +16,5 @@ anyhow = "1.0.75"
 tokio = { version = "1.34.0", features = ["full"] }
 
 [[example]]
-name = "rig-fastembed"
+name = "vector_search"
 required-features = ["rig-core/derive"]
