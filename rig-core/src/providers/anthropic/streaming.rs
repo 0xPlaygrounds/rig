@@ -2,11 +2,11 @@ use async_stream::stream;
 use futures::StreamExt;
 use serde::Deserialize;
 use serde_json::json;
-use std::iter;
 
 use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefinition, Usage};
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils::merge_inplace;
+use crate::message::MessageError;
 use crate::streaming::{StreamingChoice, StreamingCompletionModel, StreamingResult};
 
 #[derive(Debug, Deserialize)]
@@ -70,8 +70,6 @@ impl StreamingCompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<StreamingResult, CompletionError> {
-        let prompt_with_context = completion_request.prompt_with_context();
-
         let max_tokens = if let Some(tokens) = completion_request.max_tokens {
             tokens
         } else if let Some(tokens) = self.default_max_tokens {
@@ -82,17 +80,26 @@ impl StreamingCompletionModel for CompletionModel {
             ));
         };
 
+        let prompt_message: Message = completion_request
+            .prompt_with_context()
+            .try_into()
+            .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?;
+
+        let mut messages = completion_request
+            .chat_history
+            .into_iter()
+            .map(|message| {
+                message
+                    .try_into()
+                    .map_err(|e: MessageError| CompletionError::RequestError(e.into()))
+            })
+            .collect::<Result<Vec<Message>, _>>()?;
+
+        messages.push(prompt_message);
+
         let mut request = json!({
             "model": self.model,
-            "messages": completion_request
-                .chat_history
-                .into_iter()
-                .map(Message::from)
-                .chain(iter::once(Message {
-                    role: "user".to_owned(),
-                    content: prompt_with_context,
-                }))
-                .collect::<Vec<_>>(),
+            "messages": messages,
             "max_tokens": max_tokens,
             "system": completion_request.preamble.unwrap_or("".to_string()),
             "stream": true,

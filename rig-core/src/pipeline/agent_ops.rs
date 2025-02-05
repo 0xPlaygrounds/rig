@@ -86,8 +86,7 @@ where
     type Output = Result<String, completion::PromptError>;
 
     async fn call(&self, input: Self::Input) -> Self::Output {
-        let prompt: String = input.into();
-        self.prompt.prompt(&prompt).await
+        self.prompt.prompt(input.into()).await
     }
 }
 
@@ -153,13 +152,22 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::message;
     use completion::{Prompt, PromptError};
     use vector_store::{VectorStoreError, VectorStoreIndex};
 
     pub struct MockModel;
 
     impl Prompt for MockModel {
-        async fn prompt(&self, prompt: &str) -> Result<String, PromptError> {
+        async fn prompt(&self, prompt: impl Into<message::Message>) -> Result<String, PromptError> {
+            let msg: message::Message = prompt.into();
+            let prompt = match msg {
+                message::Message::User { content } => match content.first() {
+                    message::UserContent::Text(message::Text { text }) => text,
+                    _ => unreachable!(),
+                },
+                _ => unreachable!(),
+            };
             Ok(format!("Mock response: {}", prompt))
         }
     }

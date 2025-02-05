@@ -14,6 +14,7 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     extractor::ExtractorBuilder,
     json_utils,
+    providers::openai,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -119,74 +120,6 @@ enum ApiResponse<T> {
 // ================================================================
 pub const MOONSHOT_CHAT: &str = "moonshot-v1-128k";
 
-#[derive(Debug, Deserialize)]
-pub struct CompletionResponse {
-    pub id: String,
-    pub object: String,
-    pub created: u64,
-    pub model: String,
-    pub choices: Vec<Choice>,
-    pub usage: Usage,
-}
-
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.error.message)
-    }
-}
-
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
-
-    fn try_from(value: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
-        match value.choices.as_slice() {
-            [Choice {
-                message:
-                    Message {
-                        content: Some(content),
-                        ..
-                    },
-                ..
-            }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::Message(content.to_string()),
-                raw_response: value,
-            }),
-            _ => Err(CompletionError::ResponseError(
-                "Response did not contain a message".into(),
-            )),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Choice {
-    pub index: usize,
-    pub message: Message,
-    pub finish_reason: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Message {
-    pub role: String,
-    pub content: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct Usage {
-    pub prompt_tokens: usize,
-    pub total_tokens: usize,
-}
-
-impl std::fmt::Display for Usage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Prompt tokens: {} Total tokens: {}",
-            self.prompt_tokens, self.total_tokens
-        )
-    }
-}
-
 #[derive(Clone)]
 pub struct CompletionModel {
     client: Client,
@@ -203,34 +136,51 @@ impl CompletionModel {
 }
 
 impl completion::CompletionModel for CompletionModel {
-    type Response = CompletionResponse;
+    type Response = openai::CompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
-        mut completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let mut full_history = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
-                role: "system".into(),
-                content: preamble.clone(),
-            }]
-        } else {
-            vec![]
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
+            Some(preamble) => vec![openai::Message::system(preamble)],
+            None => vec![],
         };
 
-        full_history.append(&mut completion_request.chat_history);
+        // Convert prompt to user message
+        let prompt: Vec<openai::Message> = completion_request.prompt_with_context().try_into()?;
 
-        full_history.push(completion::Message {
-            role: "user".into(),
-            content: completion_request.prompt_with_context(),
-        });
+        // Convert existing chat history
+        let chat_history: Vec<openai::Message> = completion_request
+            .chat_history
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
 
-        let request = json!({
-            "model": self.model,
-            "messages": full_history,
-            "temperature": completion_request.temperature,
-        });
+        // Combine all messages into a single history
+        full_history.extend(chat_history);
+        full_history.extend(prompt);
+
+        let request = if completion_request.tools.is_empty() {
+            json!({
+                "model": self.model,
+                "messages": full_history,
+                "temperature": completion_request.temperature,
+            })
+        } else {
+            json!({
+                "model": self.model,
+                "messages": full_history,
+                "temperature": completion_request.temperature,
+                "tools": completion_request.tools.into_iter().map(openai::ToolDefinition::from).collect::<Vec<_>>(),
+                "tool_choice": "auto",
+            })
+        };
 
         let response = self
             .client
@@ -246,11 +196,14 @@ impl completion::CompletionModel for CompletionModel {
             .await?;
 
         if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
+            let t = response.text().await?;
+            tracing::debug!(target: "rig", "Azure completion error: {}", t);
+
+            match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(&t)? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
-                        "Moonshot completion token usage: {}",
-                        response.usage
+                        "Azure completion token usage: {:?}",
+                        response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
                     );
                     response.try_into()
                 }
