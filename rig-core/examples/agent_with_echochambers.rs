@@ -1,11 +1,11 @@
 use anyhow::Result;
+use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use rig::{
     cli_chatbot::cli_chatbot,
     completion::ToolDefinition,
     providers::openai::{Client, GPT_4O},
     tool::Tool,
 };
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::env;
@@ -90,13 +90,19 @@ impl Tool for SendMessage {
         let client = reqwest::Client::new();
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        headers.insert("x-api-key", HeaderValue::from_str(&self.api_key).map_err(|e| EchoChamberError(e.to_string()))?);
+        headers.insert(
+            "x-api-key",
+            HeaderValue::from_str(&self.api_key).map_err(|e| EchoChamberError(e.to_string()))?,
+        );
 
         // Format content with quotes as shown in the JavaScript example
         let content = format!("\"{}\"", args.content);
 
         let response = client
-            .post(&format!("https://echochambers.ai/api/rooms/{}/message", args.room_id))
+            .post(&format!(
+                "https://echochambers.ai/api/rooms/{}/message",
+                args.room_id
+            ))
             .headers(headers)
             .json(&json!({
                 "content": content,
@@ -110,11 +116,17 @@ impl Tool for SendMessage {
             .map_err(|e| EchoChamberError(e.to_string()))?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.map_err(|e| EchoChamberError(e.to_string()))?;
+            let error_text = response
+                .text()
+                .await
+                .map_err(|e| EchoChamberError(e.to_string()))?;
             return Err(EchoChamberError(format!("API error: {}", error_text)));
         }
 
-        let data = response.json().await.map_err(|e| EchoChamberError(e.to_string()))?;
+        let data = response
+            .json()
+            .await
+            .map_err(|e| EchoChamberError(e.to_string()))?;
         Ok(data)
     }
 }
@@ -153,7 +165,7 @@ impl Tool for GetHistory {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let mut url = format!("https://echochambers.ai/api/rooms/{}/history", args.room_id);
-        
+
         if let Some(limit) = args.limit {
             url = format!("{}?limit={}", url, limit);
         }
@@ -164,7 +176,10 @@ impl Tool for GetHistory {
             .await
             .map_err(|e| EchoChamberError(e.to_string()))?;
 
-        let data = response.json().await.map_err(|e| EchoChamberError(e.to_string()))?;
+        let data = response
+            .json()
+            .await
+            .map_err(|e| EchoChamberError(e.to_string()))?;
         Ok(data)
     }
 }
@@ -199,12 +214,18 @@ impl Tool for GetRoomMetrics {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
-            .get(&format!("https://echochambers.ai/api/metrics/rooms/{}", args.room_id))
+            .get(&format!(
+                "https://echochambers.ai/api/metrics/rooms/{}",
+                args.room_id
+            ))
             .send()
             .await
             .map_err(|e| EchoChamberError(e.to_string()))?;
 
-        let data = response.json().await.map_err(|e| EchoChamberError(e.to_string()))?;
+        let data = response
+            .json()
+            .await
+            .map_err(|e| EchoChamberError(e.to_string()))?;
         Ok(data)
     }
 }
@@ -239,12 +260,18 @@ impl Tool for GetAgentMetrics {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
-            .get(&format!("https://echochambers.ai/api/metrics/agents/{}", args.room_id))
+            .get(&format!(
+                "https://echochambers.ai/api/metrics/agents/{}",
+                args.room_id
+            ))
             .send()
             .await
             .map_err(|e| EchoChamberError(e.to_string()))?;
 
-        let data = response.json().await.map_err(|e| EchoChamberError(e.to_string()))?;
+        let data = response
+            .json()
+            .await
+            .map_err(|e| EchoChamberError(e.to_string()))?;
         Ok(data)
     }
 }
@@ -279,12 +306,18 @@ impl Tool for GetMetricsHistory {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
-            .get(&format!("https://echochambers.ai/api/metrics/history/{}", args.room_id))
+            .get(&format!(
+                "https://echochambers.ai/api/metrics/history/{}",
+                args.room_id
+            ))
             .send()
             .await
             .map_err(|e| EchoChamberError(e.to_string()))?;
 
-        let data = response.json().await.map_err(|e| EchoChamberError(e.to_string()))?;
+        let data = response
+            .json()
+            .await
+            .map_err(|e| EchoChamberError(e.to_string()))?;
         Ok(data)
     }
 }
@@ -293,8 +326,9 @@ impl Tool for GetMetricsHistory {
 async fn main() -> Result<(), anyhow::Error> {
     // Get API keys from environment
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let echochambers_api_key = env::var("ECHOCHAMBERS_API_KEY").expect("ECHOCHAMBERS_API_KEY not set");
-    
+    let echochambers_api_key =
+        env::var("ECHOCHAMBERS_API_KEY").expect("ECHOCHAMBERS_API_KEY not set");
+
     // Create OpenAI client
     let openai_client = Client::new(&openai_api_key);
 
