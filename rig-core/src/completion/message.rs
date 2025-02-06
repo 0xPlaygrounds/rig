@@ -53,6 +53,15 @@ pub enum AssistantContent {
     ToolCall(ToolCall),
 }
 
+impl AssistantContent {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            AssistantContent::Text(Text { text }) => text.is_empty(),
+            _ => false,
+        }
+    }
+}
+
 /// Tool result content containing information about a tool call and it's resulting content.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolResult {
@@ -279,6 +288,15 @@ impl UserContent {
 
     /// Helper constructor to make creating user tool result content easier.
     pub fn tool_result(id: impl Into<String>, content: OneOrMany<ToolResultContent>) -> Self {
+        UserContent::ToolResult(ToolResult {
+            id: id.into(),
+            content,
+        })
+    }
+
+    /// Helper constructor to make creating user tool result from text easier.
+    pub fn tool_result_from_text_response(id: impl Into<String>, content: String) -> Self {
+        let content = OneOrMany::one(ToolResultContent::Text(content.into()));
         UserContent::ToolResult(ToolResult {
             id: id.into(),
             content,
@@ -522,6 +540,22 @@ impl From<Document> for Message {
     fn from(document: Document) -> Self {
         Message::User {
             content: OneOrMany::one(UserContent::Document(document)),
+        }
+    }
+}
+
+impl From<ToolCall> for Message {
+    fn from(tool_call: ToolCall) -> Self {
+        Message::Assistant {
+            content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
+        }
+    }
+}
+
+impl From<UserContent> for Message {
+    fn from(content: UserContent) -> Self {
+        Message::User {
+            content: OneOrMany::one(content),
         }
     }
 }
