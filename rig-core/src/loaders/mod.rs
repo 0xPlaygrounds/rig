@@ -9,6 +9,12 @@
 //! and keeping track of the page numbers along with their contents.
 //!
 //! Note: The [PdfFileLoader] requires the `pdf` feature to be enabled in the `Cargo.toml` file.
+//!
+//! The [EpubFileLoader] works similarly to the [FileLoader], but is specifically designed to load EPUB
+//! files. This loader also provides EPUB-specific preprocessing methods for splitting the EPUB into chapters
+//! and keeping track of the chapter numbers along with their contents.
+//!
+//! Note: The [EpubFileLoader] requires the `epub` feature to be enabled in the `Cargo.toml` file.
 
 pub mod file;
 
@@ -19,3 +25,9 @@ pub mod pdf;
 
 #[cfg(feature = "pdf")]
 pub use pdf::PdfFileLoader;
+
+#[cfg(feature = "epub")]
+pub mod epub;
+
+#[cfg(feature = "epub")]
+pub use epub::EpubFileLoader;
