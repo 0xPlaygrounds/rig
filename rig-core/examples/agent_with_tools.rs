@@ -149,14 +149,13 @@ impl Tool for SearchTool {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(tracing::Level::INFO)
         .with_target(false)
         .init();
 
     // Create OpenAI client
     let openai_client = providers::openai::Client::from_env();
 
-    /*
     // Create agent with a single context prompt and two tools
     let calculator_agent = openai_client
         .agent(providers::openai::GPT_4O)
@@ -172,8 +171,6 @@ async fn main() -> Result<(), anyhow::Error> {
         "OpenAI Calculator Agent: {}",
         calculator_agent.prompt("Calculate 2 - 5").await?
     );
-
-    */
 
     // Create agent with a single context prompt and a search tool
     let search_agent = openai_client

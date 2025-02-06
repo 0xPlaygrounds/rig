@@ -115,7 +115,7 @@ use crate::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
         Message, Prompt, PromptError,
     },
-    message::AssistantContent,
+    message::{AssistantContent, UserContent},
     streaming::{
         StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingPrompt,
         StreamingResult,
@@ -296,24 +296,117 @@ impl<M: CompletionModel> Prompt for &Agent<M> {
     }
 }
 
-impl<M: CompletionModel> Chat for Agent<M> {
+impl<M: CompletionModel> Agent<M> {
     async fn chat(
         &self,
-        prompt: impl Into<Message> + Send,
-        chat_history: Vec<Message>,
+        prompt: impl Into<Message>,
+        mut chat_history: Vec<Message>,
     ) -> Result<String, PromptError> {
-        let resp = self.completion(prompt, chat_history).await?.send().await?;
+        let prompt: Message = prompt.into();
 
-        // TODO: consider returning a `Message` instead of `String` for parallel responses / tool calls
-        match resp.choice.first() {
-            AssistantContent::Text(text) => Ok(text.text.clone()),
-            AssistantContent::ToolCall(tool_call) => Ok(self
+        let resp = self
+            .completion(prompt.clone(), chat_history.clone())
+            .await?
+            .send()
+            .await?;
+
+        let mut first_choice = resp.choice.first();
+
+        tracing::debug!("Chat response choices: {:?}", resp.choice);
+
+        // loop to handle tool calls
+        while let AssistantContent::ToolCall(tool_call) = first_choice {
+            tracing::debug!("Inside chat Tool call loop: {:?}", tool_call);
+
+            // Call the tool
+            let tool_response = self
                 .tools
                 .call(
                     &tool_call.function.name,
                     tool_call.function.arguments.to_string(),
                 )
-                .await?),
+                .await?;
+
+            let tool_response_message =
+                UserContent::tool_result_from_text_response(tool_call.id.clone(), tool_response);
+
+            // add tool call and response into chat history
+            chat_history.push(tool_call.into());
+            chat_history.push(tool_response_message.into());
+
+            let resp = self
+                .completion(prompt.clone(), chat_history.clone())
+                .await?
+                .send()
+                .await?;
+
+            first_choice = resp.choice.first();
+        }
+
+        // TODO: consider returning a `Message` instead of `String` for parallel responses / tool calls
+        if let AssistantContent::Text(text) = first_choice {
+            Ok(text.text.clone())
+        } else {
+            unreachable!(
+                "Tool call should have been handled in the loop: {:?}",
+                first_choice
+            )
+        }
+    }
+}
+
+impl<M: CompletionModel> Chat for Agent<M> {
+    async fn chat(
+        &self,
+        prompt: impl Into<Message>,
+        mut chat_history: Vec<Message>,
+    ) -> Result<String, PromptError> {
+        let prompt: Message = prompt.into();
+
+        let resp = self
+            .completion(prompt.clone(), chat_history.clone())
+            .await?
+            .send()
+            .await?;
+
+        let mut first_choice = resp.choice.first();
+
+        // loop to handle tool calls
+        while let AssistantContent::ToolCall(tool_call) = first_choice {
+            tracing::debug!("Inside chat Tool call loop: {:?}", tool_call);
+
+            // Call the tool
+            let tool_response = self
+                .tools
+                .call(
+                    &tool_call.function.name,
+                    tool_call.function.arguments.to_string(),
+                )
+                .await?;
+
+            let tool_response_message =
+                UserContent::tool_result_from_text_response(tool_call.id.clone(), tool_response);
+
+            // add tool call and response into chat history
+            chat_history.push(tool_call.into());
+            chat_history.push(tool_response_message.into());
+
+            let resp = self
+                .completion(prompt.clone(), chat_history.clone())
+                .await?
+                .send()
+                .await?;
+
+            first_choice = resp.choice.first();
+        }
+
+        // TODO: consider returning a `Message` instead of `String` for parallel responses / tool calls
+        match resp.choice.first() {
+            AssistantContent::Text(text) => Ok(text.text.clone()),
+            AssistantContent::ToolCall(tool_call) => unreachable!(
+                "Tool call should have been handled in the loop: {:?}",
+                tool_call
+            ),
         }
     }
 }
