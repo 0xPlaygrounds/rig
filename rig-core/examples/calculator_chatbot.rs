@@ -260,10 +260,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .agent("gpt-4")
         .preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
-            Follow these instructions closely. 
+            Follow these instructions closely.
             1. Consider the user's request carefully and identify the core elements of the request.
-            2. Select which tool among those made available to you is appropriate given the context. 
-            3. This is very important: never perform the operation yourself and never give me the direct result. 
+            2. Select which tool among those made available to you is appropriate given the context.
+            3. This is very important: never perform the operation yourself and never give me the direct result.
             Always respond with the name of the tool that should be used and the appropriate inputs
             in the following format:
             Tool: <tool name>
@@ -280,4 +280,14 @@ async fn main() -> Result<(), anyhow::Error> {
     cli_chatbot(calculator_rag).await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn example() -> Result<(), anyhow::Error> {
+        main()
+    }
 }
