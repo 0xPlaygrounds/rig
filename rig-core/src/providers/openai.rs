@@ -928,7 +928,7 @@ impl completion::CompletionModel for CompletionModel {
 
         if response.status().is_success() {
             let t = response.text().await?;
-            tracing::debug!(target: "rig", "OpenAI completion error: {}", t);
+            tracing::debug!(target: "rig", "OpenAI completion success: {}", t);
 
             match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
                 ApiResponse::Ok(response) => {
@@ -941,7 +941,9 @@ impl completion::CompletionModel for CompletionModel {
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
             }
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            let t = response.text().await?;
+            tracing::debug!(target: "rig", "OpenAI completion error: {}", t);
+            Err(CompletionError::ProviderError(t))
         }
     }
 }
