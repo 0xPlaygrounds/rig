@@ -30,7 +30,6 @@ const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com";
 #[derive(Clone)]
 pub struct Client {
     pub base_url: String,
-    pub api_key: String,
     http_client: HttpClient,
 }
 
@@ -38,15 +37,27 @@ impl Client {
     // Create a new DeepSeek client from an API key.
     pub fn new(api_key: &str) -> Self {
         Self {
-            base_url: DEEPSEEK_API_BASE_URL.to_string(),
-            api_key: api_key.to_string(),
-            http_client: HttpClient::new(),
+            base_url: base_url.to_string(),
+            http_client: reqwest::Client::builder()
+                .default_headers({
+                    let mut headers = reqwest::header::HeaderMap::new();
+                    headers.insert(
+                        "Authorization",
+                        format!("Bearer {}", api_key)
+                            .parse()
+                            .expect("Bearer token should parse"),
+                    );
+                    headers
+                })
+                .build()
+                .expect("DeepSeek reqwest client should build"),
         }
     }
 
     // If you prefer the environment variable approach:
     pub fn from_env() -> Self {
         let api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY not set");
+
         Self::new(&api_key)
     }
 
@@ -260,14 +271,15 @@ impl CompletionModel for DeepSeekCompletionModel {
 
         if response.status().is_success() {
             let t = response.text().await?;
-            tracing::debug!(target: "rig", "OpenAI completion error: {}", t);
 
             match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
             }
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            let t = response.text().await?;
+            tracing::debug!(target: "rig", "DeepSeek completion error: {}", t);
+            Err(CompletionError::ProviderError(t))
         }
     }
 }
