@@ -2,23 +2,26 @@
 //!
 //! # Example
 //! ```
-//! use rig::providers::eternalai;
+//! use rig_eternalai::providers::eternalai;
 //!
 //! let client = eternalai::Client::new("YOUR_API_KEY");
 //!
 //! let gpt4o = client.completion_model(eternalai::NOUS_RESEARCH_HERMES_3_LLAMA_3_1_70B_FP8);
 //! ```
 
-use crate::{
-    agent::AgentBuilder,
-    completion::{self, CompletionError, CompletionRequest},
-    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
-    extractor::ExtractorBuilder,
-    json_utils, Embed,
-};
+use crate::eternalai_system_prompt_manager_toolset;
+use crate::json_utils;
+use rig::agent::AgentBuilder;
+use rig::completion::{CompletionError, CompletionRequest};
+use rig::embeddings::{EmbeddingError, EmbeddingsBuilder};
+use rig::extractor::ExtractorBuilder;
+use rig::providers::openai::{self, Message};
+use rig::OneOrMany;
+use rig::{completion, embeddings, Embed};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::ffi::c_uint;
 use std::time::Duration;
 
 // ================================================================
@@ -77,7 +80,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the EternalAI client
     /// let eternalai = Client::new("your-open-ai-api-key");
@@ -97,7 +100,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the EternalAI client
     /// let eternalai = Client::new("your-open-ai-api-key");
@@ -112,7 +115,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the EternalAI client
     /// let eternalai = Client::new("your-open-ai-api-key");
@@ -132,7 +135,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the EternalAI client
     /// let eternalai = Client::new("your-open-ai-api-key");
@@ -147,7 +150,7 @@ impl Client {
     ///
     /// # Example
     /// ```
-    /// use rig::providers::eternalai::{Client, self};
+    /// use rig_eternalai::providers::eternalai::{Client, self};
     ///
     /// // Initialize the Eternal client
     /// let eternalai = Client::new("your-open-ai-api-key");
@@ -352,44 +355,57 @@ impl From<ApiErrorResponse> for CompletionError {
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
-    fn try_from(value: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
-        match value.choices.as_slice() {
-            [Choice {
-                message:
-                    Message {
-                        tool_calls: Some(calls),
-                        ..
-                    },
+    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        let choice = response.choices.first().ok_or_else(|| {
+            CompletionError::ResponseError("Response contained no choices".to_owned())
+        })?;
+        let content = match &choice.message {
+            Message::Assistant {
+                content,
+                tool_calls,
                 ..
-            }, ..] => {
-                let call = calls.first().ok_or(CompletionError::ResponseError(
-                    "Tool selection is empty".into(),
-                ))?;
+            } => {
+                let mut content = content
+                    .iter()
+                    .map(|c| match c {
+                        openai::AssistantContent::Text { text } => {
+                            completion::AssistantContent::text(text)
+                        }
+                        openai::AssistantContent::Refusal { refusal } => {
+                            completion::AssistantContent::text(refusal)
+                        }
+                    })
+                    .collect::<Vec<_>>();
 
-                Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::ToolCall(
-                        call.function.name.clone(),
-                        call.id.clone(),
-                        serde_json::from_str(&call.function.arguments)?,
-                    ),
-                    raw_response: value,
-                })
+                content.extend(
+                    tool_calls
+                        .iter()
+                        .map(|call| {
+                            completion::AssistantContent::tool_call(
+                                &call.function.name,
+                                &call.function.name,
+                                call.function.arguments.clone(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                );
+                Ok(content)
             }
-            [Choice {
-                message:
-                    Message {
-                        content: Some(content),
-                        ..
-                    },
-                ..
-            }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::Message(content.to_string()),
-                raw_response: value,
-            }),
             _ => Err(CompletionError::ResponseError(
-                "Response did not contain a message or tool call".into(),
+                "Response did not contain a valid message or tool call".into(),
             )),
-        }
+        }?;
+
+        let choice = OneOrMany::many(content).map_err(|_| {
+            CompletionError::ResponseError(
+                "Response contained no message or tool call (empty)".to_owned(),
+            )
+        })?;
+
+        Ok(completion::CompletionResponse {
+            choice,
+            raw_response: response,
+        })
     }
 }
 
@@ -399,13 +415,6 @@ pub struct Choice {
     pub message: Message,
     pub logprobs: Option<serde_json::Value>,
     pub finish_reason: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Message {
-    pub role: String,
-    pub content: Option<String>,
-    pub tool_calls: Option<Vec<ToolCall>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -459,52 +468,84 @@ impl completion::CompletionModel for CompletionModel {
 
     async fn completion(
         &self,
-        mut completion_request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         // Add preamble to chat history (if available)
-        let mut full_history = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
-                role: "system".into(),
-                content: preamble.clone(),
-            }]
-        } else {
-            vec![]
+        let mut full_history: Vec<Message> = match &completion_request.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
         };
 
-        // Extend existing chat history
-        full_history.append(&mut completion_request.chat_history);
-
-        // Add context documents to chat history
-        let prompt_with_context = completion_request.prompt_with_context();
-
-        // Add context documents to chat history
-        full_history.push(completion::Message {
-            role: "user".into(),
-            content: prompt_with_context,
-        });
-
-        let mut chain_id = self.chain_id.clone();
-        if chain_id.is_empty() {
-            chain_id = get_chain_id(self.model.as_str()).unwrap_or("").to_string();
+        // Convert prompt to user message
+        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
+        tracing::info!("Try to get on-chain system prompt");
+        let eternal_ai_rpc = std::env::var("ETERNALAI_RPC_URL").unwrap_or_else(|_| "".to_string());
+        let eternal_ai_contract =
+            std::env::var("ETERNALAI_AGENT_CONTRACT_ADDRESS").unwrap_or_else(|_| "".to_string());
+        let eternal_ai_agent_id =
+            std::env::var("ETERNALAI_AGENT_ID").unwrap_or_else(|_| "".to_string());
+        if !eternal_ai_rpc.is_empty()
+            && !eternal_ai_contract.is_empty()
+            && !eternal_ai_agent_id.is_empty()
+        {
+            tracing::info!(
+                "get on-chain system prompt with {}, {}, {}",
+                eternal_ai_rpc,
+                eternal_ai_contract,
+                eternal_ai_agent_id
+            );
+            let c_value: c_uint = eternal_ai_agent_id.parse::<u32>().unwrap_or(0);
+            let prompt = match eternalai_system_prompt_manager_toolset::get_on_chain_system_prompt(
+                &eternal_ai_rpc,
+                &eternal_ai_contract,
+                c_value,
+            )
+            .await
+            {
+                Ok(value) => value,
+                Err(e) => return Err(CompletionError::ProviderError(e)),
+            };
+            match prompt {
+                None => {
+                    tracing::info!("on-chain system prompt is none")
+                }
+                Some(value) => {
+                    full_history.push(Message::system(&value));
+                }
+            }
         }
+
+        // Convert existing chat history
+        let chat_history: Vec<Message> = completion_request
+            .chat_history
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        // Combine all messages into a single history
+        full_history.extend(chat_history);
+        full_history.extend(prompt);
 
         let request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
-                "chain_id": chain_id,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
             })
         } else {
             json!({
                 "model": self.model,
-                "chain_id": chain_id,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
                 "tool_choice": "auto",
             })
         };
+
+        tracing::debug!(target: "rig", "Sending completion request: {}", request);
 
         let response = self
             .client
@@ -529,10 +570,10 @@ impl completion::CompletionModel for CompletionModel {
                     match &response.onchain_data {
                         Some(data) => {
                             let onchain_data = serde_json::to_string_pretty(data)?;
-                            println!("onchain_data: {}", onchain_data);
+                            tracing::info!("onchain_data: {}", onchain_data);
                         }
                         None => {
-                            println!("onchain_data: None");
+                            tracing::info!("onchain_data: None");
                         }
                     }
                     response.try_into()

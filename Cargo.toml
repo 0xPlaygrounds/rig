@@ -1,8 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "rig-core", "rig-lancedb",
-    "rig-mongodb", "rig-neo4j",
-    "rig-qdrant", "rig-core/rig-core-derive",
-    "rig-sqlite"
+    "rig-core",
+    "rig-lancedb",
+    "rig-mongodb",
+    "rig-neo4j",
+    "rig-postgres",
+    "rig-qdrant",
+    "rig-core/rig-core-derive",
+    "rig-sqlite",
+    "rig-eternalai", "rig-fastembed",
 ]

@@ -80,7 +80,7 @@ pub struct Client {
 
 impl Client {
     /// Create a new Anthropic client with the given API key, base URL, betas, and version.
-    /// Note, you proably want to use the `ClientBuilder` instead.
+    /// Note, you probably want to use the `ClientBuilder` instead.
     ///
     /// Panics:
     /// - If the API key or version cannot be parsed as a Json value from a String.

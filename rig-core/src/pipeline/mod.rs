@@ -92,6 +92,8 @@ pub mod op;
 pub mod try_op;
 #[macro_use]
 pub mod parallel;
+#[macro_use]
+pub mod conditional;
 
 use std::future::Future;
 

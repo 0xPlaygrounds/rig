@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.6.1...rig-core-v0.7.0) - 2025-01-27
+
+### Added
+
+- Add hyperbolic inference API integration (#238)
+- *(rig-eternalai)* add support for EternalAI onchain toolset (#205)
+- *(pipeline)* Add conditional op (#200)
+- Add support for DeepSeek (#220)
+
+### Fixed
+
+- *(providers)* provider wasm support (#245)
+- Use of deprecated `prelude` module (#241)
+- anthropic tool use (#168)
+
+### Other
+
+- Fix typos (#233)
+- *(README)* add SQLite as a supported vector store (#201)
+
 ## [0.6.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.6.0...rig-core-v0.6.1) - 2025-01-13
 
 ### Added
