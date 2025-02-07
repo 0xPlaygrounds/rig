@@ -22,7 +22,7 @@ use crate::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 
 // ================================================================
 // Main OpenAI Client
@@ -710,6 +710,7 @@ impl From<ToolCall> for message::ToolCall {
     fn from(tool_call: ToolCall) -> Self {
         Self {
             id: tool_call.id,
+            index: None,
             function: message::ToolFunction {
                 name: tool_call.function.name,
                 arguments: tool_call.function.arguments,
@@ -927,10 +928,10 @@ impl completion::CompletionModel for CompletionModel {
             .await?;
 
         if response.status().is_success() {
-            let t = response.text().await?;
-            tracing::debug!(target: "rig", "OpenAI completion error: {}", t);
+            let t: Value = response.json().await?;
+            tracing::debug!(target: "rig", "OpenAI completion success: {}", serde_json::to_string_pretty(&t).unwrap());
 
-            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
+            match serde_json::from_value::<ApiResponse<CompletionResponse>>(t)? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "OpenAI completion token usage: {:?}",
@@ -941,7 +942,10 @@ impl completion::CompletionModel for CompletionModel {
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
             }
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            let t = response.text().await?;
+            tracing::debug!(target: "rig", "OpenAI completion error: {}", &t);
+
+            Err(CompletionError::ProviderError(t))
         }
     }
 }

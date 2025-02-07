@@ -71,6 +71,8 @@ pub enum ToolResultContent {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolCall {
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
     pub function: ToolFunction,
 }
 
@@ -300,6 +302,7 @@ impl AssistantContent {
     ) -> Self {
         AssistantContent::ToolCall(ToolCall {
             id: id.into(),
+            index: None,
             function: ToolFunction {
                 name: name.into(),
                 arguments,

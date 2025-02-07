@@ -292,13 +292,15 @@ impl From<message::AssistantContent> for Content {
     fn from(text: message::AssistantContent) -> Self {
         match text {
             message::AssistantContent::Text(message::Text { text }) => Content::Text { text },
-            message::AssistantContent::ToolCall(message::ToolCall { id, function }) => {
-                Content::ToolUse {
-                    id,
-                    name: function.name,
-                    input: function.arguments,
-                }
-            }
+            message::AssistantContent::ToolCall(message::ToolCall {
+                id,
+                index: _,
+                function,
+            }) => Content::ToolUse {
+                id,
+                name: function.name,
+                input: function.arguments,
+            },
         }
     }
 }
@@ -931,7 +933,11 @@ mod tests {
                 assert_eq!(content.len(), 1);
 
                 match content.first() {
-                    message::AssistantContent::ToolCall(message::ToolCall { id, function }) => {
+                    message::AssistantContent::ToolCall(message::ToolCall {
+                        id,
+                        index: _,
+                        function,
+                    }) => {
                         assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
                         assert_eq!(function.name, "get_weather");
                         assert_eq!(function.arguments, json!({"location": "San Francisco, CA"}));

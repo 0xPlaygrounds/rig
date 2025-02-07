@@ -515,6 +515,7 @@ pub mod gemini_api_types {
         fn from(function_call: FunctionCall) -> Self {
             Self {
                 id: function_call.name.clone(),
+                index: None,
                 function: message::ToolFunction {
                     name: function_call.name,
                     arguments: function_call.args,
