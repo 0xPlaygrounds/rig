@@ -3,7 +3,9 @@ use rig::{agent::AgentBuilder, completion::Prompt, providers::together};
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create Together AI client
-    let together_ai_client = together::Client::new(&std::env::var("TOGETHER_API_KEY").expect("TOGETHER_API_KEY not set"));
+    let together_ai_client = together::Client::new(
+        &std::env::var("TOGETHER_API_KEY").expect("TOGETHER_API_KEY not set"),
+    );
 
     // Choose a model, replace "together-model-v1" with an actual Together AI model name
     let model = together_ai_client.completion_model(rig::providers::together::TOGETHER_MODEL);

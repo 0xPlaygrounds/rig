@@ -6,10 +6,10 @@
 use crate::{
     completion::{self, CompletionError},
     json_utils,
+    providers::openai,
 };
 
 use serde_json::json;
-use together_ai_api_types::{CompletionResponse, ToolDefinition};
 
 use super::client::{together_ai_api_types::ApiResponse, Client};
 
@@ -36,42 +36,48 @@ impl CompletionModel {
 }
 
 impl completion::CompletionModel for CompletionModel {
-    type Response = CompletionResponse;
+    type Response = openai::CompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
-        mut completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let mut messages = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
-                role: "system".into(),
-                content: preamble.clone(),
-            }]
-        } else {
-            vec![]
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
+        
+        let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
+            Some(preamble) => vec![openai::Message::system(preamble)],
+            None => vec![],
         };
-        messages.append(&mut completion_request.chat_history);
 
-        let prompt_with_context = completion_request.prompt_with_context();
+        // Convert prompt to user message
+        let prompt: Vec<openai::Message> = completion_request.prompt_with_context().try_into()?;
 
-        messages.push(completion::Message {
-            role: "user".into(),
-            content: prompt_with_context,
-        });
+        // Convert existing chat history
+        let chat_history: Vec<openai::Message> = completion_request
+            .chat_history
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        // Combine all messages into a single history
+        full_history.extend(chat_history);
+        full_history.extend(prompt);
 
         let mut request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
-                "messages": messages,
+                "messages": full_history,
                 "temperature": completion_request.temperature,
             })
         } else {
             json!({
                 "model": self.model,
-                "messages": messages,
+                "messages": full_history,
                 "temperature": completion_request.temperature,
-                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
+                "tools": completion_request.tools.into_iter().map(openai::ToolDefinition::from).collect::<Vec<_>>(),
                 "tool_choice": "auto",
             })
         };
@@ -81,7 +87,7 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             request
         };
-
+        
         let response = self
             .client
             .post("/v1/chat/completions")
@@ -89,123 +95,23 @@ impl completion::CompletionModel for CompletionModel {
             .send()
             .await?;
 
-        if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
-                ApiResponse::Ok(completion) => completion.try_into(),
-                ApiResponse::Error(error) => Err(CompletionError::ProviderError(error.message())),
-            }
-        } else {
-            Err(CompletionError::ProviderError(response.text().await?))
-        }
-    }
-}
-
-pub mod together_ai_api_types {
-    use serde::{Deserialize, Serialize};
-
-    use crate::completion::{self, CompletionError};
-
-    impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-        type Error = CompletionError;
-
-        fn try_from(value: CompletionResponse) -> std::prelude::v1::Result<Self, Self::Error> {
-            match value.choices.as_slice() {
-                [Choice {
-                    message:
-                        Message {
-                            content: Some(content),
-                            ..
-                        },
-                    ..
-                }, ..] => Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::Message(content.to_string()),
-                    raw_response: value,
-                }),
-                [Choice {
-                    message:
-                        Message {
-                            tool_calls: Some(calls),
-                            ..
-                        },
-                    ..
-                }, ..] => {
-                    let call = calls.first().ok_or(CompletionError::ResponseError(
-                        "Tool selection is empty".into(),
-                    ))?;
-
-                    Ok(completion::CompletionResponse {
-                        choice: completion::ModelChoice::ToolCall(
-                            call.function.name.clone(),
-                            "".to_owned(),
-                            serde_json::from_str(&call.function.arguments)?,
-                        ),
-                        raw_response: value,
-                    })
+            if response.status().is_success() {
+                let t = response.text().await?;
+                tracing::debug!(target: "rig", "Together completion error: {}", t);
+    
+    
+                match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(&t)? {
+                    ApiResponse::Ok(response) => {
+                        tracing::info!(target: "rig",
+                            "Together completion token usage: {:?}",
+                            response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
+                        );
+                        response.try_into()
+                    }
+                    ApiResponse::Error(err) => Err(CompletionError::ProviderError(err.error)),
                 }
-                _ => Err(CompletionError::ResponseError(
-                    "Response did not contain a message or tool call".into(),
-                )),
+            } else {
+                Err(CompletionError::ProviderError(response.text().await?))
             }
-        }
-    }
-
-    impl From<completion::ToolDefinition> for ToolDefinition {
-        fn from(tool: completion::ToolDefinition) -> Self {
-            Self {
-                r#type: "function".into(),
-                function: tool,
-            }
-        }
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct ToolCall {
-        pub id: String,
-        pub r#type: String,
-        pub function: Function,
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct ToolDefinition {
-        pub r#type: String,
-        pub function: completion::ToolDefinition,
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct Function {
-        pub name: String,
-        pub arguments: String,
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct CompletionResponse {
-        pub id: String,
-        pub model: String,
-        pub choices: Vec<Choice>,
-        pub created: i64,
-        pub object: String,
-        // Assuming Together AI provides similar structure; adjust as necessary.
-        pub usage: Usage,
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct Choice {
-        pub finish_reason: String,
-        pub index: i32,
-        pub message: Message,
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct Message {
-        pub role: String,
-        pub content: Option<String>,
-        pub tool_calls: Option<Vec<ToolCall>>,
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct Usage {
-        pub completion_tokens: i32,
-        pub prompt_tokens: i32,
-        pub total_tokens: i32,
     }
 }
