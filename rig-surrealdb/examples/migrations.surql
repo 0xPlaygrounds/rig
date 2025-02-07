@@ -1,7 +1,6 @@
 -- define table & fields
 DEFINE TABLE documents SCHEMAFULL;
-DEFINE field docid on table documents type string;
-DEFINE field document on table documents type string;
+DEFINE field document on table documents type object;
 DEFINE field embedding on table documents type array<float>;
 DEFINE field embedded_text on table documents type string;
 

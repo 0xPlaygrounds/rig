@@ -6,8 +6,7 @@ use rig::{
     Embed, OneOrMany,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use surrealdb::{Connection, Surreal};
-use uuid::Uuid;
+use surrealdb::{sql::Thing, Connection, Surreal};
 
 pub use surrealdb::engine::remote::ws::{Ws, Wss};
 
@@ -41,14 +40,13 @@ impl Display for SurrealDistanceFunction {
 
 #[derive(Debug, Deserialize)]
 struct SearchResult {
-    docid: String,
+    id: Thing,
     document: String,
     distance: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateRecord {
-    docid: String,
     document: String,
     embedded_text: String,
     embedding: Vec<f64>,
@@ -56,7 +54,7 @@ pub struct CreateRecord {
 
 #[derive(Debug, Deserialize)]
 pub struct SearchResultOnlyId {
-    docid: String,
+    id: Thing,
     distance: f64,
 }
 
@@ -65,7 +63,7 @@ impl SearchResult {
         let document: T =
             serde_json::from_str(&self.document).map_err(VectorStoreError::JsonError)?;
 
-        Ok((self.distance, self.docid.to_string(), document))
+        Ok((self.distance, self.id.id.to_string(), document))
     }
 }
 
@@ -82,6 +80,10 @@ impl<Model: EmbeddingModel, C: Connection> SurrealVectorStore<Model, C> {
             documents_table: documents_table.unwrap_or(String::from("documents")),
             distance_function,
         }
+    }
+
+    pub fn inner_client(&self) -> &Surreal<C> {
+        &self.surreal
     }
 
     pub fn with_defaults(model: Model, surreal: Surreal<C>) -> Self {
@@ -106,10 +108,8 @@ impl<Model: EmbeddingModel, C: Connection> SurrealVectorStore<Model, C> {
         } = self;
         format!(
             "
-              SELECT docid {document} {embedded_text}, {distance_function}($vec, embedding) as distance \
-              FROM {documents_table} \
-            GROUP BY docid \
-            ORDER BY distance desc \
+               SELECT id {document} {embedded_text}, {distance_function}($vec, embedding) as distance \
+              from {documents_table} order by distance desc \
             LIMIT $limit",
         )
     }
@@ -121,14 +121,12 @@ impl<Model: EmbeddingModel, C: Connection> SurrealVectorStore<Model, C> {
         for (document, embeddings) in documents {
             let json_document: serde_json::Value = serde_json::to_value(&document).unwrap();
             let json_document_as_string = serde_json::to_string(&json_document).unwrap();
-            let docid = Uuid::new_v4().to_string();
 
             for embedding in embeddings {
                 let embedded_text = embedding.document;
                 let embedding: Vec<f64> = embedding.vec;
 
                 let record = CreateRecord {
-                    docid: docid.clone(),
                     document: json_document_as_string.clone(),
                     embedded_text,
                     embedding,
@@ -204,7 +202,7 @@ impl<Model: EmbeddingModel, C: Connection> VectorStoreIndex for SurrealVectorSto
             .take::<Vec<SearchResultOnlyId>>(0)
             .unwrap()
             .into_iter()
-            .map(|row| (row.distance, row.docid.to_string()))
+            .map(|row| (row.distance, row.id.id.to_string()))
             .collect();
 
         Ok(rows)

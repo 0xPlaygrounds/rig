@@ -11,7 +11,7 @@ struct WordDefinition {
     word: String,
     #[serde(skip)] // we don't want to serialize this field, we use only to create embeddings
     #[embed]
-    definitions: Vec<String>,
+    definition: String,
 }
 
 impl std::fmt::Display for WordDefinition {
@@ -49,26 +49,15 @@ async fn main() -> Result<(), anyhow::Error> {
     let words = vec![
         WordDefinition {
             word: "flurbo".to_string(),
-            definitions: vec![
-                "1. *flurbo* (name): A flurbo is a green alien that lives on cold planets.".to_string(),
-                "2. *flurbo* (name): A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
-            ]
+            definition: "1. *flurbo* (name): A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
         },
         WordDefinition {
-
             word: "glarb-glarb".to_string(),
-            definitions: vec![
-                "1. *glarb-glarb* (noun): A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-                "2. *glarb-glarb* (noun): A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
-            ]
+            definition: "1. *glarb-glarb* (noun): A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
         },
         WordDefinition {
-
             word: "linglingdong".to_string(),
-            definitions: vec![
-                "1. *linglingdong* (noun): A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
-                "2. *linglingdong* (noun): A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
-            ]
+            definition: "1. *linglingdong* (noun): A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }];
 
     let documents = EmbeddingsBuilder::new(model.clone())
@@ -80,6 +69,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // init vector store
     let vector_store = SurrealVectorStore::with_defaults(model, surreal);
+
     vector_store.insert_documents(documents).await?;
 
     // query vector
@@ -91,9 +81,9 @@ async fn main() -> Result<(), anyhow::Error> {
     for (distance, _id, doc) in results.iter() {
         println!("Result distance {} for word: {}", distance, doc);
 
-        // expected output (even if we have 2 entries on glarb-glarb the index only gives closest match)
-        // Result distance 0.2988549857990437 for word: glarb-glarb
-        //Result distance 0.7072261746390949 for word: linglingdong
+        // expected output
+        // Result distance 0.693218142100547 for word: glarb-glarb
+        // Result distance 0.2529120980283861 for word: linglingdong
     }
 
     Ok(())
