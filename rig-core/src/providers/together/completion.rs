@@ -43,7 +43,6 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
-        
         let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
             Some(preamble) => vec![openai::Message::system(preamble)],
             None => vec![],
@@ -87,7 +86,7 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             request
         };
-        
+
         let response = self
             .client
             .post("/v1/chat/completions")
@@ -95,23 +94,22 @@ impl completion::CompletionModel for CompletionModel {
             .send()
             .await?;
 
-            if response.status().is_success() {
-                let t = response.text().await?;
-                tracing::debug!(target: "rig", "Together completion error: {}", t);
-    
-    
-                match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(&t)? {
-                    ApiResponse::Ok(response) => {
-                        tracing::info!(target: "rig",
-                            "Together completion token usage: {:?}",
-                            response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
-                        );
-                        response.try_into()
-                    }
-                    ApiResponse::Error(err) => Err(CompletionError::ProviderError(err.error)),
+        if response.status().is_success() {
+            let t = response.text().await?;
+            tracing::debug!(target: "rig", "Together completion error: {}", t);
+
+            match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(&t)? {
+                ApiResponse::Ok(response) => {
+                    tracing::info!(target: "rig",
+                        "Together completion token usage: {:?}",
+                        response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
+                    );
+                    response.try_into()
                 }
-            } else {
-                Err(CompletionError::ProviderError(response.text().await?))
+                ApiResponse::Error(err) => Err(CompletionError::ProviderError(err.error)),
             }
+        } else {
+            Err(CompletionError::ProviderError(response.text().await?))
+        }
     }
 }
