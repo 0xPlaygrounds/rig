@@ -8,6 +8,7 @@ use rig::{
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use surrealdb::{sql::Thing, Connection, Surreal};
 
+pub use surrealdb::engine::local::{Db, Mem};
 pub use surrealdb::engine::remote::ws::{Ws, Wss};
 
 pub struct SurrealVectorStore<Model: EmbeddingModel, C: Connection> {

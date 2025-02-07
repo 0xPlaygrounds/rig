@@ -1,5 +1,5 @@
 use rig::{embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex, Embed};
-use rig_surrealdb::{SurrealVectorStore, Ws};
+use rig_surrealdb::{Mem, SurrealVectorStore};
 use serde::{Deserialize, Serialize};
 use surrealdb::{opt::auth::Root, Surreal};
 
@@ -29,21 +29,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = rig::providers::openai::Client::from_env();
     let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_3_SMALL);
 
-    let surreal = Surreal::new::<Ws>("localhost:9999").await?;
-
-    surreal
-        .signin(Root {
-            username: "root",
-            password: "root",
-        })
-        .await?;
+    let surreal = Surreal::new::<Mem>(()).await?;
 
     surreal.use_ns("example").use_db("example").await?;
-
-    surreal
-        .query(include_str!("./migrations.surql"))
-        .await
-        .unwrap();
 
     // create test documents with mocked embeddings
     let words = vec![
