@@ -407,7 +407,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         .iter()
                         .map(|call| {
                             completion::AssistantContent::tool_call(
-                                &call.function.name,
+                                &call.id,
                                 &call.function.name,
                                 call.function.arguments.clone(),
                             )
