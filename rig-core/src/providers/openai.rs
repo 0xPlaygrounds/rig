@@ -534,7 +534,16 @@ pub struct InputAudio {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolResultContent {
+    #[serde(default)]
+    r#type: ToolResultContentType,
     text: String,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolResultContentType {
+    #[default]
+    Text,
 }
 
 impl FromStr for ToolResultContent {
@@ -547,7 +556,10 @@ impl FromStr for ToolResultContent {
 
 impl From<String> for ToolResultContent {
     fn from(s: String) -> Self {
-        ToolResultContent { text: s }
+        ToolResultContent {
+            r#type: ToolResultContentType::default(),
+            text: s
+        }
     }
 }
 
