@@ -469,7 +469,7 @@ pub enum Message {
         #[serde(default, deserialize_with = "json_utils::null_or_vec")]
         tool_calls: Vec<ToolCall>,
     },
-    #[serde(rename = "Tool")]
+    #[serde(rename = "tool")]
     ToolResult {
         tool_call_id: String,
         content: OneOrMany<ToolResultContent>,
