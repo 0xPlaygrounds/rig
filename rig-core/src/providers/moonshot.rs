@@ -197,12 +197,12 @@ impl completion::CompletionModel for CompletionModel {
 
         if response.status().is_success() {
             let t = response.text().await?;
-            tracing::debug!(target: "rig", "Azure completion error: {}", t);
+            tracing::debug!(target: "rig", "MoonShot completion error: {}", t);
 
             match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(&t)? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
-                        "Azure completion token usage: {:?}",
+                        "MoonShot completion token usage: {:?}",
                         response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
                     );
                     response.try_into()
