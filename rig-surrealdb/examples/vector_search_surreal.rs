@@ -1,7 +1,7 @@
 use rig::{embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex, Embed};
 use rig_surrealdb::{Mem, SurrealVectorStore};
 use serde::{Deserialize, Serialize};
-use surrealdb::{opt::auth::Root, Surreal};
+use surrealdb::Surreal;
 
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `WordDefinition`
 // and tag that field with `#[embed]`.
