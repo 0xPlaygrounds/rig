@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.1...rig-postgres-v0.1.2) - 2025-02-10
+
+### Other
+
+- fix spelling errors in `Makefile` and `message.rs` (#284)
+
 ## [0.1.1](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.0...rig-postgres-v0.1.1) - 2025-01-27
 
 ### Other
