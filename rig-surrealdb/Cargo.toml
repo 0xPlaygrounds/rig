@@ -2,6 +2,10 @@
 name = "rig-surrealdb"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+readme = "README.md"
+description = "Rig vector store index integration for SurrealDB. https://surrealdb.com/"
+repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
 surrealdb = { version = "2.1.4", features = ["kv-mem", "protocol-ws"] }
