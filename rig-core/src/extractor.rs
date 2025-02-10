@@ -73,7 +73,7 @@ where
         // Use jsonish to extract JSON from the response (it will remove extra markdown or code block markers).
         let parsed = jsonish::parse(&summary, Default::default())
             .map_err(|e| <serde_json::Error as serde::de::Error>::custom(e.to_string()))
-            .map_err(|e| ExtractionError::DeserializationError(e))?;
+            .map_err(ExtractionError::DeserializationError)?;
 
         let value = jsonish_to_serde(&parsed);
         Ok(serde_json::from_value(value)?)
