@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.7.0...rig-core-v0.8.0) - 2025-02-10
+
+### Added
+
+- fastembed integration (#268)
+- *(core)* overhaul message API (#199)
+- Add support for Azure OpenAI (#234)
+- support moonshot language model (#223)
+- galadriel api integration (redux) (#265)
+- add Galadriel API integration (#188)
+- support extractor for deepseek (#255)
+- support tools for DeepSeek provider (#251)
+- streaming API implementation for Anthropic provider (#232)
+
+### Fixed
+
+- deepseek client auth (#279)
+- *(galadriel)* missed fixes from messages pr (#270)
+
+### Other
+
+- fix spelling errors in `Makefile` and `message.rs` (#284)
+- Correct `tracing::debug` message. ([#275](https://github.com/0xPlaygrounds/rig/pull/275))
+- agent recipes (#215)
+- Revert "feat: add Galadriel API integration ([#188](https://github.com/0xPlaygrounds/rig/pull/188))" ([#264](https://github.com/0xPlaygrounds/rig/pull/264))
+- *(example)* fix grammar mistake (#260)
+- Fix typos  "substract" → "subtract" ([#256](https://github.com/0xPlaygrounds/rig/pull/256))
+- fix typos (#242)
+- add more provider notes (#237)
+
 ## [0.7.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.6.1...rig-core-v0.7.0) - 2025-01-27
 
 ### Added
