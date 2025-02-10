@@ -30,6 +30,7 @@ rayon = { version = "1.10.0", optional = true }
 worker = { version = "0.5", optional = true }
 bytes = "1.9.0"
 async-stream = "0.3.6"
+json_partial = "0.1.0"
 
 [dev-dependencies]
 anyhow = "1.0.75"
