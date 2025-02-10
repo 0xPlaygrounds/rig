@@ -116,5 +116,82 @@ async fn main() -> Result<(), anyhow::Error> {
         calculator_agent.prompt("Calculate 2 - 5").await?
     );
 
+    // Create agent with a single context prompt and a search tool
+    let search_agent = openai_client
+       .agent(providers::openai::GPT_4O)
+       .preamble(
+           "You are an assistant helping to find useful information on the internet. \
+           If you can't find the information, you can use the search tool to find it. \
+           If search tool return an error just notify the user saying you could not find any result.",
+       )
+       .max_tokens(1024)
+       .tool(SearchTool)
+       .build();
+
+    // Prompt the agent and print the response
+    println!("Can you please let me know title and url of rig platform?");
+    println!(
+        "OpenAI Search Agent: {}",
+        search_agent
+            .prompt("Can you please let me know title and url of rig platform?")
+            .await?
+    );
+
     Ok(())
+}
+
+#[derive(Deserialize, Serialize)]
+struct SearchArgs {
+    pub query_string: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct SearchResult {
+    pub title: String,
+    pub url: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Search error")]
+struct SearchError;
+
+#[derive(Deserialize, Serialize)]
+struct SearchTool;
+
+impl Tool for SearchTool {
+    const NAME: &'static str = "search";
+
+    type Error = SearchError;
+    type Args = SearchArgs;
+    type Output = SearchResult;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        serde_json::from_value(json!({
+            "name": "search",
+            "description": "Search for a website, it will return the title and URL",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query_string": {
+                        "type": "string",
+                        "description": "The query string to search for"
+                    },
+                }
+            }
+        }))
+        .expect("Tool Definition")
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        println!("[tool-call] Searching for: '{}'", args.query_string);
+
+        if args.query_string.to_lowercase().contains("rig") {
+            Ok(SearchResult {
+                title: "Rig Documentation".to_string(),
+                url: "https://docs.rig.ai".to_string(),
+            })
+        } else {
+            Err(SearchError)
+        }
+    }
 }
