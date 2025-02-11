@@ -13,11 +13,10 @@ use crate::agent::Agent;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequest, CompletionRequestBuilder, Message,
 };
-use futures::{Stream, StreamExt};
-use std::boxed::Box;
+use futures::stream::BoxStream;
+use futures::StreamExt;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
-use std::pin::Pin;
 
 /// Enum representing a streaming chunk from the model
 #[derive(Debug)]
@@ -40,7 +39,7 @@ impl Display for StreamingChoice {
     }
 }
 
-pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>>>>;
+pub type StreamingResult = BoxStream<'static, Result<StreamingChoice, CompletionError>>;
 
 /// Trait for high-level streaming prompt interface
 pub trait StreamingPrompt: Send + Sync {
