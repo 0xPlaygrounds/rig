@@ -81,7 +81,7 @@ impl FromStr for AssistantContent {
 /// Main Ollama Client
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Client {
     base_url: String,
     http_client: reqwest::Client,
