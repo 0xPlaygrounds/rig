@@ -58,7 +58,7 @@ impl Client {
                     headers
                 })
                 .build()
-                .expect("DeeSeek reqwest client should build"),
+                .expect("DeepSeek reqwest client should build"),
         }
     }
 
@@ -177,7 +177,8 @@ impl From<message::ToolCall> for ToolCall {
     fn from(tool_call: message::ToolCall) -> Self {
         Self {
             id: tool_call.id,
-            index: tool_call.index.unwrap_or_default(),
+            // TODO: update index when we have it
+            index: 0,
             r#type: ToolType::Function,
             function: Function {
                 name: tool_call.function.name,

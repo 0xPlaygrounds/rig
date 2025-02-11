@@ -53,7 +53,6 @@ impl<M: rig::completion::CompletionModel> MultiTurnAgent<M> {
 
                         let ToolCall {
                             id,
-                            index: _,
                             function: ToolFunction { name, arguments },
                         } = content;
 
