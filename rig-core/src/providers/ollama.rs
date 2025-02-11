@@ -44,7 +44,7 @@
 // Imports
 // =================================================================
 
-use std::{convert::Infallible, str::FromStr, convert::TryFrom};
+use std::{convert::Infallible, convert::TryFrom, str::FromStr};
 
 use crate::{
     agent::AgentBuilder,
@@ -55,10 +55,10 @@ use crate::{
     message::{AudioMediaType, ImageDetail},
     Embed, OneOrMany,
 };
+use reqwest;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use reqwest;
 
 // =================================================================
 // FromStr implementations for provider types (for deserialization)
@@ -78,16 +78,18 @@ impl FromStr for AssistantContent {
     }
 }
 
-// =================================================================
-// Main Ollama Client
-// =================================================================
-
+/// Main Ollama Client
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Client {
     base_url: String,
     http_client: reqwest::Client,
+}
+impl Default for Client {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Client {
@@ -145,10 +147,9 @@ enum ApiResponse<T> {
     Err(ApiErrorResponse),
 }
 
-// =================================================================
-// Embedding API
-// =================================================================
-
+/// =================================================================
+/// Embedding API
+/// =================================================================
 pub const ALL_MINILM: &str = "all-minilm";
 pub const NOMIC_EMBED_TEXT: &str = "nomic-embed-text";
 
@@ -210,19 +211,26 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             "model": self.model,
             "input": docs,
         });
-        let response = self.client.post("api/embed")
+        let response = self
+            .client
+            .post("api/embed")
             .json(&payload)
             .send()
             .await
             .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
         if response.status().is_success() {
-            let api_resp: EmbeddingResponse = response.json()
+            let api_resp: EmbeddingResponse = response
+                .json()
                 .await
                 .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
             if api_resp.embeddings.len() != docs.len() {
-                return Err(EmbeddingError::ResponseError("Number of returned embeddings does not match input".into()));
+                return Err(EmbeddingError::ResponseError(
+                    "Number of returned embeddings does not match input".into(),
+                ));
             }
-            Ok(api_resp.embeddings.into_iter()
+            Ok(api_resp
+                .embeddings
+                .into_iter()
                 .zip(docs.into_iter())
                 .map(|(vec, document)| embeddings::Embedding { document, vec })
                 .collect())
@@ -280,7 +288,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<serde_json::
         }
         let raw = serde_json::to_value(&response)
             .map_err(|e| CompletionError::ResponseError(e.to_string()))?;
-        Ok(completion::CompletionResponse { choice, raw_response: raw })
+        Ok(completion::CompletionResponse {
+            choice,
+            raw_response: raw,
+        })
     }
 }
 
@@ -321,8 +332,11 @@ impl TryFrom<ChatResponse> for completion::CompletionResponse<serde_json::Value>
                 }
                 let raw = serde_json::to_value(&resp)
                     .map_err(|e| CompletionError::ResponseError(e.to_string()))?;
-                Ok(completion::CompletionResponse { choice, raw_response: raw })
-            },
+                Ok(completion::CompletionResponse {
+                    choice,
+                    raw_response: raw,
+                })
+            }
             _ => Err(CompletionError::ResponseError(
                 "Chat response does not include an assistant message".into(),
             )),
@@ -338,17 +352,19 @@ pub struct CompletionModel {
 
 impl CompletionModel {
     pub fn new(client: Client, model: &str) -> Self {
-        Self { client, model: model.to_owned() }
+        Self {
+            client,
+            model: model.to_owned(),
+        }
     }
 }
 
 /// In our unified API, we set the associated Response type to be a JSON value.
-// -----------------------------
-// Additional conversion implementations
-// -----------------------------
-
-// This implementation allows converting an internal message (crate::message::Message)
-// into a Vec of provider Message. This is used when combining prompt context.
+/// -----------------------------
+/// Additional conversion implementations
+/// -----------------------------
+/// This implementation allows converting an internal message (crate::message::Message)
+/// into a Vec of provider Message. This is used when combining prompt context.
 impl TryFrom<crate::message::Message> for Vec<Message> {
     type Error = crate::message::MessageError;
     fn try_from(internal_msg: crate::message::Message) -> Result<Self, Self::Error> {
@@ -357,18 +373,17 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
     }
 }
 
-// This implementation allows the '?' operator to convert an Infallible error into a CompletionError.
+/// This implementation allows the '?' operator to convert an Infallible error into a CompletionError.
 impl From<std::convert::Infallible> for CompletionError {
     fn from(_: std::convert::Infallible) -> Self {
         CompletionError::ProviderError("Infallible error".to_string())
     }
 }
 
-// -----------------------------
-// CompletionModel implementation
-// -----------------------------
-// Helper method for provider Message conversion to a plain prompt string.
-
+/// -----------------------------
+/// CompletionModel implementation
+/// -----------------------------
+/// Helper method for provider Message conversion to a plain prompt string.
 impl completion::CompletionModel for CompletionModel {
     type Response = serde_json::Value;
     async fn completion(
@@ -378,8 +393,8 @@ impl completion::CompletionModel for CompletionModel {
         // Convert internal prompt using prompt_with_context() into Vec<Message>
         let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
         let default_options = json!({
-                "temperature": completion_request.temperature,
-            });
+            "temperature": completion_request.temperature,
+        });
         // Determine chat mode: if chat history is non-empty OR prompt returns more than one message, use chat mode.
         if !completion_request.chat_history.is_empty() || prompt.len() > 1 {
             // Chat mode: build full conversation history as an array.
@@ -414,21 +429,28 @@ impl completion::CompletionModel for CompletionModel {
             });
 
             tracing::debug!(target: "rig", "Chat mode payload: {}", request_payload);
-            let response = self.client.post("api/chat")
+            let response = self
+                .client
+                .post("api/chat")
                 .json(&request_payload)
                 .send()
                 .await
                 .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
             if response.status().is_success() {
-                let text = response.text().await
+                let text = response
+                    .text()
+                    .await
                     .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
                 tracing::debug!(target: "rig", "Ollama chat response: {}", text);
                 let chat_resp: ChatResponse = serde_json::from_str(&text)
                     .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-                let conv: completion::CompletionResponse<serde_json::Value> = chat_resp.try_into()?;
+                let conv: completion::CompletionResponse<serde_json::Value> =
+                    chat_resp.try_into()?;
                 Ok(conv)
             } else {
-                let err_text = response.text().await
+                let err_text = response
+                    .text()
+                    .await
                     .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
                 Err(CompletionError::ProviderError(err_text))
             }
@@ -445,21 +467,28 @@ impl completion::CompletionModel for CompletionModel {
                 request_payload = json_utils::merge(request_payload, params);
             }
             tracing::debug!(target: "rig", "Single-turn payload: {}", request_payload);
-            let response = self.client.post("api/generate")
+            let response = self
+                .client
+                .post("api/generate")
                 .json(&request_payload)
                 .send()
                 .await
                 .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
             if response.status().is_success() {
-                let text = response.text().await
+                let text = response
+                    .text()
+                    .await
                     .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
                 tracing::debug!(target: "rig", "Ollama generate response: {}", text);
                 let gen_resp: CompletionResponse = serde_json::from_str(&text)
                     .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-                let conv: completion::CompletionResponse<serde_json::Value> = gen_resp.try_into()?;
+                let conv: completion::CompletionResponse<serde_json::Value> =
+                    gen_resp.try_into()?;
                 Ok(conv)
             } else {
-                let err_text = response.text().await
+                let err_text = response
+                    .text()
+                    .await
                     .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
                 Err(CompletionError::ProviderError(err_text))
             }
@@ -476,15 +505,6 @@ fn provider_messages_to_string(messages: &[Message]) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
-
-
-// =================================================================
-// Provider Message Definitions and Conversions
-// =================================================================
-
-// =================================================================
-// Provider Message Definitions for Ollama (simplified for API)
-// =================================================================
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
@@ -664,14 +684,21 @@ impl TryFrom<crate::message::Message> for Message {
                     match uc {
                         crate::message::UserContent::Text(t) => texts.push(t.text),
                         crate::message::UserContent::Image(img) => images.push(img.data),
-                        crate::message::UserContent::Audio(_audio) => {
-                        }
+                        crate::message::UserContent::Audio(_audio) => {}
                         _ => {}
                     }
                 }
                 let content_str = texts.join(" ");
-                let images_opt = if images.is_empty() { None } else { Some(images) };
-                Ok(Message::User { content: content_str, images: images_opt, name: None })
+                let images_opt = if images.is_empty() {
+                    None
+                } else {
+                    Some(images)
+                };
+                Ok(Message::User {
+                    content: content_str,
+                    images: images_opt,
+                    name: None,
+                })
             }
             InternalMessage::Assistant { content, .. } => {
                 let mut texts = Vec::new();
@@ -683,8 +710,18 @@ impl TryFrom<crate::message::Message> for Message {
                     }
                 }
                 let content_str = texts.join(" ");
-                let images_opt = if images.is_empty() { None } else { Some(images) };
-                Ok(Message::Assistant { content: content_str, images: images_opt, refusal: None, audio: None, name: None, })
+                let images_opt = if images.is_empty() {
+                    None
+                } else {
+                    Some(images)
+                };
+                Ok(Message::Assistant {
+                    content: content_str,
+                    images: images_opt,
+                    refusal: None,
+                    audio: None,
+                    name: None,
+                })
             }
         }
     }
