@@ -18,7 +18,7 @@ use crate::{
 use reqwest::Client as HttpClient;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 
 use super::openai::AssistantContent;
 
@@ -30,13 +30,18 @@ const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com";
 #[derive(Clone)]
 pub struct Client {
     pub base_url: String,
+    pub api_key: String,
     http_client: HttpClient,
 }
 
 impl Client {
     // Create a new DeepSeek client from an API key.
     pub fn new(api_key: &str) -> Self {
-        Self::from_url(api_key, DEEPSEEK_API_BASE_URL)
+        Self {
+            base_url: DEEPSEEK_API_BASE_URL.to_string(),
+            api_key: api_key.to_string(),
+            http_client: HttpClient::new(),
+        }
     }
 
     // If you prefer the environment variable approach:
@@ -50,19 +55,8 @@ impl Client {
         // Possibly configure a custom HTTP client here if needed.
         Self {
             base_url: base_url.to_string(),
-            http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        "Authorization",
-                        format!("Bearer {}", api_key)
-                            .parse()
-                            .expect("Bearer token should parse"),
-                    );
-                    headers
-                })
-                .build()
-                .expect("OpenAI reqwest client should build"),
+            api_key: api_key.to_string(),
+            http_client: HttpClient::new(),
         }
     }
 
@@ -265,20 +259,15 @@ impl CompletionModel for DeepSeekCompletionModel {
             .await?;
 
         if response.status().is_success() {
-            let t: Value = response.json().await?;
-            tracing::debug!(
-                target: "rig", 
-                "DeepSeek completion success: {}", 
-                serde_json::to_string_pretty(&t).unwrap());
+            let t = response.text().await?;
+            tracing::debug!(target: "rig", "OpenAI completion error: {}", t);
 
-            match serde_json::from_value::<ApiResponse<CompletionResponse>>(t)? {
+            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
             }
         } else {
-            let t = response.text().await?;
-            tracing::debug!(target: "rig", "DeepSeek completion error: {}", t);
-            Err(CompletionError::ProviderError(t))
+            Err(CompletionError::ProviderError(response.text().await?))
         }
     }
 }
