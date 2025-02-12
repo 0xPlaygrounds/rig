@@ -26,18 +26,13 @@ const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com";
 #[derive(Clone)]
 pub struct Client {
     pub base_url: String,
-    pub api_key: String,
     http_client: HttpClient,
 }
 
 impl Client {
     // Create a new DeepSeek client from an API key.
     pub fn new(api_key: &str) -> Self {
-        Self {
-            base_url: DEEPSEEK_API_BASE_URL.to_string(),
-            api_key: api_key.to_string(),
-            http_client: HttpClient::new(),
-        }
+        Self::from_url(api_key, DEEPSEEK_API_BASE_URL)
     }
 
     // If you prefer the environment variable approach:
@@ -51,7 +46,6 @@ impl Client {
         // Possibly configure a custom HTTP client here if needed.
         Self {
             base_url: base_url.to_string(),
-            api_key: api_key.to_string(),
             http_client: reqwest::Client::builder()
                 .default_headers({
                     let mut headers = reqwest::header::HeaderMap::new();
