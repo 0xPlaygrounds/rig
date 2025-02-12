@@ -40,8 +40,12 @@ impl Display for StreamingChoice {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub type StreamingResult =
     Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>> + Send>>;
+
+#[cfg(target_arch = "wasm32")]
+pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>>>>;
 
 /// Trait for high-level streaming prompt interface
 pub trait StreamingPrompt: Send + Sync {
