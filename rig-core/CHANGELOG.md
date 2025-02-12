@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.8.0...rig-core-v0.9.0) - 2025-02-12
+
+### Added
+
+- *(streaming)* add `Send` to `StreamingResult` inner Stream (#302)
+- groq integration (#263)
+
+### Fixed
+
+- *(gemini)* fixed tool calling + tool extractor demo (#297)
+- o3-mini doesn't support temperature (#266)
+
+### Other
+
+- deepseek message to remove dependencies with openai (#283)
+
 ## [0.8.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.7.0...rig-core-v0.8.0) - 2025-02-10
 
 ### Added
