@@ -9,7 +9,7 @@ use serde_json::json;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(tracing::Level::INFO)
         .with_target(false)
         .init();
 
