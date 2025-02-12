@@ -40,7 +40,8 @@ impl Display for StreamingChoice {
     }
 }
 
-pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>>>>;
+pub type StreamingResult =
+    Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>> + Send>>;
 
 /// Trait for high-level streaming prompt interface
 pub trait StreamingPrompt: Send + Sync {
