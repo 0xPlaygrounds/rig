@@ -141,7 +141,7 @@ pub enum MediaType {
 }
 
 /// Describes the image media type of the content. Not every provider supports every media type.
-/// Convertable to and from MIME type strings.
+/// Convertible to and from MIME type strings.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageMediaType {
@@ -155,7 +155,7 @@ pub enum ImageMediaType {
 
 /// Describes the document media type of the content. Not every provider supports every media type.
 /// Includes also programming languages as document types for providers who support code running.
-/// Convertable to and from MIME type strings.
+/// Convertible to and from MIME type strings.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum DocumentMediaType {
@@ -172,7 +172,7 @@ pub enum DocumentMediaType {
 }
 
 /// Describes the audio media type of the content. Not every provider supports every media type.
-/// Convertable to and from MIME type strings.
+/// Convertible to and from MIME type strings.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum AudioMediaType {
