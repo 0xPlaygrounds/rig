@@ -3,6 +3,8 @@
 //! From [Gemini API Reference](https://ai.google.dev/api/generate-content)
 // ================================================================
 
+/// `gemini-2.0-flash` completion model
+pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 /// `gemini-1.5-flash` completion model
 pub const GEMINI_1_5_FLASH: &str = "gemini-1.5-flash";
 /// `gemini-1.5-pro` completion model
@@ -93,51 +95,58 @@ impl completion::CompletionModel for CompletionModel {
                 completion_request
                     .tools
                     .into_iter()
-                    .map(Tool::from)
-                    .collect(),
+                    .map(Tool::try_from)
+                    .collect::<Result<Vec<_>, _>>()?,
             ),
             tool_config: None,
             system_instruction,
         };
 
-        tracing::debug!("Sending completion request to Gemini API");
+        tracing::debug!(
+            "Sending completion request to Gemini API {}",
+            serde_json::to_string_pretty(&request)?
+        );
 
         let response = self
             .client
             .post(&format!("/v1beta/models/{}:generateContent", self.model))
             .json(&request)
             .send()
-            .await?
-            .error_for_status()?
-            .json::<GenerateContentResponse>()
             .await?;
 
-        match response.usage_metadata {
-            Some(ref usage) => tracing::info!(target: "rig",
-            "Gemini completion token usage: {}",
-            usage
-            ),
-            None => tracing::info!(target: "rig",
-                "Gemini completion token usage: n/a",
-            ),
-        }
+        if response.status().is_success() {
+            let response = response.json::<GenerateContentResponse>().await?;
+            match response.usage_metadata {
+                Some(ref usage) => tracing::info!(target: "rig",
+                "Gemini completion token usage: {}",
+                usage
+                ),
+                None => tracing::info!(target: "rig",
+                    "Gemini completion token usage: n/a",
+                ),
+            }
 
-        tracing::debug!("Received response");
+            tracing::debug!("Received response");
 
-        completion::CompletionResponse::try_from(response)
+            Ok(completion::CompletionResponse::try_from(response))
+        } else {
+            Err(CompletionError::ProviderError(response.text().await?))
+        }?
     }
 }
 
-impl From<completion::ToolDefinition> for Tool {
-    fn from(tool: completion::ToolDefinition) -> Self {
-        Self {
-            function_declaration: FunctionDeclaration {
+impl TryFrom<completion::ToolDefinition> for Tool {
+    type Error = CompletionError;
+
+    fn try_from(tool: completion::ToolDefinition) -> Result<Self, Self::Error> {
+        Ok(Self {
+            function_declarations: FunctionDeclaration {
                 name: tool.name,
                 description: tool.description,
-                parameters: None, // tool.parameters, TODO: Map Gemini
+                parameters: Some(tool.parameters.try_into()?),
             },
             code_execution: None,
-        }
+        })
     }
 }
 
@@ -591,6 +600,7 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct UsageMetadata {
         pub prompt_token_count: i32,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub cached_content_token_count: Option<i32>,
         pub candidates_token_count: i32,
         pub total_token_count: i32,
@@ -674,9 +684,13 @@ pub mod gemini_api_types {
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct CitationSource {
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub uri: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub start_index: Option<i32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub end_index: Option<i32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub license: Option<String>,
     }
 
@@ -709,25 +723,31 @@ pub mod gemini_api_types {
     pub struct GenerationConfig {
         /// The set of character sequences (up to 5) that will stop output generation. If specified, the API will stop
         /// at the first appearance of a stop_sequence. The stop sequence will not be included as part of the response.
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub stop_sequences: Option<Vec<String>>,
         /// MIME type of the generated candidate text. Supported MIME types are:
         ///     - text/plain:  (default) Text output
         ///     - application/json: JSON response in the response candidates.
         ///     - text/x.enum: ENUM as a string response in the response candidates.
         /// Refer to the docs for a list of all supported text MIME types
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub response_mime_type: Option<String>,
         /// Output schema of the generated candidate text. Schemas must be a subset of the OpenAPI schema and can be
         /// objects, primitives or arrays. If set, a compatible responseMimeType must also  be set. Compatible MIME
         /// types: application/json: Schema for JSON response. Refer to the JSON text generation guide for more details.
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub response_schema: Option<Schema>,
         /// Number of generated responses to return. Currently, this value can only be set to 1. If
         /// unset, this will default to 1.
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub candidate_count: Option<i32>,
         /// The maximum number of tokens to include in a response candidate. Note: The default value varies by model, see
         /// the Model.output_token_limit attribute of the Model returned from the getModel function.
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub max_output_tokens: Option<u64>,
         /// Controls the randomness of the output. Note: The default value varies by model, see the Model.temperature
         /// attribute of the Model returned from the getModel function. Values can range from [0.0, 2.0].
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub temperature: Option<f64>,
         /// The maximum cumulative probability of tokens to consider when sampling. The model uses combined Top-k and
         /// Top-p (nucleus) sampling. Tokens are sorted based on their assigned probabilities so that only the most
@@ -735,18 +755,21 @@ pub mod gemini_api_types {
         /// Nucleus sampling limits the number of tokens based on the cumulative probability. Note: The default value
         /// varies by Model and is specified by theModel.top_p attribute returned from the getModel function. An empty
         /// topK attribute indicates that the model doesn't apply top-k sampling and doesn't allow setting topK on requests.
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub top_p: Option<f64>,
         /// The maximum number of tokens to consider when sampling. Gemini models use Top-p (nucleus) sampling or a
         /// combination of Top-k and nucleus sampling. Top-k sampling considers the set of topK most probable tokens.
         /// Models running with nucleus sampling don't allow topK setting. Note: The default value varies by Model and is
         /// specified by theModel.top_p attribute returned from the getModel function. An empty topK attribute indicates
         /// that the model doesn't apply top-k sampling and doesn't allow setting topK on requests.
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub top_k: Option<i32>,
         /// Presence penalty applied to the next token's logprobs if the token has already been seen in the response.
         /// This penalty is binary on/off and not dependent on the number of times the token is used (after the first).
         /// Use frequencyPenalty for a penalty that increases with each use. A positive penalty will discourage the use
         /// of tokens that have already been used in the response, increasing the vocabulary. A negative penalty will
         /// encourage the use of tokens that have already been used in the response, decreasing the vocabulary.
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub presence_penalty: Option<f64>,
         /// Frequency penalty applied to the next token's logprobs, multiplied by the number of times each token has been
         /// seen in the response so far. A positive penalty will discourage the use of tokens that have already been
@@ -755,11 +778,14 @@ pub mod gemini_api_types {
         /// negative penalty will encourage the model to reuse tokens proportional to the number of times the token has
         /// been used. Small negative values will reduce the vocabulary of a response. Larger negative values will cause
         /// the model to  repeating a common token until it hits the maxOutputTokens limit: "...the the the the the...".
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub frequency_penalty: Option<f64>,
         /// If true, export the logprobs results in response.
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub response_logprobs: Option<bool>,
         /// Only valid if responseLogprobs=True. This sets the number of top logprobs to return at each decoding step in
         /// [Candidate.logprobs_result].
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub logprobs: Option<i32>,
     }
 
@@ -787,14 +813,23 @@ pub mod gemini_api_types {
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Schema {
         pub r#type: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub format: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub description: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub nullable: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub r#enum: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub max_items: Option<i32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub min_items: Option<i32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub properties: Option<HashMap<String, Schema>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub required: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub items: Option<Box<Schema>>,
     }
 
@@ -806,9 +841,18 @@ pub mod gemini_api_types {
                 Ok(Schema {
                     r#type: obj
                         .get("type")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .to_string(),
+                        .and_then(|v| {
+                            if v.is_string() {
+                                v.as_str().map(String::from)
+                            } else if v.is_array() {
+                                v.as_array()
+                                    .and_then(|arr| arr.first())
+                                    .and_then(|v| v.as_str().map(String::from))
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or_default(),
                     format: obj.get("format").and_then(|v| v.as_str()).map(String::from),
                     description: obj
                         .get("description")
@@ -886,7 +930,7 @@ pub mod gemini_api_types {
     #[derive(Debug, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct Tool {
-        pub function_declaration: FunctionDeclaration,
+        pub function_declarations: FunctionDeclaration,
         pub code_execution: Option<CodeExecution>,
     }
 
@@ -895,7 +939,8 @@ pub mod gemini_api_types {
     pub struct FunctionDeclaration {
         pub name: String,
         pub description: String,
-        pub parameters: Option<Vec<Schema>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub parameters: Option<Schema>,
     }
 
     #[derive(Debug, Serialize)]
@@ -973,15 +1018,15 @@ mod tests {
             panic!("Expected inline data part");
         }
 
-        // if let Part::FunctionCall { function_call } = &parts[2] {
-        //     assert_eq!(function_call.name, "test_function");
-        //     assert_eq!(
-        //         function_call.args.as_ref().unwrap().get("arg1").unwrap(),
-        //         "value1"
-        //     );
-        // } else {
-        //     panic!("Expected function call part");
-        // }
+        if let Part::FunctionCall(function_call) = &parts[2] {
+            assert_eq!(function_call.name, "test_function");
+            assert_eq!(
+                function_call.args.as_object().unwrap().get("arg1").unwrap(),
+                "value1"
+            );
+        } else {
+            panic!("Expected function call part");
+        }
 
         if let Part::FunctionResponse(function_response) = &parts[3] {
             assert_eq!(function_response.name, "test_function");
@@ -1065,31 +1110,31 @@ mod tests {
         }
     }
 
-    // #[test]
-    // fn test_message_conversion_tool_call() {
-    //     let tool_call = message::ToolCall {
-    //         id: "test_tool".to_string(),
-    //         function: message::ToolFunction {
-    //             name: "test_function".to_string(),
-    //             arguments: json!({"arg1": "value1"}),
-    //         },
-    //     };
+    #[test]
+    fn test_message_conversion_tool_call() {
+        let tool_call = message::ToolCall {
+            id: "test_tool".to_string(),
+            function: message::ToolFunction {
+                name: "test_function".to_string(),
+                arguments: json!({"arg1": "value1"}),
+            },
+        };
 
-    //     let msg = message::Message::Assistant {
-    //         content: OneOrMany::one(message::AssistantContent::ToolCall(tool_call)),
-    //     };
+        let msg = message::Message::Assistant {
+            content: OneOrMany::one(message::AssistantContent::ToolCall(tool_call)),
+        };
 
-    //     let content: Content = msg.try_into().unwrap();
-    //     assert_eq!(content.role, Some(Role::Model));
-    //     assert_eq!(content.parts.len(), 1);
-    //     if let Part::FunctionCall { function_call } = &content.parts.first() {
-    //         assert_eq!(function_call.name, "test_function");
-    //         assert_eq!(
-    //             function_call.args.as_ref().unwrap().get("arg1").unwrap(),
-    //             "value1"
-    //         );
-    //     } else {
-    //         panic!("Expected function call part");
-    //     }
-    // }
+        let content: Content = msg.try_into().unwrap();
+        assert_eq!(content.role, Some(Role::Model));
+        assert_eq!(content.parts.len(), 1);
+        if let Part::FunctionCall(function_call) = &content.parts.first() {
+            assert_eq!(function_call.name, "test_function");
+            assert_eq!(
+                function_call.args.as_object().unwrap().get("arg1").unwrap(),
+                "value1"
+            );
+        } else {
+            panic!("Expected function call part");
+        }
+    }
 }
