@@ -302,7 +302,9 @@ impl<M: CompletionModel> Chat for Agent<M> {
         prompt: impl Into<Message>,
         mut chat_history: Vec<Message>,
     ) -> Result<String, PromptError> {
-        let prompt: Message = prompt.into();
+        let mut prompt: Message = prompt.into();
+
+        tracing::debug!("Chat prompt: {:?}", prompt);
 
         loop {
             // call model
@@ -311,6 +313,12 @@ impl<M: CompletionModel> Chat for Agent<M> {
                 .await?
                 .send()
                 .await?;
+
+            if tracing::enabled!(tracing::Level::DEBUG) {
+                for (i, message) in resp.choice.iter().enumerate() {
+                    tracing::debug!("Chat response message #{}: {:?}", i, message);
+                }
+            }
 
             // keep calling tools until we get human readable answer from the model
             match resp.choice.first() {
@@ -331,8 +339,9 @@ impl<M: CompletionModel> Chat for Agent<M> {
                     );
 
                     // add tool call and response into chat history and continue the loop
+                    chat_history.push(prompt);
                     chat_history.push(tool_call.into());
-                    chat_history.push(tool_response_message.into());
+                    prompt = tool_response_message.into();
                 }
             }
         }
