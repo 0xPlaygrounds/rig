@@ -183,8 +183,6 @@ impl Tool for SearchTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        println!("[tool-call] Searching for: '{}'", args.query_string);
-
         if args.query_string.to_lowercase().contains("rig") {
             Ok(SearchResult {
                 title: "Rig Documentation".to_string(),

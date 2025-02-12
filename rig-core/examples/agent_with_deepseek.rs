@@ -9,11 +9,12 @@ use serde_json::json;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
+        .with_max_level(tracing::Level::DEBUG)
         .with_target(false)
         .init();
 
     let client = providers::deepseek::Client::from_env();
+
     let agent = client
         .agent("deepseek-chat")
         .preamble("You are a helpful assistant.")
@@ -23,6 +24,10 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Answer: {}", answer);
 
     // Create agent with a single context prompt and two tools
+    /* WARNING from DeepSeek documentation (https://api-docs.deepseek.com/guides/function_calling)
+       Notice
+       The current version of the deepseek-chat model's Function Calling capabilitity is unstable, which may result in looped calls or empty responses.
+    */
     let calculator_agent = client
         .agent(providers::deepseek::DEEPSEEK_CHAT)
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
@@ -81,7 +86,6 @@ impl Tool for Adder {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        println!("[tool-call] Adding {} and {}", args.x, args.y);
         let result = args.x + args.y;
         Ok(result)
     }
@@ -118,7 +122,6 @@ impl Tool for Subtract {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        println!("[tool-call] Subtracting {} from {}", args.y, args.x);
         let result = args.x - args.y;
         Ok(result)
     }
