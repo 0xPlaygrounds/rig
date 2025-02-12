@@ -38,7 +38,7 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
         }
     }
 
-    pub fn inner_client(&self) -> &Qdrant {
+    pub fn client(&self) -> &Qdrant {
         &self.client
     }
 
