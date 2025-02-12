@@ -154,11 +154,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             } => {
                 let mut content = content
                     .iter()
-                    .map(|c| match c {
-                        AssistantContent::Text { text } => completion::AssistantContent::text(text),
-                        AssistantContent::Refusal { refusal } => {
-                            completion::AssistantContent::text(refusal)
+                    .filter_map(|c| match c {
+                        AssistantContent::Text { text } if !text.is_empty() => {
+                            Some(completion::AssistantContent::text(text))
                         }
+                        AssistantContent::Refusal { refusal } if !refusal.is_empty() => {
+                            Some(completion::AssistantContent::text(refusal))
+                        }
+                        _ => None,
                     })
                     .collect::<Vec<_>>();
 
@@ -267,8 +270,8 @@ impl CompletionModel for DeepSeekCompletionModel {
         if response.status().is_success() {
             let t: Value = response.json().await?;
             tracing::debug!(
-                target: "rig", 
-                "DeepSeek completion success: {}", 
+                target: "rig",
+                "DeepSeek completion success: {}",
                 serde_json::to_string_pretty(&t).unwrap());
 
             match serde_json::from_value::<ApiResponse<CompletionResponse>>(t)? {
