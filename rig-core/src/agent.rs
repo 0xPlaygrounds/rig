@@ -305,15 +305,49 @@ impl<M: CompletionModel> Chat for Agent<M> {
         let resp = self.completion(prompt, chat_history).await?.send().await?;
 
         // TODO: consider returning a `Message` instead of `String` for parallel responses / tool calls
-        match resp.choice.first() {
-            AssistantContent::Text(text) => Ok(text.text.clone()),
-            AssistantContent::ToolCall(tool_call) => Ok(self
-                .tools
-                .call(
-                    &tool_call.function.name,
-                    tool_call.function.arguments.to_string(),
-                )
-                .await?),
+        if resp.choice.rest().is_empty() {
+            // Single response case
+            match resp.choice.first() {
+                AssistantContent::Text(text) => Ok(text.text.clone()),
+                AssistantContent::ToolCall(tool_call) => Ok(self
+                    .tools
+                    .call(
+                        &tool_call.function.name,
+                        tool_call.function.arguments.to_string(),
+                    )
+                    .await?),
+            }
+        } else {
+            // Multiple responses case
+            // Look for tool calls first
+            let all_contents = std::iter::once(resp.choice.first())
+                .chain(resp.choice.rest().into_iter());
+
+            for content in all_contents {
+                if let AssistantContent::ToolCall(tool_call) = content {
+                    return Ok(self
+                        .tools
+                        .call(
+                            &tool_call.function.name,
+                            tool_call.function.arguments.to_string(),
+                        )
+                        .await?);
+                }
+            }
+
+            // If no tool calls, use the first text content
+            let all_contents = std::iter::once(resp.choice.first())
+                .chain(resp.choice.rest().into_iter());
+
+            for content in all_contents {
+                if let AssistantContent::Text(text) = content {
+                    return Ok(text.text.clone());
+                }
+            }
+
+            Err(PromptError::from(CompletionError::ResponseError(
+                "No valid content found in response".to_string(),
+            )))
         }
     }
 }
