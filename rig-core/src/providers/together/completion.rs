@@ -30,7 +30,8 @@ pub const GEMMA_2_9B_IT: &str = "google/gemma-2-9b-it";
 pub const GEMMA_2B_IT: &str = "google/gemma-2b-it";
 pub const GEMMA_2_27B_IT: &str = "google/gemma-2-27b-it";
 pub const GEMMA_7B_IT: &str = "google/gemma-7b-it";
-pub const LLAMA_3_70B_INSTRUCT_GRADIENT_1048K: &str = "gradientai/Llama-3-70B-Instruct-Gradient-1048k";
+pub const LLAMA_3_70B_INSTRUCT_GRADIENT_1048K: &str =
+    "gradientai/Llama-3-70B-Instruct-Gradient-1048k";
 pub const MYTHOMAX_L2_13B: &str = "Gryphe/MythoMax-L2-13b";
 pub const MYTHOMAX_L2_13B_LITE: &str = "Gryphe/MythoMax-L2-13b-Lite";
 pub const LLAVA_NEXT_MISTRAL_7B: &str = "llava-hf/llava-v1.6-mistral-7b-hf";
@@ -44,8 +45,10 @@ pub const KOALA_13B: &str = "togethercomputer/Koala-13B";
 pub const VICUNA_7B_V1_5: &str = "lmsys/vicuna-7b-v1.5";
 pub const CODE_LLAMA_34B_INSTRUCT: &str = "codellama/CodeLlama-34b-Instruct-hf";
 pub const LLAMA_3_8B_CHAT_HF_INT4: &str = "togethercomputer/Llama-3-8b-chat-hf-int4";
-pub const LLAMA_3_2_90B_VISION_INSTRUCT_TURBO: &str = "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo";
-pub const LLAMA_3_2_11B_VISION_INSTRUCT_TURBO: &str = "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo";
+pub const LLAMA_3_2_90B_VISION_INSTRUCT_TURBO: &str =
+    "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo";
+pub const LLAMA_3_2_11B_VISION_INSTRUCT_TURBO: &str =
+    "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo";
 pub const LLAMA_3_2_3B_INSTRUCT_TURBO: &str = "meta-llama/Llama-3.2-3B-Instruct-Turbo";
 pub const LLAMA_3_8B_CHAT_HF_INT8: &str = "togethercomputer/Llama-3-8b-chat-hf-int8";
 pub const LLAMA_3_1_70B_INSTRUCT_TURBO: &str = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo";
@@ -55,7 +58,8 @@ pub const LLAMA_3_8B_CHAT_HF: &str = "meta-llama/Llama-3-8b-chat-hf";
 pub const LLAMA_3_70B_CHAT_HF: &str = "meta-llama/Llama-3-70b-chat-hf";
 pub const LLAMA_3_8B_INSTRUCT_TURBO: &str = "meta-llama/Meta-Llama-3-8B-Instruct-Turbo";
 pub const LLAMA_3_8B_INSTRUCT_LITE: &str = "meta-llama/Meta-Llama-3-8B-Instruct-Lite";
-pub const LLAMA_3_1_405B_INSTRUCT_LITE_PRO: &str = "meta-llama/Meta-Llama-3.1-405B-Instruct-Lite-Pro";
+pub const LLAMA_3_1_405B_INSTRUCT_LITE_PRO: &str =
+    "meta-llama/Meta-Llama-3.1-405B-Instruct-Lite-Pro";
 pub const LLAMA_2_7B_CHAT: &str = "meta-llama/Llama-2-7b-chat-hf";
 pub const LLAMA_3_1_405B_INSTRUCT_TURBO: &str = "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo";
 pub const LLAMA_VISION_FREE: &str = "meta-llama/Llama-Vision-Free";
@@ -72,7 +76,8 @@ pub const LLAMA_3_70B_INSTRUCT: &str = "meta-llama/Meta-Llama-3-70B-Instruct";
 pub const CODE_LLAMA_70B_INSTRUCT: &str = "codellama/CodeLlama-70b-Instruct-hf";
 pub const LLAMA_2_70B_CHAT_TOGETHER: &str = "togethercomputer/llama-2-70b-chat";
 pub const LLAMA_3_1_8B_INSTRUCT_REFERENCE: &str = "meta-llama/Meta-Llama-3.1-8B-Instruct-Reference";
-pub const LLAMA_3_1_70B_INSTRUCT_REFERENCE: &str = "meta-llama/Meta-Llama-3.1-70B-Instruct-Reference";
+pub const LLAMA_3_1_70B_INSTRUCT_REFERENCE: &str =
+    "meta-llama/Meta-Llama-3.1-70B-Instruct-Reference";
 pub const WIZARDLM_2_8X22B: &str = "microsoft/WizardLM-2-8x22B";
 pub const MISTRAL_7B_INSTRUCT_V0_1: &str = "mistralai/Mistral-7B-Instruct-v0.1";
 pub const MISTRAL_7B_INSTRUCT_V0_2: &str = "mistralai/Mistral-7B-Instruct-v0.2";

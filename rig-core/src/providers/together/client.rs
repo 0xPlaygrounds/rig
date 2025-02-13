@@ -78,7 +78,7 @@ impl Client {
     /// ```
     pub fn embedding_model(&self, model: &str) -> EmbeddingModel {
         let ndims = match model {
-            M2_BERT_80M_8K_RETRIEVAL => 8192, 
+            M2_BERT_80M_8K_RETRIEVAL => 8192,
             _ => 0,
         };
         EmbeddingModel::new(self.clone(), model, ndims)
