@@ -21,10 +21,9 @@ pub const EMBEDDING_V1: &str = "togethercomputer/m2-bert-80M-8k-retrieval";
 
 #[derive(Debug, Deserialize)]
 pub struct EmbeddingResponse {
+    pub model: String,
     pub object: String,
     pub data: Vec<EmbeddingData>,
-    pub model: String,
-    pub usage: Usage,
 }
 
 impl From<ApiErrorResponse> for EmbeddingError {
