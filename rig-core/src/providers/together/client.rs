@@ -7,7 +7,7 @@ use crate::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{completion::CompletionModel, embedding::EmbeddingModel, EMBEDDING_V1};
+use super::{completion::CompletionModel, embedding::EmbeddingModel, M2_BERT_80M_8K_RETRIEVAL};
 
 // ================================================================
 // Together AI Client
@@ -78,7 +78,7 @@ impl Client {
     /// ```
     pub fn embedding_model(&self, model: &str) -> EmbeddingModel {
         let ndims = match model {
-            EMBEDDING_V1 => 3072, // Assuming this is the dimension for Together AI's v1 embedding model
+            M2_BERT_80M_8K_RETRIEVAL => 8192, 
             _ => 0,
         };
         EmbeddingModel::new(self.clone(), model, ndims)

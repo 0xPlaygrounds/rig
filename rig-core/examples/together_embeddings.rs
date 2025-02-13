@@ -13,7 +13,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let client = together::Client::from_env();
 
     let embeddings = client
-        .embeddings(together::embedding::EMBEDDING_V1)
+        .embeddings(together::embedding::M2_BERT_80M_8K_RETRIEVAL)
         .document(Greetings {
             message: "Hello, world!".to_string(),
         })?

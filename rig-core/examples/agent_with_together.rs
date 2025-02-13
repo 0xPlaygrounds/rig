@@ -8,7 +8,7 @@ async fn main() -> Result<(), anyhow::Error> {
     );
 
     // Choose a model, replace "together-model-v1" with an actual Together AI model name
-    let model = together_ai_client.completion_model(rig::providers::together::TOGETHER_MODEL);
+    let model = together_ai_client.completion_model(rig::providers::together::LLAMA_3_8B_INSTRUCT_TURBO);
 
     // Create an agent with multiple context documents
     let agent = AgentBuilder::new(model)
