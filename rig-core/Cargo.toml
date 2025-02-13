@@ -74,3 +74,11 @@ required-features = ["derive"]
 [[example]]
 name = "agent_with_moonshot"
 required-features = ["derive"]
+
+[[example]]
+name = "agent_with_together"
+required-features = ["derive"]
+
+[[example]]
+name = "together_embeddings"
+required-features = ["derive"]
