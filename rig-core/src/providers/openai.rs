@@ -930,7 +930,6 @@ impl completion::CompletionModel for CompletionModel {
             })
         };
 
-
         // merge additional params into request
         if let Some(params) = completion_request.additional_params {
             request = json_utils::merge(request, params);
@@ -946,7 +945,6 @@ impl completion::CompletionModel for CompletionModel {
                 }),
             );
         }
-
 
         let response = self
             .client
