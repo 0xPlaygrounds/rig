@@ -919,22 +919,34 @@ impl completion::CompletionModel for CompletionModel {
             json!({
                 "model": self.model,
                 "messages": full_history,
-                "temperature": completion_request.temperature,
+
             })
         } else {
             json!({
                 "model": self.model,
                 "messages": full_history,
-                "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
                 "tool_choice": "auto",
             })
         };
 
+
         // merge additional params into request
         if let Some(params) = completion_request.additional_params {
             request = json_utils::merge(request, params);
         }
+
+        // only include temperature if it exists
+        // because some models don't support temperature
+        if let Some(temperature) = completion_request.temperature {
+            request = json_utils::merge(
+                request,
+                json!({
+                    "temperature": temperature,
+                }),
+            );
+        }
+
 
         let response = self
             .client

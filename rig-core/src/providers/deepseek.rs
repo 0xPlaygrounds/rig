@@ -16,7 +16,7 @@ use crate::{
 use reqwest::Client as HttpClient;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 
 // ================================================================
 // Main DeepSeek Client
@@ -432,20 +432,15 @@ impl CompletionModel for DeepSeekCompletionModel {
             .await?;
 
         if response.status().is_success() {
-            let t: Value = response.json().await?;
-            tracing::debug!(
-                target: "rig", 
-                "DeepSeek completion success: {}", 
-                serde_json::to_string_pretty(&t).unwrap());
+            let t = response.text().await?;
+            tracing::debug!(target: "rig", "OpenAI completion error: {}", t);
 
-            match serde_json::from_value::<ApiResponse<CompletionResponse>>(t)? {
+            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
             }
         } else {
-            let t = response.text().await?;
-            tracing::debug!(target: "rig", "DeepSeek completion error: {}", t);
-            Err(CompletionError::ProviderError(t))
+            Err(CompletionError::ProviderError(response.text().await?))
         }
     }
 }
