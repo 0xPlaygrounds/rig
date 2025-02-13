@@ -55,4 +55,5 @@ pub mod hyperbolic;
 pub mod moonshot;
 pub mod openai;
 pub mod perplexity;
+pub mod together;
 pub mod xai;
