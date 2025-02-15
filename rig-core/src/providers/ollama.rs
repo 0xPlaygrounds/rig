@@ -13,11 +13,10 @@
 //! let req = rig::completion::CompletionRequest {
 //!     preamble: Some("You are now a humorous AI assistant.".to_owned()),
 //!     chat_history: vec![],  // internal messages (if any)
-//!     prompt: /* a crate::message::Message value representing the prompt */
-//!         rig::message::Message::User {
-//!             content: rig::one_or_many::OneOrMany::one(rig::message::UserContent::text("Please tell me why the sky is blue.")),
-//!             name: None
-//!         },
+//!     prompt: rig::message::Message::User {
+//!         content: rig::one_or_many::OneOrMany::one(rig::message::UserContent::text("Please tell me why the sky is blue.")),
+//!         name: None
+//!     },
 //!     temperature: 0.7,
 //!     additional_params: None,
 //!     tools: vec![],
@@ -39,46 +38,35 @@
 //! let agent = client.agent("llama3.2");
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
-
-// =================================================================
-// Imports
-// =================================================================
-
-use std::{convert::Infallible, convert::TryFrom, str::FromStr};
-
-use crate::{
-    agent::AgentBuilder,
-    completion::{self, CompletionError, CompletionRequest},
-    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
-    extractor::ExtractorBuilder,
-    json_utils,
-    message::{AudioMediaType, ImageDetail},
-    Embed, OneOrMany,
-};
+use std::{convert::TryFrom, str::FromStr};
+use std::convert::Infallible;
+use crate::{agent::AgentBuilder, completion::{self, CompletionError, CompletionRequest}, embeddings::{self, EmbeddingError, EmbeddingsBuilder}, extractor::ExtractorBuilder, json_utils, message, message::{ImageDetail, Text}, Embed, OneOrMany};
 use reqwest;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
+// =================================================================
+// Struct Definitions and Conversion Implementations
+// =================================================================
 
-// =================================================================
-// FromStr implementations for provider types (for deserialization)
-// =================================================================
+// ---------- FromStr Implementations for Provider Types ----------
 
 impl FromStr for UserContent {
-    type Err = Infallible;
+    type Err = std::convert::Infallible;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(UserContent::Text { text: s.to_owned() })
     }
 }
 
 impl FromStr for AssistantContent {
-    type Err = Infallible;
+    type Err = std::convert::Infallible;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(AssistantContent::Text { text: s.to_owned() })
+        Ok(AssistantContent { text: s.to_owned() })
     }
 }
 
-/// Main Ollama Client
+// ---------- Main Client ----------
+
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 
 #[derive(Clone)]
@@ -86,6 +74,7 @@ pub struct Client {
     base_url: String,
     http_client: reqwest::Client,
 }
+
 impl Default for Client {
     fn default() -> Self {
         Self::new()
@@ -131,9 +120,7 @@ impl Client {
     }
 }
 
-// =================================================================
-// API Error and Response Structures
-// =================================================================
+// ---------- API Error and Response Structures ----------
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
@@ -147,9 +134,8 @@ enum ApiResponse<T> {
     Err(ApiErrorResponse),
 }
 
-/// =================================================================
-/// Embedding API
-/// =================================================================
+// ---------- Embedding API ----------
+
 pub const ALL_MINILM: &str = "all-minilm";
 pub const NOMIC_EMBED_TEXT: &str = "nomic-embed-text";
 
@@ -179,6 +165,8 @@ impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, Embeddin
         }
     }
 }
+
+// ---------- Embedding Model ----------
 
 #[derive(Clone)]
 pub struct EmbeddingModel {
@@ -240,9 +228,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     }
 }
 
-// =================================================================
-// Completion API
-// =================================================================
+// ---------- Completion API ----------
 
 pub const LLAMA3_2: &str = "llama3.2";
 pub const LLAVA: &str = "llava";
@@ -250,53 +236,6 @@ pub const MISTRAL: &str = "mistral";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CompletionResponse {
-    pub model: String,
-    pub created_at: String,
-    pub response: String,
-    pub done: bool,
-    #[serde(default)]
-    pub done_reason: Option<String>,
-    #[serde(default)]
-    pub context: Option<serde_json::Value>,
-    #[serde(default)]
-    pub total_duration: Option<u64>,
-    #[serde(default)]
-    pub load_duration: Option<u64>,
-    #[serde(default)]
-    pub prompt_eval_count: Option<u64>,
-    #[serde(default)]
-    pub prompt_eval_duration: Option<u64>,
-    #[serde(default)]
-    pub eval_count: Option<u64>,
-    #[serde(default)]
-    pub eval_duration: Option<u64>,
-}
-
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
-    }
-}
-
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<serde_json::Value> {
-    type Error = CompletionError;
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let assistant = completion::AssistantContent::text(&response.response);
-        let choice = OneOrMany::one(assistant);
-        if choice.is_empty() {
-            return Err(CompletionError::ResponseError("Empty response".into()));
-        }
-        let raw = serde_json::to_value(&response)
-            .map_err(|e| CompletionError::ResponseError(e.to_string()))?;
-        Ok(completion::CompletionResponse {
-            choice,
-            raw_response: raw,
-        })
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ChatResponse {
     pub model: String,
     pub created_at: String,
     pub message: Message,
@@ -316,25 +255,51 @@ pub struct ChatResponse {
     #[serde(default)]
     pub eval_duration: Option<u64>,
 }
-
-impl TryFrom<ChatResponse> for completion::CompletionResponse<serde_json::Value> {
+impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
-    fn try_from(resp: ChatResponse) -> Result<Self, Self::Error> {
+    fn try_from(resp: CompletionResponse) -> Result<Self, Self::Error> {
         match resp.message {
-            Message::Assistant { ref content, .. } => {
-                // Since the provider Message's content is now a String,
-                // create a single AssistantContent from it.
-                let assistant_content = completion::AssistantContent::text(content);
-                // Directly construct OneOrMany from the assistant_content.
-                let choice = OneOrMany::one(assistant_content);
-                if choice.is_empty() {
-                    return Err(CompletionError::ResponseError("Empty chat response".into()));
+            // Process only if an assistant message is present.
+            Message::Assistant { content, tool_calls, .. } => {
+                let mut assistant_contents = Vec::new();
+                // Add the assistant's text content if any.
+                if !content.is_empty() {
+                    assistant_contents.push(completion::AssistantContent::text(&content));
                 }
-                let raw = serde_json::to_value(&resp)
-                    .map_err(|e| CompletionError::ResponseError(e.to_string()))?;
+                // Process tool_calls following Ollama's chat response definition.
+                // Each ToolCall has an id, a type, and a function field.
+                for tc in tool_calls.iter() {
+                    assistant_contents.push(
+                        completion::AssistantContent::tool_call(
+                            tc.function.name.clone(),
+                            tc.function.name.clone(),
+                            tc.function.arguments.clone()
+                        )
+                    );
+                }
+                let choice = OneOrMany::many(assistant_contents)
+                    .map_err(|_| CompletionError::ResponseError("No content provided".to_owned()))?;
+                let raw_response = CompletionResponse {
+                    model: resp.model,
+                    created_at: resp.created_at,
+                    done: resp.done,
+                    done_reason: resp.done_reason,
+                    total_duration: resp.total_duration,
+                    load_duration: resp.load_duration,
+                    prompt_eval_count: resp.prompt_eval_count,
+                    prompt_eval_duration: resp.prompt_eval_duration,
+                    eval_count: resp.eval_count,
+                    eval_duration: resp.eval_duration,
+                    message: Message::Assistant {
+                        content,
+                        images: None,
+                        name: None,
+                        tool_calls,
+                    },
+                };
                 Ok(completion::CompletionResponse {
                     choice,
-                    raw_response: raw,
+                    raw_response,
                 })
             }
             _ => Err(CompletionError::ResponseError(
@@ -343,6 +308,8 @@ impl TryFrom<ChatResponse> for completion::CompletionResponse<serde_json::Value>
         }
     }
 }
+
+// ---------- Completion Model ----------
 
 #[derive(Clone)]
 pub struct CompletionModel {
@@ -359,152 +326,229 @@ impl CompletionModel {
     }
 }
 
-/// In our unified API, we set the associated Response type to be a JSON value.
 /// -----------------------------
-/// Additional conversion implementations
+/// Provider Message Conversions
 /// -----------------------------
-/// This implementation allows converting an internal message (crate::message::Message)
-/// into a Vec of provider Message. This is used when combining prompt context.
-impl TryFrom<crate::message::Message> for Vec<Message> {
+/// Conversion from an internal Rig message (crate::message::Message) to a provider Message.
+/// (Only User and Assistant variants are supported.)
+impl TryFrom<crate::message::Message> for Message {
     type Error = crate::message::MessageError;
     fn try_from(internal_msg: crate::message::Message) -> Result<Self, Self::Error> {
-        // For now, simply convert the internal message to a provider Message and wrap it in a Vec.
-        Ok(vec![Message::try_from(internal_msg)?])
+        use crate::message::Message as InternalMessage;
+        match internal_msg {
+            InternalMessage::User { content, .. } => {
+                let mut texts = Vec::new();
+                let mut images = Vec::new();
+                for uc in content.into_iter() {
+                    match uc {
+                        crate::message::UserContent::Text(t) => texts.push(t.text),
+                        crate::message::UserContent::Image(img) => images.push(img.data),
+                        _ => {} // Audio variant removed since Ollama API does not support it.
+                    }
+                }
+                let content_str = texts.join(" ");
+                let images_opt = if images.is_empty() { None } else { Some(images) };
+                Ok(Message::User {
+                    content: content_str,
+                    images: images_opt,
+                    name: None,
+                })
+            }
+            InternalMessage::Assistant { content, .. } => {
+                let mut texts = Vec::new();
+                let mut tool_calls = Vec::new();
+                for ac in content.into_iter() {
+                    match ac {
+                        crate::message::AssistantContent::Text(t) => texts.push(t.text),
+                        crate::message::AssistantContent::ToolCall(tc) => {
+                            tool_calls.push(ToolCall {
+                                r#type: ToolType::Function, // Assuming internal tool call provides these fields
+                                function: Function {
+                                    name: tc.function.name,
+                                    arguments: tc.function.arguments,
+                                },
+                            });
+                        }
+                    }
+                }
+                let content_str = texts.join(" ");
+                Ok(Message::Assistant {
+                    content: content_str,
+                    images: None,
+                    name: None,
+                    tool_calls,
+                })
+            }
+        }
     }
 }
 
-/// This implementation allows the '?' operator to convert an Infallible error into a CompletionError.
+/// Conversion from provider Message to a completion message.
+/// This is needed so that responses can be converted back into chat history.
+impl From<Message> for crate::completion::Message {
+    fn from(msg: Message) -> Self {
+        match msg {
+            Message::User { content, .. } => crate::completion::Message::User {
+                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
+                    text: content,
+                })),
+            },
+            Message::Assistant { content, tool_calls, .. } => {
+                let mut assistant_contents = vec![
+                    crate::completion::message::AssistantContent::Text(Text { text: content })
+                ];
+                for tc in tool_calls {
+                    assistant_contents.push(
+                        crate::completion::message::AssistantContent::tool_call(
+                            tc.function.name.clone(),
+                            tc.function.name,
+                            tc.function.arguments
+                        )
+                    );
+                }
+                crate::completion::Message::Assistant {
+                    content: OneOrMany::many(assistant_contents).unwrap(),
+                }
+            },
+            // System and ToolResult are converted to User message as needed.
+            Message::System { content, .. } => crate::completion::Message::User {
+                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
+                    text: content,
+                })),
+            },
+            Message::ToolResult {
+                tool_call_id,
+                content,
+            } => crate::completion::Message::User {
+                content: OneOrMany::one(message::UserContent::tool_result(
+                    tool_call_id,
+                    content.map(|content| message::ToolResultContent::text(content.text)),
+                )),
+            },
+        }
+    }
+}
+
+/// Allow converting an Infallible error into a CompletionError.
+/// Since Infallible cannot occur, we simply use unwrap.
 impl From<std::convert::Infallible> for CompletionError {
     fn from(_: std::convert::Infallible) -> Self {
         CompletionError::ProviderError("Infallible error".to_string())
     }
 }
 
-/// -----------------------------
-/// CompletionModel implementation
-/// -----------------------------
-/// Helper method for provider Message conversion to a plain prompt string.
+// ---------- CompletionModel Implementation ----------
+
 impl completion::CompletionModel for CompletionModel {
-    type Response = serde_json::Value;
+    type Response = CompletionResponse;
     async fn completion(
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
-        // Convert internal prompt using prompt_with_context() into Vec<Message>
-        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
-        let default_options = json!({
-            "temperature": completion_request.temperature,
-        });
-        // Determine chat mode: if chat history is non-empty OR prompt returns more than one message, use chat mode.
-        if !completion_request.chat_history.is_empty() || prompt.len() > 1 {
-            // Chat mode: build full conversation history as an array.
-            let mut full_history: Vec<Message> = match &completion_request.preamble {
-                Some(preamble) => vec![Message::system(preamble)],
-                None => vec![],
-            };
-
-            // Convert chat history: each internal message may yield multiple provider messages.
-            let chat_history: Vec<Message> = completion_request
-                .chat_history
-                .into_iter()
-                .map(|m| m.try_into())
-                .collect::<Result<Vec<Vec<Message>>, _>>()?
-                .into_iter()
-                .flatten()
-                .collect();
-
-            full_history.extend(chat_history);
-            full_history.extend(prompt);
-            let options = if let Some(extra) = completion_request.additional_params {
-                json_utils::merge(default_options, extra)
-            } else {
-                default_options
-            };
-
-            let request_payload = json!({
-                "model": self.model,
-                "messages": full_history,  // Send as an array, per API specification.
-                "temperature": options,
-                "stream": false,
-            });
-
-            tracing::debug!(target: "rig", "Chat mode payload: {}", request_payload);
-            let response = self
-                .client
-                .post("api/chat")
-                .json(&request_payload)
-                .send()
-                .await
-                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-            if response.status().is_success() {
-                let text = response
-                    .text()
-                    .await
-                    .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-                tracing::debug!(target: "rig", "Ollama chat response: {}", text);
-                let chat_resp: ChatResponse = serde_json::from_str(&text)
-                    .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-                let conv: completion::CompletionResponse<serde_json::Value> =
-                    chat_resp.try_into()?;
-                Ok(conv)
-            } else {
-                let err_text = response
-                    .text()
-                    .await
-                    .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-                Err(CompletionError::ProviderError(err_text))
-            }
+        // Convert internal prompt into a provider Message
+        let prompt: Message = completion_request.prompt_with_context().try_into()?;
+        let options = if let Some(extra) = completion_request.additional_params {
+            json_utils::merge(
+                json!({ "temperature": completion_request.temperature }),
+                extra,
+            )
         } else {
-            // Single-turn mode: if prompt_with_context() returns empty, fallback to converting internal prompt to a plain string.
-            let full_prompt = provider_messages_to_string(&prompt);
-            let mut request_payload = json!({
-                "model": self.model,
-                "prompt": full_prompt, // prompt must be a string
-                "temperature": completion_request.temperature,
-                "stream": false,
-            });
-            if let Some(params) = completion_request.additional_params {
-                request_payload = json_utils::merge(request_payload, params);
-            }
-            tracing::debug!(target: "rig", "Single-turn payload: {}", request_payload);
-            let response = self
-                .client
-                .post("api/generate")
-                .json(&request_payload)
-                .send()
-                .await
+            json!({ "temperature": completion_request.temperature })
+        };
+
+        // Chat mode: assemble full conversation history including preamble and chat history
+        let mut full_history = Vec::new();
+        if let Some(preamble) = completion_request.preamble {
+            full_history.push(Message::system(&preamble));
+        }
+        for msg in completion_request.chat_history.into_iter() {
+            full_history.push(Message::try_from(msg)?);
+        }
+        full_history.push(prompt);
+
+        let mut request_payload = json!({
+            "model": self.model,
+            "messages": full_history,
+            "options": options,
+            "stream": false,
+        });
+        if !completion_request.tools.is_empty() {
+            request_payload["tools"] = json!(completion_request
+                .tools
+                .into_iter()
+                .map(|tool| tool.into())
+                .collect::<Vec<ToolDefinition>>());
+        }
+
+        tracing::debug!(target: "rig", "Chat mode payload: {}", request_payload);
+        let response = self
+            .client
+            .post("api/chat")
+            .json(&request_payload)
+            .send()
+            .await
+            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+        if response.status().is_success() {
+            let text = response.text().await.map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            tracing::debug!(target: "rig", "Ollama chat response: {}", text);
+            let chat_resp: CompletionResponse = serde_json::from_str(&text)
                 .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-            if response.status().is_success() {
-                let text = response
-                    .text()
-                    .await
-                    .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-                tracing::debug!(target: "rig", "Ollama generate response: {}", text);
-                let gen_resp: CompletionResponse = serde_json::from_str(&text)
-                    .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-                let conv: completion::CompletionResponse<serde_json::Value> =
-                    gen_resp.try_into()?;
-                Ok(conv)
-            } else {
-                let err_text = response
-                    .text()
-                    .await
-                    .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-                Err(CompletionError::ProviderError(err_text))
-            }
+            let conv: completion::CompletionResponse<CompletionResponse> = chat_resp.try_into()?;
+            Ok(conv)
+        } else {
+            let err_text = response.text().await.map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            Err(CompletionError::ProviderError(err_text))
         }
     }
 }
 
-// Helper function: convert a slice of provider Message into a plain string.
-// For each message, we extract the text from User, Assistant or System variants.
-fn provider_messages_to_string(messages: &[Message]) -> String {
-    messages
-        .iter()
-        .map(|msg| msg.to_prompt())
-        .collect::<Vec<_>>()
-        .join("\n")
+// ---------- Tool Definition Conversion ----------
+
+/// Ollama-required tool definition format.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ToolDefinition {
+    #[serde(rename = "type")]
+    pub type_field: String, // Fixed as "function"
+    pub function: completion::ToolDefinition,
 }
+
+/// Convert internal ToolDefinition (from the completion module) into Ollama's tool definition.
+impl From<crate::completion::ToolDefinition> for ToolDefinition {
+    fn from(tool: crate::completion::ToolDefinition) -> Self {
+        ToolDefinition {
+            type_field: "function".to_owned(),
+            function: completion::ToolDefinition {
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.parameters,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct ToolCall {
+
+    // pub id: String,
+    #[serde(default ,rename = "type")]
+    pub r#type: ToolType,
+    pub function: Function,
+}
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolType {
+    #[default]
+    Function,
+}
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct Function {
+    pub name: String,
+    pub arguments: Value,
+}
+
+
+
+// ---------- Provider Message Definition ----------
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
@@ -517,15 +561,14 @@ pub enum Message {
         name: Option<String>,
     },
     Assistant {
+        #[serde(default)]
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         images: Option<Vec<String>>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        refusal: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        audio: Option<AudioAssistant>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
+        #[serde(default, deserialize_with = "json_utils::null_or_vec")]
+        tool_calls: Vec<ToolCall>,
     },
     System {
         content: String,
@@ -537,22 +580,13 @@ pub enum Message {
     #[serde(rename = "Tool")]
     ToolResult {
         tool_call_id: String,
-        content: String,
+        content: OneOrMany<ToolResultContent>,
     },
 }
 
-// Implement a helper method on provider Message to extract text for prompt.
 impl Message {
-    pub fn to_prompt(&self) -> String {
-        match self {
-            Message::User { content, .. } => content.clone(),
-            Message::Assistant { content, .. } => content.clone(),
-            Message::System { content, .. } => content.clone(),
-            Message::ToolResult { content, .. } => content.clone(),
-        }
-    }
 
-    // A convenience method to create a system message from a string.
+    /// Constructs a system message.
     pub fn system(content: &str) -> Self {
         Message::System {
             content: content.to_owned(),
@@ -561,6 +595,28 @@ impl Message {
         }
     }
 }
+
+// ---------- Additional Message Types ----------
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct ToolResultContent {
+    text: String,
+}
+
+impl FromStr for ToolResultContent {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(s.to_owned().into())
+    }
+}
+
+impl From<String> for ToolResultContent {
+    fn from(s: String) -> Self {
+        ToolResultContent { text: s }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct SystemContent {
     #[serde(default)]
@@ -585,8 +641,7 @@ impl From<String> for SystemContent {
 }
 
 impl FromStr for SystemContent {
-    type Err = Infallible;
-
+    type Err = std::convert::Infallible;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(SystemContent {
             r#type: SystemContentType::default(),
@@ -594,15 +649,10 @@ impl FromStr for SystemContent {
         })
     }
 }
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct AudioAssistant {
-    pub id: String,
-}
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum AssistantContent {
-    Text { text: String },
-    Refusal { refusal: String },
+pub struct AssistantContent {
+    pub text: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -610,7 +660,7 @@ pub enum AssistantContent {
 pub enum UserContent {
     Text { text: String },
     Image { image_url: ImageUrl },
-    Audio { input_audio: InputAudio },
+    // Audio variant removed as Ollama API does not support audio input.
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -620,109 +670,117 @@ pub struct ImageUrl {
     pub detail: ImageDetail,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct InputAudio {
-    pub data: String,
-    pub format: AudioMediaType,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct ToolResultContent {
-    pub text: String,
-}
-
-impl FromStr for ToolResultContent {
-    type Err = Infallible;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(ToolResultContent { text: s.to_owned() })
-    }
-}
-
-impl From<String> for ToolResultContent {
-    fn from(s: String) -> Self {
-        ToolResultContent { text: s }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct ToolCall {
-    pub id: String,
-    #[serde(default)]
-    pub r#type: ToolType,
-    pub function: Function,
-}
-
-#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all = "lowercase")]
-pub enum ToolType {
-    #[default]
-    Function,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct Function {
-    pub name: String,
-    #[serde(with = "crate::json_utils::stringified_json")]
-    pub arguments: serde_json::Value,
-}
-
 // =================================================================
-// Conversion from internal Rig message (crate::message::Message)
-// to provider Message.
-// (Only User, Assistant and System variants are supported.)
+// Tests
 // =================================================================
 
-impl TryFrom<crate::message::Message> for Message {
-    type Error = crate::message::MessageError;
-    fn try_from(internal_msg: crate::message::Message) -> Result<Self, Self::Error> {
-        use crate::message::Message as InternalMessage;
-        match internal_msg {
-            InternalMessage::User { content, .. } => {
-                let mut texts = Vec::new();
-                let mut images = Vec::new();
-                for uc in content.into_iter() {
-                    match uc {
-                        crate::message::UserContent::Text(t) => texts.push(t.text),
-                        crate::message::UserContent::Image(img) => images.push(img.data),
-                        crate::message::UserContent::Audio(_audio) => {}
-                        _ => {}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // Test deserialization and conversion for the /api/chat endpoint.
+    #[tokio::test]
+    async fn test_chat_completion() {
+        // Sample JSON response from /api/chat (non-streaming) based on Ollama docs.
+        let sample_chat_response = json!({
+            "model": "llama3.2",
+            "created_at": "2023-08-04T19:22:45.499127Z",
+            "message": {
+                "role": "assistant",
+                "content": "The sky is blue because of Rayleigh scattering.",
+                "images": null,
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "get_current_weather",
+                            "arguments": {
+                                "location": "San Francisco, CA",
+                                "format": "celsius"
+                            }
+                        }
                     }
-                }
-                let content_str = texts.join(" ");
-                let images_opt = if images.is_empty() {
-                    None
-                } else {
-                    Some(images)
-                };
-                Ok(Message::User {
-                    content: content_str,
-                    images: images_opt,
-                    name: None,
-                })
-            }
-            InternalMessage::Assistant { content, .. } => {
-                let mut texts = Vec::new();
-                let images = Vec::new();
-                for ac in content.into_iter() {
-                    match ac {
-                        crate::message::AssistantContent::Text(t) => texts.push(t.text),
-                        _ => {}
+                ]
+            },
+            "done": true,
+            "total_duration": 8000000000u64,
+            "load_duration": 6000000u64,
+            "prompt_eval_count": 61u64,
+            "prompt_eval_duration": 400000000u64,
+            "eval_count": 468u64,
+            "eval_duration": 7700000000u64
+        });
+        let sample_text = sample_chat_response.to_string();
+
+        let chat_resp: CompletionResponse = serde_json::from_str(&sample_text).expect("Invalid JSON structure");
+        let conv: completion::CompletionResponse<CompletionResponse> = chat_resp.try_into().unwrap();
+        assert!(
+            !conv.choice.is_empty(),
+            "Expected non-empty choice in chat response"
+        );
+    }
+
+    // Test conversion from provider Message to completion Message.
+    #[test]
+    fn test_message_conversion() {
+        // Construct a provider Message (User variant with String content).
+        let provider_msg = Message::User {
+            content: "Test message".to_owned(),
+            images: None,
+            name: None,
+        };
+        // Convert it into a completion::Message.
+        let comp_msg: crate::completion::Message = provider_msg.into();
+        match comp_msg {
+            crate::completion::Message::User { content } => {
+                // Assume OneOrMany<T> has a method first() to access the first element.
+                let first_content = content.first();
+                // The expected type is crate::completion::message::UserContent::Text wrapping a Text struct.
+                match first_content {
+                    crate::completion::message::UserContent::Text(text_struct) => {
+                        assert_eq!(text_struct.text, "Test message");
                     }
+                    _ => panic!("Expected text content in conversion"),
                 }
-                let content_str = texts.join(" ");
-                let images_opt = if images.is_empty() {
-                    None
-                } else {
-                    Some(images)
-                };
-                Ok(Message::Assistant {
-                    content: content_str,
-                    images: images_opt,
-                    refusal: None,
-                    audio: None,
-                    name: None,
-                })
             }
+            _ => panic!("Conversion from provider Message to completion Message failed"),
         }
+    }
+
+    // Test conversion of internal tool definition to Ollama's ToolDefinition format.
+    #[test]
+    fn test_tool_definition_conversion() {
+        // Internal tool definition from the completion module.
+        let internal_tool = crate::completion::ToolDefinition {
+            name: "get_current_weather".to_owned(),
+            description: "Get the current weather for a location".to_owned(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The location to get the weather for, e.g. San Francisco, CA"
+                    },
+                    "format": {
+                        "type": "string",
+                        "description": "The format to return the weather in, e.g. 'celsius' or 'fahrenheit'",
+                        "enum": ["celsius", "fahrenheit"]
+                    }
+                },
+                "required": ["location", "format"]
+            }),
+        };
+        // Convert internal tool to Ollama's tool definition.
+        let ollama_tool: ToolDefinition = internal_tool.into();
+        assert_eq!(ollama_tool.type_field, "function");
+        assert_eq!(ollama_tool.function.name, "get_current_weather");
+        assert_eq!(
+            ollama_tool.function.description,
+            "Get the current weather for a location"
+        );
+        // Check JSON fields in parameters.
+        let params = &ollama_tool.function.parameters;
+        assert_eq!(params["properties"]["location"]["type"], "string");
     }
 }
