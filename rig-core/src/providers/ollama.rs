@@ -27,6 +27,12 @@ pub struct Client {
     client: openai::Client,
 }
 
+impl Default for Client {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Client {
     /// Create a new Ollama client with the given API key.
     pub fn new() -> Self {
