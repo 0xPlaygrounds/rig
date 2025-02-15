@@ -38,32 +38,21 @@
 //! let agent = client.agent("llama3.2");
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
-use std::{convert::TryFrom, str::FromStr};
-use std::convert::Infallible;
-use crate::{agent::AgentBuilder, completion::{self, CompletionError, CompletionRequest}, embeddings::{self, EmbeddingError, EmbeddingsBuilder}, extractor::ExtractorBuilder, json_utils, message, message::{ImageDetail, Text}, Embed, OneOrMany};
+use crate::{
+    agent::AgentBuilder,
+    completion::{self, CompletionError, CompletionRequest},
+    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
+    extractor::ExtractorBuilder,
+    json_utils, message,
+    message::{ImageDetail, Text},
+    Embed, OneOrMany,
+};
 use reqwest;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-// =================================================================
-// Struct Definitions and Conversion Implementations
-// =================================================================
-
-// ---------- FromStr Implementations for Provider Types ----------
-
-impl FromStr for UserContent {
-    type Err = std::convert::Infallible;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(UserContent::Text { text: s.to_owned() })
-    }
-}
-
-impl FromStr for AssistantContent {
-    type Err = std::convert::Infallible;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(AssistantContent { text: s.to_owned() })
-    }
-}
+use std::convert::Infallible;
+use std::{convert::TryFrom, str::FromStr};
 
 // ---------- Main Client ----------
 
@@ -260,7 +249,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     fn try_from(resp: CompletionResponse) -> Result<Self, Self::Error> {
         match resp.message {
             // Process only if an assistant message is present.
-            Message::Assistant { content, tool_calls, .. } => {
+            Message::Assistant {
+                content,
+                tool_calls,
+                ..
+            } => {
                 let mut assistant_contents = Vec::new();
                 // Add the assistant's text content if any.
                 if !content.is_empty() {
@@ -269,16 +262,15 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 // Process tool_calls following Ollama's chat response definition.
                 // Each ToolCall has an id, a type, and a function field.
                 for tc in tool_calls.iter() {
-                    assistant_contents.push(
-                        completion::AssistantContent::tool_call(
-                            tc.function.name.clone(),
-                            tc.function.name.clone(),
-                            tc.function.arguments.clone()
-                        )
-                    );
+                    assistant_contents.push(completion::AssistantContent::tool_call(
+                        tc.function.name.clone(),
+                        tc.function.name.clone(),
+                        tc.function.arguments.clone(),
+                    ));
                 }
-                let choice = OneOrMany::many(assistant_contents)
-                    .map_err(|_| CompletionError::ResponseError("No content provided".to_owned()))?;
+                let choice = OneOrMany::many(assistant_contents).map_err(|_| {
+                    CompletionError::ResponseError("No content provided".to_owned())
+                })?;
                 let raw_response = CompletionResponse {
                     model: resp.model,
                     created_at: resp.created_at,
@@ -322,109 +314,6 @@ impl CompletionModel {
         Self {
             client,
             model: model.to_owned(),
-        }
-    }
-}
-
-/// -----------------------------
-/// Provider Message Conversions
-/// -----------------------------
-/// Conversion from an internal Rig message (crate::message::Message) to a provider Message.
-/// (Only User and Assistant variants are supported.)
-impl TryFrom<crate::message::Message> for Message {
-    type Error = crate::message::MessageError;
-    fn try_from(internal_msg: crate::message::Message) -> Result<Self, Self::Error> {
-        use crate::message::Message as InternalMessage;
-        match internal_msg {
-            InternalMessage::User { content, .. } => {
-                let mut texts = Vec::new();
-                let mut images = Vec::new();
-                for uc in content.into_iter() {
-                    match uc {
-                        crate::message::UserContent::Text(t) => texts.push(t.text),
-                        crate::message::UserContent::Image(img) => images.push(img.data),
-                        _ => {} // Audio variant removed since Ollama API does not support it.
-                    }
-                }
-                let content_str = texts.join(" ");
-                let images_opt = if images.is_empty() { None } else { Some(images) };
-                Ok(Message::User {
-                    content: content_str,
-                    images: images_opt,
-                    name: None,
-                })
-            }
-            InternalMessage::Assistant { content, .. } => {
-                let mut texts = Vec::new();
-                let mut tool_calls = Vec::new();
-                for ac in content.into_iter() {
-                    match ac {
-                        crate::message::AssistantContent::Text(t) => texts.push(t.text),
-                        crate::message::AssistantContent::ToolCall(tc) => {
-                            tool_calls.push(ToolCall {
-                                r#type: ToolType::Function, // Assuming internal tool call provides these fields
-                                function: Function {
-                                    name: tc.function.name,
-                                    arguments: tc.function.arguments,
-                                },
-                            });
-                        }
-                    }
-                }
-                let content_str = texts.join(" ");
-                Ok(Message::Assistant {
-                    content: content_str,
-                    images: None,
-                    name: None,
-                    tool_calls,
-                })
-            }
-        }
-    }
-}
-
-/// Conversion from provider Message to a completion message.
-/// This is needed so that responses can be converted back into chat history.
-impl From<Message> for crate::completion::Message {
-    fn from(msg: Message) -> Self {
-        match msg {
-            Message::User { content, .. } => crate::completion::Message::User {
-                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
-                    text: content,
-                })),
-            },
-            Message::Assistant { content, tool_calls, .. } => {
-                let mut assistant_contents = vec![
-                    crate::completion::message::AssistantContent::Text(Text { text: content })
-                ];
-                for tc in tool_calls {
-                    assistant_contents.push(
-                        crate::completion::message::AssistantContent::tool_call(
-                            tc.function.name.clone(),
-                            tc.function.name,
-                            tc.function.arguments
-                        )
-                    );
-                }
-                crate::completion::Message::Assistant {
-                    content: OneOrMany::many(assistant_contents).unwrap(),
-                }
-            },
-            // System and ToolResult are converted to User message as needed.
-            Message::System { content, .. } => crate::completion::Message::User {
-                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
-                    text: content,
-                })),
-            },
-            Message::ToolResult {
-                tool_call_id,
-                content,
-            } => crate::completion::Message::User {
-                content: OneOrMany::one(message::UserContent::tool_result(
-                    tool_call_id,
-                    content.map(|content| message::ToolResultContent::text(content.text)),
-                )),
-            },
         }
     }
 }
@@ -489,14 +378,20 @@ impl completion::CompletionModel for CompletionModel {
             .await
             .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
         if response.status().is_success() {
-            let text = response.text().await.map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            let text = response
+                .text()
+                .await
+                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
             tracing::debug!(target: "rig", "Ollama chat response: {}", text);
             let chat_resp: CompletionResponse = serde_json::from_str(&text)
                 .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
             let conv: completion::CompletionResponse<CompletionResponse> = chat_resp.try_into()?;
             Ok(conv)
         } else {
-            let err_text = response.text().await.map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            let err_text = response
+                .text()
+                .await
+                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
             Err(CompletionError::ProviderError(err_text))
         }
     }
@@ -528,9 +423,8 @@ impl From<crate::completion::ToolDefinition> for ToolDefinition {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolCall {
-
     // pub id: String,
-    #[serde(default ,rename = "type")]
+    #[serde(default, rename = "type")]
     pub r#type: ToolType,
     pub function: Function,
 }
@@ -545,8 +439,6 @@ pub struct Function {
     pub name: String,
     pub arguments: Value,
 }
-
-
 
 // ---------- Provider Message Definition ----------
 
@@ -584,8 +476,119 @@ pub enum Message {
     },
 }
 
-impl Message {
+/// -----------------------------
+/// Provider Message Conversions
+/// -----------------------------
+/// Conversion from an internal Rig message (crate::message::Message) to a provider Message.
+/// (Only User and Assistant variants are supported.)
+impl TryFrom<crate::message::Message> for Message {
+    type Error = crate::message::MessageError;
+    fn try_from(internal_msg: crate::message::Message) -> Result<Self, Self::Error> {
+        use crate::message::Message as InternalMessage;
+        match internal_msg {
+            InternalMessage::User { content, .. } => {
+                let mut texts = Vec::new();
+                let mut images = Vec::new();
+                for uc in content.into_iter() {
+                    match uc {
+                        crate::message::UserContent::Text(t) => texts.push(t.text),
+                        crate::message::UserContent::Image(img) => images.push(img.data),
+                        _ => {} // Audio variant removed since Ollama API does not support it.
+                    }
+                }
+                let content_str = texts.join(" ");
+                let images_opt = if images.is_empty() {
+                    None
+                } else {
+                    Some(images)
+                };
+                Ok(Message::User {
+                    content: content_str,
+                    images: images_opt,
+                    name: None,
+                })
+            }
+            InternalMessage::Assistant { content, .. } => {
+                let mut texts = Vec::new();
+                let mut tool_calls = Vec::new();
+                for ac in content.into_iter() {
+                    match ac {
+                        crate::message::AssistantContent::Text(t) => texts.push(t.text),
+                        crate::message::AssistantContent::ToolCall(tc) => {
+                            tool_calls.push(ToolCall {
+                                r#type: ToolType::Function, // Assuming internal tool call provides these fields
+                                function: Function {
+                                    name: tc.function.name,
+                                    arguments: tc.function.arguments,
+                                },
+                            });
+                        }
+                    }
+                }
+                let content_str = texts.join(" ");
+                Ok(Message::Assistant {
+                    content: content_str,
+                    images: None,
+                    name: None,
+                    tool_calls,
+                })
+            }
+        }
+    }
+}
 
+/// Conversion from provider Message to a completion message.
+/// This is needed so that responses can be converted back into chat history.
+impl From<Message> for crate::completion::Message {
+    fn from(msg: Message) -> Self {
+        match msg {
+            Message::User { content, .. } => crate::completion::Message::User {
+                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
+                    text: content,
+                })),
+            },
+            Message::Assistant {
+                content,
+                tool_calls,
+                ..
+            } => {
+                let mut assistant_contents =
+                    vec![crate::completion::message::AssistantContent::Text(Text {
+                        text: content,
+                    })];
+                for tc in tool_calls {
+                    assistant_contents.push(
+                        crate::completion::message::AssistantContent::tool_call(
+                            tc.function.name.clone(),
+                            tc.function.name,
+                            tc.function.arguments,
+                        ),
+                    );
+                }
+                crate::completion::Message::Assistant {
+                    content: OneOrMany::many(assistant_contents).unwrap(),
+                }
+            }
+            // System and ToolResult are converted to User message as needed.
+            Message::System { content, .. } => crate::completion::Message::User {
+                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
+                    text: content,
+                })),
+            },
+            Message::ToolResult {
+                tool_call_id,
+                content,
+            } => crate::completion::Message::User {
+                content: OneOrMany::one(message::UserContent::tool_result(
+                    tool_call_id,
+                    content.map(|content| message::ToolResultContent::text(content.text)),
+                )),
+            },
+        }
+    }
+}
+
+impl Message {
     /// Constructs a system message.
     pub fn system(content: &str) -> Self {
         Message::System {
@@ -655,12 +658,26 @@ pub struct AssistantContent {
     pub text: String,
 }
 
+impl FromStr for AssistantContent {
+    type Err = std::convert::Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(AssistantContent { text: s.to_owned() })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum UserContent {
     Text { text: String },
     Image { image_url: ImageUrl },
     // Audio variant removed as Ollama API does not support audio input.
+}
+
+impl FromStr for UserContent {
+    type Err = std::convert::Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(UserContent::Text { text: s.to_owned() })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -713,8 +730,10 @@ mod tests {
         });
         let sample_text = sample_chat_response.to_string();
 
-        let chat_resp: CompletionResponse = serde_json::from_str(&sample_text).expect("Invalid JSON structure");
-        let conv: completion::CompletionResponse<CompletionResponse> = chat_resp.try_into().unwrap();
+        let chat_resp: CompletionResponse =
+            serde_json::from_str(&sample_text).expect("Invalid JSON structure");
+        let conv: completion::CompletionResponse<CompletionResponse> =
+            chat_resp.try_into().unwrap();
         assert!(
             !conv.choice.is_empty(),
             "Expected non-empty choice in chat response"
