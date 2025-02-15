@@ -333,7 +333,7 @@ impl<'a, P, T: 'a> EpubFileLoader<'a, Result<T, EpubLoaderError>, P> {
     }
 }
 
-impl<'a, P> EpubFileLoader<'a, Result<PathBuf, FileLoaderError>, P> {
+impl<P> EpubFileLoader<'_, Result<PathBuf, FileLoaderError>, P> {
     /// Creates a new [EpubFileLoader] using a glob pattern to match files.
     ///
     /// # Example
