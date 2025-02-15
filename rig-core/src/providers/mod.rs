@@ -10,6 +10,7 @@
 //! - EternalAI
 //! - DeepSeek
 //! - Azure OpenAI
+//! - Ollama
 //!
 //! Each provider has its own module, which contains a `Client` implementation that can
 //! be used to initialize completion and embedding models and execute requests to those models.
@@ -56,3 +57,4 @@ pub mod moonshot;
 pub mod openai;
 pub mod perplexity;
 pub mod xai;
+pub mod ollama;
