@@ -46,7 +46,13 @@ impl completion::CompletionModel for CompletionModel {
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         // Add preamble to chat history (if available)
         let mut full_history: Vec<Message> = match &completion_request.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
+            Some(preamble) => {
+                if preamble.is_empty() {
+                    vec![]
+                } else {
+                    vec![Message::system(preamble)]
+                }
+            }
             None => vec![],
         };
 
