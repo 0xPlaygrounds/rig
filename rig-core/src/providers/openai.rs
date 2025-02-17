@@ -558,7 +558,7 @@ impl From<String> for ToolResultContent {
     fn from(s: String) -> Self {
         ToolResultContent {
             r#type: ToolResultContentType::default(),
-            text: s
+            text: s,
         }
     }
 }
