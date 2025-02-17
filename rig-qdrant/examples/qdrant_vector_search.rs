@@ -8,12 +8,10 @@
 
 use std::env;
 
+use anyhow::anyhow;
 use qdrant_client::{
-    qdrant::{
-        CreateCollectionBuilder, Distance, PointStruct, QueryPointsBuilder, UpsertPointsBuilder,
-        VectorParamsBuilder,
-    },
-    Payload, Qdrant,
+    qdrant::{CreateCollectionBuilder, Distance, QueryPointsBuilder, VectorParamsBuilder},
+    Qdrant,
 };
 use rig::{
     embeddings::EmbeddingsBuilder,
@@ -71,24 +69,13 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    let points: Vec<PointStruct> = documents
-        .into_iter()
-        .map(|(d, embeddings)| {
-            let vec: Vec<f32> = embeddings.first().vec.iter().map(|&x| x as f32).collect();
-            PointStruct::new(
-                d.id.clone(),
-                vec,
-                Payload::try_from(serde_json::to_value(&d).unwrap()).unwrap(),
-            )
-        })
-        .collect();
-
-    client
-        .upsert_points(UpsertPointsBuilder::new(COLLECTION_NAME, points))
-        .await?;
-
     let query_params = QueryPointsBuilder::new(COLLECTION_NAME).with_payload(true);
     let vector_store = QdrantVectorStore::new(client, model, query_params.build());
+
+    vector_store
+        .insert_documents(documents)
+        .await
+        .map_err(|err| anyhow!("Couldn't insert documents: {err}"))?;
 
     let results = vector_store
         .top_n::<Word>("What is a linglingdong?", 1)
