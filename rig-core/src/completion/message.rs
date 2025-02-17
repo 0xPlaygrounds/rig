@@ -284,6 +284,12 @@ impl UserContent {
             content,
         })
     }
+
+    /// Helper constructor to make creating user tool result from text easier.
+    pub fn tool_result_from_text_response(id: impl Into<String>, content: String) -> Self {
+        let content = OneOrMany::one(ToolResultContent::Text(content.into()));
+        Self::tool_result(id, content)
+    }
 }
 
 impl AssistantContent {
@@ -305,6 +311,13 @@ impl AssistantContent {
                 arguments,
             },
         })
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            AssistantContent::Text(Text { text }) => text.is_empty(),
+            _ => false,
+        }
     }
 }
 
@@ -541,6 +554,22 @@ impl From<String> for AssistantContent {
 impl From<String> for UserContent {
     fn from(text: String) -> Self {
         UserContent::text(text)
+    }
+}
+
+impl From<ToolCall> for Message {
+    fn from(tool_call: ToolCall) -> Self {
+        Message::Assistant {
+            content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
+        }
+    }
+}
+
+impl From<UserContent> for Message {
+    fn from(content: UserContent) -> Self {
+        Message::User {
+            content: OneOrMany::one(content),
+        }
     }
 }
 
