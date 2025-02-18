@@ -179,6 +179,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     fn ndims(&self) -> usize {
         self.ndims
     }
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
@@ -330,6 +331,8 @@ impl From<std::convert::Infallible> for CompletionError {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: CompletionRequest,
