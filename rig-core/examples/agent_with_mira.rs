@@ -1,30 +1,25 @@
-use rig::providers::mira::{self, AiRequest, ChatMessage};
+use rig::completion::Prompt;
 use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // Initialize the Mira client with your API key
-    let client = mira::Client::new("mira-api-key")?;
+    let client = rig::providers::mira::Client::new(
+        "mira-api-key",
+    )?;
 
-    // Create a chat request
-    let request = AiRequest {
-        model: "claude-3.5-sonnet".to_string(),
-        messages: vec![ChatMessage {
-            role: "user".to_string(),
-            content: "What are the three laws of robotics?".to_string(),
-        }],
-        temperature: Some(0.7),
-        max_tokens: Some(500),
-        stream: None,
-    };
+    // Create an agent with the Mira model
+    let agent = client
+        .agent("claude-3.5-sonnet")
+        .preamble("You are a helpful AI assistant.")
+        .temperature(0.7)
+        .build();
 
-    // Generate a response
-    let response = client.generate(request).await?;
+    // Send a message to the agent
+    let response = agent.prompt("What are the 7 wonders of the world?").await?;
 
     // Print the response
-    if let Some(choice) = response.choices.first() {
-        println!("Assistant: {}", choice.message.content);
-    }
+    println!("Assistant: {}", response);
 
     // List available models
     println!("\nAvailable models:");
