@@ -22,7 +22,7 @@ use crate::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 
 // ================================================================
 // Main OpenAI Client
@@ -394,10 +394,16 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             } => {
                 let mut content = content
                     .iter()
-                    .map(|c| match c {
-                        AssistantContent::Text { text } => completion::AssistantContent::text(text),
+                    .filter_map(|c| match c {
+                        AssistantContent::Text { text } => {
+                            if text.trim().is_empty() {
+                                None
+                            } else {
+                                Some(completion::AssistantContent::text(text))
+                            }
+                        }
                         AssistantContent::Refusal { refusal } => {
-                            completion::AssistantContent::text(refusal)
+                            Some(completion::AssistantContent::text(refusal))
                         }
                     })
                     .collect::<Vec<_>>();
@@ -407,7 +413,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         .iter()
                         .map(|call| {
                             completion::AssistantContent::tool_call(
-                                &call.function.name,
+                                &call.id,
                                 &call.function.name,
                                 call.function.arguments.clone(),
                             )
@@ -469,7 +475,7 @@ pub enum Message {
         #[serde(default, deserialize_with = "json_utils::null_or_vec")]
         tool_calls: Vec<ToolCall>,
     },
-    #[serde(rename = "Tool")]
+    #[serde(rename = "tool")]
     ToolResult {
         tool_call_id: String,
         content: OneOrMany<ToolResultContent>,
@@ -535,6 +541,15 @@ pub struct InputAudio {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolResultContent {
     text: String,
+    #[serde(default)]
+    r#type: ToolResultContentType,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolResultContentType {
+    #[default]
+    Text,
 }
 
 impl FromStr for ToolResultContent {
@@ -547,7 +562,10 @@ impl FromStr for ToolResultContent {
 
 impl From<String> for ToolResultContent {
     fn from(s: String) -> Self {
-        ToolResultContent { text: s }
+        ToolResultContent {
+            text: s,
+            r#type: ToolResultContentType::default(),
+        }
     }
 }
 
@@ -897,7 +915,7 @@ impl completion::CompletionModel for CompletionModel {
         full_history.extend(chat_history);
         full_history.extend(prompt);
 
-        let request = if completion_request.tools.is_empty() {
+        let mut request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
                 "messages": full_history,
@@ -912,37 +930,37 @@ impl completion::CompletionModel for CompletionModel {
             })
         };
 
+        // merge additional params into request
+        if let Some(params) = completion_request.additional_params {
+            request = json_utils::merge(request, params);
+        }
+
         // only include temperature if it exists
         // because some models don't support temperature
-        let request = if let Some(temperature) = completion_request.temperature {
-            json_utils::merge(
+        if let Some(temperature) = completion_request.temperature {
+            request = json_utils::merge(
                 request,
                 json!({
                     "temperature": temperature,
                 }),
-            )
-        } else {
-            request
-        };
+            );
+        }
 
         let response = self
             .client
             .post("/chat/completions")
-            .json(
-                &if let Some(params) = completion_request.additional_params {
-                    json_utils::merge(request, params)
-                } else {
-                    request
-                },
-            )
+            .json(&request)
             .send()
             .await?;
 
         if response.status().is_success() {
-            let t = response.text().await?;
-            tracing::debug!(target: "rig", "OpenAI completion error: {}", t);
+            let t: Value = response.json().await?;
 
-            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
+            tracing::debug!(target: "rig", "OpenAI completion success: \nRequest: \n{} \n\nResponse: \n {}", 
+                serde_json::to_string_pretty(&request).unwrap(),
+                serde_json::to_string_pretty(&t).unwrap());
+
+            match serde_json::from_value::<ApiResponse<CompletionResponse>>(t)? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "OpenAI completion token usage: {:?}",
@@ -953,7 +971,11 @@ impl completion::CompletionModel for CompletionModel {
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
             }
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            let t = response.text().await?;
+            tracing::debug!(target: "rig", "OpenAI completion error: \nRequest: \n{} \n\nResponse: \n {}", 
+                serde_json::to_string_pretty(&request).unwrap(),
+                t);
+            Err(CompletionError::ProviderError(t))
         }
     }
 }
