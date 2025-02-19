@@ -25,7 +25,7 @@ schemars = "0.8.16"
 thiserror = "1.0.61"
 rig-derive = { version = "0.1.0", path = "./rig-core-derive", optional = true }
 glob = "0.3.1"
-lopdf = { version = "0.34.0", optional = true }
+lopdf = { version = "0.35.0", optional = true }
 rayon = { version = "1.10.0", optional = true }
 worker = { version = "0.5", optional = true }
 bytes = "1.9.0"
@@ -74,3 +74,7 @@ required-features = ["derive"]
 [[example]]
 name = "agent_with_moonshot"
 required-features = ["derive"]
+
+[[example]]
+name = "pdf_agent"
+required-features = ["derive", "pdf"]
