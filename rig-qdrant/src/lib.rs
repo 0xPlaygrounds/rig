@@ -1,12 +1,16 @@
 use qdrant_client::{
-    qdrant::{point_id::PointIdOptions, PointId, Query, QueryPoints},
-    Qdrant,
+    qdrant::{
+        point_id::PointIdOptions, PointId, PointStruct, Query, QueryPoints, UpsertPointsBuilder,
+    },
+    Payload, Qdrant,
 };
 use rig::{
-    embeddings::EmbeddingModel,
+    embeddings::{Embedding, EmbeddingModel},
     vector_store::{VectorStoreError, VectorStoreIndex},
+    Embed, OneOrMany,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// Represents a vector store implementation using Qdrant - <https://qdrant.tech/> as the backend.
 pub struct QdrantVectorStore<M: EmbeddingModel> {
@@ -34,6 +38,10 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
         }
     }
 
+    pub fn client(&self) -> &Qdrant {
+        &self.client
+    }
+
     /// Embed query based on `QdrantVectorStore` model and modify the vector in the required format.
     async fn generate_query_vector(&self, query: &str) -> Result<Vec<f32>, VectorStoreError> {
         let embedding = self.model.embed_text(query).await?;
@@ -46,6 +54,38 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
         params.query = query;
         params.limit = Some(limit as u64);
         params
+    }
+
+    pub async fn insert_documents<Doc: Serialize + Embed + Send>(
+        &self,
+        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        let collection_name = self.query_params.collection_name.clone();
+
+        for (document, embeddings) in documents {
+            let json_document = serde_json::to_value(&document).unwrap();
+            let doc_as_payload = Payload::try_from(json_document).unwrap();
+
+            let embeddings_as_point_structs = embeddings
+                .into_iter()
+                .map(|embedding| {
+                    let embedding_as_f32: Vec<f32> =
+                        embedding.vec.into_iter().map(|x| x as f32).collect();
+                    PointStruct::new(
+                        Uuid::new_v4().to_string(),
+                        embedding_as_f32,
+                        doc_as_payload.clone(),
+                    )
+                })
+                .collect::<Vec<PointStruct>>();
+
+            let request = UpsertPointsBuilder::new(&collection_name, embeddings_as_point_structs);
+            self.client.upsert_points(request).await.map_err(|err| {
+                VectorStoreError::DatastoreError(format!("Error while upserting: {err}").into())
+            })?;
+        }
+
+        Ok(())
     }
 }
 

@@ -7281,9 +7281,9 @@ dependencies = [
  "derive_builder",
  "futures",
  "futures-util",
- "prost 0.13.4",
- "prost-types 0.13.4",
- "reqwest 0.12.12",
+ "prost 0.13.3",
+ "prost-types 0.13.3",
+ "reqwest 0.12.9",
  "semver",
  "serde",
  "serde_json",
@@ -7860,7 +7860,7 @@ checksum = "57397d16646700483b67d2dd6511d79318f9d057fdbd21a4066aeac8b41d310a"
 
 [[package]]
 name = "rig-core"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "assert_fs",
@@ -7898,7 +7898,7 @@ dependencies = [
 
 [[package]]
 name = "rig-eternalai"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "ethers",
@@ -7914,7 +7914,7 @@ dependencies = [
 
 [[package]]
 name = "rig-fastembed"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "fastembed",
@@ -7928,7 +7928,7 @@ dependencies = [
 
 [[package]]
 name = "rig-lancedb"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -7943,7 +7943,7 @@ dependencies = [
 
 [[package]]
 name = "rig-mongodb"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "futures",
@@ -7960,7 +7960,7 @@ dependencies = [
 
 [[package]]
 name = "rig-neo4j"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "futures",
@@ -7979,7 +7979,7 @@ dependencies = [
 
 [[package]]
 name = "rig-postgres"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "dotenvy",
@@ -8000,7 +8000,7 @@ dependencies = [
 
 [[package]]
 name = "rig-qdrant"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "httpmock",
@@ -8010,11 +8010,12 @@ dependencies = [
  "serde_json",
  "testcontainers",
  "tokio",
+ "uuid 1.13.1",
 ]
 
 [[package]]
 name = "rig-sqlite"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "chrono",
@@ -11347,7 +11348,7 @@ version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3268f3d866458b787f390cf61f4bbb563b922d091359f9608842999eaee3943c"
 dependencies = [
- "bitflags 2.8.0",
+ "bitflags 2.6.0",
 ]
 
 [[package]]
