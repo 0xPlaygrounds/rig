@@ -1,7 +1,7 @@
 use rig::{embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex, Embed};
 use rig_surrealdb::{Mem, SurrealVectorStore};
 use serde::{Deserialize, Serialize};
-use surrealdb::Surreal;
+use surrealdb::{opt::auth::Root, Surreal};
 
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `WordDefinition`
 // and tag that field with `#[embed]`.
@@ -22,9 +22,6 @@ impl std::fmt::Display for WordDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // load environment variables from .env file
-    dotenvy::dotenv().ok();
-
     // Create OpenAI client
     let openai_client = rig::providers::openai::Client::from_env();
     let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_3_SMALL);

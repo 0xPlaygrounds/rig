@@ -103,14 +103,12 @@ impl<Model: EmbeddingModel, C: Connection> SurrealVectorStore<Model, C> {
         let document = if with_document { ", document" } else { "" };
         let embedded_text = if with_document { ", embedded_text" } else { "" };
         let Self {
-            distance_function,
-            documents_table,
-            ..
+            distance_function, ..
         } = self;
         format!(
             "
                SELECT id {document} {embedded_text}, {distance_function}($vec, embedding) as distance \
-              from {documents_table} order by distance desc \
+              from type::table($tablename) order by distance desc \
             LIMIT $limit",
         )
     }
@@ -133,9 +131,8 @@ impl<Model: EmbeddingModel, C: Connection> SurrealVectorStore<Model, C> {
                     embedding,
                 };
 
-                let _thing: Option<CreateRecord> = self
-                    .surreal
-                    .create(self.documents_table.clone())
+                self.surreal
+                    .create::<Option<CreateRecord>>(self.documents_table.clone())
                     .content(record)
                     .await
                     .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
@@ -160,6 +157,7 @@ impl<Model: EmbeddingModel, C: Connection> VectorStoreIndex for SurrealVectorSto
             .surreal
             .query(self.search_query_full().as_str())
             .bind(("vec", embedded_query))
+            .bind(("tablename", self.documents_table.clone()))
             .bind(("limit", n))
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
@@ -195,6 +193,7 @@ impl<Model: EmbeddingModel, C: Connection> VectorStoreIndex for SurrealVectorSto
             .surreal
             .query(self.search_query_only_ids().as_str())
             .bind(("vec", embedded_query))
+            .bind(("tablename", self.documents_table.clone()))
             .bind(("limit", n))
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
