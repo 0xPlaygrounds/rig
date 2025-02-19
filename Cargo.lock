@@ -7281,9 +7281,9 @@ dependencies = [
  "derive_builder",
  "futures",
  "futures-util",
- "prost 0.13.3",
- "prost-types 0.13.3",
- "reqwest 0.12.9",
+ "prost 0.13.4",
+ "prost-types 0.13.4",
+ "reqwest 0.12.12",
  "semver",
  "serde",
  "serde_json",
@@ -11347,7 +11347,7 @@ version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3268f3d866458b787f390cf61f4bbb563b922d091359f9608842999eaee3943c"
 dependencies = [
- "bitflags 2.6.0",
+ "bitflags 2.8.0",
 ]
 
 [[package]]
