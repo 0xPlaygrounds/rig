@@ -7111,7 +7111,7 @@ dependencies = [
 
 [[package]]
 name = "rig-qdrant"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "httpmock",
