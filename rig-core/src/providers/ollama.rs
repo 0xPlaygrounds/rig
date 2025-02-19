@@ -319,14 +319,6 @@ impl CompletionModel {
     }
 }
 
-/// Allow converting an Infallible error into a CompletionError.
-/// Since Infallible cannot occur, we simply use unwrap.
-impl From<std::convert::Infallible> for CompletionError {
-    fn from(_: std::convert::Infallible) -> Self {
-        CompletionError::ProviderError("Infallible error".to_string())
-    }
-}
-
 // ---------- CompletionModel Implementation ----------
 
 impl completion::CompletionModel for CompletionModel {
