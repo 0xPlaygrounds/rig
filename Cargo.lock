@@ -8037,7 +8037,6 @@ name = "rig-surrealdb"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "dotenvy",
  "rig-core",
  "serde",
  "serde_json",
