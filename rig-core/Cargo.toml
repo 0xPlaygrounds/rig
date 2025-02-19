@@ -56,6 +56,10 @@ name = "rag"
 required-features = ["derive"]
 
 [[example]]
+name = "rag_ollama"
+required-features = ["derive"]
+
+[[example]]
 name = "vector_search"
 required-features = ["derive"]
 
