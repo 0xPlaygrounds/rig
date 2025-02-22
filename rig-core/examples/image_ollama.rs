@@ -4,11 +4,10 @@ use rig::{
 };
 
 use base64::{prelude::BASE64_STANDARD, Engine};
-use tokio::fs;
 use rig::providers::ollama;
+use tokio::fs;
 
-const IMAGE_FLIE_PATH: &str =
-    "rig-core/examples/images/Camponotus_flavomarginatus_ant.jpg";
+const IMAGE_FLIE_PATH: &str = "rig-core/examples/images/Camponotus_flavomarginatus_ant.jpg";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
