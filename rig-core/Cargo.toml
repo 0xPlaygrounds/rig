@@ -1,6 +1,6 @@
 [package]
 name = "rig-core"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -78,3 +78,11 @@ required-features = ["derive"]
 [[example]]
 name = "pdf_agent"
 required-features = ["derive", "pdf"]
+
+[[example]]
+name = "agent_with_together"
+required-features = ["derive"]
+
+[[example]]
+name = "together_embeddings"
+required-features = ["derive"]
