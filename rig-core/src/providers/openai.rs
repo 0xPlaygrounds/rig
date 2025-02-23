@@ -317,13 +317,13 @@ impl EmbeddingModel {
 // OpenAI Completion API
 // ================================================================
 /// `o3-mini` completion model
-pub const O3_MINI: &str = "o3-mini"
+pub const O3_MINI: &str = "o3-mini";
 /// `o3-mini-2025-01-31` completion model
-pub const O3_MINI_2025_01_31: &str = "o3-mini-2025-01-31"
+pub const O3_MINI_2025_01_31: &str = "o3-mini-2025-01-31";
 /// 'o1' completion model
-pub const O1: &str = "o1"
+pub const O1: &str = "o1";
 /// `o1-2024-12-17` completion model
-pub const O1_2024_12_17: &str = "o1-2024-12-17"
+pub const O1_2024_12_17: &str = "o1-2024-12-17";
 /// `o1-preview` completion model
 pub const O1_PREVIEW: &str = "o1-preview";
 /// `o1-preview-2024-09-12` completion model
