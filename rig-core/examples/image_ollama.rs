@@ -7,7 +7,7 @@ use base64::{prelude::BASE64_STANDARD, Engine};
 use rig::providers::ollama;
 use tokio::fs;
 
-const IMAGE_FLIE_PATH: &str = "rig-core/examples/images/Camponotus_flavomarginatus_ant.jpg";
+const IMAGE_FILE_PATH: &str = "rig-core/examples/images/camponotus_flavomarginatus_ant.jpg";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -28,7 +28,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Read image and convert to base64
-    let image_bytes = fs::read(IMAGE_FLIE_PATH).await?;
+    let image_bytes = fs::read(IMAGE_FILE_PATH).await?;
     let image_base64 = BASE64_STANDARD.encode(image_bytes);
 
     // Compose `Image` for prompt
