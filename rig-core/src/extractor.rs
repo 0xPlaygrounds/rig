@@ -39,6 +39,7 @@ use crate::{
     completion::{CompletionModel, Prompt, PromptError, ToolDefinition},
     tool::Tool,
 };
+use json_partial::jsonish::{self, jsonish_to_serde};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExtractionError {
@@ -69,7 +70,13 @@ where
             return Err(ExtractionError::NoData);
         }
 
-        Ok(serde_json::from_str(&summary)?)
+        // Use jsonish to extract JSON from the response (it will remove extra markdown or code block markers).
+        let parsed = jsonish::parse(&summary, Default::default())
+            .map_err(|e| <serde_json::Error as serde::de::Error>::custom(e.to_string()))
+            .map_err(ExtractionError::DeserializationError)?;
+
+        let value = jsonish_to_serde(&parsed);
+        Ok(serde_json::from_value(value)?)
     }
 }
 
