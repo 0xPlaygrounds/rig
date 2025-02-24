@@ -63,7 +63,7 @@ async fn main() -> Result<()> {
     let documents_dir = std::env::current_dir()?.join("rig-core/examples/documents");
 
     let pdf_chunks =
-        load_pdf(documents_dir.join("DeepSeek_R1.pdf")).context("Failed to load pdf documents")?;
+        load_pdf(documents_dir.join("deepseek_r1.pdf")).context("Failed to load pdf documents")?;
 
     println!("Successfully loaded and chunked PDF documents");
 
