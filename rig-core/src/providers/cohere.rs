@@ -348,14 +348,6 @@ impl From<CompletionResponse> for completion::CompletionResponse<CompletionRespo
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Citation {
-    pub start: u32,
-    pub end: u32,
-    pub text: String,
-    pub document_ids: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct Document {
     pub id: String,
     #[serde(flatten)]
@@ -384,7 +376,7 @@ pub struct Connector {
     pub id: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ToolCall {
     pub name: String,
     pub parameters: serde_json::Value,
@@ -481,16 +473,18 @@ impl From<completion::ToolDefinition> for ToolDefinition {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(tag = "role", rename_all = "UPPERCASE")]
 pub enum Message {
     User {
-        message: String,
-        tool_calls: Vec<ToolCall>,
+        content: OneOrMany<Content>,
     },
 
-    Chatbot {
-        message: String,
+    Assistant {
+        content: OneOrMany<Content>,
+        #[serde(default)]
+        citations: Vec<Citation>,
+        #[serde(default)]
         tool_calls: Vec<ToolCall>,
     },
 
@@ -498,44 +492,77 @@ pub enum Message {
         tool_results: Vec<ToolResult>,
     },
 
-    /// According to the documentation, this message type should not be used
     System {
         content: String,
         tool_calls: Vec<ToolCall>,
     },
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum Content {
+    Text { text: String },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Citation {
+    #[serde(default)]
+    pub start: Option<u32>,
+    #[serde(default)]
+    pub end: Option<u32>,
+    #[serde(default)]
+    pub text: Option<String>,
+    #[serde(rename = "type")]
+    pub citation_type: Option<CitationType>,
+    #[serde(default)]
+    pub sources: Vec<Source>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum Source {
+    Document {
+        id: Option<String>,
+        document: Option<serde_json::Map<String, serde_json::Value>>,
+    },
+    Tool {
+        id: Option<String>,
+        tool_output: Option<serde_json::Map<String, serde_json::Value>>,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CitationType {
+    TextContent,
+    Plan,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ToolResult {
     pub call: ToolCall,
     pub outputs: Vec<serde_json::Value>,
 }
 
-impl TryFrom<message::Message> for Vec<Message> {
+impl TryFrom<message::Message> for Message {
     type Error = message::MessageError;
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
-        match message {
-            message::Message::User { content } => content
-                .into_iter()
-                .map(|content| {
-                    Ok(Message::User {
-                        message: match content {
-                            message::UserContent::Text(message::Text { text }) => text,
-                            _ => {
-                                return Err(message::MessageError::ConversionError(
-                                    "Only text content is supported by Cohere".to_owned(),
-                                ))
-                            }
-                        },
-                        tool_calls: vec![],
-                    })
-                })
-                .collect::<Result<Vec<_>, _>>(),
+        Ok(match message {
+            message::Message::User { content } => message::Message::User {
+                content: content.try_map(|content| match content {
+                    message::UserContent::Text(message::Text { text }) => {
+                        Ok(Content::Text { text })
+                    }
+                    _ => Err(message::MessageError::ConversionError(
+                        "Only text content is supported by Cohere".to_owned(),
+                    )),
+                })?,
+            },
             _ => Err(message::MessageError::ConversionError(
                 "Only user messages are supported by Cohere".to_owned(),
             )),
-        }
+        })
     }
 }
 
