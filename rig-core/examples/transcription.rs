@@ -5,7 +5,7 @@ use rig::{providers::openai, transcription::TranscriptionModel};
 #[tokio::main]
 async fn main() {
     // Load the path from the first command line argument
-    let args= args().collect::<Vec<_>>();
+    let args = args().collect::<Vec<_>>();
 
     if args.len() <= 1 {
         println!("No file was specified!");

@@ -5686,7 +5686,7 @@ dependencies = [
  "nom_locate",
  "rangemap",
  "rayon",
- "thiserror 2.0.3",
+ "thiserror 2.0.11",
  "time",
  "weezl",
 ]

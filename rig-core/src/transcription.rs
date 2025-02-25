@@ -2,10 +2,7 @@
 //! It provides traits, structs, and enums for generating audio transcription requests,
 //! handling transcription responses, and defining transcription models.
 
-use std::{
-    fs,
-    path::Path,
-};
+use std::{fs, path::Path};
 
 use thiserror::Error;
 
@@ -179,7 +176,8 @@ impl<M: TranscriptionModel> TranscriptionRequestBuilder<M> {
         self.data(
             path.file_name()
                 .expect("Path was not a file")
-                .to_str().expect("Failed to convert filename to ascii"),
+                .to_str()
+                .expect("Failed to convert filename to ascii"),
             data,
         )
     }
