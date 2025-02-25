@@ -333,6 +333,14 @@ impl EmbeddingModel {
 // ================================================================
 // OpenAI Completion API
 // ================================================================
+/// `o3-mini` completion model
+pub const O3_MINI: &str = "o3-mini";
+/// `o3-mini-2025-01-31` completion model
+pub const O3_MINI_2025_01_31: &str = "o3-mini-2025-01-31";
+/// 'o1' completion model
+pub const O1: &str = "o1";
+/// `o1-2024-12-17` completion model
+pub const O1_2024_12_17: &str = "o1-2024-12-17";
 /// `o1-preview` completion model
 pub const O1_PREVIEW: &str = "o1-preview";
 /// `o1-preview-2024-09-12` completion model
@@ -424,7 +432,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         .iter()
                         .map(|call| {
                             completion::AssistantContent::tool_call(
-                                &call.function.name,
+                                &call.id,
                                 &call.function.name,
                                 call.function.arguments.clone(),
                             )
@@ -486,7 +494,7 @@ pub enum Message {
         #[serde(default, deserialize_with = "json_utils::null_or_vec")]
         tool_calls: Vec<ToolCall>,
     },
-    #[serde(rename = "Tool")]
+    #[serde(rename = "tool")]
     ToolResult {
         tool_call_id: String,
         content: OneOrMany<ToolResultContent>,
@@ -551,7 +559,16 @@ pub struct InputAudio {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolResultContent {
+    #[serde(default)]
+    r#type: ToolResultContentType,
     text: String,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolResultContentType {
+    #[default]
+    Text,
 }
 
 impl FromStr for ToolResultContent {
@@ -564,7 +581,10 @@ impl FromStr for ToolResultContent {
 
 impl From<String> for ToolResultContent {
     fn from(s: String) -> Self {
-        ToolResultContent { text: s }
+        ToolResultContent {
+            r#type: ToolResultContentType::default(),
+            text: s,
+        }
     }
 }
 
