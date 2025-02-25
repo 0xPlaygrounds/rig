@@ -45,7 +45,7 @@ pub trait Transcription<M: TranscriptionModel> {
     fn transcription(
         &self,
         filename: &str,
-        data: &Vec<u8>,
+        data: &[u8],
     ) -> impl std::future::Future<Output = Result<TranscriptionRequestBuilder<M>, TranscriptionError>>
            + Send;
 }
