@@ -172,9 +172,9 @@ impl FromStr for SystemContent {
     }
 }
 
-impl Into<message::UserContent> for UserContent {
-    fn into(self) -> message::UserContent {
-        match self {
+impl From<UserContent> for message::UserContent {
+    fn from(value: UserContent) -> Self {
+        match value {
             UserContent::Text { text } => message::UserContent::text(text),
             UserContent::ImageUrl { image_url } => message::UserContent::image(
                 image_url.url,
@@ -193,15 +193,10 @@ impl TryFrom<message::UserContent> for UserContent {
         match content {
             message::UserContent::Text(text) => Ok(UserContent::Text { text: text.text }),
             message::UserContent::Image(message::Image { data, format, .. }) => match format {
-                Some(format) => match format {
-                    message::ContentFormat::String => Ok(UserContent::ImageUrl {
-                        image_url: ImageUrl { url: data },
-                    }),
-                    _ => Err(message::MessageError::ConversionError(
-                        "Huggingface only supports images as urls".into(),
-                    )),
-                },
-                None => Err(message::MessageError::ConversionError(
+                Some(message::ContentFormat::String) => Ok(UserContent::ImageUrl {
+                    image_url: ImageUrl { url: data },
+                }),
+                _ => Err(message::MessageError::ConversionError(
                     "Huggingface only supports images as urls".into(),
                 )),
             },
@@ -271,7 +266,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 arguments: None,
                                 content: content.try_map(|content| match content {
                                     message::ToolResultContent::Text(message::Text { text }) => {
-                                        Ok(text.into())
+                                        Ok(text)
                                     }
                                     _ => Err(message::MessageError::ConversionError(
                                         "Tool result content does not support non-text".into(),
@@ -367,7 +362,7 @@ impl TryFrom<Message> for message::Message {
             Message::ToolResult { name, content, .. } => message::Message::User {
                 content: OneOrMany::one(message::UserContent::tool_result(
                     name,
-                    content.map(|content| message::ToolResultContent::text(content)),
+                    content.map(message::ToolResultContent::text),
                 )),
             },
 
