@@ -42,12 +42,10 @@ pub trait Transcription<M: TranscriptionModel> {
     /// populated fields in the builder (the exact fields depend on the type).
     /// For fields that have already been set by the model, calling the corresponding
     /// method on the builder will overwrite the value set by the model.
-    ///
-    /// For example, the request builder returned by [`Agent::completion`](crate::agent::Agent::completion) will already
-    /// contain the `preamble` provided when creating the agent.
     fn transcription(
         &self,
-        file: &str,
+        filename: &str,
+        data: &Vec<u8>,
     ) -> impl std::future::Future<Output = Result<TranscriptionRequestBuilder<M>, TranscriptionError>>
            + Send;
 }
@@ -82,7 +80,7 @@ pub trait TranscriptionModel: Clone + Send + Sync {
 
 /// Struct representing a general transcription request that can be sent to a transcription model provider.
 pub struct TranscriptionRequest {
-    /// The file to be sent to the transcription model provider
+    /// The file data to be sent to the transcription model provider
     pub data: Vec<u8>,
     /// The file name to be used in the request
     pub filename: String,
