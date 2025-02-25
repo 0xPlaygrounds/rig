@@ -139,7 +139,7 @@ pub struct TranscriptionRequest {
 pub struct TranscriptionRequestBuilder<M: TranscriptionModel> {
     model: M,
     data: Vec<u8>,
-    filename: String,
+    filename: Option<String>,
     language: String,
     prompt: Option<String>,
     temperature: Option<f64>,
@@ -151,7 +151,7 @@ impl<M: TranscriptionModel> TranscriptionRequestBuilder<M> {
         TranscriptionRequestBuilder {
             model,
             data: vec![],
-            filename: "".to_string(),
+            filename: None,
             language: "en".to_string(),
             prompt: None,
             temperature: None,
@@ -159,25 +159,33 @@ impl<M: TranscriptionModel> TranscriptionRequestBuilder<M> {
         }
     }
 
+    pub fn filename(mut self, filename: Option<String>) -> Self {
+        self.filename = filename;
+        self
+    }
+
     /// Sets the data for the request
-    pub fn data(mut self, filename: &str, data: Vec<u8>) -> Self {
-        self.filename = filename.to_string();
+    pub fn data(mut self, data: Vec<u8>) -> Self {
         self.data = data;
         self
     }
 
     /// Load the specified file into data
-    pub fn load_file(self, path: &str) -> Self {
-        let path = Path::new(path);
+    pub fn load_file<P>(self, path: P) -> Self
+    where
+        P: AsRef<Path>,
+    {
+        let path = path.as_ref();
         let data = fs::read(path).expect("Failed to load audio file, file did not exist");
 
-        self.data(
+        self.filename(Some(
             path.file_name()
                 .expect("Path was not a file")
                 .to_str()
-                .expect("Failed to convert filename to ascii"),
-            data,
-        )
+                .expect("Failed to convert filename to ascii")
+                .to_string(),
+        ))
+        .data(data)
     }
 
     /// Sets the output language for the transcription request
@@ -226,7 +234,7 @@ impl<M: TranscriptionModel> TranscriptionRequestBuilder<M> {
 
         TranscriptionRequest {
             data: self.data,
-            filename: self.filename,
+            filename: self.filename.unwrap_or("file".to_string()),
             language: self.language,
             prompt: self.prompt,
             temperature: self.temperature,
