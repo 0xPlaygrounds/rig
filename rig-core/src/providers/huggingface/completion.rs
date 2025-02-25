@@ -50,6 +50,7 @@ pub const QWEN_QVQ_PREVIEW: &str = "Qwen/QVQ-72B-Preview";
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub struct Function {
     name: String,
+    #[serde(with = "json_utils::stringified_json")]
     pub arguments: serde_json::Value,
 }
 
