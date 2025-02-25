@@ -1,3 +1,4 @@
+use std::fmt::Display;
 
 use crate::agent::AgentBuilder;
 
@@ -22,14 +23,16 @@ impl From<&str> for SubProvider {
     }
 }
 
-impl ToString for SubProvider {
-    fn to_string(&self) -> String {
-        match self {
+impl Display for SubProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let route = match self {
             SubProvider::HFInference => "hf-inference/models".to_string(),
             SubProvider::Together => "together".to_string(),
             SubProvider::SambaNova => "sambanova".to_string(),
             SubProvider::Custom(route) => route.clone(),
-        }
+        };
+
+        write!(f, "{}", route)
     }
 }
 
