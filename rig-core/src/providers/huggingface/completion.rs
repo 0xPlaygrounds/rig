@@ -529,10 +529,9 @@ impl completion::CompletionModel for CompletionModel {
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let request = self.create_request_body(&completion_request)?;
 
-
         let path = match self.client.sub_provider {
             SubProvider::HFInference => format!("/{}/v1/chat/completions", self.model),
-            _ => "/v1/chat/completions".to_string()
+            _ => "/v1/chat/completions".to_string(),
         };
 
         let request = if let Some(ref params) = completion_request.additional_params {
@@ -541,14 +540,7 @@ impl completion::CompletionModel for CompletionModel {
             request
         };
 
-        let response = self
-            .client
-            .post(&path)
-            .json(
-                &request,
-            )
-            .send()
-            .await?;
+        let response = self.client.post(&path).json(&request).send().await?;
 
         if response.status().is_success() {
             let t = response.text().await?;

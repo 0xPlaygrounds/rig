@@ -31,8 +31,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
 fn client() -> providers::huggingface::Client {
     let api_key = &env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY not set");
-    providers::huggingface::ClientBuilder::new(&api_key)
-        .build()
+    providers::huggingface::ClientBuilder::new(&api_key).build()
 }
 
 /// Create a partial huggingface agent (deepseek R1)
@@ -92,7 +91,8 @@ async fn loaders() -> Result<(), anyhow::Error> {
     let examples = FileLoader::with_glob("rig-core/examples/*.rs")?
         .read_with_path()
         .ignore_errors()
-        .into_iter().step_by(2);
+        .into_iter()
+        .step_by(2);
 
     // Create an agent with multiple context documents
     let agent = examples

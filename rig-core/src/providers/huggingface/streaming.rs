@@ -1,4 +1,3 @@
-use std::convert::Infallible;
 use super::completion::CompletionModel;
 use super::SubProvider;
 use crate::completion::{CompletionError, CompletionRequest};
@@ -9,6 +8,7 @@ use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::convert::Infallible;
 use std::str::FromStr;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -70,20 +70,13 @@ impl StreamingCompletionModel for CompletionModel {
             merge_inplace(&mut request, params.clone());
         }
 
-
         // HF Inference API uses the model in the path even though its specified in the request body
         let path = match self.client.sub_provider {
             SubProvider::HFInference => format!("/{}/v1/chat/completions", self.model),
-            _ => "/v1/chat/completions".to_string()
+            _ => "/v1/chat/completions".to_string(),
         };
 
-
-        let response = self
-            .client
-            .post(&path)
-            .json(&request)
-            .send()
-            .await?;
+        let response = self.client.post(&path).json(&request).send().await?;
 
         if !response.status().is_success() {
             return Err(CompletionError::ProviderError(format!(

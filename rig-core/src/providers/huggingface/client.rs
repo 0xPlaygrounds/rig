@@ -64,12 +64,7 @@ impl ClientBuilder {
             SubProvider::Custom(route) => route,
         };
 
-        let base_url = format!(
-            "{}/{}",
-            self.base_url,
-            route   
-        )
-        .replace("//", "/");
+        let base_url = format!("{}/{}", self.base_url, route).replace("//", "/");
 
         Client::from_url(self.api_key.as_str(), base_url.as_str(), self.sub_provider)
     }
@@ -79,7 +74,7 @@ impl ClientBuilder {
 pub struct Client {
     base_url: String,
     http_client: reqwest::Client,
-    pub(crate) sub_provider: SubProvider
+    pub(crate) sub_provider: SubProvider,
 }
 
 impl Client {
@@ -113,7 +108,7 @@ impl Client {
         Self {
             base_url: base_url.to_owned(),
             http_client,
-            sub_provider
+            sub_provider,
         }
     }
     /// Create a new Huggingface client from the `HUGGINGFACE_API_KEY` environment variable.

@@ -1,9 +1,7 @@
 use std::env;
 
 use rig::{
-    providers::
-        huggingface::{self}
-    ,
+    providers::huggingface::{self},
     streaming::{stream_to_stdout, StreamingPrompt},
 };
 
