@@ -57,6 +57,15 @@ pub enum Content {
         name: String,
         input: serde_json::Value,
     },
+    Thinking {
+        r#type: String,
+        thinking: String,
+        signature: String,
+    },
+    RedactedThinking {
+        r#type: String,
+        data: String,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -240,7 +249,6 @@ impl completion::CompletionModel for CompletionModel {
                 system.push(preamble_json);
             }
         }
-
         if let Some(preamble) = completion_request.preamble {
             for preamble in preamble {
                 system.push(json!({
