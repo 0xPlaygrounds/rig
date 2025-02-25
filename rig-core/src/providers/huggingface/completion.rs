@@ -8,7 +8,6 @@ use crate::{
     json_utils,
     message::{self},
     one_or_many::string_or_one_or_many,
-    providers::huggingface::client::SubProvider,
     OneOrMany,
 };
 
@@ -525,10 +524,7 @@ impl completion::CompletionModel for CompletionModel {
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let request = self.create_request_body(&completion_request)?;
 
-        let path = match self.client.sub_provider {
-            SubProvider::HFInference => format!("/{}/v1/chat/completions", self.model),
-            _ => "/v1/chat/completions".to_string(),
-        };
+        let path = self.client.sub_provider.completion_endpoint(&self.model);
 
         let request = if let Some(ref params) = completion_request.additional_params {
             json_utils::merge(request, params.clone())

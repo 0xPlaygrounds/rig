@@ -9,17 +9,36 @@ use super::completion::CompletionModel;
 // ================================================================
 const HUGGINGFACE_API_BASE_URL: &str = "https://router.huggingface.co/";
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum SubProvider {
+    #[default]
     HFInference,
     Together,
     SambaNova,
     Custom(String),
 }
 
+impl SubProvider {
+    /// Get the chat completion endpoint for the SubProvider
+    /// Required because Huggingface Inference requires the model
+    /// in the url and in the request body.
+    pub fn completion_endpoint(&self, model: &str) -> String {
+        match self {
+            SubProvider::HFInference => format!("/{}/v1/chat/completions", model),
+            _ => "/v1/chat/completions".to_string(),
+        }
+    }
+}
+
 impl From<&str> for SubProvider {
     fn from(s: &str) -> Self {
         SubProvider::Custom(s.to_string())
+    }
+}
+
+impl From<String> for SubProvider {
+    fn from(value: String) -> Self {
+        SubProvider::Custom(value)
     }
 }
 
@@ -36,12 +55,6 @@ impl Display for SubProvider {
     }
 }
 
-impl From<String> for SubProvider {
-    fn from(value: String) -> Self {
-        SubProvider::Custom(value)
-    }
-}
-
 pub struct ClientBuilder {
     api_key: String,
     base_url: String,
@@ -53,7 +66,7 @@ impl ClientBuilder {
         Self {
             api_key: api_key.to_string(),
             base_url: HUGGINGFACE_API_BASE_URL.to_string(),
-            sub_provider: SubProvider::HFInference,
+            sub_provider: SubProvider::default(),
         }
     }
 

@@ -1,5 +1,4 @@
 use super::completion::CompletionModel;
-use super::SubProvider;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils::merge_inplace;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
@@ -71,10 +70,7 @@ impl StreamingCompletionModel for CompletionModel {
         }
 
         // HF Inference API uses the model in the path even though its specified in the request body
-        let path = match self.client.sub_provider {
-            SubProvider::HFInference => format!("/{}/v1/chat/completions", self.model),
-            _ => "/v1/chat/completions".to_string(),
-        };
+        let path = self.client.sub_provider.completion_endpoint(&self.model);
 
         let response = self.client.post(&path).json(&request).send().await?;
 
