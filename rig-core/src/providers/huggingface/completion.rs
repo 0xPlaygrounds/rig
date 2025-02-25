@@ -665,7 +665,7 @@ mod tests {
             })
         };
 
-        let _user_message: Message = {
+        let user_message: Message = {
             let jd = &mut serde_json::Deserializer::from_str(user_message_json);
             deserialize(jd).unwrap_or_else(|err| {
                 panic!(
@@ -730,17 +730,22 @@ mod tests {
             _ => panic!("Expected assistant message"),
         }
 
-        // match user_message {
-        //     Message::User { content, .. } => {
-        //         let (first, second) = {
-        //             let mut iter = content.into_iter();
-        //             (iter.next().unwrap(), iter.next().unwrap())
-        //         };
-        //         assert_eq!(first, "What's in this image?".to_string());
-        //         assert_eq!(second, UserContent::Image { image_url: ImageUrl { url: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg".to_string(), detail: ImageDetail::default() } });
-        //     }
-        //     _ => panic!("Expected user message"),
-        // }
+        match user_message {
+            Message::User { content, .. } => {
+                let (first, second) = {
+                    let mut iter = content.into_iter();
+                    (iter.next().unwrap(), iter.next().unwrap())
+                };
+                assert_eq!(
+                    first,
+                    UserContent::Text {
+                        text: "What's in this image?".to_string()
+                    }
+                );
+                assert_eq!(second, UserContent::ImageUrl { image_url: ImageUrl { url: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg".to_string() } });
+            }
+            _ => panic!("Expected user message"),
+        }
     }
 
     #[test]

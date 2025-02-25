@@ -1,4 +1,3 @@
-use std::{convert::Infallible, str::FromStr};
 
 use crate::agent::AgentBuilder;
 
@@ -17,11 +16,20 @@ pub enum SubProvider {
     Custom(String),
 }
 
-impl FromStr for SubProvider {
-    type Err = Infallible;
+impl From<&str> for SubProvider {
+    fn from(s: &str) -> Self {
+        SubProvider::Custom(s.to_string())
+    }
+}
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(SubProvider::Custom(s.to_string()))
+impl ToString for SubProvider {
+    fn to_string(&self) -> String {
+        match self {
+            SubProvider::HFInference => "hf-inference/models".to_string(),
+            SubProvider::Together => "together".to_string(),
+            SubProvider::SambaNova => "sambanova".to_string(),
+            SubProvider::Custom(route) => route.clone(),
+        }
     }
 }
 
@@ -51,18 +59,13 @@ impl ClientBuilder {
         self
     }
 
-    pub fn sub_provider(mut self, provider: SubProvider) -> Self {
-        self.sub_provider = provider;
+    pub fn sub_provider(mut self, provider: impl Into<SubProvider>) -> Self {
+        self.sub_provider = provider.into();
         self
     }
 
     pub fn build(self) -> Client {
-        let route = match self.sub_provider.clone() {
-            SubProvider::HFInference => "hf-inference/models".to_string(),
-            SubProvider::Together => "together".to_string(),
-            SubProvider::SambaNova => "sambanova".to_string(),
-            SubProvider::Custom(route) => route,
-        };
+        let route = self.sub_provider.to_string();
 
         let base_url = format!("{}/{}", self.base_url, route).replace("//", "/");
 
