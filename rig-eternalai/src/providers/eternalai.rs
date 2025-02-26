@@ -15,6 +15,8 @@ use rig::agent::AgentBuilder;
 use rig::completion::{CompletionError, CompletionRequest};
 use rig::embeddings::{EmbeddingError, EmbeddingsBuilder};
 use rig::extractor::ExtractorBuilder;
+use rig::providers::openai::{self, Message};
+use rig::OneOrMany;
 use rig::{completion, embeddings, Embed};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -26,6 +28,7 @@ use std::time::Duration;
 // Main EternalAI Client
 // ================================================================
 const ETERNALAI_API_BASE_URL: &str = "https://api.eternalai.org/v1";
+
 #[derive(Clone)]
 pub struct Client {
     base_url: String,
@@ -352,44 +355,57 @@ impl From<ApiErrorResponse> for CompletionError {
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
-    fn try_from(value: CompletionResponse) -> Result<Self, Self::Error> {
-        match value.choices.as_slice() {
-            [Choice {
-                message:
-                    Message {
-                        tool_calls: Some(calls),
-                        ..
-                    },
+    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        let choice = response.choices.first().ok_or_else(|| {
+            CompletionError::ResponseError("Response contained no choices".to_owned())
+        })?;
+        let content = match &choice.message {
+            Message::Assistant {
+                content,
+                tool_calls,
                 ..
-            }, ..] => {
-                let call = calls.first().ok_or(CompletionError::ResponseError(
-                    "Tool selection is empty".into(),
-                ))?;
+            } => {
+                let mut content = content
+                    .iter()
+                    .map(|c| match c {
+                        openai::AssistantContent::Text { text } => {
+                            completion::AssistantContent::text(text)
+                        }
+                        openai::AssistantContent::Refusal { refusal } => {
+                            completion::AssistantContent::text(refusal)
+                        }
+                    })
+                    .collect::<Vec<_>>();
 
-                Ok(completion::CompletionResponse {
-                    choice: completion::ModelChoice::ToolCall(
-                        call.function.name.clone(),
-                        call.id.clone(),
-                        serde_json::from_str(&call.function.arguments)?,
-                    ),
-                    raw_response: value,
-                })
+                content.extend(
+                    tool_calls
+                        .iter()
+                        .map(|call| {
+                            completion::AssistantContent::tool_call(
+                                &call.function.name,
+                                &call.function.name,
+                                call.function.arguments.clone(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                );
+                Ok(content)
             }
-            [Choice {
-                message:
-                    Message {
-                        content: Some(content),
-                        ..
-                    },
-                ..
-            }, ..] => Ok(completion::CompletionResponse {
-                choice: completion::ModelChoice::Message(content.to_string()),
-                raw_response: value,
-            }),
             _ => Err(CompletionError::ResponseError(
-                "Response did not contain a message or tool call".into(),
+                "Response did not contain a valid message or tool call".into(),
             )),
-        }
+        }?;
+
+        let choice = OneOrMany::many(content).map_err(|_| {
+            CompletionError::ResponseError(
+                "Response contained no message or tool call (empty)".to_owned(),
+            )
+        })?;
+
+        Ok(completion::CompletionResponse {
+            choice,
+            raw_response: response,
+        })
     }
 }
 
@@ -399,13 +415,6 @@ pub struct Choice {
     pub message: Message,
     pub logprobs: Option<serde_json::Value>,
     pub finish_reason: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Message {
-    pub role: String,
-    pub content: Option<String>,
-    pub tool_calls: Option<Vec<ToolCall>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -459,18 +468,16 @@ impl completion::CompletionModel for CompletionModel {
 
     async fn completion(
         &self,
-        mut completion_request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         // Add preamble to chat history (if available)
-        let mut full_history = if let Some(preamble) = &completion_request.preamble {
-            vec![completion::Message {
-                role: "system".into(),
-                content: preamble.join("\n"),
-            }]
-        } else {
-            vec![]
+        let mut full_history: Vec<Message> = match &completion_request.preamble {
+            Some(preamble) => vec![Message::system(preamble.join("\n").as_str())],
+            None => vec![],
         };
 
+        // Convert prompt to user message
+        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
         tracing::info!("Try to get on-chain system prompt");
         let eternal_ai_rpc = std::env::var("ETERNALAI_RPC_URL").unwrap_or_else(|_| "".to_string());
         let eternal_ai_contract =
@@ -500,46 +507,37 @@ impl completion::CompletionModel for CompletionModel {
             };
             match prompt {
                 None => {
-                    tracing::info!("on-chain sytem prompt is none")
+                    tracing::info!("on-chain system prompt is none")
                 }
                 Some(value) => {
-                    let temp = completion::Message {
-                        role: "system".into(),
-                        content: value,
-                    };
-                    full_history.push(temp);
+                    full_history.push(Message::system(&value));
                 }
             }
         }
 
-        // Extend existing chat history
-        full_history.append(&mut completion_request.chat_history);
+        // Convert existing chat history
+        let chat_history: Vec<Message> = completion_request
+            .chat_history
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
 
-        // Add context documents to chat history
-        let prompt_with_context = completion_request.prompt_with_context();
-
-        // Add context documents to chat history
-        full_history.push(completion::Message {
-            role: "user".into(),
-            content: prompt_with_context,
-        });
-
-        let mut chain_id = self.chain_id.clone();
-        if chain_id.is_empty() {
-            chain_id = get_chain_id(self.model.as_str()).unwrap_or("").to_string();
-        }
+        // Combine all messages into a single history
+        full_history.extend(chat_history);
+        full_history.extend(prompt);
 
         let request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
-                "chain_id": chain_id,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
             })
         } else {
             json!({
                 "model": self.model,
-                "chain_id": chain_id,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
@@ -547,7 +545,7 @@ impl completion::CompletionModel for CompletionModel {
             })
         };
 
-        tracing::debug!("request: {:?}", request.to_string());
+        tracing::debug!(target: "rig", "Sending completion request: {}", request);
 
         let response = self
             .client

@@ -95,6 +95,7 @@ pub mod tool;
 pub mod vector_store;
 
 // Re-export commonly used types and traits
+pub use completion::message;
 pub use embeddings::Embed;
 pub use one_or_many::{EmptyListError, OneOrMany};
 

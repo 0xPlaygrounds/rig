@@ -9,6 +9,7 @@
 //! - xAI
 //! - EternalAI
 //! - DeepSeek
+//! - Azure OpenAI
 //!
 //! Each provider has its own module, which contains a `Client` implementation that can
 //! be used to initialize completion and embedding models and execute requests to those models.
@@ -44,10 +45,16 @@
 //! Note: The example above uses the OpenAI provider client, but the same pattern can
 //! be used with the Cohere provider client.
 pub mod anthropic;
+pub mod azure;
 pub mod cohere;
 pub mod deepseek;
+pub mod galadriel;
 pub mod gemini;
+pub mod groq;
 pub mod hyperbolic;
+pub mod moonshot;
+pub mod ollama;
 pub mod openai;
 pub mod perplexity;
+pub mod together;
 pub mod xai;

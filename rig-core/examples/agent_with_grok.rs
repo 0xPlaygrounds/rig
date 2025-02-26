@@ -10,7 +10,7 @@ use rig::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-/// Runs 4 agents based on grok (dervived from the other examples)
+/// Runs 4 agents based on grok (derived from the other examples)
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     println!("Running basic agent with grok");
@@ -190,11 +190,11 @@ impl Tool for Subtract {
                 "properties": {
                     "x": {
                         "type": "number",
-                        "description": "The number to substract from"
+                        "description": "The number to subtract from"
                     },
                     "y": {
                         "type": "number",
-                        "description": "The number to substract"
+                        "description": "The number to subtract"
                     }
                 }
             }

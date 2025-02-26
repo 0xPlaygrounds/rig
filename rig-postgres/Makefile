@@ -18,8 +18,8 @@ gitRebase:
 		git rebase $(DEFAULT_BRANCH)
 		git push --force origin $(CURRENT_BRANCH)
 
-.PHONY: gitAmmend
-gitAmmend:
+.PHONY: gitAmend
+gitAmend:
 	git add . && git commit --amend --no-edit && git push --force origin $(CURRENT_BRANCH)
 
 
