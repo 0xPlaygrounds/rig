@@ -343,7 +343,7 @@ impl completion::CompletionModel for CompletionModel {
         // Chat mode: assemble full conversation history including preamble and chat history
         let mut full_history = Vec::new();
         if let Some(preamble) = completion_request.preamble {
-            full_history.push(Message::system(&preamble));
+            full_history.push(Message::system(&preamble.join("\n")));
         }
         for msg in completion_request.chat_history.into_iter() {
             full_history.push(Message::try_from(msg)?);

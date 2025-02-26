@@ -77,7 +77,7 @@ impl completion::CompletionModel for CompletionModel {
         }
 
         let system_instruction = completion_request.preamble.clone().map(|preamble| Content {
-            parts: OneOrMany::one(preamble.into()),
+            parts: OneOrMany::one(preamble.join("\n").into()),
             role: Some(Role::Model),
         });
 

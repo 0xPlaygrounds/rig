@@ -37,7 +37,7 @@ pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct CompletionResponse {
     pub content: Vec<Content>,
     pub id: String,
@@ -48,7 +48,7 @@ pub struct CompletionResponse {
     pub usage: Usage,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Usage {
     pub input_tokens: u64,
     pub cache_read_input_tokens: Option<u64>,
@@ -160,6 +160,13 @@ pub enum Content {
     },
     Document {
         source: DocumentSource,
+    },
+    Thinking {
+        thinking: String,
+        signature: String,
+    },
+    RedactedThinking {
+        data: String,
     },
 }
 
@@ -549,6 +556,35 @@ impl completion::CompletionModel for CompletionModel {
                 "`max_tokens` must be set for Anthropic".into(),
             ));
         };
+        let mut system = Vec::new();
+
+        if let Some(cached_preamble) = &completion_request.cached_preamble {
+            for (index, preamble) in cached_preamble.iter().enumerate() {
+                let mut preamble_json = json!({
+                    "type": "text",
+                    "text": preamble,
+                });
+                if index == cached_preamble.len() - 1 {
+                    json_utils::merge_inplace(
+                        &mut preamble_json,
+                        json!({
+                            "cache_control": {
+                                "type": "ephemeral"
+                            }
+                        }),
+                    );
+                }
+                system.push(preamble_json);
+            }
+        }
+        if let Some(preamble) = &completion_request.preamble {
+            for preamble in preamble {
+                system.push(json!({
+                    "type": "text",
+                    "text": preamble
+                }));
+            }
+        }
 
         let prompt_message: Message = completion_request
             .prompt_with_context()
@@ -571,7 +607,7 @@ impl completion::CompletionModel for CompletionModel {
             "model": self.model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "system": completion_request.preamble.unwrap_or("".to_string()),
+            "system": system,
         });
 
         if let Some(temperature) = completion_request.temperature {
@@ -584,13 +620,28 @@ impl completion::CompletionModel for CompletionModel {
                 json!({
                     "tools": completion_request
                         .tools
+                        .clone()
                         .into_iter()
-                        .map(|tool| ToolDefinition {
-                            name: tool.name,
-                            description: Some(tool.description),
-                            input_schema: tool.parameters,
-                        })
-                        .collect::<Vec<_>>(),
+                        .enumerate()
+                        .map(|(index, tool)| {
+                            let mut tool_json = json!({
+                            "name": tool.name,
+                            "description": tool.description,
+                            "input_schema": tool.parameters,
+                            });
+                            if index == completion_request.tools.len() - 1 {
+                                json_utils::merge_inplace(
+                                    &mut tool_json,
+                                    json!({
+                                        "cache_control": {
+                                            "type": "ephemeral"
+                                        }
+                                    }),
+                                );
+                            }
+                            tool_json
+                    })
+                    .collect::<Vec<_>>(),
                     "tool_choice": ToolChoice::Auto,
                 }),
             );

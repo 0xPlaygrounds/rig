@@ -101,7 +101,7 @@ impl StreamingCompletionModel for CompletionModel {
             "model": self.model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "system": completion_request.preamble.unwrap_or("".to_string()),
+            "system": completion_request.preamble.unwrap_or_default().join("\n"),
             "stream": true,
         });
 

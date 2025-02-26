@@ -106,21 +106,22 @@
 //! let response = agent.prompt("What does \"glarb-glarb\" mean?").await
 //!     .expect("Failed to prompt the agent");
 //! ```
-use std::collections::HashMap;
+use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use futures::{stream, StreamExt, TryStreamExt};
+use mcp_client_rs::{client::Client, CallToolResult, MessageContent};
 
 use crate::{
     completion::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
-        Message, Prompt, PromptError,
+        Message, Prompt, PromptError, ToolDefinition,
     },
     message::AssistantContent,
     streaming::{
         StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingPrompt,
         StreamingResult,
     },
-    tool::{Tool, ToolSet},
+    tool::{Tool, ToolDyn, ToolError, ToolSet},
     vector_store::{VectorStoreError, VectorStoreIndexDyn},
 };
 
@@ -147,8 +148,10 @@ use crate::{
 pub struct Agent<M: CompletionModel> {
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     model: M,
+    /// Cached preamble
+    cached_preamble: Option<Vec<String>>,
     /// System prompt
-    preamble: String,
+    preamble: Vec<String>,
     /// Context documents always available to the agent
     static_context: Vec<Document>,
     /// Tools that are always available to the agent (identified by their name)
@@ -179,6 +182,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
         let completion_request = self
             .model
             .completion_request(prompt)
+            .cached_preamble(self.cached_preamble.clone())
             .preamble(self.preamble.clone())
             .messages(chat_history)
             .temperature_opt(self.temperature)
@@ -342,8 +346,10 @@ impl<M: CompletionModel> Chat for Agent<M> {
 pub struct AgentBuilder<M: CompletionModel> {
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     model: M,
+    /// Cached preamble
+    cached_preamble: Option<Vec<String>>,
     /// System prompt
-    preamble: Option<String>,
+    preamble: Option<Vec<String>>,
     /// Context documents always available to the agent
     static_context: Vec<Document>,
     /// Tools that are always available to the agent (by name)
@@ -366,6 +372,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
     pub fn new(model: M) -> Self {
         Self {
             model,
+            cached_preamble: None,
             preamble: None,
             static_context: vec![],
             static_tools: vec![],
@@ -378,19 +385,25 @@ impl<M: CompletionModel> AgentBuilder<M> {
         }
     }
 
+    pub fn cached_preamble(mut self, cached_preamble: Vec<String>) -> Self {
+        self.cached_preamble = Some(cached_preamble);
+        self
+    }
+
     /// Set the system prompt
     pub fn preamble(mut self, preamble: &str) -> Self {
-        self.preamble = Some(preamble.into());
+        self.preamble = Some(vec![preamble.into()]);
         self
     }
 
     /// Append to the preamble of the agent
     pub fn append_preamble(mut self, doc: &str) -> Self {
-        self.preamble = Some(format!(
-            "{}\n{}",
-            self.preamble.unwrap_or_else(|| "".into()),
-            doc
-        ));
+        self.preamble = if let Some(preamble) = self.preamble.as_mut() {
+            preamble.push(doc.into());
+            Some(preamble.to_vec())
+        } else {
+            Some(vec![doc.into()])
+        };
         self
     }
 
@@ -437,6 +450,13 @@ impl<M: CompletionModel> AgentBuilder<M> {
         self
     }
 
+    pub fn mcp_tool(mut self, tool: mcp_client_rs::Tool, client: Arc<Client>) -> Self {
+        let toolname = tool.name.clone();
+        self.tools.add_tool(MCPTool::from_mcp_server(tool, client));
+        self.static_tools.push(toolname);
+        self
+    }
+
     /// Set the temperature of the model
     pub fn temperature(mut self, temperature: f64) -> Self {
         self.temperature = Some(temperature);
@@ -459,6 +479,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
     pub fn build(self) -> Agent<M> {
         Agent {
             model: self.model,
+            cached_preamble: self.cached_preamble,
             preamble: self.preamble.unwrap_or_default(),
             static_context: self.static_context,
             static_tools: self.static_tools,
@@ -500,5 +521,70 @@ impl<M: StreamingCompletionModel> StreamingChat for Agent<M> {
             .await?
             .stream()
             .await
+    }
+}
+pub struct MCPTool {
+    client: Arc<Client>,
+    definition: mcp_client_rs::Tool,
+}
+
+impl MCPTool {
+    pub fn from_mcp_server(definition: mcp_client_rs::Tool, client: Arc<Client>) -> Self {
+        Self { client, definition }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("MCP tool error")]
+pub struct MCPToolError(String);
+
+impl ToolDyn for MCPTool {
+    fn name(&self) -> String {
+        self.definition.name.clone()
+    }
+
+    fn definition(
+        &self,
+        _prompt: String,
+    ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + Sync + '_>> {
+        Box::pin(async move {
+            ToolDefinition {
+                name: self.definition.name.clone(),
+                description: self.definition.description.clone(),
+                parameters: self.definition.input_schema.clone(),
+            }
+        })
+    }
+
+    fn call(
+        &self,
+        args: String,
+    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
+        let client = self.client.clone();
+        let name = self.definition.name.clone();
+        let args_clone = args.clone();
+        let args: serde_json::Value = serde_json::from_str(&args_clone).unwrap_or_default();
+        Box::pin(async move {
+            let result: CallToolResult = client.call_tool(&name, args).await.map_err(|e| {
+                ToolError::ToolCallError(Box::new(MCPToolError(format!(
+                    "Tool returned an error: {}",
+                    e
+                ))))
+            })?;
+            if result.is_error {
+                return Err(ToolError::ToolCallError(Box::new(MCPToolError(
+                    "Tool returned an error".to_string(),
+                ))));
+            }
+            Ok(result
+                .content
+                .into_iter()
+                .map(|c| match c {
+                    MessageContent::Text { text } => text,
+                    _ => "".to_string(),
+                })
+                .collect::<Vec<_>>()
+                .join(""))
+        })
     }
 }

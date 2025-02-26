@@ -150,7 +150,7 @@ impl completion::CompletionModel for CompletionModel {
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
         let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
-            Some(preamble) => vec![openai::Message::system(preamble)],
+            Some(preamble) => vec![openai::Message::system(preamble.join("\n").as_str())],
             None => vec![],
         };
 

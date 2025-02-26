@@ -50,7 +50,7 @@ impl completion::CompletionModel for CompletionModel {
                 if preamble.is_empty() {
                     vec![]
                 } else {
-                    vec![Message::system(preamble)]
+                    vec![Message::system(preamble.join("\n").as_str())]
                 }
             }
             None => vec![],

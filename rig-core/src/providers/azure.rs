@@ -377,7 +377,7 @@ impl completion::CompletionModel for CompletionModel {
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
         // Add preamble to chat history (if available)
         let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
-            Some(preamble) => vec![openai::Message::system(preamble)],
+            Some(preamble) => vec![openai::Message::system(preamble.join("\n").as_str())],
             None => vec![],
         };
 
@@ -478,7 +478,8 @@ mod azure_tests {
         let model = client.completion_model(GPT_4O_MINI);
         let completion = model
             .completion(CompletionRequest {
-                preamble: Some("You are a helpful assistant.".to_string()),
+                preamble: Some(vec!["You are a helpful assistant.".to_string()]),
+                cached_preamble: None,
                 chat_history: vec![],
                 prompt: "Hello, world!".into(),
                 documents: vec![],

@@ -270,7 +270,7 @@ impl completion::CompletionModel for CompletionModel {
         let mut full_history: Vec<Message> = match &completion_request.preamble {
             Some(preamble) => vec![Message {
                 role: "system".to_string(),
-                content: Some(preamble.to_string()),
+                content: Some(preamble.join("\n")),
             }],
             None => vec![],
         };

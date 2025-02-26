@@ -272,7 +272,7 @@ impl completion::CompletionModel for CompletionModel {
         let mut messages: Vec<Message> = if let Some(preamble) = completion_request.preamble {
             vec![Message {
                 role: Role::System,
-                content: preamble,
+                content: preamble.join("\n"),
             }]
         } else {
             vec![]
