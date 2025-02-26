@@ -518,6 +518,7 @@ impl TryFrom<crate::message::Message> for Message {
                                 },
                             });
                         }
+                        _ => unreachable!(),
                     }
                 }
                 let content_str = texts.join(" ");

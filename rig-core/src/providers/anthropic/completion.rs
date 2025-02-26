@@ -101,6 +101,15 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     Content::ToolUse { id, name, input } => {
                         completion::AssistantContent::tool_call(id, name, input.clone())
                     }
+                    Content::Thinking {
+                        thinking,
+                        signature,
+                    } => {
+                        completion::AssistantContent::thinking(thinking.clone(), signature.clone())
+                    }
+                    Content::RedactedThinking { data } => {
+                        completion::AssistantContent::redacted_thinking(data.clone())
+                    }
                     _ => {
                         return Err(CompletionError::ResponseError(
                             "Response did not contain a message or tool call".into(),
@@ -305,6 +314,16 @@ impl From<message::AssistantContent> for Content {
                     name: function.name,
                     input: function.arguments,
                 }
+            }
+            message::AssistantContent::Thinking(message::Thinking {
+                thinking,
+                signature,
+            }) => Content::Thinking {
+                thinking,
+                signature,
+            },
+            message::AssistantContent::RedactedThinking(message::RedactedThinking { data }) => {
+                Content::RedactedThinking { data }
             }
         }
     }

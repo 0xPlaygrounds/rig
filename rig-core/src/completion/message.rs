@@ -51,6 +51,19 @@ pub enum UserContent {
 pub enum AssistantContent {
     Text(Text),
     ToolCall(ToolCall),
+    Thinking(Thinking),
+    RedactedThinking(RedactedThinking),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Thinking {
+    pub thinking: String,
+    pub signature: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RedactedThinking {
+    pub data: String,
 }
 
 /// Tool result content containing information about a tool call and it's resulting content.
@@ -228,6 +241,15 @@ impl Message {
             content: OneOrMany::one(AssistantContent::text(text)),
         }
     }
+
+    pub fn tool_result(id: impl Into<String>, content: OneOrMany<ToolResultContent>) -> Self {
+        Message::User {
+            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+                id: id.into(),
+                content,
+            })),
+        }
+    }
 }
 
 impl UserContent {
@@ -284,6 +306,10 @@ impl UserContent {
             content,
         })
     }
+
+    pub fn is_text(&self) -> bool {
+        matches!(self, UserContent::Text(_))
+    }
 }
 
 impl AssistantContent {
@@ -305,6 +331,17 @@ impl AssistantContent {
                 arguments,
             },
         })
+    }
+
+    pub fn thinking(thinking: impl Into<String>, signature: impl Into<String>) -> Self {
+        AssistantContent::Thinking(Thinking {
+            thinking: thinking.into(),
+            signature: signature.into(),
+        })
+    }
+
+    pub fn redacted_thinking(data: impl Into<String>) -> Self {
+        AssistantContent::RedactedThinking(RedactedThinking { data: data.into() })
     }
 }
 
@@ -541,6 +578,16 @@ impl From<String> for AssistantContent {
 impl From<String> for UserContent {
     fn from(text: String) -> Self {
         UserContent::text(text)
+    }
+}
+
+// ================================================================
+// From<Message> impls
+// ================================================================
+
+impl From<OneOrMany<AssistantContent>> for Message {
+    fn from(content: OneOrMany<AssistantContent>) -> Self {
+        Message::Assistant { content }
     }
 }
 

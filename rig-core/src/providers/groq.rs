@@ -200,6 +200,7 @@ impl TryFrom<message::Message> for Message {
                                 "Tool calls do not exist on this message".into(),
                             ))
                         }
+                        _ => unreachable!(),
                     }
                 }
 

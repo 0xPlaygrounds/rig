@@ -350,6 +350,7 @@ impl TryFrom<message::Message> for Message {
                         message::AssistantContent::ToolCall(tool_call) => {
                             tool_calls.push(tool_call.clone().into());
                         }
+                        _ => unreachable!(),
                     }
                 }
 

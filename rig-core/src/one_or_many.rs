@@ -139,6 +139,10 @@ impl<T: Clone> OneOrMany<T> {
             rest: self.rest.iter_mut(),
         }
     }
+
+    pub fn is_many(&self) -> bool {
+        !self.rest.is_empty()
+    }
 }
 
 // ================================================================

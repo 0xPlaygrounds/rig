@@ -318,6 +318,7 @@ impl<M: CompletionModel> Chat for Agent<M> {
                     tool_call.function.arguments.to_string(),
                 )
                 .await?),
+            _ => unreachable!(),
         }
     }
 }
