@@ -2,7 +2,7 @@ use std::env;
 
 use rig::{
     completion::{Completion, Prompt},
-    providers::cohere::Client as CohereClient,
+    providers::_cohere::Client as CohereClient,
 };
 use serde_json::json;
 

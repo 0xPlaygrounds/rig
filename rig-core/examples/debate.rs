@@ -5,12 +5,12 @@ use rig::{
     agent::Agent,
     completion::Chat,
     message::Message,
-    providers::{cohere, openai},
+    providers::{_cohere, openai},
 };
 
 struct Debater {
     gpt_4: Agent<openai::CompletionModel>,
-    coral: Agent<cohere::CompletionModel>,
+    coral: Agent<_cohere::CompletionModel>,
 }
 
 impl Debater {
@@ -18,7 +18,7 @@ impl Debater {
         let openai_client =
             openai::Client::new(&env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"));
         let cohere_client =
-            cohere::Client::new(&env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set"));
+            _cohere::Client::new(&env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set"));
 
         Self {
             gpt_4: openai_client.agent("gpt-4").preamble(position_a).build(),
