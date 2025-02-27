@@ -5713,7 +5713,7 @@ dependencies = [
  "nom_locate",
  "rangemap",
  "rayon",
- "thiserror 2.0.3",
+ "thiserror 2.0.11",
  "time",
  "weezl",
 ]
@@ -7786,6 +7786,7 @@ dependencies = [
  "js-sys",
  "log",
  "mime",
+ "mime_guess",
  "native-tls",
  "once_cell",
  "percent-encoding",
