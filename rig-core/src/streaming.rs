@@ -24,7 +24,8 @@ use std::pin::Pin;
 pub enum StreamingChoice {
     /// A text chunk from a message response
     Message(String),
-
+    /// A reasoning chunk from a message response
+    Reasoning(String),
     /// A tool call response chunk
     ToolCall(String, String, serde_json::Value),
 }
@@ -33,6 +34,7 @@ impl Display for StreamingChoice {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             StreamingChoice::Message(text) => write!(f, "{}", text),
+            StreamingChoice::Reasoning(text) => write!(f, "{}", text),
             StreamingChoice::ToolCall(name, id, params) => {
                 write!(f, "Tool call: {} {} {:?}", name, id, params)
             }
@@ -94,6 +96,10 @@ pub async fn stream_to_stdout<M: StreamingCompletionModel>(
     while let Some(chunk) = stream.next().await {
         match chunk {
             Ok(StreamingChoice::Message(text)) => {
+                print!("{}", text);
+                std::io::Write::flush(&mut std::io::stdout())?;
+            }
+            Ok(StreamingChoice::Reasoning(text)) => {
                 print!("{}", text);
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
