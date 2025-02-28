@@ -32,6 +32,12 @@ pub struct Client {
     http_client: reqwest::Client,
 }
 
+#[derive(Clone)]
+pub enum AzureOpenAIAuth {
+    ApiKey(String),
+    Token(String),
+}
+
 impl Client {
     /// Creates a new Azure OpenAI client.
     ///
@@ -40,16 +46,25 @@ impl Client {
     /// * `api_key` - Azure OpenAI API key required for authentication
     /// * `api_version` - API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
     /// * `azure_endpoint` - Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
-    pub fn new(api_key: &str, api_version: &str, azure_endpoint: &str) -> Self {
+    pub fn new(auth: AzureOpenAIAuth, api_version: &str, azure_endpoint: &str) -> Self {
+        let mut headers = reqwest::header::HeaderMap::new();
+        match auth {
+            AzureOpenAIAuth::ApiKey(api_key) => {
+                headers.insert("api-key", api_key.parse().expect("API key should parse"));
+            }
+            AzureOpenAIAuth::Token(token) => {
+                headers.insert(
+                    "Authorization",
+                    format!("Bearer {}", token).parse().expect("Token should parse"),
+                );
+            }
+        }
+
         Self {
             api_version: api_version.to_string(),
             azure_endpoint: azure_endpoint.to_string(),
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert("api-key", api_key.parse().expect("API key should parse"));
-                    headers
-                })
+                .default_headers(headers)
                 .build()
                 .expect("Azure OpenAI reqwest client should build"),
         }
@@ -61,7 +76,7 @@ impl Client {
         let api_key = std::env::var("AZURE_API_KEY").expect("AZURE_API_KEY not set");
         let api_version = std::env::var("AZURE_API_VERSION").expect("AZURE_API_VERSION not set");
         let azure_endpoint = std::env::var("AZURE_ENDPOINT").expect("AZURE_ENDPOINT not set");
-        Self::new(&api_key, &api_version, &azure_endpoint)
+        Self::new(AzureOpenAIAuth::ApiKey(api_key), &api_version, &azure_endpoint)
     }
 
     fn post_embedding(&self, deployment_id: &str) -> reqwest::RequestBuilder {
