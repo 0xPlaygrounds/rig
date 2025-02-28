@@ -582,16 +582,16 @@ impl StreamingCompletionModel for DeepSeekCompletionModel {
                                     if let Some(reasoning) = &choice.delta.reasoning_content {
                                         if !reasoning.is_empty() {
                                             if !reasoning_started {
-                                                yield Ok(StreamingChoice::Message("<think>\n".to_string()));
+                                                yield Ok(StreamingChoice::Reasoning("<think>\n".to_string()));
                                                 reasoning_started = true;
                                             }
-                                            yield Ok(StreamingChoice::Message(reasoning.clone()));
+                                            yield Ok(StreamingChoice::Reasoning(reasoning.clone()));
                                         }
                                     }
                                     
                                     if let Some(content) = &choice.delta.content {
                                         if reasoning_started && !reasoning_ended && !content.is_empty() {
-                                            yield Ok(StreamingChoice::Message("\n</think>\n".to_string()));
+                                            yield Ok(StreamingChoice::Reasoning("\n</think>\n".to_string()));
                                             reasoning_ended = true;
                                         }
                                         
