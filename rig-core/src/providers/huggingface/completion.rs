@@ -941,7 +941,7 @@ mod tests {
         }
         "#;
 
-        let firework_response: CompletionResponse = {
+        let _firework_response: CompletionResponse = {
             let jd = &mut serde_json::Deserializer::from_str(fireworks_response_json);
             deserialize(jd).unwrap_or_else(|err| {
                 panic!(
@@ -954,7 +954,7 @@ mod tests {
             })
         };
 
-        let novita_response: CompletionResponse = {
+        let _novita_response: CompletionResponse = {
             let jd = &mut serde_json::Deserializer::from_str(novita_response_json);
             deserialize(jd).unwrap_or_else(|err| {
                 panic!(
