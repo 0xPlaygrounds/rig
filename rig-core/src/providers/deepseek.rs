@@ -331,7 +331,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 if !content.trim().is_empty() {
                     if let Some(reasoning) = reasoning_content {
                         content_parts.push(completion::AssistantContent::text(
-                            format!("<推理>\n{}\n<推理结束>\n{}", reasoning, content)
+                            format!("<think>\n{}\n</think>\n{}", reasoning, content)
                         ));
                     } else {
                         content_parts.push(completion::AssistantContent::text(content));
