@@ -85,7 +85,7 @@ pub mod cli_chatbot;
 pub mod completion;
 pub mod embeddings;
 pub mod extractor;
-pub(crate) mod json_utils;
+pub mod json_utils;
 pub mod loaders;
 pub mod one_or_many;
 pub mod pipeline;

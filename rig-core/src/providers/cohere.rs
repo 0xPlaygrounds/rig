@@ -298,7 +298,7 @@ pub const COMMAND_LIGHT: &str = "command-light";
 /// `command-light-nightly` completion model
 pub const COMMAND_LIGHT_NIGHTLY: &str = "command-light-nightly";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct CompletionResponse {
     pub text: String,
     pub generation_id: String,
@@ -347,7 +347,7 @@ impl From<CompletionResponse> for completion::CompletionResponse<CompletionRespo
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Citation {
     pub start: u32,
     pub end: u32,
@@ -355,20 +355,20 @@ pub struct Citation {
     pub document_ids: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Document {
     pub id: String,
     #[serde(flatten)]
     pub additional_prop: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct SearchQuery {
     pub text: String,
     pub generation_id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct SearchResult {
     pub search_query: SearchQuery,
     pub connector: Connector,
@@ -379,31 +379,31 @@ pub struct SearchResult {
     pub continue_on_failure: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Connector {
     pub id: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ToolCall {
     pub name: String,
     pub parameters: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ChatHistory {
     pub role: String,
     pub message: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Parameter {
     pub description: String,
     pub r#type: String,
     pub required: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ToolDefinition {
     pub name: String,
     pub description: String,
@@ -481,7 +481,7 @@ impl From<completion::ToolDefinition> for ToolDefinition {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 #[serde(tag = "role", rename_all = "UPPERCASE")]
 pub enum Message {
     User {
@@ -505,7 +505,7 @@ pub enum Message {
     },
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct ToolResult {
     pub call: ToolCall,
     pub outputs: Vec<serde_json::Value>,
@@ -562,7 +562,24 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let chat_history = completion_request
+        let request = self.build_completion(completion_request.clone()).await?;
+
+        let response = self.client.post("/v1/chat").json(&request).send().await?;
+
+        if response.status().is_success() {
+            match response.json::<ApiResponse<CompletionResponse>>().await? {
+                ApiResponse::Ok(completion) => Ok(completion.into()),
+                ApiResponse::Err(error) => Err(CompletionError::ProviderError(error.message)),
+            }
+        } else {
+            Err(CompletionError::ProviderError(response.text().await?))
+        }
+    }
+    async fn build_completion(
+        &self,
+        request: completion::CompletionRequest,
+    ) -> Result<serde_json::Value, CompletionError> {
+        let chat_history = request
             .chat_history
             .into_iter()
             .map(Vec::<Message>::try_from)
@@ -571,7 +588,7 @@ impl completion::CompletionModel for CompletionModel {
             .flatten()
             .collect::<Vec<_>>();
 
-        let message = match completion_request.prompt {
+        let message = match request.prompt {
             message::Message::User { content } => Ok(content
                 .into_iter()
                 .map(|content| match content {
@@ -588,36 +605,22 @@ impl completion::CompletionModel for CompletionModel {
             )),
         }?;
 
-        let request = json!({
+        let json_request = json!({
             "model": self.model,
-            "preamble": completion_request.preamble,
+            "preamble": request.preamble,
             "message": message,
-            "documents": completion_request.documents,
+            "documents": request.documents,
             "chat_history": chat_history,
-            "temperature": completion_request.temperature,
-            "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
+            "temperature": request.temperature,
+            "tools": request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
         });
 
-        let response = self
-            .client
-            .post("/v1/chat")
-            .json(
-                &if let Some(ref params) = completion_request.additional_params {
-                    json_utils::merge(request.clone(), params.clone())
-                } else {
-                    request.clone()
-                },
-            )
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
-                ApiResponse::Ok(completion) => Ok(completion.into()),
-                ApiResponse::Err(error) => Err(CompletionError::ProviderError(error.message)),
-            }
+        let json_request = if let Some(ref params) = request.additional_params {
+            json_utils::merge(json_request.clone(), params.clone())
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
-        }
+            json_request.clone()
+        };
+
+        Ok(json_request)
     }
 }

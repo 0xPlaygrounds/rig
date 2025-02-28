@@ -14,7 +14,7 @@ serde_json = "1.0.108"
 schemars = "0.8.16"
 tracing = "0.1.40"
 aws-config = { version = "1.5.8", features = ["behavior-version-latest"] }
-aws-sdk-bedrockruntime = "1.53.0"
+aws-sdk-bedrockruntime = "1.75.0"
 aws-smithy-types = "1.2.12"
 base64 = "0.22.1"
 

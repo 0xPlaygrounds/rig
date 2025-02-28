@@ -25,6 +25,11 @@ pub fn merge_inplace(a: &mut serde_json::Value, b: serde_json::Value) {
     }
 }
 
+pub fn delete_inplace(a: &mut serde_json::Value, key: &str) {
+    if let serde_json::Value::Object(a_map) = a {
+        a_map.remove(key);
+    }
+}
 /// This module is helpful in cases where raw json objects are serialized and deserialized as
 ///  strings such as `"{\"key\": \"value\"}"`. This might seem odd but it's actually how some
 ///  some providers such as OpenAI return function arguments (for some reason).

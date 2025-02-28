@@ -114,7 +114,7 @@ use mcp_client_rs::{client::Client, CallToolResult, MessageContent};
 use crate::{
     completion::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
-        Message, Prompt, PromptError, ToolDefinition,
+        Message, Preamble, Prompt, PromptError, ToolDefinition,
     },
     message::AssistantContent,
     streaming::{
@@ -148,10 +148,8 @@ use crate::{
 pub struct Agent<M: CompletionModel> {
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     model: M,
-    /// Cached preamble
-    cached_preamble: Option<Vec<String>>,
     /// System prompt
-    preamble: Vec<String>,
+    preamble: Vec<Preamble>,
     /// Context documents always available to the agent
     static_context: Vec<Document>,
     /// Tools that are always available to the agent (identified by their name)
@@ -182,7 +180,6 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
         let completion_request = self
             .model
             .completion_request(prompt)
-            .cached_preamble(self.cached_preamble.clone())
             .preamble(self.preamble.clone())
             .messages(chat_history)
             .temperature_opt(self.temperature)
@@ -347,10 +344,8 @@ impl<M: CompletionModel> Chat for Agent<M> {
 pub struct AgentBuilder<M: CompletionModel> {
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     model: M,
-    /// Cached preamble
-    cached_preamble: Option<Vec<String>>,
     /// System prompt
-    preamble: Option<Vec<String>>,
+    preamble: Vec<Preamble>,
     /// Context documents always available to the agent
     static_context: Vec<Document>,
     /// Tools that are always available to the agent (by name)
@@ -373,8 +368,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
     pub fn new(model: M) -> Self {
         Self {
             model,
-            cached_preamble: None,
-            preamble: None,
+            preamble: vec![],
             static_context: vec![],
             static_tools: vec![],
             temperature: None,
@@ -386,25 +380,15 @@ impl<M: CompletionModel> AgentBuilder<M> {
         }
     }
 
-    pub fn cached_preamble(mut self, cached_preamble: Vec<String>) -> Self {
-        self.cached_preamble = Some(cached_preamble);
-        self
-    }
-
     /// Set the system prompt
-    pub fn preamble(mut self, preamble: &str) -> Self {
-        self.preamble = Some(vec![preamble.into()]);
+    pub fn preamble(mut self, preamble: Vec<Preamble>) -> Self {
+        self.preamble = preamble;
         self
     }
 
     /// Append to the preamble of the agent
-    pub fn append_preamble(mut self, doc: &str) -> Self {
-        self.preamble = if let Some(preamble) = self.preamble.as_mut() {
-            preamble.push(doc.into());
-            Some(preamble.to_vec())
-        } else {
-            Some(vec![doc.into()])
-        };
+    pub fn append_preamble(mut self, doc: Preamble) -> Self {
+        self.preamble.push(doc);
         self
     }
 
@@ -480,8 +464,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
     pub fn build(self) -> Agent<M> {
         Agent {
             model: self.model,
-            cached_preamble: self.cached_preamble,
-            preamble: self.preamble.unwrap_or_default(),
+            preamble: self.preamble,
             static_context: self.static_context,
             static_tools: self.static_tools,
             temperature: self.temperature,

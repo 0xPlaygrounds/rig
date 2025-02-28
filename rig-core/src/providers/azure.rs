@@ -375,55 +375,12 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
-            Some(preamble) => vec![openai::Message::system(preamble.join("\n").as_str())],
-            None => vec![],
-        };
-
-        // Convert prompt to user message
-        let prompt: Vec<openai::Message> = completion_request.prompt_with_context().try_into()?;
-
-        // Convert existing chat history
-        let chat_history: Vec<openai::Message> = completion_request
-            .chat_history
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        // Combine all messages into a single history
-        full_history.extend(chat_history);
-        full_history.extend(prompt);
-
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "tools": completion_request.tools.into_iter().map(openai::ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": "auto",
-            })
-        };
+        let request = self.build_completion(completion_request.clone()).await?;
 
         let response = self
             .client
             .post_chat_completion(&self.model)
-            .json(
-                &if let Some(params) = completion_request.additional_params {
-                    json_utils::merge(request, params)
-                } else {
-                    request
-                },
-            )
+            .json(&request)
             .send()
             .await?;
 
@@ -445,13 +402,65 @@ impl completion::CompletionModel for CompletionModel {
             Err(CompletionError::ProviderError(response.text().await?))
         }
     }
+
+    async fn build_completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<serde_json::Value, CompletionError> {
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<openai::Message> = request
+            .preamble
+            .iter()
+            .map(|preamble| openai::Message::system(&serde_json::to_string(preamble).unwrap()))
+            .collect();
+
+        // Convert prompt to user message
+        let prompt: Vec<openai::Message> = request.prompt_with_context().try_into()?;
+
+        // Convert existing chat history
+        let chat_history: Vec<openai::Message> = request
+            .chat_history
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        // Combine all messages into a single history
+        full_history.extend(chat_history);
+        full_history.extend(prompt);
+
+        let json_request = if request.tools.is_empty() {
+            json!({
+                "model": self.model,
+                "messages": full_history,
+                "temperature": request.temperature,
+            })
+        } else {
+            json!({
+                "model": self.model,
+                "messages": full_history,
+                "temperature": request.temperature,
+                "tools": request.tools.into_iter().map(openai::ToolDefinition::from).collect::<Vec<_>>(),
+                "tool_choice": "auto",
+            })
+        };
+
+        let request = if let Some(params) = request.additional_params {
+            json_utils::merge(json_request, params)
+        } else {
+            json_request
+        };
+        Ok(request)
+    }
 }
 
 #[cfg(test)]
 mod azure_tests {
     use super::*;
 
-    use crate::completion::CompletionModel;
+    use crate::completion::{CompletionModel, Preamble};
     use crate::embeddings::EmbeddingModel;
 
     #[tokio::test]
@@ -478,8 +487,7 @@ mod azure_tests {
         let model = client.completion_model(GPT_4O_MINI);
         let completion = model
             .completion(CompletionRequest {
-                preamble: Some(vec!["You are a helpful assistant.".to_string()]),
-                cached_preamble: None,
+                preamble: vec![Preamble::new("You are a helpful assistant.".to_string())],
                 chat_history: vec![],
                 prompt: "Hello, world!".into(),
                 documents: vec![],

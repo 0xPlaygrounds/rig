@@ -36,7 +36,7 @@ use serde_json::json;
 
 use crate::{
     agent::{Agent, AgentBuilder},
-    completion::{CompletionModel, Prompt, PromptError, ToolDefinition},
+    completion::{CompletionModel, Preamble, Prompt, PromptError, ToolDefinition},
     tool::Tool,
 };
 
@@ -88,12 +88,13 @@ impl<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync, M: Compl
     pub fn new(model: M) -> Self {
         Self {
             agent_builder: AgentBuilder::new(model)
-                .preamble("\
-                    You are an AI assistant whose purpose is to extract structured data from the provided text.\n\
+                .preamble(vec![Preamble::new(
+                    "You are an AI assistant whose purpose is to extract structured data from the provided text.\n\
                     You will have access to a `submit` function that defines the structure of the data to extract from the provided text.\n\
                     Use the `submit` function to submit the structured data.\n\
-                    Be sure to fill out every field and ALWAYS CALL THE `submit` function, event with default values!!!.
-                ")
+                    Be sure to fill out every field and ALWAYS CALL THE `submit` function, event with default values!!!."
+                        .to_string(),
+                )])
                 .tool(SubmitTool::<T> {_t: PhantomData}),
             _t: PhantomData,
         }
@@ -101,9 +102,9 @@ impl<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync, M: Compl
 
     /// Add additional preamble to the extractor
     pub fn preamble(mut self, preamble: &str) -> Self {
-        self.agent_builder = self.agent_builder.append_preamble(&format!(
-            "\n=============== ADDITIONAL INSTRUCTIONS ===============\n{preamble}"
-        ));
+        self.agent_builder = self
+            .agent_builder
+            .append_preamble(Preamble::new(preamble.to_string()));
         self
     }
 

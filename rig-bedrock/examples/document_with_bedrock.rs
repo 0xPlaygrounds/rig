@@ -1,12 +1,15 @@
 use reqwest::Client;
 
+use base64::{prelude::BASE64_STANDARD, Engine};
 use rig::{
-    completion::{message::Document, Prompt},
+    completion::{Preamble, Prompt},
+    providers::anthropic::ClientBuilder as AnthropicClientBuilder,
+};
+use rig::{
+    completion::message::Document,
     message::{ContentFormat, DocumentMediaType},
 };
-
-use base64::{prelude::BASE64_STANDARD, Engine};
-use rig_bedrock::{client::ClientBuilder, completion::AMAZON_NOVA_LITE_V1};
+use rig_bedrock::client::ClientBuilder;
 use tracing::info;
 
 const DOCUMENT_URL: &str =
@@ -22,9 +25,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     let client = ClientBuilder::new().build().await;
+    let anthropic_client = AnthropicClientBuilder::new("").build();
+    let completion_model = anthropic_client.completion_model("claude-3-5-sonnet-20240620-v1:0");
     let agent = client
-        .agent(AMAZON_NOVA_LITE_V1)
-        .preamble("Describe this document")
+        .agent(completion_model, "claude-3-5-sonnet-20240620-v1:0")
+        .preamble(vec![Preamble::new("Describe this document".to_string())])
         .temperature(0.5)
         .build();
 

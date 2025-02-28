@@ -101,7 +101,7 @@ impl StreamingCompletionModel for CompletionModel {
             "model": self.model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "system": completion_request.preamble.unwrap_or_default().join("\n"),
+            "system": serde_json::to_value(&completion_request.preamble).unwrap(),
             "stream": true,
         });
 

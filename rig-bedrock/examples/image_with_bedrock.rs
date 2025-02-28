@@ -1,12 +1,15 @@
 use reqwest::Client;
 
+use base64::{prelude::BASE64_STANDARD, Engine};
 use rig::{
-    completion::{message::Image, Prompt},
+    completion::{Preamble, Prompt},
+    providers::anthropic::ClientBuilder as AnthropicClientBuilder,
+};
+use rig::{
+    completion::message::Image,
     message::{ContentFormat, ImageMediaType},
 };
-
-use base64::{prelude::BASE64_STANDARD, Engine};
-use rig_bedrock::{client::ClientBuilder, completion::AMAZON_NOVA_LITE_V1};
+use rig_bedrock::client::ClientBuilder;
 use tracing::info;
 
 const IMAGE_URL: &str = "https://playgrounds.network/assets/PG-Logo.png";
@@ -19,9 +22,13 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     let client = ClientBuilder::new().build().await;
+    let anthropic_client = AnthropicClientBuilder::new("").build();
+    let completion_model = anthropic_client.completion_model("claude-3-5-sonnet-20240620-v1:0");
     let agent = client
-        .agent(AMAZON_NOVA_LITE_V1)
-        .preamble("You are an image describer.")
+        .agent(completion_model, "claude-3-5-sonnet-20240620-v1:0")
+        .preamble(vec![Preamble::new(
+            "You are an image describer.".to_string(),
+        )])
         .temperature(0.5)
         .build();
 

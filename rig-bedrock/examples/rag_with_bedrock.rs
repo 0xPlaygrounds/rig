@@ -1,13 +1,13 @@
-use std::vec;
-
 use rig::{
-    completion::Prompt, embeddings::EmbeddingsBuilder,
-    vector_store::in_memory_store::InMemoryVectorStore, Embed,
+    completion::{Preamble, Prompt},
+    providers::anthropic::ClientBuilder as AnthropicClientBuilder,
 };
-use rig_bedrock::{
-    client::ClientBuilder, completion::AMAZON_NOVA_LITE_V1, embedding::AMAZON_TITAN_EMBED_TEXT_V2_0,
+use rig::{
+    embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore, Embed,
 };
+use rig_bedrock::{client::ClientBuilder, embedding::AMAZON_TITAN_EMBED_TEXT_V2_0};
 use serde::Serialize;
+use std::vec;
 use tracing::info;
 
 // Data to be RAGged.
@@ -68,11 +68,14 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create vector store index
     let index = vector_store.index(embedding_model);
 
-    let rag_agent = client.agent(AMAZON_NOVA_LITE_V1)
-        .preamble("
-            You are a dictionary assistant here to assist the user in understanding the meaning of words.
-            You will find additional non-standard word definitions that could be useful below.
-        ")
+    let anthropic_client = AnthropicClientBuilder::new("").build();
+    let completion_model = anthropic_client.completion_model("claude-3-5-sonnet-20240620-v1:0");
+    let rag_agent = client
+        .agent(completion_model, "claude-3-5-sonnet-20240620-v1:0")
+        .preamble(vec![Preamble::new(
+            "You are a dictionary assistant here to assist the user in understanding the meaning of words.
+            You will find additional non-standard word definitions that could be useful below.".to_string(),
+        )])
         .dynamic_context(1, index)
         .build();
 

@@ -267,44 +267,7 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
-            Some(preamble) => vec![Message {
-                role: "system".to_string(),
-                content: Some(preamble.join("\n")),
-            }],
-            None => vec![],
-        };
-
-        // Convert prompt to user message
-        let prompt: Message = completion_request.prompt_with_context().try_into()?;
-
-        // Convert existing chat history
-        let chat_history: Vec<Message> = completion_request
-            .chat_history
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Message>, _>>()?;
-
-        // Combine all messages into a single history
-        full_history.extend(chat_history);
-        full_history.push(prompt);
-
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": "auto",
-            })
-        };
+        let request = self.build_completion(completion_request.clone()).await?;
 
         let response = self
             .client
@@ -333,5 +296,51 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+    async fn build_completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<serde_json::Value, CompletionError> {
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<Message> = request
+            .preamble
+            .iter()
+            .map(|preamble| Message {
+                role: "system".to_string(),
+                content: Some(serde_json::to_string(preamble).unwrap()),
+            })
+            .collect();
+
+        // Convert prompt to user message
+        let prompt: Message = request.prompt_with_context().try_into()?;
+
+        // Convert existing chat history
+        let chat_history: Vec<Message> = request
+            .chat_history
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Message>, _>>()?;
+
+        // Combine all messages into a single history
+        full_history.extend(chat_history);
+        full_history.push(prompt);
+
+        let request = if request.tools.is_empty() {
+            json!({
+                "model": self.model,
+                "messages": full_history,
+                "temperature": request.temperature,
+            })
+        } else {
+            json!({
+                "model": self.model,
+                "messages": full_history,
+                "temperature": request.temperature,
+                "tools": request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
+                "tool_choice": "auto",
+            })
+        };
+
+        Ok(request)
     }
 }

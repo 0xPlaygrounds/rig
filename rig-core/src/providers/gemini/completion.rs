@@ -53,54 +53,9 @@ impl completion::CompletionModel for CompletionModel {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
-        mut completion_request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
-        let mut full_history = Vec::new();
-        full_history.append(&mut completion_request.chat_history);
-
-        full_history.push(completion_request.prompt_with_context());
-
-        // Handle Gemini specific parameters
-        let additional_params = completion_request
-            .additional_params
-            .unwrap_or_else(|| Value::Object(Map::new()));
-        let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?;
-
-        // Set temperature from completion_request or additional_params
-        if let Some(temp) = completion_request.temperature {
-            generation_config.temperature = Some(temp);
-        }
-
-        // Set max_tokens from completion_request or additional_params
-        if let Some(max_tokens) = completion_request.max_tokens {
-            generation_config.max_output_tokens = Some(max_tokens);
-        }
-
-        let system_instruction = completion_request.preamble.clone().map(|preamble| Content {
-            parts: OneOrMany::one(preamble.join("\n").into()),
-            role: Some(Role::Model),
-        });
-
-        let request = GenerateContentRequest {
-            contents: full_history
-                .into_iter()
-                .map(|msg| {
-                    msg.try_into()
-                        .map_err(|e| CompletionError::RequestError(Box::new(e)))
-                })
-                .collect::<Result<Vec<_>, _>>()?,
-            generation_config: Some(generation_config),
-            safety_settings: None,
-            tools: Some(
-                completion_request
-                    .tools
-                    .into_iter()
-                    .map(Tool::try_from)
-                    .collect::<Result<Vec<_>, _>>()?,
-            ),
-            tool_config: None,
-            system_instruction,
-        };
+        let request = self.build_completion(completion_request.clone()).await?;
 
         tracing::debug!(
             "Sending completion request to Gemini API {}",
@@ -132,6 +87,69 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }?
+    }
+
+    async fn build_completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<serde_json::Value, CompletionError> {
+        let mut full_history = request.chat_history.clone();
+        full_history.push(request.prompt_with_context());
+
+        // Handle Gemini specific parameters
+        let additional_params = request
+            .additional_params
+            .unwrap_or_else(|| Value::Object(Map::new()));
+        let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?;
+
+        // Set temperature from request or additional_params
+        if let Some(temp) = request.temperature {
+            generation_config.temperature = Some(temp);
+        }
+
+        // Set max_tokens from request or additional_params
+        if let Some(max_tokens) = request.max_tokens {
+            generation_config.max_output_tokens = Some(max_tokens);
+        }
+
+        let system_instruction: Option<Content> = if request.preamble.is_empty() {
+            None
+        } else {
+            Some(Content {
+                parts: OneOrMany::one(Part::Text(
+                    request
+                        .preamble
+                        .iter()
+                        .map(|preamble| preamble.text.clone())
+                        .collect::<Vec<String>>()
+                        .join("\n"),
+                )),
+                role: Some(Role::Model),
+            })
+        };
+
+        let request = GenerateContentRequest {
+            contents: full_history
+                .into_iter()
+                .map(|msg| {
+                    msg.try_into()
+                        .map_err(|e| CompletionError::RequestError(Box::new(e)))
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+            generation_config: Some(generation_config),
+            safety_settings: None,
+            tools: Some(
+                request
+                    .tools
+                    .into_iter()
+                    .map(Tool::try_from)
+                    .collect::<Result<Vec<_>, _>>()?,
+            ),
+            tool_config: None,
+            system_instruction,
+        };
+
+        Ok(serde_json::to_value(request)?)
     }
 }
 
@@ -216,7 +234,7 @@ pub mod gemini_api_types {
     ///     - Returns either all requested candidates or none of them
     ///     - Returns no candidates at all only if there was something wrong with the prompt (check promptFeedback)
     ///     - Reports feedback on each candidate in finishReason and safetyRatings.
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     #[serde(rename_all = "camelCase")]
     pub struct GenerateContentResponse {
         /// Candidate responses from the model.
@@ -229,7 +247,7 @@ pub mod gemini_api_types {
     }
 
     /// A response candidate generated from the model.
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     #[serde(rename_all = "camelCase")]
     pub struct ContentCandidate {
         /// Output only. Generated content returned from the model.
@@ -253,7 +271,7 @@ pub mod gemini_api_types {
         /// Output only. Index of the candidate in the list of response candidates.
         pub index: Option<i32>,
     }
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize, Clone)]
     pub struct Content {
         /// Ordered Parts that constitute a single message. Parts may have different MIME types.
         #[serde(deserialize_with = "string_or_one_or_many")]
@@ -597,7 +615,7 @@ pub mod gemini_api_types {
         HarmCategoryCivicIntegrity,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     #[serde(rename_all = "camelCase")]
     pub struct UsageMetadata {
         pub prompt_token_count: i32,
@@ -624,7 +642,7 @@ pub mod gemini_api_types {
     }
 
     /// A set of the feedback metadata the prompt specified in [GenerateContentRequest.contents](GenerateContentRequest).
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     #[serde(rename_all = "camelCase")]
     pub struct PromptFeedback {
         /// Optional. If set, the prompt was blocked and no candidates are returned. Rephrase the prompt.
@@ -634,7 +652,7 @@ pub mod gemini_api_types {
     }
 
     /// Reason why a prompt was blocked by the model
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum BlockReason {
         /// Default value. This value is unused.
@@ -649,7 +667,7 @@ pub mod gemini_api_types {
         ProhibitedContent,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum FinishReason {
         /// Default value. This value is unused.
@@ -676,13 +694,13 @@ pub mod gemini_api_types {
         MalformedFunctionCall,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     #[serde(rename_all = "camelCase")]
     pub struct CitationMetadata {
         pub citation_sources: Vec<CitationSource>,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     #[serde(rename_all = "camelCase")]
     pub struct CitationSource {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -695,19 +713,19 @@ pub mod gemini_api_types {
         pub license: Option<String>,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     #[serde(rename_all = "camelCase")]
     pub struct LogprobsResult {
         pub top_candidate: Vec<TopCandidate>,
         pub chosen_candidate: Vec<LogProbCandidate>,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     pub struct TopCandidate {
         pub candidates: Vec<LogProbCandidate>,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     #[serde(rename_all = "camelCase")]
     pub struct LogProbCandidate {
         pub token: String,

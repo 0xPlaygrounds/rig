@@ -5,13 +5,14 @@ use std::{
 
 use rig::{
     agent::AgentBuilder,
-    completion::{Prompt, ToolDefinition},
+    completion::{Preamble, Prompt, ToolDefinition},
     loaders::FileLoader,
+    providers::anthropic::{completion::CompletionModel, ClientBuilder as AnthropicClientBuilder},
     tool::Tool,
 };
 use rig_bedrock::{
     client::{Client, ClientBuilder},
-    completion::AMAZON_NOVA_LITE_V1,
+    completion::BedrockProvider,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -102,16 +103,20 @@ async fn client() -> Client {
     ClientBuilder::new().build().await
 }
 
-async fn partial_agent() -> AgentBuilder<rig_bedrock::completion::CompletionModel> {
+async fn partial_agent() -> AgentBuilder<BedrockProvider<CompletionModel>> {
+    let anthropic_client = AnthropicClientBuilder::new("").build();
+    let completion_model = anthropic_client.completion_model("claude-3-5-sonnet-20240620-v1:0");
     let client = client().await;
-    client.agent(AMAZON_NOVA_LITE_V1)
+    client.agent(completion_model, "claude-3-5-sonnet-20240620-v1:0")
 }
 
 /// Create an AWS Bedrock agent with a system prompt
 async fn basic() -> Result<(), anyhow::Error> {
     let agent = partial_agent()
         .await
-        .preamble("Answer with json format only")
+        .preamble(vec![Preamble::new(
+            "Answer with json format only".to_string(),
+        )])
         .build();
 
     let response = agent.prompt("Describe solar system").await?;
@@ -124,7 +129,9 @@ async fn basic() -> Result<(), anyhow::Error> {
 async fn tools() -> Result<(), anyhow::Error> {
     let calculator_agent = partial_agent()
         .await
-        .preamble("You must only do math by using a tool.")
+        .preamble(vec![Preamble::new(
+            "You must only do math by using a tool.".to_string(),
+        )])
         .max_tokens(1024)
         .tool(Adder)
         .build();
@@ -138,11 +145,12 @@ async fn tools() -> Result<(), anyhow::Error> {
 }
 
 async fn context() -> Result<(), anyhow::Error> {
-    let model = client().await.completion_model(AMAZON_NOVA_LITE_V1);
+    let anthropic_client = AnthropicClientBuilder::new("").build();
+    let completion_model = anthropic_client.completion_model("claude-3-5-sonnet-20240620-v1:0");
 
     // Create an agent with multiple context documents
-    let agent = AgentBuilder::new(model)
-        .preamble("Answer the question")
+    let agent = AgentBuilder::new(completion_model)
+        .preamble(vec![Preamble::new("Answer the question".to_string())])
         .context("Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
         .context("Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
         .context("Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.")
@@ -161,7 +169,10 @@ async fn context() -> Result<(), anyhow::Error> {
 /// This example loads in all the rust examples from the rig-core crate and uses them as\\
 ///  context for the agent
 async fn loaders() -> Result<(), anyhow::Error> {
-    let model = client().await.completion_model(AMAZON_NOVA_LITE_V1);
+    let anthropic_client = AnthropicClientBuilder::new("").build();
+    let completion_model = anthropic_client.completion_model("claude-3-5-sonnet-20240620-v1:0");
+    let client = client().await;
+    let model = client.completion_model(completion_model, "claude-3-5-sonnet-20240620-v1:0");
 
     // Load in all the rust examples
     let examples = FileLoader::with_glob("rig-core/examples/*.rs")?
@@ -174,7 +185,7 @@ async fn loaders() -> Result<(), anyhow::Error> {
         .fold(AgentBuilder::new(model), |builder, (path, content)| {
             builder.context(format!("Rust Example {:?}:\n{}", path, content).as_str())
         })
-        .preamble("Answer the question")
+        .preamble(vec![Preamble::new("Answer the question".to_string())])
         .build();
 
     // Prompt the agent and print the response

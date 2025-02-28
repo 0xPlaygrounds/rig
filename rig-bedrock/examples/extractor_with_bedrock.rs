@@ -1,4 +1,7 @@
-use rig_bedrock::{client::ClientBuilder, completion::AMAZON_NOVA_LITE_V1};
+use rig::providers::anthropic::{
+    completion::CompletionModel, ClientBuilder as AnthropicClientBuilder,
+};
+use rig_bedrock::client::ClientBuilder;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -18,8 +21,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     let client = ClientBuilder::new().build().await;
-
-    let data_extractor = client.extractor::<Person>(AMAZON_NOVA_LITE_V1).build();
+    let anthropic_client = AnthropicClientBuilder::new("").build();
+    let completion_model = anthropic_client.completion_model("claude-3-5-sonnet-20240620-v1:0");
+    let data_extractor = client
+        .extractor::<Person, CompletionModel>(completion_model, "claude-3-5-sonnet-20240620-v1:0")
+        .build();
     let person = data_extractor
         .extract("Hello my name is John Doe! I am a software engineer.")
         .await?;

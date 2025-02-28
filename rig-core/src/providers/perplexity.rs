@@ -103,7 +103,7 @@ pub const SONAR_PRO: &str = "sonar-pro";
 /// `sonar` completion model
 pub const SONAR: &str = "sonar";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct CompletionResponse {
     pub id: String,
     pub model: String,
@@ -128,13 +128,13 @@ pub enum Role {
     Assistant,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Delta {
     pub role: Role,
     pub content: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Choice {
     pub index: usize,
     pub finish_reason: String,
@@ -142,7 +142,7 @@ pub struct Choice {
     pub delta: Delta,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
@@ -265,41 +265,7 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        // Add context documents to current prompt
-        let prompt_with_context = completion_request.prompt_with_context();
-
-        // Add preamble to messages (if available)
-        let mut messages: Vec<Message> = if let Some(preamble) = completion_request.preamble {
-            vec![Message {
-                role: Role::System,
-                content: preamble.join("\n"),
-            }]
-        } else {
-            vec![]
-        };
-
-        // Add chat history to messages
-        for message in completion_request.chat_history {
-            messages.push(
-                message
-                    .try_into()
-                    .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?,
-            );
-        }
-
-        // Add user prompt to messages
-        messages.push(
-            prompt_with_context
-                .try_into()
-                .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?,
-        );
-
-        // Compose request
-        let request = json!({
-            "model": self.model,
-            "messages": messages,
-            "temperature": completion_request.temperature,
-        });
+        let request = self.build_completion(completion_request.clone()).await?;
 
         let response = self
             .client
@@ -328,6 +294,49 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+
+    async fn build_completion(
+        &self,
+        request: completion::CompletionRequest,
+    ) -> Result<serde_json::Value, CompletionError> {
+        // Add context documents to current prompt
+        let prompt_with_context = request.prompt_with_context();
+
+        // Add preamble to messages (if available)
+        let mut messages: Vec<Message> = request
+            .preamble
+            .iter()
+            .map(|preamble| Message {
+                role: Role::System,
+                content: serde_json::to_string(&preamble).unwrap(),
+            })
+            .collect();
+
+        // Add chat history to messages
+        for message in request.chat_history {
+            messages.push(
+                message
+                    .try_into()
+                    .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?,
+            );
+        }
+
+        // Add user prompt to messages
+        messages.push(
+            prompt_with_context
+                .try_into()
+                .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?,
+        );
+
+        // Compose request
+        let request = json!({
+            "model": self.model,
+            "messages": messages,
+            "temperature": request.temperature,
+        });
+
+        Ok(request)
     }
 }
 #[cfg(test)]

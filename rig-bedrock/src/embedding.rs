@@ -2,7 +2,7 @@ use aws_smithy_types::Blob;
 use rig::embeddings::{self, Embedding, EmbeddingError};
 use serde::{Deserialize, Serialize};
 
-use crate::{client::Client, types::errors::AwsSdkInvokeModelError};
+use crate::client::Client;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,9 +55,7 @@ impl EmbeddingModel {
             .send()
             .await;
 
-        let response = model_response
-            .map_err(|sdk_error| AwsSdkInvokeModelError(sdk_error).into())
-            .map_err(|e: EmbeddingError| e)?;
+        let response = model_response.map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
 
         let response_str = String::from_utf8(response.body.into_inner())
             .map_err(|e| EmbeddingError::ResponseError(e.to_string()))?;

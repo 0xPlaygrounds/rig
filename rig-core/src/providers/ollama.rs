@@ -224,7 +224,7 @@ pub const LLAMA3_2: &str = "llama3.2";
 pub const LLAVA: &str = "llava";
 pub const MISTRAL: &str = "mistral";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CompletionResponse {
     pub model: String,
     pub created_at: String,
@@ -329,41 +329,7 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
-        // Convert internal prompt into a provider Message
-        let prompt: Message = completion_request.prompt_with_context().try_into()?;
-        let options = if let Some(extra) = completion_request.additional_params {
-            json_utils::merge(
-                json!({ "temperature": completion_request.temperature }),
-                extra,
-            )
-        } else {
-            json!({ "temperature": completion_request.temperature })
-        };
-
-        // Chat mode: assemble full conversation history including preamble and chat history
-        let mut full_history = Vec::new();
-        if let Some(preamble) = completion_request.preamble {
-            full_history.push(Message::system(&preamble.join("\n")));
-        }
-        for msg in completion_request.chat_history.into_iter() {
-            full_history.push(Message::try_from(msg)?);
-        }
-        full_history.push(prompt);
-
-        let mut request_payload = json!({
-            "model": self.model,
-            "messages": full_history,
-            "options": options,
-            "stream": false,
-        });
-        if !completion_request.tools.is_empty() {
-            request_payload["tools"] = json!(completion_request
-                .tools
-                .into_iter()
-                .map(|tool| tool.into())
-                .collect::<Vec<ToolDefinition>>());
-        }
-
+        let request_payload = self.build_completion(completion_request.clone()).await?;
         tracing::debug!(target: "rig", "Chat mode payload: {}", request_payload);
         let response = self
             .client
@@ -389,6 +355,44 @@ impl completion::CompletionModel for CompletionModel {
                 .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
             Err(CompletionError::ProviderError(err_text))
         }
+    }
+    async fn build_completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<serde_json::Value, CompletionError> {
+        // Convert internal prompt into a provider Message
+        let prompt: Message = request.prompt_with_context().try_into()?;
+        let options = if let Some(extra) = request.additional_params {
+            json_utils::merge(json!({ "temperature": request.temperature }), extra)
+        } else {
+            json!({ "temperature": request.temperature })
+        };
+
+        // Chat mode: assemble full conversation history including preamble and chat history
+        let mut full_history = Vec::new();
+        for preamble in request.preamble.iter() {
+            full_history.push(Message::system(&serde_json::to_string(&preamble).unwrap()));
+        }
+        for msg in request.chat_history.into_iter() {
+            full_history.push(Message::try_from(msg)?);
+        }
+        full_history.push(prompt);
+
+        let mut request_payload = json!({
+            "model": self.model,
+            "messages": full_history,
+            "options": options,
+            "stream": false,
+        });
+        if !request.tools.is_empty() {
+            request_payload["tools"] = json!(request
+                .tools
+                .into_iter()
+                .map(|tool| tool.into())
+                .collect::<Vec<ToolDefinition>>());
+        }
+
+        Ok(request_payload)
     }
 }
 

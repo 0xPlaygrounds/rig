@@ -334,7 +334,7 @@ pub fn get_chain_id(key: &str) -> Option<&str> {
     None
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct CompletionResponse {
     pub id: String,
     pub object: String,
@@ -409,7 +409,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Choice {
     pub index: usize,
     pub message: Message,
@@ -470,14 +470,53 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
-            Some(preamble) => vec![Message::system(preamble.join("\n").as_str())],
-            None => vec![],
-        };
+        let request = self.build_completion(completion_request).await?;
 
+        tracing::debug!(target: "rig", "Sending completion request: {}", request);
+
+        let response = self
+            .client
+            .post("/chat/completions")
+            .json(&request)
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            match response.json::<ApiResponse<CompletionResponse>>().await? {
+                ApiResponse::Ok(response) => {
+                    tracing::info!(target: "rig",
+                        "EternalAI completion token usage: {:?}",
+                        response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
+                    );
+                    match &response.onchain_data {
+                        Some(data) => {
+                            let onchain_data = serde_json::to_string_pretty(data)?;
+                            tracing::info!("onchain_data: {}", onchain_data);
+                        }
+                        None => {
+                            tracing::info!("onchain_data: None");
+                        }
+                    }
+                    response.try_into()
+                }
+                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+            }
+        } else {
+            Err(CompletionError::ProviderError(response.text().await?))
+        }
+    }
+    async fn build_completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<serde_json::Value, CompletionError> {
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<Message> = request
+            .preamble
+            .iter()
+            .map(|p| Message::system(p.text.as_str()))
+            .collect();
         // Convert prompt to user message
-        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
+        let prompt: Vec<Message> = request.prompt_with_context().try_into()?;
         tracing::info!("Try to get on-chain system prompt");
         let eternal_ai_rpc = std::env::var("ETERNALAI_RPC_URL").unwrap_or_else(|_| "".to_string());
         let eternal_ai_contract =
@@ -516,7 +555,7 @@ impl completion::CompletionModel for CompletionModel {
         }
 
         // Convert existing chat history
-        let chat_history: Vec<Message> = completion_request
+        let chat_history: Vec<Message> = request
             .chat_history
             .into_iter()
             .map(|message| message.try_into())
@@ -529,59 +568,26 @@ impl completion::CompletionModel for CompletionModel {
         full_history.extend(chat_history);
         full_history.extend(prompt);
 
-        let request = if completion_request.tools.is_empty() {
+        let mut json_request = if request.tools.is_empty() {
             json!({
                 "model": self.model,
                 "messages": full_history,
-                "temperature": completion_request.temperature,
+                "temperature": request.temperature,
             })
         } else {
             json!({
                 "model": self.model,
                 "messages": full_history,
-                "temperature": completion_request.temperature,
-                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
+                "temperature": request.temperature,
+                "tools": request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
                 "tool_choice": "auto",
             })
         };
 
-        tracing::debug!(target: "rig", "Sending completion request: {}", request);
+        if let Some(params) = request.additional_params {
+            json_utils::merge_inplace(&mut json_request, params)
+        };
 
-        let response = self
-            .client
-            .post("/chat/completions")
-            .json(
-                &if let Some(params) = completion_request.additional_params {
-                    json_utils::merge(request, params)
-                } else {
-                    request
-                },
-            )
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
-                ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "EternalAI completion token usage: {:?}",
-                        response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
-                    );
-                    match &response.onchain_data {
-                        Some(data) => {
-                            let onchain_data = serde_json::to_string_pretty(data)?;
-                            tracing::info!("onchain_data: {}", onchain_data);
-                        }
-                        None => {
-                            tracing::info!("onchain_data: None");
-                        }
-                    }
-                    response.try_into()
-                }
-                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
-            }
-        } else {
-            Err(CompletionError::ProviderError(response.text().await?))
-        }
+        Ok(json_request)
     }
 }

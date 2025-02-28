@@ -561,116 +561,7 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        // Note: Ideally we'd introduce provider-specific Request models to handle the
-        // specific requirements of each provider. For now, we just manually check while
-        // building the request as a raw JSON document.
-
-        // Check if max_tokens is set, required for Anthropic
-        let max_tokens = if let Some(tokens) = completion_request.max_tokens {
-            tokens
-        } else if let Some(tokens) = self.default_max_tokens {
-            tokens
-        } else {
-            return Err(CompletionError::RequestError(
-                "`max_tokens` must be set for Anthropic".into(),
-            ));
-        };
-        let mut system = Vec::new();
-
-        if let Some(cached_preamble) = &completion_request.cached_preamble {
-            for (index, preamble) in cached_preamble.iter().enumerate() {
-                let mut preamble_json = json!({
-                    "type": "text",
-                    "text": preamble,
-                });
-                if index == cached_preamble.len() - 1 {
-                    json_utils::merge_inplace(
-                        &mut preamble_json,
-                        json!({
-                            "cache_control": {
-                                "type": "ephemeral"
-                            }
-                        }),
-                    );
-                }
-                system.push(preamble_json);
-            }
-        }
-        if let Some(preamble) = &completion_request.preamble {
-            for preamble in preamble {
-                system.push(json!({
-                    "type": "text",
-                    "text": preamble
-                }));
-            }
-        }
-
-        let prompt_message: Message = completion_request
-            .prompt_with_context()
-            .try_into()
-            .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?;
-
-        let mut messages = completion_request
-            .chat_history
-            .into_iter()
-            .map(|message| {
-                message
-                    .try_into()
-                    .map_err(|e: MessageError| CompletionError::RequestError(e.into()))
-            })
-            .collect::<Result<Vec<Message>, _>>()?;
-
-        messages.push(prompt_message);
-
-        let mut request = json!({
-            "model": self.model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "system": system,
-        });
-
-        if let Some(temperature) = completion_request.temperature {
-            json_utils::merge_inplace(&mut request, json!({ "temperature": temperature }));
-        }
-
-        if !completion_request.tools.is_empty() {
-            json_utils::merge_inplace(
-                &mut request,
-                json!({
-                    "tools": completion_request
-                        .tools
-                        .clone()
-                        .into_iter()
-                        .enumerate()
-                        .map(|(index, tool)| {
-                            let mut tool_json = json!({
-                            "name": tool.name,
-                            "description": tool.description,
-                            "input_schema": tool.parameters,
-                            });
-                            if index == completion_request.tools.len() - 1 {
-                                json_utils::merge_inplace(
-                                    &mut tool_json,
-                                    json!({
-                                        "cache_control": {
-                                            "type": "ephemeral"
-                                        }
-                                    }),
-                                );
-                            }
-                            tool_json
-                    })
-                    .collect::<Vec<_>>(),
-                    "tool_choice": ToolChoice::Auto,
-                }),
-            );
-        }
-
-        if let Some(ref params) = completion_request.additional_params {
-            json_utils::merge_inplace(&mut request, params.clone())
-        }
-
-        tracing::debug!("Anthropic completion request: {request}");
+        let request = self.build_completion(completion_request).await?;
 
         let response = self
             .client
@@ -693,6 +584,95 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+    async fn build_completion(
+        &self,
+        request: completion::CompletionRequest,
+    ) -> Result<serde_json::Value, CompletionError> {
+        // Note: Ideally we'd introduce provider-specific Request models to handle the
+        // specific requirements of each provider. For now, we just manually check while
+        // building the request as a raw JSON document.
+
+        // Check if max_tokens is set, required for Anthropic
+        let max_tokens = if let Some(tokens) = request.max_tokens {
+            tokens
+        } else if let Some(tokens) = self.default_max_tokens {
+            tokens
+        } else {
+            return Err(CompletionError::RequestError(
+                "`max_tokens` must be set for Anthropic".into(),
+            ));
+        };
+        let system = serde_json::to_value(&request.preamble).unwrap();
+
+        let prompt_message: Message = request
+            .prompt_with_context()
+            .try_into()
+            .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?;
+
+        let mut messages = request
+            .chat_history
+            .into_iter()
+            .map(|message| {
+                message
+                    .try_into()
+                    .map_err(|e: MessageError| CompletionError::RequestError(e.into()))
+            })
+            .collect::<Result<Vec<Message>, _>>()?;
+
+        messages.push(prompt_message);
+
+        let mut json_request = json!({
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "system": system,
+        });
+
+        if let Some(temperature) = request.temperature {
+            json_utils::merge_inplace(&mut json_request, json!({ "temperature": temperature }));
+        }
+
+        if !request.tools.is_empty() {
+            json_utils::merge_inplace(
+                &mut json_request,
+                json!({
+                    "tools": request
+                        .tools
+                        .clone()
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, tool)| {
+                            let mut tool_json = json!({
+                            "name": tool.name,
+                            "description": tool.description,
+                            "input_schema": tool.parameters,
+                            });
+                            if index == request.tools.len() - 1 {
+                                json_utils::merge_inplace(
+                                    &mut tool_json,
+                                    json!({
+                                        "cache_control": {
+                                            "type": "ephemeral"
+                                        }
+                                    }),
+                                );
+                            }
+                            tool_json
+                    })
+                    .collect::<Vec<_>>(),
+                    "tool_choice": ToolChoice::Auto,
+                }),
+            );
+        }
+
+        if let Some(ref params) = request.additional_params {
+            json_utils::merge_inplace(&mut json_request, params.clone())
+        }
+
+        tracing::debug!("Anthropic completion request: {json_request}");
+
+        Ok(json_request)
     }
 }
 

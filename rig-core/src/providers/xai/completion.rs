@@ -44,57 +44,7 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
-            Some(preamble) => {
-                if preamble.is_empty() {
-                    vec![]
-                } else {
-                    vec![Message::system(preamble.join("\n").as_str())]
-                }
-            }
-            None => vec![],
-        };
-
-        // Convert prompt to user message
-        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
-
-        // Convert existing chat history
-        let chat_history: Vec<Message> = completion_request
-            .chat_history
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        // Combine all messages into a single history
-        full_history.extend(chat_history);
-        full_history.extend(prompt);
-
-        let mut request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": "auto",
-            })
-        };
-
-        request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
-
+        let request = self.build_completion(completion_request).await?;
         let response = self
             .client
             .post("/v1/chat/completions")
@@ -110,6 +60,58 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+    async fn build_completion(
+        &self,
+        request: completion::CompletionRequest,
+    ) -> Result<serde_json::Value, CompletionError> {
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<Message> = request
+            .preamble
+            .iter()
+            .map(|preamble| Message::system(&serde_json::to_string(preamble).unwrap()))
+            .collect();
+
+        // Convert prompt to user message
+        let prompt: Vec<Message> = request.prompt_with_context().try_into()?;
+
+        // Convert existing chat history
+        let chat_history: Vec<Message> = request
+            .chat_history
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        // Combine all messages into a single history
+        full_history.extend(chat_history);
+        full_history.extend(prompt);
+
+        let mut json_request = if request.tools.is_empty() {
+            json!({
+                "model": self.model,
+                "messages": full_history,
+                "temperature": request.temperature,
+            })
+        } else {
+            json!({
+                "model": self.model,
+                "messages": full_history,
+                "temperature": request.temperature,
+                "tools": request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
+                "tool_choice": "auto",
+            })
+        };
+
+        json_request = if let Some(params) = request.additional_params {
+            json_utils::merge(json_request, params)
+        } else {
+            json_request
+        };
+
+        Ok(json_request)
     }
 }
 
@@ -192,13 +194,13 @@ pub mod xai_api_types {
         pub function: completion::ToolDefinition,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     pub struct Function {
         pub name: String,
         pub arguments: String,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     pub struct CompletionResponse {
         pub id: String,
         pub model: String,
@@ -209,14 +211,14 @@ pub mod xai_api_types {
         pub usage: Usage,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     pub struct Choice {
         pub finish_reason: String,
         pub index: i32,
         pub message: Message,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone)]
     pub struct Usage {
         pub completion_tokens: i32,
         pub prompt_tokens: i32,

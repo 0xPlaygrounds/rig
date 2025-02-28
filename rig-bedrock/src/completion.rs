@@ -1,17 +1,9 @@
-use crate::{
-    client::Client,
-    types::{
-        assistent_content::AwsConverseOutput, errors::AwsSdkConverseError, json::AwsDocument,
-        message::MessageWithPrompt,
-    },
-};
-use aws_sdk_bedrockruntime::types as aws_bedrock;
+use crate::client::Client;
 
-use aws_sdk_bedrockruntime::types::{
-    InferenceConfiguration, SystemContentBlock, Tool, ToolConfiguration, ToolInputSchema,
-    ToolSpecification,
+use rig::{
+    completion::{self, CompletionError, CompletionModel},
+    json_utils::{delete_inplace, merge_inplace},
 };
-use rig::completion::{self, CompletionError};
 
 // All supported models: https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
 /// `amazon.nova-lite-v1` foundational model
@@ -20,106 +12,72 @@ pub const AMAZON_NOVA_LITE_V1: &str = "amazon.nova-lite-v1:0";
 pub const MISTRAL_MIXTRAL_8X7B_INSTRUCT_V0: &str = "mistral.mixtral-8x7b-instruct-v0:1";
 
 #[derive(Clone)]
-pub struct CompletionModel {
+pub struct BedrockProvider<T: CompletionModel + Clone> {
+    completion_model: T,
     client: Client,
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T: CompletionModel + Clone> BedrockProvider<T> {
+    pub fn new(completion_model: T, client: Client, model: &str) -> Self {
         Self {
+            completion_model,
             client,
             model: model.to_string(),
         }
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
-    type Response = AwsConverseOutput;
+impl<T: CompletionModel + Clone> completion::CompletionModel for BedrockProvider<T>
+where
+    <T as rig::completion::CompletionModel>::Response: serde::de::DeserializeOwned,
+    <T as rig::completion::CompletionModel>::Response:
+        TryInto<completion::CompletionResponse<T::Response>>,
+    <<T as rig::completion::CompletionModel>::Response as TryInto<
+        completion::CompletionResponse<T::Response>,
+    >>::Error: std::error::Error + Send + Sync + 'static,
+{
+    type Response = T::Response;
 
     async fn completion(
         &self,
-        mut completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<AwsConverseOutput>, CompletionError> {
-        let mut full_history = Vec::new();
-        full_history.append(&mut completion_request.chat_history);
-        full_history.push(completion_request.prompt_with_context());
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+        let mut request = self.build_completion(completion_request).await?;
+        for field in self.client.additional_fields.iter() {
+            merge_inplace(&mut request, field.clone());
+        }
+        for field in self.client.deletable_fields.iter() {
+            delete_inplace(&mut request, field);
+        }
 
-        let prompt_with_history = full_history
-            .into_iter()
-            .map(|message| {
-                MessageWithPrompt {
-                    message,
-                    prompt: completion_request.preamble.clone(),
-                }
-                .try_into()
-            })
-            .collect::<Result<Vec<aws_bedrock::Message>, _>>()?;
-
-        let mut converse_builder = self
+        let request = serde_json::to_string(&request).unwrap();
+        let bytes = request.into_bytes();
+        let response = self
             .client
             .aws_client
-            .converse()
-            .model_id(self.model.as_str());
-
-        let mut inference_configuration = InferenceConfiguration::builder();
-
-        if let Some(params) = completion_request.additional_params {
-            let doc: AwsDocument = params.into();
-            converse_builder = converse_builder.set_additional_model_request_fields(Some(doc.0));
-        }
-
-        if let Some(temperature) = completion_request.temperature {
-            inference_configuration =
-                inference_configuration.set_temperature(Some(temperature as f32));
-        }
-
-        if let Some(max_tokens) = completion_request.max_tokens {
-            inference_configuration =
-                inference_configuration.set_max_tokens(Some(max_tokens as i32));
-        }
-
-        converse_builder =
-            converse_builder.set_inference_config(Some(inference_configuration.build()));
-
-        let mut tools = vec![];
-        for tool_definition in completion_request.tools.iter() {
-            let doc: AwsDocument = tool_definition.parameters.clone().into();
-            let schema = ToolInputSchema::Json(doc.0);
-            let tool = Tool::ToolSpec(
-                ToolSpecification::builder()
-                    .name(tool_definition.name.clone())
-                    .set_description(Some(tool_definition.description.clone()))
-                    .set_input_schema(Some(schema))
-                    .build()
-                    .map_err(|e| CompletionError::RequestError(e.into()))?,
-            );
-            tools.push(tool);
-        }
-
-        if !tools.is_empty() {
-            let config = ToolConfiguration::builder()
-                .set_tools(Some(tools))
-                .build()
-                .map_err(|e| CompletionError::RequestError(e.into()))?;
-
-            converse_builder = converse_builder.set_tool_config(Some(config));
-        }
-
-        if let Some(system_prompt) = completion_request.preamble {
-            converse_builder =
-                converse_builder.set_system(Some(vec![SystemContentBlock::Text(system_prompt)]));
-        }
-
-        let model_response = converse_builder
-            .set_messages(Some(prompt_with_history))
+            .invoke_model()
+            .accept("application/json")
+            .content_type("application/json")
+            .model_id(self.model.as_str())
+            .body(bytes.into())
             .send()
-            .await;
+            .await
+            .unwrap();
+        let body = response.body().as_ref();
+        let response_body: T::Response =
+            serde_json::from_slice(body).map_err(|e| CompletionError::RequestError(e.into()))?;
 
-        let response = model_response
-            .map_err(|sdk_error| AwsSdkConverseError(sdk_error).into())
-            .map_err(|e: CompletionError| e)?;
+        // Create a CompletionResponse with the deserialized response body
+        response_body
+            .try_into()
+            .map_err(|e| CompletionError::RequestError(Box::new(e)))
+    }
 
-        AwsConverseOutput(response).try_into()
+    async fn build_completion(
+        &self,
+        request: completion::CompletionRequest,
+    ) -> Result<serde_json::Value, CompletionError> {
+        self.completion_model.build_completion(request).await
     }
 }
