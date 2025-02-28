@@ -43,7 +43,7 @@ impl Client {
     ///
     /// # Arguments
     ///
-    /// * `api_key` - Azure OpenAI API key required for authentication
+    /// * `auth` - Azure OpenAI API key or token required for authentication
     /// * `api_version` - API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
     /// * `azure_endpoint` - Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
     pub fn new(auth: AzureOpenAIAuth, api_version: &str, azure_endpoint: &str) -> Self {
