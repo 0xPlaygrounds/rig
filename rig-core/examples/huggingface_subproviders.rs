@@ -18,7 +18,7 @@ async fn main() -> Result<(), anyhow::Error> {
         ("meta-llama/Llama-3.1-8B-Instruct", SubProvider::HFInference),
         ("Meta-Llama-3.1-8B-Instruct", SubProvider::SambaNova),
         ("deepseek-v3", SubProvider::Fireworks),
-        ("Qwen/Qwen2.5-32B-Instruct", SubProvider::Nebius)
+        ("Qwen/Qwen2.5-32B-Instruct", SubProvider::Nebius),
     ];
 
     for (model, sub_provider) in models {

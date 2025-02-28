@@ -421,8 +421,8 @@ where
     D: Deserializer<'de>,
 {
     match Option::<String>::deserialize(deserializer)? {
-        Some(value) => Ok(value),  // Use provided value
-        None => Ok(String::default()),  // Use `Default` implementation
+        Some(value) => Ok(value),      // Use provided value
+        None => Ok(String::default()), // Use `Default` implementation
     }
 }
 
@@ -966,6 +966,5 @@ mod tests {
                 );
             })
         };
-        
     }
 }

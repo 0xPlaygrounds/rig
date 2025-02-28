@@ -33,10 +33,10 @@ impl SubProvider {
         }
     }
 
-    pub fn model_identifier(&self, model: &str) -> String{
+    pub fn model_identifier(&self, model: &str) -> String {
         match self {
             SubProvider::Fireworks => format!("accounts/fireworks/models/{}", model),
-            _ => model.to_string()
+            _ => model.to_string(),
         }
     }
 }
