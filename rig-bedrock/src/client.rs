@@ -38,6 +38,11 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
+    pub fn add_additional_field(&mut self, additional_field: serde_json::Value) -> &mut Self {
+        self.additional_fields.push(additional_field);
+        self
+    }
+
     pub fn deletable_fields(mut self, deletable_fields: Vec<String>) -> Self {
         self.deletable_fields = deletable_fields;
         self
