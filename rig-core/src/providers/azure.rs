@@ -70,13 +70,21 @@ impl Client {
         }
     }
 
-    /// Create a new Azure OpenAI client from the `AZURE_API_KEY`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
-    /// Panics if these environment variables are not set.
+    /// Create a new Azure OpenAI client from the `AZURE_API_KEY`, `AZURE_TOKEN`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
+    /// Panics if neither `AZURE_API_KEY` nor `AZURE_TOKEN` is set.
     pub fn from_env() -> Self {
-        let api_key = std::env::var("AZURE_API_KEY").expect("AZURE_API_KEY not set");
+        let auth = if let Ok(api_key) = std::env::var("AZURE_API_KEY") {
+            AzureOpenAIAuth::ApiKey(api_key)
+        } else if let Ok(token) = std::env::var("AZURE_TOKEN") {
+            AzureOpenAIAuth::Token(token)
+        } else {
+            panic!("Neither AZURE_API_KEY nor AZURE_TOKEN is set");
+        };
+
         let api_version = std::env::var("AZURE_API_VERSION").expect("AZURE_API_VERSION not set");
         let azure_endpoint = std::env::var("AZURE_ENDPOINT").expect("AZURE_ENDPOINT not set");
-        Self::new(AzureOpenAIAuth::ApiKey(api_key), &api_version, &azure_endpoint)
+
+        Self::new(auth, &api_version, &azure_endpoint)
     }
 
     fn post_embedding(&self, deployment_id: &str) -> reqwest::RequestBuilder {
