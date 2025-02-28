@@ -1,6 +1,6 @@
 use std::{convert::Infallible, str::FromStr};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 
 use crate::{
@@ -49,8 +49,20 @@ pub const QWEN_QVQ_PREVIEW: &str = "Qwen/QVQ-72B-Preview";
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub struct Function {
     name: String,
-    #[serde(with = "json_utils::stringified_json")]
+    #[serde(deserialize_with = "deserialize_arguments")]
     pub arguments: serde_json::Value,
+}
+
+fn deserialize_arguments<'de, D>(deserializer: D) -> Result<Value, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+
+    match value {
+        Value::String(s) => serde_json::from_str(&s).map_err(serde::de::Error::custom),
+        other => Ok(other),
+    }
 }
 
 impl From<Function> for message::ToolFunction {
@@ -381,6 +393,7 @@ impl TryFrom<Message> for message::Message {
 pub struct Choice {
     pub finish_reason: String,
     pub index: usize,
+    #[serde(default)]
     pub logprobs: serde_json::Value,
     pub message: Message,
 }
@@ -398,9 +411,19 @@ pub struct CompletionResponse {
     pub id: String,
     pub model: String,
     pub choices: Vec<Choice>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "default_string_on_null")]
     pub system_fingerprint: String,
     pub usage: Usage,
+}
+
+fn default_string_on_null<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match Option::<String>::deserialize(deserializer)? {
+        Some(value) => Ok(value),  // Use provided value
+        None => Ok(String::default()),  // Use `Default` implementation
+    }
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
@@ -495,15 +518,17 @@ impl CompletionModel {
         full_history.extend(chat_history);
         full_history.extend(prompt);
 
+        let model = self.client.sub_provider.model_identifier(&self.model);
+
         let request = if completion_request.tools.is_empty() {
             json!({
-                "model": self.model,
+                "model": model,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
             })
         } else {
             json!({
-                "model": self.model,
+                "model": model,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.clone().into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
@@ -594,7 +619,7 @@ mod tests {
                     "type": "function",
                     "function": {
                         "name": "subtract",
-                        "arguments": "{\"x\": 2, \"y\": 5}"
+                        "arguments": {"x": 2, "y": 5}
                     }
                 }
             ],
@@ -833,5 +858,114 @@ mod tests {
 
         assert_eq!(original_user_message[0], user_message);
         assert_eq!(original_assistant_message[0], assistant_message);
+    }
+
+    #[test]
+    fn test_responses() {
+        let fireworks_response_json = r#"
+        {
+            "choices": [
+                {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "function": {
+                                "arguments": "{\"x\": 2, \"y\": 5}",
+                                "name": "subtract"
+                                },
+                                "id": "call_1BspL6mQqjKgvsQbH1TIYkHf",
+                                "index": 0,
+                                "type": "function"
+                            }
+                        ]
+                    }
+                }
+            ],
+            "created": 1740704000,
+            "id": "2a81f6a1-4866-42fb-9902-2655a2b5b1ff",
+            "model": "accounts/fireworks/models/deepseek-v3",
+            "object": "chat.completion",
+            "usage": {
+                "completion_tokens": 26,
+                "prompt_tokens": 248,
+                "total_tokens": 274
+            }
+        }
+        "#;
+
+        let novita_response_json = r#"
+        {
+            "choices": [
+                {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                        "audio": null,
+                        "content": null,
+                        "function_call": null,
+                        "reasoning_content": null,
+                        "refusal": null,
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "function": {
+                                    "arguments": "{\"x\": \"2\", \"y\": \"5\"}",
+                                    "name": "subtract"
+                                },
+                                "id": "chatcmpl-tool-f6d2af7c8dc041058f95e2c2eede45c5",
+                                "type": "function"
+                            }
+                        ]
+                    },
+                    "stop_reason": 128008
+                }
+            ],
+            "created": 1740704592,
+            "id": "chatcmpl-a92c60ae125c47c998ecdcb53387fed4",
+            "model": "meta-llama/Meta-Llama-3.1-8B-Instruct-fast",
+            "object": "chat.completion",
+            "prompt_logprobs": null,
+            "service_tier": null,
+            "system_fingerprint": null,
+            "usage": {
+                "completion_tokens": 28,
+                "completion_tokens_details": null,
+                "prompt_tokens": 335,
+                "prompt_tokens_details": null,
+                "total_tokens": 363
+            }
+        }
+        "#;
+
+        let firework_response: CompletionResponse = {
+            let jd = &mut serde_json::Deserializer::from_str(fireworks_response_json);
+            deserialize(jd).unwrap_or_else(|err| {
+                panic!(
+                    "Deserialization error at {} ({}:{}): {}",
+                    err.path(),
+                    err.inner().line(),
+                    err.inner().column(),
+                    err
+                );
+            })
+        };
+
+        let novita_response: CompletionResponse = {
+            let jd = &mut serde_json::Deserializer::from_str(novita_response_json);
+            deserialize(jd).unwrap_or_else(|err| {
+                panic!(
+                    "Deserialization error at {} ({}:{}): {}",
+                    err.path(),
+                    err.inner().line(),
+                    err.inner().column(),
+                    err
+                );
+            })
+        };
+        
     }
 }

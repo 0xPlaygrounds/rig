@@ -15,6 +15,10 @@ pub enum SubProvider {
     HFInference,
     Together,
     SambaNova,
+    Fireworks,
+    Hyperbolic,
+    Nebius,
+    Novita,
     Custom(String),
 }
 
@@ -26,6 +30,13 @@ impl SubProvider {
         match self {
             SubProvider::HFInference => format!("/{}/v1/chat/completions", model),
             _ => "/v1/chat/completions".to_string(),
+        }
+    }
+
+    pub fn model_identifier(&self, model: &str) -> String{
+        match self {
+            SubProvider::Fireworks => format!("accounts/fireworks/models/{}", model),
+            _ => model.to_string()
         }
     }
 }
@@ -48,6 +59,10 @@ impl Display for SubProvider {
             SubProvider::HFInference => "hf-inference/models".to_string(),
             SubProvider::Together => "together".to_string(),
             SubProvider::SambaNova => "sambanova".to_string(),
+            SubProvider::Fireworks => "fireworks-ai".to_string(),
+            SubProvider::Hyperbolic => "hyperbolic".to_string(),
+            SubProvider::Nebius => "nebius".to_string(),
+            SubProvider::Novita => "novita".to_string(),
             SubProvider::Custom(route) => route.clone(),
         };
 

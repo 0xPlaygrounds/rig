@@ -2691,7 +2691,7 @@ checksum = "30542c1ad912e0e3d22a1935c290e12e8a29d704a420177a31faad4a601a0800"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.89",
+ "syn 2.0.98",
 ]
 
 [[package]]
@@ -7401,13 +7401,24 @@ dependencies = [
 ]
 
 [[package]]
-
 name = "quick-xml"
 version = "0.37.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "165859e9e55f79d67b96c5d96f4e88b6f2695a1972849c15a6a3f5c59fc2c003"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "quick_cache"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb55a1aa7668676bb93926cd4e9cdfe60f03bb866553bcca9112554911b6d3dc"
+dependencies = [
+ "ahash 0.8.11",
+ "equivalent",
+ "hashbrown 0.14.5",
+ "parking_lot",
 ]
 
 [[package]]
@@ -11700,7 +11711,7 @@ dependencies = [
  "crossbeam-utils",
  "displaydoc",
  "flate2",
- "indexmap 2.6.0",
+ "indexmap 2.7.1",
  "num_enum",
  "thiserror 1.0.69",
 ]
