@@ -4,7 +4,7 @@
 //! ```
 //! use rig::providers::azure;
 //!
-//! let client = azure::Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+//! let client = azure::Client::new(AzureOpenAIAuth::ApiKey("YOUR_API_KEY"), "YOUR_API_VERSION", "YOUR_ENDPOINT");
 //!
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
@@ -55,7 +55,9 @@ impl Client {
             AzureOpenAIAuth::Token(token) => {
                 headers.insert(
                     "Authorization",
-                    format!("Bearer {}", token).parse().expect("Token should parse"),
+                    format!("Bearer {}", token)
+                        .parse()
+                        .expect("Token should parse"),
                 );
             }
         }
@@ -70,8 +72,7 @@ impl Client {
         }
     }
 
-    /// Create a new Azure OpenAI client from the `AZURE_API_KEY`, `AZURE_TOKEN`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
-    /// Panics if neither `AZURE_API_KEY` nor `AZURE_TOKEN` is set.
+    /// Create a new Azure OpenAI client from the `AZURE_API_KEY` or `AZURE_TOKEN`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
     pub fn from_env() -> Self {
         let auth = if let Ok(api_key) = std::env::var("AZURE_API_KEY") {
             AzureOpenAIAuth::ApiKey(api_key)
@@ -114,7 +115,7 @@ impl Client {
     /// use rig::providers::azure::{Client, self};
     ///
     /// // Initialize the Azure OpenAI client
-    /// let azure = Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+    /// let azure = Client::new(AzureOpenAIAuth::ApiKey("YOUR_API_KEY"), "YOUR_API_VERSION", "YOUR_ENDPOINT");
     ///
     /// let embedding_model = azure.embedding_model(azure::TEXT_EMBEDDING_3_LARGE);
     /// ```
@@ -134,7 +135,7 @@ impl Client {
     /// use rig::providers::azure::{Client, self};
     ///
     /// // Initialize the Azure OpenAI client
-    /// let azure = Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+    /// let azure = Client::new(AzureOpenAIAuth::ApiKey("YOUR_API_KEY"), "YOUR_API_VERSION", "YOUR_ENDPOINT");
     ///
     /// let embedding_model = azure.embedding_model("model-unknown-to-rig", 3072);
     /// ```
@@ -149,7 +150,7 @@ impl Client {
     /// use rig::providers::azure::{Client, self};
     ///
     /// // Initialize the Azure OpenAI client
-    /// let azure = Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+    /// let azure = Client::new(AzureOpenAIAuth::ApiKey("YOUR_API_KEY"), "YOUR_API_VERSION", "YOUR_ENDPOINT");
     ///
     /// let embeddings = azure.embeddings(azure::TEXT_EMBEDDING_3_LARGE)
     ///     .simple_document("doc0", "Hello, world!")
@@ -169,7 +170,7 @@ impl Client {
     /// use rig::providers::azure::{Client, self};
     ///
     /// // Initialize the Azure OpenAI client
-    /// let azure = Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+    /// let azure = Client::new(AzureOpenAIAuth::ApiKey("YOUR_API_KEY"), "YOUR_API_VERSION", "YOUR_ENDPOINT");
     ///
     /// let gpt4 = azure.completion_model(azure::GPT_4);
     /// ```
@@ -184,7 +185,7 @@ impl Client {
     /// use rig::providers::azure::{Client, self};
     ///
     /// // Initialize the Azure OpenAI client
-    /// let azure = Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+    /// let azure = Client::new(AzureOpenAIAuth::ApiKey("YOUR_API_KEY"), "YOUR_API_VERSION", "YOUR_ENDPOINT");
     ///
     /// let agent = azure.agent(azure::GPT_4)
     ///    .preamble("You are comedian AI with a mission to make people laugh.")
