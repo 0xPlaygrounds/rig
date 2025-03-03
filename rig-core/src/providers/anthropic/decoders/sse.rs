@@ -30,6 +30,12 @@ pub struct SSEDecoder {
     chunks: Vec<String>,
 }
 
+impl Default for SSEDecoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SSEDecoder {
     /// Create a new SSE decoder
     pub fn new() -> Self {
@@ -88,8 +94,8 @@ impl SSEDecoder {
         };
 
         // Trim leading space from value as per SSE spec
-        let value = if value.starts_with(' ') {
-            &value[1..]
+        let value = if let Some(stripped) = value.strip_prefix(' ') {
+            stripped
         } else {
             value
         };

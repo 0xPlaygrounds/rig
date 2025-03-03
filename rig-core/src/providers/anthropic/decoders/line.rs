@@ -7,6 +7,12 @@ pub struct LineDecoder {
     carriage_return_index: Option<usize>,
 }
 
+impl Default for LineDecoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LineDecoder {
     /// Create a new LineDecoder
     pub fn new() -> Self {
@@ -104,8 +110,8 @@ fn find_newline_index(buffer: &[u8], start_index: Option<usize>) -> Option<Newli
 
     let start = start_index.unwrap_or(0);
 
-    for i in start..buffer.len() {
-        if buffer[i] == NEWLINE {
+    for (i, &byte) in buffer.iter().enumerate().skip(start) {
+        if byte == NEWLINE {
             return Some(NewlineIndex {
                 preceding: i,
                 index: i + 1,
@@ -113,7 +119,7 @@ fn find_newline_index(buffer: &[u8], start_index: Option<usize>) -> Option<Newli
             });
         }
 
-        if buffer[i] == CARRIAGE {
+        if byte == CARRIAGE {
             return Some(NewlineIndex {
                 preceding: i,
                 index: i + 1,
