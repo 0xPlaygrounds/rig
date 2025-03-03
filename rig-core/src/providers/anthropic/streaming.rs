@@ -29,7 +29,7 @@ pub enum StreamingEvent {
     },
     MessageDelta {
         delta: MessageDelta,
-        usage: Usage,
+        usage: PartialUsage,
     },
     MessageStop,
     Ping,
@@ -59,6 +59,13 @@ pub enum ContentDelta {
 pub struct MessageDelta {
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PartialUsage {
+    pub output_tokens: usize,
+    #[serde(default)]
+    pub input_tokens: Option<usize>,
 }
 
 #[derive(Default)]
@@ -145,25 +152,50 @@ impl StreamingCompletionModel for CompletionModel {
             return Err(CompletionError::ProviderError(response.text().await?));
         }
 
-        // Use the JSONL decoder to parse the streaming events
-        let jsonl_stream = jsonl_from_response::<StreamingEvent>(response)
-            .map_err(|e| CompletionError::ResponseError(e.to_string()))?;
-
         Ok(Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
+            let mut stream = response.bytes_stream();
 
-            // Process each StreamingEvent as it arrives
-            let mut stream = jsonl_stream;
-            while let Some(event_result) = stream.next().await {
-                match event_result {
-                    Ok(event) => {
-                        if let Some(result) = handle_event(&event, &mut current_tool_call) {
-                            yield result;
-                        }
-                    },
+            while let Some(chunk_result) = stream.next().await {
+                let chunk = match chunk_result {
+                    Ok(c) => c,
                     Err(e) => {
-                        yield Err(CompletionError::ResponseError(format!("Error decoding event: {}", e)));
+                        yield Err(CompletionError::from(e));
                         break;
+                    }
+                };
+
+                let text = match String::from_utf8(chunk.to_vec()) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        yield Err(CompletionError::ResponseError(e.to_string()));
+                        break;
+                    }
+                };
+
+                for line in text.lines() {
+                    // Handle SSE format where each line starts with "data: "
+                    if let Some(data) = line.strip_prefix("data: ") {
+                        // Skip empty data
+                        if data.trim().is_empty() {
+                            continue;
+                        }
+
+                        match serde_json::from_str::<StreamingEvent>(data) {
+                            Ok(event) => {
+                                if let Some(result) = handle_event(&event, &mut current_tool_call) {
+                                    yield result;
+                                }
+                            },
+                            Err(e) => {
+                                // Only report errors for non-empty data
+                                if !data.trim().is_empty() {
+                                    yield Err(CompletionError::ResponseError(
+                                        format!("Failed to parse JSON: {} (Data: {})", e, data)
+                                    ));
+                                }
+                            }
+                        }
                     }
                 }
             }
