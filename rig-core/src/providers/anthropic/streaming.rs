@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefinition, Usage};
-use super::decoders::jsonl::from_response as jsonl_from_response;
+use super::decoders::sse::from_response as sse_from_response;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils::merge_inplace;
 use crate::message::MessageError;
@@ -152,50 +152,35 @@ impl StreamingCompletionModel for CompletionModel {
             return Err(CompletionError::ProviderError(response.text().await?));
         }
 
+        // Use our SSE decoder to directly handle Server-Sent Events format
+        let sse_stream = sse_from_response(response);
+
         Ok(Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
-            let mut stream = response.bytes_stream();
+            let mut sse_stream = Box::pin(sse_stream);
 
-            while let Some(chunk_result) = stream.next().await {
-                let chunk = match chunk_result {
-                    Ok(c) => c,
-                    Err(e) => {
-                        yield Err(CompletionError::from(e));
-                        break;
-                    }
-                };
-
-                let text = match String::from_utf8(chunk.to_vec()) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        yield Err(CompletionError::ResponseError(e.to_string()));
-                        break;
-                    }
-                };
-
-                for line in text.lines() {
-                    // Handle SSE format where each line starts with "data: "
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        // Skip empty data
-                        if data.trim().is_empty() {
-                            continue;
-                        }
-
-                        match serde_json::from_str::<StreamingEvent>(data) {
+            while let Some(sse_result) = sse_stream.next().await {
+                match sse_result {
+                    Ok(sse) => {
+                        // Parse the SSE data as a StreamingEvent
+                        match serde_json::from_str::<StreamingEvent>(&sse.data) {
                             Ok(event) => {
                                 if let Some(result) = handle_event(&event, &mut current_tool_call) {
                                     yield result;
                                 }
                             },
                             Err(e) => {
-                                // Only report errors for non-empty data
-                                if !data.trim().is_empty() {
+                                if !sse.data.trim().is_empty() {
                                     yield Err(CompletionError::ResponseError(
-                                        format!("Failed to parse JSON: {} (Data: {})", e, data)
+                                        format!("Failed to parse JSON: {} (Data: {})", e, sse.data)
                                     ));
                                 }
                             }
                         }
+                    },
+                    Err(e) => {
+                        yield Err(CompletionError::ResponseError(format!("SSE Error: {}", e)));
+                        break;
                     }
                 }
             }

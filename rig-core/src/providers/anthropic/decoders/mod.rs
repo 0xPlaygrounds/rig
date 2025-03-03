@@ -7,3 +7,4 @@
  */
 pub mod jsonl;
 pub mod line;
+pub mod sse;

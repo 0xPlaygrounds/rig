@@ -144,19 +144,3 @@ where
         }
     }
 }
-
-/// Create a JSONLDecoder from a response with a body stream
-pub fn from_response<T>(
-    response: reqwest::Response,
-) -> Result<Pin<Box<dyn Stream<Item = Result<T, JSONLDecoderError>> + Send>>, JSONLDecoderError>
-where
-    T: DeserializeOwned + Send + Unpin + 'static,
-{
-    let stream = response.bytes_stream().map(|result| {
-        result
-            .map_err(std::io::Error::other)
-            .map(|bytes| bytes.to_vec())
-    });
-
-    Ok(Box::pin(JSONLDecoder::new(stream)))
-}
