@@ -165,54 +165,62 @@ impl StreamingCompletionModel for CompletionModel {
 
                 for line in text.lines() {
                     if let Some(data) = line.strip_prefix("data: ") {
-                        if let Ok(event) = serde_json::from_str::<StreamingEvent>(data) {
-                            match event {
-                                StreamingEvent::ContentBlockDelta { delta, .. } => {
-                                    match delta {
-                                        ContentDelta::TextDelta { text } => {
-                                            if current_tool_call.is_none() {
-                                                yield Ok(StreamingChoice::Message(text));
+                        let parse_result = serde_json::from_str::<StreamingEvent>(data)
+                            .or_else(|_| serde_json::from_str::<StreamingEvent>(data.trim()));
+
+                        match parse_result {
+                            Ok(event) => {
+                                match event {
+                                    StreamingEvent::ContentBlockDelta { delta, .. } => {
+                                        match delta {
+                                            ContentDelta::TextDelta { text } => {
+                                                if current_tool_call.is_none() {
+                                                    yield Ok(StreamingChoice::Message(text));
+                                                }
                                             }
-                                        }
-                                        ContentDelta::InputJsonDelta { partial_json } => {
-                                            if let Some(ref mut tool_call) = current_tool_call {
-                                                tool_call.input_json.push_str(&partial_json);
-                                            }
-                                        }
-                                    }
-                                }
-                                StreamingEvent::ContentBlockStart {
-                                    content_block: Content::ToolUse { id, name, .. },
-                                    ..
-                                } => {
-                                    current_tool_call = Some(ToolCallState {
-                                        name,
-                                        id,
-                                        input_json: String::new(),
-                                    });
-                                }
-                                StreamingEvent::ContentBlockStop { .. } => {
-                                    if let Some(tool_call) = current_tool_call.take() {
-                                        let json_str = if tool_call.input_json.is_empty() {
-                                            "{}"
-                                        } else {
-                                            &tool_call.input_json
-                                        };
-                                        match serde_json::from_str(json_str) {
-                                            Ok(json_value) => {
-                                                yield Ok(StreamingChoice::ToolCall(
-                                                    tool_call.name,
-                                                    tool_call.id,
-                                                    json_value,
-                                                ));
-                                            }
-                                            Err(e) => {
-                                                yield Err(CompletionError::from(e));
+                                            ContentDelta::InputJsonDelta { partial_json } => {
+                                                if let Some(ref mut tool_call) = current_tool_call {
+                                                    tool_call.input_json.push_str(&partial_json);
+                                                }
                                             }
                                         }
                                     }
-                                },
-                                _ => {}
+                                    StreamingEvent::ContentBlockStart {
+                                        content_block: Content::ToolUse { id, name, .. },
+                                        ..
+                                    } => {
+                                        current_tool_call = Some(ToolCallState {
+                                            name,
+                                            id,
+                                            input_json: String::new(),
+                                        });
+                                    }
+                                    StreamingEvent::ContentBlockStop { .. } => {
+                                        if let Some(tool_call) = current_tool_call.take() {
+                                            let json_str = if tool_call.input_json.is_empty() {
+                                                "{}"
+                                            } else {
+                                                &tool_call.input_json
+                                            };
+                                            match serde_json::from_str(json_str) {
+                                                Ok(json_value) => {
+                                                    yield Ok(StreamingChoice::ToolCall(
+                                                        tool_call.name,
+                                                        tool_call.id,
+                                                        json_value,
+                                                    ));
+                                                }
+                                                Err(e) => {
+                                                    yield Err(CompletionError::from(e));
+                                                }
+                                            }
+                                        }
+                                    },
+                                    _ => {}
+                                }
+                            },
+                            Err(e) => {
+                                yield Err(CompletionError::ResponseError(format!("Failed to parse model response: {}\nInput: {}", e, data)));
                             }
                         }
                     }
