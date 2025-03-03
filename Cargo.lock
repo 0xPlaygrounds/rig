@@ -162,6 +162,9 @@ name = "arbitrary"
 version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dde20b3d026af13f561bdd0f15edf01fc734f0dafcedbaf42bba506a9517f223"
+dependencies = [
+ "derive_arbitrary",
+]
 
 [[package]]
 name = "arc-swap"
@@ -2681,6 +2684,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "derive_arbitrary"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30542c1ad912e0e3d22a1935c290e12e8a29d704a420177a31faad4a601a0800"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.98",
+]
+
+[[package]]
 name = "derive_builder"
 version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2981,6 +2995,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.98",
+]
+
+[[package]]
+name = "epub"
+version = "2.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7425903972972788e21d4a8cbec3589c232cca4fab21d320187a8e452f6465e"
+dependencies = [
+ "percent-encoding",
+ "regex",
+ "thiserror 1.0.69",
+ "xml-rs",
+ "zip 1.1.4",
 ]
 
 [[package]]
@@ -6444,7 +6471,7 @@ dependencies = [
  "md-5",
  "parking_lot",
  "percent-encoding",
- "quick-xml",
+ "quick-xml 0.36.2",
  "rand",
  "reqwest 0.12.12",
  "ring 0.17.8",
@@ -7374,6 +7401,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "quick-xml"
+version = "0.37.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "165859e9e55f79d67b96c5d96f4e88b6f2695a1972849c15a6a3f5c59fc2c003"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "quick_cache"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7895,17 +7931,19 @@ checksum = "57397d16646700483b67d2dd6511d79318f9d057fdbd21a4066aeac8b41d310a"
 
 [[package]]
 name = "rig-core"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "anyhow",
  "assert_fs",
  "async-stream",
  "base64 0.22.1",
  "bytes",
+ "epub",
  "futures",
  "glob",
  "lopdf",
  "ordered-float",
+ "quick-xml 0.37.2",
  "rayon",
  "reqwest 0.11.27",
  "rig-derive",
@@ -7933,7 +7971,7 @@ dependencies = [
 
 [[package]]
 name = "rig-eternalai"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "ethers",
@@ -7949,7 +7987,7 @@ dependencies = [
 
 [[package]]
 name = "rig-fastembed"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "fastembed",
@@ -7963,7 +8001,7 @@ dependencies = [
 
 [[package]]
 name = "rig-lancedb"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -7978,7 +8016,7 @@ dependencies = [
 
 [[package]]
 name = "rig-mongodb"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "futures",
@@ -7995,7 +8033,7 @@ dependencies = [
 
 [[package]]
 name = "rig-neo4j"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "futures",
@@ -8014,7 +8052,7 @@ dependencies = [
 
 [[package]]
 name = "rig-postgres"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "dotenvy",
@@ -8035,7 +8073,7 @@ dependencies = [
 
 [[package]]
 name = "rig-qdrant"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "httpmock",
@@ -8050,7 +8088,7 @@ dependencies = [
 
 [[package]]
 name = "rig-sqlite"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "chrono",
@@ -8069,7 +8107,7 @@ dependencies = [
 
 [[package]]
 name = "rig-surrealdb"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "rig-core",
@@ -9719,7 +9757,7 @@ dependencies = [
  "sha2",
  "thiserror 1.0.69",
  "url",
- "zip",
+ "zip 0.6.6",
 ]
 
 [[package]]
@@ -11511,6 +11549,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "xml-rs"
+version = "0.8.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5b940ebc25896e71dd073bad2dbaa2abfe97b0a391415e22ad1326d9c54e3c4"
+
+[[package]]
 name = "xmlparser"
 version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11654,6 +11698,22 @@ dependencies = [
  "sha1",
  "time",
  "zstd 0.11.2+zstd.1.5.2",
+]
+
+[[package]]
+name = "zip"
+version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9cc23c04387f4da0374be4533ad1208cbb091d5c11d070dfef13676ad6497164"
+dependencies = [
+ "arbitrary",
+ "crc32fast",
+ "crossbeam-utils",
+ "displaydoc",
+ "flate2",
+ "indexmap 2.7.1",
+ "num_enum",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
