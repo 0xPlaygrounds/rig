@@ -186,10 +186,6 @@ pub fn decode_chunks(chunks: &[&[u8]], flush: bool) -> Vec<String> {
 mod tests {
     use super::*;
 
-    fn str_chunks(chunks: &[&str]) -> Vec<Vec<u8>> {
-        chunks.iter().map(|s| s.as_bytes().to_vec()).collect()
-    }
-
     fn decode_string_chunks(chunks: &[&str], flush: bool) -> Vec<String> {
         let byte_chunks: Vec<&[u8]> = chunks.iter().map(|s| s.as_bytes()).collect();
         decode_chunks(&byte_chunks, flush)

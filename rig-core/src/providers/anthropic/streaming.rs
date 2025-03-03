@@ -4,6 +4,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefinition, Usage};
+use super::decoders::jsonl::from_response as jsonl_from_response;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils::merge_inplace;
 use crate::message::MessageError;
@@ -32,6 +33,8 @@ pub enum StreamingEvent {
     },
     MessageStop,
     Ping,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Deserialize)]
@@ -142,70 +145,25 @@ impl StreamingCompletionModel for CompletionModel {
             return Err(CompletionError::ProviderError(response.text().await?));
         }
 
+        // Use the JSONL decoder to parse the streaming events
+        let jsonl_stream = jsonl_from_response::<StreamingEvent>(response)
+            .map_err(|e| CompletionError::ResponseError(e.to_string()))?;
+
         Ok(Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
-            let mut stream = response.bytes_stream();
-            let mut json_buffer = String::new();
 
-            while let Some(chunk_result) = stream.next().await {
-                let chunk = match chunk_result {
-                    Ok(c) => c,
-                    Err(e) => {
-                        yield Err(CompletionError::from(e));
-                        break;
-                    }
-                };
-
-                let text = match String::from_utf8(chunk.to_vec()) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        yield Err(CompletionError::ResponseError(e.to_string()));
-                        break;
-                    }
-                };
-
-                for line in text.lines() {
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        let parse_result = serde_json::from_str::<StreamingEvent>(data)
-                            .or_else(|_| serde_json::from_str::<StreamingEvent>(data.trim()));
-
-                        match parse_result {
-                            Ok(event) => {
-                                if let Some(result) = handle_event(&event, &mut current_tool_call) {
-                                    yield result;
-                                }
-                            },
-                            Err(_) => {
-                                if !json_buffer.is_empty() {
-                                    let buffer_parse = serde_json::from_str::<StreamingEvent>(&json_buffer);
-                                    if buffer_parse.is_ok() {
-                                        if let Some(result) = handle_event(&buffer_parse.unwrap(), &mut current_tool_call) {
-                                            yield result;
-                                        }
-                                        json_buffer = data.to_string();
-                                    } else {
-                                        json_buffer.push_str(data);
-                                    }
-                                } else {
-                                    json_buffer = data.to_string();
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if !json_buffer.is_empty() {
-                match serde_json::from_str::<StreamingEvent>(&json_buffer) {
+            // Process each StreamingEvent as it arrives
+            let mut stream = jsonl_stream;
+            while let Some(event_result) = stream.next().await {
+                match event_result {
                     Ok(event) => {
                         if let Some(result) = handle_event(&event, &mut current_tool_call) {
                             yield result;
                         }
                     },
                     Err(e) => {
-                        yield Err(CompletionError::ResponseError(
-                            format!("Incomplete JSON data at end of stream: {} (Error: {})", json_buffer, e)
-                        ));
+                        yield Err(CompletionError::ResponseError(format!("Error decoding event: {}", e)));
+                        break;
                     }
                 }
             }
@@ -232,17 +190,18 @@ fn handle_event(
                 None
             }
         },
-        StreamingEvent::ContentBlockStart {
-            content_block: Content::ToolUse { id, name, .. },
-            ..
-        } => {
-            *current_tool_call = Some(ToolCallState {
-                name: name.clone(),
-                id: id.clone(),
-                input_json: String::new(),
-            });
-            None
-        }
+        StreamingEvent::ContentBlockStart { content_block, .. } => match content_block {
+            Content::ToolUse { id, name, .. } => {
+                *current_tool_call = Some(ToolCallState {
+                    name: name.clone(),
+                    id: id.clone(),
+                    input_json: String::new(),
+                });
+                None
+            }
+            // Handle other content types - they don't need special handling
+            _ => None,
+        },
         StreamingEvent::ContentBlockStop { .. } => {
             if let Some(tool_call) = current_tool_call.take() {
                 let json_str = if tool_call.input_json.is_empty() {
@@ -262,6 +221,11 @@ fn handle_event(
                 None
             }
         }
-        _ => None,
+        // Ignore other event types or handle as needed
+        StreamingEvent::MessageStart { .. }
+        | StreamingEvent::MessageDelta { .. }
+        | StreamingEvent::MessageStop
+        | StreamingEvent::Ping
+        | StreamingEvent::Unknown => None,
     }
 }
