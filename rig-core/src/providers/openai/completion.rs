@@ -1,3 +1,7 @@
+// ================================================================
+//! OpenAI Completion Integration
+// ================================================================
+
 
 use std::{convert::Infallible, str::FromStr};
 
@@ -5,17 +9,17 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
     message::{self, AudioMediaType, ImageDetail},
-    one_or_many::{OneOrMany, string_or_one_or_many},
+    one_or_many::{string_or_one_or_many, OneOrMany},
 };
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use super::client::{openai_api_types::{ApiErrorResponse, ApiResponse, Usage}, Client};
+use super::client::{
+    openai_api_types::{ApiErrorResponse, ApiResponse, Usage},
+    Client,
+};
 
-// ================================================================
-// OpenAI Completion API
-// ================================================================
 /// `o3-mini` completion model
 pub const O3_MINI: &str = "o3-mini";
 /// `o3-mini-2025-01-31` completion model

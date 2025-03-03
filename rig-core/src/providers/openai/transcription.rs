@@ -1,4 +1,6 @@
-
+// ================================================================
+//! OpenAI Transcription Integration
+// ================================================================
 
 use crate::transcription::{self, TranscriptionError};
 use reqwest::multipart::Part;
@@ -6,10 +8,6 @@ use serde::Deserialize;
 
 use super::client::{openai_api_types::ApiResponse, Client};
 
-
-// ================================================================
-// OpenAI Transcription API
-// ================================================================
 pub const WHISPER_1: &str = "whisper-1";
 
 #[derive(Debug, Deserialize)]

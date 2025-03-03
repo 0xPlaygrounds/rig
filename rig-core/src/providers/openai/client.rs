@@ -1,9 +1,5 @@
-
 use crate::{
-    agent::AgentBuilder,
-    embeddings::EmbeddingsBuilder,
-    extractor::ExtractorBuilder,
-    Embed,
+    agent::AgentBuilder, embeddings::EmbeddingsBuilder, extractor::ExtractorBuilder, Embed,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -179,13 +175,18 @@ impl Client {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-        
+
     use serde_path_to_error::deserialize;
 
-    use crate::{message::{self, ImageDetail}, providers::openai::completion::{AssistantContent, Function, ImageUrl, Message, ToolCall, ToolType, UserContent}, OneOrMany};
+    use crate::{
+        message::{self, ImageDetail},
+        providers::openai::completion::{
+            AssistantContent, Function, ImageUrl, Message, ToolCall, ToolType, UserContent,
+        },
+        OneOrMany,
+    };
 
     #[test]
     fn test_deserialize_message() {
@@ -475,7 +476,6 @@ mod tests {
 
 pub mod openai_api_types {
     use serde::Deserialize;
-
 
     #[derive(Debug, Deserialize)]
     pub struct ApiErrorResponse {
