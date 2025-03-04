@@ -51,6 +51,7 @@ pub mod deepseek;
 pub mod galadriel;
 pub mod gemini;
 pub mod groq;
+pub mod huggingface;
 pub mod hyperbolic;
 pub mod moonshot;
 pub mod ollama;
