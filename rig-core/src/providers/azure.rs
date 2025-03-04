@@ -4,7 +4,7 @@
 //! ```
 //! use rig::providers::azure;
 //!
-//! let client = azure::Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+//! let client = azure::Client::new(AzureOpenAIAuth::ApiKey("YOUR_API_KEY"), "YOUR_API_VERSION", "YOUR_ENDPOINT");
 //!
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
@@ -32,36 +32,60 @@ pub struct Client {
     http_client: reqwest::Client,
 }
 
+#[derive(Clone)]
+pub enum AzureOpenAIAuth {
+    ApiKey(String),
+    Token(String),
+}
+
 impl Client {
     /// Creates a new Azure OpenAI client.
     ///
     /// # Arguments
     ///
-    /// * `api_key` - Azure OpenAI API key required for authentication
+    /// * `auth` - Azure OpenAI API key or token required for authentication
     /// * `api_version` - API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
     /// * `azure_endpoint` - Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
-    pub fn new(api_key: &str, api_version: &str, azure_endpoint: &str) -> Self {
+    pub fn new(auth: AzureOpenAIAuth, api_version: &str, azure_endpoint: &str) -> Self {
+        let mut headers = reqwest::header::HeaderMap::new();
+        match auth {
+            AzureOpenAIAuth::ApiKey(api_key) => {
+                headers.insert("api-key", api_key.parse().expect("API key should parse"));
+            }
+            AzureOpenAIAuth::Token(token) => {
+                headers.insert(
+                    "Authorization",
+                    format!("Bearer {}", token)
+                        .parse()
+                        .expect("Token should parse"),
+                );
+            }
+        }
+
         Self {
             api_version: api_version.to_string(),
             azure_endpoint: azure_endpoint.to_string(),
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert("api-key", api_key.parse().expect("API key should parse"));
-                    headers
-                })
+                .default_headers(headers)
                 .build()
                 .expect("Azure OpenAI reqwest client should build"),
         }
     }
 
-    /// Create a new Azure OpenAI client from the `AZURE_API_KEY`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
-    /// Panics if these environment variables are not set.
+    /// Create a new Azure OpenAI client from the `AZURE_API_KEY` or `AZURE_TOKEN`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
     pub fn from_env() -> Self {
-        let api_key = std::env::var("AZURE_API_KEY").expect("AZURE_API_KEY not set");
+        let auth = if let Ok(api_key) = std::env::var("AZURE_API_KEY") {
+            AzureOpenAIAuth::ApiKey(api_key)
+        } else if let Ok(token) = std::env::var("AZURE_TOKEN") {
+            AzureOpenAIAuth::Token(token)
+        } else {
+            panic!("Neither AZURE_API_KEY nor AZURE_TOKEN is set");
+        };
+
         let api_version = std::env::var("AZURE_API_VERSION").expect("AZURE_API_VERSION not set");
         let azure_endpoint = std::env::var("AZURE_ENDPOINT").expect("AZURE_ENDPOINT not set");
-        Self::new(&api_key, &api_version, &azure_endpoint)
+
+        Self::new(auth, &api_version, &azure_endpoint)
     }
 
     fn post_embedding(&self, deployment_id: &str) -> reqwest::RequestBuilder {
@@ -91,7 +115,7 @@ impl Client {
     /// use rig::providers::azure::{Client, self};
     ///
     /// // Initialize the Azure OpenAI client
-    /// let azure = Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+    /// let azure = Client::new(AzureOpenAIAuth::ApiKey("YOUR_API_KEY"), "YOUR_API_VERSION", "YOUR_ENDPOINT");
     ///
     /// let embedding_model = azure.embedding_model(azure::TEXT_EMBEDDING_3_LARGE);
     /// ```
@@ -111,7 +135,7 @@ impl Client {
     /// use rig::providers::azure::{Client, self};
     ///
     /// // Initialize the Azure OpenAI client
-    /// let azure = Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+    /// let azure = Client::new(AzureOpenAIAuth::ApiKey("YOUR_API_KEY"), "YOUR_API_VERSION", "YOUR_ENDPOINT");
     ///
     /// let embedding_model = azure.embedding_model("model-unknown-to-rig", 3072);
     /// ```
@@ -126,7 +150,7 @@ impl Client {
     /// use rig::providers::azure::{Client, self};
     ///
     /// // Initialize the Azure OpenAI client
-    /// let azure = Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+    /// let azure = Client::new(AzureOpenAIAuth::ApiKey("YOUR_API_KEY"), "YOUR_API_VERSION", "YOUR_ENDPOINT");
     ///
     /// let embeddings = azure.embeddings(azure::TEXT_EMBEDDING_3_LARGE)
     ///     .simple_document("doc0", "Hello, world!")
@@ -146,7 +170,7 @@ impl Client {
     /// use rig::providers::azure::{Client, self};
     ///
     /// // Initialize the Azure OpenAI client
-    /// let azure = Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+    /// let azure = Client::new(AzureOpenAIAuth::ApiKey("YOUR_API_KEY"), "YOUR_API_VERSION", "YOUR_ENDPOINT");
     ///
     /// let gpt4 = azure.completion_model(azure::GPT_4);
     /// ```
@@ -161,7 +185,7 @@ impl Client {
     /// use rig::providers::azure::{Client, self};
     ///
     /// // Initialize the Azure OpenAI client
-    /// let azure = Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+    /// let azure = Client::new(AzureOpenAIAuth::ApiKey("YOUR_API_KEY"), "YOUR_API_VERSION", "YOUR_ENDPOINT");
     ///
     /// let agent = azure.agent(azure::GPT_4)
     ///    .preamble("You are comedian AI with a mission to make people laugh.")
