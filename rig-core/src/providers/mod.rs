@@ -53,6 +53,8 @@ pub mod gemini;
 pub mod groq;
 pub mod hyperbolic;
 pub mod moonshot;
+pub mod ollama;
 pub mod openai;
 pub mod perplexity;
+pub mod together;
 pub mod xai;

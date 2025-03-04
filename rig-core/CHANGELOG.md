@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.9.0...rig-core-v0.9.1) - 2025-03-03
+
+### Added
+
+- Transcription Model support ([#322](https://github.com/0xPlaygrounds/rig/pull/322))
+- Add EpubFileLoader for EPUB file processing ([#192](https://github.com/0xPlaygrounds/rig/pull/192))
+- add ollama client ([#285](https://github.com/0xPlaygrounds/rig/pull/285))
+- *(openai)* add updated OpenAI model constants ([#314](https://github.com/0xPlaygrounds/rig/pull/314))
+- support together AI ([#230](https://github.com/0xPlaygrounds/rig/pull/230))
+
+### Fixed
+
+- *(openai)* skip serializing empty tool_calls vector ([#327](https://github.com/0xPlaygrounds/rig/pull/327))
+- *(openai)* correct some fields for tools ([#286](https://github.com/0xPlaygrounds/rig/pull/286))
+- *(loaders)* bump lodpf to allow more PDFs to parse correctly ([#307](https://github.com/0xPlaygrounds/rig/pull/307))
+
+### Other
+
+- rename DeepSeek_R1.pdf to deepseek_r1.pdf ([#316](https://github.com/0xPlaygrounds/rig/pull/316))
+
+## [0.9.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.8.0...rig-core-v0.9.0) - 2025-02-17
+
+### Added
+
+- *(streaming)* add `Send` to `StreamingResult` inner Stream (#302)
+- groq integration (#263)
+
+### Fixed
+
+- xai agent prompt provider error (#305) (#306)
+- enhance tracing messages (#287)
+- *(gemini)* fixed tool calling + tool extractor demo (#297)
+- o3-mini doesn't support temperature (#266)
+
+### Other
+
+- EchoChambers Example Integration ([#244](https://github.com/0xPlaygrounds/rig/pull/244))
+- deepseek message to remove dependencies with openai (#283)
+
 ## [0.8.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.7.0...rig-core-v0.8.0) - 2025-02-10
 
 ### Added

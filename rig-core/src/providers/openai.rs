@@ -18,8 +18,10 @@ use crate::{
     json_utils,
     message::{self, AudioMediaType, ImageDetail},
     one_or_many::string_or_one_or_many,
+    transcription::{self, TranscriptionError},
     Embed, OneOrMany,
 };
+use reqwest::multipart::Part;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -170,6 +172,21 @@ impl Client {
     ) -> ExtractorBuilder<T, CompletionModel> {
         ExtractorBuilder::new(self.completion_model(model))
     }
+
+    /// Create a completion model with the given name.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::openai::{Client, self};
+    ///
+    /// // Initialize the OpenAI client
+    /// let openai = Client::new("your-open-ai-api-key");
+    ///
+    /// let gpt4 = openai.transcription_model(openai::WHISPER_1);
+    /// ```
+    pub fn transcription_model(&self, model: &str) -> TranscriptionModel {
+        TranscriptionModel::new(self.clone(), model)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -316,6 +333,14 @@ impl EmbeddingModel {
 // ================================================================
 // OpenAI Completion API
 // ================================================================
+/// `o3-mini` completion model
+pub const O3_MINI: &str = "o3-mini";
+/// `o3-mini-2025-01-31` completion model
+pub const O3_MINI_2025_01_31: &str = "o3-mini-2025-01-31";
+/// 'o1' completion model
+pub const O1: &str = "o1";
+/// `o1-2024-12-17` completion model
+pub const O1_2024_12_17: &str = "o1-2024-12-17";
 /// `o1-preview` completion model
 pub const O1_PREVIEW: &str = "o1-preview";
 /// `o1-preview-2024-09-12` completion model
@@ -472,7 +497,11 @@ pub enum Message {
         audio: Option<AudioAssistant>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-        #[serde(default, deserialize_with = "json_utils::null_or_vec")]
+        #[serde(
+            default,
+            deserialize_with = "json_utils::null_or_vec",
+            skip_serializing_if = "Vec::is_empty"
+        )]
         tool_calls: Vec<ToolCall>,
     },
     #[serde(rename = "tool")]
@@ -540,9 +569,18 @@ pub struct InputAudio {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolResultContent {
+    #[serde(default)]
+    r#type: ToolResultContentType,
     text: String,
     #[serde(default)]
     r#type: ToolResultContentType,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolResultContentType {
+    #[default]
+    Text,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -976,6 +1014,105 @@ impl completion::CompletionModel for CompletionModel {
                 serde_json::to_string_pretty(&request).unwrap(),
                 t);
             Err(CompletionError::ProviderError(t))
+        }
+    }
+}
+
+// ================================================================
+// OpenAI Transcription API
+// ================================================================
+pub const WHISPER_1: &str = "whisper-1";
+
+#[derive(Debug, Deserialize)]
+pub struct TranscriptionResponse {
+    pub text: String,
+}
+
+impl TryFrom<TranscriptionResponse>
+    for transcription::TranscriptionResponse<TranscriptionResponse>
+{
+    type Error = TranscriptionError;
+
+    fn try_from(value: TranscriptionResponse) -> Result<Self, Self::Error> {
+        Ok(transcription::TranscriptionResponse {
+            text: value.text.clone(),
+            response: value,
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct TranscriptionModel {
+    client: Client,
+    /// Name of the model (e.g.: gpt-3.5-turbo-1106)
+    pub model: String,
+}
+
+impl TranscriptionModel {
+    pub fn new(client: Client, model: &str) -> Self {
+        Self {
+            client,
+            model: model.to_string(),
+        }
+    }
+}
+impl transcription::TranscriptionModel for TranscriptionModel {
+    type Response = TranscriptionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn transcription(
+        &self,
+        request: transcription::TranscriptionRequest,
+    ) -> Result<
+        transcription::TranscriptionResponse<Self::Response>,
+        transcription::TranscriptionError,
+    > {
+        let data = request.data;
+
+        let mut body = reqwest::multipart::Form::new()
+            .text("model", self.model.clone())
+            .text("language", request.language)
+            .part(
+                "file",
+                Part::bytes(data).file_name(request.filename.clone()),
+            );
+
+        if let Some(prompt) = request.prompt {
+            body = body.text("prompt", prompt.clone());
+        }
+
+        if let Some(ref temperature) = request.temperature {
+            body = body.text("temperature", temperature.to_string());
+        }
+
+        if let Some(ref additional_params) = request.additional_params {
+            for (key, value) in additional_params
+                .as_object()
+                .expect("Additional Parameters to OpenAI Transcription should be a map")
+            {
+                body = body.text(key.to_owned(), value.to_string());
+            }
+        }
+
+        let response = self
+            .client
+            .post("audio/transcriptions")
+            .multipart(body)
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            match response
+                .json::<ApiResponse<TranscriptionResponse>>()
+                .await?
+            {
+                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Err(api_error_response) => Err(TranscriptionError::ProviderError(
+                    api_error_response.message,
+                )),
+            }
+        } else {
+            Err(TranscriptionError::ProviderError(response.text().await?))
         }
     }
 }

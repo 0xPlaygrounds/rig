@@ -92,6 +92,7 @@ pub mod pipeline;
 pub mod providers;
 pub mod streaming;
 pub mod tool;
+pub mod transcription;
 pub mod vector_store;
 
 // Re-export commonly used types and traits
