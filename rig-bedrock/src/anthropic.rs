@@ -1,4 +1,4 @@
-use crate::{client::ClientBuilder, completion::BedrockProvider};
+use crate::client::ClientBuilder;
 use rig::providers::anthropic::client::ClientBuilder as AnthropicClientBuilder;
 use rig::providers::anthropic::completion::CompletionModel;
 
@@ -6,7 +6,13 @@ pub struct AnthropicBedrockProviderBuilder<'a> {
     client_builder: ClientBuilder<'a>,
 }
 
-impl<'a> AnthropicBedrockProviderBuilder<'a> {
+impl Default for AnthropicBedrockProviderBuilder<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AnthropicBedrockProviderBuilder<'_> {
     pub fn new() -> Self {
         let client_builder = ClientBuilder::new()
             .additional_fields(vec![
@@ -50,7 +56,6 @@ impl<'a> AnthropicBedrockProviderBuilder<'a> {
 
     pub fn anthropic_completion_model() -> CompletionModel {
         let anthropic_client = AnthropicClientBuilder::new("").build();
-        let completion_model = anthropic_client.completion_model(&String::default());
-        completion_model
+        anthropic_client.completion_model(&String::default())
     }
 }

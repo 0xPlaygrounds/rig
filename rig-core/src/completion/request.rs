@@ -385,6 +385,11 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         self
     }
 
+    pub fn extend_preamble(mut self, preamble: Vec<Preamble>) -> Self {
+        self.preamble.extend(preamble);
+        self
+    }
+
     /// Adds a message to the chat history for the completion request.
     pub fn message(mut self, message: Message) -> Self {
         self.chat_history.push(message);

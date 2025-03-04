@@ -37,7 +37,7 @@ pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct CompletionResponse {
     pub content: Vec<Content>,
     pub id: String,
@@ -48,7 +48,7 @@ pub struct CompletionResponse {
     pub usage: Usage,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Usage {
     pub input_tokens: u64,
     pub cache_read_input_tokens: Option<u64>,
@@ -638,26 +638,25 @@ impl completion::CompletionModel for CompletionModel {
                 &mut json_request,
                 json!({
                     "tools": request
-                        .tools
-                        .clone()
-                        .into_iter()
-                        .enumerate()
-                        .map(|(index, tool)| {
-                            let mut tool_json = json!({
+                    .tools
+                    .clone()
+                    .into_iter()
+                    .map(|tool| {
+                        let tool_json = json!({
                             "name": tool.name,
                             "description": tool.description,
                             "input_schema": tool.parameters,
-                            });
-                            if index == request.tools.len() - 1 {
-                                json_utils::merge_inplace(
-                                    &mut tool_json,
-                                    json!({
-                                        "cache_control": {
-                                            "type": "ephemeral"
-                                        }
-                                    }),
-                                );
-                            }
+                        });
+                        // if index == request.tools.len() - 1 {
+                            //     json_utils::merge_inplace(
+                            //         &mut tool_json,
+                            //         json!({
+                            //             "cache_control": {
+                            //                 "type": "ephemeral"
+                            //             }
+                            //         }),
+                            //     );
+                            // }
                             tool_json
                     })
                     .collect::<Vec<_>>(),

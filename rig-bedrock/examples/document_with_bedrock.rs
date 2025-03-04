@@ -2,12 +2,12 @@ use reqwest::Client;
 
 use base64::{prelude::BASE64_STANDARD, Engine};
 use rig::{
-    completion::{Preamble, Prompt},
-    providers::anthropic::ClientBuilder as AnthropicClientBuilder,
-};
-use rig::{
     completion::message::Document,
     message::{ContentFormat, DocumentMediaType},
+};
+use rig::{
+    completion::{Preamble, Prompt},
+    providers::anthropic::ClientBuilder as AnthropicClientBuilder,
 };
 use rig_bedrock::client::ClientBuilder;
 use tracing::info;

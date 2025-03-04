@@ -63,15 +63,15 @@ where
             .body(bytes.into())
             .send()
             .await
-            .unwrap();
+            .map_err(|e| CompletionError::RequestError(e.into()))?;
         let body = response.body().as_ref();
-        let response_body: T::Response =
-            serde_json::from_slice(body).map_err(|e| CompletionError::RequestError(e.into()))?;
+        let response_body: T::Response = serde_json::from_slice(body)
+            .map_err(|e| CompletionError::ResponseError(e.to_string()))?;
 
         // Create a CompletionResponse with the deserialized response body
         response_body
             .try_into()
-            .map_err(|e| CompletionError::RequestError(Box::new(e)))
+            .map_err(|e| CompletionError::ResponseError(e.to_string()))
     }
 
     async fn build_completion(
