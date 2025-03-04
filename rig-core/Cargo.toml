@@ -15,7 +15,7 @@ doctest = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reqwest = { version = "0.11.22", features = ["json", "stream", "multipart", "socks"] }
+reqwest = { version = "0.11.22", features = ["json", "stream", "multipart"] }
 serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0.108"
 tracing = "0.1.40"
@@ -46,6 +46,7 @@ derive = ["dep:rig-derive"]
 pdf = ["dep:lopdf"]
 rayon = ["dep:rayon"]
 worker = ["dep:worker"]
+socks = ["reqwest/socks"]
 
 [[test]]
 name = "embed_macro"
