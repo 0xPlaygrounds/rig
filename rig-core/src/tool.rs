@@ -9,7 +9,7 @@
 //! The [ToolSet] struct is a collection of tools that can be used by an [Agent](crate::agent::Agent)
 //! and optionally RAGged.
 
-use std::{collections::HashMap, pin::Pin};
+use std::{collections::HashMap, pin::Pin, sync::Arc};
 
 use futures::Future;
 use serde::{Deserialize, Serialize};
@@ -181,6 +181,117 @@ impl<T: Tool> ToolDyn for T {
                     }),
                 Err(e) => Err(ToolError::JsonError(e)),
             }
+        })
+    }
+}
+
+pub struct McpTool<T: mcp_core::transport::Transport> {
+    definition: mcp_core::types::Tool,
+    client: Arc<mcp_core::client::Client<T>>,
+}
+
+impl<T> McpTool<T>
+where
+    T: mcp_core::transport::Transport,
+{
+    pub fn from_mcp_server(
+        definition: mcp_core::types::Tool,
+        client: Arc<mcp_core::client::Client<T>>,
+    ) -> Self {
+        Self { definition, client }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("MCP tool error: {0}")]
+pub struct McpToolError(String);
+
+impl<T> ToolDyn for McpTool<T>
+where
+    T: mcp_core::transport::Transport,
+{
+    fn name(&self) -> String {
+        self.definition.name.clone()
+    }
+
+    fn definition(
+        &self,
+        _prompt: String,
+    ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + Sync + '_>> {
+        Box::pin(async move {
+            ToolDefinition {
+                name: self.definition.name.clone(),
+                description: match &self.definition.description {
+                    Some(desc) => desc.clone(),
+                    None => String::new(),
+                },
+                parameters: serde_json::to_value(&self.definition.input_schema).unwrap_or_default(),
+            }
+        })
+    }
+
+    fn call(
+        &self,
+        args: String,
+    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>> {
+        let name = self.definition.name.clone();
+        let args_clone = args.clone();
+        let args: serde_json::Value = serde_json::from_str(&args_clone).unwrap_or_default();
+        Box::pin(async move {
+            let result = self
+                .client
+                .call_tool(&name, Some(args))
+                .await
+                .map_err(|e| {
+                    ToolError::ToolCallError(Box::new(McpToolError(format!(
+                        "Tool returned an error: {}",
+                        e
+                    ))))
+                })?;
+
+            if result.is_error.unwrap_or(false) {
+                if let Some(error) = result.content.first() {
+                    match error {
+                        mcp_core::types::ToolResponseContent::Text { text } => {
+                            return Err(ToolError::ToolCallError(Box::new(McpToolError(
+                                text.clone(),
+                            ))));
+                        }
+                        _ => {
+                            return Err(ToolError::ToolCallError(Box::new(McpToolError(
+                                "Unsuppported error type".to_string(),
+                            ))))
+                        }
+                    }
+                } else {
+                    return Err(ToolError::ToolCallError(Box::new(McpToolError(
+                        "No error message returned".to_string(),
+                    ))));
+                }
+            }
+
+            Ok(result
+                .content
+                .into_iter()
+                .map(|c| match c {
+                    mcp_core::types::ToolResponseContent::Text { text } => text,
+                    mcp_core::types::ToolResponseContent::Image { data, mime_type } => {
+                        format!("data:{};base64,{}", mime_type, data)
+                    }
+                    mcp_core::types::ToolResponseContent::Resource {
+                        resource: mcp_core::types::ResourceContents { uri, mime_type },
+                    } => {
+                        format!(
+                            "{}{}",
+                            mime_type
+                                .map(|m| format!("data:{};", m))
+                                .unwrap_or_default(),
+                            uri
+                        )
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(""))
         })
     }
 }
