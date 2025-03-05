@@ -12,6 +12,8 @@
 pub mod client;
 pub mod completion;
 pub mod embedding;
+#[cfg(feature = "blob_data")]
+pub mod transcription;
 pub use client::Client;
 
 pub mod gemini_api_types {
