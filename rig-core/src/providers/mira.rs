@@ -142,7 +142,6 @@ impl Client {
         Ok(Self {
             base_url: MIRA_API_BASE_URL.to_string(),
             client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(60))
                 .connect_timeout(std::time::Duration::from_secs(30))
                 .build()
                 .expect("Failed to build HTTP client"),
