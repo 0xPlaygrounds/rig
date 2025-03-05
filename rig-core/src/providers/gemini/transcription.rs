@@ -73,7 +73,7 @@ impl transcription::TranscriptionModel for TranscriptionModel {
         let request = GenerateContentRequest {
             contents: vec![Content {
                 parts: OneOrMany::one(Part::InlineData(Blob {
-                    mime_type: mime_type,
+                    mime_type,
                     data: BASE64_STANDARD.encode(request.data),
                 })),
                 role: Some(Role::User),
