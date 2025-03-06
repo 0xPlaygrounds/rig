@@ -18,7 +18,7 @@ pub use super::completion::{
     GEMINI_1_5_FLASH, GEMINI_1_5_PRO, GEMINI_1_5_PRO_8B, GEMINI_2_0_FLASH,
 };
 
-const TRANSCRIPTION_PREAMBLE: &'static str =
+const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
 
 #[derive(Clone)]
