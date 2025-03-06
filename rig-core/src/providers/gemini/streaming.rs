@@ -1,7 +1,6 @@
 use async_stream::stream;
 use futures::StreamExt;
 use serde::Deserialize;
-use tracing::info;
 
 use crate::{
     completion::{CompletionError, CompletionRequest},
@@ -9,7 +8,7 @@ use crate::{
 };
 
 use super::completion::{
-    create_request_body, gemini_api_types::{ContentCandidate, GenerateContentResponse}, CompletionModel,
+    create_request_body, gemini_api_types::ContentCandidate, CompletionModel,
 };
 
 
