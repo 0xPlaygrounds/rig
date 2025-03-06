@@ -2,7 +2,6 @@ use mcp_core::{
     client::Client,
     run_http_server,
     server::Server,
-    sse::http_server::Host,
     tool_error_response, tool_text_response,
     transport::{ClientSseTransport, Transport},
     types::{
@@ -24,11 +23,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     tokio::spawn(async move {
         run_http_server(
-            Host {
-                host: "127.0.0.1".to_string(),
-                port: 3000,
-                public_url: None,
-            },
+            "127.0.0.1".to_string(),
+            3000,
             None,
             |transport| async move {
                 let mut server_builder =
@@ -95,8 +91,6 @@ async fn main() -> Result<(), anyhow::Error> {
     transport.open().await?;
 
     let mcp_client = Arc::new(Client::builder(transport).use_strict().build());
-    let mcp_client_clone = mcp_client.clone();
-    tokio::spawn(async move { mcp_client_clone.start().await });
 
     let init_res = mcp_client
         .initialize(Implementation {
