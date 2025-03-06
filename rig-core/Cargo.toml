@@ -32,7 +32,7 @@ rayon = { version = "1.10.0", optional = true }
 worker = { version = "0.5", optional = true }
 bytes = "1.9.0"
 async-stream = "0.3.6"
-mcp-core = "0.1.0"
+mcp-core = "0.1.2"
 
 
 [dev-dependencies]
@@ -43,6 +43,7 @@ tracing-subscriber = "0.3.18"
 tokio-test = "0.4.4"
 serde_path_to_error = "0.1.16"
 base64 = "0.22.1"
+mcp-core = { version = "0.1.2", features = ["http"] }
 
 [features]
 all = ["derive", "pdf", "rayon"]

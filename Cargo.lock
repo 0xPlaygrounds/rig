@@ -6195,9 +6195,9 @@ dependencies = [
 
 [[package]]
 name = "mcp-core"
-version = "0.1.0"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7629c50eee8b22150fe763497cf1ffce696162f4a1cefd07a69475137a3d58fe"
+checksum = "3e76d900e8e0aa86331f12151eeff29c1e89bd25164a973db53a9a95a78dddf7"
 dependencies = [
  "actix-web",
  "actix-ws",
@@ -6210,7 +6210,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "tokio-stream",
  "tokio-tungstenite 0.21.0",
  "tracing",
  "url",
