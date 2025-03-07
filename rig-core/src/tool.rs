@@ -185,11 +185,13 @@ impl<T: Tool> ToolDyn for T {
     }
 }
 
+#[cfg(feature = "mcp")]
 pub struct McpTool<T: mcp_core::transport::Transport> {
     definition: mcp_core::types::Tool,
     client: mcp_core::client::Client<T>,
 }
 
+#[cfg(feature = "mcp")]
 impl<T> McpTool<T>
 where
     T: mcp_core::transport::Transport,
@@ -202,10 +204,12 @@ where
     }
 }
 
+#[cfg(feature = "mcp")]
 #[derive(Debug, thiserror::Error)]
 #[error("MCP tool error: {0}")]
 pub struct McpToolError(String);
 
+#[cfg(feature = "mcp")]
 impl<T> ToolDyn for McpTool<T>
 where
     T: mcp_core::transport::Transport,

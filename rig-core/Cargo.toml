@@ -30,9 +30,9 @@ epub = { version = "2.1.2", optional = true }
 quick-xml = { version = "0.37.2", optional = true }
 rayon = { version = "1.10.0", optional = true }
 worker = { version = "0.5", optional = true }
+mcp-core = { version = "0.1.32", optional = true }
 bytes = "1.9.0"
 async-stream = "0.3.6"
-mcp-core = "0.1.32"
 
 
 [dev-dependencies]
@@ -52,6 +52,8 @@ pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 worker = ["dep:worker"]
+mcp = ["dep:mcp-core"]
+
 
 [[test]]
 name = "embed_macro"
@@ -96,3 +98,7 @@ required-features = ["derive"]
 [[example]]
 name = "together_embeddings"
 required-features = ["derive"]
+
+[[example]]
+name = "mcp_tool"
+required-features = ["mcp"]

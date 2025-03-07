@@ -120,9 +120,12 @@ use crate::{
         StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingPrompt,
         StreamingResult,
     },
-    tool::{McpTool, Tool, ToolSet},
+    tool::{Tool, ToolSet},
     vector_store::{VectorStoreError, VectorStoreIndexDyn},
 };
+
+#[cfg(feature = "mcp")]
+use crate::tool::McpTool;
 
 /// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
 /// (i.e.: system prompt) and a static set of context documents and tools.
@@ -413,6 +416,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
     }
 
     // Add an MCP tool to the agent
+    #[cfg(feature = "mcp")]
     pub fn mcp_tool<T: mcp_core::transport::Transport>(
         mut self,
         tool: mcp_core::types::Tool,
