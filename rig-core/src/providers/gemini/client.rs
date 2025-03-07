@@ -9,6 +9,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{completion::CompletionModel, embedding::EmbeddingModel};
 
+#[cfg(feature = "blob")]
+use super::transcription::TranscriptionModel;
+
 // ================================================================
 // Google Gemini Client
 // ================================================================
@@ -117,6 +120,14 @@ impl Client {
     /// [Gemini API Reference](https://ai.google.dev/api/generate-content#generationconfig)
     pub fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
+    }
+
+    /// Create a transcription model with the given name.
+    /// Gemini-specific parameters can be set using the [GenerationConfig](crate::providers::gemini::completion::gemini_api_types::GenerationConfig) struct.
+    /// [Gemini API Reference](https://ai.google.dev/api/generate-content#generationconfig)
+    #[cfg(feature = "blob")]
+    pub fn transcription_model(&self, model: &str) -> TranscriptionModel {
+        TranscriptionModel::new(self.clone(), model)
     }
 
     /// Create an agent builder with the given completion model.
