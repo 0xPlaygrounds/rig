@@ -1,5 +1,4 @@
 use serde_json::json;
-use std::{future::Future, pin::Pin};
 
 use rig::{
     completion::Prompt,
@@ -10,6 +9,7 @@ use mcp_core::{
     client::ClientBuilder,
     server::Server,
     tool_error_response, tool_text_response,
+    tools::ToolHandlerFn,
     transport::{ClientSseTransportBuilder, ServerSseTransport},
     types::{
         CallToolRequest, CallToolResponse, ClientCapabilities, Implementation, ServerCapabilities,
@@ -44,9 +44,7 @@ impl AddTool {
         }
     }
 
-    pub async fn call(
-    ) -> impl Fn(CallToolRequest) -> Pin<Box<dyn Future<Output = CallToolResponse> + Send + Sync>>
-    {
+    pub async fn call() -> ToolHandlerFn {
         move |req: CallToolRequest| {
             Box::pin(async move {
                 let args = req.arguments.unwrap_or_default();
