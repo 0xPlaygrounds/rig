@@ -46,7 +46,7 @@ tokio-test = "0.4.4"
 serde_path_to_error = "0.1.16"
 
 [features]
-all = ["derive", "pdf", "rayon", "blob"]
+all = ["derive", "pdf", "rayon"]
 derive = ["dep:rig-derive"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
