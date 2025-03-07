@@ -18,6 +18,9 @@ pub use super::completion::{
     GEMINI_1_5_FLASH, GEMINI_1_5_PRO, GEMINI_1_5_PRO_8B, GEMINI_2_0_FLASH,
 };
 
+const TRANSCRIPTION_PREAMBLE: &str =
+    "Translate the provided audio exactly. Do not add additional information.";
+
 #[derive(Clone)]
 pub struct TranscriptionModel {
     client: Client,
@@ -57,9 +60,7 @@ impl transcription::TranscriptionModel for TranscriptionModel {
         }
 
         let system_instruction = Some(Content {
-            parts: OneOrMany::one(
-                "Translate the provided audio exactly. Do not add additional information.".into(),
-            ),
+            parts: OneOrMany::one(TRANSCRIPTION_PREAMBLE.into()),
             role: Some(Role::Model),
         });
 
@@ -73,7 +74,7 @@ impl transcription::TranscriptionModel for TranscriptionModel {
         let request = GenerateContentRequest {
             contents: vec![Content {
                 parts: OneOrMany::one(Part::InlineData(Blob {
-                    mime_type: mime_type,
+                    mime_type,
                     data: BASE64_STANDARD.encode(request.data),
                 })),
                 role: Some(Role::User),
