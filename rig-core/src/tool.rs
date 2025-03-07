@@ -209,6 +209,12 @@ where
 #[error("MCP tool error: {0}")]
 pub struct McpToolError(String);
 
+impl From<McpToolError> for ToolError {
+    fn from(e: McpToolError) -> Self {
+        ToolError::ToolCallError(Box::new(e))
+    }
+}
+
 #[cfg(feature = "mcp")]
 impl<T> ToolDyn for McpTool<T>
 where
@@ -246,31 +252,18 @@ where
                 .client
                 .call_tool(&name, Some(args))
                 .await
-                .map_err(|e| {
-                    ToolError::ToolCallError(Box::new(McpToolError(format!(
-                        "Tool returned an error: {}",
-                        e
-                    ))))
-                })?;
+                .map_err(|e| McpToolError(format!("Tool returned an error: {}", e)))?;
 
             if result.is_error.unwrap_or(false) {
                 if let Some(error) = result.content.first() {
                     match error {
                         mcp_core::types::ToolResponseContent::Text { text } => {
-                            return Err(ToolError::ToolCallError(Box::new(McpToolError(
-                                text.clone(),
-                            ))));
+                            return Err(McpToolError(text.clone()).into());
                         }
-                        _ => {
-                            return Err(ToolError::ToolCallError(Box::new(McpToolError(
-                                "Unsuppported error type".to_string(),
-                            ))))
-                        }
+                        _ => return Err(McpToolError("Unsuppported error type".to_string()).into()),
                     }
                 } else {
-                    return Err(ToolError::ToolCallError(Box::new(McpToolError(
-                        "No error message returned".to_string(),
-                    ))));
+                    return Err(McpToolError("No error message returned".to_string()).into());
                 }
             }
 
