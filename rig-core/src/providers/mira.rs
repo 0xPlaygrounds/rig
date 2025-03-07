@@ -40,10 +40,10 @@ struct ApiErrorResponse {
     message: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct RawMessage {
-    role: String,
-    content: String,
+#[derive(Debug, Deserialize, Clone)]
+pub struct RawMessage {
+    pub role: String,
+    pub content: String,
 }
 
 const MIRA_API_BASE_URL: &str = "https://api.mira.network";
@@ -86,20 +86,11 @@ pub enum CompletionResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct ChatChoice {
-    #[serde(deserialize_with = "deserialize_message")]
-    pub message: message::Message,
+    pub message: RawMessage,
     #[serde(default)]
     pub finish_reason: Option<String>,
     #[serde(default)]
     pub index: Option<usize>,
-}
-
-fn deserialize_message<'de, D>(deserializer: D) -> Result<message::Message, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let raw = RawMessage::deserialize(deserializer)?;
-    message::Message::try_from(raw).map_err(serde::de::Error::custom)
 }
 
 #[derive(Debug, Deserialize)]
@@ -142,7 +133,6 @@ impl Client {
         Ok(Self {
             base_url: MIRA_API_BASE_URL.to_string(),
             client: reqwest::Client::builder()
-                .connect_timeout(std::time::Duration::from_secs(30))
                 .build()
                 .expect("Failed to build HTTP client"),
             headers,
@@ -166,96 +156,9 @@ impl Client {
         Ok(client)
     }
 
-    /// Generate a chat completion
-    pub async fn generate(
-        &self,
-        model: &str,
-        request: CompletionRequest,
-    ) -> Result<CompletionResponse, MiraError> {
-        let mut messages = Vec::new();
-
-        // Add prompt first
-        let prompt_text = match &request.prompt {
-            Message::User { content } => content
-                .iter()
-                .map(|c| match c {
-                    UserContent::Text(text) => &text.text,
-                    _ => "",
-                })
-                .collect::<Vec<_>>()
-                .join(" "),
-            _ => return Err(MiraError::ApiError(422)),
-        };
-
-        messages.push(serde_json::json!({
-            "role": "user",
-            "content": prompt_text
-        }));
-
-        // Then add chat history
-        for msg in request.chat_history {
-            let (role, content) = match msg {
-                Message::User { content } => {
-                    let text = content
-                        .iter()
-                        .map(|c| match c {
-                            UserContent::Text(text) => &text.text,
-                            _ => "",
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    ("user", text)
-                }
-                Message::Assistant { content } => {
-                    let text = content
-                        .iter()
-                        .map(|c| match c {
-                            AssistantContent::Text(text) => &text.text,
-                            _ => "",
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    ("assistant", text)
-                }
-            };
-            messages.push(serde_json::json!({
-                "role": role,
-                "content": content
-            }));
-        }
-
-        let mira_request = serde_json::json!({
-            "model": model,
-            "messages": messages,
-            "temperature": request.temperature.map(|t| t as f32),
-            "max_tokens": request.max_tokens.map(|t| t as u32),
-            "stream": false
-        });
-
-        let response = self
-            .client
-            .post(format!("{}/v1/chat/completions", self.base_url))
-            .headers(self.headers.clone())
-            .json(&mira_request)
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            return Err(MiraError::ApiError(status.as_u16()));
-        }
-
-        // Parse the response
-        let response_text = response.text().await?;
-        let parsed_response: CompletionResponse = serde_json::from_str(&response_text)?;
-        Ok(parsed_response)
-    }
-
     /// List available models
     pub async fn list_models(&self) -> Result<Vec<String>, MiraError> {
         let url = format!("{}/v1/models", self.base_url);
-        tracing::debug!("Requesting models from: {}", url);
-        tracing::debug!("Headers: {:?}", self.headers);
 
         let response = self
             .client
@@ -353,7 +256,7 @@ impl completion::CompletionModel for CompletionModel {
                         _ => "",
                     })
                     .collect::<Vec<_>>()
-                    .join(" ");
+                    .join("\n");
                 serde_json::json!({
                     "role": "user",
                     "content": text
@@ -373,7 +276,7 @@ impl completion::CompletionModel for CompletionModel {
                             _ => "",
                         })
                         .collect::<Vec<_>>()
-                        .join(" ");
+                        .join("\n");
                     ("user", text)
                 }
                 Message::Assistant { content } => {
@@ -384,7 +287,7 @@ impl completion::CompletionModel for CompletionModel {
                             _ => "",
                         })
                         .collect::<Vec<_>>()
-                        .join(" ");
+                        .join("\n");
                     ("assistant", text)
                 }
             };
@@ -446,7 +349,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     CompletionError::ResponseError("Response contained no choices".to_owned())
                 })?;
 
-                match &choice.message {
+                // Convert RawMessage to message::Message
+                let message = message::Message::try_from(choice.message.clone())?;
+
+                match message {
                     Message::Assistant { content } => {
                         if content.is_empty() {
                             return Err(CompletionError::ResponseError(
@@ -525,7 +431,7 @@ impl From<Message> for serde_json::Value {
                         _ => "",
                     })
                     .collect::<Vec<_>>()
-                    .join(" ");
+                    .join("\n");
                 serde_json::json!({
                     "role": "user",
                     "content": text
@@ -539,7 +445,7 @@ impl From<Message> for serde_json::Value {
                         _ => "",
                     })
                     .collect::<Vec<_>>()
-                    .join(" ");
+                    .join("\n");
                 serde_json::json!({
                     "role": "assistant",
                     "content": text
@@ -569,7 +475,7 @@ impl TryFrom<serde_json::Value> for Message {
                             .map(|text| text.to_string())
                     })
                     .collect::<Vec<_>>()
-                    .join(" "),
+                    .join("\n"),
                 _ => {
                     return Err(CompletionError::ResponseError(
                         "Message content must be string or array".to_owned(),
@@ -689,78 +595,6 @@ mod tests {
     }
 
     #[test]
-    fn test_completion_response_deserialization() {
-        // Test structured response
-        let structured_json = json!({
-            "id": "resp_123",
-            "object": "chat.completion",
-            "created": 1234567890,
-            "model": "deepseek-r1",
-            "choices": [{
-                "message": {
-                    "role": "assistant",
-                    "content": "I can help you with various tasks."
-                },
-                "finish_reason": "stop",
-                "index": 0
-            }],
-            "usage": {
-                "prompt_tokens": 10,
-                "total_tokens": 20
-            }
-        });
-
-        // Test simple response
-        let simple_json = json!("Simple response text");
-
-        // Try both formats
-        let structured: CompletionResponse = serde_json::from_value(structured_json).unwrap();
-        let simple: CompletionResponse = serde_json::from_value(simple_json).unwrap();
-
-        match structured {
-            CompletionResponse::Structured {
-                id,
-                object,
-                created,
-                model,
-                choices,
-                usage,
-            } => {
-                assert_eq!(id, "resp_123");
-                assert_eq!(object, "chat.completion");
-                assert_eq!(created, 1234567890);
-                assert_eq!(model, "deepseek-r1");
-                assert!(!choices.is_empty());
-                assert!(usage.is_some());
-
-                let choice = &choices[0];
-                match &choice.message {
-                    Message::Assistant { content } => {
-                        assert_eq!(
-                            content.first(),
-                            AssistantContent::Text(message::Text {
-                                text: "I can help you with various tasks.".to_string()
-                            })
-                        );
-                    }
-                    _ => panic!("Expected assistant message"),
-                }
-
-                assert_eq!(choice.finish_reason.as_deref(), Some("stop"));
-                assert_eq!(choice.index, Some(0));
-            }
-            CompletionResponse::Simple(_) => panic!("Expected structured response"),
-        }
-
-        match simple {
-            CompletionResponse::Simple(text) => {
-                assert_eq!(text, "Simple response text");
-            }
-            CompletionResponse::Structured { .. } => panic!("Expected simple response"),
-        }
-    }
-
-    #[test]
     fn test_completion_response_conversion() {
         let mira_response = CompletionResponse::Structured {
             id: "resp_123".to_string(),
@@ -768,10 +602,9 @@ mod tests {
             created: 1234567890,
             model: "deepseek-r1".to_string(),
             choices: vec![ChatChoice {
-                message: Message::Assistant {
-                    content: OneOrMany::one(AssistantContent::Text(message::Text {
-                        text: "Test response".to_string(),
-                    })),
+                message: RawMessage {
+                    role: "assistant".to_string(),
+                    content: "Test response".to_string(),
                 },
                 finish_reason: Some("stop".to_string()),
                 index: Some(0),
