@@ -51,7 +51,13 @@ pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 worker = ["dep:worker"]
-reqwest-rustls = ["reqwest/rustls-tls"]
+# Replace "default-tls" with "rustls-tls" in "reqwest/default"
+reqwest-rustls = [
+    "reqwest/rustls-tls",
+    "reqwest/charset",
+    "reqwest/http2",
+    "reqwest/macos-system-configuration",
+]
 
 [[test]]
 name = "embed_macro"
