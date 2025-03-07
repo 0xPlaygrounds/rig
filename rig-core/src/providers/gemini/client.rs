@@ -7,9 +7,7 @@ use crate::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    completion::CompletionModel, embedding::EmbeddingModel
-};
+use super::{completion::CompletionModel, embedding::EmbeddingModel};
 
 #[cfg(feature = "blob")]
 use super::transcription::TranscriptionModel;
