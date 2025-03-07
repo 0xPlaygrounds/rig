@@ -15,7 +15,7 @@ doctest = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reqwest = { version = "0.11.22", features = ["json", "stream", "multipart"] }
+reqwest = { version = "0.11.22", default-features = false, features = ["json", "stream", "multipart"] }
 serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0.108"
 tracing = "0.1.40"
@@ -44,12 +44,14 @@ serde_path_to_error = "0.1.16"
 base64 = "0.22.1"
 
 [features]
+default = ["reqwest/default"]
 all = ["derive", "pdf", "rayon"]
 derive = ["dep:rig-derive"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 worker = ["dep:worker"]
+reqwest-rustls = ["reqwest/rustls-tls"]
 
 [[test]]
 name = "embed_macro"
