@@ -196,19 +196,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "actix-ws"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "535aec173810be3ca6f25dd5b4d431ae7125d62000aa3cbae1ec739921b02cf3"
-dependencies = [
- "actix-codec",
- "actix-http",
- "actix-web",
- "futures-core",
- "tokio",
-]
-
-[[package]]
 name = "addr"
 version = "0.15.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5879,9 +5866,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.169"
+version = "0.2.170"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5aba8db14291edd000dfcc4d620c7ebfb122c613afb886ca8803fa4e128a20a"
+checksum = "875b3680cb2f8f71bdcf9a30f38d48282f5d3c95cbf9b3fa57269bb5d5c06828"
 
 [[package]]
 name = "libfuzzer-sys"
@@ -6195,22 +6182,20 @@ dependencies = [
 
 [[package]]
 name = "mcp-core"
-version = "0.1.2"
+version = "0.1.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e76d900e8e0aa86331f12151eeff29c1e89bd25164a973db53a9a95a78dddf7"
+checksum = "6fb0d37ad2a6538166163db249a5eebc1a75ec3d075d42c82e184ef754062280"
 dependencies = [
  "actix-web",
- "actix-ws",
  "anyhow",
  "async-trait",
  "futures",
- "jsonwebtoken 8.3.0",
+ "libc",
  "reqwest 0.12.12",
  "reqwest-eventsource",
  "serde",
  "serde_json",
  "tokio",
- "tokio-tungstenite 0.21.0",
  "tracing",
  "url",
  "uuid 1.13.1",
@@ -10768,20 +10753,6 @@ dependencies = [
 
 [[package]]
 name = "tokio-tungstenite"
-version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c83b561d025642014097b66e6c1bb422783339e0909e4429cde4749d1990bc38"
-dependencies = [
- "futures-util",
- "log",
- "native-tls",
- "tokio",
- "tokio-native-tls",
- "tungstenite 0.21.0",
-]
-
-[[package]]
-name = "tokio-tungstenite"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6989540ced10490aaf14e6bad2e3d33728a2813310a0c71d1574304c49631cd"
@@ -11034,26 +11005,6 @@ dependencies = [
  "log",
  "rand",
  "rustls 0.21.12",
- "sha1",
- "thiserror 1.0.69",
- "url",
- "utf-8",
-]
-
-[[package]]
-name = "tungstenite"
-version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ef1a641ea34f399a848dea702823bbecfb4c486f911735368f1f137cb8257e1"
-dependencies = [
- "byteorder",
- "bytes",
- "data-encoding",
- "http 1.2.0",
- "httparse",
- "log",
- "native-tls",
- "rand",
  "sha1",
  "thiserror 1.0.69",
  "url",

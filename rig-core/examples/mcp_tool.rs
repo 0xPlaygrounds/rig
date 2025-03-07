@@ -1,102 +1,115 @@
-use mcp_core::{
-    client::Client,
-    run_http_server,
-    server::Server,
-    tool_error_response, tool_text_response,
-    transport::{ClientSseTransport, Transport},
-    types::{
-        CallToolRequest, CallToolResponse, Implementation, ServerCapabilities, Tool,
-        ToolResponseContent,
-    },
-};
 use serde_json::json;
-use std::sync::Arc;
+use std::{future::Future, pin::Pin};
 
 use rig::{
     completion::Prompt,
     providers::{self},
 };
 
+use mcp_core::{
+    client::ClientBuilder,
+    server::Server,
+    tool_error_response, tool_text_response,
+    transport::{ClientSseTransportBuilder, ServerSseTransport},
+    types::{
+        CallToolRequest, CallToolResponse, ClientCapabilities, Implementation, ServerCapabilities,
+        Tool, ToolResponseContent,
+    },
+};
+
+pub struct AddTool;
+
+impl AddTool {
+    pub fn tool() -> Tool {
+        Tool {
+            name: "Add".to_string(),
+            description: Some("Adds two numbers together.".to_string()),
+            input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "a": {
+                            "type": "number",
+                            "description": "The first number to add"
+                        },
+                        "b": {
+                            "type": "number",
+                            "description": "The second number to add"
+                        }
+                    },
+                    "required": [
+                        "a",
+                        "b"
+                    ]
+            }),
+        }
+    }
+
+    pub async fn call(
+    ) -> impl Fn(CallToolRequest) -> Pin<Box<dyn Future<Output = CallToolResponse> + Send + Sync>>
+    {
+        move |req: CallToolRequest| {
+            Box::pin(async move {
+                let args = req.arguments.unwrap_or_default();
+
+                let a = match args["a"].as_f64() {
+                    Some(val) => val,
+                    None => {
+                        return tool_error_response!(anyhow::anyhow!(
+                            "Missing or invalid 'a' parameter"
+                        ))
+                    }
+                };
+                let b = match args["b"].as_f64() {
+                    Some(val) => val,
+                    None => {
+                        return tool_error_response!(anyhow::anyhow!(
+                            "Missing or invalid 'b' parameter"
+                        ))
+                    }
+                };
+
+                tool_text_response!((a + b).to_string())
+            })
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
 
-    tokio::spawn(async move {
-        run_http_server(
-            "127.0.0.1".to_string(),
-            3000,
-            None,
-            |transport| async move {
-                let mut server_builder =
-                    Server::builder(transport).capabilities(ServerCapabilities {
-                        tools: Some(json!({})),
-                        ..Default::default()
-                    });
+    // Create the MCP server
+    let mcp_server_protocol = Server::builder("add".to_string(), "1.0".to_string())
+        .capabilities(ServerCapabilities {
+            tools: Some(json!({
+                "listChanged": false,
+            })),
+            ..Default::default()
+        })
+        .register_tool(AddTool::tool(), AddTool::call().await)
+        .build();
+    let mcp_server_transport =
+        ServerSseTransport::new("127.0.0.1".to_string(), 3000, mcp_server_protocol);
 
-                server_builder.register_tool(
-                    Tool {
-                        name: "Add".to_string(),
-                        description: Some("Adds two numbers together.".to_string()),
-                        input_schema: json!({
-                            "type": "object",
-                            "properties": {
-                                "a": {
-                                    "type": "number",
-                                    "description": "The first number to add"
-                                },
-                                "b": {
-                                    "type": "number",
-                                    "description": "The second number to add"
-                                }
-                            },
-                            "required": [
-                                "a",
-                                "b"
-                            ]
-                        }),
-                    },
-                    move |req: CallToolRequest| {
-                        Box::pin(async move {
-                            let args = req.arguments.unwrap_or_default();
+    // Start the MCP server in the background
+    tokio::spawn(async move { Server::start(mcp_server_transport).await });
 
-                            let a = match args["a"].as_f64() {
-                                Some(val) => val,
-                                None => {
-                                    return tool_error_response!(anyhow::anyhow!(
-                                        "Missing or invalid 'a' parameter"
-                                    ))
-                                }
-                            };
-                            let b = match args["b"].as_f64() {
-                                Some(val) => val,
-                                None => {
-                                    return tool_error_response!(anyhow::anyhow!(
-                                        "Missing or invalid 'b' parameter"
-                                    ))
-                                }
-                            };
-
-                            tool_text_response!((a + b).to_string())
-                        })
-                    },
-                );
-
-                Ok(server_builder.build())
-            },
-        )
-        .await
-    });
-
-    let transport = ClientSseTransport::builder("http://127.0.0.1:3000".to_string()).build();
-    transport.open().await?;
-
-    let mcp_client = Arc::new(Client::builder(transport).use_strict().build());
+    // Create the MCP client
+    let mcp_client = ClientBuilder::new(
+        ClientSseTransportBuilder::new("http://localhost:3000".to_string()).build(),
+    )
+    .build();
+    // Start the MCP client
+    mcp_client.open().await?;
 
     let init_res = mcp_client
-        .initialize(Implementation {
-            name: "mcp-client".to_string(),
-            version: "0.1.0".to_string(),
-        })
+        .initialize(
+            Implementation {
+                name: "mcp-client".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            ClientCapabilities::default(),
+        )
         .await?;
     println!("Initialized: {:?}", init_res);
 
@@ -112,7 +125,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .tools
         .into_iter()
         .fold(agent_builder, |builder, tool| {
-            builder.mcp_tool(tool, mcp_client.clone())
+            builder.mcp_tool(tool, mcp_client.clone().into())
         });
     let agent = agent_builder.build();
 

@@ -9,7 +9,7 @@
 //! The [ToolSet] struct is a collection of tools that can be used by an [Agent](crate::agent::Agent)
 //! and optionally RAGged.
 
-use std::{collections::HashMap, pin::Pin, sync::Arc};
+use std::{collections::HashMap, pin::Pin};
 
 use futures::Future;
 use serde::{Deserialize, Serialize};
@@ -187,7 +187,7 @@ impl<T: Tool> ToolDyn for T {
 
 pub struct McpTool<T: mcp_core::transport::Transport> {
     definition: mcp_core::types::Tool,
-    client: Arc<mcp_core::client::Client<T>>,
+    client: mcp_core::client::Client<T>,
 }
 
 impl<T> McpTool<T>
@@ -196,7 +196,7 @@ where
 {
     pub fn from_mcp_server(
         definition: mcp_core::types::Tool,
-        client: Arc<mcp_core::client::Client<T>>,
+        client: mcp_core::client::Client<T>,
     ) -> Self {
         Self { definition, client }
     }

@@ -106,7 +106,7 @@
 //! let response = agent.prompt("What does \"glarb-glarb\" mean?").await
 //!     .expect("Failed to prompt the agent");
 //! ```
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use futures::{stream, StreamExt, TryStreamExt};
 
@@ -416,7 +416,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
     pub fn mcp_tool<T: mcp_core::transport::Transport>(
         mut self,
         tool: mcp_core::types::Tool,
-        client: Arc<mcp_core::client::Client<T>>,
+        client: mcp_core::client::Client<T>,
     ) -> Self {
         let toolname = tool.name.clone();
         self.tools.add_tool(McpTool::from_mcp_server(tool, client));
