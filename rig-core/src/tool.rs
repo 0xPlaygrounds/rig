@@ -209,6 +209,7 @@ where
 #[error("MCP tool error: {0}")]
 pub struct McpToolError(String);
 
+#[cfg(feature = "mcp")]
 impl From<McpToolError> for ToolError {
     fn from(e: McpToolError) -> Self {
         ToolError::ToolCallError(Box::new(e))
