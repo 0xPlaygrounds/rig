@@ -333,6 +333,7 @@ impl EmbeddingModel {
 // ================================================================
 // OpenAI Completion API
 // ================================================================
+
 /// `o3-mini` completion model
 pub const O3_MINI: &str = "o3-mini";
 /// `o3-mini-2025-01-31` completion model
@@ -349,6 +350,10 @@ pub const O1_PREVIEW_2024_09_12: &str = "o1-preview-2024-09-12";
 pub const O1_MINI: &str = "o1-mini";
 /// `o1-mini-2024-09-12` completion model
 pub const O1_MINI_2024_09_12: &str = "o1-mini-2024-09-12";
+/// `gpt-4.5-preview` completion model
+pub const GPT_4_5_PREVIEW: &str = "gpt-4.5-preview";
+/// `gpt-4.5-preview-2025-02-27` completion model
+pub const GPT_4_5_PREVIEW_2025_02_27: &str = "gpt-4.5-preview-2025-02-27";
 /// `gpt-4o` completion model
 pub const GPT_4O: &str = "gpt-4o";
 /// `gpt-4o-mini` completion model
