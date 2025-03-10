@@ -475,7 +475,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
 impl<M: StreamingCompletionModel> StreamingCompletion<M> for Agent<M> {
     async fn stream_completion(
         &self,
-        prompt: &str,
+        prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         // Reuse the existing completion implementation to build the request

@@ -71,7 +71,7 @@ pub trait StreamingCompletion<M: StreamingCompletionModel> {
     /// Generate a streaming completion from a request
     fn stream_completion(
         &self,
-        prompt: &str,
+        prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
     ) -> impl Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>;
 }
