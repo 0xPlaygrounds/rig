@@ -147,13 +147,13 @@ impl std::fmt::Display for Usage {
 // OpenRouter Completion API
 // ================================================================
 /// The `qwen/qwq-32b` model. Find more models at <https://openrouter.ai/models>.
-const QWEN_QWQ_32B: &str = "qwen/qwq-32b";
+pub const QWEN_QWQ_32B: &str = "qwen/qwq-32b";
 /// The `anthropic/claude-3.7-sonnet` model. Find more models at <https://openrouter.ai/models>.
-const CLAUDE_3_7_SONNET: &str = "anthropic/claude-3.7-sonnet";
+pub const CLAUDE_3_7_SONNET: &str = "anthropic/claude-3.7-sonnet";
 /// The `perplexity/sonar-pro` model. Find more models at <https://openrouter.ai/models>.
-const PERPLEXITY_SONAR_PRO: &str = "perplexity/sonar-pro";
+pub const PERPLEXITY_SONAR_PRO: &str = "perplexity/sonar-pro";
 /// The `google/gemini-2.0-flash-001` model. Find more models at <https://openrouter.ai/models>.
-const GEMINI_FLASH_2_0: &str = "google/gemini-2.0-flash-001";
+pub const GEMINI_FLASH_2_0: &str = "google/gemini-2.0-flash-001";
 
 /// A openrouter completion object.
 ///
