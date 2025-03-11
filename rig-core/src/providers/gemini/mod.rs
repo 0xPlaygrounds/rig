@@ -12,7 +12,6 @@
 pub mod client;
 pub mod completion;
 pub mod embedding;
-#[cfg(feature = "blob")]
 pub mod transcription;
 pub use client::Client;
 

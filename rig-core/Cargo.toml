@@ -32,8 +32,8 @@ rayon = { version = "1.10.0", optional = true }
 worker = { version = "0.5", optional = true }
 bytes = "1.9.0"
 async-stream = "0.3.6"
-mime_guess = { version = "2.0.5", optional = true }
-base64 = { version = "0.22.1", optional = true}
+mime_guess = { version = "2.0.5"}
+base64 = { version = "0.22.1"}
 
 
 
@@ -52,7 +52,6 @@ pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 worker = ["dep:worker"]
-blob = ["dep:base64", "dep:mime_guess"]
 socks = ["reqwest/socks"]
 
 [[test]]
@@ -98,8 +97,3 @@ required-features = ["derive"]
 [[example]]
 name = "together_embeddings"
 required-features = ["derive"]
-
-[[example]]
-name = "transcription"
-required-features = ["blob_data"]
-

@@ -1,5 +1,6 @@
 use std::env::args;
 
+use rig::providers::huggingface;
 use rig::{
     providers::{azure, gemini, groq, openai},
     transcription::TranscriptionModel,
@@ -16,11 +17,13 @@ async fn main() {
     }
 
     let file_path = args[1].clone();
+    println!("Transcribing {}", &file_path);
 
     whisper(&file_path).await;
     gemini(&file_path).await;
     azure(&file_path).await;
     groq(&file_path).await;
+    huggingface(&file_path).await;
 }
 
 async fn whisper(file_path: &str) {
@@ -94,4 +97,21 @@ async fn groq(file_path: &str) {
     let text = response.text;
 
     println!("Groq Whisper-Large-V3: {text}")
+}
+
+async fn huggingface(file_path: &str) {
+    let huggingface = huggingface::Client::from_env();
+
+    let whisper = huggingface.transcription_model(huggingface::WHISPER_LARGE_V3);
+
+    let response = whisper
+        .transcription_request()
+        .load_file(file_path)
+        .send()
+        .await
+        .expect("Failed to transcribe file");
+
+    let text = response.text;
+
+    println!("Huggingface Whisper-Large-V3: {text}")
 }
