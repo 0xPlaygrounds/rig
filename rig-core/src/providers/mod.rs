@@ -10,6 +10,7 @@
 //! - EternalAI
 //! - DeepSeek
 //! - Azure OpenAI
+//! - Mira
 //!
 //! Each provider has its own module, which contains a `Client` implementation that can
 //! be used to initialize completion and embedding models and execute requests to those models.
@@ -53,6 +54,7 @@ pub mod gemini;
 pub mod groq;
 pub mod huggingface;
 pub mod hyperbolic;
+pub mod mira;
 pub mod moonshot;
 pub mod ollama;
 pub mod openai;
