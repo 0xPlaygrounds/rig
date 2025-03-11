@@ -51,6 +51,7 @@ pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 worker = ["dep:worker"]
+socks = ["reqwest/socks"]
 # Replace "default-tls" with "rustls-tls" in "reqwest/default"
 reqwest-rustls = [
     "reqwest/rustls-tls",
