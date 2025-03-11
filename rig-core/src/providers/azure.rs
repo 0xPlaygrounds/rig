@@ -38,6 +38,12 @@ pub enum AzureOpenAIAuth {
     Token(String),
 }
 
+impl From<String> for AzureOpenAIAuth {
+    fn from(token: String) -> Self {
+        AzureOpenAIAuth::Token(token)
+    }
+}
+
 impl Client {
     /// Creates a new Azure OpenAI client.
     ///
@@ -46,9 +52,9 @@ impl Client {
     /// * `auth` - Azure OpenAI API key or token required for authentication
     /// * `api_version` - API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
     /// * `azure_endpoint` - Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
-    pub fn new(auth: AzureOpenAIAuth, api_version: &str, azure_endpoint: &str) -> Self {
+    pub fn new(auth: impl Into<AzureOpenAIAuth>, api_version: &str, azure_endpoint: &str) -> Self {
         let mut headers = reqwest::header::HeaderMap::new();
-        match auth {
+        match auth.into() {
             AzureOpenAIAuth::ApiKey(api_key) => {
                 headers.insert("api-key", api_key.parse().expect("API key should parse"));
             }
@@ -70,6 +76,36 @@ impl Client {
                 .build()
                 .expect("Azure OpenAI reqwest client should build"),
         }
+    }
+
+    /// Creates a new Azure OpenAI client from an API key.
+    ///
+    /// # Arguments
+    ///
+    /// * `api_key` - Azure OpenAI API key required for authentication
+    /// * `api_version` - API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
+    /// * `azure_endpoint` - Azure OpenAI endpoint URL
+    pub fn from_api_key(api_key: &str, api_version: &str, azure_endpoint: &str) -> Self {
+        Self::new(
+            AzureOpenAIAuth::ApiKey(api_key.to_string()),
+            api_version,
+            azure_endpoint,
+        )
+    }
+
+    /// Creates a new Azure OpenAI client from a token.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - Azure OpenAI token required for authentication
+    /// * `api_version` - API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
+    /// * `azure_endpoint` - Azure OpenAI endpoint URL
+    pub fn from_token(token: &str, api_version: &str, azure_endpoint: &str) -> Self {
+        Self::new(
+            AzureOpenAIAuth::Token(token.to_string()),
+            api_version,
+            azure_endpoint,
+        )
     }
 
     /// Create a new Azure OpenAI client from the `AZURE_API_KEY` or `AZURE_TOKEN`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
