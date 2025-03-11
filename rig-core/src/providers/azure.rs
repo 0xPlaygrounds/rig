@@ -4,7 +4,7 @@
 //! ```
 //! use rig::providers::azure;
 //!
-//! let client = azure::Client::new(AzureOpenAIAuth::ApiKey("YOUR_API_KEY"), "YOUR_API_VERSION", "YOUR_ENDPOINT");
+//! let client = azure::Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
 //!
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
