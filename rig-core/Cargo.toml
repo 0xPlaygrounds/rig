@@ -53,6 +53,7 @@ epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 worker = ["dep:worker"]
 blob = ["dep:base64", "dep:mime_guess"]
+socks = ["reqwest/socks"]
 
 [[test]]
 name = "embed_macro"
