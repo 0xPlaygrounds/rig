@@ -50,6 +50,7 @@ pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 worker = ["dep:worker"]
+socks = ["reqwest/socks"]
 
 [[test]]
 name = "embed_macro"
