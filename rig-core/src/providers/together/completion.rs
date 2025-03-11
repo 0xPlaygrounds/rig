@@ -139,8 +139,11 @@ impl CompletionModel {
             model: model.to_string(),
         }
     }
-    
-    pub(crate) fn create_request_body(&self, completion_request: completion::CompletionRequest) -> Result<serde_json::Value, CompletionError> {
+
+    pub(crate) fn create_completion_request(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<serde_json::Value, CompletionError> {
         let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
             Some(preamble) => vec![openai::Message::system(preamble)],
             None => vec![],
@@ -188,7 +191,7 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
-        let request = self.create_request_body(completion_request)?;
+        let request = self.create_completion_request(completion_request)?;
 
         let response = self
             .client

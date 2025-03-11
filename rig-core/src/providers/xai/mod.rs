@@ -12,6 +12,7 @@
 pub mod client;
 pub mod completion;
 pub mod embedding;
+mod streaming;
 
 pub use client::Client;
 pub use completion::GROK_BETA;

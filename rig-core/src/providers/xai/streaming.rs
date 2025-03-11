@@ -1,12 +1,9 @@
-use serde_json::json;
-
-use super::completion::CompletionModel;
+use crate::completion::{CompletionError, CompletionRequest};
+use crate::json_utils::merge;
 use crate::providers::openai::handle_sse_stream;
-use crate::{
-    completion::{CompletionError, CompletionRequest},
-    json_utils::merge,
-    streaming::{StreamingCompletionModel, StreamingResult},
-};
+use crate::providers::xai::completion::CompletionModel;
+use crate::streaming::{StreamingCompletionModel, StreamingResult};
+use serde_json::json;
 
 impl StreamingCompletionModel for CompletionModel {
     async fn stream(
@@ -15,7 +12,7 @@ impl StreamingCompletionModel for CompletionModel {
     ) -> Result<StreamingResult, CompletionError> {
         let mut request = self.create_completion_request(completion_request)?;
 
-        request = merge(request, json!({"stream_tokens": true}));
+        request = merge(request, json!({"stream": true}));
 
         let response = self
             .client

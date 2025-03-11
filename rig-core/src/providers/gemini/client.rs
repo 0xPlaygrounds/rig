@@ -60,7 +60,8 @@ impl Client {
     }
 
     pub fn post_sse(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}?alt=sse&key={}", self.base_url, path, self.api_key).replace("//", "/");
+        let url =
+            format!("{}/{}?alt=sse&key={}", self.base_url, path, self.api_key).replace("//", "/");
 
         tracing::debug!("POST {}/{}?alt=sse&key={}", self.base_url, path, "****");
         self.http_client.post(url)

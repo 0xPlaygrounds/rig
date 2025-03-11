@@ -91,8 +91,8 @@ impl Tool for Subtract {
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     // Create agent with a single context prompt and two tools
-    let calculator_agent = providers::together::Client::from_env()
-        .agent("meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo")
+    let calculator_agent = providers::openai::Client::from_env()
+        .agent(providers::openai::GPT_4)
         .preamble(
             "You are a calculator here to help the user perform arithmetic 
             operations. Use the tools provided to answer the user's question. 

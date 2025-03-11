@@ -8,6 +8,9 @@
 //!
 //! let gpt4o = client.completion_model(groq::GPT_4O);
 //! ```
+use super::openai::{handle_sse_stream, CompletionResponse, TranscriptionResponse};
+use crate::json_utils::merge;
+use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -21,9 +24,7 @@ use crate::{
 use reqwest::multipart::Part;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-
-use super::openai::{CompletionResponse, TranscriptionResponse};
+use serde_json::{json, Value};
 
 // ================================================================
 // Main Groq Client
@@ -273,16 +274,11 @@ impl CompletionModel {
             model: model.to_string(),
         }
     }
-}
 
-impl completion::CompletionModel for CompletionModel {
-    type Response = CompletionResponse;
-
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn completion(
+    fn create_completion_request(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+    ) -> Result<Value, CompletionError> {
         // Add preamble to chat history (if available)
         let mut full_history: Vec<Message> = match &completion_request.preamble {
             Some(preamble) => vec![Message {
@@ -322,16 +318,30 @@ impl completion::CompletionModel for CompletionModel {
             })
         };
 
+        let request = if let Some(params) = completion_request.additional_params {
+            json_utils::merge(request, params)
+        } else {
+            request
+        };
+
+        Ok(request)
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    type Response = CompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let request = self.create_completion_request(completion_request)?;
+
         let response = self
             .client
             .post("/chat/completions")
-            .json(
-                &if let Some(params) = completion_request.additional_params {
-                    json_utils::merge(request, params)
-                } else {
-                    request
-                },
-            )
+            .json(&request)
             .send()
             .await?;
 
@@ -432,5 +442,30 @@ impl transcription::TranscriptionModel for TranscriptionModel {
         } else {
             Err(TranscriptionError::ProviderError(response.text().await?))
         }
+    }
+}
+
+impl StreamingCompletionModel for CompletionModel {
+    async fn stream(&self, request: CompletionRequest) -> Result<StreamingResult, CompletionError> {
+        let mut request = self.create_completion_request(request)?;
+
+        request = merge(request, json!({"stream": true}));
+
+        let response = self
+            .client
+            .post("/chat/completions")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(CompletionError::ProviderError(format!(
+                "{}: {}",
+                response.status(),
+                response.text().await?
+            )));
+        }
+
+        handle_sse_stream(response)
     }
 }
