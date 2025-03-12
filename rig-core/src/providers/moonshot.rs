@@ -9,6 +9,9 @@
 //! let moonshot_model = client.completion_model(moonshot::MOONSHOT_CHAT);
 //! ```
 
+use crate::json_utils::merge;
+use crate::providers::openai::handle_sse_stream;
+use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -19,9 +22,6 @@ use crate::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use crate::json_utils::merge;
-use crate::providers::openai::handle_sse_stream;
-use crate::streaming::{StreamingCompletionModel, StreamingResult};
 
 // ================================================================
 // Main Moonshot Client
@@ -185,7 +185,7 @@ impl CompletionModel {
         } else {
             request
         };
-        
+
         Ok(request)
     }
 }
@@ -199,13 +199,11 @@ impl completion::CompletionModel for CompletionModel {
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
         let request = self.create_completion_request(completion_request)?;
-        
+
         let response = self
             .client
             .post("/chat/completions")
-            .json(
-                &request
-            )
+            .json(&request)
             .send()
             .await?;
 

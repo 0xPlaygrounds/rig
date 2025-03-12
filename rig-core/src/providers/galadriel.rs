@@ -437,13 +437,13 @@ impl CompletionModel {
                 "tool_choice": "auto",
             })
         };
-        
+
         let request = if let Some(params) = completion_request.additional_params {
             json_utils::merge(request, params)
         } else {
             request
         };
-        
+
         Ok(request)
     }
 }
@@ -466,13 +466,11 @@ impl completion::CompletionModel for CompletionModel {
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let request = self.create_completion_request(completion_request)?;
-        
+
         let response = self
             .client
             .post("/chat/completions")
-            .json(
-                &request
-            )
+            .json(&request)
             .send()
             .await?;
 

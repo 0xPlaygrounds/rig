@@ -18,11 +18,11 @@ use crate::{
 
 use crate::completion::CompletionRequest;
 use crate::json_utils::merge;
+use crate::providers::openai::handle_sse_stream;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use crate::providers::openai::handle_sse_stream;
 
 // ================================================================
 // Main Cohere Client
@@ -367,7 +367,7 @@ impl StreamingCompletionModel for CompletionModel {
                 response.text().await?
             )));
         }
-        
+
         handle_sse_stream(response)
     }
 }

@@ -10,7 +10,7 @@
 //! ```
 
 use super::openai::{handle_sse_stream, AssistantContent};
-use crate::json_utils::merge;
+use crate::json_utils::merge_inplace;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
     agent::AgentBuilder,
@@ -355,4 +355,30 @@ impl completion::CompletionModel for CompletionModel {
     }
 }
 
+impl StreamingCompletionModel for CompletionModel {
+    async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<StreamingResult, CompletionError> {
+        let mut request = self.create_completion_request(completion_request)?;
 
+        merge_inplace(&mut request, json!({"stream": true}));
+
+        let response = self
+            .client
+            .post("/chat/completions")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(CompletionError::ProviderError(format!(
+                "{}: {}",
+                response.status(),
+                response.text().await?
+            )));
+        }
+
+        handle_sse_stream(response)
+    }
+}

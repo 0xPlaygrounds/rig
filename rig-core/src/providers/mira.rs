@@ -7,6 +7,9 @@
 //! let client = mira::Client::new("YOUR_API_KEY");
 //!
 //! ```
+use crate::json_utils::merge;
+use crate::providers::openai::handle_sse_stream;
+use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -21,9 +24,6 @@ use serde_json::{json, Value};
 use std::string::FromUtf8Error;
 use thiserror::Error;
 use tracing;
-use crate::json_utils::merge;
-use crate::providers::openai::handle_sse_stream;
-use crate::streaming::{StreamingCompletionModel, StreamingResult};
 
 #[derive(Debug, Error)]
 pub enum MiraError {
@@ -315,7 +315,7 @@ impl completion::CompletionModel for CompletionModel {
                 completion_request.tools.len()
             );
         }
-        
+
         let mira_request = self.create_completion_request(completion_request)?;
 
         let response = self
@@ -347,7 +347,10 @@ impl completion::CompletionModel for CompletionModel {
 }
 
 impl StreamingCompletionModel for CompletionModel {
-    async fn stream(&self, completion_request: CompletionRequest) -> Result<StreamingResult, CompletionError> {
+    async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<StreamingResult, CompletionError> {
         let mut request = self.create_completion_request(completion_request)?;
 
         request = merge(request, json!({"stream": true}));
@@ -372,7 +375,6 @@ impl StreamingCompletionModel for CompletionModel {
         handle_sse_stream(response)
     }
 }
-
 
 impl From<ApiErrorResponse> for CompletionError {
     fn from(err: ApiErrorResponse) -> Self {

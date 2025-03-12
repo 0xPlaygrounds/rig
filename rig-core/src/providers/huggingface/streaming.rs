@@ -1,13 +1,13 @@
 use super::completion::CompletionModel;
 use crate::completion::{CompletionError, CompletionRequest};
-use crate::json_utils::merge_inplace;
-use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::json_utils;
+use crate::json_utils::merge_inplace;
+use crate::providers::openai::handle_sse_stream;
+use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::Infallible;
 use std::str::FromStr;
-use crate::providers::openai::handle_sse_stream;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "lowercase", tag = "type")]

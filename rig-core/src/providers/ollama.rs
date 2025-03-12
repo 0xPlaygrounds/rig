@@ -56,7 +56,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::Infallible;
-use std::future::Future;
 use std::{convert::TryFrom, str::FromStr};
 // ---------- Main Client ----------
 
