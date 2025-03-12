@@ -1,4 +1,4 @@
-use rig::providers::{openai, xai};
+use rig::providers::xai;
 use rig::streaming::{stream_to_stdout, StreamingPrompt};
 
 #[tokio::main]
