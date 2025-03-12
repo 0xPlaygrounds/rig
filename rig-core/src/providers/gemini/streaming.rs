@@ -7,10 +7,7 @@ use crate::{
     streaming::{self, StreamingCompletionModel, StreamingResult},
 };
 
-use super::completion::{
-    create_request_body, gemini_api_types::ContentCandidate, CompletionModel,
-};
-
+use super::completion::{create_request_body, gemini_api_types::ContentCandidate, CompletionModel};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,21 +61,21 @@ impl StreamingCompletionModel for CompletionModel {
                         break;
                     }
                 };
-                
-                
+
+
                 for line in text.lines() {
                     let Some(line) = line.strip_prefix("data: ") else { continue; };
-                    
+
                     let Ok(data) = serde_json::from_str::<StreamGenerateContentResponse>(line) else {
                         continue;
                     };
-                    
+
                     let choice = data.candidates.first().expect("Should have at least one choice");
 
                     match choice.content.parts.first() {
-                        super::completion::gemini_api_types::Part::Text(text) 
+                        super::completion::gemini_api_types::Part::Text(text)
                             => yield Ok(streaming::StreamingChoice::Message(text)),
-                        super::completion::gemini_api_types::Part::FunctionCall(function_call) 
+                        super::completion::gemini_api_types::Part::FunctionCall(function_call)
                             => yield Ok(streaming::StreamingChoice::ToolCall(function_call.name, "".to_string(), function_call.args)),
                         _ => panic!("Unsupported response type with streaming.")
                     };
