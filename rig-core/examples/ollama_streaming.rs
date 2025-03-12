@@ -1,4 +1,4 @@
-use rig::providers::{ollama};
+use rig::providers::ollama;
 use rig::streaming::{stream_to_stdout, StreamingPrompt};
 
 #[tokio::main]
