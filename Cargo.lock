@@ -7943,6 +7943,7 @@ dependencies = [
  "futures",
  "glob",
  "lopdf",
+ "mime_guess",
  "ordered-float",
  "quick-xml 0.37.2",
  "rayon",

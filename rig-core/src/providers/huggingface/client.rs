@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
-use crate::agent::AgentBuilder;
-
 use super::completion::CompletionModel;
+use crate::agent::AgentBuilder;
+use crate::providers::huggingface::transcription::TranscriptionModel;
 
 // ================================================================
 // Main Huggingface Client
@@ -30,6 +30,16 @@ impl SubProvider {
         match self {
             SubProvider::HFInference => format!("/{}/v1/chat/completions", model),
             _ => "/v1/chat/completions".to_string(),
+        }
+    }
+
+    /// Get the transcription endpoint for the SubProvider
+    /// Required because Huggingface Inference requires the model
+    /// in the url and in the request body.
+    pub fn transcription_endpoint(&self, model: &str) -> String {
+        match self {
+            SubProvider::HFInference => format!("hf-inference/models/{}", model),
+            _ => panic!("transcription endpoint is not supported yet for {}", self),
         }
     }
 
@@ -170,6 +180,21 @@ impl Client {
     /// ```
     pub fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
+    }
+
+    /// Create a new transcription model with the given name
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::huggingface::{Client, self}
+    ///
+    /// // Initialize the Huggingface client
+    /// let client = Client::new("your-huggingface-api-key");
+    ///
+    /// let completion_model = client.transcription_model(huggingface::WHISPER_LARGE_V3);
+    /// ```
+    pub fn transcription_model(&self, model: &str) -> TranscriptionModel {
+        TranscriptionModel::new(self.clone(), model)
     }
 
     /// Create an agent builder with the given completion model.
