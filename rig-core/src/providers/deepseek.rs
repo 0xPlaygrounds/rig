@@ -435,7 +435,7 @@ impl CompletionModel for DeepSeekCompletionModel {
 
         if response.status().is_success() {
             let t = response.text().await?;
-            tracing::debug!(target: "rig", "OpenAI completion error: {}", t);
+            tracing::debug!(target: "rig", "DeepSeek completion: {}", t);
 
             match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
                 ApiResponse::Ok(response) => response.try_into(),
