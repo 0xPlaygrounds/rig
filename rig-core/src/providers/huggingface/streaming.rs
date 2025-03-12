@@ -2,13 +2,12 @@ use super::completion::CompletionModel;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils::merge_inplace;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
-use crate::{json_utils, streaming};
-use async_stream::stream;
-use futures::StreamExt;
+use crate::json_utils;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::Infallible;
 use std::str::FromStr;
+use crate::providers::openai::handle_sse_stream;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "lowercase", tag = "type")]
@@ -82,47 +81,6 @@ impl StreamingCompletionModel for CompletionModel {
             )));
         }
 
-        Ok(Box::pin(stream! {
-            let mut stream = response.bytes_stream();
-
-            while let Some(chunk_result) = stream.next().await {
-                let chunk = match chunk_result {
-                    Ok(c) => c,
-                    Err(e) => {
-                        yield Err(CompletionError::from(e));
-                        break;
-                    }
-                };
-
-                let text = match String::from_utf8(chunk.to_vec()) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        yield Err(CompletionError::ResponseError(e.to_string()));
-                        break;
-                    }
-                };
-
-
-                for line in text.lines() {
-                    let Some(line) = line.strip_prefix("data: ") else { continue; };
-
-                    if line == "[DONE]" {
-                        break;
-                    }
-
-                    let Ok(data) = serde_json::from_str::<CompletionChunk>(line) else {
-                        continue;
-                    };
-
-                    let choice = data.choices.first().expect("Should have at least one choice");
-
-                    match &choice.delta {
-                        StreamDelta::Assistant { content, .. } => match &content[0] {
-                            AssistantContent::Text { text } => yield Ok(streaming::StreamingChoice::Message(text.clone())),
-                        }
-                    }
-                }
-            }
-        }))
+        handle_sse_stream(response)
     }
 }

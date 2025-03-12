@@ -17,9 +17,13 @@ use crate::{
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::string::FromUtf8Error;
 use thiserror::Error;
 use tracing;
+use crate::json_utils::merge;
+use crate::providers::openai::handle_sse_stream;
+use crate::streaming::{StreamingCompletionModel, StreamingResult};
 
 #[derive(Debug, Error)]
 pub enum MiraError {
@@ -219,23 +223,11 @@ impl CompletionModel {
             model: model.to_string(),
         }
     }
-}
 
-impl completion::CompletionModel for CompletionModel {
-    type Response = CompletionResponse;
-
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn completion(
+    fn create_completion_request(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        if !completion_request.tools.is_empty() {
-            tracing::warn!(target: "rig",
-                "Tool calls are not supported by the Mira provider. {} tools will be ignored.",
-                completion_request.tools.len()
-            );
-        }
-
+    ) -> Result<Value, CompletionError> {
         let mut messages = Vec::new();
 
         // Add preamble as user message if available
@@ -297,13 +289,34 @@ impl completion::CompletionModel for CompletionModel {
             }));
         }
 
-        let mira_request = serde_json::json!({
+        let request = serde_json::json!({
             "model": self.model,
             "messages": messages,
             "temperature": completion_request.temperature.map(|t| t as f32).unwrap_or(0.7),
             "max_tokens": completion_request.max_tokens.map(|t| t as u32).unwrap_or(100),
             "stream": false
         });
+
+        Ok(request)
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    type Response = CompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        if !completion_request.tools.is_empty() {
+            tracing::warn!(target: "rig",
+                "Tool calls are not supported by the Mira provider. {} tools will be ignored.",
+                completion_request.tools.len()
+            );
+        }
+        
+        let mira_request = self.create_completion_request(completion_request)?;
 
         let response = self
             .client
@@ -332,6 +345,34 @@ impl completion::CompletionModel for CompletionModel {
         response.try_into()
     }
 }
+
+impl StreamingCompletionModel for CompletionModel {
+    async fn stream(&self, completion_request: CompletionRequest) -> Result<StreamingResult, CompletionError> {
+        let mut request = self.create_completion_request(completion_request)?;
+
+        request = merge(request, json!({"stream": true}));
+
+        let response = self
+            .client
+            .client
+            .post(format!("{}/v1/chat/completions", self.client.base_url))
+            .headers(self.client.headers.clone())
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(CompletionError::ProviderError(format!(
+                "{}: {}",
+                response.status(),
+                response.text().await?
+            )));
+        }
+
+        handle_sse_stream(response)
+    }
+}
+
 
 impl From<ApiErrorResponse> for CompletionError {
     fn from(err: ApiErrorResponse) -> Self {
