@@ -374,9 +374,8 @@ mod tests {
         assert_eq!(converted_assistant_message.role, Role::Assistant);
         assert_eq!(converted_assistant_message.content, "Assistant message");
 
-        let back_to_user_message: message::Message = converted_user_message.try_into().unwrap();
-        let back_to_assistant_message: message::Message =
-            converted_assistant_message.try_into().unwrap();
+        let back_to_user_message: message::Message = converted_user_message.into();
+        let back_to_assistant_message: message::Message = converted_assistant_message.into();
 
         assert_eq!(user_message, back_to_user_message);
         assert_eq!(assistant_message, back_to_assistant_message);
