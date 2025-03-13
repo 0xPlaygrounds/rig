@@ -1120,6 +1120,9 @@ impl transcription::TranscriptionModel for TranscriptionModel {
     }
 }
 
+// ================================================================
+// OpenAI Completion Streaming API
+// ================================================================
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingFunction {
     #[serde(default)]

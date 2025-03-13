@@ -362,6 +362,31 @@ impl completion::CompletionModel for CompletionModel {
     }
 }
 
+impl StreamingCompletionModel for CompletionModel {
+    async fn stream(&self, request: CompletionRequest) -> Result<StreamingResult, CompletionError> {
+        let mut request = self.create_completion_request(request)?;
+
+        request = merge(request, json!({"stream": true}));
+
+        let response = self
+            .client
+            .post("/chat/completions")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(CompletionError::ProviderError(format!(
+                "{}: {}",
+                response.status(),
+                response.text().await?
+            )));
+        }
+
+        handle_sse_stream(response)
+    }
+}
+
 // ================================================================
 // Groq Transcription API
 // ================================================================
@@ -442,30 +467,5 @@ impl transcription::TranscriptionModel for TranscriptionModel {
         } else {
             Err(TranscriptionError::ProviderError(response.text().await?))
         }
-    }
-}
-
-impl StreamingCompletionModel for CompletionModel {
-    async fn stream(&self, request: CompletionRequest) -> Result<StreamingResult, CompletionError> {
-        let mut request = self.create_completion_request(request)?;
-
-        request = merge(request, json!({"stream": true}));
-
-        let response = self
-            .client
-            .post("/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            return Err(CompletionError::ProviderError(format!(
-                "{}: {}",
-                response.status(),
-                response.text().await?
-            )));
-        }
-
-        handle_sse_stream(response)
     }
 }
