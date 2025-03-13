@@ -15,11 +15,15 @@ use crate::{
     extractor::ExtractorBuilder,
     json_utils,
     providers::openai,
+    transcription::{self, TranscriptionError},
     Embed,
 };
+use reqwest::multipart::Part;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+use super::openai::TranscriptionResponse;
 
 // ================================================================
 // Main Azure OpenAI Client
@@ -32,36 +36,96 @@ pub struct Client {
     http_client: reqwest::Client,
 }
 
+#[derive(Clone)]
+pub enum AzureOpenAIAuth {
+    ApiKey(String),
+    Token(String),
+}
+
+impl From<String> for AzureOpenAIAuth {
+    fn from(token: String) -> Self {
+        AzureOpenAIAuth::Token(token)
+    }
+}
+
 impl Client {
     /// Creates a new Azure OpenAI client.
     ///
     /// # Arguments
     ///
-    /// * `api_key` - Azure OpenAI API key required for authentication
+    /// * `auth` - Azure OpenAI API key or token required for authentication
     /// * `api_version` - API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
     /// * `azure_endpoint` - Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
-    pub fn new(api_key: &str, api_version: &str, azure_endpoint: &str) -> Self {
+    pub fn new(auth: impl Into<AzureOpenAIAuth>, api_version: &str, azure_endpoint: &str) -> Self {
+        let mut headers = reqwest::header::HeaderMap::new();
+        match auth.into() {
+            AzureOpenAIAuth::ApiKey(api_key) => {
+                headers.insert("api-key", api_key.parse().expect("API key should parse"));
+            }
+            AzureOpenAIAuth::Token(token) => {
+                headers.insert(
+                    "Authorization",
+                    format!("Bearer {}", token)
+                        .parse()
+                        .expect("Token should parse"),
+                );
+            }
+        }
+
         Self {
             api_version: api_version.to_string(),
             azure_endpoint: azure_endpoint.to_string(),
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert("api-key", api_key.parse().expect("API key should parse"));
-                    headers
-                })
+                .default_headers(headers)
                 .build()
                 .expect("Azure OpenAI reqwest client should build"),
         }
     }
 
-    /// Create a new Azure OpenAI client from the `AZURE_API_KEY`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
-    /// Panics if these environment variables are not set.
+    /// Creates a new Azure OpenAI client from an API key.
+    ///
+    /// # Arguments
+    ///
+    /// * `api_key` - Azure OpenAI API key required for authentication
+    /// * `api_version` - API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
+    /// * `azure_endpoint` - Azure OpenAI endpoint URL
+    pub fn from_api_key(api_key: &str, api_version: &str, azure_endpoint: &str) -> Self {
+        Self::new(
+            AzureOpenAIAuth::ApiKey(api_key.to_string()),
+            api_version,
+            azure_endpoint,
+        )
+    }
+
+    /// Creates a new Azure OpenAI client from a token.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - Azure OpenAI token required for authentication
+    /// * `api_version` - API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
+    /// * `azure_endpoint` - Azure OpenAI endpoint URL
+    pub fn from_token(token: &str, api_version: &str, azure_endpoint: &str) -> Self {
+        Self::new(
+            AzureOpenAIAuth::Token(token.to_string()),
+            api_version,
+            azure_endpoint,
+        )
+    }
+
+    /// Create a new Azure OpenAI client from the `AZURE_API_KEY` or `AZURE_TOKEN`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
     pub fn from_env() -> Self {
-        let api_key = std::env::var("AZURE_API_KEY").expect("AZURE_API_KEY not set");
+        let auth = if let Ok(api_key) = std::env::var("AZURE_API_KEY") {
+            AzureOpenAIAuth::ApiKey(api_key)
+        } else if let Ok(token) = std::env::var("AZURE_TOKEN") {
+            AzureOpenAIAuth::Token(token)
+        } else {
+            panic!("Neither AZURE_API_KEY nor AZURE_TOKEN is set");
+        };
+
         let api_version = std::env::var("AZURE_API_VERSION").expect("AZURE_API_VERSION not set");
         let azure_endpoint = std::env::var("AZURE_ENDPOINT").expect("AZURE_ENDPOINT not set");
-        Self::new(&api_key, &api_version, &azure_endpoint)
+
+        Self::new(auth, &api_version, &azure_endpoint)
     }
 
     fn post_embedding(&self, deployment_id: &str) -> reqwest::RequestBuilder {
@@ -76,6 +140,15 @@ impl Client {
     fn post_chat_completion(&self, deployment_id: &str) -> reqwest::RequestBuilder {
         let url = format!(
             "{}/openai/deployments/{}/chat/completions?api-version={}",
+            self.azure_endpoint, deployment_id, self.api_version
+        )
+        .replace("//", "/");
+        self.http_client.post(url)
+    }
+
+    fn post_transcription(&self, deployment_id: &str) -> reqwest::RequestBuilder {
+        let url = format!(
+            "{}/openai/deployments/{}/audio/translations?api-version={}",
             self.azure_endpoint, deployment_id, self.api_version
         )
         .replace("//", "/");
@@ -152,6 +225,21 @@ impl Client {
     /// ```
     pub fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
+    }
+
+    /// Create a transcription model with the given name.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::azure::{Client, self};
+    ///
+    /// // Initialize the Azure OpenAI client
+    /// let azure = Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+    ///
+    /// let whisper = azure.transcription_model("model-unknown-to-rig");
+    /// ```
+    pub fn transcription_model(&self, model: &str) -> TranscriptionModel {
+        TranscriptionModel::new(self.clone(), model)
     }
 
     /// Create an agent builder with the given completion model.
@@ -443,6 +531,84 @@ impl completion::CompletionModel for CompletionModel {
             }
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
+        }
+    }
+}
+
+// ================================================================
+// Azure OpenAI Transcription API
+// ================================================================
+
+#[derive(Clone)]
+pub struct TranscriptionModel {
+    client: Client,
+    /// Name of the model (e.g.: gpt-3.5-turbo-1106)
+    pub model: String,
+}
+
+impl TranscriptionModel {
+    pub fn new(client: Client, model: &str) -> Self {
+        Self {
+            client,
+            model: model.to_string(),
+        }
+    }
+}
+
+impl transcription::TranscriptionModel for TranscriptionModel {
+    type Response = TranscriptionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn transcription(
+        &self,
+        request: transcription::TranscriptionRequest,
+    ) -> Result<
+        transcription::TranscriptionResponse<Self::Response>,
+        transcription::TranscriptionError,
+    > {
+        let data = request.data;
+
+        let mut body = reqwest::multipart::Form::new().part(
+            "file",
+            Part::bytes(data).file_name(request.filename.clone()),
+        );
+
+        if let Some(prompt) = request.prompt {
+            body = body.text("prompt", prompt.clone());
+        }
+
+        if let Some(ref temperature) = request.temperature {
+            body = body.text("temperature", temperature.to_string());
+        }
+
+        if let Some(ref additional_params) = request.additional_params {
+            for (key, value) in additional_params
+                .as_object()
+                .expect("Additional Parameters to OpenAI Transcription should be a map")
+            {
+                body = body.text(key.to_owned(), value.to_string());
+            }
+        }
+
+        let response = self
+            .client
+            .post_transcription(&self.model)
+            .multipart(body)
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            match response
+                .json::<ApiResponse<TranscriptionResponse>>()
+                .await?
+            {
+                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Err(api_error_response) => Err(TranscriptionError::ProviderError(
+                    api_error_response.message,
+                )),
+            }
+        } else {
+            Err(TranscriptionError::ProviderError(response.text().await?))
         }
     }
 }

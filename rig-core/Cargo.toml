@@ -15,7 +15,7 @@ doctest = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reqwest = { version = "0.11.22", features = ["json", "stream", "multipart"] }
+reqwest = { version = "0.12.12", default-features = false, features = ["json", "stream", "multipart"] }
 serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0.108"
 tracing = "0.1.40"
@@ -33,6 +33,9 @@ worker = { version = "0.5", optional = true }
 mcp-core = { version = "0.1.33", optional = true }
 bytes = "1.9.0"
 async-stream = "0.3.6"
+mime_guess = { version = "2.0.5"}
+base64 = { version = "0.22.1"}
+
 
 
 [dev-dependencies]
@@ -46,6 +49,7 @@ base64 = "0.22.1"
 mcp-core = { version = "0.1.33", features = ["sse_server"] }
 
 [features]
+default = ["reqwest/default"]
 all = ["derive", "pdf", "rayon"]
 derive = ["dep:rig-derive"]
 pdf = ["dep:lopdf"]
@@ -53,7 +57,14 @@ epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 worker = ["dep:worker"]
 mcp = ["dep:mcp-core"]
-
+socks = ["reqwest/socks"]
+# Replace "default-tls" with "rustls-tls" in "reqwest/default"
+reqwest-rustls = [
+    "reqwest/rustls-tls",
+    "reqwest/charset",
+    "reqwest/http2",
+    "reqwest/macos-system-configuration",
+]
 
 [[test]]
 name = "embed_macro"
