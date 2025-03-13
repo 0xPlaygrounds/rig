@@ -58,6 +58,7 @@ pub mod mira;
 pub mod moonshot;
 pub mod ollama;
 pub mod openai;
+pub mod openrouter;
 pub mod perplexity;
 pub mod together;
 pub mod xai;
