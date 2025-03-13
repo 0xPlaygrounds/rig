@@ -9,7 +9,10 @@
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
 
-use super::openai::{handle_sse_stream, TranscriptionResponse};
+use super::openai::{
+    handle_sse_stream, ImageGenerationResponse, TranscriptionResponse,
+};
+use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
@@ -17,7 +20,7 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     extractor::ExtractorBuilder,
-    json_utils,
+    image_generation, json_utils,
     providers::openai,
     transcription::{self, TranscriptionError},
     Embed,
@@ -26,7 +29,6 @@ use reqwest::multipart::Part;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
 // ================================================================
 // Main Azure OpenAI Client
 // ================================================================
@@ -154,6 +156,14 @@ impl Client {
             self.azure_endpoint, deployment_id, self.api_version
         )
         .replace("//", "/");
+        self.http_client.post(url)
+    }
+    
+    fn post_image_generation(&self, deployment_id: &str) -> reqwest::RequestBuilder {
+        let url = format!(
+            "{}/openai/deployments/{}/images/generations?api-version={}",
+            self.azure_endpoint, deployment_id, self.api_version
+        ).replace("//", "/");
         self.http_client.post(url)
     }
 
@@ -646,6 +656,55 @@ impl StreamingCompletionModel for CompletionModel {
         }
 
         handle_sse_stream(response)
+    }
+}
+
+#[derive(Clone)]
+pub struct ImageGenerationModel {
+    client: Client,
+    pub model: String,
+}
+
+// ================================================================
+// Azure OpenAI Image Generation API
+// ================================================================
+
+impl image_generation::ImageGenerationModel for ImageGenerationModel {
+    type Response = ImageGenerationResponse;
+
+    async fn image_generation(
+        &self,
+        generation_request: ImageGenerationRequest,
+    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
+    {
+        let request = json!({
+            "model": self.model,
+            "prompt": generation_request.prompt,
+            "size": format!("{}x{}", generation_request.size.0, generation_request.size.1),
+            "response_format": "b64_json"
+        });
+
+        let response = self
+            .client
+            .post_image_generation(&self.model)
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(ImageGenerationError::ProviderError(format!(
+                "{}: {}",
+                response.status(),
+                response.text().await?
+            )));
+        }
+
+        let t = response.text().await?;
+
+        match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&t)? {
+            ApiResponse::Ok(response) => response.try_into(),
+            ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
+        }
     }
 }
 

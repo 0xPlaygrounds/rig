@@ -94,6 +94,7 @@ pub mod streaming;
 pub mod tool;
 pub mod transcription;
 pub mod vector_store;
+pub mod image_generation;
 
 // Re-export commonly used types and traits
 pub use completion::message;

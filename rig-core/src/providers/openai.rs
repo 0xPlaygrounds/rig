@@ -8,6 +8,7 @@
 //!
 //! let gpt4o = client.completion_model(openai::GPT_4O);
 //! ```
+use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge;
 use crate::streaming::StreamingResult;
 use crate::{
@@ -15,7 +16,7 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     extractor::ExtractorBuilder,
-    json_utils,
+    image_generation, json_utils,
     message::{self, AudioMediaType, ImageDetail},
     one_or_many::string_or_one_or_many,
     streaming,
@@ -24,6 +25,8 @@ use crate::{
     Embed, OneOrMany,
 };
 use async_stream::stream;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use futures::StreamExt;
 use reqwest::multipart::Part;
 use reqwest::Response;
@@ -180,7 +183,7 @@ impl Client {
         ExtractorBuilder::new(self.completion_model(model))
     }
 
-    /// Create a completion model with the given name.
+    /// Create a transcription model with the given name.
     ///
     /// # Example
     /// ```
@@ -193,6 +196,21 @@ impl Client {
     /// ```
     pub fn transcription_model(&self, model: &str) -> TranscriptionModel {
         TranscriptionModel::new(self.clone(), model)
+    }
+
+    /// Create an image generation model with the given name.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::openai::{Client, self};
+    ///
+    /// // Initialize the OpenAI client
+    /// let openai = Client::new("your-open-ai-api-key");
+    ///
+    /// let gpt4 = openai.image_generation_model(openai::DALL_E_3);
+    /// ```
+    pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
+        ImageGenerationModel::new(self.clone(), model)
     }
 }
 
@@ -1116,6 +1134,97 @@ impl transcription::TranscriptionModel for TranscriptionModel {
             }
         } else {
             Err(TranscriptionError::ProviderError(response.text().await?))
+        }
+    }
+}
+
+// ================================================================
+// OpenAI Image Generation API
+// ================================================================
+pub const DALL_E_2: &str = "dall-e-2";
+pub const DALL_E_3: &str = "dall-e-3";
+
+#[derive(Debug, Deserialize)]
+pub struct ImageGenerationData {
+    pub b64_json: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ImageGenerationResponse {
+    pub created: i32,
+    pub data: Vec<ImageGenerationData>,
+}
+
+impl TryFrom<ImageGenerationResponse>
+    for image_generation::ImageGenerationResponse<ImageGenerationResponse>
+{
+    type Error = ImageGenerationError;
+
+    fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
+        let b64_json = value.data[0].b64_json.clone();
+
+        let bytes = BASE64_STANDARD
+            .decode(&b64_json)
+            .expect("Failed to decode b64");
+
+        Ok(image_generation::ImageGenerationResponse {
+            image: bytes,
+            response: value,
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct ImageGenerationModel {
+    client: Client,
+    /// Name of the model (e.g.: dall-e-2)
+    pub model: String,
+}
+
+impl ImageGenerationModel {
+    fn new(client: Client, model: &str) -> Self {
+        Self {
+            client,
+            model: model.to_string(),
+        }
+    }
+}
+
+impl image_generation::ImageGenerationModel for ImageGenerationModel {
+    type Response = ImageGenerationResponse;
+
+    async fn image_generation(
+        &self,
+        generation_request: ImageGenerationRequest,
+    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
+    {
+        let request = json!({
+            "model": self.model,
+            "prompt": generation_request.prompt,
+            "size": format!("{}x{}", generation_request.size.0, generation_request.size.1),
+            "response_format": "b64_json"
+        });
+
+        let response = self
+            .client
+            .post("/images/generations")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(ImageGenerationError::ProviderError(format!(
+                "{}: {}",
+                response.status(),
+                response.text().await?
+            )));
+        }
+
+        let t = response.text().await?;
+
+        match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&t)? {
+            ApiResponse::Ok(response) => response.try_into(),
+            ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
         }
     }
 }
