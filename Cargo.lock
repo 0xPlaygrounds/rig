@@ -2443,6 +2443,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
 
 [[package]]
+name = "convert_case"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec182b0ca2f35d8fc196cf3404988fd8b8c739a4d270ff118a398feb0cbec1ca"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "cookie"
 version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3101,7 +3110,7 @@ version = "0.99.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3da29a38df43d6f156149c9b43ded5e018ddff2a855cf2cfd62e8cd7d079c69f"
 dependencies = [
- "convert_case",
+ "convert_case 0.4.0",
  "proc-macro2",
  "quote",
  "rustc_version",
@@ -6356,9 +6365,9 @@ dependencies = [
 
 [[package]]
 name = "mcp-core"
-version = "0.1.34"
+version = "0.1.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6efa33bc1c0de366da2afd20a5643364ff74ee36abafe5d8527a61b0fc70987c"
+checksum = "18a8e4375fe44579ffd9c7a8d682059ee33f1bf2bf36cad94cbe1ebff2e5b111"
 dependencies = [
  "actix-web",
  "anyhow",
@@ -6373,6 +6382,23 @@ dependencies = [
  "tracing",
  "url",
  "uuid 1.15.1",
+]
+
+[[package]]
+name = "mcp-core-macros"
+version = "0.1.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe81fc0467c71468ab49044e0ffadf7596931cc62d61e63bfe7865fb8725a5d7"
+dependencies = [
+ "async-trait",
+ "convert_case 0.6.0",
+ "mcp-core",
+ "proc-macro2",
+ "quote",
+ "schemars",
+ "serde",
+ "serde_json",
+ "syn 2.0.100",
 ]
 
 [[package]]
@@ -8504,6 +8530,7 @@ dependencies = [
  "glob",
  "lopdf",
  "mcp-core",
+ "mcp-core-macros",
  "mime_guess",
  "ordered-float",
  "quick-xml 0.37.2",
