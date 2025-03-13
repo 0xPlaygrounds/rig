@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.9.1...rig-core-v0.10.0) - 2025-03-13
+
+### Added
+
+- OpenRouter support ([#344](https://github.com/0xPlaygrounds/rig/pull/344))
+- add reqwest/rustls-tls support ([#339](https://github.com/0xPlaygrounds/rig/pull/339))
+- add transcription to all providers that support it ([#336](https://github.com/0xPlaygrounds/rig/pull/336))
+- Azure OpenAI Token Authentication ([#329](https://github.com/0xPlaygrounds/rig/pull/329))
+- SSE/JSONL decoders ported from Anthropic TS SDK ([#332](https://github.com/0xPlaygrounds/rig/pull/332))
+- mira integration ([#282](https://github.com/0xPlaygrounds/rig/pull/282))
+- Huggingface provider integration ([#321](https://github.com/0xPlaygrounds/rig/pull/321))
+
+### Fixed
+
+- reqwest can not use SOCKS proxy ([#311](https://github.com/0xPlaygrounds/rig/pull/311))
+- fix wrong debug message ([#342](https://github.com/0xPlaygrounds/rig/pull/342))
+
+### Other
+
+- Update openai.rs ([#340](https://github.com/0xPlaygrounds/rig/pull/340))
+- support svg ([#333](https://github.com/0xPlaygrounds/rig/pull/333))
+
 ## [0.9.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.9.0...rig-core-v0.9.1) - 2025-03-03
 
 ### Added
