@@ -44,20 +44,14 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
-            Some(preamble) => {
-                if preamble.is_empty() {
-                    vec![]
-                } else {
-                    vec![Message::system(preamble)]
-                }
-            }
-            None => vec![],
-        };
+        // Convert documents into user message
+        let docs: Option<Vec<Message>> = completion_request
+            .normalized_documents()
+            .map(|docs| docs.try_into())
+            .transpose()?;
 
         // Convert prompt to user message
-        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
+        let prompt: Vec<Message> = completion_request.prompt.try_into()?;
 
         // Convert existing chat history
         let chat_history: Vec<Message> = completion_request
@@ -69,7 +63,18 @@ impl completion::CompletionModel for CompletionModel {
             .flatten()
             .collect();
 
-        // Combine all messages into a single history
+        // Init full history with preamble (or empty if non-existant)
+        let mut full_history: Vec<Message> = match &completion_request.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
+        };
+
+        // Docs appear right after preamble, if they exist
+        if let Some(docs) = docs {
+            full_history.extend(docs)
+        }
+
+        // Chat history and prompt appear in the order they were provided
         full_history.extend(chat_history);
         full_history.extend(prompt);
 

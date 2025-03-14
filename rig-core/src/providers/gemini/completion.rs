@@ -56,9 +56,12 @@ impl completion::CompletionModel for CompletionModel {
         mut completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
         let mut full_history = Vec::new();
+        if let Some(docs) = completion_request.normalized_documents() {
+            full_history.push(docs);
+        }
         full_history.append(&mut completion_request.chat_history);
 
-        full_history.push(completion_request.prompt_with_context());
+        full_history.push(completion_request.prompt);
 
         // Handle Gemini specific parameters
         let additional_params = completion_request
@@ -84,10 +87,7 @@ impl completion::CompletionModel for CompletionModel {
         let request = GenerateContentRequest {
             contents: full_history
                 .into_iter()
-                .map(|msg| {
-                    msg.try_into()
-                        .map_err(|e| CompletionError::RequestError(Box::new(e)))
-                })
+                .map(Content::try_from)
                 .collect::<Result<Vec<_>, _>>()?,
             generation_config: Some(generation_config),
             safety_settings: None,

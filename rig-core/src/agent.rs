@@ -115,13 +115,14 @@ use crate::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
         Message, Prompt, PromptError,
     },
-    message::AssistantContent,
+    message::{AssistantContent, UserContent},
     streaming::{
         StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingPrompt,
         StreamingResult,
     },
     tool::{Tool, ToolSet},
     vector_store::{VectorStoreError, VectorStoreIndexDyn},
+    OneOrMany,
 };
 
 /// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
@@ -303,6 +304,66 @@ impl<M: CompletionModel> Chat for Agent<M> {
         chat_history: Vec<Message>,
     ) -> Result<String, PromptError> {
         let resp = self.completion(prompt, chat_history).await?.send().await?;
+
+        let (tool_calls, texts): (Vec<_>, Vec<_>) = resp
+            .choice
+            .iter()
+            .partition(|choice| matches!(choice, AssistantContent::ToolCall(_)));
+
+        if tool_calls.is_empty() {
+            let merged_texts = texts
+                .into_iter()
+                .filter_map(|content| {
+                    if let AssistantContent::Text(text) = content {
+                        Some(text.text)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            return Ok(merged_texts);
+        }
+
+        let mut chat_history = chat_history.clone();
+        chat_history.push(Message::Assistant {
+            content: resp.choice.clone(),
+        });
+
+        let tool_content = stream::iter(tool_calls)
+            .then(|choice| async move {
+                if let AssistantContent::ToolCall(tool_call) = choice {
+                    let output = self
+                        .tools
+                        .call(
+                            &tool_call.function.name,
+                            tool_call.function.arguments.to_string(),
+                        )
+                        .await?;
+                    Ok(UserContent::tool_result(
+                        tool_call.id,
+                        OneOrMany::one(output.into()),
+                    ))
+                } else {
+                    unreachable!()
+                }
+            })
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let resp = self
+            .completion(
+                Message::User {
+                    content: OneOrMany::many(tool_content).expect("There is atleast one tool call"),
+                },
+                chat_history,
+            )
+            .await?
+            .send()
+            .await?;
 
         // TODO: consider returning a `Message` instead of `String` for parallel responses / tool calls
         match resp.choice.first() {

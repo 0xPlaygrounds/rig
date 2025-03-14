@@ -143,28 +143,28 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
-            Some(preamble) => vec![openai::Message::system(preamble)],
-            None => vec![],
-        };
+        // Build up the order of messages (context, chat_history, prompt)
+        let mut partial_history = vec![];
+        if let Some(docs) = completion_request.normalized_documents() {
+            partial_history.push(docs);
+        }
+        partial_history.extend(completion_request.chat_history);
 
-        // Convert prompt to user message
-        let prompt: Vec<openai::Message> = completion_request.prompt_with_context().try_into()?;
+        // Initialize full history with preamble (or empty if non-existent)
+        let mut full_history: Vec<openai::Message> = completion_request
+            .preamble
+            .map_or_else(Vec::new, |preamble| vec![openai::Message::system(&preamble)]);
 
-        // Convert existing chat history
-        let chat_history: Vec<openai::Message> = completion_request
-            .chat_history
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        // Combine all messages into a single history
-        full_history.extend(chat_history);
-        full_history.extend(prompt);
+        // Convert and extend the rest of the history
+        full_history.extend(
+            partial_history
+                .into_iter()
+                .map(|msg| completion::Message::try_into(msg))
+                .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>(),
+        );
 
         let request = if completion_request.tools.is_empty() {
             json!({

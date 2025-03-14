@@ -265,39 +265,36 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        // Add context documents to current prompt
-        let prompt_with_context = completion_request.prompt_with_context();
-
-        // Add preamble to messages (if available)
-        let mut messages: Vec<Message> = if let Some(preamble) = completion_request.preamble {
-            vec![Message {
-                role: Role::System,
-                content: preamble,
-            }]
-        } else {
-            vec![]
-        };
-
-        // Add chat history to messages
-        for message in completion_request.chat_history {
-            messages.push(
-                message
-                    .try_into()
-                    .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?,
-            );
+        // Build up the order of messages (context, chat_history, prompt)
+        let mut partial_history = vec![];
+        if let Some(docs) = completion_request.normalized_documents() {
+            partial_history.push(docs);
         }
+        partial_history.extend(completion_request.chat_history);
 
-        // Add user prompt to messages
-        messages.push(
-            prompt_with_context
-                .try_into()
-                .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?,
+        // Initialize full history with preamble (or empty if non-existent)
+        let mut full_history: Vec<Message> =
+            completion_request
+                .preamble
+                .map_or_else(Vec::new, |preamble| {
+                    vec![Message {
+                        role: Role::System,
+                        content: preamble,
+                    }]
+                });
+
+        // Convert and extend the rest of the history
+        full_history.extend(
+            partial_history
+                .into_iter()
+                .map(|msg| completion::Message::try_into(msg))
+                .collect::<Result<Vec<Message>, _>>()?,
         );
 
         // Compose request
         let request = json!({
             "model": self.model,
-            "messages": messages,
+            "messages": full_history,
             "temperature": completion_request.temperature,
         });
 

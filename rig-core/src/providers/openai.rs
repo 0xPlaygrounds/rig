@@ -874,33 +874,34 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
+        // Build up the order of messages (context, chat_history, prompt)
+        let mut partial_history = vec![];
+        if let Some(docs) = completion_request.normalized_documents() {
+            partial_history.push(docs);
+        }
+        partial_history.extend(completion_request.chat_history);
 
-        // Convert prompt to user message
-        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
+        // Initialize full history with preamble (or empty if non-existent)
+        let mut full_history: Vec<Message> = completion_request
+            .preamble
+            .map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
 
-        // Convert existing chat history
-        let chat_history: Vec<Message> = completion_request
-            .chat_history
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
+        // Convert and extend the rest of the history
+        full_history.extend(
+            partial_history
+                .into_iter()
+                .map(|msg| message::Message::try_into(msg))
+                .collect::<Result<Vec<Vec<Message>>, _>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>(),
+        );
 
-        // Combine all messages into a single history
-        full_history.extend(chat_history);
-        full_history.extend(prompt);
-
+        // Build the request
         let request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
-                "messages": full_history,
+                "messages": [full_history],
 
             })
         } else {
@@ -912,8 +913,7 @@ impl completion::CompletionModel for CompletionModel {
             })
         };
 
-        // only include temperature if it exists
-        // because some models don't support temperature
+        // Only include temperature if it exists because some models don't support temperature
         let request = if let Some(temperature) = completion_request.temperature {
             json_utils::merge(
                 request,
