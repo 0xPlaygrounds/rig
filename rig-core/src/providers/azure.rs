@@ -9,9 +9,10 @@
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
 
-
+use super::openai::{
+    send_compatible_streaming_request, ImageGenerationResponse, TranscriptionResponse,
+};
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
-use super::openai::{send_compatible_streaming_request, ImageGenerationResponse, TranscriptionResponse};
 use crate::json_utils::merge;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
@@ -157,12 +158,13 @@ impl Client {
         .replace("//", "/");
         self.http_client.post(url)
     }
-    
+
     fn post_image_generation(&self, deployment_id: &str) -> reqwest::RequestBuilder {
         let url = format!(
             "{}/openai/deployments/{}/images/generations?api-version={}",
             self.azure_endpoint, deployment_id, self.api_version
-        ).replace("//", "/");
+        )
+        .replace("//", "/");
         self.http_client.post(url)
     }
 

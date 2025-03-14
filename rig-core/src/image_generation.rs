@@ -51,7 +51,7 @@ pub trait ImageGenerationModel: Clone + Send + Sync {
 
     fn image_generation(
         &self,
-        request: ImageGenerationRequest, 
+        request: ImageGenerationRequest,
     ) -> impl std::future::Future<
         Output = Result<ImageGenerationResponse<Self::Response>, ImageGenerationError>,
     > + Send;
@@ -93,12 +93,12 @@ impl<M: ImageGenerationModel> ImageGenerationRequestBuilder<M> {
         self.size = size;
         self
     }
-    
+
     pub fn additional_params(mut self, params: Value) -> Self {
         self.additional_params = Some(params);
         self
     }
-    
+
     pub fn build(self) -> ImageGenerationRequest {
         ImageGenerationRequest {
             prompt: self.prompt,
@@ -106,10 +106,10 @@ impl<M: ImageGenerationModel> ImageGenerationRequestBuilder<M> {
             additional_params: self.additional_params,
         }
     }
-    
+
     pub async fn send(self) -> Result<ImageGenerationResponse<M::Response>, ImageGenerationError> {
         let model = self.model.clone();
-        
+
         model.image_generation(self.build()).await
     }
 }

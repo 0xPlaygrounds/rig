@@ -85,6 +85,7 @@ pub mod cli_chatbot;
 pub mod completion;
 pub mod embeddings;
 pub mod extractor;
+pub mod image_generation;
 pub(crate) mod json_utils;
 pub mod loaders;
 pub mod one_or_many;
@@ -94,7 +95,6 @@ pub mod streaming;
 pub mod tool;
 pub mod transcription;
 pub mod vector_store;
-pub mod image_generation;
 
 // Re-export commonly used types and traits
 pub use completion::message;

@@ -43,14 +43,17 @@ impl SubProvider {
             _ => panic!("transcription endpoint is not supported yet for {}", self),
         }
     }
-    
+
     /// Get the image generation endpoint for the SubProvider
     /// Required because Huggingface Inference requires the model
     /// in the url and in the request body.
     pub fn image_generation_endpoint(&self, model: &str) -> String {
         match self {
             SubProvider::HFInference => format!("/{}", model),
-            _ => panic!("image generation endpoint is not supported yet for {}", self),
+            _ => panic!(
+                "image generation endpoint is not supported yet for {}",
+                self
+            ),
         }
     }
 
@@ -135,8 +138,12 @@ pub struct Client {
 impl Client {
     /// Create a new Huggingface client with the given API key.
     pub fn new(api_key: &str) -> Self {
-
-        let base_url = format!("{}/{}", HUGGINGFACE_API_BASE_URL, SubProvider::HFInference.to_string()).replace("//", "/");
+        let base_url = format!(
+            "{}/{}",
+            HUGGINGFACE_API_BASE_URL,
+            SubProvider::HFInference
+        )
+        .replace("//", "/");
         Self::from_url(api_key, &base_url, SubProvider::HFInference)
     }
 
