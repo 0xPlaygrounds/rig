@@ -151,6 +151,7 @@ pub enum ImageMediaType {
     WEBP,
     HEIC,
     HEIF,
+    SVG,
 }
 
 /// Describes the document media type of the content. Not every provider supports every media type.
@@ -367,6 +368,7 @@ impl MimeType for ImageMediaType {
             "image/webp" => Some(ImageMediaType::WEBP),
             "image/heic" => Some(ImageMediaType::HEIC),
             "image/heif" => Some(ImageMediaType::HEIF),
+            "image/svg+xml" => Some(ImageMediaType::SVG),
             _ => None,
         }
     }
@@ -379,6 +381,7 @@ impl MimeType for ImageMediaType {
             ImageMediaType::WEBP => "image/webp",
             ImageMediaType::HEIC => "image/heic",
             ImageMediaType::HEIF => "image/heif",
+            ImageMediaType::SVG => "image/svg+xml",
         }
     }
 }
