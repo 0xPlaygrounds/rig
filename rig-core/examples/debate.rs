@@ -15,6 +15,11 @@ struct Debater {
 
 impl Debater {
     fn new(position_a: &str, position_b: &str) -> Self {
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .with_target(false)
+            .init();
+
         let openai_client =
             openai::Client::new(&env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"));
         let cohere_client =
