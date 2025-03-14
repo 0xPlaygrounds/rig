@@ -1,16 +1,23 @@
-use std::collections::HashMap;
-
 use crate::{
-    agent::AgentBuilder,
-    completion::{self, CompletionError},
-    embeddings::{self, EmbeddingError, EmbeddingModel, EmbeddingsBuilder},
-    extractor::ExtractorBuilder,
-    json_utils, message, Embed, OneOrMany,
+    agent::AgentBuilder, embeddings::EmbeddingsBuilder, extractor::ExtractorBuilder, Embed,
 };
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+
+use super::{CompletionModel, EmbeddingModel};
+
+#[derive(Debug, Deserialize)]
+pub struct ApiErrorResponse {
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ApiResponse<T> {
+    Ok(T),
+    Err(ApiErrorResponse),
+}
 
 // ================================================================
 // Main Cohere Client
@@ -63,10 +70,12 @@ impl Client {
     /// If this is the case, it's better to use function `embedding_model_with_ndims`
     pub fn embedding_model(&self, model: &str, input_type: &str) -> EmbeddingModel {
         let ndims = match model {
-            EMBED_ENGLISH_V3 | EMBED_MULTILINGUAL_V3 | EMBED_ENGLISH_LIGHT_V2 => 1024,
-            EMBED_ENGLISH_LIGHT_V3 | EMBED_MULTILINGUAL_LIGHT_V3 => 384,
-            EMBED_ENGLISH_V2 => 4096,
-            EMBED_MULTILINGUAL_V2 => 768,
+            super::EMBED_ENGLISH_V3
+            | super::EMBED_MULTILINGUAL_V3
+            | super::EMBED_ENGLISH_LIGHT_V2 => 1024,
+            super::EMBED_ENGLISH_LIGHT_V3 | super::EMBED_MULTILINGUAL_LIGHT_V3 => 384,
+            super::EMBED_ENGLISH_V2 => 4096,
+            super::EMBED_MULTILINGUAL_V2 => 768,
             _ => 0,
         };
         EmbeddingModel::new(self.clone(), model, input_type, ndims)
@@ -104,16 +113,4 @@ impl Client {
     ) -> ExtractorBuilder<T, CompletionModel> {
         ExtractorBuilder::new(self.completion_model(model))
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
 }

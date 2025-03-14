@@ -1,42 +1,41 @@
 use std::collections::HashMap;
 
 use crate::{
-    agent::AgentBuilder,
     completion::{self, CompletionError},
-    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
-    extractor::ExtractorBuilder,
-    json_utils, message, Embed, OneOrMany,
+    json_utils, message, OneOrMany,
 };
 
-use schemars::JsonSchema;
+use super::client::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
-// ================================================================
-// Cohere Completion API
-// ================================================================
-/// `command-r-plus` completion model
-pub const COMMAND_R_PLUS: &str = "comman-r-plus";
-/// `command-r` completion model
-pub const COMMAND_R: &str = "command-r";
-/// `command` completion model
-pub const COMMAND: &str = "command";
-/// `command-nightly` completion model
-pub const COMMAND_NIGHTLY: &str = "command-nightly";
-/// `command-light` completion model
-pub const COMMAND_LIGHT: &str = "command-light";
-/// `command-light-nightly` completion model
-pub const COMMAND_LIGHT_NIGHTLY: &str = "command-light-nightly";
 
 #[derive(Debug, Deserialize)]
 pub struct CompletionResponse {
     pub id: String,
     pub finish_reason: FinishReason,
-    pub message: Message,
+    message: Message,
+    #[serde(default)]
     pub usage: Option<Usage>,
 }
 
-#[derive(Debug, Deserialize)]
+impl CompletionResponse {
+    /// Return that parts of the response for assistant messages w/o dealing with the other variants
+    pub fn message(&self) -> (Vec<Content>, Vec<Citation>, Vec<ToolCall>) {
+        let Message::Assistant {
+            content,
+            citations,
+            tool_calls,
+            ..
+        } = self.message.clone()
+        else {
+            unreachable!("Completion responses will only return an assistant message")
+        };
+
+        return (content, citations, tool_calls);
+    }
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq, Clone)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum FinishReason {
     MaxTokens,
@@ -46,59 +45,68 @@ pub enum FinishReason {
     ToolCall,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Usage {
-    billed_units: Option<BilledUnits>,
-    tokens: Option<Tokens>
+    #[serde(default)]
+    pub billed_units: Option<BilledUnits>,
+    #[serde(default)]
+    pub tokens: Option<Tokens>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct BilledUnits {
     #[serde(default)]
-    output_tokens: Option<f64>,
+    pub output_tokens: Option<f64>,
     #[serde(default)]
-    classifications: Option<f64>,
+    pub classifications: Option<f64>,
     #[serde(default)]
-    search_units: Option<f64>,
+    pub search_units: Option<f64>,
     #[serde(default)]
-    input_tokens: Option<f64>,
+    pub input_tokens: Option<f64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Tokens {
     #[serde(default)]
-    input_tokens: Option<f64>,
+    pub input_tokens: Option<f64>,
     #[serde(default)]
-    output_tokens: Option<f64>,
+    pub output_tokens: Option<f64>,
 }
 
-impl From<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    fn from(response: CompletionResponse) -> Self {
-        let CompletionResponse {
-            message: text,
-            tool_calls,
-            ..
-        } = &response;
+impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+    type Error = CompletionError;
+
+    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        let (content, _, tool_calls) = response.message();
 
         let model_response = if !tool_calls.is_empty() {
-            tool_calls
-                .iter()
-                .map(|tool_call| {
-                    completion::AssistantContent::tool_call(
-                        tool_call.name.clone(),
-                        tool_call.name.clone(),
-                        tool_call.parameters.clone(),
-                    )
-                })
-                .collect::<Vec<_>>()
+            OneOrMany::many(
+                tool_calls
+                    .into_iter()
+                    .filter_map(|tool_call| {
+                        let ToolCallFunction { name, arguments } = tool_call.function?;
+                        let id = tool_call.id.unwrap_or_else(|| name.clone());
+
+                        Some(completion::AssistantContent::tool_call(id, name, arguments))
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .expect("We have atleast 1 tool call in this if block")
         } else {
-            vec![completion::AssistantContent::text(text.clone())]
+            OneOrMany::many(content.into_iter().map(|content| match content {
+                Content::Text { text } => completion::AssistantContent::text(text),
+            }))
+            .map_err(|_| {
+                CompletionError::ResponseError(
+                    "Response contained no message or tool call (empty)".to_owned(),
+                )
+            })?
         };
 
-        completion::CompletionResponse {
+        Ok(completion::CompletionResponse {
             choice: OneOrMany::many(model_response).expect("There is atleast one content"),
             raw_response: response,
-        }
+        })
     }
 }
 
@@ -153,114 +161,71 @@ pub struct Connector {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ToolCall {
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub r#type: Option<ToolType>,
+    #[serde(default)]
+    pub function: Option<ToolCallFunction>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ToolCallFunction {
     pub name: String,
+    #[serde(with = "json_utils::stringified_json")]
+    pub arguments: serde_json::Value,
+}
+
+#[derive(Clone, Default, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolType {
+    #[default]
+    Function,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Tool {
+    pub r#type: ToolType,
+    pub function: Function,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct Function {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
     pub parameters: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ChatHistory {
-    pub role: String,
-    pub message: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Parameter {
-    pub description: String,
-    pub r#type: String,
-    pub required: bool,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ToolDefinition {
-    pub name: String,
-    pub description: String,
-    pub parameter_definitions: HashMap<String, Parameter>,
-}
-
-impl From<completion::ToolDefinition> for ToolDefinition {
+impl From<completion::ToolDefinition> for Tool {
     fn from(tool: completion::ToolDefinition) -> Self {
-        fn convert_type(r#type: &serde_json::Value) -> String {
-            fn convert_type_str(r#type: &str) -> String {
-                match r#type {
-                    "string" => "string".to_owned(),
-                    "number" => "number".to_owned(),
-                    "integer" => "integer".to_owned(),
-                    "boolean" => "boolean".to_owned(),
-                    "array" => "array".to_owned(),
-                    "object" => "object".to_owned(),
-                    _ => "string".to_owned(),
-                }
-            }
-            match r#type {
-                serde_json::Value::String(r#type) => convert_type_str(r#type.as_str()),
-                serde_json::Value::Array(types) => convert_type_str(
-                    types
-                        .iter()
-                        .find(|t| t.as_str() != Some("null"))
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("string"),
-                ),
-                _ => "string".to_owned(),
-            }
-        }
-
-        let maybe_required = tool
-            .parameters
-            .get("required")
-            .and_then(|v| v.as_array())
-            .map(|required| {
-                required
-                    .iter()
-                    .filter_map(|v| v.as_str())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-
         Self {
-            name: tool.name,
-            description: tool.description,
-            parameter_definitions: tool
-                .parameters
-                .get("properties")
-                .expect("Tool properties should exist")
-                .as_object()
-                .expect("Tool properties should be an object")
-                .iter()
-                .map(|(argname, argdef)| {
-                    (
-                        argname.clone(),
-                        Parameter {
-                            description: argdef
-                                .get("description")
-                                .expect("Argument description should exist")
-                                .as_str()
-                                .expect("Argument description should be a string")
-                                .to_string(),
-                            r#type: convert_type(
-                                argdef.get("type").expect("Argument type should exist"),
-                            ),
-                            required: maybe_required.contains(&argname.as_str()),
-                        },
-                    )
-                })
-                .collect::<HashMap<_, _>>(),
+            r#type: ToolType::default(),
+            function: Function {
+                name: tool.name,
+                description: Some(tool.description),
+                parameters: tool.parameters,
+            },
         }
     }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "role", rename_all = "UPPERCASE")]
+#[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
     User {
         content: OneOrMany<Content>,
     },
 
     Assistant {
-        content: OneOrMany<Content>,
+        #[serde(default)]
+        content: Vec<Content>,
         #[serde(default)]
         citations: Vec<Citation>,
         #[serde(default)]
         tool_calls: Vec<ToolCall>,
+        #[serde(default)]
+        tool_plan: Option<String>,
     },
 
     Tool {
@@ -269,7 +234,6 @@ pub enum Message {
 
     System {
         content: String,
-        tool_calls: Vec<ToolCall>,
     },
 }
 
@@ -324,7 +288,7 @@ impl TryFrom<message::Message> for Message {
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         Ok(match message {
-            message::Message::User { content } => message::Message::User {
+            message::Message::User { content } => Message::User {
                 content: content.try_map(|content| match content {
                     message::UserContent::Text(message::Text { text }) => {
                         Ok(Content::Text { text })
@@ -336,7 +300,7 @@ impl TryFrom<message::Message> for Message {
             },
             _ => Err(message::MessageError::ConversionError(
                 "Only user messages are supported by Cohere".to_owned(),
-            )),
+            ))?,
         })
     }
 }
@@ -364,24 +328,36 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let messages = completion_request
-            .chat_history
+        let prompt = completion_request.prompt_with_context();
+
+        let mut messages: Vec<message::Message> =
+            if let Some(preamble) = completion_request.preamble {
+                vec![preamble.into()]
+            } else {
+                vec![]
+            };
+
+        messages.extend(completion_request.chat_history);
+        messages.push(prompt);
+
+        let messages: Vec<Message> = messages
             .into_iter()
             .map(Message::try_from)
             .collect::<Result<Vec<_>, _>>()?;
 
         let request = json!({
             "model": self.model,
-            "preamble": completion_request.preamble,
             "messages": messages,
             "documents": completion_request.documents,
             "temperature": completion_request.temperature,
-            "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
+            "tools": completion_request.tools.into_iter().map(Tool::from).collect::<Vec<_>>(),
         });
+
+        tracing::debug!("Cohere request: {}", serde_json::to_string_pretty(&request)?);
 
         let response = self
             .client
-            .post("/v1/chat")
+            .post("/v2/chat")
             .json(
                 &if let Some(ref params) = completion_request.additional_params {
                     json_utils::merge(request.clone(), params.clone())
@@ -393,12 +369,96 @@ impl completion::CompletionModel for CompletionModel {
             .await?;
 
         if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
-                ApiResponse::Ok(completion) => Ok(completion.into()),
-                ApiResponse::Err(error) => Err(CompletionError::ProviderError(error.message)),
-            }
+            let text_response = response.text().await?;
+            tracing::debug!("Cohere response text: {}", text_response);
+
+            let json_response: CompletionResponse = serde_json::from_str(&text_response)?;
+            let completion: completion::CompletionResponse<CompletionResponse> =
+                json_response.try_into()?;
+            Ok(completion)
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_path_to_error::deserialize;
+
+    #[test]
+    fn test_deserialize_completion_response() {
+        let json_data = r#"
+        {
+            "id": "d007e969-af58-4da4-beb1-c30454c3b75f",
+            "message": {
+                "role": "assistant",
+                "tool_plan": "I will use the subtract tool to find the difference between 2 and 5.",
+                "tool_calls": [
+                        {
+                            "id": "subtract_sm6ps6fb6y9f",
+                            "type": "function",
+                            "function": {
+                                "name": "subtract",
+                                "arguments": "{\"x\":5,\"y\":2}"
+                            }
+                        }
+                    ]
+                },
+                "finish_reason": "TOOL_CALL",
+                "usage": {
+                "billed_units": {
+                    "input_tokens": 78,
+                    "output_tokens": 27
+                },
+                "tokens": {
+                    "input_tokens": 1028,
+                    "output_tokens": 63
+                }
+            }
+        }
+        "#;
+
+        let mut deserializer = serde_json::Deserializer::from_str(json_data);
+        let result: Result<CompletionResponse, _> = deserialize(&mut deserializer);
+
+        let response = result.unwrap();
+        let (_, citations, tool_calls) = response.message();
+        let CompletionResponse {
+            id,
+            finish_reason,
+            usage,
+            ..
+        } = response;
+
+        assert_eq!(id, "7874d629-11e5-4f13-8a25-32ecfe04aee3");
+        assert_eq!(finish_reason, FinishReason::ToolCall);
+
+        let Usage {
+            billed_units,
+            tokens,
+        } = usage.unwrap();
+        let BilledUnits {
+            input_tokens: billed_input_tokens,
+            output_tokens: billed_output_tokens,
+            ..
+        } = billed_units.unwrap();
+        let Tokens {
+            input_tokens,
+            output_tokens,
+        } = tokens.unwrap();
+
+        assert_eq!(billed_input_tokens.unwrap(), 78.0);
+        assert_eq!(billed_output_tokens.unwrap(), 25.0);
+        assert_eq!(input_tokens.unwrap(), 1028.0);
+        assert_eq!(output_tokens.unwrap(), 61.0);
+
+        assert!(citations.is_empty());
+        assert_eq!(tool_calls.len(), 1);
+
+        let ToolCallFunction { name, arguments } = tool_calls[0].function.clone().unwrap();
+
+        assert_eq!(name, "subtract");
+        assert_eq!(arguments, serde_json::json!({"x": 2, "y": 5}));
     }
 }

@@ -1,34 +1,9 @@
-use std::collections::HashMap;
+use super::{client::ApiResponse, Client};
 
-use crate::{
-    agent::AgentBuilder,
-    completion::{self, CompletionError},
-    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
-    extractor::ExtractorBuilder,
-    json_utils, message, Embed, OneOrMany,
-};
+use crate::embeddings::{self, EmbeddingError};
 
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
-
-// ================================================================
-// Cohere Embedding API
-// ================================================================
-/// `embed-english-v3.0` embedding model
-pub const EMBED_ENGLISH_V3: &str = "embed-english-v3.0";
-/// `embed-english-light-v3.0` embedding model
-pub const EMBED_ENGLISH_LIGHT_V3: &str = "embed-english-light-v3.0";
-/// `embed-multilingual-v3.0` embedding model
-pub const EMBED_MULTILINGUAL_V3: &str = "embed-multilingual-v3.0";
-/// `embed-multilingual-light-v3.0` embedding model
-pub const EMBED_MULTILINGUAL_LIGHT_V3: &str = "embed-multilingual-light-v3.0";
-/// `embed-english-v2.0` embedding model
-pub const EMBED_ENGLISH_V2: &str = "embed-english-v2.0";
-/// `embed-english-light-v2.0` embedding model
-pub const EMBED_ENGLISH_LIGHT_V2: &str = "embed-english-light-v2.0";
-/// `embed-multilingual-v2.0` embedding model
-pub const EMBED_MULTILINGUAL_V2: &str = "embed-multilingual-v2.0";
 
 #[derive(Deserialize)]
 pub struct EmbeddingResponse {

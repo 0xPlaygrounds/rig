@@ -5,20 +5,25 @@ use rig::{
     agent::Agent,
     completion::Chat,
     message::Message,
-    providers::{_cohere, openai},
+    providers::{cohere, openai},
 };
 
 struct Debater {
     gpt_4: Agent<openai::CompletionModel>,
-    coral: Agent<_cohere::CompletionModel>,
+    coral: Agent<cohere::CompletionModel>,
 }
 
 impl Debater {
     fn new(position_a: &str, position_b: &str) -> Self {
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .with_target(false)
+            .init();
+
         let openai_client =
             openai::Client::new(&env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"));
         let cohere_client =
-            _cohere::Client::new(&env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set"));
+            cohere::Client::new(&env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set"));
 
         Self {
             gpt_4: openai_client.agent("gpt-4").preamble(position_a).build(),
