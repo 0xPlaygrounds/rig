@@ -1,10 +1,9 @@
 use super::completion::CompletionModel;
 use crate::completion::{CompletionError, CompletionRequest};
+use crate::json_utils;
 use crate::json_utils::merge_inplace;
+use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
-use crate::{json_utils, streaming};
-use async_stream::stream;
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::Infallible;
@@ -72,57 +71,8 @@ impl StreamingCompletionModel for CompletionModel {
         // HF Inference API uses the model in the path even though its specified in the request body
         let path = self.client.sub_provider.completion_endpoint(&self.model);
 
-        let response = self.client.post(&path).json(&request).send().await?;
+        let builder = self.client.post(&path).json(&request);
 
-        if !response.status().is_success() {
-            return Err(CompletionError::ProviderError(format!(
-                "{}: {}",
-                response.status(),
-                response.text().await?
-            )));
-        }
-
-        Ok(Box::pin(stream! {
-            let mut stream = response.bytes_stream();
-
-            while let Some(chunk_result) = stream.next().await {
-                let chunk = match chunk_result {
-                    Ok(c) => c,
-                    Err(e) => {
-                        yield Err(CompletionError::from(e));
-                        break;
-                    }
-                };
-
-                let text = match String::from_utf8(chunk.to_vec()) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        yield Err(CompletionError::ResponseError(e.to_string()));
-                        break;
-                    }
-                };
-
-
-                for line in text.lines() {
-                    let Some(line) = line.strip_prefix("data: ") else { continue; };
-
-                    if line == "[DONE]" {
-                        break;
-                    }
-
-                    let Ok(data) = serde_json::from_str::<CompletionChunk>(line) else {
-                        continue;
-                    };
-
-                    let choice = data.choices.first().expect("Should have at least one choice");
-
-                    match &choice.delta {
-                        StreamDelta::Assistant { content, .. } => match &content[0] {
-                            AssistantContent::Text { text } => yield Ok(streaming::StreamingChoice::Message(text.clone())),
-                        }
-                    }
-                }
-            }
-        }))
+        send_compatible_streaming_request(builder).await
     }
 }

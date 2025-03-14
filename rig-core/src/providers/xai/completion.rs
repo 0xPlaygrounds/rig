@@ -9,10 +9,10 @@ use crate::{
     providers::openai::Message,
 };
 
-use serde_json::json;
-use xai_api_types::{CompletionResponse, ToolDefinition};
-
 use super::client::{xai_api_types::ApiResponse, Client};
+use crate::completion::CompletionRequest;
+use serde_json::{json, Value};
+use xai_api_types::{CompletionResponse, ToolDefinition};
 
 /// `grok-beta` completion model
 pub const GROK_BETA: &str = "grok-beta";
@@ -23,27 +23,15 @@ pub const GROK_BETA: &str = "grok-beta";
 
 #[derive(Clone)]
 pub struct CompletionModel {
-    client: Client,
+    pub(crate) client: Client,
     pub model: String,
 }
 
 impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
-}
-
-impl completion::CompletionModel for CompletionModel {
-    type Response = CompletionResponse;
-
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn completion(
+    pub(crate) fn create_completion_request(
         &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        completion_request: CompletionRequest,
+    ) -> Result<Value, CompletionError> {
         // Add preamble to chat history (if available)
         let mut full_history: Vec<Message> = match &completion_request.preamble {
             Some(preamble) => {
@@ -94,6 +82,26 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             request
         };
+
+        Ok(request)
+    }
+    pub fn new(client: Client, model: &str) -> Self {
+        Self {
+            client,
+            model: model.to_string(),
+        }
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    type Response = CompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let request = self.create_completion_request(completion_request)?;
 
         let response = self
             .client

@@ -38,6 +38,8 @@
 //! let agent = client.agent("llama3.2");
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
+use crate::json_utils::merge_inplace;
+use crate::streaming::{StreamingChoice, StreamingCompletionModel, StreamingResult};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -47,13 +49,14 @@ use crate::{
     message::{ImageDetail, Text},
     Embed, OneOrMany,
 };
+use async_stream::stream;
+use futures::StreamExt;
 use reqwest;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::Infallible;
 use std::{convert::TryFrom, str::FromStr};
-
 // ---------- Main Client ----------
 
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
@@ -317,18 +320,11 @@ impl CompletionModel {
             model: model.to_owned(),
         }
     }
-}
 
-// ---------- CompletionModel Implementation ----------
-
-impl completion::CompletionModel for CompletionModel {
-    type Response = CompletionResponse;
-
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn completion(
+    fn create_completion_request(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<Value, CompletionError> {
         // Convert internal prompt into a provider Message
         let prompt: Message = completion_request.prompt_with_context().try_into()?;
         let options = if let Some(extra) = completion_request.additional_params {
@@ -365,6 +361,23 @@ impl completion::CompletionModel for CompletionModel {
         }
 
         tracing::debug!(target: "rig", "Chat mode payload: {}", request_payload);
+
+        Ok(request_payload)
+    }
+}
+
+// ---------- CompletionModel Implementation ----------
+
+impl completion::CompletionModel for CompletionModel {
+    type Response = CompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+        let request_payload = self.create_completion_request(completion_request)?;
+
         let response = self
             .client
             .post("api/chat")
@@ -389,6 +402,76 @@ impl completion::CompletionModel for CompletionModel {
                 .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
             Err(CompletionError::ProviderError(err_text))
         }
+    }
+}
+
+impl StreamingCompletionModel for CompletionModel {
+    async fn stream(&self, request: CompletionRequest) -> Result<StreamingResult, CompletionError> {
+        let mut request_payload = self.create_completion_request(request)?;
+        merge_inplace(&mut request_payload, json!({"stream": true}));
+
+        let response = self
+            .client
+            .post("api/chat")
+            .json(&request_payload)
+            .send()
+            .await
+            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let err_text = response
+                .text()
+                .await
+                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            return Err(CompletionError::ProviderError(err_text));
+        }
+
+        Ok(Box::pin(stream! {
+            let mut stream = response.bytes_stream();
+            while let Some(chunk_result) = stream.next().await {
+                let chunk = match chunk_result {
+                    Ok(c) => c,
+                    Err(e) => {
+                        yield Err(CompletionError::from(e));
+                        break;
+                    }
+                };
+
+                let text = match String::from_utf8(chunk.to_vec()) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        yield Err(CompletionError::ResponseError(e.to_string()));
+                        break;
+                    }
+                };
+
+
+                for line in text.lines() {
+                    let line = line.to_string();
+
+                    let Ok(response) = serde_json::from_str::<CompletionResponse>(&line) else {
+                        continue;
+                    };
+
+                    match response.message {
+                        Message::Assistant{ content, tool_calls, .. } => {
+                            if !content.is_empty() {
+                                yield Ok(StreamingChoice::Message(content))
+                            }
+
+                            for tool_call in tool_calls.iter() {
+                                let function = tool_call.function.clone();
+
+                                yield Ok(StreamingChoice::ToolCall(function.name, "".to_string(), function.arguments));
+                            }
+                        }
+                        _ => {
+                            continue;
+                        }
+                    }
+                }
+            }
+        }))
     }
 }
 
