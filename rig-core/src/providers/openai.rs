@@ -29,7 +29,7 @@ use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use futures::StreamExt;
 use reqwest::multipart::Part;
-use reqwest::Response;
+use reqwest::RequestBuilder;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -1229,6 +1229,9 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
     }
 }
 
+// ================================================================
+// OpenAI Completion Streaming API
+// ================================================================
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingFunction {
     #[serde(default)]
@@ -1267,30 +1270,27 @@ impl StreamingCompletionModel for CompletionModel {
         completion_request: CompletionRequest,
     ) -> Result<StreamingResult, CompletionError> {
         let mut request = self.create_completion_request(completion_request)?;
-
         request = merge(request, json!({"stream": true}));
 
-        let response = self
-            .client
-            .post("/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            return Err(CompletionError::ProviderError(format!(
-                "{}: {}",
-                response.status(),
-                response.text().await?
-            )));
-        }
-
-        handle_sse_stream(response)
+        let builder = self.client.post("/chat/completions").json(&request);
+        send_compatible_streaming_request(builder).await
     }
 }
 
-// Handle OpenAI Compatible SSE chunks
-pub fn handle_sse_stream(response: Response) -> Result<StreamingResult, CompletionError> {
+pub async fn send_compatible_streaming_request(
+    request_builder: RequestBuilder,
+) -> Result<StreamingResult, CompletionError> {
+    let response = request_builder.send().await?;
+
+    if !response.status().is_success() {
+        return Err(CompletionError::ProviderError(format!(
+            "{}: {}",
+            response.status(),
+            response.text().await?
+        )));
+    }
+
+    // Handle OpenAI Compatible SSE chunks
     Ok(Box::pin(stream! {
         let mut stream = response.bytes_stream();
 

@@ -12,7 +12,7 @@
 //! ```
 use super::openai;
 use crate::json_utils::merge;
-use crate::providers::openai::handle_sse_stream;
+use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
     agent::AgentBuilder,
@@ -500,21 +500,8 @@ impl StreamingCompletionModel for CompletionModel {
 
         request = merge(request, json!({"stream": true}));
 
-        let response = self
-            .client
-            .post("/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
+        let builder = self.client.post("/chat/completions").json(&request);
 
-        if !response.status().is_success() {
-            return Err(CompletionError::ProviderError(format!(
-                "{}: {}",
-                response.status(),
-                response.text().await?
-            )));
-        }
-
-        handle_sse_stream(response)
+        send_compatible_streaming_request(builder).await
     }
 }

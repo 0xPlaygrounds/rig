@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::completion::CompletionModel;
-use crate::providers::openai::handle_sse_stream;
+use crate::providers::openai::send_compatible_streaming_request;
 use crate::{
     completion::{CompletionError, CompletionRequest},
     json_utils::merge,
@@ -17,21 +17,8 @@ impl StreamingCompletionModel for CompletionModel {
 
         request = merge(request, json!({"stream_tokens": true}));
 
-        let response = self
-            .client
-            .post("/v1/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
+        let builder = self.client.post("/v1/chat/completions").json(&request);
 
-        if !response.status().is_success() {
-            return Err(CompletionError::ProviderError(format!(
-                "{}: {}",
-                response.status(),
-                response.text().await?
-            )));
-        }
-
-        handle_sse_stream(response)
+        send_compatible_streaming_request(builder).await
     }
 }

@@ -9,7 +9,7 @@
 //! let llama_3_1_8b = client.completion_model(hyperbolic::LLAMA_3_1_8B);
 //! ```
 
-use super::openai::{handle_sse_stream, AssistantContent};
+use super::openai::{send_compatible_streaming_request, AssistantContent};
 use crate::json_utils::merge_inplace;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
@@ -364,21 +364,8 @@ impl StreamingCompletionModel for CompletionModel {
 
         merge_inplace(&mut request, json!({"stream": true}));
 
-        let response = self
-            .client
-            .post("/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
+        let builder = self.client.post("/chat/completions").json(&request);
 
-        if !response.status().is_success() {
-            return Err(CompletionError::ProviderError(format!(
-                "{}: {}",
-                response.status(),
-                response.text().await?
-            )));
-        }
-
-        handle_sse_stream(response)
+        send_compatible_streaming_request(builder).await
     }
 }

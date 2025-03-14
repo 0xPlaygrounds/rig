@@ -2,7 +2,7 @@ use super::completion::CompletionModel;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils;
 use crate::json_utils::merge_inplace;
-use crate::providers::openai::handle_sse_stream;
+use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -71,16 +71,8 @@ impl StreamingCompletionModel for CompletionModel {
         // HF Inference API uses the model in the path even though its specified in the request body
         let path = self.client.sub_provider.completion_endpoint(&self.model);
 
-        let response = self.client.post(&path).json(&request).send().await?;
+        let builder = self.client.post(&path).json(&request);
 
-        if !response.status().is_success() {
-            return Err(CompletionError::ProviderError(format!(
-                "{}: {}",
-                response.status(),
-                response.text().await?
-            )));
-        }
-
-        handle_sse_stream(response)
+        send_compatible_streaming_request(builder).await
     }
 }
