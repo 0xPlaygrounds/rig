@@ -14,6 +14,7 @@ pub mod client;
 pub mod completion;
 pub mod streaming;
 pub mod transcription;
+mod image_generation;
 
 pub use client::{Client, ClientBuilder, SubProvider};
 pub use completion::{
@@ -21,3 +22,4 @@ pub use completion::{
     SMALLTHINKER_PREVIEW,
 };
 pub use transcription::{WHISPER_LARGE_V3, WHISPER_LARGE_V3_TURBO, WHISPER_SMALL};
+pub use image_generation::{FLUX_1, KOLORS, STABLE_DIFFUSION_3};

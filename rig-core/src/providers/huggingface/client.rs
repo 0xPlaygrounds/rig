@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use super::completion::CompletionModel;
 use crate::agent::AgentBuilder;
+use crate::providers::huggingface::image_generation::ImageGenerationModel;
 use crate::providers::huggingface::transcription::TranscriptionModel;
 
 // ================================================================
@@ -38,8 +39,18 @@ impl SubProvider {
     /// in the url and in the request body.
     pub fn transcription_endpoint(&self, model: &str) -> String {
         match self {
-            SubProvider::HFInference => format!("hf-inference/models/{}", model),
+            SubProvider::HFInference => format!("/{}", model),
             _ => panic!("transcription endpoint is not supported yet for {}", self),
+        }
+    }
+    
+    /// Get the image generation endpoint for the SubProvider
+    /// Required because Huggingface Inference requires the model
+    /// in the url and in the request body.
+    pub fn image_generation_endpoint(&self, model: &str) -> String {
+        match self {
+            SubProvider::HFInference => format!("/{}", model),
+            _ => panic!("image generation endpoint is not supported yet for {}", self),
         }
     }
 
@@ -124,7 +135,9 @@ pub struct Client {
 impl Client {
     /// Create a new Huggingface client with the given API key.
     pub fn new(api_key: &str) -> Self {
-        Self::from_url(api_key, HUGGINGFACE_API_BASE_URL, SubProvider::HFInference)
+
+        let base_url = format!("{}/{}", HUGGINGFACE_API_BASE_URL, SubProvider::HFInference.to_string()).replace("//", "/");
+        Self::from_url(api_key, &base_url, SubProvider::HFInference)
     }
 
     /// Create a new Client with the given API key and base API URL.
@@ -164,6 +177,7 @@ impl Client {
 
     pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        println!("{}", url);
         self.http_client.post(url)
     }
 
@@ -195,6 +209,21 @@ impl Client {
     /// ```
     pub fn transcription_model(&self, model: &str) -> TranscriptionModel {
         TranscriptionModel::new(self.clone(), model)
+    }
+
+    /// Create a new image generation model with the given name
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::huggingface::{Client, self}
+    ///
+    /// // Initialize the Huggingface client
+    /// let client = Client::new("your-huggingface-api-key");
+    ///
+    /// let completion_model = client.image_generation_model(huggingface::WHISPER_LARGE_V3);
+    /// ```
+    pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
+        ImageGenerationModel::new(self.clone(), model)
     }
 
     /// Create an agent builder with the given completion model.
