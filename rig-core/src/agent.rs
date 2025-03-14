@@ -115,7 +115,7 @@ use crate::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
         Message, Prompt, PromptError,
     },
-    message::AssistantContent,
+    message::{AssistantContent, UserContent},
     streaming::{
         StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingPrompt,
         StreamingResult,
@@ -299,21 +299,51 @@ impl<M: CompletionModel> Prompt for &Agent<M> {
 impl<M: CompletionModel> Chat for Agent<M> {
     async fn chat(
         &self,
-        prompt: impl Into<Message> + Send,
-        chat_history: Vec<Message>,
+        prompt: impl Into<Message>,
+        mut chat_history: Vec<Message>,
     ) -> Result<String, PromptError> {
-        let resp = self.completion(prompt, chat_history).await?.send().await?;
+        let mut prompt: Message = prompt.into();
 
-        // TODO: consider returning a `Message` instead of `String` for parallel responses / tool calls
-        match resp.choice.first() {
-            AssistantContent::Text(text) => Ok(text.text.clone()),
-            AssistantContent::ToolCall(tool_call) => Ok(self
-                .tools
-                .call(
-                    &tool_call.function.name,
-                    tool_call.function.arguments.to_string(),
-                )
-                .await?),
+        tracing::debug!("Chat prompt: {:?}", prompt);
+
+        loop {
+            // call model
+            let resp = self
+                .completion(prompt.clone(), chat_history.clone())
+                .await?
+                .send()
+                .await?;
+
+            if tracing::enabled!(tracing::Level::DEBUG) {
+                for (i, message) in resp.choice.iter().enumerate() {
+                    tracing::debug!("Chat response message #{}: {:?}", i, message);
+                }
+            }
+
+            // keep calling tools until we get human readable answer from the model
+            match resp.choice.first() {
+                AssistantContent::Text(text) => break Ok(text.text.clone()),
+                AssistantContent::ToolCall(tool_call) => {
+                    // Call the tool
+                    let tool_response = self
+                        .tools
+                        .call(
+                            &tool_call.function.name,
+                            tool_call.function.arguments.to_string(),
+                        )
+                        .await?;
+
+                    let tool_response_message = UserContent::tool_result_from_text_response(
+                        tool_call.id.clone(),
+                        tool_response,
+                    );
+
+                    // add tool call and response into chat history and continue the loop
+                    chat_history.push(prompt);
+                    chat_history.push(tool_call.into());
+                    prompt = tool_response_message.into();
+                }
+            }
         }
     }
 }
