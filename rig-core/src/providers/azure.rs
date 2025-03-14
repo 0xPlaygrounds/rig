@@ -9,7 +9,7 @@
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
 
-use super::openai::{handle_sse_stream, TranscriptionResponse};
+use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
 use crate::json_utils::merge;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
@@ -555,22 +555,12 @@ impl StreamingCompletionModel for CompletionModel {
 
         request = merge(request, json!({"stream": true}));
 
-        let response = self
+        let builder = self
             .client
             .post_chat_completion(self.model.as_str())
-            .json(&request)
-            .send()
-            .await?;
+            .json(&request);
 
-        if !response.status().is_success() {
-            return Err(CompletionError::ProviderError(format!(
-                "{}: {}",
-                response.status(),
-                response.text().await?
-            )));
-        }
-
-        handle_sse_stream(response)
+        send_compatible_streaming_request(builder).await
     }
 }
 
