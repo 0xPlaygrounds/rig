@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.8...rig-qdrant-v0.1.9) - 2025-03-03
+
+### Added
+
+- upsert documents into qdrant ([#301](https://github.com/0xPlaygrounds/rig/pull/301))
+
 ## [0.1.8](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.7...rig-qdrant-v0.1.8) - 2025-02-17
 
 ### Other
