@@ -124,6 +124,9 @@ use crate::{
     vector_store::{VectorStoreError, VectorStoreIndexDyn},
 };
 
+#[cfg(feature = "mcp")]
+use crate::tool::McpTool;
+
 /// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
 /// (i.e.: system prompt) and a static set of context documents and tools.
 /// All context documents and tools are always provided to the agent when prompted.
@@ -408,6 +411,19 @@ impl<M: CompletionModel> AgentBuilder<M> {
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
         self.tools.add_tool(tool);
+        self.static_tools.push(toolname);
+        self
+    }
+
+    // Add an MCP tool to the agent
+    #[cfg(feature = "mcp")]
+    pub fn mcp_tool<T: mcp_core::transport::Transport>(
+        mut self,
+        tool: mcp_core::types::Tool,
+        client: mcp_core::client::Client<T>,
+    ) -> Self {
+        let toolname = tool.name.clone();
+        self.tools.add_tool(McpTool::from_mcp_server(tool, client));
         self.static_tools.push(toolname);
         self
     }
