@@ -10,5 +10,5 @@ members = [
     "rig-core/rig-core-derive",
     "rig-sqlite",
     "rig-eternalai", "rig-fastembed",
-    "rig-surrealdb",
+    "rig-surrealdb", "rig-macros",
 ]
