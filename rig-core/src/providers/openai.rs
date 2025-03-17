@@ -548,9 +548,16 @@ pub enum AssistantContent {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum UserContent {
-    Text { text: String },
-    Image { image_url: ImageUrl },
-    Audio { input_audio: InputAudio },
+    Text {
+        text: String,
+    },
+    #[serde(rename = "image_url")]
+    Image {
+        image_url: ImageUrl,
+    },
+    Audio {
+        input_audio: InputAudio,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
