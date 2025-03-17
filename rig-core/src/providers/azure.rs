@@ -8,6 +8,10 @@
 //!
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
+
+use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
+use crate::json_utils::merge;
+use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -22,8 +26,6 @@ use reqwest::multipart::Part;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
-use super::openai::TranscriptionResponse;
 
 // ================================================================
 // Main Azure OpenAI Client
@@ -453,16 +455,11 @@ impl CompletionModel {
             model: model.to_string(),
         }
     }
-}
 
-impl completion::CompletionModel for CompletionModel {
-    type Response = openai::CompletionResponse;
-
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn completion(
+    fn create_completion_request(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
+    ) -> Result<serde_json::Value, CompletionError> {
         // Add preamble to chat history (if available)
         let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
             Some(preamble) => vec![openai::Message::system(preamble)],
@@ -502,16 +499,30 @@ impl completion::CompletionModel for CompletionModel {
             })
         };
 
+        let request = if let Some(params) = completion_request.additional_params {
+            json_utils::merge(request, params)
+        } else {
+            request
+        };
+
+        Ok(request)
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    type Response = openai::CompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
+        let request = self.create_completion_request(completion_request)?;
+
         let response = self
             .client
             .post_chat_completion(&self.model)
-            .json(
-                &if let Some(params) = completion_request.additional_params {
-                    json_utils::merge(request, params)
-                } else {
-                    request
-                },
-            )
+            .json(&request)
             .send()
             .await?;
 
@@ -532,6 +543,24 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+}
+
+// -----------------------------------------------------
+// Azure OpenAI Streaming API
+// -----------------------------------------------------
+impl StreamingCompletionModel for CompletionModel {
+    async fn stream(&self, request: CompletionRequest) -> Result<StreamingResult, CompletionError> {
+        let mut request = self.create_completion_request(request)?;
+
+        request = merge(request, json!({"stream": true}));
+
+        let builder = self
+            .client
+            .post_chat_completion(self.model.as_str())
+            .json(&request);
+
+        send_compatible_streaming_request(builder).await
     }
 }
 
