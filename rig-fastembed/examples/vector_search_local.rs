@@ -1,18 +1,15 @@
-use rig::{
-    embeddings::{EmbeddingsBuilder, Embedding},
-    vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-    Embed, OneOrMany,
-};
 use fastembed::{
-    read_file_to_bytes, EmbeddingModel as FastembedModel, InitOptionsUserDefined, TextEmbedding as FastembedTextEmbedding,
-    TokenizerFiles, UserDefinedEmbeddingModel, Pooling,
+    read_file_to_bytes, EmbeddingModel as FastembedModel, Pooling,
+    TextEmbedding as FastembedTextEmbedding, TokenizerFiles, UserDefinedEmbeddingModel,
 };
-use rig_fastembed::{
-    EmbeddingModel
+use rig::{
+    embeddings::EmbeddingsBuilder,
+    vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
+    Embed,
 };
+use rig_fastembed::EmbeddingModel;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::sync::Arc;
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
@@ -27,15 +24,16 @@ struct WordDefinition {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Get model info
-    let test_model_info = FastembedTextEmbedding::get_model_info(&FastembedModel::AllMiniLML6V2).unwrap();
-    
+    let test_model_info =
+        FastembedTextEmbedding::get_model_info(&FastembedModel::AllMiniLML6V2).unwrap();
+
     // Set up model directory
     let model_dir = Path::new("./models/Qdrant--all-MiniLM-L6-v2-onnx/snapshots");
     println!("Loading model from: {:?}", model_dir);
 
     // Load model files
-    let onnx_file = read_file_to_bytes(&model_dir.join("model.onnx"))
-        .expect("Could not read model.onnx file");
+    let onnx_file =
+        read_file_to_bytes(&model_dir.join("model.onnx")).expect("Could not read model.onnx file");
 
     let tokenizer_files = TokenizerFiles {
         tokenizer_file: read_file_to_bytes(&model_dir.join("tokenizer.json"))
@@ -49,10 +47,11 @@ async fn main() -> Result<(), anyhow::Error> {
     };
 
     // Create embedding model
-    let user_defined_model = UserDefinedEmbeddingModel::new(onnx_file, tokenizer_files)
-        .with_pooling(Pooling::Mean);
+    let user_defined_model =
+        UserDefinedEmbeddingModel::new(onnx_file, tokenizer_files).with_pooling(Pooling::Mean);
 
-    let embedding_model = EmbeddingModel::new_from_user_defined(user_defined_model, 384, &test_model_info);
+    let embedding_model =
+        EmbeddingModel::new_from_user_defined(user_defined_model, 384, &test_model_info);
 
     // Create documents
     let documents = vec![
@@ -89,7 +88,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Create vector store
-    let vector_store = InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
+    let vector_store =
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
     let index = vector_store.index(embedding_model);
 
     let results = index
