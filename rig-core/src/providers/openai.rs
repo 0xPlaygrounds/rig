@@ -560,9 +560,16 @@ pub enum AssistantContent {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum UserContent {
-    Text { text: String },
-    Image { image_url: ImageUrl },
-    Audio { input_audio: InputAudio },
+    Text {
+        text: String,
+    },
+    #[serde(rename = "image_url")]
+    Image {
+        image_url: ImageUrl,
+    },
+    Audio {
+        input_audio: InputAudio,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -1351,7 +1358,7 @@ mod tests {
                     "text": "What's in this image?"
                 },
                 {
-                    "type": "image",
+                    "type": "image_url",
                     "image_url": {
                         "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
                     }
