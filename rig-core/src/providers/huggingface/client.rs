@@ -138,12 +138,8 @@ pub struct Client {
 impl Client {
     /// Create a new Huggingface client with the given API key.
     pub fn new(api_key: &str) -> Self {
-        let base_url = format!(
-            "{}/{}",
-            HUGGINGFACE_API_BASE_URL,
-            SubProvider::HFInference
-        )
-        .replace("//", "/");
+        let base_url =
+            format!("{}/{}", HUGGINGFACE_API_BASE_URL, SubProvider::HFInference).replace("//", "/");
         Self::from_url(api_key, &base_url, SubProvider::HFInference)
     }
 
