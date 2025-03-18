@@ -144,7 +144,11 @@ pub enum Message {
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-        #[serde(default, deserialize_with = "json_utils::null_or_vec")]
+        #[serde(
+            default,
+            deserialize_with = "json_utils::null_or_vec",
+            skip_serializing_if = "Vec::is_empty"
+        )]
         tool_calls: Vec<ToolCall>,
     },
     #[serde(rename = "Tool")]

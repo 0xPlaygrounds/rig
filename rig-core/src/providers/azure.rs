@@ -29,6 +29,7 @@ use reqwest::multipart::Part;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
 // ================================================================
 // Main Azure OpenAI Client
 // ================================================================
