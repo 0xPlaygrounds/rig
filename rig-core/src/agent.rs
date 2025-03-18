@@ -109,7 +109,9 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use futures::{stream, StreamExt, TryStreamExt};
-use mcp_client_rs::{client::Client, CallToolResult, MessageContent};
+use mcp_client::McpClientTrait;
+use mcp_core::{protocol::JsonRpcMessage, Content, TextContent};
+use tower_service::Service;
 
 use crate::{
     completion::{
@@ -435,7 +437,16 @@ impl<M: CompletionModel> AgentBuilder<M> {
         self
     }
 
-    pub fn mcp_tool(mut self, tool: mcp_client_rs::Tool, client: Arc<Client>) -> Self {
+    pub fn mcp_tool<S>(
+        mut self,
+        tool: mcp_core::Tool,
+        client: Arc<mcp_client::McpClient<S>>,
+    ) -> Self
+    where
+        S: Service<JsonRpcMessage, Response = JsonRpcMessage> + Clone + Send + Sync + 'static,
+        S::Error: Into<mcp_client::Error>,
+        S::Future: Send,
+    {
         let toolname = tool.name.clone();
         self.tools.add_tool(MCPTool::from_mcp_server(tool, client));
         self.static_tools.push(toolname);
@@ -507,13 +518,38 @@ impl<M: StreamingCompletionModel> StreamingChat for Agent<M> {
             .await
     }
 }
-pub struct MCPTool {
-    client: Arc<Client>,
-    definition: mcp_client_rs::Tool,
+pub struct MCPTool<S>
+where
+    S: tower_service::Service<
+            mcp_core::protocol::JsonRpcMessage,
+            Response = mcp_core::protocol::JsonRpcMessage,
+        > + Clone
+        + Send
+        + Sync
+        + 'static,
+    S::Error: Into<mcp_client::Error>,
+    S::Future: Send,
+{
+    client: Arc<mcp_client::McpClient<S>>,
+    definition: mcp_core::Tool,
 }
 
-impl MCPTool {
-    pub fn from_mcp_server(definition: mcp_client_rs::Tool, client: Arc<Client>) -> Self {
+impl<S> MCPTool<S>
+where
+    S: tower_service::Service<
+            mcp_core::protocol::JsonRpcMessage,
+            Response = mcp_core::protocol::JsonRpcMessage,
+        > + Clone
+        + Send
+        + Sync
+        + 'static,
+    S::Error: Into<mcp_client::Error>,
+    S::Future: Send,
+{
+    pub fn from_mcp_server(
+        definition: mcp_core::Tool,
+        client: Arc<mcp_client::McpClient<S>>,
+    ) -> Self {
         Self { client, definition }
     }
 }
@@ -522,7 +558,18 @@ impl MCPTool {
 #[error("MCP tool error")]
 pub struct MCPToolError(String);
 
-impl ToolDyn for MCPTool {
+impl<S> ToolDyn for MCPTool<S>
+where
+    S: tower_service::Service<
+            mcp_core::protocol::JsonRpcMessage,
+            Response = mcp_core::protocol::JsonRpcMessage,
+        > + Clone
+        + Send
+        + Sync
+        + 'static,
+    S::Error: Into<mcp_client::Error>,
+    S::Future: Send,
+{
     fn name(&self) -> String {
         self.definition.name.clone()
     }
@@ -549,13 +596,13 @@ impl ToolDyn for MCPTool {
         let args_clone = args.clone();
         let args: serde_json::Value = serde_json::from_str(&args_clone).unwrap_or_default();
         Box::pin(async move {
-            let result: CallToolResult = client.call_tool(&name, args).await.map_err(|e| {
+            let result = client.call_tool(&name, args).await.map_err(|e| {
                 ToolError::ToolCallError(Box::new(MCPToolError(format!(
                     "Tool returned an error: {}",
                     e
                 ))))
             })?;
-            if result.is_error {
+            if result.is_error.is_some() && result.is_error.unwrap() {
                 return Err(ToolError::ToolCallError(Box::new(MCPToolError(
                     "Tool returned an error".to_string(),
                 ))));
@@ -564,7 +611,7 @@ impl ToolDyn for MCPTool {
                 .content
                 .into_iter()
                 .map(|c| match c {
-                    MessageContent::Text { text } => text,
+                    Content::Text(TextContent { text, .. }) => text,
                     _ => "".to_string(),
                 })
                 .collect::<Vec<_>>()
