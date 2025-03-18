@@ -1,5 +1,5 @@
 use rig::image_generation::ImageGenerationModel;
-use rig::providers::{huggingface, openai};
+use rig::providers::huggingface;
 use std::env::args;
 use std::fs::File;
 use std::io::Write;
