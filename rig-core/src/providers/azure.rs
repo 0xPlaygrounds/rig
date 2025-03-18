@@ -9,10 +9,13 @@
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
 
-use super::openai::{
-    send_compatible_streaming_request, ImageGenerationResponse, TranscriptionResponse,
-};
-use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
+
+#[cfg(feature = "image")]
+use super::openai::ImageGenerationResponse;
+
+#[cfg(feature = "image")]
+use crate::image_generation::{self, ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
@@ -20,7 +23,7 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     extractor::ExtractorBuilder,
-    image_generation, json_utils,
+    json_utils,
     providers::openai,
     transcription::{self, TranscriptionError},
     Embed,
@@ -160,6 +163,7 @@ impl Client {
         self.http_client.post(url)
     }
 
+    #[cfg(feature = "image")]
     fn post_image_generation(&self, deployment_id: &str) -> reqwest::RequestBuilder {
         let url = format!(
             "{}/openai/deployments/{}/images/generations?api-version={}",
@@ -654,16 +658,16 @@ impl transcription::TranscriptionModel for TranscriptionModel {
     }
 }
 
+// ================================================================
+// Azure OpenAI Image Generation API
+// ================================================================
+#[cfg(feature = "image")]
 #[derive(Clone)]
 pub struct ImageGenerationModel {
     client: Client,
     pub model: String,
 }
-
-// ================================================================
-// Azure OpenAI Image Generation API
-// ================================================================
-
+#[cfg(feature = "image")]
 impl image_generation::ImageGenerationModel for ImageGenerationModel {
     type Response = ImageGenerationResponse;
 

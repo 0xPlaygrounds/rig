@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use super::completion::CompletionModel;
 use crate::agent::AgentBuilder;
+
+#[cfg(feature = "image")]
 use crate::providers::huggingface::image_generation::ImageGenerationModel;
 use crate::providers::huggingface::transcription::TranscriptionModel;
 
@@ -210,6 +212,7 @@ impl Client {
     ///
     /// let completion_model = client.transcription_model(huggingface::WHISPER_LARGE_V3);
     /// ```
+    ///
     pub fn transcription_model(&self, model: &str) -> TranscriptionModel {
         TranscriptionModel::new(self.clone(), model)
     }
@@ -225,6 +228,7 @@ impl Client {
     ///
     /// let completion_model = client.image_generation_model(huggingface::WHISPER_LARGE_V3);
     /// ```
+    #[cfg(feature = "image")]
     pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
         ImageGenerationModel::new(self.clone(), model)
     }

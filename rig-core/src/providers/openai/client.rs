@@ -2,6 +2,8 @@ use super::completion::CompletionModel;
 use super::embedding::{
     EmbeddingModel, TEXT_EMBEDDING_3_LARGE, TEXT_EMBEDDING_3_SMALL, TEXT_EMBEDDING_ADA_002,
 };
+
+#[cfg(feature = "image")]
 use super::image_generation::ImageGenerationModel;
 use super::transcription::TranscriptionModel;
 use crate::agent::AgentBuilder;
@@ -184,6 +186,7 @@ impl Client {
     ///
     /// let gpt4 = openai.image_generation_model(openai::DALL_E_3);
     /// ```
+    #[cfg(feature = "image")]
     pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
         ImageGenerationModel::new(self.clone(), model)
     }

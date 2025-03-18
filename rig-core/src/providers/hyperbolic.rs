@@ -10,18 +10,23 @@
 //! ```
 
 use super::openai::{send_compatible_streaming_request, AssistantContent};
-use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+
+#[cfg(feature = "image")]
+use crate::image_generation::{self, ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge_inplace;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
     extractor::ExtractorBuilder,
-    image_generation, json_utils,
+    json_utils,
     providers::openai::Message,
     OneOrMany,
 };
+
+#[cfg(feature = "image")]
 use base64::prelude::BASE64_STANDARD;
+#[cfg(feature = "image")]
 use base64::Engine;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -102,6 +107,7 @@ impl Client {
     ///
     /// let llama_3_1_8b = hyperbolic.completion_model(hyperbolic::LLAMA_3_1_8B);
     /// ```
+    #[cfg(feature = "image")]
     pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
         ImageGenerationModel::new(self.clone(), model)
     }
@@ -399,12 +405,14 @@ pub const SDXL_TURBO: &str = "SDXL-turbo";
 pub const SDXL_CONTROLNET: &str = "SDXL-ControlNet";
 pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
 
+#[cfg(feature = "image")]
 #[derive(Clone)]
 pub struct ImageGenerationModel {
     client: Client,
     pub model: String,
 }
 
+#[cfg(feature = "image")]
 impl ImageGenerationModel {
     fn new(client: Client, model: &str) -> ImageGenerationModel {
         Self {
@@ -414,16 +422,19 @@ impl ImageGenerationModel {
     }
 }
 
+#[cfg(feature = "image")]
 #[derive(Clone, Deserialize)]
 pub struct Image {
     image: String,
 }
 
+#[cfg(feature = "image")]
 #[derive(Clone, Deserialize)]
 pub struct ImageGenerationResponse {
     images: Vec<Image>,
 }
 
+#[cfg(feature = "image")]
 impl TryFrom<ImageGenerationResponse>
     for image_generation::ImageGenerationResponse<ImageGenerationResponse>
 {
@@ -441,6 +452,7 @@ impl TryFrom<ImageGenerationResponse>
     }
 }
 
+#[cfg(feature = "image")]
 impl image_generation::ImageGenerationModel for ImageGenerationModel {
     type Response = ImageGenerationResponse;
 
