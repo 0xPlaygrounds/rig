@@ -572,15 +572,6 @@ pub struct ToolResultContent {
     #[serde(default)]
     r#type: ToolResultContentType,
     text: String,
-    #[serde(default)]
-    r#type: ToolResultContentType,
-}
-
-#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all = "lowercase")]
-pub enum ToolResultContentType {
-    #[default]
-    Text,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
