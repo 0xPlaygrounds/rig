@@ -48,6 +48,7 @@ serde_path_to_error = "0.1.16"
 [features]
 default = ["reqwest/default"]
 all = ["derive", "pdf", "rayon"]
+image = []
 derive = ["dep:rig-derive"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]

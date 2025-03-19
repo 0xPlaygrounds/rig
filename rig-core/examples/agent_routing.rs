@@ -1,9 +1,7 @@
 use std::env;
 
-use rig::{
-    pipeline::{self, Op, TryOp},
-    providers::openai::Client,
-};
+use rig::pipeline::{self, Op, TryOp};
+use rig::providers::openai::client::Client;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
