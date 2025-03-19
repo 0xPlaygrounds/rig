@@ -85,6 +85,7 @@ pub mod cli_chatbot;
 pub mod completion;
 pub mod embeddings;
 pub mod extractor;
+#[cfg(feature = "image_generation")]
 pub mod image_generation;
 pub(crate) mod json_utils;
 pub mod loaders;
