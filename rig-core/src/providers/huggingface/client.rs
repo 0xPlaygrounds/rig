@@ -54,6 +54,7 @@ impl SubProvider {
     /// Get the image generation endpoint for the SubProvider
     /// Required because Huggingface Inference requires the model
     /// in the url and in the request body.
+    #[cfg(feature = "image")]
     pub fn image_generation_endpoint(&self, model: &str) -> Result<String, ImageGenerationError> {
         match self {
             SubProvider::HFInference => Ok(format!("/{}", model)),
