@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use super::completion::CompletionModel;
 use crate::agent::AgentBuilder;
+#[cfg(feature = "image")]
 use crate::image_generation::ImageGenerationError;
 #[cfg(feature = "image")]
 use crate::providers::huggingface::image_generation::ImageGenerationModel;
