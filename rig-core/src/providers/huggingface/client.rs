@@ -2,10 +2,11 @@ use std::fmt::Display;
 
 use super::completion::CompletionModel;
 use crate::agent::AgentBuilder;
-
+use crate::image_generation::ImageGenerationError;
 #[cfg(feature = "image")]
 use crate::providers::huggingface::image_generation::ImageGenerationModel;
 use crate::providers::huggingface::transcription::TranscriptionModel;
+use crate::transcription::TranscriptionError;
 
 // ================================================================
 // Main Huggingface Client
@@ -39,23 +40,26 @@ impl SubProvider {
     /// Get the transcription endpoint for the SubProvider
     /// Required because Huggingface Inference requires the model
     /// in the url and in the request body.
-    pub fn transcription_endpoint(&self, model: &str) -> String {
+    pub fn transcription_endpoint(&self, model: &str) -> Result<String, TranscriptionError> {
         match self {
-            SubProvider::HFInference => format!("/{}", model),
-            _ => panic!("transcription endpoint is not supported yet for {}", self),
+            SubProvider::HFInference => Ok(format!("/{}", model)),
+            _ => Err(TranscriptionError::ProviderError(format!(
+                "transcription endpoint is not supported yet for {}",
+                self
+            ))),
         }
     }
 
     /// Get the image generation endpoint for the SubProvider
     /// Required because Huggingface Inference requires the model
     /// in the url and in the request body.
-    pub fn image_generation_endpoint(&self, model: &str) -> String {
+    pub fn image_generation_endpoint(&self, model: &str) -> Result<String, ImageGenerationError> {
         match self {
-            SubProvider::HFInference => format!("/{}", model),
-            _ => panic!(
+            SubProvider::HFInference => Ok(format!("/{}", model)),
+            _ => Err(ImageGenerationError::ProviderError(format!(
                 "image generation endpoint is not supported yet for {}",
                 self
-            ),
+            ))),
         }
     }
 
@@ -182,7 +186,6 @@ impl Client {
 
     pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        println!("{}", url);
         self.http_client.post(url)
     }
 

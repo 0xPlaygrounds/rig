@@ -51,15 +51,15 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
         let request = json!({
             "inputs": request.prompt,
             "parameters": {
-                "width": request.size.0,
-                "height": request.size.1
+                "width": request.width,
+                "height": request.height
             }
         });
 
         let route = self
             .client
             .sub_provider
-            .image_generation_endpoint(&self.model);
+            .image_generation_endpoint(&self.model)?;
 
         let response = self.client.post(&route).json(&request).send().await?;
 

@@ -464,8 +464,8 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
         let mut request = json!({
             "model_name": self.model,
             "prompt": generation_request.prompt,
-            "height": generation_request.size.1,
-            "width": generation_request.size.0,
+            "height": generation_request.height,
+            "width": generation_request.width,
         });
 
         if let Some(params) = generation_request.additional_params {

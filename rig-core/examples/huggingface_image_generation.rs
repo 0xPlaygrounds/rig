@@ -7,6 +7,12 @@ use std::path::Path;
 
 #[tokio::main]
 async fn main() {
+    let arguments: Vec<String> = args().collect();
+
+    let path = arguments.get(1).unwrap_or(&"./output.png".to_string());
+    let path = Path::new(path);
+    let mut file = File::create_new(path).expect("Failed to create file");
+
     let huggingface = huggingface::Client::from_env();
 
     let dalle = huggingface.image_generation_model(huggingface::STABLE_DIFFUSION_3);
@@ -14,14 +20,11 @@ async fn main() {
     let response = dalle
         .image_generation_request()
         .prompt("A castle sitting upon a large mountain, overlooking the water.")
-        .size((1024, 1024))
+        .width(1024)
+        .height(1024)
         .send()
         .await
         .expect("Failed to generate image");
 
-    let arguments: Vec<String> = args().collect();
-
-    let path = Path::new(&arguments[1]);
-    let mut file = File::create_new(path).expect("Failed to create file");
     let _ = file.write(&response.image);
 }

@@ -679,7 +679,7 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
         let request = json!({
             "model": self.model,
             "prompt": generation_request.prompt,
-            "size": format!("{}x{}", generation_request.size.0, generation_request.size.1),
+            "size": format!("{}x{}", generation_request.width, generation_request.height),
             "response_format": "b64_json"
         });
 

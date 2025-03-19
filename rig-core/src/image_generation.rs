@@ -63,14 +63,16 @@ pub trait ImageGenerationModel: Clone + Send + Sync {
 
 pub struct ImageGenerationRequest {
     pub prompt: String,
-    pub size: (u32, u32),
+    pub width: u32,
+    pub height: u32,
     pub additional_params: Option<Value>,
 }
 
 pub struct ImageGenerationRequestBuilder<M: ImageGenerationModel> {
     model: M,
     prompt: String,
-    size: (u32, u32),
+    width: u32,
+    height: u32,
     additional_params: Option<Value>,
 }
 
@@ -79,21 +81,31 @@ impl<M: ImageGenerationModel> ImageGenerationRequestBuilder<M> {
         Self {
             model,
             prompt: "".to_string(),
-            size: (256, 256),
+            height: 256,
+            width: 256,
             additional_params: None,
         }
     }
 
+    /// Sets the prompt for the image generation request
     pub fn prompt(mut self, prompt: &str) -> Self {
         self.prompt = prompt.to_string();
         self
     }
 
-    pub fn size(mut self, size: (u32, u32)) -> Self {
-        self.size = size;
+    /// The width of the generated image
+    pub fn width(mut self, width: u32) -> Self {
+        self.width = width;
         self
     }
 
+    /// The height of the generated image
+    pub fn height(mut self, height: u32) -> Self {
+        self.height = height;
+        self
+    }
+
+    /// Adds additional parameters to the image generation request.
     pub fn additional_params(mut self, params: Value) -> Self {
         self.additional_params = Some(params);
         self
@@ -102,7 +114,8 @@ impl<M: ImageGenerationModel> ImageGenerationRequestBuilder<M> {
     pub fn build(self) -> ImageGenerationRequest {
         ImageGenerationRequest {
             prompt: self.prompt,
-            size: self.size,
+            width: self.width,
+            height: self.height,
             additional_params: self.additional_params,
         }
     }
