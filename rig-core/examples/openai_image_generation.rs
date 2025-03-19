@@ -1,6 +1,5 @@
 use rig::image_generation::ImageGenerationModel;
 use rig::providers::openai;
-use std::borrow::ToOwned;
 use std::env::args;
 use std::fs::File;
 use std::io::Write;
