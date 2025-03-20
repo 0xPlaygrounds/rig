@@ -1,10 +1,9 @@
-use rig::image_generation::ImageGenerationModel;
+use rig::audio_generation::AudioGenerationModel;
 use rig::providers::openai;
 use std::env::args;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
-use rig::audio_generation::AudioGenerationModel;
 
 const DEFAULT_PATH: &str = "./output.mp3";
 
@@ -23,7 +22,7 @@ async fn main() {
 
     let openai = openai::Client::from_env();
 
-    let tts = openai.audio_generation_model(openai::DALL_E_2);
+    let tts = openai.audio_generation_model(openai::TTS_1);
 
     let response = tts
         .audio_generation_request()

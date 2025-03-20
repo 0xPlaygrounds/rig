@@ -1,10 +1,13 @@
-use std::convert::Infallible;
 use crate::audio_generation::{
     self, AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
 };
 use crate::providers::openai::Client;
-use serde_json::json;
 use bytes::Bytes;
+use serde_json::json;
+use std::convert::Infallible;
+
+pub const TTS_1: &str = "tts-1";
+pub const TTS_1_HD: &str = "tts-1-hd";
 
 #[derive(Clone)]
 pub struct AudioGenerationModel {
@@ -22,7 +25,7 @@ impl AudioGenerationModel {
 }
 
 impl TryFrom<Bytes> for AudioGenerationResponse<Bytes> {
-    type Error = Infallible;
+    type Error = AudioGenerationError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -60,7 +63,7 @@ impl audio_generation::AudioGenerationModel for AudioGenerationModel {
                 response.text().await?
             )));
         }
-     
+
         response.bytes().await?.try_into()
     }
 }

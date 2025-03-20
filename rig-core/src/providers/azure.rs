@@ -9,10 +9,10 @@
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
 
-use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
-
 #[cfg(feature = "image")]
 use super::openai::ImageGenerationResponse;
+use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
+use std::future::Future;
 
 #[cfg(feature = "image")]
 use crate::image_generation::{self, ImageGenerationError, ImageGenerationRequest};
@@ -32,7 +32,6 @@ use reqwest::multipart::Part;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
 // ================================================================
 // Main Azure OpenAI Client
 // ================================================================
@@ -167,6 +166,16 @@ impl Client {
     fn post_image_generation(&self, deployment_id: &str) -> reqwest::RequestBuilder {
         let url = format!(
             "{}/openai/deployments/{}/images/generations?api-version={}",
+            self.azure_endpoint, deployment_id, self.api_version
+        )
+        .replace("//", "/");
+        self.http_client.post(url)
+    }
+
+    #[cfg(feature = "audio")]
+    fn post_audio_generation(&self, deployment_id: &str) -> reqwest::RequestBuilder {
+        let url = format!(
+            "{}/openai/deployments/{}/audio/speech?api-version={}",
             self.azure_endpoint, deployment_id, self.api_version
         )
         .replace("//", "/");
@@ -703,6 +712,73 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
         match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&t)? {
             ApiResponse::Ok(response) => response.try_into(),
             ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
+        }
+    }
+}
+
+// ================================================================
+// Azure OpenAI Audio Generation API
+// ================================================================
+
+#[cfg(feature = "audio")]
+pub use audio_generation::*;
+#[cfg(feature = "audio")]
+mod audio_generation {
+    use super::Client;
+    use crate::audio_generation;
+    use crate::audio_generation::{
+        AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
+    };
+    use bytes::Bytes;
+    use serde_json::json;
+
+    #[derive(Clone)]
+    pub struct AudioGenerationModel {
+        client: Client,
+        model: String,
+    }
+
+    impl TryFrom<Bytes> for AudioGenerationResponse<Bytes> {
+        type Error = AudioGenerationError;
+
+        fn try_from(value: Bytes) -> Result<Self, Self::Error> {
+            Ok(Self {
+                audio: value.to_vec(),
+                response: value,
+            })
+        }
+    }
+
+    impl audio_generation::AudioGenerationModel for AudioGenerationModel {
+        type Response = Bytes;
+
+        async fn audio_generation(
+            &self,
+            request: AudioGenerationRequest,
+        ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
+            let request = json!({
+                "model": self.model,
+                "input": request.text,
+                "voice": request.voice,
+                "speed": request.speed,
+            });
+
+            let response = self
+                .client
+                .post_audio_generation("/audio/speech")
+                .json(&request)
+                .send()
+                .await?;
+
+            if !response.status().is_success() {
+                return Err(AudioGenerationError::ProviderError(format!(
+                    "{}: {}",
+                    response.status().to_string(),
+                    response.text().await?
+                )));
+            }
+
+            response.bytes().await?.try_into()
         }
     }
 }

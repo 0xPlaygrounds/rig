@@ -24,6 +24,7 @@ use crate::{
     OneOrMany,
 };
 
+use crate::providers::gemini::completion::gemini_api_types::FinishReason::Language;
 #[cfg(feature = "image")]
 use base64::prelude::BASE64_STANDARD;
 #[cfg(feature = "image")]
@@ -96,6 +97,22 @@ impl Client {
         CompletionModel::new(self.clone(), model)
     }
 
+    /// Create an image generation model with the given name.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::hyperbolic::{Client, self};
+    ///
+    /// // Initialize the Hyperbolic client
+    /// let hyperbolic = Client::new("your-hyperbolic-api-key");
+    ///
+    /// let llama_3_1_8b = hyperbolic.image_generation_model(hyperbolic::SSD);
+    /// ```
+    #[cfg(feature = "image")]
+    pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
+        ImageGenerationModel::new(self.clone(), model)
+    }
+
     /// Create a completion model with the given name.
     ///
     /// # Example
@@ -107,9 +124,9 @@ impl Client {
     ///
     /// let llama_3_1_8b = hyperbolic.completion_model(hyperbolic::LLAMA_3_1_8B);
     /// ```
-    #[cfg(feature = "image")]
-    pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
-        ImageGenerationModel::new(self.clone(), model)
+    #[cfg(feature = "audio")]
+    pub fn audio_generation_model(&self, language: &str) -> AudioGenerationModel {
+        AudioGenerationModel::new(self.clone(), language)
     }
 
     /// Create an agent builder with the given completion model.
@@ -493,6 +510,98 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
         {
             ApiResponse::Ok(response) => response.try_into(),
             ApiResponse::Err(err) => Err(ImageGenerationError::ResponseError(err.message)),
+        }
+    }
+}
+
+// ======================================
+// Hyperbolic Audio Generation API
+// ======================================
+#[cfg(feature = "audio")]
+pub use audio_generation::*;
+#[cfg(feature = "audio")]
+mod audio_generation {
+    use super::{ApiResponse, Client};
+    use crate::audio_generation;
+    use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
+    use base64::prelude::BASE64_STANDARD;
+    use base64::Engine;
+    use serde::Deserialize;
+    use serde_json::json;
+
+    #[derive(Clone)]
+    pub struct AudioGenerationModel {
+        client: Client,
+        pub langauge: String,
+    }
+
+    impl AudioGenerationModel {
+        pub(crate) fn new(client: Client, language: &str) -> AudioGenerationModel {
+            Self {
+                client,
+                langauge: language.to_string(),
+            }
+        }
+    }
+
+    #[derive(Clone, Deserialize)]
+    pub struct AudioGenerationResponse {
+        audio: String,
+    }
+
+    impl TryFrom<AudioGenerationResponse>
+        for audio_generation::AudioGenerationResponse<AudioGenerationResponse>
+    {
+        type Error = AudioGenerationError;
+
+        fn try_from(value: AudioGenerationResponse) -> Result<Self, Self::Error> {
+            let data = BASE64_STANDARD
+                .decode(&value.audio)
+                .expect("Could not decode audio.");
+
+            Ok(Self {
+                audio: data,
+                response: value,
+            })
+        }
+    }
+
+    impl audio_generation::AudioGenerationModel for AudioGenerationModel {
+        type Response = AudioGenerationResponse;
+
+        async fn audio_generation(
+            &self,
+            request: AudioGenerationRequest,
+        ) -> Result<audio_generation::AudioGenerationResponse<Self::Response>, AudioGenerationError>
+        {
+            let request = json!({
+                "language": self.langauge,
+                "speaker": request.voice,
+                "text": request.text,
+                "speed": request.speed
+            });
+
+            let response = self
+                .client
+                .post("/audio/generation")
+                .json(&request)
+                .send()
+                .await?;
+
+            if !response.status().is_success() {
+                return Err(AudioGenerationError::ProviderError(format!(
+                    "{}: {}",
+                    response.status().to_string(),
+                    response.text().await?
+                )));
+            }
+
+            match serde_json::from_str::<ApiResponse<AudioGenerationResponse>>(
+                &response.text().await?,
+            )? {
+                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Err(err) => Err(AudioGenerationError::ProviderError(err.message)),
+            }
         }
     }
 }

@@ -81,6 +81,8 @@
 //! implement the [VectorStoreIndex](crate::vector_store::VectorStoreIndex) trait.
 
 pub mod agent;
+#[cfg(feature = "audio")]
+pub mod audio_generation;
 pub mod cli_chatbot;
 pub mod completion;
 pub mod embeddings;

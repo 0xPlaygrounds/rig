@@ -1,9 +1,9 @@
-use rig::providers::openai;
+use rig::audio_generation::AudioGenerationModel;
+use rig::providers::hyperbolic;
 use std::env::args;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
-use rig::audio_generation::AudioGenerationModel;
 
 const DEFAULT_PATH: &str = "./output.mp3";
 
@@ -20,14 +20,14 @@ async fn main() {
     let path = Path::new(&path);
     let mut file = File::create_new(path).expect("Failed to create file");
 
-    let openai = openai::Client::from_env();
+    let hyperbolic = hyperbolic::Client::from_env();
 
-    let tts = openai.audio_generation_model(openai::TTS_1);
+    let tts = hyperbolic.audio_generation_model("EN");
 
     let response = tts
         .audio_generation_request()
         .text("The quick brown fox jumps over the lazy dog")
-        .voice("alloy")
+        .voice("EN-US")
         .send()
         .await
         .expect("Failed to generate image");
