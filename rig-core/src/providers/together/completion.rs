@@ -128,7 +128,7 @@ pub const WIZARDLM_13B_V1_2: &str = "WizardLM/WizardLM-13B-V1.2";
 
 #[derive(Clone)]
 pub struct CompletionModel {
-    client: Client,
+    pub(crate) client: Client,
     pub model: String,
 }
 
@@ -139,25 +139,18 @@ impl CompletionModel {
             model: model.to_string(),
         }
     }
-}
 
-impl completion::CompletionModel for CompletionModel {
-    type Response = openai::CompletionResponse;
-
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn completion(
+    pub(crate) fn create_completion_request(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
+    ) -> Result<serde_json::Value, CompletionError> {
         let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
             Some(preamble) => vec![openai::Message::system(preamble)],
             None => vec![],
         };
-
-        // Convert prompt to user message
-        let prompt: Vec<openai::Message> = completion_request.prompt_with_context().try_into()?;
-
-        // Convert existing chat history
+        if let Some(docs) = completion_request.normalized_documents() {
+            partial_history.push(openai::Message::try_from(docs)?);
+        }
         let chat_history: Vec<openai::Message> = completion_request
             .chat_history
             .into_iter()
@@ -167,9 +160,7 @@ impl completion::CompletionModel for CompletionModel {
             .flatten()
             .collect();
 
-        // Combine all messages into a single history
         full_history.extend(chat_history);
-        full_history.extend(prompt);
 
         let mut request = if completion_request.tools.is_empty() {
             json!({
@@ -186,12 +177,24 @@ impl completion::CompletionModel for CompletionModel {
                 "tool_choice": "auto",
             })
         };
-
         request = if let Some(params) = completion_request.additional_params {
             json_utils::merge(request, params)
         } else {
             request
         };
+        Ok(request)
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    type Response = openai::CompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
+        let request = self.create_completion_request(completion_request)?;
 
         let response = self
             .client

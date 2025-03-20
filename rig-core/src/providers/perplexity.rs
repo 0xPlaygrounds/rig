@@ -16,9 +16,13 @@ use crate::{
     json_utils, OneOrMany,
 };
 
+use crate::completion::CompletionRequest;
+use crate::json_utils::merge;
+use crate::providers::openai::send_compatible_streaming_request;
+use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 
 // ================================================================
 // Main Cohere Client
@@ -195,6 +199,52 @@ impl CompletionModel {
             model: model.to_string(),
         }
     }
+
+    fn create_completion_request(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<Value, CompletionError> {
+        // Build up the order of messages (context, chat_history, prompt)
+        let mut partial_history = vec![];
+        if let Some(docs) = completion_request.normalized_documents() {
+            partial_history.push(docs);
+        }
+        partial_history.extend(completion_request.chat_history);
+
+        // Initialize full history with preamble (or empty if non-existent)
+        let mut full_history: Vec<Message> =
+            completion_request
+                .preamble
+                .map_or_else(Vec::new, |preamble| {
+                    vec![Message {
+                        role: Role::System,
+                        content: preamble,
+                    }]
+                });
+
+        // Convert and extend the rest of the history
+        full_history.extend(
+            partial_history
+                .into_iter()
+                .map(|msg| completion::Message::try_into(msg))
+                .collect::<Result<Vec<Message>, _>>()?,
+        );
+
+        // Compose request
+        let request = json!({
+            "model": self.model,
+            "messages": full_history,
+            "temperature": completion_request.temperature,
+        });
+
+        let request = if let Some(ref params) = completion_request.additional_params {
+            json_utils::merge(request, params.clone())
+        } else {
+            request
+        };
+
+        Ok(request)
+    }
 }
 
 impl TryFrom<message::Message> for Message {
@@ -265,49 +315,12 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        // Build up the order of messages (context, chat_history, prompt)
-        let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
-            partial_history.push(docs);
-        }
-        partial_history.extend(completion_request.chat_history);
-
-        // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<Message> =
-            completion_request
-                .preamble
-                .map_or_else(Vec::new, |preamble| {
-                    vec![Message {
-                        role: Role::System,
-                        content: preamble,
-                    }]
-                });
-
-        // Convert and extend the rest of the history
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(|msg| completion::Message::try_into(msg))
-                .collect::<Result<Vec<Message>, _>>()?,
-        );
-
-        // Compose request
-        let request = json!({
-            "model": self.model,
-            "messages": full_history,
-            "temperature": completion_request.temperature,
-        });
+        let request = self.create_completion_request(completion_request)?;
 
         let response = self
             .client
             .post("/chat/completions")
-            .json(
-                &if let Some(ref params) = completion_request.additional_params {
-                    json_utils::merge(request.clone(), params.clone())
-                } else {
-                    request.clone()
-                },
-            )
+            .json(&request)
             .send()
             .await?;
 
@@ -327,6 +340,22 @@ impl completion::CompletionModel for CompletionModel {
         }
     }
 }
+
+impl StreamingCompletionModel for CompletionModel {
+    async fn stream(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<StreamingResult, CompletionError> {
+        let mut request = self.create_completion_request(completion_request)?;
+
+        request = merge(request, json!({"stream": true}));
+
+        let builder = self.client.post("/chat/completions").json(&request);
+
+        send_compatible_streaming_request(builder).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,9 +400,8 @@ mod tests {
         assert_eq!(converted_assistant_message.role, Role::Assistant);
         assert_eq!(converted_assistant_message.content, "Assistant message");
 
-        let back_to_user_message: message::Message = converted_user_message.try_into().unwrap();
-        let back_to_assistant_message: message::Message =
-            converted_assistant_message.try_into().unwrap();
+        let back_to_user_message: message::Message = converted_user_message.into();
+        let back_to_assistant_message: message::Message = converted_assistant_message.into();
 
         assert_eq!(user_message, back_to_user_message);
         assert_eq!(assistant_message, back_to_assistant_message);

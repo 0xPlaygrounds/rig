@@ -8,6 +8,9 @@
 //!
 //! let gpt4o = client.completion_model(groq::GPT_4O);
 //! ```
+use super::openai::{send_compatible_streaming_request, CompletionResponse, TranscriptionResponse};
+use crate::json_utils::merge;
+use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -21,9 +24,7 @@ use crate::{
 use reqwest::multipart::Part;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-
-use super::openai::{CompletionResponse, TranscriptionResponse};
+use serde_json::{json, Value};
 
 // ================================================================
 // Main Groq Client
@@ -273,16 +274,11 @@ impl CompletionModel {
             model: model.to_string(),
         }
     }
-}
 
-impl completion::CompletionModel for CompletionModel {
-    type Response = CompletionResponse;
-
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn completion(
+    fn create_completion_request(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+    ) -> Result<Value, CompletionError> {
         // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];
         if let Some(docs) = completion_request.normalized_documents() {
@@ -325,16 +321,30 @@ impl completion::CompletionModel for CompletionModel {
             })
         };
 
+        let request = if let Some(params) = completion_request.additional_params {
+            json_utils::merge(request, params)
+        } else {
+            request
+        };
+
+        Ok(request)
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    type Response = CompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let request = self.create_completion_request(completion_request)?;
+
         let response = self
             .client
             .post("/chat/completions")
-            .json(
-                &if let Some(params) = completion_request.additional_params {
-                    json_utils::merge(request, params)
-                } else {
-                    request
-                },
-            )
+            .json(&request)
             .send()
             .await?;
 
@@ -352,6 +362,18 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+}
+
+impl StreamingCompletionModel for CompletionModel {
+    async fn stream(&self, request: CompletionRequest) -> Result<StreamingResult, CompletionError> {
+        let mut request = self.create_completion_request(request)?;
+
+        request = merge(request, json!({"stream": true}));
+
+        let builder = self.client.post("/chat/completions").json(&request);
+
+        send_compatible_streaming_request(builder).await
     }
 }
 
