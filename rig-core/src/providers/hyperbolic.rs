@@ -24,7 +24,6 @@ use crate::{
     OneOrMany,
 };
 
-use crate::providers::gemini::completion::gemini_api_types::FinishReason::Language;
 #[cfg(feature = "image")]
 use base64::prelude::BASE64_STANDARD;
 #[cfg(feature = "image")]
@@ -591,7 +590,7 @@ mod audio_generation {
             if !response.status().is_success() {
                 return Err(AudioGenerationError::ProviderError(format!(
                     "{}: {}",
-                    response.status().to_string(),
+                    response.status(),
                     response.text().await?
                 )));
             }

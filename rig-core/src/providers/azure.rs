@@ -12,7 +12,6 @@
 #[cfg(feature = "image")]
 use super::openai::ImageGenerationResponse;
 use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
-use std::future::Future;
 
 #[cfg(feature = "image")]
 use crate::image_generation::{self, ImageGenerationError, ImageGenerationRequest};
@@ -738,17 +737,6 @@ mod audio_generation {
         model: String,
     }
 
-    impl TryFrom<Bytes> for AudioGenerationResponse<Bytes> {
-        type Error = AudioGenerationError;
-
-        fn try_from(value: Bytes) -> Result<Self, Self::Error> {
-            Ok(Self {
-                audio: value.to_vec(),
-                response: value,
-            })
-        }
-    }
-
     impl audio_generation::AudioGenerationModel for AudioGenerationModel {
         type Response = Bytes;
 
@@ -773,12 +761,17 @@ mod audio_generation {
             if !response.status().is_success() {
                 return Err(AudioGenerationError::ProviderError(format!(
                     "{}: {}",
-                    response.status().to_string(),
+                    response.status(),
                     response.text().await?
                 )));
             }
 
-            response.bytes().await?.try_into()
+            let bytes = response.bytes().await?;
+
+            Ok(AudioGenerationResponse {
+                audio: bytes.to_vec(),
+                response: bytes,
+            })
         }
     }
 }

@@ -4,7 +4,6 @@ use crate::audio_generation::{
 use crate::providers::openai::Client;
 use bytes::Bytes;
 use serde_json::json;
-use std::convert::Infallible;
 
 pub const TTS_1: &str = "tts-1";
 pub const TTS_1_HD: &str = "tts-1-hd";
@@ -21,17 +20,6 @@ impl AudioGenerationModel {
             client,
             model: model.to_string(),
         }
-    }
-}
-
-impl TryFrom<Bytes> for AudioGenerationResponse<Bytes> {
-    type Error = AudioGenerationError;
-
-    fn try_from(value: Bytes) -> Result<Self, Self::Error> {
-        Ok(Self {
-            audio: value.to_vec(),
-            response: value,
-        })
     }
 }
 
@@ -59,11 +47,16 @@ impl audio_generation::AudioGenerationModel for AudioGenerationModel {
         if !response.status().is_success() {
             return Err(AudioGenerationError::ProviderError(format!(
                 "{}: {}",
-                response.status().to_string(),
+                response.status(),
                 response.text().await?
             )));
         }
 
-        response.bytes().await?.try_into()
+        let bytes = response.bytes().await?;
+
+        Ok(AudioGenerationResponse {
+            audio: bytes.to_vec(),
+            response: bytes,
+        })
     }
 }
