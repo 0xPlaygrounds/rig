@@ -121,7 +121,7 @@ impl Client {
     /// // Initialize the Hyperbolic client
     /// let hyperbolic = Client::new("your-hyperbolic-api-key");
     ///
-    /// let llama_3_1_8b = hyperbolic.completion_model(hyperbolic::LLAMA_3_1_8B);
+    /// let tts = hyperbolic.audio_generation_model("EN");
     /// ```
     #[cfg(feature = "audio")]
     pub fn audio_generation_model(&self, language: &str) -> AudioGenerationModel {

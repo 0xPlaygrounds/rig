@@ -25,6 +25,7 @@ pub use embedding::*;
 
 #[cfg(feature = "audio")]
 pub use audio_generation::{TTS_1, TTS_1_HD};
+
 #[cfg(feature = "image")]
 pub use image_generation::*;
 pub use streaming::*;

@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 pub use fastembed::EmbeddingModel as FastembedModel;
-use fastembed::{InitOptions, TextEmbedding};
+use fastembed::{
+    InitOptions, InitOptionsUserDefined, ModelInfo, TextEmbedding, UserDefinedEmbeddingModel,
+};
 use rig::{
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     Embed,
@@ -84,6 +86,26 @@ impl EmbeddingModel {
         Self {
             embedder,
             model: model.to_owned(),
+            ndims,
+        }
+    }
+
+    pub fn new_from_user_defined(
+        user_defined_model: UserDefinedEmbeddingModel,
+        ndims: usize,
+        model_info: &ModelInfo<FastembedModel>,
+    ) -> Self {
+        let fastembed_embedding_model = TextEmbedding::try_new_from_user_defined(
+            user_defined_model,
+            InitOptionsUserDefined::default(),
+        )
+        .unwrap();
+
+        let embedder = Arc::new(fastembed_embedding_model);
+
+        Self {
+            embedder,
+            model: model_info.model.to_owned(),
             ndims,
         }
     }
