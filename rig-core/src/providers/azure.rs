@@ -9,12 +9,8 @@
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
 
-#[cfg(feature = "image")]
-use super::openai::ImageGenerationResponse;
 use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
 
-#[cfg(feature = "image")]
-use crate::image_generation::{self, ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
@@ -670,51 +666,59 @@ impl transcription::TranscriptionModel for TranscriptionModel {
 // Azure OpenAI Image Generation API
 // ================================================================
 #[cfg(feature = "image")]
-#[derive(Clone)]
-pub struct ImageGenerationModel {
-    client: Client,
-    pub model: String,
-}
+pub use image_generation::*;
 #[cfg(feature = "image")]
-impl image_generation::ImageGenerationModel for ImageGenerationModel {
-    type Response = ImageGenerationResponse;
+mod image_generation {
+    use crate::image_generation;
+    use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+    use crate::providers::azure::{ApiResponse, Client};
+    use crate::providers::openai::ImageGenerationResponse;
+    use serde_json::json;
 
-    async fn image_generation(
-        &self,
-        generation_request: ImageGenerationRequest,
-    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-    {
-        let request = json!({
-            "model": self.model,
-            "prompt": generation_request.prompt,
-            "size": format!("{}x{}", generation_request.width, generation_request.height),
-            "response_format": "b64_json"
-        });
+    #[derive(Clone)]
+    pub struct ImageGenerationModel {
+        client: Client,
+        pub model: String,
+    }
+    impl image_generation::ImageGenerationModel for ImageGenerationModel {
+        type Response = ImageGenerationResponse;
 
-        let response = self
-            .client
-            .post_image_generation(&self.model)
-            .json(&request)
-            .send()
-            .await?;
+        async fn image_generation(
+            &self,
+            generation_request: ImageGenerationRequest,
+        ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
+        {
+            let request = json!({
+                "model": self.model,
+                "prompt": generation_request.prompt,
+                "size": format!("{}x{}", generation_request.width, generation_request.height),
+                "response_format": "b64_json"
+            });
 
-        if !response.status().is_success() {
-            return Err(ImageGenerationError::ProviderError(format!(
-                "{}: {}",
-                response.status(),
-                response.text().await?
-            )));
-        }
+            let response = self
+                .client
+                .post_image_generation(&self.model)
+                .json(&request)
+                .send()
+                .await?;
 
-        let t = response.text().await?;
+            if !response.status().is_success() {
+                return Err(ImageGenerationError::ProviderError(format!(
+                    "{}: {}",
+                    response.status(),
+                    response.text().await?
+                )));
+            }
 
-        match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&t)? {
-            ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
+            let t = response.text().await?;
+
+            match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&t)? {
+                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
+            }
         }
     }
 }
-
 // ================================================================
 // Azure OpenAI Audio Generation API
 // ================================================================

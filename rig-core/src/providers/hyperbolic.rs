@@ -11,8 +11,6 @@
 
 use super::openai::{send_compatible_streaming_request, AssistantContent};
 
-#[cfg(feature = "image")]
-use crate::image_generation::{self, ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge_inplace;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
@@ -24,10 +22,6 @@ use crate::{
     OneOrMany,
 };
 
-#[cfg(feature = "image")]
-use base64::prelude::BASE64_STANDARD;
-#[cfg(feature = "image")]
-use base64::Engine;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -413,102 +407,118 @@ impl StreamingCompletionModel for CompletionModel {
 // =======================================
 // Hyperbolic Image Generation API
 // =======================================
-pub const SDXL1_0_BASE: &str = "SDXL1.0-base";
-pub const SD2: &str = "SD2";
-pub const SD1_5: &str = "SD1.5";
-pub const SSD: &str = "SSD";
-pub const SDXL_TURBO: &str = "SDXL-turbo";
-pub const SDXL_CONTROLNET: &str = "SDXL-ControlNet";
-pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
 
 #[cfg(feature = "image")]
-#[derive(Clone)]
-pub struct ImageGenerationModel {
-    client: Client,
-    pub model: String,
-}
+pub use image_generation::*;
 
 #[cfg(feature = "image")]
-impl ImageGenerationModel {
-    fn new(client: Client, model: &str) -> ImageGenerationModel {
-        Self {
-            client,
-            model: model.to_string(),
+mod image_generation {
+    use super::{ApiResponse, Client};
+    use crate::image_generation;
+    use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+    use crate::json_utils::merge_inplace;
+    use base64::prelude::BASE64_STANDARD;
+    use base64::Engine;
+    use serde::Deserialize;
+    use serde_json::json;
+
+    pub const SDXL1_0_BASE: &str = "SDXL1.0-base";
+    pub const SD2: &str = "SD2";
+    pub const SD1_5: &str = "SD1.5";
+    pub const SSD: &str = "SSD";
+    pub const SDXL_TURBO: &str = "SDXL-turbo";
+    pub const SDXL_CONTROLNET: &str = "SDXL-ControlNet";
+    pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
+
+    #[cfg(feature = "image")]
+    #[derive(Clone)]
+    pub struct ImageGenerationModel {
+        client: Client,
+        pub model: String,
+    }
+
+    #[cfg(feature = "image")]
+    impl ImageGenerationModel {
+        pub(crate) fn new(client: Client, model: &str) -> ImageGenerationModel {
+            Self {
+                client,
+                model: model.to_string(),
+            }
         }
     }
-}
 
-#[cfg(feature = "image")]
-#[derive(Clone, Deserialize)]
-pub struct Image {
-    image: String,
-}
-
-#[cfg(feature = "image")]
-#[derive(Clone, Deserialize)]
-pub struct ImageGenerationResponse {
-    images: Vec<Image>,
-}
-
-#[cfg(feature = "image")]
-impl TryFrom<ImageGenerationResponse>
-    for image_generation::ImageGenerationResponse<ImageGenerationResponse>
-{
-    type Error = ImageGenerationError;
-
-    fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
-        let data = BASE64_STANDARD
-            .decode(&value.images[0].image)
-            .expect("Could not decode image.");
-
-        Ok(Self {
-            image: data,
-            response: value,
-        })
+    #[cfg(feature = "image")]
+    #[derive(Clone, Deserialize)]
+    pub struct Image {
+        image: String,
     }
-}
 
-#[cfg(feature = "image")]
-impl image_generation::ImageGenerationModel for ImageGenerationModel {
-    type Response = ImageGenerationResponse;
+    #[cfg(feature = "image")]
+    #[derive(Clone, Deserialize)]
+    pub struct ImageGenerationResponse {
+        images: Vec<Image>,
+    }
 
-    async fn image_generation(
-        &self,
-        generation_request: ImageGenerationRequest,
-    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
+    #[cfg(feature = "image")]
+    impl TryFrom<ImageGenerationResponse>
+        for image_generation::ImageGenerationResponse<ImageGenerationResponse>
     {
-        let mut request = json!({
-            "model_name": self.model,
-            "prompt": generation_request.prompt,
-            "height": generation_request.height,
-            "width": generation_request.width,
-        });
+        type Error = ImageGenerationError;
 
-        if let Some(params) = generation_request.additional_params {
-            merge_inplace(&mut request, params);
+        fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
+            let data = BASE64_STANDARD
+                .decode(&value.images[0].image)
+                .expect("Could not decode image.");
+
+            Ok(Self {
+                image: data,
+                response: value,
+            })
         }
+    }
 
-        let response = self
-            .client
-            .post("/image/generation")
-            .json(&request)
-            .send()
-            .await?;
+    #[cfg(feature = "image")]
+    impl image_generation::ImageGenerationModel for ImageGenerationModel {
+        type Response = ImageGenerationResponse;
 
-        if !response.status().is_success() {
-            return Err(ImageGenerationError::ProviderError(format!(
-                "{}: {}",
-                response.status().as_str(),
-                response.text().await?
-            )));
-        }
-
-        match response
-            .json::<ApiResponse<ImageGenerationResponse>>()
-            .await?
+        async fn image_generation(
+            &self,
+            generation_request: ImageGenerationRequest,
+        ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
         {
-            ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Err(err) => Err(ImageGenerationError::ResponseError(err.message)),
+            let mut request = json!({
+                "model_name": self.model,
+                "prompt": generation_request.prompt,
+                "height": generation_request.height,
+                "width": generation_request.width,
+            });
+
+            if let Some(params) = generation_request.additional_params {
+                merge_inplace(&mut request, params);
+            }
+
+            let response = self
+                .client
+                .post("/image/generation")
+                .json(&request)
+                .send()
+                .await?;
+
+            if !response.status().is_success() {
+                return Err(ImageGenerationError::ProviderError(format!(
+                    "{}: {}",
+                    response.status().as_str(),
+                    response.text().await?
+                )));
+            }
+
+            match response
+                .json::<ApiResponse<ImageGenerationResponse>>()
+                .await?
+            {
+                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Err(err) => Err(ImageGenerationError::ResponseError(err.message)),
+            }
         }
     }
 }
