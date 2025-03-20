@@ -1,3 +1,5 @@
+#[cfg(feature = "audio")]
+use super::audio_generation::AudioGenerationModel;
 use super::completion::CompletionModel;
 use super::embedding::{
     EmbeddingModel, TEXT_EMBEDDING_3_LARGE, TEXT_EMBEDDING_3_SMALL, TEXT_EMBEDDING_ADA_002,
@@ -189,6 +191,22 @@ impl Client {
     #[cfg(feature = "image")]
     pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
         ImageGenerationModel::new(self.clone(), model)
+    }
+
+    /// Create an image generation model with the given name.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::openai::{Client, self};
+    ///
+    /// // Initialize the OpenAI client
+    /// let openai = Client::new("your-open-ai-api-key");
+    ///
+    /// let gpt4 = openai.audio_generation_model(openai::TTS_1);
+    /// ```
+    #[cfg(feature = "audio")]
+    pub fn audio_generation_model(&self, model: &str) -> AudioGenerationModel {
+        AudioGenerationModel::new(self.clone(), model)
     }
 }
 

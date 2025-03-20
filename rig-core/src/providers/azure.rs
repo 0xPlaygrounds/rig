@@ -11,11 +11,6 @@
 
 use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
 
-#[cfg(feature = "image")]
-use super::openai::ImageGenerationResponse;
-
-#[cfg(feature = "image")]
-use crate::image_generation::{self, ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
@@ -32,7 +27,6 @@ use reqwest::multipart::Part;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
 // ================================================================
 // Main Azure OpenAI Client
 // ================================================================
@@ -167,6 +161,16 @@ impl Client {
     fn post_image_generation(&self, deployment_id: &str) -> reqwest::RequestBuilder {
         let url = format!(
             "{}/openai/deployments/{}/images/generations?api-version={}",
+            self.azure_endpoint, deployment_id, self.api_version
+        )
+        .replace("//", "/");
+        self.http_client.post(url)
+    }
+
+    #[cfg(feature = "audio")]
+    fn post_audio_generation(&self, deployment_id: &str) -> reqwest::RequestBuilder {
+        let url = format!(
+            "{}/openai/deployments/{}/audio/speech?api-version={}",
             self.azure_endpoint, deployment_id, self.api_version
         )
         .replace("//", "/");
@@ -662,47 +666,116 @@ impl transcription::TranscriptionModel for TranscriptionModel {
 // Azure OpenAI Image Generation API
 // ================================================================
 #[cfg(feature = "image")]
-#[derive(Clone)]
-pub struct ImageGenerationModel {
-    client: Client,
-    pub model: String,
-}
+pub use image_generation::*;
 #[cfg(feature = "image")]
-impl image_generation::ImageGenerationModel for ImageGenerationModel {
-    type Response = ImageGenerationResponse;
+mod image_generation {
+    use crate::image_generation;
+    use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+    use crate::providers::azure::{ApiResponse, Client};
+    use crate::providers::openai::ImageGenerationResponse;
+    use serde_json::json;
 
-    async fn image_generation(
-        &self,
-        generation_request: ImageGenerationRequest,
-    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-    {
-        let request = json!({
-            "model": self.model,
-            "prompt": generation_request.prompt,
-            "size": format!("{}x{}", generation_request.width, generation_request.height),
-            "response_format": "b64_json"
-        });
+    #[derive(Clone)]
+    pub struct ImageGenerationModel {
+        client: Client,
+        pub model: String,
+    }
+    impl image_generation::ImageGenerationModel for ImageGenerationModel {
+        type Response = ImageGenerationResponse;
 
-        let response = self
-            .client
-            .post_image_generation(&self.model)
-            .json(&request)
-            .send()
-            .await?;
+        async fn image_generation(
+            &self,
+            generation_request: ImageGenerationRequest,
+        ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
+        {
+            let request = json!({
+                "model": self.model,
+                "prompt": generation_request.prompt,
+                "size": format!("{}x{}", generation_request.width, generation_request.height),
+                "response_format": "b64_json"
+            });
 
-        if !response.status().is_success() {
-            return Err(ImageGenerationError::ProviderError(format!(
-                "{}: {}",
-                response.status(),
-                response.text().await?
-            )));
+            let response = self
+                .client
+                .post_image_generation(&self.model)
+                .json(&request)
+                .send()
+                .await?;
+
+            if !response.status().is_success() {
+                return Err(ImageGenerationError::ProviderError(format!(
+                    "{}: {}",
+                    response.status(),
+                    response.text().await?
+                )));
+            }
+
+            let t = response.text().await?;
+
+            match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&t)? {
+                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
+            }
         }
+    }
+}
+// ================================================================
+// Azure OpenAI Audio Generation API
+// ================================================================
 
-        let t = response.text().await?;
+#[cfg(feature = "audio")]
+pub use audio_generation::*;
+#[cfg(feature = "audio")]
+mod audio_generation {
+    use super::Client;
+    use crate::audio_generation;
+    use crate::audio_generation::{
+        AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
+    };
+    use bytes::Bytes;
+    use serde_json::json;
 
-        match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&t)? {
-            ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
+    #[derive(Clone)]
+    pub struct AudioGenerationModel {
+        client: Client,
+        model: String,
+    }
+
+    impl audio_generation::AudioGenerationModel for AudioGenerationModel {
+        type Response = Bytes;
+
+        async fn audio_generation(
+            &self,
+            request: AudioGenerationRequest,
+        ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
+            let request = json!({
+                "model": self.model,
+                "input": request.text,
+                "voice": request.voice,
+                "speed": request.speed,
+            });
+
+            let response = self
+                .client
+                .post_audio_generation("/audio/speech")
+                .json(&request)
+                .send()
+                .await?;
+
+            if !response.status().is_success() {
+                return Err(AudioGenerationError::ProviderError(format!(
+                    "{}: {}",
+                    response.status(),
+                    response.text().await?
+                )));
+            }
+
+            let bytes = response.bytes().await?;
+
+            Ok(AudioGenerationResponse {
+                audio: bytes.to_vec(),
+                response: bytes,
+            })
         }
     }
 }
