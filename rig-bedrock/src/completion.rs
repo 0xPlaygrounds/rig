@@ -135,8 +135,7 @@ impl completion::CompletionModel for CompletionModel {
         let response = converse_builder
             .send()
             .await
-            .map_err(|sdk_error| AwsSdkConverseError(sdk_error).into())
-            .map_err(|e: CompletionError| e)?;
+            .map_err(|sdk_error| Into::<CompletionError>::into(AwsSdkConverseError(sdk_error)))?;
 
         AwsConverseOutput(response).try_into()
     }

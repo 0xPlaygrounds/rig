@@ -1,11 +1,12 @@
 use crate::types::json::AwsDocument;
-use crate::types::message::MessageWithPrompt;
+use crate::types::message::RigMessage;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use aws_sdk_bedrockruntime::types::{
     InferenceConfiguration, SystemContentBlock, Tool, ToolConfiguration, ToolInputSchema,
     ToolSpecification,
 };
 use rig::completion::{CompletionError, Message};
+
 pub struct AwsCompletionRequest(pub rig::completion::CompletionRequest);
 
 impl AwsCompletionRequest {
@@ -78,13 +79,7 @@ impl AwsCompletionRequest {
 
         full_history
             .into_iter()
-            .map(|message| {
-                MessageWithPrompt {
-                    message,
-                    prompt: self.0.preamble.to_owned(),
-                }
-                .try_into()
-            })
+            .map(|message| RigMessage(message).try_into())
             .collect::<Result<Vec<aws_bedrock::Message>, _>>()
     }
 }

@@ -51,16 +51,11 @@ impl TryFrom<aws_bedrock::ContentBlock> for RigUserContent {
     }
 }
 
-pub struct UserContentWithPrompt {
-    pub user_content: UserContent,
-    pub prompt: Option<String>,
-}
-
-impl TryFrom<UserContentWithPrompt> for Vec<aws_bedrock::ContentBlock> {
+impl TryFrom<RigUserContent> for Vec<aws_bedrock::ContentBlock> {
     type Error = CompletionError;
 
-    fn try_from(value: UserContentWithPrompt) -> Result<Self, Self::Error> {
-        match value.user_content {
+    fn try_from(value: RigUserContent) -> Result<Self, Self::Error> {
+        match value.0 {
             UserContent::Text(text) => Ok(vec![aws_bedrock::ContentBlock::Text(text.text)]),
             UserContent::ToolResult(tool_result) => {
                 let builder = aws_bedrock::ToolResultBlock::builder()
@@ -81,20 +76,13 @@ impl TryFrom<UserContentWithPrompt> for Vec<aws_bedrock::ContentBlock> {
                 Ok(vec![aws_bedrock::ContentBlock::Image(image)])
             }
             UserContent::Document(document) => {
+                let doc = RigDocument(document).try_into()?;
                 // AWS documentations: https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference-call.html
                 // In the content field of the Message object, you must also include a text field with a prompt related to the document.
-
-                if let Some(prompt) = value.prompt.filter(|p| p.len() > 1) {
-                    let doc = RigDocument(document).try_into()?;
-                    Ok(vec![
-                        aws_bedrock::ContentBlock::Text(prompt),
-                        aws_bedrock::ContentBlock::Document(doc),
-                    ])
-                } else {
-                    Err(CompletionError::ProviderError(
-                        "Document upload required system prompt".into(),
-                    ))
-                }
+                Ok(vec![
+                    aws_bedrock::ContentBlock::Text("Use provided document".to_string()),
+                    aws_bedrock::ContentBlock::Document(doc),
+                ])
             }
             UserContent::Audio(_) => Err(CompletionError::ProviderError(
                 "Audio is not supported".into(),
@@ -112,8 +100,6 @@ mod tests {
         message::{ToolResultContent, UserContent},
         OneOrMany,
     };
-
-    use super::UserContentWithPrompt;
 
     #[test]
     fn aws_content_block_to_user_content() {
@@ -175,10 +161,7 @@ mod tests {
 
     #[test]
     fn user_content_to_aws_content_block() {
-        let uc = UserContentWithPrompt {
-            user_content: UserContent::Text("txt".into()),
-            prompt: Some("do stuff".into()),
-        };
+        let uc = RigUserContent(UserContent::Text("txt".into()));
         let aws_content_blocks: Result<Vec<aws_bedrock::ContentBlock>, _> = uc.try_into();
         assert_eq!(aws_content_blocks.is_ok(), true);
         let aws_content_blocks = aws_content_blocks.unwrap();
