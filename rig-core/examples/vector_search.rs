@@ -1,8 +1,9 @@
 use std::env;
 
+use rig::providers::openai::client::Client;
 use rig::{
     embeddings::EmbeddingsBuilder,
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+    providers::openai::TEXT_EMBEDDING_ADA_002,
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
     Embed,
 };

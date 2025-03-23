@@ -10,6 +10,12 @@
 //! ```
 
 use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
+
+#[cfg(feature = "image")]
+use super::openai::ImageGenerationResponse;
+
+#[cfg(feature = "image")]
+use crate::image_generation::{self, ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
@@ -151,6 +157,16 @@ impl Client {
     fn post_transcription(&self, deployment_id: &str) -> reqwest::RequestBuilder {
         let url = format!(
             "{}/openai/deployments/{}/audio/translations?api-version={}",
+            self.azure_endpoint, deployment_id, self.api_version
+        )
+        .replace("//", "/");
+        self.http_client.post(url)
+    }
+
+    #[cfg(feature = "image")]
+    fn post_image_generation(&self, deployment_id: &str) -> reqwest::RequestBuilder {
+        let url = format!(
+            "{}/openai/deployments/{}/images/generations?api-version={}",
             self.azure_endpoint, deployment_id, self.api_version
         )
         .replace("//", "/");
@@ -460,32 +476,24 @@ impl CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<serde_json::Value, CompletionError> {
-        // Build up the order of messages (context, chat_history, prompt)
-        let mut partial_history = vec![];
+        let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
+            Some(preamble) => vec![openai::Message::system(preamble)],
+            None => vec![],
+        };
         if let Some(docs) = completion_request.normalized_documents() {
-            partial_history.push(docs);
+            let docs: Vec<openai::Message> = docs.try_into()?;
+            full_history.extend(docs);
         }
-        partial_history.extend(completion_request.chat_history);
+        let chat_history: Vec<openai::Message> = completion_request
+            .chat_history
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
 
-        // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<openai::Message> = completion_request
-            .preamble
-            .map_or_else(Vec::new, |preamble| vec![openai::Message::system(&preamble)]);
-
-        // Convert and extend the rest of the history
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(|msg| message::Message::try_into(msg))
-                .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
-        );
-
-        // Combine all messages into a single history
         full_history.extend(chat_history);
-        full_history.extend(prompt);
 
         let request = if completion_request.tools.is_empty() {
             json!({
@@ -646,12 +654,62 @@ impl transcription::TranscriptionModel for TranscriptionModel {
     }
 }
 
+// ================================================================
+// Azure OpenAI Image Generation API
+// ================================================================
+#[cfg(feature = "image")]
+#[derive(Clone)]
+pub struct ImageGenerationModel {
+    client: Client,
+    pub model: String,
+}
+#[cfg(feature = "image")]
+impl image_generation::ImageGenerationModel for ImageGenerationModel {
+    type Response = ImageGenerationResponse;
+
+    async fn image_generation(
+        &self,
+        generation_request: ImageGenerationRequest,
+    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
+    {
+        let request = json!({
+            "model": self.model,
+            "prompt": generation_request.prompt,
+            "size": format!("{}x{}", generation_request.width, generation_request.height),
+            "response_format": "b64_json"
+        });
+
+        let response = self
+            .client
+            .post_image_generation(&self.model)
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(ImageGenerationError::ProviderError(format!(
+                "{}: {}",
+                response.status(),
+                response.text().await?
+            )));
+        }
+
+        let t = response.text().await?;
+
+        match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&t)? {
+            ApiResponse::Ok(response) => response.try_into(),
+            ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod azure_tests {
     use super::*;
 
     use crate::completion::CompletionModel;
     use crate::embeddings::EmbeddingModel;
+    use crate::OneOrMany;
 
     #[tokio::test]
     #[ignore]
@@ -678,7 +736,7 @@ mod azure_tests {
         let completion = model
             .completion(CompletionRequest {
                 preamble: Some("You are a helpful assistant.".to_string()),
-                chat_history: vec![],
+                chat_history: OneOrMany::one("Hello!".into()),
                 documents: vec![],
                 max_tokens: Some(100),
                 temperature: Some(0.0),

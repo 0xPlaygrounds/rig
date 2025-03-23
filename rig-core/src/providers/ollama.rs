@@ -325,6 +325,26 @@ impl CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<Value, CompletionError> {
+        // Build up the order of messages (context, chat_history)
+        let mut partial_history = vec![];
+        if let Some(docs) = completion_request.normalized_documents() {
+            partial_history.push(docs);
+        }
+        partial_history.extend(completion_request.chat_history);
+
+        // Initialize full history with preamble (or empty if non-existent)
+        let mut full_history: Vec<Message> = completion_request
+            .preamble
+            .map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
+
+        // Convert and extend the rest of the history
+        full_history.extend(
+            partial_history
+                .into_iter()
+                .map(|msg| msg.try_into())
+                .collect::<Result<Vec<Message>, _>>()?,
+        );
+
         // Convert internal prompt into a provider Message
         let options = if let Some(extra) = completion_request.additional_params {
             json_utils::merge(
@@ -334,19 +354,6 @@ impl CompletionModel {
         } else {
             json!({ "temperature": completion_request.temperature })
         };
-
-        // Chat mode: assemble full conversation history including preamble and chat history
-        let mut full_history = Vec::new();
-        if let Some(preamble) = completion_request.preamble {
-            full_history.push(Message::system(&preamble));
-        }
-        if let Some(docs) = completion_request.normalized_documents() {
-            partial_history.push(Message::try_from(docs)?);
-        }
-        for msg in completion_request.chat_history.into_iter() {
-            full_history.push(Message::try_from(msg)?);
-        }
-        full_history.push(prompt);
 
         let mut request_payload = json!({
             "model": self.model,

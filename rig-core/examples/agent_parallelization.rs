@@ -1,10 +1,10 @@
 use std::env;
 
 use rig::pipeline::agent_ops::extract;
+use rig::providers::openai::client::Client;
 use rig::{
     parallel,
     pipeline::{self, passthrough, Op},
-    providers::openai::Client,
 };
 use schemars::JsonSchema;
 

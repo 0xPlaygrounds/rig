@@ -149,7 +149,8 @@ impl CompletionModel {
             None => vec![],
         };
         if let Some(docs) = completion_request.normalized_documents() {
-            partial_history.push(openai::Message::try_from(docs)?);
+            let docs: Vec<openai::Message> = docs.try_into()?;
+            full_history.extend(docs);
         }
         let chat_history: Vec<openai::Message> = completion_request
             .chat_history

@@ -10,6 +10,9 @@
 //! ```
 
 use super::openai::{send_compatible_streaming_request, AssistantContent};
+
+#[cfg(feature = "image")]
+use crate::image_generation::{self, ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge_inplace;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
@@ -20,6 +23,11 @@ use crate::{
     providers::openai::Message,
     OneOrMany,
 };
+
+#[cfg(feature = "image")]
+use base64::prelude::BASE64_STANDARD;
+#[cfg(feature = "image")]
+use base64::Engine;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -86,6 +94,22 @@ impl Client {
     /// ```
     pub fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
+    }
+
+    /// Create a completion model with the given name.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::hyperbolic::{Client, self};
+    ///
+    /// // Initialize the Hyperbolic client
+    /// let hyperbolic = Client::new("your-hyperbolic-api-key");
+    ///
+    /// let llama_3_1_8b = hyperbolic.completion_model(hyperbolic::LLAMA_3_1_8B);
+    /// ```
+    #[cfg(feature = "image")]
+    pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
+        ImageGenerationModel::new(self.clone(), model)
     }
 
     /// Create an agent builder with the given completion model.
@@ -367,5 +391,108 @@ impl StreamingCompletionModel for CompletionModel {
         let builder = self.client.post("/chat/completions").json(&request);
 
         send_compatible_streaming_request(builder).await
+    }
+}
+
+// =======================================
+// Hyperbolic Image Generation API
+// =======================================
+pub const SDXL1_0_BASE: &str = "SDXL1.0-base";
+pub const SD2: &str = "SD2";
+pub const SD1_5: &str = "SD1.5";
+pub const SSD: &str = "SSD";
+pub const SDXL_TURBO: &str = "SDXL-turbo";
+pub const SDXL_CONTROLNET: &str = "SDXL-ControlNet";
+pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
+
+#[cfg(feature = "image")]
+#[derive(Clone)]
+pub struct ImageGenerationModel {
+    client: Client,
+    pub model: String,
+}
+
+#[cfg(feature = "image")]
+impl ImageGenerationModel {
+    fn new(client: Client, model: &str) -> ImageGenerationModel {
+        Self {
+            client,
+            model: model.to_string(),
+        }
+    }
+}
+
+#[cfg(feature = "image")]
+#[derive(Clone, Deserialize)]
+pub struct Image {
+    image: String,
+}
+
+#[cfg(feature = "image")]
+#[derive(Clone, Deserialize)]
+pub struct ImageGenerationResponse {
+    images: Vec<Image>,
+}
+
+#[cfg(feature = "image")]
+impl TryFrom<ImageGenerationResponse>
+    for image_generation::ImageGenerationResponse<ImageGenerationResponse>
+{
+    type Error = ImageGenerationError;
+
+    fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
+        let data = BASE64_STANDARD
+            .decode(&value.images[0].image)
+            .expect("Could not decode image.");
+
+        Ok(Self {
+            image: data,
+            response: value,
+        })
+    }
+}
+
+#[cfg(feature = "image")]
+impl image_generation::ImageGenerationModel for ImageGenerationModel {
+    type Response = ImageGenerationResponse;
+
+    async fn image_generation(
+        &self,
+        generation_request: ImageGenerationRequest,
+    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
+    {
+        let mut request = json!({
+            "model_name": self.model,
+            "prompt": generation_request.prompt,
+            "height": generation_request.height,
+            "width": generation_request.width,
+        });
+
+        if let Some(params) = generation_request.additional_params {
+            merge_inplace(&mut request, params);
+        }
+
+        let response = self
+            .client
+            .post("/image/generation")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(ImageGenerationError::ProviderError(format!(
+                "{}: {}",
+                response.status().as_str(),
+                response.text().await?
+            )));
+        }
+
+        match response
+            .json::<ApiResponse<ImageGenerationResponse>>()
+            .await?
+        {
+            ApiResponse::Ok(response) => response.try_into(),
+            ApiResponse::Err(err) => Err(ImageGenerationError::ResponseError(err.message)),
+        }
     }
 }

@@ -179,7 +179,7 @@ pub trait Chat: Send + Sync {
     fn chat(
         &self,
         prompt: impl Into<Message> + Send,
-        chat_history: Vec<Message>,
+        chat_history: &mut Vec<Message>,
     ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
 }
 

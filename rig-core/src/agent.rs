@@ -120,7 +120,7 @@ use crate::{
         StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingPrompt,
         StreamingResult,
     },
-    tool::{Tool, ToolSet},
+    tool::{Tool, ToolSet, ToolSetError},
     vector_store::{VectorStoreError, VectorStoreIndexDyn},
     OneOrMany,
 };
@@ -287,13 +287,15 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 
 impl<M: CompletionModel> Prompt for Agent<M> {
     async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
-        self.chat(prompt, vec![]).await
+        let chat_history = vec![];
+        self.chat(prompt, &mut chat_history).await
     }
 }
 
 impl<M: CompletionModel> Prompt for &Agent<M> {
     async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
-        self.chat(prompt, vec![]).await
+        let chat_history = vec![];
+        self.chat(prompt, &mut chat_history).await
     }
 }
 
@@ -301,9 +303,13 @@ impl<M: CompletionModel> Chat for Agent<M> {
     async fn chat(
         &self,
         prompt: impl Into<Message> + Send,
-        chat_history: Vec<Message>,
+        chat_history: &mut Vec<Message>,
     ) -> Result<String, PromptError> {
-        let resp = self.completion(prompt, chat_history).await?.send().await?;
+        let resp = self
+            .completion(prompt, chat_history.to_vec())
+            .await?
+            .send()
+            .await?;
 
         let (tool_calls, texts): (Vec<_>, Vec<_>) = resp
             .choice
@@ -315,7 +321,7 @@ impl<M: CompletionModel> Chat for Agent<M> {
                 .into_iter()
                 .filter_map(|content| {
                     if let AssistantContent::Text(text) = content {
-                        Some(text.text)
+                        Some(text.text.clone())
                     } else {
                         None
                     }
@@ -326,7 +332,6 @@ impl<M: CompletionModel> Chat for Agent<M> {
             return Ok(merged_texts);
         }
 
-        let mut chat_history = chat_history.clone();
         chat_history.push(Message::Assistant {
             content: resp.choice.clone(),
         });
@@ -342,14 +347,14 @@ impl<M: CompletionModel> Chat for Agent<M> {
                         )
                         .await?;
                     Ok(UserContent::tool_result(
-                        tool_call.id,
+                        tool_call.id.clone(),
                         OneOrMany::one(output.into()),
                     ))
                 } else {
                     unreachable!()
                 }
             })
-            .collect::<Vec<_>>()
+            .collect::<Vec<Result<UserContent, ToolSetError>>>()
             .await
             .into_iter()
             .collect::<Result<Vec<_>, _>>()?;
@@ -359,7 +364,7 @@ impl<M: CompletionModel> Chat for Agent<M> {
                 Message::User {
                     content: OneOrMany::many(tool_content).expect("There is atleast one tool call"),
                 },
-                chat_history,
+                chat_history.to_vec(),
             )
             .await?
             .send()

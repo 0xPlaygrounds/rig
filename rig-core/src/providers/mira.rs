@@ -17,6 +17,7 @@ use crate::{
     message::{self, AssistantContent, Message, UserContent},
     OneOrMany,
 };
+use epub::doc;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -238,24 +239,28 @@ impl CompletionModel {
             }));
         }
 
-        // Add prompt
-        messages.push(match &completion_request.prompt {
-            Message::User { content } => {
+        // Add docs
+        match completion_request.normalized_documents() {
+            Some(Message::User { content }) => {
                 let text = content
-                    .iter()
-                    .map(|c| match c {
-                        UserContent::Text(text) => &text.text,
-                        _ => "",
+                    .into_iter()
+                    .filter_map(|doc| match doc {
+                        UserContent::Document(doc) => Some(doc.data),
+                        UserContent::Text(text) => Some(text.text),
+
+                        // This should always be `Document`
+                        _ => None,
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
-                serde_json::json!({
+
+                messages.push(serde_json::json!({
                     "role": "user",
                     "content": text
-                })
+                }));
             }
-            _ => unreachable!(),
-        });
+            _ => {}
+        }
 
         // Add chat history
         for msg in completion_request.chat_history {
