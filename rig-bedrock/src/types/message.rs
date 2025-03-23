@@ -6,31 +6,19 @@ use rig::{
     OneOrMany,
 };
 
-use super::{
-    assistant_content::RigAssistantContent,
-    user_content::{RigUserContent, UserContentWithPrompt},
-};
+use super::{assistant_content::RigAssistantContent, user_content::RigUserContent};
 
-pub struct MessageWithPrompt {
-    pub message: Message,
-    pub prompt: Option<String>,
-}
+pub struct RigMessage(pub Message);
 
-impl TryFrom<MessageWithPrompt> for aws_bedrock::Message {
+impl TryFrom<RigMessage> for aws_bedrock::Message {
     type Error = CompletionError;
 
-    fn try_from(value: MessageWithPrompt) -> Result<Self, Self::Error> {
-        let result = match value.message {
+    fn try_from(value: RigMessage) -> Result<Self, Self::Error> {
+        let result = match value.0 {
             Message::User { content } => {
                 let message_content = content
                     .into_iter()
-                    .map(|user_content| {
-                        UserContentWithPrompt {
-                            user_content,
-                            prompt: value.prompt.clone(),
-                        }
-                        .try_into()
-                    })
+                    .map(|user_content| RigUserContent(user_content).try_into())
                     .collect::<Result<Vec<Vec<_>>, _>>()
                     .map_err(|e| CompletionError::RequestError(Box::new(e)))
                     .map(|nested| nested.into_iter().flatten().collect())?;
@@ -55,8 +43,6 @@ impl TryFrom<MessageWithPrompt> for aws_bedrock::Message {
         Ok(result)
     }
 }
-
-pub struct RigMessage(pub Message);
 
 impl TryFrom<aws_bedrock::Message> for RigMessage {
     type Error = CompletionError;
@@ -101,23 +87,19 @@ impl TryFrom<aws_bedrock::Message> for RigMessage {
 
 #[cfg(test)]
 mod tests {
+    use crate::types::message::RigMessage;
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use rig::{
         message::{Message, UserContent},
         OneOrMany,
     };
 
-    use super::MessageWithPrompt;
-
     #[test]
     fn message_with_prompt_to_aws_message() {
         let message = Message::User {
             content: OneOrMany::one(UserContent::Text("text".into())),
         };
-        let message_with_prompt = MessageWithPrompt {
-            prompt: Some("text".into()),
-            message,
-        };
+        let message_with_prompt = RigMessage(message);
         let aws_message: Result<aws_bedrock::Message, _> = message_with_prompt.try_into();
         assert_eq!(aws_message.is_ok(), true);
         let aws_message = aws_message.unwrap();

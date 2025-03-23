@@ -21,7 +21,7 @@ impl From<AwsSdkInvokeModelError> for EmbeddingError {
             InvokeModelError::ModelNotReadyException(e) => e.message.unwrap_or("The model specified in the request is not ready to serve inference requests. The AWS SDK will automatically retry the operation up to 5 times.".into()),
             InvokeModelError::ModelErrorException(e) => e.message.unwrap_or("The request failed due to an error while processing the model.".into()),
             InvokeModelError::ServiceQuotaExceededException(e) => e.message.unwrap_or("Your request exceeds the service quota for your account.".into()),
-            _ => "An unexpected error occurred (e.g., invalid JSON returned by the service or an unknown error code).".into(),
+            _ => "An unexpected error occurred. Verify Internet connection or AWS keys".into(),
         };
         EmbeddingError::ProviderError(error)
     }
@@ -41,7 +41,7 @@ impl From<AwsSdkConverseError> for CompletionError {
             ConverseError::ValidationException(e) => e.message.unwrap_or("The input fails to satisfy the constraints specified by AWS Bedrock.".into()),
             ConverseError::ModelNotReadyException(e) => e.message.unwrap_or("The model specified in the request is not ready to serve inference requests. The AWS SDK will automatically retry the operation up to 5 times.".into()),
             ConverseError::ModelErrorException(e) => e.message.unwrap_or("The request failed due to an error while processing the model.".into()),
-            _ => String::from("An unexpected error occurred (e.g., invalid JSON returned by the service or an unknown error code).")
+            _ => String::from("An unexpected error occurred. Verify Internet connection or AWS keys")
         };
         CompletionError::ProviderError(error)
     }
@@ -61,7 +61,7 @@ impl From<AwsSdkConverseStreamError> for CompletionError {
             ConverseStreamError::ValidationException(e) => e.message.unwrap(),
             ConverseStreamError::ModelNotReadyException(e) => e.message.unwrap(),
             ConverseStreamError::ModelErrorException(e) => e.message.unwrap(),
-            _ => String::from("An unexpected error occurred (e.g., invalid JSON returned by the service or an unknown error code).")
+            _ => "An unexpected error occurred. Verify Internet connection or AWS keys".into(),
         };
         CompletionError::ProviderError(error)
     }

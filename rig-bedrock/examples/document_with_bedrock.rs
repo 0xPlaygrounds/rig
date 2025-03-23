@@ -24,7 +24,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let client = ClientBuilder::new().build().await;
     let agent = client
         .agent(AMAZON_NOVA_LITE)
-        .preamble("Describe this document")
+        .preamble("Describe this document but respond with json format only")
         .temperature(0.5)
         .build();
 

@@ -36,11 +36,9 @@ impl StreamingCompletionModel for CompletionModel {
             .set_system(request.system_prompt())
             .set_messages(Some(prompt_with_history));
 
-        let response = converse_builder
-            .send()
-            .await
-            .map_err(|sdk_error| AwsSdkConverseStreamError(sdk_error).into())
-            .map_err(|e: CompletionError| e)?;
+        let response = converse_builder.send().await.map_err(|sdk_error| {
+            Into::<CompletionError>::into(AwsSdkConverseStreamError(sdk_error))
+        })?;
 
         Ok(Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
@@ -75,31 +73,26 @@ impl StreamingCompletionModel for CompletionModel {
                             _ => yield Err(CompletionError::ProviderError("Stream is empty".into()))
                         }
                     },
-                    aws_bedrock::ConverseStreamOutput::ContentBlockStop(_) => {
-                        if let Some(tool_call) = current_tool_call.take() {
-                            let json_str = if tool_call.input_json.is_empty() {
-                                "{}"
-                            } else {
-                                &tool_call.input_json
-                            };
-                            match serde_json::from_str(json_str) {
-                                Ok(json_value) => {
+                    aws_bedrock::ConverseStreamOutput::MessageStop(message_stop_event) => {
+                        match message_stop_event.stop_reason {
+                            aws_bedrock::StopReason::ToolUse => {
+                                if let Some(tool_call) = current_tool_call.take() {
+                                    let tool_input = serde_json::from_str(tool_call.input_json.as_str())?;
                                     yield Ok(StreamingChoice::ToolCall(
                                         tool_call.name,
                                         tool_call.id,
-                                        json_value,
+                                        tool_input
                                     ));
-                                },
-                                Err(e) => {
-                                    yield Err(CompletionError::from(e));
+                                } else {
+                                    yield Err(CompletionError::ProviderError("Failed to call tool".into()))
                                 }
                             }
-
+                            aws_bedrock::StopReason::MaxTokens => {
+                                yield Err(CompletionError::ProviderError("Exceeded max tokens".into()))
+                            }
+                            _ => {}
                         }
                     },
-                    // aws_bedrock::ConverseStreamOutput::MessageStart(message_start_event) => todo!(),
-                    // aws_bedrock::ConverseStreamOutput::MessageStop(message_stop_event) => todo!(),
-                    // aws_bedrock::ConverseStreamOutput::Metadata(converse_stream_metadata_event) => todo!(),
                     _ => {}
                 }
             }
