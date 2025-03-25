@@ -5,12 +5,13 @@ use aws_sdk_bedrockruntime::operation::converse_stream::ConverseStreamError;
 use aws_sdk_bedrockruntime::operation::invoke_model::InvokeModelError;
 use rig::completion::CompletionError;
 use rig::embeddings::EmbeddingError;
+use rig::image_generation::ImageGenerationError;
 
 pub struct AwsSdkInvokeModelError(pub SdkError<InvokeModelError, HttpResponse>);
 
-impl From<AwsSdkInvokeModelError> for EmbeddingError {
-    fn from(value: AwsSdkInvokeModelError) -> Self {
-        let error: String = match value.0.into_service_error() {
+impl AwsSdkInvokeModelError {
+    pub fn into_service_error(self) -> String {
+        let error: String = match self.0.into_service_error() {
             InvokeModelError::ModelTimeoutException(e) => e.message.unwrap_or("The request took too long to process. Processing time exceeded the model timeout length.".into()),
             InvokeModelError::AccessDeniedException(e) => e.message.unwrap_or("The request is denied because you do not have sufficient permissions to perform the requested action.".into()),
             InvokeModelError::ResourceNotFoundException(e) => e.message.unwrap_or("The specified resource ARN was not found.".into()),
@@ -23,7 +24,19 @@ impl From<AwsSdkInvokeModelError> for EmbeddingError {
             InvokeModelError::ServiceQuotaExceededException(e) => e.message.unwrap_or("Your request exceeds the service quota for your account.".into()),
             _ => "An unexpected error occurred. Verify Internet connection or AWS keys".into(),
         };
-        EmbeddingError::ProviderError(error)
+        error
+    }
+}
+
+impl From<AwsSdkInvokeModelError> for ImageGenerationError {
+    fn from(value: AwsSdkInvokeModelError) -> Self {
+        ImageGenerationError::ProviderError(value.into_service_error())
+    }
+}
+
+impl From<AwsSdkInvokeModelError> for EmbeddingError {
+    fn from(value: AwsSdkInvokeModelError) -> Self {
+        EmbeddingError::ProviderError(value.into_service_error())
     }
 }
 

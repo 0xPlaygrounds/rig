@@ -19,10 +19,6 @@ pub const AMAZON_NOVA_MICRO: &str = "amazon.nova-micro-v1:0";
 pub const AMAZON_NOVA_PRO: &str = "amazon.nova-pro-v1:0";
 /// `amazon.rerank-v1:0`
 pub const AMAZON_RERANK_1_0: &str = "amazon.rerank-v1:0";
-/// `amazon.titan-image-generator-v1`
-pub const AMAZON_TITAN_IMAGE_GENERATOR_V1: &str = "amazon.titan-image-generator-v1";
-/// `amazon.titan-image-generator-v2:0`
-pub const AMAZON_TITAN_IMAGE_GENERATOR_V2_0: &str = "amazon.titan-image-generator-v2:0";
 /// `amazon.titan-text-express-v1`
 pub const AMAZON_TITAN_TEXT_EXPRESS_V1: &str = "amazon.titan-text-express-v1";
 /// `amazon.titan-text-lite-v1`

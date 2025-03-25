@@ -1,9 +1,9 @@
+use crate::image::ImageGenerationModel;
+use crate::{completion::CompletionModel, embedding::EmbeddingModel};
 use aws_config::{BehaviorVersion, Region};
 use rig::{agent::AgentBuilder, embeddings, extractor::ExtractorBuilder, Embed};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-use crate::{completion::CompletionModel, embedding::EmbeddingModel};
 
 pub const DEFAULT_AWS_REGION: &str = "us-east-1";
 
@@ -78,5 +78,9 @@ impl Client {
         ndims: usize,
     ) -> embeddings::EmbeddingsBuilder<EmbeddingModel, D> {
         embeddings::EmbeddingsBuilder::new(self.embedding_model(model, ndims))
+    }
+
+    pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
+        ImageGenerationModel::new(self.clone(), model)
     }
 }
