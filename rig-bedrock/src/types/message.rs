@@ -95,12 +95,11 @@ mod tests {
     };
 
     #[test]
-    fn message_with_prompt_to_aws_message() {
+    fn message_to_aws_message() {
         let message = Message::User {
             content: OneOrMany::one(UserContent::Text("text".into())),
         };
-        let message_with_prompt = RigMessage(message);
-        let aws_message: Result<aws_bedrock::Message, _> = message_with_prompt.try_into();
+        let aws_message: Result<aws_bedrock::Message, _> = RigMessage(message).try_into();
         assert_eq!(aws_message.is_ok(), true);
         let aws_message = aws_message.unwrap();
         assert_eq!(aws_message.role, aws_bedrock::ConversationRole::User);

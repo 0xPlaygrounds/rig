@@ -6,5 +6,6 @@ pub(crate) mod image;
 pub(crate) mod json;
 pub(crate) mod media_types;
 pub(crate) mod message;
+pub(crate) mod text_to_image;
 pub(crate) mod tool;
 pub(crate) mod user_content;

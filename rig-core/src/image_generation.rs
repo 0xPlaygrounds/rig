@@ -41,6 +41,7 @@ pub trait ImageGeneration<M: ImageGenerationModel> {
     > + Send;
 }
 
+#[derive(Debug)]
 pub struct ImageGenerationResponse<T> {
     pub image: Vec<u8>,
     pub response: T,
