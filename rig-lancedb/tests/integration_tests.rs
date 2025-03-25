@@ -172,5 +172,5 @@ async fn vector_search_test() {
         })
     );
 
-    db.drop_db().await.unwrap();
+    db.drop_all_tables().await.unwrap();
 }
