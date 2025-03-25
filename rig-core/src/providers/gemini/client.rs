@@ -59,6 +59,14 @@ impl Client {
         self.http_client.post(url)
     }
 
+    pub fn post_sse(&self, path: &str) -> reqwest::RequestBuilder {
+        let url =
+            format!("{}/{}?alt=sse&key={}", self.base_url, path, self.api_key).replace("//", "/");
+
+        tracing::debug!("POST {}/{}?alt=sse&key={}", self.base_url, path, "****");
+        self.http_client.post(url)
+    }
+
     /// Create an embedding model with the given name.
     /// Note: default embedding dimension of 0 will be used if model is not known.
     /// If this is the case, it's better to use function `embedding_model_with_ndims`

@@ -1,6 +1,6 @@
 [package]
 name = "rig-core"
-version = "0.9.1"
+version = "0.10.0"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -55,6 +55,8 @@ mcp-core-macros = { version = "0.1.1" }
 [features]
 default = ["reqwest/default"]
 all = ["derive", "pdf", "rayon"]
+audio = []
+image = []
 derive = ["dep:rig-derive"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
@@ -117,3 +119,11 @@ required-features = ["derive"]
 [[example]]
 name = "mcp_tool"
 required-features = ["mcp"]
+
+[[example]]
+name = "openai_audio_generation"
+required-features = ["audio"]
+
+[[example]]
+name = "hyperbolic_audio_generation"
+required-features = ["audio"]

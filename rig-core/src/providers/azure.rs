@@ -8,6 +8,11 @@
 //!
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
+
+use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
+
+use crate::json_utils::merge;
+use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -22,9 +27,6 @@ use reqwest::multipart::Part;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
-use super::openai::TranscriptionResponse;
-
 // ================================================================
 // Main Azure OpenAI Client
 // ================================================================
@@ -149,6 +151,26 @@ impl Client {
     fn post_transcription(&self, deployment_id: &str) -> reqwest::RequestBuilder {
         let url = format!(
             "{}/openai/deployments/{}/audio/translations?api-version={}",
+            self.azure_endpoint, deployment_id, self.api_version
+        )
+        .replace("//", "/");
+        self.http_client.post(url)
+    }
+
+    #[cfg(feature = "image")]
+    fn post_image_generation(&self, deployment_id: &str) -> reqwest::RequestBuilder {
+        let url = format!(
+            "{}/openai/deployments/{}/images/generations?api-version={}",
+            self.azure_endpoint, deployment_id, self.api_version
+        )
+        .replace("//", "/");
+        self.http_client.post(url)
+    }
+
+    #[cfg(feature = "audio")]
+    fn post_audio_generation(&self, deployment_id: &str) -> reqwest::RequestBuilder {
+        let url = format!(
+            "{}/openai/deployments/{}/audio/speech?api-version={}",
             self.azure_endpoint, deployment_id, self.api_version
         )
         .replace("//", "/");
@@ -453,16 +475,11 @@ impl CompletionModel {
             model: model.to_string(),
         }
     }
-}
 
-impl completion::CompletionModel for CompletionModel {
-    type Response = openai::CompletionResponse;
-
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn completion(
+    fn create_completion_request(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
+    ) -> Result<serde_json::Value, CompletionError> {
         // Add preamble to chat history (if available)
         let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
             Some(preamble) => vec![openai::Message::system(preamble)],
@@ -502,16 +519,30 @@ impl completion::CompletionModel for CompletionModel {
             })
         };
 
+        let request = if let Some(params) = completion_request.additional_params {
+            json_utils::merge(request, params)
+        } else {
+            request
+        };
+
+        Ok(request)
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    type Response = openai::CompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
+        let request = self.create_completion_request(completion_request)?;
+
         let response = self
             .client
             .post_chat_completion(&self.model)
-            .json(
-                &if let Some(params) = completion_request.additional_params {
-                    json_utils::merge(request, params)
-                } else {
-                    request
-                },
-            )
+            .json(&request)
             .send()
             .await?;
 
@@ -532,6 +563,24 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+}
+
+// -----------------------------------------------------
+// Azure OpenAI Streaming API
+// -----------------------------------------------------
+impl StreamingCompletionModel for CompletionModel {
+    async fn stream(&self, request: CompletionRequest) -> Result<StreamingResult, CompletionError> {
+        let mut request = self.create_completion_request(request)?;
+
+        request = merge(request, json!({"stream": true}));
+
+        let builder = self
+            .client
+            .post_chat_completion(self.model.as_str())
+            .json(&request);
+
+        send_compatible_streaming_request(builder).await
     }
 }
 
@@ -609,6 +658,124 @@ impl transcription::TranscriptionModel for TranscriptionModel {
             }
         } else {
             Err(TranscriptionError::ProviderError(response.text().await?))
+        }
+    }
+}
+
+// ================================================================
+// Azure OpenAI Image Generation API
+// ================================================================
+#[cfg(feature = "image")]
+pub use image_generation::*;
+#[cfg(feature = "image")]
+mod image_generation {
+    use crate::image_generation;
+    use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+    use crate::providers::azure::{ApiResponse, Client};
+    use crate::providers::openai::ImageGenerationResponse;
+    use serde_json::json;
+
+    #[derive(Clone)]
+    pub struct ImageGenerationModel {
+        client: Client,
+        pub model: String,
+    }
+    impl image_generation::ImageGenerationModel for ImageGenerationModel {
+        type Response = ImageGenerationResponse;
+
+        async fn image_generation(
+            &self,
+            generation_request: ImageGenerationRequest,
+        ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
+        {
+            let request = json!({
+                "model": self.model,
+                "prompt": generation_request.prompt,
+                "size": format!("{}x{}", generation_request.width, generation_request.height),
+                "response_format": "b64_json"
+            });
+
+            let response = self
+                .client
+                .post_image_generation(&self.model)
+                .json(&request)
+                .send()
+                .await?;
+
+            if !response.status().is_success() {
+                return Err(ImageGenerationError::ProviderError(format!(
+                    "{}: {}",
+                    response.status(),
+                    response.text().await?
+                )));
+            }
+
+            let t = response.text().await?;
+
+            match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&t)? {
+                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
+            }
+        }
+    }
+}
+// ================================================================
+// Azure OpenAI Audio Generation API
+// ================================================================
+
+#[cfg(feature = "audio")]
+pub use audio_generation::*;
+#[cfg(feature = "audio")]
+mod audio_generation {
+    use super::Client;
+    use crate::audio_generation;
+    use crate::audio_generation::{
+        AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
+    };
+    use bytes::Bytes;
+    use serde_json::json;
+
+    #[derive(Clone)]
+    pub struct AudioGenerationModel {
+        client: Client,
+        model: String,
+    }
+
+    impl audio_generation::AudioGenerationModel for AudioGenerationModel {
+        type Response = Bytes;
+
+        async fn audio_generation(
+            &self,
+            request: AudioGenerationRequest,
+        ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
+            let request = json!({
+                "model": self.model,
+                "input": request.text,
+                "voice": request.voice,
+                "speed": request.speed,
+            });
+
+            let response = self
+                .client
+                .post_audio_generation("/audio/speech")
+                .json(&request)
+                .send()
+                .await?;
+
+            if !response.status().is_success() {
+                return Err(AudioGenerationError::ProviderError(format!(
+                    "{}: {}",
+                    response.status(),
+                    response.text().await?
+                )));
+            }
+
+            let bytes = response.bytes().await?;
+
+            Ok(AudioGenerationResponse {
+                audio: bytes.to_vec(),
+                response: bytes,
+            })
         }
     }
 }
