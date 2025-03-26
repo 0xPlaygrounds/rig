@@ -277,7 +277,7 @@ impl Neo4jClient {
     /// ### Arguments
     /// * `index_name` - The name of the index to create.
     /// * `node_label` - The label of the nodes to which the index will be applied. For example, if your nodes have
-    ///                  the label `:Movie`, pass "Movie" as the `node_label` parameter.
+    ///   the label `:Movie`, pass "Movie" as the `node_label` parameter.
     /// * `embedding_prop_name` (optional) - The name of the property that contains the embedding vectors. Defaults to "embedding".
     ///
     pub async fn create_vector_index(
