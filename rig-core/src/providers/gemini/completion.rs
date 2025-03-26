@@ -146,11 +146,12 @@ impl TryFrom<completion::ToolDefinition> for Tool {
     type Error = CompletionError;
 
     fn try_from(tool: completion::ToolDefinition) -> Result<Self, Self::Error> {
-        let parameters: Option<Schema> = if tool.parameters == serde_json::json!({}) {
-            None
-        } else {
-            Some(tool.parameters.try_into()?)
-        };
+        let parameters: Option<Schema> =
+            if tool.parameters == serde_json::json!({"type": "object", "properties": {}}) {
+                None
+            } else {
+                Some(tool.parameters.try_into()?)
+            };
         Ok(Self {
             function_declarations: FunctionDeclaration {
                 name: tool.name,
