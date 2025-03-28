@@ -102,7 +102,7 @@ pub async fn stream_to_stdout<M: StreamingCompletionModel>(
                     .tools
                     .call(&name, params.to_string())
                     .await
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                    .map_err(|e| std::io::Error::other(e.to_string()))?;
                 println!("\nResult: {}", res);
             }
             Err(e) => {
