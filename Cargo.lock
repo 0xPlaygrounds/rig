@@ -8612,6 +8612,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-test",
+ "tower 0.5.2",
  "tracing",
  "tracing-subscriber",
  "worker",
