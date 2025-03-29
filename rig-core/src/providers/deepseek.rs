@@ -8,6 +8,10 @@
 //!
 //! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_CHAT);
 //! ```
+
+use crate::json_utils::merge;
+use crate::providers::openai::send_compatible_streaming_request;
+use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
     completion::{self, CompletionError, CompletionModel, CompletionRequest},
     extractor::ExtractorBuilder,
@@ -140,7 +144,11 @@ pub enum Message {
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-        #[serde(default, deserialize_with = "json_utils::null_or_vec")]
+        #[serde(
+            default,
+            deserialize_with = "json_utils::null_or_vec",
+            skip_serializing_if = "Vec::is_empty"
+        )]
         tool_calls: Vec<ToolCall>,
     },
     #[serde(rename = "Tool")]
@@ -366,17 +374,11 @@ pub struct DeepSeekCompletionModel {
     pub model: String,
 }
 
-impl CompletionModel for DeepSeekCompletionModel {
-    type Response = CompletionResponse;
-
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn completion(
+impl DeepSeekCompletionModel {
+    fn create_completion_request(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<
-        completion::CompletionResponse<CompletionResponse>,
-        crate::completion::CompletionError,
-    > {
+    ) -> Result<serde_json::Value, CompletionError> {
         // Add preamble to chat history (if available)
         let mut full_history: Vec<Message> = match &completion_request.preamble {
             Some(preamble) => vec![Message::system(preamble)],
@@ -416,22 +418,39 @@ impl CompletionModel for DeepSeekCompletionModel {
             })
         };
 
+        let request = if let Some(params) = completion_request.additional_params {
+            json_utils::merge(request, params)
+        } else {
+            request
+        };
+
+        Ok(request)
+    }
+}
+
+impl CompletionModel for DeepSeekCompletionModel {
+    type Response = CompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<
+        completion::CompletionResponse<CompletionResponse>,
+        crate::completion::CompletionError,
+    > {
+        let request = self.create_completion_request(completion_request)?;
+
         let response = self
             .client
             .post("/chat/completions")
-            .json(
-                &if let Some(params) = completion_request.additional_params {
-                    json_utils::merge(request, params)
-                } else {
-                    request
-                },
-            )
+            .json(&request)
             .send()
             .await?;
 
         if response.status().is_success() {
             let t = response.text().await?;
-            tracing::debug!(target: "rig", "OpenAI completion error: {}", t);
+            tracing::debug!(target: "rig", "DeepSeek completion: {}", t);
 
             match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
                 ApiResponse::Ok(response) => response.try_into(),
@@ -440,6 +459,20 @@ impl CompletionModel for DeepSeekCompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+}
+
+impl StreamingCompletionModel for DeepSeekCompletionModel {
+    async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<StreamingResult, CompletionError> {
+        let mut request = self.create_completion_request(completion_request)?;
+
+        request = merge(request, json!({"stream": true}));
+
+        let builder = self.client.post("/v1/chat/completions").json(&request);
+        send_compatible_streaming_request(builder).await
     }
 }
 
