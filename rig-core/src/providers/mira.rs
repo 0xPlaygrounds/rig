@@ -17,7 +17,6 @@ use crate::{
     message::{self, AssistantContent, Message, UserContent},
     OneOrMany,
 };
-use epub::doc;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

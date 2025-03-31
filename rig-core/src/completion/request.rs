@@ -198,7 +198,7 @@ pub trait Completion<M: CompletionModel> {
     /// contain the `preamble` provided when creating the agent.
     fn completion(
         &self,
-        prompt: impl Into<Message> + Send,
+        prompt: impl Into<Option<Message>> + Send,
         chat_history: Vec<Message>,
     ) -> impl std::future::Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>> + Send;
 }
@@ -229,8 +229,8 @@ pub trait CompletionModel: Clone + Send + Sync {
            + Send;
 
     /// Generates a completion request builder for the given `prompt`.
-    fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
-        CompletionRequestBuilder::new(self.clone(), prompt)
+    fn completion_request(&self) -> CompletionRequestBuilder<Self> {
+        CompletionRequestBuilder::new(self.clone())
     }
 }
 

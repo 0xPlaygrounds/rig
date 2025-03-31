@@ -106,9 +106,9 @@
 //! let response = agent.prompt("What does \"glarb-glarb\" mean?").await
 //!     .expect("Failed to prompt the agent");
 //! ```
-use std::collections::HashMap;
+use std::{collections::HashMap, future::IntoFuture};
 
-use futures::{stream, StreamExt, TryStreamExt};
+use futures::{future::BoxFuture, stream, StreamExt, TryStreamExt};
 
 use crate::{
     completion::{
@@ -171,7 +171,7 @@ pub struct Agent<M: CompletionModel> {
 impl<M: CompletionModel> Completion<M> for Agent<M> {
     async fn completion(
         &self,
-        prompt: impl Into<Message> + Send,
+        prompt: impl Into<Option<Message>> + Send,
         chat_history: Vec<Message>,
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         let prompt = prompt.into();
@@ -179,13 +179,19 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 
         let completion_request = self
             .model
-            .completion_request(prompt)
+            .completion_request()
             .preamble(self.preamble.clone())
             .messages(chat_history)
             .temperature_opt(self.temperature)
             .max_tokens_opt(self.max_tokens)
             .additional_params_opt(self.additional_params.clone())
             .documents(self.static_context.clone());
+
+        let completion_request = if let Some(prompt) = prompt {
+            completion_request.message(prompt.clone())
+        } else {
+            completion_request
+        };
 
         let agent = match &rag_text {
             Some(text) => {
@@ -287,14 +293,14 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 
 impl<M: CompletionModel> Prompt for Agent<M> {
     async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
-        let chat_history = vec![];
+        let mut chat_history = vec![];
         self.chat(prompt, &mut chat_history).await
     }
 }
 
 impl<M: CompletionModel> Prompt for &Agent<M> {
     async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
-        let chat_history = vec![];
+        let mut chat_history = vec![];
         self.chat(prompt, &mut chat_history).await
     }
 }
@@ -535,6 +541,185 @@ impl<M: CompletionModel> AgentBuilder<M> {
             dynamic_tools: self.dynamic_tools,
             tools: self.tools,
         }
+    }
+}
+
+/// A builder for creating prompt requests with customizable options.
+/// Uses generics to track which options have been set during the build process.
+pub struct PromptRequest<M> {
+    /// The prompt message to send to the model
+    prompt: Message,
+    /// Optional chat history to include with the prompt
+    chat_history: Option<Vec<Message>>,
+    /// Maximum depth for multi-turn conversations (None means no multi-turn)
+    max_depth: usize,
+    /// The model to use for execution
+    model: M,
+}
+
+impl<M> PromptRequest<M> {
+    /// Create a new PromptRequest with the given prompt and model
+    pub fn new(model: M, prompt: impl Into<Message>) -> Self {
+        Self {
+            prompt: prompt.into(),
+            chat_history: None,
+            max_depth: 0,
+            model,
+        }
+    }
+}
+
+impl<M> PromptRequest<M> {
+    /// Set the maximum depth for multi-turn conversations
+    pub fn multi_turn(self, depth: usize) -> PromptRequest<M> {
+        PromptRequest {
+            prompt: self.prompt,
+            chat_history: self.chat_history,
+            max_depth: depth,
+            model: self.model,
+        }
+    }
+
+    /// Add chat history to the prompt request
+    pub fn with_history(self, history: Vec<Message>) -> PromptRequest<M> {
+        PromptRequest {
+            prompt: self.prompt,
+            chat_history: Some(history),
+            max_depth: self.max_depth,
+            model: self.model,
+        }
+    }
+}
+
+impl<M: CompletionModel> IntoFuture for PromptRequest<Agent<M>> {
+    type Output = Result<String, CompletionError>;
+    type IntoFuture = BoxFuture<'static, Self::Output>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        self.execute()
+    }
+}
+
+/// Trait for executing a prompt request and getting a response
+pub trait ExecutePrompt<M> {
+    /// Execute the prompt request and return the response
+    fn execute(self) -> impl std::future::Future<Output = Result<String, CompletionError>> + Send;
+}
+
+// Implementation for Agent with no depth and no history
+impl<M: CompletionModel> ExecutePrompt<Agent<M>> for PromptRequest<Agent<M>> {
+    async fn execute(self) -> Result<String, CompletionError> {
+        let agent = self.model;
+        let prompt = self.prompt;
+
+        let mut chat_history = if let Some(chat_history) = self.chat_history {
+            chat_history
+        } else {
+            Vec::new()
+        };
+
+        let mut resp = agent
+            .completion(prompt, chat_history.to_vec())
+            .await?
+            .send()
+            .await?;
+
+        let (mut tool_calls, mut texts): (Vec<_>, Vec<_>) = resp
+            .choice
+            .iter()
+            .partition(|choice| matches!(choice, AssistantContent::ToolCall(_)));
+
+        for _ in 0..self.max_depth {
+            chat_history.push(Message::Assistant {
+                content: resp.choice.clone(),
+            });
+
+            if tool_calls.is_empty() {
+                let merged_texts = texts
+                    .into_iter()
+                    .filter_map(|content| {
+                        if let AssistantContent::Text(text) = content {
+                            Some(text.text.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                // If there are no tool calls, depth is not relevant, we can just return the merged text.
+                return Ok(merged_texts);
+            }
+
+            let tool_content = stream::iter(tool_calls)
+                .then(|choice| async move {
+                    if let AssistantContent::ToolCall(tool_call) = choice {
+                        let output = agent
+                            .tools
+                            .call(
+                                &tool_call.function.name,
+                                tool_call.function.arguments.to_string(),
+                            )
+                            .await?;
+                        Ok(UserContent::tool_result(
+                            tool_call.id.clone(),
+                            OneOrMany::one(output.into()),
+                        ))
+                    } else {
+                        unreachable!(
+                            "This should never happen as we already filtered for `ToolCall`"
+                        )
+                    }
+                })
+                .collect::<Vec<Result<UserContent, ToolSetError>>>()
+                .await
+                .into_iter()
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
+
+            let new_resp = agent
+                .completion(
+                    Message::User {
+                        content: OneOrMany::many(tool_content)
+                            .expect("There is at least one tool call"),
+                    },
+                    chat_history.to_vec(),
+                )
+                .await?
+                .send()
+                .await?;
+
+            // Update the response for the next iteration
+            resp = new_resp;
+
+            let (new_tool_calls, new_texts): (Vec<_>, Vec<_>) = resp
+                .choice
+                .iter()
+                .partition(|choice| matches!(choice, AssistantContent::ToolCall(_)));
+
+            tool_calls = new_tool_calls;
+            texts = new_texts;
+
+            // If no tool calls remain, we can break early
+            if tool_calls.is_empty() {
+                break;
+            }
+        }
+
+        // Return the final response after all iterations
+        let final_text = texts
+            .into_iter()
+            .filter_map(|content| {
+                if let AssistantContent::Text(text) = content {
+                    Some(text.text.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Ok(final_text)
     }
 }
 
