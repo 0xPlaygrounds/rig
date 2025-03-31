@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.10.0...rig-core-v0.11.0) - 2025-03-31
+
+### Added
+
+- Add audio generation to all providers ([#359](https://github.com/0xPlaygrounds/rig/pull/359))
+- Add image generation to all providers that support it ([#357](https://github.com/0xPlaygrounds/rig/pull/357))
+- *(provider)* cohere-v2 ([#350](https://github.com/0xPlaygrounds/rig/pull/350))
+
+### Fixed
+
+- no params tools definition for Gemini ([#363](https://github.com/0xPlaygrounds/rig/pull/363))
+- *(openai)* serde rename for image_url UserContent ([#355](https://github.com/0xPlaygrounds/rig/pull/355))
+
+### Other
+
+- New model provider: Anthropic Claude 3.7 Addition ([#341](https://github.com/0xPlaygrounds/rig/pull/341))
+- added mcp_tool + Example ([#335](https://github.com/0xPlaygrounds/rig/pull/335))
+
 ## [0.10.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.9.1...rig-core-v0.10.0) - 2025-03-17
 
 ### Added
