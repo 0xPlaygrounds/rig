@@ -12,6 +12,8 @@ pub mod client;
 pub mod completion;
 pub mod embedding;
 
+#[cfg(feature = "audio")]
+pub mod audio_generation;
 #[cfg(feature = "image")]
 pub mod image_generation;
 pub mod streaming;
@@ -20,6 +22,9 @@ pub mod transcription;
 pub use client::*;
 pub use completion::*;
 pub use embedding::*;
+
+#[cfg(feature = "audio")]
+pub use audio_generation::{TTS_1, TTS_1_HD};
 
 #[cfg(feature = "image")]
 pub use image_generation::*;

@@ -18,6 +18,9 @@ use super::client::Client;
 // ================================================================
 // Anthropic Completion API
 // ================================================================
+/// `claude-3-7-sonnet-latest` completion model
+pub const CLAUDE_3_7_SONNET: &str = "claude-3-7-sonnet-latest";
+
 /// `claude-3-5-sonnet-latest` completion model
 pub const CLAUDE_3_5_SONNET: &str = "claude-3-5-sonnet-latest";
 
