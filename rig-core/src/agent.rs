@@ -171,7 +171,7 @@ pub struct Agent<M: CompletionModel> {
 impl<M: CompletionModel> Completion<M> for Agent<M> {
     async fn completion(
         &self,
-        prompt: impl Into<Option<Message>> + Send,
+        prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         let prompt = prompt.into();
@@ -179,19 +179,13 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 
         let completion_request = self
             .model
-            .completion_request()
+            .completion_request(prompt)
             .preamble(self.preamble.clone())
             .messages(chat_history)
             .temperature_opt(self.temperature)
             .max_tokens_opt(self.max_tokens)
             .additional_params_opt(self.additional_params.clone())
             .documents(self.static_context.clone());
-
-        let completion_request = if let Some(prompt) = prompt {
-            completion_request.message(prompt.clone())
-        } else {
-            completion_request
-        };
 
         let agent = match &rag_text {
             Some(text) => {
@@ -292,16 +286,14 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 }
 
 impl<M: CompletionModel> Prompt for Agent<M> {
-    async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
-        let mut chat_history = vec![];
-        self.chat(prompt, &mut chat_history).await
+    fn prompt(&self, prompt: impl Into<Message> + Send) -> PromptRequest<Agent<M>> {
+        PromptRequest::new(self, prompt)
     }
 }
 
 impl<M: CompletionModel> Prompt for &Agent<M> {
-    async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
-        let mut chat_history = vec![];
-        self.chat(prompt, &mut chat_history).await
+    fn prompt(&self, prompt: impl Into<Message> + Send) -> PromptRequest<Agent<M>> {
+        self.chat(prompt, vec![]).await
     }
 }
 
@@ -309,7 +301,7 @@ impl<M: CompletionModel> Chat for Agent<M> {
     async fn chat(
         &self,
         prompt: impl Into<Message> + Send,
-        chat_history: &mut Vec<Message>,
+        chat_history: Vec<Message>,
     ) -> Result<String, PromptError> {
         let resp = self
             .completion(prompt, chat_history.to_vec())
@@ -546,91 +538,99 @@ impl<M: CompletionModel> AgentBuilder<M> {
 
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
-pub struct PromptRequest<M> {
+pub struct PromptRequest<'a, A> {
     /// The prompt message to send to the model
     prompt: Message,
     /// Optional chat history to include with the prompt
     chat_history: Option<Vec<Message>>,
-    /// Maximum depth for multi-turn conversations (None means no multi-turn)
+    /// Maximum depth for multi-turn conversations (0 means no multi-turn)
     max_depth: usize,
-    /// The model to use for execution
-    model: M,
+    /// The agent to use for execution
+    agent: &'a A,
 }
 
-impl<M> PromptRequest<M> {
+impl<'a, A> PromptRequest<'a, A> {
     /// Create a new PromptRequest with the given prompt and model
-    pub fn new(model: M, prompt: impl Into<Message>) -> Self {
+    pub fn new(agent: &'a A, prompt: impl Into<Message>) -> Self {
         Self {
             prompt: prompt.into(),
             chat_history: None,
             max_depth: 0,
-            model,
+            agent,
         }
     }
 }
 
-impl<M> PromptRequest<M> {
+impl<'a, A> PromptRequest<'a, A> {
     /// Set the maximum depth for multi-turn conversations
-    pub fn multi_turn(self, depth: usize) -> PromptRequest<M> {
+    pub fn multi_turn(self, depth: usize) -> PromptRequest<'a, A> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
             max_depth: depth,
-            model: self.model,
+            agent: self.agent,
         }
     }
 
     /// Add chat history to the prompt request
-    pub fn with_history(self, history: Vec<Message>) -> PromptRequest<M> {
+    pub fn with_history(self, history: Vec<Message>) -> PromptRequest<'a, A> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: Some(history),
             max_depth: self.max_depth,
-            model: self.model,
+            agent: self.agent,
         }
     }
 }
 
-impl<M: CompletionModel> IntoFuture for PromptRequest<Agent<M>> {
-    type Output = Result<String, CompletionError>;
+impl<M: CompletionModel + 'static> IntoFuture for PromptRequest<'a, Agent<M>> {
+    type Output = Result<String, PromptError>;
     type IntoFuture = BoxFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
-        self.execute()
+        Box::pin(self.execute())
     }
 }
 
 /// Trait for executing a prompt request and getting a response
 pub trait ExecutePrompt<M> {
     /// Execute the prompt request and return the response
-    fn execute(self) -> impl std::future::Future<Output = Result<String, CompletionError>> + Send;
+    fn execute(self) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
 }
 
 // Implementation for Agent with no depth and no history
-impl<M: CompletionModel> ExecutePrompt<Agent<M>> for PromptRequest<Agent<M>> {
-    async fn execute(self) -> Result<String, CompletionError> {
-        let agent = self.model;
-        let prompt = self.prompt;
+impl<M: CompletionModel> ExecutePrompt<Agent<M>> for PromptRequest<'a, Agent<M>> {
+    async fn execute(self) -> Result<String, PromptError> {
+        let agent = self.agent;
+        let mut prompt = self.prompt;
+        let mut chat_history = self.chat_history.map_or_else(Vec::new, |history| history);
 
-        let mut chat_history = if let Some(chat_history) = self.chat_history {
-            chat_history
-        } else {
-            Vec::new()
-        };
+        let mut current_max_depth = 0; // We need to keep track of this for logging / errors
+        while current_max_depth < self.max_depth {
+            current_max_depth += 1;
 
-        let mut resp = agent
-            .completion(prompt, chat_history.to_vec())
-            .await?
-            .send()
-            .await?;
+            if self.max_depth > 1 {
+                tracing::info!(
+                    "Current conversation depth: {}/{}",
+                    current_max_depth,
+                    self.max_depth
+                );
+            }
 
-        let (mut tool_calls, mut texts): (Vec<_>, Vec<_>) = resp
-            .choice
-            .iter()
-            .partition(|choice| matches!(choice, AssistantContent::ToolCall(_)));
+            let resp = agent
+                .completion(prompt.clone(), chat_history.to_vec())
+                .await?
+                .send()
+                .await?;
 
-        for _ in 0..self.max_depth {
-            chat_history.push(Message::Assistant {
+            &chat_history.push(prompt);
+
+            let (tool_calls, texts): (Vec<_>, Vec<_>) = resp
+                .choice
+                .iter()
+                .partition(|choice| matches!(choice, AssistantContent::ToolCall(_)));
+
+            &chat_history.push(Message::Assistant {
                 content: resp.choice.clone(),
             });
 
@@ -647,12 +647,16 @@ impl<M: CompletionModel> ExecutePrompt<Agent<M>> for PromptRequest<Agent<M>> {
                     .collect::<Vec<_>>()
                     .join("\n");
 
+                if self.max_depth > 1 {
+                    tracing::info!("Depth reached: {}/{}", current_max_depth, self.max_depth);
+                }
+
                 // If there are no tool calls, depth is not relevant, we can just return the merged text.
                 return Ok(merged_texts);
             }
 
             let tool_content = stream::iter(tool_calls)
-                .then(|choice| async move {
+                .then(async |choice| {
                     if let AssistantContent::ToolCall(tool_call) = choice {
                         let output = agent
                             .tools
@@ -677,49 +681,17 @@ impl<M: CompletionModel> ExecutePrompt<Agent<M>> for PromptRequest<Agent<M>> {
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
 
-            let new_resp = agent
-                .completion(
-                    Message::User {
-                        content: OneOrMany::many(tool_content)
-                            .expect("There is at least one tool call"),
-                    },
-                    chat_history.to_vec(),
-                )
-                .await?
-                .send()
-                .await?;
-
-            // Update the response for the next iteration
-            resp = new_resp;
-
-            let (new_tool_calls, new_texts): (Vec<_>, Vec<_>) = resp
-                .choice
-                .iter()
-                .partition(|choice| matches!(choice, AssistantContent::ToolCall(_)));
-
-            tool_calls = new_tool_calls;
-            texts = new_texts;
-
-            // If no tool calls remain, we can break early
-            if tool_calls.is_empty() {
-                break;
-            }
+            prompt = Message::User {
+                content: OneOrMany::many(tool_content).expect("There is atleast one tool call"),
+            };
         }
 
-        // Return the final response after all iterations
-        let final_text = texts
-            .into_iter()
-            .filter_map(|content| {
-                if let AssistantContent::Text(text) = content {
-                    Some(text.text.clone())
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        Ok(final_text)
+        // If we reach here, we never resolved the final tool call. We need to do ... something.
+        Err(PromptError::MaxDepthError {
+            max_depth: self.max_depth,
+            chat_history,
+            prompt,
+        })
     }
 }
 

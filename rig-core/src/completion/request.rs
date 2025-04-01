@@ -108,6 +108,13 @@ pub enum PromptError {
 
     #[error("ToolCallError: {0}")]
     ToolError(#[from] ToolSetError),
+
+    #[error("MaxDepthError: (reached limit: {max_depth})")]
+    MaxDepthError {
+        max_depth: usize,
+        chat_history: Vec<Message>,
+        prompt: Message,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -163,10 +170,11 @@ pub trait Prompt: Send + Sync {
     fn prompt(
         &self,
         prompt: impl Into<Message> + Send,
-    ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
+    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>> + Send;
 }
 
 /// Trait defining a high-level LLM chat interface (i.e.: prompt and chat history in, response out).
+/// TODO: deprecate
 pub trait Chat: Send + Sync {
     /// Send a prompt with optional chat history to the underlying completion model.
     ///
@@ -179,7 +187,7 @@ pub trait Chat: Send + Sync {
     fn chat(
         &self,
         prompt: impl Into<Message> + Send,
-        chat_history: &mut Vec<Message>,
+        chat_history: Vec<Message>,
     ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
 }
 
@@ -198,7 +206,7 @@ pub trait Completion<M: CompletionModel> {
     /// contain the `preamble` provided when creating the agent.
     fn completion(
         &self,
-        prompt: impl Into<Option<Message>> + Send,
+        prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
     ) -> impl std::future::Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>> + Send;
 }
@@ -229,8 +237,8 @@ pub trait CompletionModel: Clone + Send + Sync {
            + Send;
 
     /// Generates a completion request builder for the given `prompt`.
-    fn completion_request(&self) -> CompletionRequestBuilder<Self> {
-        CompletionRequestBuilder::new(self.clone())
+    fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
+        CompletionRequestBuilder::new(self.clone(), prompt)
     }
 }
 
