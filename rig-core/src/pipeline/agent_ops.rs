@@ -1,3 +1,7 @@
+use std::future::IntoFuture;
+
+use futures::FutureExt;
+
 use crate::{
     completion::{self, CompletionModel},
     extractor::{ExtractionError, Extractor},
@@ -85,8 +89,11 @@ where
     type Input = In;
     type Output = Result<String, completion::PromptError>;
 
-    async fn call(&self, input: Self::Input) -> Self::Output {
-        self.prompt.prompt(input.into()).await
+    fn call(&self, input: Self::Input) -> futures::future::BoxFuture<Self::Output>
+    where
+        Self::Output: Send,
+    {
+        Box::pin(self.prompt.prompt(input.into()).into_future())
     }
 }
 

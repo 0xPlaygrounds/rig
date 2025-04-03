@@ -188,7 +188,7 @@ pub trait Chat: Send + Sync {
         &self,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
+    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>> + Send;
 }
 
 /// Trait defining a low-level LLM completion interface
