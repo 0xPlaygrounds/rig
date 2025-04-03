@@ -151,7 +151,7 @@ pub enum Message {
         )]
         tool_calls: Vec<ToolCall>,
     },
-    #[serde(rename = "Tool")]
+    #[serde(rename = "tool")]
     ToolResult {
         tool_call_id: String,
         content: String,
@@ -470,6 +470,12 @@ impl StreamingCompletionModel for DeepSeekCompletionModel {
         let mut request = self.create_completion_request(completion_request)?;
 
         request = merge(request, json!({"stream": true}));
+        if std::env::var("DEBUG").is_ok() {
+            println!(
+                "REQUEST: {}",
+                serde_json::to_string_pretty(&request).unwrap_or_default()
+            );
+        }
 
         let builder = self.client.post("/v1/chat/completions").json(&request);
         send_compatible_streaming_request(builder).await
