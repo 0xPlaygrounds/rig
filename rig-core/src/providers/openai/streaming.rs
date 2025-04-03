@@ -25,10 +25,12 @@ pub struct StreamingFunction {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingToolCall {
     pub index: usize,
+    #[serde(default)]
+    pub id: String,
     pub function: StreamingFunction,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct StreamingDelta {
     #[serde(default)]
     content: Option<String>,
@@ -36,12 +38,12 @@ struct StreamingDelta {
     tool_calls: Vec<StreamingToolCall>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct StreamingChoice {
     delta: StreamingDelta,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct StreamingCompletionResponse {
     choices: Vec<StreamingChoice>,
 }
@@ -77,7 +79,7 @@ pub async fn send_compatible_streaming_request(
         let mut stream = response.bytes_stream();
 
         let mut partial_data = None;
-        let mut calls: HashMap<usize, (String, String)> = HashMap::new();
+        let mut calls: HashMap<usize, (String, String, String)> = HashMap::new(); // ToolCall(name, id, arguments)
 
         while let Some(chunk_result) = stream.next().await {
             let chunk = match chunk_result {
@@ -121,11 +123,27 @@ pub async fn send_compatible_streaming_request(
                     }
                 }
 
+                // FIXME remove this
+                if std::env::var("DEBUG").is_ok() {
+                println!("RAW: {}", serde_json::to_string_pretty(
+                    &serde_json::from_str::<serde_json::Value>(
+                        &line
+                    ).unwrap_or(
+                        serde_json::json!({"line": line}
+                    ))).unwrap_or_default());
+                }
+
                 let data = serde_json::from_str::<StreamingCompletionResponse>(&line);
+
 
                 let Ok(data) = data else {
                     continue;
                 };
+
+                // FIXME remove this
+                if std::env::var("DEBUG").is_ok() {
+                    println!("PARSED: {}", serde_json::to_string_pretty(&data).unwrap_or_default());
+                }
 
                 let choice = data.choices.first().expect("Should have at least one choice");
 
@@ -139,30 +157,29 @@ pub async fn send_compatible_streaming_request(
                         // name: Some(String)
                         // arguments: None
                         if function.name.is_some() && function.arguments.is_empty() {
-                            calls.insert(tool_call.index, (function.name.clone().unwrap(), "".to_string()));
-                        }
-                        // Part of tool call
-                        // name: None
-                        // arguments: Some(String)
-                        else if function.name.is_none() && !function.arguments.is_empty() {
-                            let Some((name, arguments)) = calls.get(&tool_call.index) else {
+                            calls.insert(tool_call.index, (function.name.clone().unwrap(), tool_call.id.clone(), "".to_string()));
+                        } else if function.name.is_none() && !function.arguments.is_empty() {
+                            // Part of tool call
+                            // name: None
+                            // arguments: Some(String)
+                            let Some((name, id, arguments)) = calls.get(&tool_call.index) else {
                                 continue;
                             };
 
                             let new_arguments = &tool_call.function.arguments;
                             let arguments = format!("{}{}", arguments, new_arguments);
 
-                            calls.insert(tool_call.index, (name.clone(), arguments));
-                        }
-                        // Entire tool call
-                        else {
+                            calls.insert(tool_call.index, (name.clone(), id.clone(), arguments));
+                        } else {
+                            // Entire tool call
                             let name = function.name.unwrap();
                             let arguments = function.arguments;
+                            let id = tool_call.id.clone();
                             let Ok(arguments) = serde_json::from_str(&arguments) else {
                                 continue;
                             };
 
-                            yield Ok(streaming::StreamingChoice::ToolCall(name, "".to_string(), arguments))
+                            yield Ok(streaming::StreamingChoice::ToolCall(name, id, arguments))
                         }
                     }
                 }
@@ -173,12 +190,16 @@ pub async fn send_compatible_streaming_request(
             }
         }
 
-        for (_, (name, arguments)) in calls {
+        for (_, (name, id, arguments)) in calls {
             let Ok(arguments) = serde_json::from_str(&arguments) else {
                 continue;
             };
 
-            yield Ok(streaming::StreamingChoice::ToolCall(name, "".to_string(), arguments))
+            if std::env::var("DEBUG").is_ok() {
+                println!("TOOL CALL: {} {}", name, serde_json::to_string_pretty(&arguments).unwrap_or_default());
+            }
+
+            yield Ok(streaming::StreamingChoice::ToolCall(name, id, arguments))
         }
     }))
 }
