@@ -167,7 +167,9 @@ pub async fn send_streaming_request(
         let mut tool_calls = HashMap::new();
 
         while let Some(chunk_result) = stream.next().await {
-            println!("chunk_result: {:?}", chunk_result);
+            if std::env::var("DEBUG").is_ok() {
+                println!("CHUNK_RESULT: {:?}", chunk_result);
+            }
             let chunk = match chunk_result {
                 Ok(c) => c,
                 Err(e) => {
