@@ -32,7 +32,7 @@ async fn hf_inference(api_key: &str) -> Result<(), anyhow::Error> {
         .stream_prompt("When and where and what type is the next solar eclipse?")
         .await?;
 
-    stream_to_stdout(agent, &mut stream).await?;
+    stream_to_stdout(agent.into(), &mut stream).await?;
 
     Ok(())
 }
@@ -51,7 +51,7 @@ async fn together(api_key: &str) -> Result<(), anyhow::Error> {
         .stream_prompt("When and where and what type is the next solar eclipse?")
         .await?;
 
-    stream_to_stdout(agent, &mut stream).await?;
+    stream_to_stdout(agent.into(), &mut stream).await?;
 
     Ok(())
 }

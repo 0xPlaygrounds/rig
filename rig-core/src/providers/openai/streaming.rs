@@ -17,9 +17,9 @@ use std::collections::HashMap;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingFunction {
     #[serde(default)]
-    name: Option<String>,
+    pub name: Option<String>,
     #[serde(default)]
-    arguments: String,
+    pub arguments: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -31,21 +31,21 @@ pub struct StreamingToolCall {
 }
 
 #[derive(Serialize, Deserialize)]
-struct StreamingDelta {
+pub struct StreamingDelta {
     #[serde(default)]
-    content: Option<String>,
+    pub content: Option<String>,
     #[serde(default, deserialize_with = "json_utils::null_or_vec")]
-    tool_calls: Vec<StreamingToolCall>,
+    pub tool_calls: Vec<StreamingToolCall>,
 }
 
 #[derive(Serialize, Deserialize)]
-struct StreamingChoice {
-    delta: StreamingDelta,
+pub struct StreamingChoice {
+    pub delta: StreamingDelta,
 }
 
 #[derive(Serialize, Deserialize)]
-struct StreamingCompletionResponse {
-    choices: Vec<StreamingChoice>,
+pub struct StreamingCompletionResponse {
+    pub choices: Vec<StreamingChoice>,
 }
 
 impl StreamingCompletionModel for CompletionModel {
@@ -82,6 +82,7 @@ pub async fn send_compatible_streaming_request(
         let mut calls: HashMap<usize, (String, String, String)> = HashMap::new(); // ToolCall(name, id, arguments)
 
         while let Some(chunk_result) = stream.next().await {
+            println!("chunk_result: {:?}", chunk_result);
             let chunk = match chunk_result {
                 Ok(c) => c,
                 Err(e) => {
@@ -102,8 +103,6 @@ pub async fn send_compatible_streaming_request(
             for line in text.lines() {
                 let mut line = line.to_string();
 
-
-
                 // If there was a remaining part, concat with current line
                 if partial_data.is_some() {
                     line = format!("{}{}", partial_data.unwrap(), line);
@@ -111,9 +110,7 @@ pub async fn send_compatible_streaming_request(
                 }
                 // Otherwise full data line
                 else {
-                    let Some(data) = line.strip_prefix("data: ") else {
-                        continue;
-                    };
+                    let data = line.replace("data: ", "");
 
                     // Partial data, split somewhere in the middle
                     if !line.ends_with("}") {

@@ -13,11 +13,14 @@ use crate::agent::Agent;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequest, CompletionRequestBuilder, Message,
 };
+use crate::message::ToolCall;
 use futures::{Stream, StreamExt};
 use std::boxed::Box;
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 /// Enum representing a streaming chunk from the model
 #[derive(Debug)]
@@ -27,6 +30,9 @@ pub enum StreamingChoice {
 
     /// A tool call response chunk
     ToolCall(String, String, serde_json::Value),
+
+    /// A parallel tool call response chunk
+    ParToolCall(HashMap<usize, ToolCall>), // index to tool call
 }
 
 impl Display for StreamingChoice {
@@ -35,6 +41,9 @@ impl Display for StreamingChoice {
             StreamingChoice::Message(text) => write!(f, "{}", text),
             StreamingChoice::ToolCall(name, id, params) => {
                 write!(f, "Tool call: {} {} {:?}", name, id, params)
+            }
+            StreamingChoice::ParToolCall(tool_calls) => {
+                write!(f, "Tool calls: {:?}", tool_calls)
             }
         }
     }
@@ -87,7 +96,7 @@ pub trait StreamingCompletionModel: CompletionModel {
 
 /// helper function to stream a completion request to stdout
 pub async fn stream_to_stdout<M: StreamingCompletionModel>(
-    agent: Agent<M>,
+    agent: Arc<Agent<M>>,
     stream: &mut StreamingResult,
 ) -> Result<(), std::io::Error> {
     print!("Response: ");
@@ -104,6 +113,29 @@ pub async fn stream_to_stdout<M: StreamingCompletionModel>(
                     .await
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
                 println!("\nResult: {}", res);
+            }
+            Ok(StreamingChoice::ParToolCall(tool_calls)) => {
+                let mut futures = Vec::new();
+                for (_index, tool_call) in tool_calls {
+                    let name = tool_call.function.name.clone();
+                    let params = tool_call.function.arguments;
+                    let agent = agent.clone();
+                    let future = async move {
+                        agent
+                            .tools
+                            .call(&name, serde_json::to_string(&params).unwrap_or_default())
+                            .await
+                    };
+                    futures.push(future);
+                }
+
+                let results = futures::future::try_join_all(futures)
+                    .await
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+
+                for res in results {
+                    println!("\nResult: {}", res);
+                }
             }
             Err(e) => {
                 eprintln!("Error: {}", e);

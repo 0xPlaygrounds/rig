@@ -23,6 +23,8 @@ use serde_json::json;
 
 use super::openai::AssistantContent;
 
+pub mod streaming;
+
 // ================================================================
 // Main openrouter Client
 // ================================================================
