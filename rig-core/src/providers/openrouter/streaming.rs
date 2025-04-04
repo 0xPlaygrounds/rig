@@ -80,14 +80,6 @@ pub fn openaify_request(request: serde_json::Value) -> serde_json::Value {
     let mut request = request;
     let obj = request.as_object_mut().unwrap();
 
-    // Set model if not present
-    if !obj.contains_key("model") {
-        obj.insert(
-            "model".to_string(),
-            serde_json::Value::String("google/gemini-2.0-flash-001".to_string()),
-        );
-    }
-
     // Transform messages array
     if let Some(messages) = obj.get_mut("messages") {
         if let Some(messages_array) = messages.as_array_mut() {
@@ -131,13 +123,25 @@ impl StreamingCompletionModel for super::CompletionModel {
             filler,
             completion_request,
         )?;
-        let mut req_clone = request.clone();
-        req_clone.as_object_mut().unwrap().remove("tools");
-        println!(
-            "request: {}",
-            serde_json::to_string_pretty(&req_clone).unwrap()
-        );
-        let builder = self.client.post("/chat/completions").json(&request);
+
+        {
+            // debug
+            let mut req_clone = request.clone();
+            req_clone.as_object_mut().unwrap().remove("tools");
+            println!(
+                "RIG request: {}",
+                serde_json::to_string_pretty(&req_clone).unwrap()
+            );
+            println!(
+                "OPENAIFIED request: {}",
+                serde_json::to_string_pretty(&openaify_request(req_clone)).unwrap()
+            );
+        }
+
+        let builder = self
+            .client
+            .post("/chat/completions")
+            .json(&openaify_request(request));
         send_streaming_request(builder).await
     }
 }
@@ -277,8 +281,9 @@ mod tests {
     #[test]
     fn test_openaify_request() {
         let faulty_request = serde_json::json!({
-              "messages": [
-              {
+            "model": "google/gemini-2.0-flash-001",
+          "messages": [
+            {
               "role": "system",
               "content": [
                 {
@@ -319,9 +324,10 @@ mod tests {
                   "text": "18391337"
                 }
               ]
-            }
+            },
           ],
-          "tool_choice": "auto"
+          "tool_choice": "auto",
+          "tools": [],
         });
 
         let want = serde_json::json!({
@@ -333,7 +339,7 @@ mod tests {
             },
             {
                 "role": "user",
-                "text": "\n                we are testing the resoning loop, fetch my solana balance three times\n                "
+                "content": "\n                we are testing the resoning loop, fetch my solana balance three times\n                "
             },
             {
               "role": "assistant",
@@ -355,22 +361,7 @@ mod tests {
               "content": "18391337"
             }
           ],
-          "tools": [
-            {
-              "type": "function",
-              "function": {
-                "name": "get_sol_balance",
-                "description": "Get the current SOL balance for the connected wallet",
-                "parameters": {
-                  "type": "object",
-                  "properties": {},
-                  "required": [],
-                  "additionalProperties": false
-                },
-                "strict": true
-              }
-            }
-          ],
+          "tools": [],
           "tool_choice": "auto"
         });
 
