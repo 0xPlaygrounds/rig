@@ -124,7 +124,7 @@ impl StreamingCompletionModel for super::CompletionModel {
             completion_request,
         )?;
 
-        {
+        if std::env::var("DEBUG").is_ok() {
             // debug
             let mut req_clone = request.clone();
             req_clone.as_object_mut().unwrap().remove("tools");
