@@ -76,6 +76,51 @@ pub struct ErrorResponse {
     pub metadata: Option<HashMap<String, Value>>,
 }
 
+pub fn openaify_request(request: serde_json::Value) -> serde_json::Value {
+    let mut request = request;
+    let obj = request.as_object_mut().unwrap();
+
+    // Set model if not present
+    if !obj.contains_key("model") {
+        obj.insert(
+            "model".to_string(),
+            serde_json::Value::String("google/gemini-2.0-flash-001".to_string()),
+        );
+    }
+
+    // Transform messages array
+    if let Some(messages) = obj.get_mut("messages") {
+        if let Some(messages_array) = messages.as_array_mut() {
+            for message in messages_array {
+                if let Some(content) = message.get_mut("content") {
+                    if let Some(content_array) = content.as_array() {
+                        // If content is an array, extract text content
+                        let text_content = content_array
+                            .iter()
+                            .filter_map(|item| {
+                                if item.get("type")? == "text" {
+                                    item.get("text").map(|t| t.as_str().unwrap_or_default())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("");
+
+                        if text_content.is_empty() {
+                            *content = serde_json::Value::Null;
+                        } else {
+                            *content = serde_json::Value::String(text_content);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    request
+}
+
 impl StreamingCompletionModel for super::CompletionModel {
     async fn stream(
         &self,
@@ -86,9 +131,11 @@ impl StreamingCompletionModel for super::CompletionModel {
             filler,
             completion_request,
         )?;
+        let mut req_clone = request.clone();
+        req_clone.as_object_mut().unwrap().remove("tools");
         println!(
             "request: {}",
-            serde_json::to_string_pretty(&request).unwrap()
+            serde_json::to_string_pretty(&req_clone).unwrap()
         );
         let builder = self.client.post("/chat/completions").json(&request);
         send_streaming_request(builder).await
@@ -162,6 +209,10 @@ pub async fn send_streaming_request(
                         ))).unwrap_or_default());
                 }
 
+                if line.trim() == "" {
+                    continue;
+                }
+
                 let data = match serde_json::from_str::<StreamingCompletionResponse>(&line) {
                     Ok(data) => data,
                     Err(e) => {
@@ -217,4 +268,113 @@ pub async fn send_streaming_request(
             yield Ok(streaming::StreamingChoice::ParToolCall(tool_calls));
         }
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_openaify_request() {
+        let faulty_request = serde_json::json!({
+              "messages": [
+              {
+              "role": "system",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "you are a solana trading agent"
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "\n                we are testing the resoning loop, fetch my solana balance three times\n                "
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [],
+              "tool_calls": [
+                {
+                  "id": "tool_0_get_sol_balance",
+                  "type": "function",
+                  "function": {
+                    "name": "get_sol_balance",
+                    "arguments": "{}"
+                  }
+                }
+              ]
+            },
+            {
+              "role": "tool",
+              "tool_call_id": "tool_0_get_sol_balance",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "18391337"
+                }
+              ]
+            }
+          ],
+          "tool_choice": "auto"
+        });
+
+        let want = serde_json::json!({
+          "model": "google/gemini-2.0-flash-001",
+          "messages": [
+            {
+              "role": "system",
+              "content": "you are a solana trading agent"
+            },
+            {
+                "role": "user",
+                "text": "\n                we are testing the resoning loop, fetch my solana balance three times\n                "
+            },
+            {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [
+                {
+                  "id": "tool_0_get_sol_balance",
+                  "type": "function",
+                  "function": {
+                    "name": "get_sol_balance",
+                    "arguments": "{}"
+                  }
+                }
+              ]
+            },
+            {
+              "role": "tool",
+              "tool_call_id": "tool_0_get_sol_balance",
+              "content": "18391337"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_sol_balance",
+                "description": "Get the current SOL balance for the connected wallet",
+                "parameters": {
+                  "type": "object",
+                  "properties": {},
+                  "required": [],
+                  "additionalProperties": false
+                },
+                "strict": true
+              }
+            }
+          ],
+          "tool_choice": "auto"
+        });
+
+        let got = openaify_request(faulty_request);
+        pretty_assertions::assert_eq!(got, want);
+    }
 }

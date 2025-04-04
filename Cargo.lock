@@ -2765,6 +2765,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "339544cc9e2c4dc3fc7149fd630c5f22263a4fdf18a98afd0075784968b5cf00"
 
 [[package]]
+name = "diff"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
+
+[[package]]
 name = "difflib"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3367,7 +3373,7 @@ dependencies = [
  "tokio",
  "tracing",
  "walkdir",
- "yansi",
+ "yansi 0.5.1",
 ]
 
 [[package]]
@@ -7128,6 +7134,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pretty_assertions"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ae130e2f271fbc2ac3a40fb1d07180839cdbbe443c7a27e1e3c13c5cac0116d"
+dependencies = [
+ "diff",
+ "yansi 1.0.1",
+]
+
+[[package]]
 name = "prettyplease"
 version = "0.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7947,6 +7963,7 @@ dependencies = [
  "lopdf",
  "mime_guess",
  "ordered-float",
+ "pretty_assertions",
  "quick-xml 0.37.2",
  "rayon",
  "reqwest 0.12.12",
@@ -11602,6 +11619,12 @@ name = "yansi"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09041cd90cf85f7f8b2df60c646f853b7f535ce68f85244eb6731cf89fa498ec"
+
+[[package]]
+name = "yansi"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfe53a6657fd280eaa890a3bc59152892ffa3e30101319d168b781ed6529b049"
 
 [[package]]
 name = "yoke"

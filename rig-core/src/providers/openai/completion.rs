@@ -593,6 +593,21 @@ pub struct CompletionModel {
     pub model: String,
 }
 
+pub fn openaify_message(messages: Message) -> serde_json::Value {
+    match messages {
+        Message::User { content, .. } => match content.len() {
+            1 => match content.first() {
+                UserContent::Text { text } => json!({ "role": "user", "content": text }),
+                _ => todo!(),
+            },
+            _ => todo!(),
+        },
+        Message::Assistant { content, .. } => json!({ "role": "assistant", "content": content }),
+        Message::ToolResult { content, .. } => json!({ "role": "tool", "content": content }),
+        Message::System { content, .. } => json!({ "role": "system", "content": content }),
+    }
+}
+
 impl CompletionModel {
     pub fn new(client: Client, model: &str) -> Self {
         Self {
