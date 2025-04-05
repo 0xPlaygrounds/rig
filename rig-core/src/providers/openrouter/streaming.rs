@@ -103,28 +103,137 @@ pub fn openaify_request(request: serde_json::Value) -> serde_json::Value {
     // Transform messages array
     if let Some(messages) = obj.get_mut("messages") {
         if let Some(messages_array) = messages.as_array_mut() {
-            for message in messages_array {
-                if let Some(content) = message.get_mut("content") {
-                    if let Some(content_array) = content.as_array() {
-                        // If content is an array, extract text content
-                        let text_content = content_array
-                            .iter()
-                            .filter_map(|item| {
-                                if item.get("type")? == "text" {
-                                    item.get("text").map(|t| t.as_str().unwrap_or_default())
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join("");
+            let mut i = 0;
+            while i < messages_array.len() {
+                let message = &mut messages_array[i];
 
-                        if text_content.is_empty() {
-                            *content = serde_json::Value::Null;
-                        } else {
-                            *content = serde_json::Value::String(text_content);
+                // Handle tool results in user messages
+                if message.get("role").and_then(|r| r.as_str()) == Some("user") {
+                    if let Some(content) = message.get("content") {
+                        if let Some(content_array) = content.as_array() {
+                            let mut tool_results = Vec::new();
+                            let mut tool_messages = Vec::new();
+
+                            for item in content_array {
+                                if let Some(item_type) = item.get("type") {
+                                    match item_type.as_str() {
+                                        Some("text") => {
+                                            if let Some(text) =
+                                                item.get("text").and_then(|t| t.as_str())
+                                            {
+                                                tool_results.push(text.to_string());
+                                            }
+                                        }
+                                        Some("toolresult") => {
+                                            // Extract tool result content and ID
+                                            if let (Some(id), Some(content)) = (
+                                                item.get("id").and_then(|i| i.as_str()),
+                                                item.get("content").and_then(|c| c.as_array()),
+                                            ) {
+                                                // Convert message to tool response format
+                                                let text_content = content
+                                                    .iter()
+                                                    .filter_map(|c| {
+                                                        c.get("Text")
+                                                            .and_then(|t| t.get("text"))
+                                                            .and_then(|t| t.as_str())
+                                                    })
+                                                    .collect::<Vec<_>>()
+                                                    .join("");
+
+                                                if !text_content.is_empty() {
+                                                    tool_messages.push(serde_json::json!({
+                                                        "role": "tool",
+                                                        "tool_call_id": id,
+                                                        "content": text_content
+                                                    }));
+                                                }
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+
+                            // Apply the changes
+                            let text_content = tool_results.join("");
+                            if !text_content.is_empty() {
+                                message["content"] = serde_json::Value::String(text_content);
+                                i += 1;
+                            } else {
+                                // Remove the empty user message
+                                messages_array.remove(i);
+                            }
+
+                            // Insert tool messages after the current message
+                            let num_tool_messages = tool_messages.len();
+                            if num_tool_messages > 0 {
+                                messages_array.splice(i..i, tool_messages);
+                                i += num_tool_messages;
+                            }
                         }
                     }
+                }
+                // Handle assistant messages with tool calls
+                else if message.get("role").and_then(|r| r.as_str()) == Some("assistant") {
+                    if let Some(content) = message.get("content") {
+                        if let Some(content_array) = content.as_array() {
+                            // Check if this is a tool call message
+                            if let Some(first_item) = content_array.first() {
+                                if first_item.get("function").is_some() {
+                                    // Keep the content array as is for tool calls
+                                    i += 1;
+                                    continue;
+                                }
+                            }
+                            // For regular content, join text items
+                            let text_content = content_array
+                                .iter()
+                                .filter_map(|item| {
+                                    if let Some(text) = item.get("text") {
+                                        text.as_str()
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join("");
+
+                            if text_content.is_empty() {
+                                message["content"] = serde_json::Value::Null;
+                            } else {
+                                message["content"] = serde_json::Value::String(text_content);
+                            }
+                            i += 1;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+                // Handle all other messages (system, tool, etc.)
+                else {
+                    if let Some(content) = message.get("content") {
+                        if let Some(content_array) = content.as_array() {
+                            let text_content = content_array
+                                .iter()
+                                .filter_map(|item| {
+                                    if let Some(text) = item.get("text") {
+                                        text.as_str()
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join("");
+
+                            if text_content.is_empty() {
+                                message["content"] = serde_json::Value::Null;
+                            } else {
+                                message["content"] = serde_json::Value::String(text_content);
+                            }
+                        }
+                    }
+                    i += 1;
                 }
             }
         }
