@@ -456,4 +456,123 @@ mod tests {
         let got = openaify_request(faulty_request);
         pretty_assertions::assert_eq!(got, want);
     }
+
+    #[test]
+    fn test_openaify_request_tool_response() {
+        let faulty_request = serde_json::json!({
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "we are testing parallel tool calls, check my solana balance and USDC balance (EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v), do this in one response please"
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "id": "tool_0_get_sol_balance",
+                  "function": {
+                    "name": "get_sol_balance",
+                    "arguments": {}
+                  }
+                },
+                {
+                  "id": "tool_1_get_spl_token_balance",
+                  "function": {
+                    "name": "get_spl_token_balance",
+                    "arguments": {
+                      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "id": "tool_0_get_sol_balance",
+                  "content": [
+                    {
+                      "Text": {
+                        "text": "18391337"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "toolresult",
+                  "id": "tool_1_get_spl_token_balance",
+                  "content": [
+                    {
+                      "Text": {
+                        "text": "[\"778427\",6,\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\"]"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "text": "Your SOL balance is 0.018391337 SOL. Your USDC balance is 778427, with 6 decimals, meaning 0.778427 USDC.\n"
+                }
+              ]
+            }
+          ]
+        });
+
+        let want = serde_json::json!({
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "we are testing parallel tool calls, check my solana balance and USDC balance (EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v), do this in one response please"
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "id": "tool_0_get_sol_balance",
+                            "function": {
+                                "name": "get_sol_balance",
+                                "arguments": {}
+                            }
+                        },
+                        {
+                            "id": "tool_1_get_spl_token_balance",
+                            "function": {
+                                "name": "get_spl_token_balance",
+                                "arguments": {
+                                    "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "tool_0_get_sol_balance",
+                    "content": "18391337"
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "tool_1_get_spl_token_balance",
+                    "content":  "[\"778427\",6,\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\"]"
+                },
+                {
+                    "role": "assistant",
+                    "content":  "Your SOL balance is 0.018391337 SOL. Your USDC balance is 778427, with 6 decimals, meaning 0.778427 USDC.\n"
+                }
+            ]
+        });
+        let got = openaify_request(faulty_request);
+        pretty_assertions::assert_eq!(got, want);
+    }
 }
