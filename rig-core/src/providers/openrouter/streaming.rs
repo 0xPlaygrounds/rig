@@ -208,8 +208,8 @@ pub async fn send_streaming_request(
             for line in text.lines() {
                 let mut line = line.to_string();
 
-                // Skip empty lines and processing messages
-                if line.trim().is_empty() || line.trim() == ": OPENROUTER PROCESSING" || line.trim() == "[DONE]" {
+                // Skip empty lines and processing messages, as well as [DONE] (might be useful though)
+                if line.trim().is_empty() || line.trim() == ": OPENROUTER PROCESSING" || line.trim() == "data: [DONE]" {
                     continue;
                 }
 
@@ -234,21 +234,16 @@ pub async fn send_streaming_request(
                     }
                 }
 
-                if std::env::var("DEBUG").is_ok() {
-                    println!("RAW: {}", serde_json::to_string_pretty(
+                let data = match serde_json::from_str::<StreamingCompletionResponse>(&line) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        println!("RAW: {}", serde_json::to_string_pretty(
                         &serde_json::from_str::<serde_json::Value>(
                             &line
                         ).unwrap_or(
                             serde_json::json!({"line": line})
                         )).unwrap_or_default());
-                }
-
-                let data = match serde_json::from_str::<StreamingCompletionResponse>(&line) {
-                    Ok(data) => data,
-                    Err(e) => {
-                        if std::env::var("DEBUG").is_ok() {
-                            eprintln!("ERROR: {}", e);
-                        }
+                        eprintln!("ERROR: {}", e);
                         continue;
                     }
                 };
