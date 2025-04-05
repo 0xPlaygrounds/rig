@@ -390,10 +390,14 @@ pub async fn send_streaming_request(
 
                             // Update fields if present
                             if let Some(id) = &tool_call.id {
-                                existing_tool_call.id = id.clone();
+                                if !id.is_empty() {
+                                    existing_tool_call.id = id.clone();
+                                }
                             }
                             if let Some(name) = &tool_call.function.name {
-                                existing_tool_call.function.name = name.clone();
+                                if !name.is_empty() {
+                                    existing_tool_call.function.name = name.clone();
+                                }
                             }
                             if let Some(chunk) = &tool_call.function.arguments {
                                 // Convert current arguments to string if needed
