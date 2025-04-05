@@ -38,7 +38,10 @@ pub struct StreamingChoice {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logprobs: Option<Value>,
     pub index: usize,
-    pub message: MessageResponse,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<MessageResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delta: Option<DeltaResponse>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<ErrorResponse>,
 }
@@ -54,11 +57,17 @@ pub struct MessageResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct OpenRouterToolFunction {
+    pub name: Option<String>,
+    pub arguments: Option<serde_json::Value>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct OpenRouterToolCall {
     pub index: usize,
     pub id: String,
     pub r#type: String,
-    pub function: ToolFunction,
+    pub function: OpenRouterToolFunction,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -74,6 +83,15 @@ pub struct ErrorResponse {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<HashMap<String, Value>>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DeltaResponse {
+    pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub tool_calls: Vec<OpenRouterToolCall>,
 }
 
 pub fn openaify_request(request: serde_json::Value) -> serde_json::Value {
@@ -128,12 +146,12 @@ impl StreamingCompletionModel for super::CompletionModel {
             // debug
             let mut req_clone = request.clone();
             req_clone.as_object_mut().unwrap().remove("tools");
+            // println!(
+            //     "RIG request: {}",
+            //     serde_json::to_string_pretty(&req_clone).unwrap()
+            // );
             println!(
-                "RIG request: {}",
-                serde_json::to_string_pretty(&req_clone).unwrap()
-            );
-            println!(
-                "OPENAIFIED request: {}",
+                "request: {}",
                 serde_json::to_string_pretty(&openaify_request(req_clone)).unwrap()
             );
         }
@@ -167,14 +185,10 @@ pub async fn send_streaming_request(
     // Handle OpenAI Compatible SSE chunks
     Ok(Box::pin(stream! {
         let mut stream = response.bytes_stream();
-
-        let mut partial_data = None;
         let mut tool_calls = HashMap::new();
+        let mut partial_line = String::new();
 
         while let Some(chunk_result) = stream.next().await {
-            if std::env::var("DEBUG").is_ok() {
-                println!("CHUNK_RESULT: {:?}", chunk_result);
-            }
             let chunk = match chunk_result {
                 Ok(c) => c,
                 Err(e) => {
@@ -194,20 +208,29 @@ pub async fn send_streaming_request(
             for line in text.lines() {
                 let mut line = line.to_string();
 
-                // If there was a remaining part, concat with current line
-                if partial_data.is_some() {
-                    line = format!("{}{}", partial_data.unwrap(), line);
-                    partial_data = None;
+                // Skip empty lines and processing messages
+                if line.trim().is_empty() || line.trim() == ": OPENROUTER PROCESSING" || line.trim() == "[DONE]" {
+                    continue;
                 }
-                // Otherwise full data line
-                else {
-                    let data = line.replace("data: ", "");
 
-                    // Partial data, split somewhere in the middle
-                    if !line.ends_with("}") {
-                        partial_data = Some(data.to_string());
+                // Handle data: prefix
+                line = line.strip_prefix("data: ").unwrap_or(&line).to_string();
+
+                // If line starts with { but doesn't end with }, it's a partial JSON
+                if line.starts_with('{') && !line.ends_with('}') {
+                    partial_line = line;
+                    continue;
+                }
+
+                // If we have a partial line and this line ends with }, complete it
+                if !partial_line.is_empty() {
+                    if line.ends_with('}') {
+                        partial_line.push_str(&line);
+                        line = partial_line;
+                        partial_line = String::new();
                     } else {
-                        line = data.to_string();
+                        partial_line.push_str(&line);
+                        continue;
                     }
                 }
 
@@ -216,18 +239,16 @@ pub async fn send_streaming_request(
                         &serde_json::from_str::<serde_json::Value>(
                             &line
                         ).unwrap_or(
-                            serde_json::json!({"line": line}
-                        ))).unwrap_or_default());
-                }
-
-                if line.trim() == "" {
-                    continue;
+                            serde_json::json!({"line": line})
+                        )).unwrap_or_default());
                 }
 
                 let data = match serde_json::from_str::<StreamingCompletionResponse>(&line) {
                     Ok(data) => data,
                     Err(e) => {
-                        eprintln!("ERROR: {}", e);
+                        if std::env::var("DEBUG").is_ok() {
+                            eprintln!("ERROR: {}", e);
+                        }
                         continue;
                     }
                 };
@@ -238,34 +259,88 @@ pub async fn send_streaming_request(
 
                 let choice = data.choices.first().expect("Should have at least one choice");
 
-                if !choice.message.tool_calls.is_empty() {
-                    for tool_call in &choice.message.tool_calls {
-                        let name = tool_call.function.name.clone();
-                        let id = tool_call.id.clone();
-                        let arguments = match &tool_call.function.arguments {
-                            serde_json::Value::String(s) => match serde_json::from_str::<serde_json::Value>(&s) {
-                                Ok(v) => v,
-                                Err(e) => {
-                                    eprintln!("Failed to parse tool arguments: {}", e);
-                                    continue;
-                                }
-                            },
-                            v => v.clone(),
-                        };
-                        let index = tool_call.index;
+                // Handle delta format
+                if let Some(delta) = &choice.delta {
+                    if !delta.tool_calls.is_empty() {
+                        for tool_call in &delta.tool_calls {
+                            let index = tool_call.index;
 
-                        tool_calls.insert(index, ToolCall{
-                            id,
-                            function: ToolFunction {
-                                name: name.clone(),
-                                arguments,
-                            },
-                        });
+                            // Get or create tool call entry
+                            let existing_tool_call = tool_calls.entry(index).or_insert_with(|| ToolCall {
+                                id: String::new(),
+                                function: ToolFunction {
+                                    name: String::new(),
+                                    arguments: serde_json::Value::Null,
+                                },
+                            });
+
+                            // Update fields if present
+                            if !tool_call.id.is_empty() {
+                                existing_tool_call.id = tool_call.id.clone();
+                            }
+                            if let Some(name) = &tool_call.function.name {
+                                existing_tool_call.function.name = name.clone();
+                            }
+                            if let Some(arguments) = &tool_call.function.arguments {
+                                if let serde_json::Value::String(args_str) = arguments {
+                                    if !args_str.is_empty() {
+                                        existing_tool_call.function.arguments = match serde_json::from_str(args_str) {
+                                            Ok(v) => v,
+                                            Err(e) => {
+                                                eprintln!("Failed to parse tool arguments: {}", e);
+                                                continue;
+                                            }
+                                        };
+                                    }
+                                } else if arguments != &serde_json::Value::Null {
+                                    existing_tool_call.function.arguments = arguments.clone();
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(content) = &delta.content {
+                        if !content.is_empty() {
+                            yield Ok(streaming::StreamingChoice::Message(content.clone()))
+                        }
                     }
                 }
 
-                if !choice.message.content.is_empty() {
-                    yield Ok(streaming::StreamingChoice::Message(choice.message.content.clone()))
+                // Handle message format
+                if let Some(message) = &choice.message {
+                    if !message.tool_calls.is_empty() {
+                        for tool_call in &message.tool_calls {
+                            let name = tool_call.function.name.clone();
+                            let id = tool_call.id.clone();
+                            let arguments = if let Some(args) = &tool_call.function.arguments {
+                                match args {
+                                    serde_json::Value::String(s) => match serde_json::from_str::<serde_json::Value>(s) {
+                                        Ok(v) => v,
+                                        Err(e) => {
+                                            eprintln!("Failed to parse tool arguments: {}", e);
+                                            continue;
+                                        }
+                                    },
+                                    v => v.clone(),
+                                }
+                            } else {
+                                serde_json::Value::Null
+                            };
+                            let index = tool_call.index;
+
+                            tool_calls.insert(index, ToolCall{
+                                id,
+                                function: ToolFunction {
+                                    name: name.unwrap_or_default(),
+                                    arguments,
+                                },
+                            });
+                        }
+                    }
+
+                    if !message.content.is_empty() {
+                        yield Ok(streaming::StreamingChoice::Message(message.content.clone()))
+                    }
                 }
             }
         }
