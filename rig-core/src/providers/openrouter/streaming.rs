@@ -119,7 +119,7 @@ impl StreamingCompletionModel for super::CompletionModel {
         completion_request: CompletionRequest,
     ) -> Result<StreamingResult, CompletionError> {
         let filler = &openai::client::Client::from_env().completion_model(&self.model);
-        let request = openai::completion::CompletionModel::create_completion_request(
+        let mut request = openai::completion::CompletionModel::create_completion_request(
             filler,
             completion_request,
         )?;
@@ -137,6 +137,11 @@ impl StreamingCompletionModel for super::CompletionModel {
                 serde_json::to_string_pretty(&openaify_request(req_clone)).unwrap()
             );
         }
+
+        request
+            .as_object_mut()
+            .unwrap()
+            .insert("stream".to_string(), serde_json::Value::Bool(true));
 
         let builder = self
             .client
@@ -268,7 +273,7 @@ pub async fn send_streaming_request(
             println!("TOOL CALLS: {:?}", tool_calls);
         }
         if tool_calls.len() == 1 {
-            let (index, tool_call) = tool_calls.into_iter().next().unwrap();
+            let (_, tool_call) = tool_calls.into_iter().next().unwrap();
             yield Ok(streaming::StreamingChoice::ToolCall(tool_call.function.name, tool_call.id, tool_call.function.arguments));
         } else if !tool_calls.is_empty() {
             yield Ok(streaming::StreamingChoice::ParToolCall(tool_calls));
