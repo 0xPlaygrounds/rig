@@ -179,7 +179,13 @@ impl<T: Tool> ToolDyn for T {
                     .and_then(|output| {
                         serde_json::to_string(&output).map_err(ToolError::JsonError)
                     }),
-                Err(e) => Err(ToolError::JsonError(e)),
+                Err(e) => {
+                    tracing::error!(target: "rig",
+                        "Error parsing tool call arguments: {}",
+                        e
+                    );
+                    Err(ToolError::JsonError(e))
+                }
             }
         })
     }
