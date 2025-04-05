@@ -59,14 +59,14 @@ pub struct MessageResponse {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OpenRouterToolFunction {
     pub name: Option<String>,
-    pub arguments: Option<serde_json::Value>,
+    pub arguments: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OpenRouterToolCall {
     pub index: usize,
-    pub id: String,
-    pub r#type: String,
+    pub id: Option<String>,
+    pub r#type: Option<String>,
     pub function: OpenRouterToolFunction,
 }
 
@@ -87,11 +87,13 @@ pub struct ErrorResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DeltaResponse {
-    pub role: String,
+    pub role: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
     #[serde(default)]
     pub tool_calls: Vec<OpenRouterToolCall>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub native_finish_reason: Option<String>,
 }
 
 pub fn openaify_request(request: serde_json::Value) -> serde_json::Value {
@@ -254,7 +256,15 @@ pub async fn send_streaming_request(
 
                 let choice = data.choices.first().expect("Should have at least one choice");
 
-                // Handle delta format
+                // TODO this has to handle outputs like this:
+                // [{"index": 0, "id": "call_DdmO9pD3xa9XTPNJ32zg2hcA", "function": {"arguments": "", "name": "get_weather"}, "type": "function"}]
+                // [{"index": 0, "id": null, "function": {"arguments": "{\"", "name": null}, "type": null}]
+                // [{"index": 0, "id": null, "function": {"arguments": "location", "name": null}, "type": null}]
+                // [{"index": 0, "id": null, "function": {"arguments": "\":\"", "name": null}, "type": null}]
+                // [{"index": 0, "id": null, "function": {"arguments": "Paris", "name": null}, "type": null}]
+                // [{"index": 0, "id": null, "function": {"arguments": ",", "name": null}, "type": null}]
+                // [{"index": 0, "id": null, "function": {"arguments": " France", "name": null}, "type": null}]
+                // [{"index": 0, "id": null, "function": {"arguments": "\"}", "name": null}, "type": null}]
                 if let Some(delta) = &choice.delta {
                     if !delta.tool_calls.is_empty() {
                         for tool_call in &delta.tool_calls {
@@ -270,25 +280,31 @@ pub async fn send_streaming_request(
                             });
 
                             // Update fields if present
-                            if !tool_call.id.is_empty() {
-                                existing_tool_call.id = tool_call.id.clone();
+                            if let Some(id) = &tool_call.id {
+                                existing_tool_call.id = id.clone();
                             }
                             if let Some(name) = &tool_call.function.name {
                                 existing_tool_call.function.name = name.clone();
                             }
-                            if let Some(arguments) = &tool_call.function.arguments {
-                                if let serde_json::Value::String(args_str) = arguments {
-                                    if !args_str.is_empty() {
-                                        existing_tool_call.function.arguments = match serde_json::from_str(args_str) {
-                                            Ok(v) => v,
-                                            Err(e) => {
-                                                eprintln!("Failed to parse tool arguments: {}", e);
-                                                continue;
-                                            }
-                                        };
+                            if let Some(chunk) = &tool_call.function.arguments {
+                                // Convert current arguments to string if needed
+                                let current_args = match &existing_tool_call.function.arguments {
+                                    serde_json::Value::Null => String::new(),
+                                    serde_json::Value::String(s) => s.clone(),
+                                    v => v.to_string(),
+                                };
+
+                                // Concatenate the new chunk
+                                let combined = format!("{}{}", current_args, chunk);
+
+                                // Try to parse as JSON if it looks complete
+                                if combined.trim_start().starts_with('{') && combined.trim_end().ends_with('}') {
+                                    match serde_json::from_str(&combined) {
+                                        Ok(parsed) => existing_tool_call.function.arguments = parsed,
+                                        Err(_) => existing_tool_call.function.arguments = serde_json::Value::String(combined),
                                     }
-                                } else if arguments != &serde_json::Value::Null {
-                                    existing_tool_call.function.arguments = arguments.clone();
+                                } else {
+                                    existing_tool_call.function.arguments = serde_json::Value::String(combined);
                                 }
                             }
                         }
@@ -308,15 +324,10 @@ pub async fn send_streaming_request(
                             let name = tool_call.function.name.clone();
                             let id = tool_call.id.clone();
                             let arguments = if let Some(args) = &tool_call.function.arguments {
-                                match args {
-                                    serde_json::Value::String(s) => match serde_json::from_str::<serde_json::Value>(s) {
-                                        Ok(v) => v,
-                                        Err(e) => {
-                                            eprintln!("Failed to parse tool arguments: {}", e);
-                                            continue;
-                                        }
-                                    },
-                                    v => v.clone(),
+                                // Try to parse the string as JSON, fallback to string value
+                                match serde_json::from_str(args) {
+                                    Ok(v) => v,
+                                    Err(_) => serde_json::Value::String(args.clone()),
                                 }
                             } else {
                                 serde_json::Value::Null
@@ -324,7 +335,7 @@ pub async fn send_streaming_request(
                             let index = tool_call.index;
 
                             tool_calls.insert(index, ToolCall{
-                                id,
+                                id: id.unwrap_or_default(),
                                 function: ToolFunction {
                                     name: name.unwrap_or_default(),
                                     arguments,
