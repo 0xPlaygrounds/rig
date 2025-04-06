@@ -239,26 +239,23 @@ impl CompletionModel {
         }
 
         // Add docs
-        match completion_request.normalized_documents() {
-            Some(Message::User { content }) => {
-                let text = content
-                    .into_iter()
-                    .filter_map(|doc| match doc {
-                        UserContent::Document(doc) => Some(doc.data),
-                        UserContent::Text(text) => Some(text.text),
+        if let Some(Message::User { content }) = completion_request.normalized_documents() {
+            let text = content
+                .into_iter()
+                .filter_map(|doc| match doc {
+                    UserContent::Document(doc) => Some(doc.data),
+                    UserContent::Text(text) => Some(text.text),
 
-                        // This should always be `Document`
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
+                    // This should always be `Document`
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
 
-                messages.push(serde_json::json!({
-                    "role": "user",
-                    "content": text
-                }));
-            }
-            _ => {}
+            messages.push(serde_json::json!({
+                "role": "user",
+                "content": text
+            }));
         }
 
         // Add chat history

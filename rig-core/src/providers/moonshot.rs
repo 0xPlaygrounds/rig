@@ -10,6 +10,7 @@
 //! ```
 
 use crate::json_utils::merge;
+use crate::message;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
@@ -159,7 +160,7 @@ impl CompletionModel {
         full_history.extend(
             partial_history
                 .into_iter()
-                .map(|msg| completion::Message::try_into(msg))
+                .map(message::Message::try_into)
                 .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
                 .into_iter()
                 .flatten()

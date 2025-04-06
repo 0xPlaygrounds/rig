@@ -1,7 +1,5 @@
 use std::future::IntoFuture;
 
-use futures::FutureExt;
-
 use crate::{
     completion::{self, CompletionModel},
     extractor::{ExtractionError, Extractor},
@@ -83,17 +81,14 @@ impl<P, In> Prompt<P, In> {
 
 impl<P, In> Op for Prompt<P, In>
 where
-    P: completion::Prompt,
+    P: completion::Prompt + Send + Sync,
     In: Into<String> + Send + Sync,
 {
     type Input = In;
     type Output = Result<String, completion::PromptError>;
 
-    fn call(&self, input: Self::Input) -> futures::future::BoxFuture<Self::Output>
-    where
-        Self::Output: Send,
-    {
-        Box::pin(self.prompt.prompt(input.into()).into_future())
+    fn call(&self, input: Self::Input) -> impl std::future::Future<Output = Self::Output> + Send {
+        self.prompt.prompt(input.into()).into_future()
     }
 }
 
@@ -166,6 +161,7 @@ pub mod tests {
     pub struct MockModel;
 
     impl Prompt for MockModel {
+        #[allow(refining_impl_trait)]
         async fn prompt(&self, prompt: impl Into<message::Message>) -> Result<String, PromptError> {
             let msg: message::Message = prompt.into();
             let prompt = match msg {

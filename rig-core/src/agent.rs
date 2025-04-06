@@ -108,7 +108,7 @@
 //! ```
 use std::{collections::HashMap, future::IntoFuture};
 
-use futures::{future::BoxFuture, stream, StreamExt, TryStreamExt};
+use futures::{future::BoxFuture, stream, FutureExt, StreamExt, TryStreamExt};
 
 use crate::{
     completion::{
@@ -288,26 +288,37 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
     }
 }
 
+// Here, we need to ensure that usage of `.prompt` on agent uses these redefinitions on the opaque
+//  `Prompt` trait so that when `.prompt` is used at the call-site, it'll use the more specific
+//  `PromptRequest` implementation for `Agent`, making the builder's usage fluent.
+//
+// References:
+//  - https://github.com/rust-lang/rust/issues/121718 (refining_impl_trait)
+
+#[allow(refining_impl_trait)]
 impl<M: CompletionModel> Prompt for Agent<M> {
-    fn prompt(&self, prompt: impl Into<Message> + Send) -> PromptRequest<Agent<M>> {
+    fn prompt(&self, prompt: impl Into<Message> + Send) -> PromptRequest<M> {
         PromptRequest::new(self, prompt)
     }
 }
 
+#[allow(refining_impl_trait)]
 impl<M: CompletionModel> Prompt for &Agent<M> {
-    fn prompt(&self, prompt: impl Into<Message> + Send) -> PromptRequest<Agent<M>> {
-        PromptRequest::new(self, prompt)
+    fn prompt(&self, prompt: impl Into<Message> + Send) -> PromptRequest<M> {
+        PromptRequest::new(*self, prompt)
     }
 }
 
+#[allow(refining_impl_trait)]
 impl<M: CompletionModel> Chat for Agent<M> {
     async fn chat(
         &self,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
     ) -> Result<String, PromptError> {
+        let mut cloned_history = chat_history.clone();
         PromptRequest::new(self, prompt)
-            .with_history(chat_history)
+            .with_history(&mut cloned_history)
             .await
     }
 }
@@ -481,20 +492,21 @@ impl<M: CompletionModel> AgentBuilder<M> {
 
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
-pub struct PromptRequest<'a, A> {
+pub struct PromptRequest<'c, 'a, M: CompletionModel> {
     /// The prompt message to send to the model
     prompt: Message,
     /// Optional chat history to include with the prompt
-    chat_history: Option<Vec<Message>>,
+    /// Note: chat history needs to outlive the agent as it might be used with other agents
+    chat_history: Option<&'c mut Vec<Message>>,
     /// Maximum depth for multi-turn conversations (0 means no multi-turn)
     max_depth: usize,
     /// The agent to use for execution
-    agent: &'a A,
+    agent: &'a Agent<M>,
 }
 
-impl<'a, A> PromptRequest<'a, A> {
+impl<'c: 'a, 'a, M: CompletionModel> PromptRequest<'c, 'a, M> {
     /// Create a new PromptRequest with the given prompt and model
-    pub fn new(agent: &'a A, prompt: impl Into<Message>) -> Self {
+    pub fn new(agent: &'c Agent<M>, prompt: impl Into<Message>) -> Self {
         Self {
             prompt: prompt.into(),
             chat_history: None,
@@ -504,9 +516,9 @@ impl<'a, A> PromptRequest<'a, A> {
     }
 }
 
-impl<'a, A> PromptRequest<'a, A> {
+impl<'c, 'a, M: CompletionModel> PromptRequest<'c, 'a, M> {
     /// Set the maximum depth for multi-turn conversations
-    pub fn multi_turn(self, depth: usize) -> PromptRequest<'a, A> {
+    pub fn multi_turn(self, depth: usize) -> PromptRequest<'c, 'a, M> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
@@ -516,7 +528,7 @@ impl<'a, A> PromptRequest<'a, A> {
     }
 
     /// Add chat history to the prompt request
-    pub fn with_history(self, history: Vec<Message>) -> PromptRequest<'a, A> {
+    pub fn with_history(self, history: &'c mut Vec<Message>) -> PromptRequest<'c, 'a, M> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: Some(history),
@@ -526,21 +538,29 @@ impl<'a, A> PromptRequest<'a, A> {
     }
 }
 
-impl<'a, M: CompletionModel> IntoFuture for PromptRequest<'a, Agent<M>> {
+/// Due to: RFC 2515, we have to use a `BoxFuture` for the `IntoFuture` implementation. In the
+///  future, we should be able to use `impl Future<...>` directly via the associated type.
+///
+/// Ref: https://github.com/rust-lang/rust/issues/63063
+impl<'c: 'a, 'a, M: CompletionModel + 'c> IntoFuture for PromptRequest<'c, 'a, M> {
     type Output = Result<String, PromptError>;
     type IntoFuture = BoxFuture<'a, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
-        Box::pin(self.send())
+        self.send().boxed()
     }
 }
 
-// Implementation for Agent with no depth and no history
-impl<'a, M: CompletionModel> PromptRequest<'a, Agent<M>> {
+// Implementation for Agent
+impl<M: CompletionModel> PromptRequest<'_, '_, M> {
     async fn send(self) -> Result<String, PromptError> {
         let agent = self.agent;
         let mut prompt = self.prompt;
-        let mut chat_history = self.chat_history.map_or_else(Vec::new, |history| history);
+        let chat_history = if let Some(history) = self.chat_history {
+            history
+        } else {
+            &mut Vec::new()
+        };
 
         let mut current_max_depth = 0;
         while current_max_depth <= self.max_depth {
@@ -626,7 +646,7 @@ impl<'a, M: CompletionModel> PromptRequest<'a, Agent<M>> {
         // If we reach here, we never resolved the final tool call. We need to do ... something.
         Err(PromptError::MaxDepthError {
             max_depth: self.max_depth,
-            chat_history,
+            chat_history: chat_history.clone(),
             prompt,
         })
     }

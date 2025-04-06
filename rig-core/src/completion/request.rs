@@ -170,11 +170,10 @@ pub trait Prompt: Send + Sync {
     fn prompt(
         &self,
         prompt: impl Into<Message> + Send,
-    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>> + Send;
+    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: Send>;
 }
 
 /// Trait defining a high-level LLM chat interface (i.e.: prompt and chat history in, response out).
-/// TODO: deprecate
 pub trait Chat: Send + Sync {
     /// Send a prompt with optional chat history to the underlying completion model.
     ///
@@ -188,7 +187,7 @@ pub trait Chat: Send + Sync {
         &self,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>> + Send;
+    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: Send>;
 }
 
 /// Trait defining a low-level LLM completion interface

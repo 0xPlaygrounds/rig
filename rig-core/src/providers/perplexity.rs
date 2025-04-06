@@ -226,7 +226,7 @@ impl CompletionModel {
         full_history.extend(
             partial_history
                 .into_iter()
-                .map(|msg| completion::Message::try_into(msg))
+                .map(message::Message::try_into)
                 .collect::<Result<Vec<Message>, _>>()?,
         );
 

@@ -621,7 +621,7 @@ impl CompletionModel {
         full_history.extend(
             partial_history
                 .into_iter()
-                .map(|msg| message::Message::try_into(msg))
+                .map(message::Message::try_into)
                 .collect::<Result<Vec<Vec<Message>>, _>>()?
                 .into_iter()
                 .flatten()
