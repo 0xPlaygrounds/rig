@@ -9,6 +9,7 @@ members = [
     "rig-qdrant",
     "rig-core/rig-core-derive",
     "rig-sqlite",
-    "rig-eternalai", "rig-fastembed",
+    "rig-eternalai",
+    "rig-fastembed",
     "rig-surrealdb",
 ]

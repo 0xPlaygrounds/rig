@@ -1,19 +1,13 @@
-use std::{fmt::Display, future::Future, marker::PhantomData, pin::Pin, sync::Arc, task::Poll};
+use std::{future::Future, pin::Pin, sync::Arc, task::Poll};
 
-use mime_guess::mime::PLAIN;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tower::{Layer, Service};
 
 use crate::{
-    completion::{
-        CompletionModel, CompletionRequest, CompletionRequestBuilder, CompletionResponse,
-        ToolDefinition,
-    },
+    completion::{CompletionModel, CompletionRequest, CompletionResponse},
     extractor::{ExtractionError, Extractor},
     message::{AssistantContent, Text},
-    pipeline::agent_ops::prompt,
-    tool::Tool,
 };
 
 pub struct ExtractorLayer<M, T>
@@ -114,11 +108,10 @@ where
     }
 }
 
-impl<M, T, P> Service<P> for ExtractorService<M, T>
+impl<M, T> Service<CompletionRequest> for ExtractorService<M, T>
 where
     M: CompletionModel,
     T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync,
-    P: Display + Send + 'static,
 {
     type Response = T;
     type Error = ExtractionError;
@@ -131,9 +124,12 @@ where
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, req: P) -> Self::Future {
+    fn call(&mut self, req: CompletionRequest) -> Self::Future {
         let ext = self.ext.clone();
+        let Some(req) = req.prompt.rag_text() else {
+            todo!("Handle error properly");
+        };
 
-        Box::pin(async move { ext.extract(&req.to_string()).await })
+        Box::pin(async move { ext.extract(&req).await })
     }
 }

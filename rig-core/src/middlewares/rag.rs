@@ -9,7 +9,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tower::Service;
 
-use crate::vector_store::{VectorStoreError, VectorStoreIndex};
+use crate::{
+    completion::CompletionRequest,
+    vector_store::{VectorStoreError, VectorStoreIndex},
+};
 
 pub struct RagService<V, T> {
     vector_index: Arc<V>,
@@ -25,12 +28,12 @@ where
         Self {
             vector_index: Arc::new(vector_index),
             num_results,
-            _phantom: PhantomData::default(),
+            _phantom: PhantomData,
         }
     }
 }
 
-impl<V, T> Service<String> for RagService<V, T>
+impl<V, T> Service<CompletionRequest> for RagService<V, T>
 where
     V: VectorStoreIndex + 'static,
     T: Serialize + for<'a> Deserialize<'a> + Send,
@@ -43,11 +46,14 @@ where
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, req: String) -> Self::Future {
+    fn call(&mut self, req: CompletionRequest) -> Self::Future {
         let vector_index = self.vector_index.clone();
-        let num_results = self.num_results.clone();
+        let num_results = self.num_results;
+        let Some(prompt) = req.prompt.rag_text() else {
+            todo!("Handle error properly");
+        };
 
-        Box::pin(async move { vector_index.top_n(&req, num_results).await })
+        Box::pin(async move { vector_index.top_n(&prompt, num_results).await })
     }
 }
 
