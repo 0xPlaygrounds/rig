@@ -1135,6 +1135,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-sdk-bedrockruntime"
+version = "1.77.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4198493316dab97e1fed7716f3823462b73a34c518f4ee7b9799921645e232e5"
+dependencies = [
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-eventstream",
+ "aws-smithy-http",
+ "aws-smithy-json",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand",
+ "http 0.2.12",
+ "once_cell",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
 name = "aws-sdk-dynamodb"
 version = "1.69.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1259,11 +1283,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-smithy-eventstream"
+version = "0.60.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c45d3dddac16c5c59d553ece225a88870cf81b7b813c9cc17b78cf4685eac7a"
+dependencies = [
+ "aws-smithy-types",
+ "bytes",
+ "crc32fast",
+]
+
+[[package]]
 name = "aws-smithy-http"
 version = "0.62.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5949124d11e538ca21142d1fba61ab0a2a2c1bc3ed323cdb3e4b878bfb83166"
 dependencies = [
+ "aws-smithy-eventstream",
  "aws-smithy-runtime-api",
  "aws-smithy-types",
  "bytes",
@@ -8585,6 +8621,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57397d16646700483b67d2dd6511d79318f9d057fdbd21a4066aeac8b41d310a"
 
 [[package]]
+name = "rig-bedrock"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "aws-config",
+ "aws-sdk-bedrockruntime",
+ "aws-smithy-types",
+ "base64 0.22.1",
+ "reqwest 0.12.15",
+ "rig-core 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rig-derive",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rig-core"
 version = "0.11.0"
 dependencies = [
@@ -8618,6 +8675,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-core"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff893305131b471009ab11df388612beb603ed94bb12412c256fe197b7591aa6"
+dependencies = [
+ "async-stream",
+ "base64 0.22.1",
+ "bytes",
+ "futures",
+ "glob",
+ "mime_guess",
+ "ordered-float",
+ "reqwest 0.12.15",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
 name = "rig-derive"
 version = "0.1.0"
 dependencies = [
@@ -8634,7 +8712,7 @@ dependencies = [
  "anyhow",
  "ethers",
  "reqwest 0.12.15",
- "rig-core",
+ "rig-core 0.11.0",
  "schemars",
  "serde",
  "serde_json",
@@ -8649,7 +8727,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "fastembed",
- "rig-core",
+ "rig-core 0.11.0",
  "schemars",
  "serde",
  "serde_json",
@@ -8667,7 +8745,7 @@ dependencies = [
  "futures",
  "httpmock",
  "lancedb",
- "rig-core",
+ "rig-core 0.11.0",
  "serde",
  "serde_json",
  "tokio",
@@ -8679,7 +8757,7 @@ version = "0.1.0"
 dependencies = [
  "convert_case 0.6.0",
  "quote",
- "rig-core",
+ "rig-core 0.11.0",
  "schemars",
  "serde",
  "serde_json",
@@ -8696,7 +8774,7 @@ dependencies = [
  "futures",
  "httpmock",
  "mongodb",
- "rig-core",
+ "rig-core 0.11.0",
  "serde",
  "serde_json",
  "testcontainers",
@@ -8713,7 +8791,7 @@ dependencies = [
  "futures",
  "httpmock",
  "neo4rs",
- "rig-core",
+ "rig-core 0.11.0",
  "serde",
  "serde_json",
  "term_size",
@@ -8733,7 +8811,7 @@ dependencies = [
  "httpmock",
  "log",
  "pgvector",
- "rig-core",
+ "rig-core 0.11.0",
  "serde",
  "serde_json",
  "sqlx",
@@ -8752,7 +8830,7 @@ dependencies = [
  "anyhow",
  "httpmock",
  "qdrant-client",
- "rig-core",
+ "rig-core 0.11.0",
  "serde",
  "serde_json",
  "testcontainers",
@@ -8767,7 +8845,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "httpmock",
- "rig-core",
+ "rig-core 0.11.0",
  "rusqlite",
  "serde",
  "serde_json",
@@ -8784,7 +8862,7 @@ name = "rig-surrealdb"
 version = "0.1.3"
 dependencies = [
  "anyhow",
- "rig-core",
+ "rig-core 0.11.0",
  "serde",
  "serde_json",
  "surrealdb",
