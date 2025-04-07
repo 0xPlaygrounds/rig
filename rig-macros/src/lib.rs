@@ -69,6 +69,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     // Extract function details
     let fn_name = &input_fn.sig.ident;
     let fn_name_str = fn_name.to_string();
+    let is_async = input_fn.sig.asyncness.is_some();
 
     // Extract return type and get Output and Error types from Result<T, E>
     let return_type = &input_fn.sig.output;
@@ -141,6 +142,30 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
     // Generate the implementation
     let params_struct_name = format_ident!("{}Parameters", struct_name);
+
+    // Generate the call implementation based on whether the function is async
+    let call_impl = if is_async {
+        quote! {
+            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+                // Extract parameters and call the function
+                let params: #params_struct_name = serde_json::from_value(args).map_err(|e| rig::tool::ToolError::JsonError(e.into()))?;
+                let result = #fn_name(#(params.#param_names,)*).await.map_err(|e| rig::tool::ToolError::ToolCallError(e.into()))?;
+
+                Ok(result)
+            }
+        }
+    } else {
+        quote! {
+            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+                // Extract parameters and call the function
+                let params: #params_struct_name = serde_json::from_value(args).map_err(|e| rig::tool::ToolError::JsonError(e.into()))?;
+                let result = #fn_name(#(params.#param_names,)*).map_err(|e| rig::tool::ToolError::ToolCallError(e.into()))?;
+
+                Ok(result)
+            }
+        }
+    };
+
     let expanded = quote! {
         #[derive(serde::Deserialize, schemars::JsonSchema)]
         struct #params_struct_name {
@@ -174,13 +199,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
             }
 
-            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-                // Extract parameters and call the function
-                let params: #params_struct_name = serde_json::from_value(args).map_err(|e| rig::tool::ToolError::JsonError(e.into()))?;
-                let result = #fn_name(#(params.#param_names,)*).await.map_err(|e| rig::tool::ToolError::ToolCallError(e.into()))?;
-
-                Ok(result)
-            }
+            #call_impl
         }
     };
 
