@@ -2,7 +2,7 @@
 
 Thank you for considering contributing to Rig! Here are some guidelines to help you get started.
 
-General guidelines and requested contributions can be found in the [How to Contribute](https://docs.rig.rs/docs/7_how-to-contribute) section of the documentation.
+General guidelines and requested contributions can be found in the [How to Contribute](https://docs.rig.rs/docs/how_to_contribute) section of the documentation.
 
 ## Issues
 
