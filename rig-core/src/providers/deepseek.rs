@@ -151,7 +151,7 @@ pub enum Message {
         )]
         tool_calls: Vec<ToolCall>,
     },
-    #[serde(rename = "Tool")]
+    #[serde(rename = "tool")]
     ToolResult {
         tool_call_id: String,
         content: String,
