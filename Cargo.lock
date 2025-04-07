@@ -8685,6 +8685,7 @@ dependencies = [
  "serde_json",
  "syn 2.0.100",
  "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]

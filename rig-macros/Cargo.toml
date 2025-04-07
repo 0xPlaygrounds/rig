@@ -17,3 +17,4 @@ schemars = "0.8.22"
 rig-core = { path = "../rig-core" }
 serde = "1.0"
 tokio = { version = "1.44.0", features = ["full"] }
+tracing-subscriber = "0.3.0"
