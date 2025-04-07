@@ -142,6 +142,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
     // Generate the implementation
     let params_struct_name = format_ident!("{}Parameters", struct_name);
+    let static_name = format_ident!("{}", fn_name_str.to_uppercase());
 
     // Generate the call implementation based on whether the function is async
     let call_impl = if is_async {
@@ -201,6 +202,8 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
             #call_impl
         }
+
+        pub static #static_name: #struct_name = #struct_name;
     };
 
     TokenStream::from(expanded)
