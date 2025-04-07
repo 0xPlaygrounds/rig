@@ -132,11 +132,14 @@ async fn test_calculator_tool() {
 
     // Test sync calculator
     let sync_calculator = SyncCalculator::default();
-    let result = sync_calculator.call(serde_json::json!({
-        "x": 5,
-        "y": 3,
-        "operation": "add"
-    })).await.unwrap();
+    let result = sync_calculator
+        .call(serde_json::json!({
+            "x": 5,
+            "y": 3,
+            "operation": "add"
+        }))
+        .await
+        .unwrap();
 
     assert_eq!(result, serde_json::json!(8));
 }
