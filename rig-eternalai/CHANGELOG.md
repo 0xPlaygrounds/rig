@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.2.3...rig-eternalai-v0.2.4) - 2025-03-31
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.3](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.2.2...rig-eternalai-v0.2.3) - 2025-03-17
+
+### Added
+
+- add reqwest/rustls-tls support ([#339](https://github.com/0xPlaygrounds/rig/pull/339))
+
 ## [0.2.2](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.2.1...rig-eternalai-v0.2.2) - 2025-03-03
 
 ### Other

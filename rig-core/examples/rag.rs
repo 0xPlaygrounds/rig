@@ -1,11 +1,9 @@
 use std::{env, vec};
 
+use rig::providers::openai::client::Client;
 use rig::{
-    completion::Prompt,
-    embeddings::EmbeddingsBuilder,
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::in_memory_store::InMemoryVectorStore,
-    Embed,
+    completion::Prompt, embeddings::EmbeddingsBuilder, providers::openai::TEXT_EMBEDDING_ADA_002,
+    vector_store::in_memory_store::InMemoryVectorStore, Embed,
 };
 use serde::Serialize;
 

@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.10.0...rig-core-v0.11.0) - 2025-03-31
+
+### Added
+
+- Add audio generation to all providers ([#359](https://github.com/0xPlaygrounds/rig/pull/359))
+- Add image generation to all providers that support it ([#357](https://github.com/0xPlaygrounds/rig/pull/357))
+- *(provider)* cohere-v2 ([#350](https://github.com/0xPlaygrounds/rig/pull/350))
+
+### Fixed
+
+- no params tools definition for Gemini ([#363](https://github.com/0xPlaygrounds/rig/pull/363))
+- *(openai)* serde rename for image_url UserContent ([#355](https://github.com/0xPlaygrounds/rig/pull/355))
+
+### Other
+
+- New model provider: Anthropic Claude 3.7 Addition ([#341](https://github.com/0xPlaygrounds/rig/pull/341))
+- added mcp_tool + Example ([#335](https://github.com/0xPlaygrounds/rig/pull/335))
+
+## [0.10.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.9.1...rig-core-v0.10.0) - 2025-03-17
+
+### Added
+
+- Add streaming to all model providers ([#347](https://github.com/0xPlaygrounds/rig/pull/347))
+- OpenRouter support ([#344](https://github.com/0xPlaygrounds/rig/pull/344))
+- add reqwest/rustls-tls support ([#339](https://github.com/0xPlaygrounds/rig/pull/339))
+- add transcription to all providers that support it ([#336](https://github.com/0xPlaygrounds/rig/pull/336))
+- Azure OpenAI Token Authentication ([#329](https://github.com/0xPlaygrounds/rig/pull/329))
+- SSE/JSONL decoders ported from Anthropic TS SDK ([#332](https://github.com/0xPlaygrounds/rig/pull/332))
+- mira integration ([#282](https://github.com/0xPlaygrounds/rig/pull/282))
+- Huggingface provider integration ([#321](https://github.com/0xPlaygrounds/rig/pull/321))
+
+### Fixed
+
+- unnecessary `unwrap`, skip serializing empty vec ([#343](https://github.com/0xPlaygrounds/rig/pull/343))
+- fix error handling for Qwen's responses when using tools ([#351](https://github.com/0xPlaygrounds/rig/pull/351))
+- reqwest can not use SOCKS proxy ([#311](https://github.com/0xPlaygrounds/rig/pull/311))
+- fix wrong debug message ([#342](https://github.com/0xPlaygrounds/rig/pull/342))
+
+### Other
+
+- Update openai.rs ([#340](https://github.com/0xPlaygrounds/rig/pull/340))
+- support svg ([#333](https://github.com/0xPlaygrounds/rig/pull/333))
+
 ## [0.9.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.9.0...rig-core-v0.9.1) - 2025-03-03
 
 ### Added

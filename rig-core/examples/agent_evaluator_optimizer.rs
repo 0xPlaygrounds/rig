@@ -1,6 +1,7 @@
 use std::env;
 
-use rig::{completion::Prompt, providers::openai::Client};
+use rig::completion::Prompt;
+use rig::providers::openai::client::Client;
 use schemars::JsonSchema;
 
 #[derive(serde::Deserialize, JsonSchema, serde::Serialize, Debug)]

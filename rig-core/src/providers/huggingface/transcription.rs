@@ -59,7 +59,10 @@ impl transcription::TranscriptionModel for TranscriptionModel {
             "inputs": data
         });
 
-        let route = self.client.sub_provider.transcription_endpoint(&self.model);
+        let route = self
+            .client
+            .sub_provider
+            .transcription_endpoint(&self.model)?;
         let response = self.client.post(&route).json(&request).send().await?;
 
         if response.status().is_success() {
