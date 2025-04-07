@@ -1,6 +1,5 @@
 use rig::completion::Prompt;
 use rig::providers;
-use rig::serde_json;
 use rig_macros::rig_tool;
 use tracing_subscriber;
 
@@ -51,10 +50,8 @@ fn sum_numbers(numbers: Vec<i64>) -> Result<i64, rig::tool::ToolError> {
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing
     tracing_subscriber::fmt().pretty().init();
 
-    // Create an agent with the ADD tool
     let calculator_agent = providers::openai::Client::from_env()
         .agent(providers::openai::GPT_4O)
         .preamble("You are an agent with tools access, always use the tools")
@@ -62,7 +59,6 @@ async fn main() {
         .tool(Add)
         .build();
 
-    // Test prompts
     for prompt in [
         "What tools do you have?",
         "Calculate 5 + 3",

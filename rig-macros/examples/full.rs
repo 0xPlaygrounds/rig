@@ -30,10 +30,8 @@ fn string_processor(text: String, operation: String) -> Result<String, rig::tool
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing
     tracing_subscriber::fmt().pretty().init();
 
-    // Create an agent with the STRINGPROCESSOR tool
     let string_agent = providers::openai::Client::from_env()
         .agent(providers::openai::GPT_4O)
         .preamble("You are an agent with tools access, always use the tools")
@@ -41,14 +39,12 @@ async fn main() {
         .tool(StringProcessor)
         .build();
 
-    // Print out the tool definition to verify
     println!("Tool definition:");
     println!(
         "STRINGPROCESSOR: {}",
         serde_json::to_string_pretty(&StringProcessor.definition(String::default()).await).unwrap()
     );
 
-    // Test prompts
     for prompt in [
         "What tools do you have?",
         "Convert 'hello world' to uppercase",

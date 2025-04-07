@@ -74,7 +74,7 @@ async fn test_calculator_tool() {
     // Test valid operations
     let test_cases = vec![
         (
-            serde_json::json!({
+            rig::serde_json::json!({
                 "x": 5,
                 "y": 3,
                 "operation": "add"
@@ -82,7 +82,7 @@ async fn test_calculator_tool() {
             8,
         ),
         (
-            serde_json::json!({
+            rig::serde_json::json!({
                 "x": 5,
                 "y": 3,
                 "operation": "subtract"
@@ -90,7 +90,7 @@ async fn test_calculator_tool() {
             2,
         ),
         (
-            serde_json::json!({
+            rig::serde_json::json!({
                 "x": 5,
                 "y": 3,
                 "operation": "multiply"
@@ -98,7 +98,7 @@ async fn test_calculator_tool() {
             15,
         ),
         (
-            serde_json::json!({
+            rig::serde_json::json!({
                 "x": 6,
                 "y": 2,
                 "operation": "divide"
@@ -109,11 +109,11 @@ async fn test_calculator_tool() {
 
     for (input, expected) in test_cases {
         let result = calculator.call(input).await.unwrap();
-        assert_eq!(result, serde_json::json!(expected));
+        assert_eq!(result, rig::serde_json::json!(expected));
     }
 
     // Test division by zero
-    let div_zero = serde_json::json!({
+    let div_zero = rig::serde_json::json!({
         "x": 5,
         "y": 0,
         "operation": "divide"
@@ -122,7 +122,7 @@ async fn test_calculator_tool() {
     assert!(matches!(err, rig::tool::ToolError::ToolCallError(_)));
 
     // Test invalid operation
-    let invalid_op = serde_json::json!({
+    let invalid_op = rig::serde_json::json!({
         "x": 5,
         "y": 3,
         "operation": "power"
@@ -133,7 +133,7 @@ async fn test_calculator_tool() {
     // Test sync calculator
     let sync_calculator = SyncCalculator::default();
     let result = sync_calculator
-        .call(serde_json::json!({
+        .call(rig::serde_json::json!({
             "x": 5,
             "y": 3,
             "operation": "add"
@@ -141,5 +141,5 @@ async fn test_calculator_tool() {
         .await
         .unwrap();
 
-    assert_eq!(result, serde_json::json!(8));
+    assert_eq!(result, rig::serde_json::json!(8));
 }

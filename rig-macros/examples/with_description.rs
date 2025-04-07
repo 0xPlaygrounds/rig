@@ -29,10 +29,8 @@ fn calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool::ToolE
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing
     tracing_subscriber::fmt().pretty().init();
 
-    // Create an agent with the CALCULATOR tool
     let calculator_agent = providers::openai::Client::from_env()
         .agent(providers::openai::GPT_4O)
         .preamble("You are an agent with tools access, always use the tools")
@@ -40,14 +38,12 @@ async fn main() {
         .tool(Calculator)
         .build();
 
-    // Print out the tool definition to verify
     println!("Tool definition:");
     println!(
         "CALCULATOR: {}",
         serde_json::to_string_pretty(&CALCULATOR.definition(String::default()).await).unwrap()
     );
 
-    // Test prompts
     for prompt in [
         "What tools do you have?",
         "Calculate 5 + 3",

@@ -197,7 +197,6 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     }
 
-    // Generate the implementation
     let params_struct_name = format_ident!("{}Parameters", struct_name);
     let static_name = format_ident!("{}", fn_name_str.to_uppercase());
 

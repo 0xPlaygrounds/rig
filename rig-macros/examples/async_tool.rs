@@ -15,10 +15,8 @@ use tracing_subscriber;
     )
 )]
 async fn async_operation(input: String, delay_ms: u64) -> Result<String, rig::tool::ToolError> {
-    // Simulate some async work
     tokio::time::sleep(Duration::from_millis(delay_ms)).await;
 
-    // Process the input
     Ok(format!(
         "Processed after {}ms: {}",
         delay_ms,
@@ -28,10 +26,8 @@ async fn async_operation(input: String, delay_ms: u64) -> Result<String, rig::to
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing
     tracing_subscriber::fmt().pretty().init();
 
-    // Create an agent with the ASYNCOPERATION tool
     let async_agent = providers::openai::Client::from_env()
         .agent(providers::openai::GPT_4O)
         .preamble("You are an agent with tools access, always use the tools")
@@ -39,14 +35,12 @@ async fn main() {
         .tool(AsyncOperation)
         .build();
 
-    // Print out the tool definition to verify
     println!("Tool definition:");
     println!(
         "ASYNCOPERATION: {}",
         serde_json::to_string_pretty(&AsyncOperation.definition(String::default()).await).unwrap()
     );
 
-    // Test prompts
     for prompt in [
         "What tools do you have?",
         "Process the text 'hello world' with a delay of 1000ms",
