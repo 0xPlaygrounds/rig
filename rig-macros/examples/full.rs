@@ -1,5 +1,6 @@
 use rig::completion::Prompt;
 use rig::providers;
+use rig::serde_json;
 use rig::tool::Tool;
 use rig_macros::rig_tool;
 use tracing_subscriber;
@@ -12,10 +13,7 @@ use tracing_subscriber;
         operation = "The operation to perform (uppercase, lowercase, reverse)",
     )
 )]
-fn string_processor(
-    text: String,
-    operation: String,
-) -> Result<String, rig::tool::ToolError> {
+fn string_processor(text: String, operation: String) -> Result<String, rig::tool::ToolError> {
     let result = match operation.as_str() {
         "uppercase" => text.to_uppercase(),
         "lowercase" => text.to_lowercase(),

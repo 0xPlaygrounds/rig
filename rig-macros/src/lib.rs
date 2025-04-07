@@ -70,6 +70,49 @@ impl Parse for MacroArgs {
     }
 }
 
+fn get_json_type(ty: &Type) -> proc_macro2::TokenStream {
+    match ty {
+        Type::Path(type_path) => {
+            let segment = &type_path.path.segments[0];
+            let type_name = segment.ident.to_string();
+
+            // Handle Vec types
+            if type_name == "Vec" {
+                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                    if let syn::GenericArgument::Type(inner_type) = &args.args[0] {
+                        let inner_json_type = get_json_type(inner_type);
+                        return quote! {
+                            "type": "array",
+                            "items": { #inner_json_type }
+                        };
+                    }
+                }
+                return quote! { "type": "array" };
+            }
+
+            // Handle primitive types
+            match type_name.as_str() {
+                "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" | "f32" | "f64" => {
+                    quote! { "type": "number" }
+                }
+                "String" | "str" => {
+                    quote! { "type": "string" }
+                }
+                "bool" => {
+                    quote! { "type": "boolean" }
+                }
+                // Handle other types as objects
+                _ => {
+                    quote! { "type": "object" }
+                }
+            }
+        }
+        _ => {
+            quote! { "type": "object" }
+        }
+    }
+}
+
 #[proc_macro_attribute]
 pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let args = parse_macro_input!(args as MacroArgs);
@@ -128,8 +171,10 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     // Extract parameter names, types, and descriptions
-    let mut param_defs = Vec::new();
     let mut param_names = Vec::new();
+    let mut param_types = Vec::new();
+    let mut param_descriptions = Vec::new();
+    let mut json_types = Vec::new();
 
     for arg in input_fn.sig.inputs.iter() {
         if let syn::FnArg::Typed(pat_type) = arg {
@@ -141,14 +186,13 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                 let description = args
                     .param_descriptions
                     .get(&param_name_str)
-                    .map(|s| s.as_str())
-                    .unwrap_or(&default_parameter_description);
+                    .map(|s| s.to_owned())
+                    .unwrap_or(default_parameter_description);
 
                 param_names.push(param_name);
-                param_defs.push(quote! {
-                    #[schemars(description = #description)]
-                    #param_name: #ty
-                });
+                param_types.push(ty);
+                param_descriptions.push(description);
+                json_types.push(get_json_type(ty));
             }
         }
     }
@@ -162,7 +206,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         quote! {
             async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
                 // Extract parameters and call the function
-                let params: #params_struct_name = serde_json::from_value(args).map_err(|e| rig::tool::ToolError::JsonError(e.into()))?;
+                let params: #params_struct_name = rig::serde_json::from_value(args).map_err(|e| rig::tool::ToolError::JsonError(e.into()))?;
                 let result = #fn_name(#(params.#param_names,)*).await.map_err(|e| rig::tool::ToolError::ToolCallError(e.into()))?;
 
                 Ok(result)
@@ -172,7 +216,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         quote! {
             async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
                 // Extract parameters and call the function
-                let params: #params_struct_name = serde_json::from_value(args).map_err(|e| rig::tool::ToolError::JsonError(e.into()))?;
+                let params: #params_struct_name = rig::serde_json::from_value(args).map_err(|e| rig::tool::ToolError::JsonError(e.into()))?;
                 let result = #fn_name(#(params.#param_names,)*).map_err(|e| rig::tool::ToolError::ToolCallError(e.into()))?;
 
                 Ok(result)
@@ -181,9 +225,9 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let expanded = quote! {
-        #[derive(serde::Deserialize, schemars::JsonSchema)]
+        #[derive(serde::Deserialize)]
         struct #params_struct_name {
-            #(#param_defs,)*
+            #(#param_names: #param_types,)*
         }
 
         #input_fn
@@ -194,7 +238,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         impl rig::tool::Tool for #struct_name {
             const NAME: &'static str = #fn_name_str;
 
-            type Args = serde_json::Value;
+            type Args = rig::serde_json::Value;
             type Output = #output_type;
             type Error = rig::tool::ToolError;
 
@@ -203,8 +247,17 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
             }
 
             async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
-                let schema = schemars::schema_for!(#params_struct_name);
-                let parameters = serde_json::to_value(schema).unwrap();
+                let parameters = rig::serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        #(
+                            stringify!(#param_names): {
+                                #json_types,
+                                "description": #param_descriptions
+                            }
+                        ),*
+                    }
+                });
 
                 rig::completion::ToolDefinition {
                     name: #fn_name_str.to_string(),

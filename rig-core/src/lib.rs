@@ -98,6 +98,7 @@ pub mod streaming;
 pub mod tool;
 pub mod transcription;
 pub mod vector_store;
+pub use serde_json;
 
 // Re-export commonly used types and traits
 pub use completion::message;

@@ -13,14 +13,7 @@ Shows how to add a description to your tool using the `description` attribute. I
 ### 3. Full Attributes (`full.rs`)
 Demonstrates using all available attributes including parameter descriptions. Implements a string processor that can perform various string operations and uses it with a rig Agent.
 
-### 4. Error Handling (`error_handling.rs`)
-Shows how to handle errors in your tools, including:
-- Domain-specific errors (e.g., square root of negative numbers)
-- Parameter validation errors
-- Missing parameter errors
-- Type conversion errors
-
-### 5. Async Tool (`async_tool.rs`)
+### 4. Async Tool (`async_tool.rs`)
 Demonstrates how to create and use async tools with a rig Agent, including:
 - Basic async operation
 - Error handling in async context
@@ -38,7 +31,6 @@ For example:
 cargo run --example simple
 cargo run --example with_description
 cargo run --example full
-cargo run --example error_handling
 cargo run --example async_tool
 ```
 
