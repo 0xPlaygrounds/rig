@@ -211,7 +211,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for Neo4jVec
     /// #### Generic Type Parameters
     ///
     /// - `T`: The type used to deserialize the result from the Neo4j query.
-    ///  It must implement the `serde::Deserialize` trait.
+    ///   It must implement the `serde::Deserialize` trait.
     ///
     /// #### Returns
     ///
