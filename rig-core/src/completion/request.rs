@@ -557,13 +557,13 @@ mod tests {
             content: OneOrMany::many(vec![
                 UserContent::document(
                     "<file id: doc1>\nDocument 1 text.\n</file>\n".to_string(),
-                    None,
-                    None,
+                    Some(ContentFormat::String),
+                    Some(DocumentMediaType::TXT),
                 ),
                 UserContent::document(
                     "<file id: doc2>\nDocument 2 text.\n</file>\n".to_string(),
-                    None,
-                    None,
+                    Some(ContentFormat::String),
+                    Some(DocumentMediaType::TXT),
                 ),
             ])
             .expect("There will be at least one document"),
