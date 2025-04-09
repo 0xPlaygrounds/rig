@@ -9,7 +9,7 @@
 //! ```
 use crate::json_utils::merge;
 use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::{StreamingCompletionModel, StreamingResult};
+use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse, StreamingResult};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -24,6 +24,7 @@ use serde_json::{json, Value};
 use std::string::FromUtf8Error;
 use thiserror::Error;
 use tracing;
+use crate::providers::openai;
 
 #[derive(Debug, Error)]
 pub enum MiraError {
@@ -347,10 +348,11 @@ impl completion::CompletionModel for CompletionModel {
 }
 
 impl StreamingCompletionModel for CompletionModel {
+    type Response = openai::StreamingCompletionResponse;
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<StreamingResult, CompletionError> {
+    ) -> Result<StreamingCompletionResponse<Self::Response>, CompletionError> {
         let mut request = self.create_completion_request(completion_request)?;
 
         request = merge(request, json!({"stream": true}));

@@ -8,7 +8,7 @@ use super::decoders::sse::from_response as sse_from_response;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils::merge_inplace;
 use crate::message::MessageError;
-use crate::streaming::{StreamingChoice, StreamingCompletionModel, StreamingResult};
+use crate::streaming::{RawStreamingChoice, StreamingCompletionModel, StreamingResult};
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -191,12 +191,12 @@ impl StreamingCompletionModel for CompletionModel {
 fn handle_event(
     event: &StreamingEvent,
     current_tool_call: &mut Option<ToolCallState>,
-) -> Option<Result<StreamingChoice, CompletionError>> {
+) -> Option<Result<RawStreamingChoice, CompletionError>> {
     match event {
         StreamingEvent::ContentBlockDelta { delta, .. } => match delta {
             ContentDelta::TextDelta { text } => {
                 if current_tool_call.is_none() {
-                    return Some(Ok(StreamingChoice::Message(text.clone())));
+                    return Some(Ok(RawStreamingChoice::Message(text.clone())));
                 }
                 None
             }
@@ -227,7 +227,7 @@ fn handle_event(
                     &tool_call.input_json
                 };
                 match serde_json::from_str(json_str) {
-                    Ok(json_value) => Some(Ok(StreamingChoice::ToolCall(
+                    Ok(json_value) => Some(Ok(RawStreamingChoice::ToolCall(
                         tool_call.name,
                         tool_call.id,
                         json_value,

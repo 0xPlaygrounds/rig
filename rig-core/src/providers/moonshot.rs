@@ -11,7 +11,7 @@
 
 use crate::json_utils::merge;
 use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::{StreamingCompletionModel, StreamingResult};
+use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse, StreamingResult};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -228,10 +228,18 @@ impl completion::CompletionModel for CompletionModel {
 }
 
 impl StreamingCompletionModel for CompletionModel {
-    async fn stream(&self, request: CompletionRequest) -> Result<StreamingResult, CompletionError> {
+    type Response = openai::StreamingCompletionResponse;
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse<Self::Response>, CompletionError> {
         let mut request = self.create_completion_request(request)?;
 
-        request = merge(request, json!({"stream": true}));
+        request = merge(
+            request,
+            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        );
 
         let builder = self.client.post("/chat/completions").json(&request);
 

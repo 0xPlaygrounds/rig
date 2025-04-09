@@ -74,9 +74,9 @@ impl StreamingCompletionModel for CompletionModel {
 
                     match choice.content.parts.first() {
                         super::completion::gemini_api_types::Part::Text(text)
-                            => yield Ok(streaming::StreamingChoice::Message(text)),
+                            => yield Ok(streaming::RawStreamingChoice::Message(text)),
                         super::completion::gemini_api_types::Part::FunctionCall(function_call)
-                            => yield Ok(streaming::StreamingChoice::ToolCall(function_call.name, "".to_string(), function_call.args)),
+                            => yield Ok(streaming::RawStreamingChoice::ToolCall(function_call.name, "".to_string(), function_call.args)),
                         _ => panic!("Unsupported response type with streaming.")
                     };
                 }

@@ -2,6 +2,7 @@ use super::completion::CompletionModel;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils;
 use crate::json_utils::merge;
+use crate::providers::openai::Usage;
 use crate::streaming;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use async_stream::stream;
@@ -10,6 +11,7 @@ use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
+use tokio::stream;
 
 // ================================================================
 // OpenAI Completion Streaming API
@@ -42,15 +44,21 @@ struct StreamingChoice {
 }
 
 #[derive(Deserialize)]
-struct StreamingCompletionResponse {
+struct StreamingCompletionChunk {
     choices: Vec<StreamingChoice>,
+    usage: Option<Usage>,
+}
+
+pub struct StreamingCompletionResponse {
+    usage: Option<Usage>,
 }
 
 impl StreamingCompletionModel for CompletionModel {
+    type Response = StreamingCompletionResponse;
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<StreamingResult, CompletionError> {
+    ) -> Result<streaming::StreamingCompletionResponse<Self::Response>, CompletionError> {
         let mut request = self.create_completion_request(completion_request)?;
         request = merge(request, json!({"stream": true}));
 
@@ -61,7 +69,7 @@ impl StreamingCompletionModel for CompletionModel {
 
 pub async fn send_compatible_streaming_request(
     request_builder: RequestBuilder,
-) -> Result<StreamingResult, CompletionError> {
+) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError> {
     let response = request_builder.send().await?;
 
     if !response.status().is_success() {
@@ -73,7 +81,7 @@ pub async fn send_compatible_streaming_request(
     }
 
     // Handle OpenAI Compatible SSE chunks
-    Ok(Box::pin(stream! {
+    let inner = Box::pin(stream! {
         let mut stream = response.bytes_stream();
 
         let mut partial_data = None;
@@ -121,7 +129,7 @@ pub async fn send_compatible_streaming_request(
                     }
                 }
 
-                let data = serde_json::from_str::<StreamingCompletionResponse>(&line);
+                let data = serde_json::from_str::<StreamingCompletionChunk>(&line);
 
                 let Ok(data) = data else {
                     continue;
@@ -162,13 +170,17 @@ pub async fn send_compatible_streaming_request(
                                 continue;
                             };
 
-                            yield Ok(streaming::StreamingChoice::ToolCall(name, "".to_string(), arguments))
+                            yield Ok(streaming::RawStreamingChoice::ToolCall(name, "".to_string(), arguments))
                         }
                     }
                 }
 
                 if let Some(content) = &choice.delta.content {
-                    yield Ok(streaming::StreamingChoice::Message(content.clone()))
+                    yield Ok(streaming::RawStreamingChoice::Message(content.clone()))
+                }
+
+                if &data.usage.is_some() {
+                    usage = data.usage;
                 }
             }
         }
@@ -178,7 +190,11 @@ pub async fn send_compatible_streaming_request(
                 continue;
             };
 
-            yield Ok(streaming::StreamingChoice::ToolCall(name, "".to_string(), arguments))
+            yield Ok(streaming::RawStreamingChoice::ToolCall(name, "".to_string(), arguments))
         }
-    }))
+    });
+
+    Ok(streaming::StreamingCompletionResponse::new(
+        inner,
+    ))
 }

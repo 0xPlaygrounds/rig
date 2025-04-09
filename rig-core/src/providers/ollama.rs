@@ -39,7 +39,7 @@
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
 use crate::json_utils::merge_inplace;
-use crate::streaming::{StreamingChoice, StreamingCompletionModel, StreamingResult};
+use crate::streaming::{RawStreamingChoice, StreamingCompletionModel, StreamingResult};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -47,7 +47,7 @@ use crate::{
     extractor::ExtractorBuilder,
     json_utils, message,
     message::{ImageDetail, Text},
-    Embed, OneOrMany,
+    streaming, Embed, OneOrMany,
 };
 use async_stream::stream;
 use futures::StreamExt;
@@ -405,8 +405,30 @@ impl completion::CompletionModel for CompletionModel {
     }
 }
 
+pub struct StreamingCompletionResponse {
+    #[serde(default)]
+    pub done_reason: Option<String>,
+    #[serde(default)]
+    pub total_duration: Option<u64>,
+    #[serde(default)]
+    pub load_duration: Option<u64>,
+    #[serde(default)]
+    pub prompt_eval_count: Option<u64>,
+    #[serde(default)]
+    pub prompt_eval_duration: Option<u64>,
+    #[serde(default)]
+    pub eval_count: Option<u64>,
+    #[serde(default)]
+    pub eval_duration: Option<u64>,
+}
+
 impl StreamingCompletionModel for CompletionModel {
-    async fn stream(&self, request: CompletionRequest) -> Result<StreamingResult, CompletionError> {
+    type Response = StreamingCompletionResponse;
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse<Self::Response>, CompletionError> {
         let mut request_payload = self.create_completion_request(request)?;
         merge_inplace(&mut request_payload, json!({"stream": true}));
 
@@ -426,7 +448,8 @@ impl StreamingCompletionModel for CompletionModel {
             return Err(CompletionError::ProviderError(err_text));
         }
 
-        Ok(Box::pin(stream! {
+        let mut 
+        let stream = Box::pin(stream! {
             let mut stream = response.bytes_stream();
             while let Some(chunk_result) = stream.next().await {
                 let chunk = match chunk_result {
@@ -456,13 +479,13 @@ impl StreamingCompletionModel for CompletionModel {
                     match response.message {
                         Message::Assistant{ content, tool_calls, .. } => {
                             if !content.is_empty() {
-                                yield Ok(StreamingChoice::Message(content))
+                                yield Ok(RawStreamingChoice::Message(content))
                             }
 
                             for tool_call in tool_calls.iter() {
                                 let function = tool_call.function.clone();
 
-                                yield Ok(StreamingChoice::ToolCall(function.name, "".to_string(), function.arguments));
+                                yield Ok(RawStreamingChoice::ToolCall(function.name, "".to_string(), function.arguments));
                             }
                         }
                         _ => {
@@ -471,7 +494,7 @@ impl StreamingCompletionModel for CompletionModel {
                     }
                 }
             }
-        }))
+        });
     }
 }
 
