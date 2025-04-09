@@ -92,7 +92,7 @@ pub async fn send_compatible_streaming_request(
             prompt_tokens: 0,
             total_tokens: 0
         };
-        
+
         let mut partial_data = None;
         let mut calls: HashMap<usize, (String, String)> = HashMap::new();
 
@@ -183,8 +183,11 @@ pub async fn send_compatible_streaming_request(
                         }
                     }
 
-                 
+                    if let Some(content) = &choice.delta.content {
+                        yield Ok(streaming::RawStreamingChoice::Message(content.clone()))
+                    }
                 }
+
 
                 if let Some(usage) = data.usage {
                     final_usage = usage.clone();

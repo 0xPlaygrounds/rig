@@ -113,6 +113,6 @@ async fn main() -> Result<(), anyhow::Error> {
     };
 
     println!("Message: {:?}", stream.message);
-    
+
     Ok(())
 }

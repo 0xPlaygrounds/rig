@@ -3,7 +3,6 @@ use futures::StreamExt;
 use serde::Deserialize;
 
 use super::completion::{create_request_body, gemini_api_types::ContentCandidate, CompletionModel};
-use crate::providers::gemini::completion::gemini_api_types::UsageMetadata;
 use crate::{
     completion::{CompletionError, CompletionRequest},
     streaming::{self, StreamingCompletionModel},

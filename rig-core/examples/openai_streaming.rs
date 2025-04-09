@@ -16,11 +16,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     stream_to_stdout(agent, &mut stream).await?;
-    
+
     if let Some(response) = stream.response {
         println!("Usage: {:?}", response.usage)
     };
-    
+
     println!("Message: {:?}", stream.message);
 
     Ok(())

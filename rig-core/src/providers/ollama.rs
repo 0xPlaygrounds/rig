@@ -486,7 +486,7 @@ impl StreamingCompletionModel for CompletionModel {
                             continue;
                         }
                     }
-                    
+
                     if response.done {
                         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                             total_duration: response.total_duration,

@@ -61,7 +61,8 @@ pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
 
 #[cfg(target_arch = "wasm32")]
-pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<RawStreamingChoice, CompletionError>>>>;
+pub type StreamingResult<R> =
+    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>>>>;
 
 pub struct StreamingCompletionResponse<R: Clone + Unpin> {
     inner: StreamingResult<R>,
@@ -92,14 +93,13 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
         match stream.inner.as_mut().poll_next(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(None) => {
-
                 let mut content = vec![];
 
                 stream.tool_calls.iter().for_each(|(n, d, a)| {
                     content.push(AssistantContent::tool_call(n, d, a.clone()));
                 });
 
-                if content.len() == 0 || stream.text.len() > 0 {
+                if content.is_empty() || !stream.text.is_empty() {
                     content.insert(0, AssistantContent::text(stream.text.clone()));
                 }
 
@@ -107,9 +107,9 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                     content: OneOrMany::many(content)
                         .expect("There should be at least one assistant message"),
                 };
-                
+
                 Poll::Ready(None)
-            },
+            }
             Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
             Poll::Ready(Some(Ok(choice))) => match choice {
                 RawStreamingChoice::Message(text) => {

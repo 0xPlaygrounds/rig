@@ -109,10 +109,13 @@ async fn main() -> Result<(), anyhow::Error> {
     stream_to_stdout(calculator_agent, &mut stream).await?;
 
     if let Some(response) = stream.response {
-        println!("Usage: {:?} tokens", response.usage_metadata.total_token_count);
+        println!(
+            "Usage: {:?} tokens",
+            response.usage_metadata.total_token_count
+        );
     };
 
     println!("Message: {:?}", stream.message);
-    
+
     Ok(())
 }
