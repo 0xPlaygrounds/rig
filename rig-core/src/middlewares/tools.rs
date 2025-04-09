@@ -8,6 +8,7 @@ use std::{future::Future, pin::Pin, sync::Arc, task::Poll};
 
 use tower::{Layer, Service};
 
+#[derive(Clone)]
 pub struct ToolLayer {
     tools: Arc<ToolSet>,
 }
@@ -31,6 +32,7 @@ impl<S> Layer<S> for ToolLayer {
     }
 }
 
+#[derive(Clone)]
 pub struct ToolLayerService<S> {
     inner: S,
     tools: Arc<ToolSet>,

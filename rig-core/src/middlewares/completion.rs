@@ -15,6 +15,7 @@ use crate::{
     OneOrMany,
 };
 
+#[derive(Clone)]
 pub struct CompletionLayer<M> {
     model: M,
     preamble: Option<String>,
@@ -155,6 +156,7 @@ where
     }
 }
 
+#[derive(Clone)]
 pub struct CompletionLayerService<M, S> {
     inner: S,
     model: M,

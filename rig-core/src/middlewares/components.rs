@@ -7,6 +7,7 @@ use crate::{
     message::{AssistantContent, Text},
 };
 
+#[derive(Clone)]
 pub struct AwaitApprovalLayer<T> {
     integration: T,
 }
@@ -43,6 +44,7 @@ where
     }
 }
 
+#[derive(Clone)]
 pub struct AwaitApprovalLayerService<S, T> {
     inner: S,
     integration: T,

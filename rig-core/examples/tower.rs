@@ -1,11 +1,14 @@
 use rig::{
-    completion::CompletionRequestBuilder,
+    completion::{CompletionRequestBuilder, ToolDefinition},
     middlewares::{
         completion::{CompletionLayer, CompletionService},
         tools::ToolLayer,
     },
     providers::openai::Client,
+    tool::{Tool, ToolSet},
 };
+use serde::{Deserialize, Serialize};
+use tower::Service;
 use tower::ServiceBuilder;
 
 #[tokio::main]
@@ -13,11 +16,11 @@ async fn main() {
     let client = Client::from_env();
     let model = client.completion_model("gpt-4o");
 
-    let comp_layer = CompletionLayer::builder(model).build();
-    let tool_layer = ToolLayer::new(vec![Add]);
-    let service = CompletionService::new(model);
+    let comp_layer = CompletionLayer::builder(model.clone()).build();
+    let tool_layer = ToolLayer::new(ToolSet::from_tools(vec![Add]));
+    let service = CompletionService::new(model.clone());
 
-    let service = ServiceBuilder::new()
+    let mut service = ServiceBuilder::new()
         .layer(comp_layer)
         .layer(tool_layer)
         .service(service);
@@ -32,6 +35,16 @@ async fn main() {
 #[derive(Deserialize, Serialize)]
 struct Add;
 
+#[derive(Debug, thiserror::Error)]
+#[error("Math error")]
+struct MathError;
+
+#[derive(Deserialize)]
+struct OperationArgs {
+    x: i32,
+    y: i32,
+}
+
 impl Tool for Add {
     const NAME: &'static str = "add";
 
@@ -40,7 +53,7 @@ impl Tool for Add {
     type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
+        serde_json::from_value(serde_json::json!({
             "name": "add",
             "description": "Add x and y together",
             "parameters": {

@@ -9,6 +9,7 @@ use crate::{
 
 use super::ServiceError;
 
+#[derive(Clone)]
 pub struct ExtractorLayer<T> {
     _t: PhantomData<T>,
 }
@@ -41,6 +42,7 @@ where
     }
 }
 
+#[derive(Clone)]
 pub struct ExtractorLayerService<S, T> {
     inner: S,
     _t: PhantomData<T>,
