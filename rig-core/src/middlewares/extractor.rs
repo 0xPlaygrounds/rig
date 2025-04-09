@@ -22,6 +22,15 @@ where
     }
 }
 
+impl<T> Default for ExtractorLayer<T>
+where
+    T: for<'a> Deserialize<'a>,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<S, T> Layer<S> for ExtractorLayer<T>
 where
     T: for<'a> Deserialize<'a>,
