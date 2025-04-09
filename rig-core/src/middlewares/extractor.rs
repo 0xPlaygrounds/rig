@@ -1,68 +1,54 @@
-use std::{future::Future, pin::Pin, sync::Arc, task::Poll};
-
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use std::{future::Future, marker::PhantomData, pin::Pin, task::Poll};
 use tower::{Layer, Service};
 
 use crate::{
-    completion::{CompletionModel, CompletionRequest, CompletionResponse},
-    extractor::{ExtractionError, Extractor},
+    completion::{CompletionRequest, CompletionResponse},
     message::{AssistantContent, Text},
 };
 
-pub struct ExtractorLayer<M, T>
-where
-    M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync,
-{
-    ext: Arc<Extractor<M, T>>,
+use super::ServiceError;
+
+pub struct ExtractorLayer<T> {
+    _t: PhantomData<T>,
 }
 
-impl<M, T> ExtractorLayer<M, T>
+impl<T> ExtractorLayer<T>
 where
-    M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync,
+    T: for<'a> Deserialize<'a>,
 {
-    pub fn new(ext: Extractor<M, T>) -> Self {
-        Self { ext: Arc::new(ext) }
+    pub fn new() -> Self {
+        Self { _t: PhantomData }
     }
 }
 
-impl<S, M, T> Layer<S> for ExtractorLayer<M, T>
+impl<S, T> Layer<S> for ExtractorLayer<T>
 where
-    M: CompletionModel + 'static,
-    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync + 'static,
+    T: for<'a> Deserialize<'a>,
 {
-    type Service = ExtractorLayerService<S, M, T>;
+    type Service = ExtractorLayerService<S, T>;
     fn layer(&self, inner: S) -> Self::Service {
-        ExtractorLayerService {
-            inner,
-            ext: Arc::clone(&self.ext),
-        }
+        ExtractorLayerService { inner, _t: self._t }
     }
 }
 
-pub struct ExtractorLayerService<S, M, T>
-where
-    M: CompletionModel + 'static,
-    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync + 'static,
-{
+pub struct ExtractorLayerService<S, T> {
     inner: S,
-    ext: Arc<Extractor<M, T>>,
+    _t: PhantomData<T>,
 }
 
-impl<S, M, T> Service<CompletionRequest> for ExtractorLayerService<S, M, T>
+impl<S, F, T> Service<CompletionRequest> for ExtractorLayerService<S, T>
 where
-    S: Service<CompletionRequest, Response = CompletionResponse<M::Response>>
+    S: Service<CompletionRequest, Response = CompletionResponse<F>, Error = ServiceError>
         + Clone
         + Send
         + 'static,
     S::Future: Send,
-    M: CompletionModel + 'static,
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+    F: 'static,
+    T: for<'a> Deserialize<'a> + 'static,
 {
     type Response = T;
-    type Error = ExtractionError;
+    type Error = ServiceError;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(
@@ -73,63 +59,18 @@ where
     }
 
     fn call(&mut self, req: CompletionRequest) -> Self::Future {
-        let ext = self.ext.clone();
         let mut inner = self.inner.clone();
 
         Box::pin(async move {
-            let Ok(res) = inner.call(req).await else {
-                todo!("Properly handle error");
-            };
+            let res = inner.call(req).await?;
 
             let AssistantContent::Text(Text { text }) = res.choice.first() else {
                 todo!("Handle errors properly");
             };
 
-            ext.extract(&text).await
+            let obj = serde_json::from_str::<T>(&text)?;
+
+            Ok(obj)
         })
-    }
-}
-
-pub struct ExtractorService<M, T>
-where
-    M: CompletionModel + 'static,
-    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync + 'static,
-{
-    ext: Arc<Extractor<M, T>>,
-}
-
-impl<M, T> ExtractorService<M, T>
-where
-    M: CompletionModel + 'static,
-    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync + 'static,
-{
-    pub fn new(ext: Extractor<M, T>) -> Self {
-        Self { ext: Arc::new(ext) }
-    }
-}
-
-impl<M, T> Service<CompletionRequest> for ExtractorService<M, T>
-where
-    M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync,
-{
-    type Response = T;
-    type Error = ExtractionError;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-    fn poll_ready(
-        &mut self,
-        _cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, req: CompletionRequest) -> Self::Future {
-        let ext = self.ext.clone();
-        let Some(req) = req.prompt.rag_text() else {
-            todo!("Handle error properly");
-        };
-
-        Box::pin(async move { ext.extract(&req).await })
     }
 }

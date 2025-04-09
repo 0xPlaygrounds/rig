@@ -224,6 +224,7 @@ where
 /// A completion model as a Tower service.
 ///
 /// This allows you to use an LLM model (or client) essentially anywhere you'd use a regular Tower layer, like in an Axum web service.
+#[derive(Clone)]
 pub struct CompletionService<M> {
     /// The model itself.
     model: M,

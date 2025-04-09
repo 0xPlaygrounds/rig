@@ -9,10 +9,9 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tower::Service;
 
-use crate::{
-    completion::CompletionRequest,
-    vector_store::{VectorStoreError, VectorStoreIndex},
-};
+use crate::{completion::CompletionRequest, vector_store::VectorStoreIndex};
+
+use super::ServiceError;
 
 pub struct RagService<V, T> {
     vector_index: Arc<V>,
@@ -39,7 +38,7 @@ where
     T: Serialize + for<'a> Deserialize<'a> + Send,
 {
     type Response = RagResult<T>;
-    type Error = VectorStoreError;
+    type Error = ServiceError;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -49,11 +48,16 @@ where
     fn call(&mut self, req: CompletionRequest) -> Self::Future {
         let vector_index = self.vector_index.clone();
         let num_results = self.num_results;
-        let Some(prompt) = req.prompt.rag_text() else {
-            todo!("Handle error properly");
-        };
 
-        Box::pin(async move { vector_index.top_n(&prompt, num_results).await })
+        Box::pin(async move {
+            let Some(prompt) = req.prompt.rag_text() else {
+                return Err(ServiceError::required_option_not_exists("rag_text"));
+            };
+
+            let res = vector_index.top_n(&prompt, num_results).await?;
+
+            Ok(res)
+        })
     }
 }
 

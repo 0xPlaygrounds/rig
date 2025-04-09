@@ -1,7 +1,6 @@
 use crate::{
     completion::{CompletionRequest, CompletionResponse},
-    message::{AssistantContent, Message, ToolResultContent, UserContent},
-    providers::{self},
+    message::{AssistantContent, Message, ToolResultContent},
     tool::{ToolSet, ToolSetError},
     OneOrMany,
 };
@@ -80,52 +79,6 @@ where
             };
 
             Ok((messages, tool_call.id, ToolResultContent::text(res)))
-        })
-    }
-}
-
-pub struct ToolService {
-    tools: Arc<ToolSet>,
-}
-
-type OpenAIResponse = CompletionResponse<providers::openai::CompletionResponse>;
-
-impl Service<OpenAIResponse> for ToolService {
-    type Response = Message;
-    type Error = ToolSetError;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-    fn poll_ready(
-        &mut self,
-        _cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, req: OpenAIResponse) -> Self::Future {
-        let tools = self.tools.clone();
-
-        Box::pin(async move {
-            let crate::message::AssistantContent::ToolCall(tool_call) = req.choice.first() else {
-                unimplemented!("handle error");
-            };
-
-            let Ok(res) = tools
-                .call(
-                    &tool_call.function.name,
-                    tool_call.function.arguments.to_string(),
-                )
-                .await
-            else {
-                todo!("Implement proper error handling");
-            };
-
-            Ok(Message::User {
-                content: OneOrMany::one(UserContent::tool_result(
-                    tool_call.id,
-                    OneOrMany::one(ToolResultContent::text(res)),
-                )),
-            })
         })
     }
 }

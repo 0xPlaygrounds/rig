@@ -235,6 +235,7 @@ pub trait CompletionModel: Clone + Send + Sync {
 }
 
 /// Struct representing a general completion request that can be sent to a completion model provider.
+#[derive(Clone)]
 pub struct CompletionRequest {
     /// The prompt to be sent to the completion model provider
     pub prompt: Message,
