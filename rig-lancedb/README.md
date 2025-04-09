@@ -18,7 +18,7 @@
 This companion crate implements a Rig vector store based on Lancedb.
 
 ## Pre-requisites
-If you are using `rig-lancedb` locally, you must ensure you have `protoc` (the [Protobuf Compiler](https://protobuf.dev/installation/)).
+If you are using `rig-lancedb` locally, you must ensure you have `protoc` (the [Protobuf Compiler](https://protobuf.dev/installation/)) installed.
 
 ## Usage
 
