@@ -107,11 +107,8 @@ impl<M: EmbeddingModel, T: Embed + Send> EmbeddingsBuilder<M, T> {
             // Generate the embeddings for each batch.
             .map(|text| async {
                 let (ids, docs): (Vec<_>, Vec<_>) = text.into_iter().unzip();
-                println!("{ids:?}");
-                println!("{docs:?}");
 
                 let embeddings = self.model.embed_texts(docs).await?;
-                println!("Embeddings vec len: {}", embeddings.len());
                 Ok::<_, EmbeddingError>(ids.into_iter().zip(embeddings).collect::<Vec<_>>())
             })
             // Parallelize the embeddings generation over 10 concurrent requests
@@ -130,8 +127,6 @@ impl<M: EmbeddingModel, T: Embed + Send> EmbeddingsBuilder<M, T> {
                 },
             )
             .await?;
-
-        // println!("{embeddings:?}");
 
         // Merge the embeddings with their respective documents
         Ok(docs
