@@ -1,5 +1,5 @@
 use rig::tool::Tool;
-use rig_macros::rig_tool;
+use rig_derive::rig_tool;
 
 #[rig_tool(
     description = "Perform basic arithmetic operations",

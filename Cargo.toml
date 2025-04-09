@@ -13,5 +13,4 @@ members = [
     "rig-eternalai",
     "rig-fastembed",
     "rig-bedrock",
-    "rig-macros"
 ]

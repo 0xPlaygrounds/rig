@@ -1,6 +1,6 @@
 use rig::completion::Prompt;
 use rig::providers;
-use rig_macros::rig_tool;
+use rig_derive::rig_tool;
 use tracing_subscriber;
 
 // Simple example with no attributes

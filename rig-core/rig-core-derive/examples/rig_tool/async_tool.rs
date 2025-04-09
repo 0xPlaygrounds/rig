@@ -2,7 +2,7 @@ use rig::completion::Prompt;
 use rig::providers;
 use rig::serde_json;
 use rig::tool::Tool;
-use rig_macros::rig_tool;
+use rig_derive::rig_tool;
 use std::time::Duration;
 use tracing_subscriber;
 
