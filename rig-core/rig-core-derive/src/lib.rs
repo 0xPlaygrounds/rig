@@ -134,6 +134,56 @@ fn get_json_type(ty: &Type) -> proc_macro2::TokenStream {
     }
 }
 
+/// A procedural macro that transforms a function into a [`rig::tool::Tool`] that can be used with a [`rig::agent::Agent`].
+///
+/// # Examples
+///
+/// Basic usage:
+/// ```rust
+/// use rig_derive::rig_tool;
+///
+/// #[rig_tool]
+/// fn add(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
+///     Ok(a + b)
+/// }
+/// ```
+///
+/// With description:
+/// ```rust
+/// use rig_derive::rig_tool;
+///
+/// #[rig_tool(description = "Perform basic arithmetic operations")]
+/// fn calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool::ToolError> {
+///     match operation.as_str() {
+///         "add" => Ok(x + y),
+///         "subtract" => Ok(x - y),
+///         "multiply" => Ok(x * y),
+///         "divide" => Ok(x / y),
+///         _ => Err(rig::tool::ToolError::ToolCallError("Unknown operation".into())),
+///     }
+/// }
+/// ```
+///
+/// With parameter descriptions:
+/// ```rust
+/// use rig_derive::rig_tool;
+///
+/// #[rig_tool(
+///     description = "A tool that performs string operations",
+///     params(
+///         text = "The input text to process",
+///         operation = "The operation to perform (uppercase, lowercase, reverse)"
+///     )
+/// )]
+/// fn string_processor(text: String, operation: String) -> Result<String, rig::tool::ToolError> {
+///     match operation.as_str() {
+///         "uppercase" => Ok(text.to_uppercase()),
+///         "lowercase" => Ok(text.to_lowercase()),
+///         "reverse" => Ok(text.chars().rev().collect()),
+///         _ => Err(rig::tool::ToolError::ToolCallError("Unknown operation".into())),
+///     }
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let args = parse_macro_input!(args as MacroArgs);
