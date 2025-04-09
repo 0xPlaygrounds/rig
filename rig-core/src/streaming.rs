@@ -14,6 +14,7 @@ use crate::completion::{
     CompletionError, CompletionModel, CompletionRequest, CompletionRequestBuilder, Message,
 };
 use crate::message::AssistantContent;
+use crate::OneOrMany;
 use futures::{Stream, StreamExt};
 use std::boxed::Box;
 use std::fmt::{Display, Formatter};
@@ -23,7 +24,7 @@ use std::task::{Context, Poll};
 
 /// Enum representing a streaming chunk from the model
 #[derive(Debug, Clone)]
-pub enum RawStreamingChoice<R> {
+pub enum RawStreamingChoice<R: Clone> {
     /// A text chunk from a message response
     Message(String),
 
@@ -35,6 +36,7 @@ pub enum RawStreamingChoice<R> {
 }
 
 /// Enum representing a streaming chunk from the model
+#[derive(Debug, Clone)]
 pub enum StreamingChoice {
     /// A text chunk from a message response
     Message(String),
@@ -61,7 +63,7 @@ pub type StreamingResult<R> =
 #[cfg(target_arch = "wasm32")]
 pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<RawStreamingChoice, CompletionError>>>>;
 
-pub struct StreamingCompletionResponse<R> {
+pub struct StreamingCompletionResponse<R: Clone + Unpin> {
     inner: StreamingResult<R>,
     text: String,
     tool_calls: Vec<(String, String, serde_json::Value)>,
@@ -69,7 +71,7 @@ pub struct StreamingCompletionResponse<R> {
     pub response: Option<R>,
 }
 
-impl<R> StreamingCompletionResponse<R> {
+impl<R: Clone + Unpin> StreamingCompletionResponse<R> {
     pub fn new(inner: StreamingResult<R>) -> StreamingCompletionResponse<R> {
         Self {
             inner,
@@ -81,37 +83,43 @@ impl<R> StreamingCompletionResponse<R> {
     }
 }
 
-impl<R> Stream for StreamingCompletionResponse<R> {
+impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
     type Item = Result<StreamingChoice, CompletionError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match self.inner.poll_next(cx) {
+        let stream = self.get_mut();
+
+        match stream.inner.as_mut().poll_next(cx) {
             Poll::Pending => Poll::Pending,
 
             Poll::Ready(None) => {
-                let content = vec![AssistantContent::text(self.text.clone())];
+                let content = vec![AssistantContent::text(stream.text.clone())];
 
-                self.tool_calls
-                    .iter()
-                    .for_each(|(n, d, a)| AssistantContent::tool_call(n, derive!(), a));
+                stream.tool_calls.iter().for_each(|(n, d, a)| {
+                    AssistantContent::tool_call(n, d, a.clone());
+                });
 
-                self.message = Message::Assistant {
-                    content: content.into(),
-                }
+                stream.message = Message::Assistant {
+                    content: OneOrMany::many(content)
+                        .expect("There should be at least one assistant message"),
+                };
+
+                Poll::Ready(None)
             }
             Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
             Poll::Ready(Some(Ok(choice))) => match choice {
                 RawStreamingChoice::Message(text) => {
-                    self.text = format!("{}{}", self.text, text);
-                    Poll::Ready(Some(Ok(choice.clone())))
+                    stream.text = format!("{}{}", stream.text, text.clone());
+                    Poll::Ready(Some(Ok(StreamingChoice::Message(text))))
                 }
                 RawStreamingChoice::ToolCall(name, description, args) => {
-                    self.tool_calls
-                        .push((name, description, args));
-                    Poll::Ready(Some(Ok(choice.clone())))
+                    stream
+                        .tool_calls
+                        .push((name.clone(), description.clone(), args.clone()));
+                    Poll::Ready(Some(Ok(StreamingChoice::ToolCall(name, description, args))))
                 }
                 RawStreamingChoice::FinalResponse(response) => {
-                    self.response = Some(response);
+                    stream.response = Some(response);
                     Poll::Pending
                 }
             },
@@ -120,7 +128,7 @@ impl<R> Stream for StreamingCompletionResponse<R> {
 }
 
 /// Trait for high-level streaming prompt interface
-pub trait StreamingPrompt<R>: Send + Sync {
+pub trait StreamingPrompt<R: Clone + Unpin>: Send + Sync {
     /// Stream a simple prompt to the model
     fn stream_prompt(
         &self,
@@ -129,7 +137,7 @@ pub trait StreamingPrompt<R>: Send + Sync {
 }
 
 /// Trait for high-level streaming chat interface
-pub trait StreamingChat<R>: Send + Sync {
+pub trait StreamingChat<R: Clone + Unpin>: Send + Sync {
     /// Stream a chat with history to the model
     fn stream_chat(
         &self,
@@ -150,18 +158,20 @@ pub trait StreamingCompletion<M: StreamingCompletionModel> {
 
 /// Trait defining a streaming completion model
 pub trait StreamingCompletionModel: CompletionModel {
-    type Response;
+    type StreamingResponse: Clone + Unpin;
     /// Stream a completion response for the given request
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl Future<Output = Result<StreamingCompletionResponse<Self::Response>, CompletionError>>;
+    ) -> impl Future<
+        Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
+    >;
 }
 
 /// helper function to stream a completion request to stdout
-pub async fn stream_to_stdout<M: StreamingCompletionModel, R>(
+pub async fn stream_to_stdout<M: StreamingCompletionModel>(
     agent: Agent<M>,
-    stream: &mut StreamingCompletionResponse<R>,
+    stream: &mut StreamingCompletionResponse<M::StreamingResponse>,
 ) -> Result<(), std::io::Error> {
     print!("Response: ");
     while let Some(chunk) = stream.next().await {

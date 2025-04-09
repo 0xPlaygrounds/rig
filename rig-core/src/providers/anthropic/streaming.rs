@@ -8,6 +8,7 @@ use super::decoders::sse::from_response as sse_from_response;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils::merge_inplace;
 use crate::message::MessageError;
+use crate::streaming;
 use crate::streaming::{RawStreamingChoice, StreamingCompletionModel, StreamingResult};
 
 #[derive(Debug, Deserialize)]
@@ -61,7 +62,7 @@ pub struct MessageDelta {
     pub stop_sequence: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct PartialUsage {
     pub output_tokens: usize,
     #[serde(default)]
@@ -75,11 +76,18 @@ struct ToolCallState {
     input_json: String,
 }
 
+#[derive(Clone)]
+pub struct StreamingCompletionResponse {
+    pub usage: PartialUsage,
+}
+
 impl StreamingCompletionModel for CompletionModel {
+    type StreamingResponse = StreamingCompletionResponse;
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<StreamingResult, CompletionError> {
+    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    {
         let max_tokens = if let Some(tokens) = completion_request.max_tokens {
             tokens
         } else if let Some(tokens) = self.default_max_tokens {
@@ -155,9 +163,10 @@ impl StreamingCompletionModel for CompletionModel {
         // Use our SSE decoder to directly handle Server-Sent Events format
         let sse_stream = sse_from_response(response);
 
-        Ok(Box::pin(stream! {
+        let stream: StreamingResult<Self::StreamingResponse> = Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
             let mut sse_stream = Box::pin(sse_stream);
+            let mut input_tokens = 0;
 
             while let Some(sse_result) = sse_stream.next().await {
                 match sse_result {
@@ -165,6 +174,24 @@ impl StreamingCompletionModel for CompletionModel {
                         // Parse the SSE data as a StreamingEvent
                         match serde_json::from_str::<StreamingEvent>(&sse.data) {
                             Ok(event) => {
+                                match &event {
+                                    StreamingEvent::MessageStart { message } => {
+                                        input_tokens = message.usage.input_tokens;
+                                    },
+                                    StreamingEvent::MessageDelta { delta, usage } => {
+                                        if delta.stop_reason.is_some() {
+
+                                            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                                                usage: PartialUsage {
+                                                    output_tokens: usage.output_tokens,
+                                                    input_tokens: Some(input_tokens.try_into().expect("Failed to convert input_tokens to usize")),
+                                                }
+                                            }))
+                                        }
+                                    }
+                                    _ => {}
+                                }
+
                                 if let Some(result) = handle_event(&event, &mut current_tool_call) {
                                     yield result;
                                 }
@@ -184,14 +211,16 @@ impl StreamingCompletionModel for CompletionModel {
                     }
                 }
             }
-        }))
+        });
+
+        Ok(streaming::StreamingCompletionResponse::new(stream))
     }
 }
 
 fn handle_event(
     event: &StreamingEvent,
     current_tool_call: &mut Option<ToolCallState>,
-) -> Option<Result<RawStreamingChoice, CompletionError>> {
+) -> Option<Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>> {
     match event {
         StreamingEvent::ContentBlockDelta { delta, .. } => match delta {
             ContentDelta::TextDelta { text } => {

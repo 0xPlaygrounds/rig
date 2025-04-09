@@ -4,14 +4,13 @@ use crate::json_utils;
 use crate::json_utils::merge;
 use crate::providers::openai::Usage;
 use crate::streaming;
-use crate::streaming::{StreamingCompletionModel, StreamingResult};
+use crate::streaming::{RawStreamingChoice, StreamingCompletionModel};
 use async_stream::stream;
 use futures::StreamExt;
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
-use tokio::stream;
 
 // ================================================================
 // OpenAI Completion Streaming API
@@ -47,18 +46,21 @@ struct StreamingChoice {
 struct StreamingCompletionChunk {
     choices: Vec<StreamingChoice>,
     usage: Option<Usage>,
+    finish_reason: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct StreamingCompletionResponse {
-    usage: Option<Usage>,
+    pub usage: Option<Usage>,
 }
 
 impl StreamingCompletionModel for CompletionModel {
-    type Response = StreamingCompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    {
         let mut request = self.create_completion_request(completion_request)?;
         request = merge(request, json!({"stream": true}));
 
@@ -179,9 +181,12 @@ pub async fn send_compatible_streaming_request(
                     yield Ok(streaming::RawStreamingChoice::Message(content.clone()))
                 }
 
-                if &data.usage.is_some() {
-                    usage = data.usage;
+                if data.finish_reason.is_some() {
+                    yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                        usage: data.usage
+                    }))
                 }
+
             }
         }
 
@@ -194,7 +199,5 @@ pub async fn send_compatible_streaming_request(
         }
     });
 
-    Ok(streaming::StreamingCompletionResponse::new(
-        inner,
-    ))
+    Ok(streaming::StreamingCompletionResponse::new(inner))
 }

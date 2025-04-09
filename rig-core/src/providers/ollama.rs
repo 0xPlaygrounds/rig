@@ -39,7 +39,7 @@
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
 use crate::json_utils::merge_inplace;
-use crate::streaming::{RawStreamingChoice, StreamingCompletionModel, StreamingResult};
+use crate::streaming::{RawStreamingChoice, StreamingCompletionModel};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -405,30 +405,25 @@ impl completion::CompletionModel for CompletionModel {
     }
 }
 
+#[derive(Clone)]
 pub struct StreamingCompletionResponse {
-    #[serde(default)]
     pub done_reason: Option<String>,
-    #[serde(default)]
     pub total_duration: Option<u64>,
-    #[serde(default)]
     pub load_duration: Option<u64>,
-    #[serde(default)]
     pub prompt_eval_count: Option<u64>,
-    #[serde(default)]
     pub prompt_eval_duration: Option<u64>,
-    #[serde(default)]
     pub eval_count: Option<u64>,
-    #[serde(default)]
     pub eval_duration: Option<u64>,
 }
 
 impl StreamingCompletionModel for CompletionModel {
-    type Response = StreamingCompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    {
         let mut request_payload = self.create_completion_request(request)?;
         merge_inplace(&mut request_payload, json!({"stream": true}));
 
@@ -448,7 +443,6 @@ impl StreamingCompletionModel for CompletionModel {
             return Err(CompletionError::ProviderError(err_text));
         }
 
-        let mut 
         let stream = Box::pin(stream! {
             let mut stream = response.bytes_stream();
             while let Some(chunk_result) = stream.next().await {
@@ -495,6 +489,8 @@ impl StreamingCompletionModel for CompletionModel {
                 }
             }
         });
+
+        Ok(streaming::StreamingCompletionResponse::new(stream))
     }
 }
 

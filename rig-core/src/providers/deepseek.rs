@@ -12,7 +12,7 @@
 use crate::json_utils::merge;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse, StreamingResult};
+use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
 use crate::{
     completion::{self, CompletionError, CompletionModel, CompletionRequest},
     extractor::ExtractorBuilder,
@@ -464,11 +464,11 @@ impl CompletionModel for DeepSeekCompletionModel {
 }
 
 impl StreamingCompletionModel for DeepSeekCompletionModel {
-    type Response = openai::StreamingCompletionResponse;
+    type StreamingResponse = openai::StreamingCompletionResponse;
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
         let mut request = self.create_completion_request(completion_request)?;
 
         request = merge(
