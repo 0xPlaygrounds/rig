@@ -38,8 +38,15 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    let table = db
-        .create_table(
+    let table = if db
+        .table_names()
+        .execute()
+        .await?
+        .contains(&"definitions".to_string())
+    {
+        db.open_table("definitions").execute().await?
+    } else {
+        db.create_table(
             "definitions",
             RecordBatchIterator::new(
                 vec![as_record_batch(embeddings, model.ndims())],
@@ -47,16 +54,19 @@ async fn main() -> Result<(), anyhow::Error> {
             ),
         )
         .execute()
-        .await?;
+        .await?
+    };
 
     // See [LanceDB indexing](https://lancedb.github.io/lancedb/concepts/index_ivfpq/#product-quantization) for more information
-    table
-        .create_index(
-            &["embedding"],
-            lancedb::index::Index::IvfPq(IvfPqIndexBuilder::default()),
-        )
-        .execute()
-        .await?;
+    if table.index_stats("embedding").await?.is_none() {
+        table
+            .create_index(
+                &["embedding"],
+                lancedb::index::Index::IvfPq(IvfPqIndexBuilder::default()),
+            )
+            .execute()
+            .await?;
+    }
 
     // Define search_params params that will be used by the vector store to perform the vector search.
     let search_params = SearchParams::default();
