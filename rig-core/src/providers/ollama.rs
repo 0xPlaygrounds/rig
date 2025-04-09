@@ -486,6 +486,18 @@ impl StreamingCompletionModel for CompletionModel {
                             continue;
                         }
                     }
+                    
+                    if response.done {
+                        yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                            total_duration: response.total_duration,
+                            load_duration: response.load_duration,
+                            prompt_eval_count: response.prompt_eval_count,
+                            prompt_eval_duration: response.prompt_eval_duration,
+                            eval_count: response.eval_count,
+                            eval_duration: response.eval_duration,
+                            done_reason: response.done_reason,
+                        }));
+                    }
                 }
             }
         });

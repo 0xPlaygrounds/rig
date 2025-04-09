@@ -46,12 +46,11 @@ struct StreamingChoice {
 struct StreamingCompletionChunk {
     choices: Vec<StreamingChoice>,
     usage: Option<Usage>,
-    finish_reason: Option<String>,
 }
 
 #[derive(Clone)]
 pub struct StreamingCompletionResponse {
-    pub usage: Option<Usage>,
+    pub usage: Usage,
 }
 
 impl StreamingCompletionModel for CompletionModel {
@@ -62,7 +61,10 @@ impl StreamingCompletionModel for CompletionModel {
     ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
     {
         let mut request = self.create_completion_request(completion_request)?;
-        request = merge(request, json!({"stream": true}));
+        request = merge(
+            request,
+            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        );
 
         let builder = self.client.post("/chat/completions").json(&request);
         send_compatible_streaming_request(builder).await
@@ -86,6 +88,11 @@ pub async fn send_compatible_streaming_request(
     let inner = Box::pin(stream! {
         let mut stream = response.bytes_stream();
 
+        let mut final_usage = Usage {
+            prompt_tokens: 0,
+            total_tokens: 0
+        };
+        
         let mut partial_data = None;
         let mut calls: HashMap<usize, (String, String)> = HashMap::new();
 
@@ -109,8 +116,6 @@ pub async fn send_compatible_streaming_request(
 
             for line in text.lines() {
                 let mut line = line.to_string();
-
-
 
                 // If there was a remaining part, concat with current line
                 if partial_data.is_some() {
@@ -137,56 +142,53 @@ pub async fn send_compatible_streaming_request(
                     continue;
                 };
 
-                let choice = data.choices.first().expect("Should have at least one choice");
 
-                let delta = &choice.delta;
+                if let Some(choice) = data.choices.first() {
 
-                if !delta.tool_calls.is_empty() {
-                    for tool_call in &delta.tool_calls {
-                        let function = tool_call.function.clone();
+                    let delta = &choice.delta;
 
-                        // Start of tool call
-                        // name: Some(String)
-                        // arguments: None
-                        if function.name.is_some() && function.arguments.is_empty() {
-                            calls.insert(tool_call.index, (function.name.clone().unwrap(), "".to_string()));
-                        }
-                        // Part of tool call
-                        // name: None
-                        // arguments: Some(String)
-                        else if function.name.is_none() && !function.arguments.is_empty() {
-                            let Some((name, arguments)) = calls.get(&tool_call.index) else {
-                                continue;
-                            };
+                    if !delta.tool_calls.is_empty() {
+                        for tool_call in &delta.tool_calls {
+                            let function = tool_call.function.clone();
 
-                            let new_arguments = &tool_call.function.arguments;
-                            let arguments = format!("{}{}", arguments, new_arguments);
+                            // Start of tool call
+                            // name: Some(String)
+                            // arguments: None
+                            if function.name.is_some() && function.arguments.is_empty() {
+                                calls.insert(tool_call.index, (function.name.clone().unwrap(), "".to_string()));
+                            }
+                            // Part of tool call
+                            // name: None
+                            // arguments: Some(String)
+                            else if function.name.is_none() && !function.arguments.is_empty() {
+                                let Some((name, arguments)) = calls.get(&tool_call.index) else {
+                                    continue;
+                                };
 
-                            calls.insert(tool_call.index, (name.clone(), arguments));
-                        }
-                        // Entire tool call
-                        else {
-                            let name = function.name.unwrap();
-                            let arguments = function.arguments;
-                            let Ok(arguments) = serde_json::from_str(&arguments) else {
-                                continue;
-                            };
+                                let new_arguments = &tool_call.function.arguments;
+                                let arguments = format!("{}{}", arguments, new_arguments);
 
-                            yield Ok(streaming::RawStreamingChoice::ToolCall(name, "".to_string(), arguments))
+                                calls.insert(tool_call.index, (name.clone(), arguments));
+                            }
+                            // Entire tool call
+                            else {
+                                let name = function.name.unwrap();
+                                let arguments = function.arguments;
+                                let Ok(arguments) = serde_json::from_str(&arguments) else {
+                                    continue;
+                                };
+
+                                yield Ok(streaming::RawStreamingChoice::ToolCall(name, "".to_string(), arguments))
+                            }
                         }
                     }
+
+                 
                 }
 
-                if let Some(content) = &choice.delta.content {
-                    yield Ok(streaming::RawStreamingChoice::Message(content.clone()))
+                if let Some(usage) = data.usage {
+                    final_usage = usage.clone();
                 }
-
-                if data.finish_reason.is_some() {
-                    yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                        usage: data.usage
-                    }))
-                }
-
             }
         }
 
@@ -195,8 +197,12 @@ pub async fn send_compatible_streaming_request(
                 continue;
             };
 
-            yield Ok(streaming::RawStreamingChoice::ToolCall(name, "".to_string(), arguments))
+            yield Ok(RawStreamingChoice::ToolCall(name, "".to_string(), arguments))
         }
+
+        yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+            usage: final_usage.clone()
+        }))
     });
 
     Ok(streaming::StreamingCompletionResponse::new(inner))

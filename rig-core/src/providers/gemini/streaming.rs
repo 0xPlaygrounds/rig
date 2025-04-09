@@ -9,18 +9,24 @@ use crate::{
     streaming::{self, StreamingCompletionModel},
 };
 
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PartialUsage {
+    pub total_token_count: i32,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamGenerateContentResponse {
     /// Candidate responses from the model.
     pub candidates: Vec<ContentCandidate>,
     pub model_version: Option<String>,
-    pub usage_metadata: UsageMetadata,
+    pub usage_metadata: Option<PartialUsage>,
 }
 
 #[derive(Clone)]
 pub struct StreamingCompletionResponse {
-    pub usage_metadata: UsageMetadata,
+    pub usage_metadata: PartialUsage,
 }
 
 impl StreamingCompletionModel for CompletionModel {
@@ -90,7 +96,9 @@ impl StreamingCompletionModel for CompletionModel {
 
                     if choice.finish_reason.is_some() {
                         yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                            usage_metadata: data.usage_metadata,
+                            usage_metadata: PartialUsage {
+                                total_token_count: data.usage_metadata.unwrap().total_token_count,
+                            }
                         }))
                     }
                 }

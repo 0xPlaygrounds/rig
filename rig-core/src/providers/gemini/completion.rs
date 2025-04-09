@@ -609,7 +609,7 @@ pub mod gemini_api_types {
         HarmCategoryCivicIntegrity,
     }
 
-    #[derive(Debug, Deserialize, Clone)]
+    #[derive(Debug, Deserialize, Clone, Default)]
     #[serde(rename_all = "camelCase")]
     pub struct UsageMetadata {
         pub prompt_token_count: i32,

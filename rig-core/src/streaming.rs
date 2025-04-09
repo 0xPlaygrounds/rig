@@ -91,21 +91,25 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
 
         match stream.inner.as_mut().poll_next(cx) {
             Poll::Pending => Poll::Pending,
-
             Poll::Ready(None) => {
-                let content = vec![AssistantContent::text(stream.text.clone())];
+
+                let mut content = vec![];
 
                 stream.tool_calls.iter().for_each(|(n, d, a)| {
-                    AssistantContent::tool_call(n, d, a.clone());
+                    content.push(AssistantContent::tool_call(n, d, a.clone()));
                 });
+
+                if content.len() == 0 || stream.text.len() > 0 {
+                    content.insert(0, AssistantContent::text(stream.text.clone()));
+                }
 
                 stream.message = Message::Assistant {
                     content: OneOrMany::many(content)
                         .expect("There should be at least one assistant message"),
                 };
-
+                
                 Poll::Ready(None)
-            }
+            },
             Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
             Poll::Ready(Some(Ok(choice))) => match choice {
                 RawStreamingChoice::Message(text) => {
@@ -120,7 +124,8 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                 }
                 RawStreamingChoice::FinalResponse(response) => {
                     stream.response = Some(response);
-                    Poll::Pending
+
+                    stream.poll_next_unpin(cx)
                 }
             },
         }

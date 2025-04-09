@@ -20,6 +20,8 @@ async fn main() -> Result<(), anyhow::Error> {
     if let Some(response) = stream.response {
         println!("Usage: {:?}", response.usage)
     };
+    
+    println!("Message: {:?}", stream.message);
 
     Ok(())
 }

@@ -19,5 +19,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     stream_to_stdout(agent, &mut stream).await?;
 
+    if let Some(response) = stream.response {
+        println!("Usage: {:?} tokens", response.usage_metadata.total_token_count);
+    };
+
+    println!("Message: {:?}", stream.message);
     Ok(())
 }
