@@ -17,7 +17,6 @@ use crate::message::AssistantContent;
 use crate::OneOrMany;
 use futures::{Stream, StreamExt};
 use std::boxed::Box;
-use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
