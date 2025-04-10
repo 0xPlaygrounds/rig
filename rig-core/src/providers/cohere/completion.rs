@@ -6,8 +6,9 @@ use crate::{
 };
 
 use super::client::Client;
+use crate::completion::CompletionRequest;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 
 #[derive(Debug, Deserialize)]
 pub struct CompletionResponse {
@@ -419,7 +420,7 @@ impl TryFrom<Message> for message::Message {
 
 #[derive(Clone)]
 pub struct CompletionModel {
-    client: Client,
+    pub(crate) client: Client,
     pub model: String,
 }
 
@@ -430,16 +431,11 @@ impl CompletionModel {
             model: model.to_string(),
         }
     }
-}
 
-impl completion::CompletionModel for CompletionModel {
-    type Response = CompletionResponse;
-
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn completion(
+    pub(crate) fn create_completion_request(
         &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        completion_request: CompletionRequest,
+    ) -> Result<Value, CompletionError> {
         let prompt = completion_request.prompt_with_context();
 
         let mut messages: Vec<message::Message> =
@@ -468,23 +464,29 @@ impl completion::CompletionModel for CompletionModel {
             "tools": completion_request.tools.into_iter().map(Tool::from).collect::<Vec<_>>(),
         });
 
+        if let Some(ref params) = completion_request.additional_params {
+            Ok(json_utils::merge(request.clone(), params.clone()))
+        } else {
+            Ok(request)
+        }
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    type Response = CompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let request = self.create_completion_request(completion_request)?;
         tracing::debug!(
             "Cohere request: {}",
             serde_json::to_string_pretty(&request)?
         );
 
-        let response = self
-            .client
-            .post("/v2/chat")
-            .json(
-                &if let Some(ref params) = completion_request.additional_params {
-                    json_utils::merge(request.clone(), params.clone())
-                } else {
-                    request.clone()
-                },
-            )
-            .send()
-            .await?;
+        let response = self.client.post("/v2/chat").json(&request).send().await?;
 
         if response.status().is_success() {
             let text_response = response.text().await?;

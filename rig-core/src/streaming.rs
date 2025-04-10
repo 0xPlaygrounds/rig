@@ -35,27 +35,6 @@ pub enum RawStreamingChoice<R: Clone> {
     FinalResponse(R),
 }
 
-/// Enum representing a streaming chunk from the model
-#[derive(Debug, Clone)]
-pub enum StreamingChoice {
-    /// A text chunk from a message response
-    Message(String),
-
-    /// A tool call response chunk
-    ToolCall(String, String, serde_json::Value),
-}
-
-impl Display for StreamingChoice {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            StreamingChoice::Message(text) => write!(f, "{}", text),
-            StreamingChoice::ToolCall(name, id, params) => {
-                write!(f, "Tool call: {} {} {:?}", name, id, params)
-            }
-        }
-    }
-}
-
 #[cfg(not(target_arch = "wasm32"))]
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
@@ -85,7 +64,7 @@ impl<R: Clone + Unpin> StreamingCompletionResponse<R> {
 }
 
 impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
-    type Item = Result<StreamingChoice, CompletionError>;
+    type Item = Result<AssistantContent, CompletionError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();
@@ -114,13 +93,13 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
             Poll::Ready(Some(Ok(choice))) => match choice {
                 RawStreamingChoice::Message(text) => {
                     stream.text = format!("{}{}", stream.text, text.clone());
-                    Poll::Ready(Some(Ok(StreamingChoice::Message(text))))
+                    Poll::Ready(Some(Ok(AssistantContent::text(text))))
                 }
-                RawStreamingChoice::ToolCall(name, description, args) => {
+                RawStreamingChoice::ToolCall(id, name, args) => {
                     stream
                         .tool_calls
-                        .push((name.clone(), description.clone(), args.clone()));
-                    Poll::Ready(Some(Ok(StreamingChoice::ToolCall(name, description, args))))
+                        .push((id.clone(), name.clone(), args.clone()));
+                    Poll::Ready(Some(Ok(AssistantContent::tool_call(id, name, args))))
                 }
                 RawStreamingChoice::FinalResponse(response) => {
                     stream.response = Some(response);
@@ -181,14 +160,17 @@ pub async fn stream_to_stdout<M: StreamingCompletionModel>(
     print!("Response: ");
     while let Some(chunk) = stream.next().await {
         match chunk {
-            Ok(StreamingChoice::Message(text)) => {
-                print!("{}", text);
+            Ok(AssistantContent::Text(text)) => {
+                print!("{}", text.text);
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(StreamingChoice::ToolCall(name, _, params)) => {
+            Ok(AssistantContent::ToolCall(tool_call)) => {
                 let res = agent
                     .tools
-                    .call(&name, params.to_string())
+                    .call(
+                        &tool_call.function.name,
+                        tool_call.function.arguments.to_string(),
+                    )
                     .await
                     .map_err(|e| std::io::Error::other(e.to_string()))?;
                 println!("\nResult: {}", res);
