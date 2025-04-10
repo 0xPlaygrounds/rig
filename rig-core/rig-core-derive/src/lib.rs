@@ -134,7 +134,7 @@ fn get_json_type(ty: &Type) -> proc_macro2::TokenStream {
     }
 }
 
-/// A procedural macro that transforms a function into a [`rig::tool::Tool`] that can be used with a [`rig::agent::Agent`].
+/// A procedural macro that transforms a function into a `rig::tool::Tool` that can be used with a `rig::agent::Agent`.
 ///
 /// # Examples
 ///
