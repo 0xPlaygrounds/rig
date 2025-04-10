@@ -275,21 +275,13 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let call_impl = if is_async {
         quote! {
             async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-                // Extract parameters and call the function
-                let params: #params_struct_name = rig::serde_json::from_value(args).map_err(|e| rig::tool::ToolError::JsonError(e.into()))?;
-                let result = #fn_name(#(params.#param_names,)*).await.map_err(|e| rig::tool::ToolError::ToolCallError(e.into()))?;
-
-                Ok(result)
+                #fn_name(#(args.#param_names,)*).await.map_err(|e| rig::tool::ToolError::ToolCallError(e.into()))
             }
         }
     } else {
         quote! {
             async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-                // Extract parameters and call the function
-                let params: #params_struct_name = rig::serde_json::from_value(args).map_err(|e| rig::tool::ToolError::JsonError(e.into()))?;
-                let result = #fn_name(#(params.#param_names,)*).map_err(|e| rig::tool::ToolError::ToolCallError(e.into()))?;
-
-                Ok(result)
+                #fn_name(#(args.#param_names,)*).map_err(|e| rig::tool::ToolError::ToolCallError(e.into()))
             }
         }
     };
@@ -308,7 +300,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         impl rig::tool::Tool for #struct_name {
             const NAME: &'static str = #fn_name_str;
 
-            type Args = rig::serde_json::Value;
+            type Args = #params_struct_name;
             type Output = #output_type;
             type Error = rig::tool::ToolError;
 
@@ -317,7 +309,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
             }
 
             async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
-                let parameters = rig::serde_json::json!({
+                let parameters = serde_json::json!({
                     "type": "object",
                     "properties": {
                         #(

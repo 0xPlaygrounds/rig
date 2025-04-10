@@ -74,72 +74,72 @@ async fn test_calculator_tool() {
     // Test valid operations
     let test_cases = vec![
         (
-            rig::serde_json::json!({
-                "x": 5,
-                "y": 3,
-                "operation": "add"
-            }),
+            CalculatorParameters {
+                x: 5,
+                y: 3,
+                operation: "add".to_string(),
+            },
             8,
         ),
         (
-            rig::serde_json::json!({
-                "x": 5,
-                "y": 3,
-                "operation": "subtract"
-            }),
+            CalculatorParameters {
+                x: 5,
+                y: 3,
+                operation: "subtract".to_string(),
+            },
             2,
         ),
         (
-            rig::serde_json::json!({
-                "x": 5,
-                "y": 3,
-                "operation": "multiply"
-            }),
+            CalculatorParameters {
+                x: 5,
+                y: 3,
+                operation: "multiply".to_string(),
+            },
             15,
         ),
         (
-            rig::serde_json::json!({
-                "x": 6,
-                "y": 2,
-                "operation": "divide"
-            }),
+            CalculatorParameters {
+                x: 6,
+                y: 2,
+                operation: "divide".to_string(),
+            },
             3,
         ),
     ];
 
     for (input, expected) in test_cases {
         let result = calculator.call(input).await.unwrap();
-        assert_eq!(result, rig::serde_json::json!(expected));
+        assert_eq!(result, serde_json::json!(expected));
     }
 
     // Test division by zero
-    let div_zero = rig::serde_json::json!({
-        "x": 5,
-        "y": 0,
-        "operation": "divide"
-    });
+    let div_zero = CalculatorParameters {
+        x: 5,
+        y: 0,
+        operation: "divide".to_string(),
+    };
     let err = calculator.call(div_zero).await.unwrap_err();
     assert!(matches!(err, rig::tool::ToolError::ToolCallError(_)));
 
     // Test invalid operation
-    let invalid_op = rig::serde_json::json!({
-        "x": 5,
-        "y": 3,
-        "operation": "power"
-    });
+    let invalid_op = CalculatorParameters {
+        x: 5,
+        y: 3,
+        operation: "power".to_string(),
+    };
     let err = calculator.call(invalid_op).await.unwrap_err();
     assert!(matches!(err, rig::tool::ToolError::ToolCallError(_)));
 
     // Test sync calculator
     let sync_calculator = SyncCalculator::default();
     let result = sync_calculator
-        .call(rig::serde_json::json!({
-            "x": 5,
-            "y": 3,
-            "operation": "add"
-        }))
+        .call(SyncCalculatorParameters {
+            x: 5,
+            y: 3,
+            operation: "add".to_string(),
+        })
         .await
         .unwrap();
 
-    assert_eq!(result, rig::serde_json::json!(8));
+    assert_eq!(result, serde_json::json!(8));
 }
