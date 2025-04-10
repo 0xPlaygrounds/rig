@@ -8699,10 +8699,16 @@ dependencies = [
 name = "rig-derive"
 version = "0.1.0"
 dependencies = [
+ "convert_case 0.6.0",
  "indoc",
  "proc-macro2",
  "quote",
+ "rig-core 0.11.0",
+ "serde",
+ "serde_json",
  "syn 2.0.100",
+ "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]
