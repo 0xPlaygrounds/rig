@@ -90,11 +90,13 @@ async fn main() -> anyhow::Result<()> {
             .tool(Subtract)
             .tool(Multiply)
             .tool(Divide)
-            .build(), 
+            .build(),
     };
 
     // Prompt the agent and print the response
-    let result = agent.prompt("Calculate x for the equation: `20x + 23 = 400x / (1 - x)`").await?;
+    let result = agent
+        .prompt("Calculate x for the equation: `20x + 23 = 400x / (1 - x)`")
+        .await?;
 
     println!("\n\nReasoning Agent: {}", result);
 

@@ -1,7 +1,10 @@
 use std::future::IntoFuture;
 
 use crate::{
-    completion::{self, CompletionModel}, extractor::{ExtractionError, Extractor}, message::Message, vector_store
+    completion::{self, CompletionModel},
+    extractor::{ExtractionError, Extractor},
+    message::Message,
+    vector_store,
 };
 
 use super::Op;

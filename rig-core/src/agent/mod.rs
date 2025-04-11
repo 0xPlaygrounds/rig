@@ -107,10 +107,10 @@
 //!     .expect("Failed to prompt the agent");
 //! ```
 
-mod agent;
 mod builder;
+mod completion;
 mod prompt_request;
 
-pub use agent::Agent;
 pub use builder::AgentBuilder;
+pub use completion::Agent;
 pub use prompt_request::PromptRequest;
