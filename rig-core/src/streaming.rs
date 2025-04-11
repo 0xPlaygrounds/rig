@@ -13,7 +13,7 @@ use crate::agent::Agent;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequest, CompletionRequestBuilder, Message,
 };
-use crate::message::AssistantContent;
+use crate::message::{AssistantContent, ToolCall, ToolFunction};
 use crate::OneOrMany;
 use futures::{Stream, StreamExt};
 use std::boxed::Box;
@@ -49,7 +49,7 @@ pub type StreamingResult<R> =
 pub struct StreamingCompletionResponse<R: Clone + Unpin> {
     inner: StreamingResult<R>,
     text: String,
-    tool_calls: Vec<(String, String, serde_json::Value)>,
+    tool_calls: Vec<ToolCall>,
     /// The final aggregated message from the stream
     /// contains all text and tool calls generated
     pub message: Message,
@@ -83,8 +83,8 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                 // a single unified `Message`.
                 let mut content = vec![];
 
-                stream.tool_calls.iter().for_each(|(n, d, a)| {
-                    content.push(AssistantContent::tool_call(n, d, a.clone()));
+                stream.tool_calls.iter().for_each(|tc| {
+                    content.push(AssistantContent::ToolCall(tc.clone()));
                 });
 
                 // This is required to ensure there's always at least one item in the content
@@ -110,9 +110,13 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                 RawStreamingChoice::ToolCall(id, name, args) => {
                     // Keep track of each tool call to aggregate the final message later
                     // and pass it to the outer stream
-                    stream
-                        .tool_calls
-                        .push((id.clone(), name.clone(), args.clone()));
+                    stream.tool_calls.push(ToolCall {
+                        id: id.clone(),
+                        function: ToolFunction {
+                            name: name.clone(),
+                            arguments: args.clone(),
+                        },
+                    });
                     Poll::Ready(Some(Ok(AssistantContent::tool_call(id, name, args))))
                 }
                 RawStreamingChoice::FinalResponse(response) => {
