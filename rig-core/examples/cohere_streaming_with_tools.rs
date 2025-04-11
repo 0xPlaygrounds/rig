@@ -91,8 +91,8 @@ impl Tool for Subtract {
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     // Create agent with a single context prompt and two tools
-    let calculator_agent = providers::ollama::Client::new()
-        .agent("llama3.2")
+    let calculator_agent = providers::cohere::Client::from_env()
+        .agent(providers::cohere::COMMAND_R)
         .preamble(
             "You are a calculator here to help the user perform arithmetic 
             operations. Use the tools provided to answer the user's question. 
@@ -109,7 +109,7 @@ async fn main() -> Result<(), anyhow::Error> {
     stream_to_stdout(calculator_agent, &mut stream).await?;
 
     if let Some(response) = stream.response {
-        println!("Usage: {:?} tokens", response.eval_count);
+        println!("Usage: {:?} tokens", response.usage);
     };
 
     println!("Message: {:?}", stream.message);

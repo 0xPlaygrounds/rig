@@ -110,22 +110,19 @@ use std::collections::HashMap;
 
 use futures::{stream, StreamExt, TryStreamExt};
 
+use crate::streaming::StreamingCompletionResponse;
+#[cfg(feature = "mcp")]
+use crate::tool::McpTool;
 use crate::{
     completion::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
         Message, Prompt, PromptError,
     },
     message::AssistantContent,
-    streaming::{
-        StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingPrompt,
-        StreamingResult,
-    },
+    streaming::{StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingPrompt},
     tool::{Tool, ToolSet},
     vector_store::{VectorStoreError, VectorStoreIndexDyn},
 };
-
-#[cfg(feature = "mcp")]
-use crate::tool::McpTool;
 
 /// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
 /// (i.e.: system prompt) and a static set of context documents and tools.
@@ -500,18 +497,21 @@ impl<M: StreamingCompletionModel> StreamingCompletion<M> for Agent<M> {
     }
 }
 
-impl<M: StreamingCompletionModel> StreamingPrompt for Agent<M> {
-    async fn stream_prompt(&self, prompt: &str) -> Result<StreamingResult, CompletionError> {
+impl<M: StreamingCompletionModel> StreamingPrompt<M::StreamingResponse> for Agent<M> {
+    async fn stream_prompt(
+        &self,
+        prompt: &str,
+    ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError> {
         self.stream_chat(prompt, vec![]).await
     }
 }
 
-impl<M: StreamingCompletionModel> StreamingChat for Agent<M> {
+impl<M: StreamingCompletionModel> StreamingChat<M::StreamingResponse> for Agent<M> {
     async fn stream_chat(
         &self,
         prompt: &str,
         chat_history: Vec<Message>,
-    ) -> Result<StreamingResult, CompletionError> {
+    ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError> {
         self.stream_completion(prompt, chat_history)
             .await?
             .stream()
