@@ -35,6 +35,7 @@ impl<M: CompletionModel> EnglishTranslator<M> {
 }
 
 impl<M: CompletionModel> Chat for EnglishTranslator<M> {
+    #[allow(refining_impl_trait)]
     async fn chat(
         &self,
         prompt: impl Into<Message> + Send,

@@ -37,6 +37,7 @@ use serde_json::json;
 use crate::{
     agent::{Agent, AgentBuilder},
     completion::{CompletionModel, Prompt, PromptError, ToolDefinition},
+    message::Message,
     tool::Tool,
 };
 
@@ -62,7 +63,7 @@ impl<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync, M: CompletionModel> 
 where
     M: Sync,
 {
-    pub async fn extract(&self, text: &str) -> Result<T, ExtractionError> {
+    pub async fn extract(&self, text: impl Into<Message> + Send) -> Result<T, ExtractionError> {
         let summary = self.agent.prompt(text).await?;
 
         if summary.is_empty() {

@@ -11,7 +11,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let comedian_agent = client
-        .agent("cognitivecomputations/dolphin3.0-mistral-24b:free")
+        .agent("google/gemini-2.5-pro-exp-03-25:free")
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

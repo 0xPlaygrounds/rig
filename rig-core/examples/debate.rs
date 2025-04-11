@@ -3,7 +3,7 @@ use std::env;
 use anyhow::Result;
 use rig::{
     agent::Agent,
-    completion::Chat,
+    completion::Prompt,
     message::Message,
     providers::{cohere, openai},
 };
@@ -49,19 +49,19 @@ impl Debater {
 
             let resp_a = self
                 .gpt_4
-                .chat(prompt_a.as_str(), history_a.clone())
+                .prompt(prompt_a.as_str())
+                .with_history(&mut history_a)
                 .await?;
             println!("GPT-4:\n{}", resp_a);
-            history_a.push(Message::user(prompt_a));
-            history_a.push(Message::assistant(resp_a.clone()));
             println!("================================================================");
 
-            let resp_b = self.coral.chat(resp_a.as_str(), history_b.clone()).await?;
+            let resp_b = self
+                .coral
+                .prompt(resp_a.as_str())
+                .with_history(&mut history_b)
+                .await?;
             println!("Coral:\n{}", resp_b);
             println!("================================================================");
-
-            history_b.push(Message::user(resp_a));
-            history_b.push(Message::assistant(resp_b.clone()));
 
             last_resp_b = Some(resp_b)
         }
