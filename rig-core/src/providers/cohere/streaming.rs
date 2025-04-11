@@ -164,7 +164,7 @@ impl StreamingCompletionModel for CompletionModel {
                                 ));
                             };
                         },
-                        StreamingEvent::ToolCallEnd { .. } => {
+                        StreamingEvent::ToolCallEnd => {
                             let Some(tc) = current_tool_call.clone() else { continue; };
 
                             let Ok(args) = serde_json::from_str(&tc.2) else { continue; };
