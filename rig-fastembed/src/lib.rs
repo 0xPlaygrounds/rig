@@ -171,6 +171,7 @@ pub fn fetch_model_ndims(model: &FastembedModel) -> usize {
         | FastembedModel::MxbaiEmbedLargeV1
         | FastembedModel::MxbaiEmbedLargeV1Q
         | FastembedModel::GTELargeENV15
+        | FastembedModel::ModernBertEmbedLarge
         | FastembedModel::GTELargeENV15Q => 1024,
     }
 }
