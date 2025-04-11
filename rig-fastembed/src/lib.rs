@@ -81,7 +81,7 @@ impl EmbeddingModel {
             .unwrap(),
         );
 
-        let ndims = TextEmbedding::get_model_info(&model).unwrap().dim;
+        let ndims = TextEmbedding::get_model_info(model).unwrap().dim;
 
         Self {
             embedder,
