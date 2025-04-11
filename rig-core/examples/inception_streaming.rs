@@ -1,5 +1,5 @@
 use rig::{
-    providers::inception::{self, completion::MERCURY_CODER_SMALL},
+    providers::inception::{self, MERCURY_CODER_SMALL},
     streaming::{stream_to_stdout, StreamingPrompt},
 };
 
