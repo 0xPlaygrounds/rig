@@ -1,6 +1,9 @@
 use std::env;
 
-use rig::{completion::Prompt, providers::inception::{ClientBuilder, MERCURY_CODER_SMALL}};
+use rig::{
+    completion::Prompt,
+    providers::inception::{ClientBuilder, MERCURY_CODER_SMALL},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
