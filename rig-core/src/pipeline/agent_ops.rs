@@ -1,9 +1,7 @@
 use std::future::IntoFuture;
 
 use crate::{
-    completion::{self, CompletionModel},
-    extractor::{ExtractionError, Extractor},
-    vector_store,
+    completion::{self, CompletionModel}, extractor::{ExtractionError, Extractor}, message::Message, vector_store
 };
 
 use super::Op;
@@ -129,13 +127,13 @@ impl<M, Input, Output> Op for Extract<M, Input, Output>
 where
     M: CompletionModel,
     Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
-    Input: Into<String> + Send + Sync,
+    Input: Into<Message> + Send + Sync,
 {
     type Input = Input;
     type Output = Result<Output, ExtractionError>;
 
     async fn call(&self, input: Self::Input) -> Self::Output {
-        self.extractor.extract(&input.into()).await
+        self.extractor.extract(input).await
     }
 }
 

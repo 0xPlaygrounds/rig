@@ -477,6 +477,12 @@ impl From<String> for Text {
     }
 }
 
+impl From<&String> for Text {
+    fn from(text: &String) -> Self {
+        text.to_owned().into()
+    }
+}
+
 impl From<&str> for Text {
     fn from(text: &str) -> Self {
         text.to_owned().into()
@@ -501,6 +507,14 @@ impl From<String> for Message {
 
 impl From<&str> for Message {
     fn from(text: &str) -> Self {
+        Message::User {
+            content: OneOrMany::one(UserContent::Text(text.into())),
+        }
+    }
+}
+
+impl From<&String> for Message {
+    fn from(text: &String) -> Self {
         Message::User {
             content: OneOrMany::one(UserContent::Text(text.into())),
         }
