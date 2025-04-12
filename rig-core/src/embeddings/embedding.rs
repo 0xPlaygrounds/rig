@@ -6,8 +6,6 @@
 //! Finally, the module defines the [EmbeddingError] enum, which represents various errors that
 //! can occur during embedding generation or processing.
 
-use std::pin::Pin;
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, thiserror::Error)]
@@ -71,27 +69,23 @@ pub trait ImageEmbeddingModel: Clone + Sync + Send {
     fn ndims(&self) -> usize;
 
     /// Embed multiple text documents in a single request
-    fn embed_texts<'a>(
-        &'a self,
-        images: impl IntoIterator<Item = &'a [u8]> + Send,
-    ) -> Pin<
-        Box<dyn std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + Send + 'a>,
-    >;
+    fn embed_images(
+        &self,
+        images: impl IntoIterator<Item = Vec<u8>> + Send,
+    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + Send;
 
     /// Embed a single text document.
-    fn embed_text<'a>(
+    fn embed_image<'a>(
         &'a self,
         bytes: &'a [u8],
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<Embedding, EmbeddingError>> + Send + 'a>>
-    {
-        Box::pin(async move {
-            Ok::<Embedding, EmbeddingError>(
-                self.embed_texts(vec![bytes])
-                    .await?
-                    .pop()
-                    .expect("There should be at least one embedding"),
-            )
-        })
+    ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + Send {
+        async move {
+            Ok(self
+                .embed_images(vec![bytes.to_owned()])
+                .await?
+                .pop()
+                .expect("There should be at least one embedding"))
+        }
     }
 }
 
