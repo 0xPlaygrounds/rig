@@ -60,6 +60,35 @@ pub trait EmbeddingModel: Clone + Sync + Send {
     }
 }
 
+/// Trait for embedding models that can generate embeddings for images.
+pub trait ImageEmbeddingModel: Clone + Sync + Send {
+    /// The maximum number of images that can be embedded in a single request.
+    const MAX_DOCUMENTS: usize;
+
+    /// The number of dimensions in the embedding vector.
+    fn ndims(&self) -> usize;
+
+    /// Embed multiple images in a single request from bytes.
+    fn embed_images(
+        &self,
+        images: impl IntoIterator<Item = Vec<u8>> + Send,
+    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + Send;
+
+    /// Embed a single image from bytes.
+    fn embed_image<'a>(
+        &'a self,
+        bytes: &'a [u8],
+    ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + Send {
+        async move {
+            Ok(self
+                .embed_images(vec![bytes.to_owned()])
+                .await?
+                .pop()
+                .expect("There should be at least one embedding"))
+        }
+    }
+}
+
 /// Struct that holds a single document and its embedding.
 #[derive(Clone, Default, Deserialize, Serialize, Debug)]
 pub struct Embedding {
