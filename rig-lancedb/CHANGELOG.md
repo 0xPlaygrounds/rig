@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.9](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.8...rig-lancedb-v0.2.9) - 2025-04-12
+
+### Other
+
+- *(lancedb)* docs, make examples idempotent ([#387](https://github.com/0xPlaygrounds/rig/pull/387))
+
 ## [0.2.8](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.7...rig-lancedb-v0.2.8) - 2025-03-31
 
 ### Other
