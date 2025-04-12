@@ -26,3 +26,6 @@ required-features = ["rig-core/derive"]
 [[example]]
 name = "vector_search_local"
 required-features = ["rig-core/derive"]
+
+[[example]]
+name = "embed_images"

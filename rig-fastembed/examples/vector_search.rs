@@ -3,7 +3,7 @@ use rig::{
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
     Embed,
 };
-use rig_fastembed::FastembedModel;
+use rig_fastembed::FastembedTextModel;
 use serde::{Deserialize, Serialize};
 
 // Shape of data that needs to be RAG'ed.
@@ -18,10 +18,11 @@ struct WordDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
+    // Create fastembed client
     let fastembed_client = rig_fastembed::Client::new();
 
-    let embedding_model = fastembed_client.embedding_model(&FastembedModel::AllMiniLML6V2Q);
+    let embedding_model =
+        fastembed_client.text_embedding_model(&FastembedTextModel::AllMiniLML6V2Q);
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(vec![
