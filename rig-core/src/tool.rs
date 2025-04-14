@@ -205,6 +205,28 @@ where
 }
 
 #[cfg(feature = "mcp")]
+impl From<&mcp_core::types::Tool> for ToolDefinition {
+    fn from(val: &mcp_core::types::Tool) -> Self {
+        Self {
+            name: val.name.to_owned(),
+            description: val.description.to_owned().unwrap_or_default(),
+            parameters: val.input_schema.to_owned(),
+        }
+    }
+}
+
+#[cfg(feature = "mcp")]
+impl From<mcp_core::types::Tool> for ToolDefinition {
+    fn from(val: mcp_core::types::Tool) -> Self {
+        Self {
+            name: val.name,
+            description: val.description.unwrap_or_default(),
+            parameters: val.input_schema,
+        }
+    }
+}
+
+#[cfg(feature = "mcp")]
 #[derive(Debug, thiserror::Error)]
 #[error("MCP tool error: {0}")]
 pub struct McpToolError(String);

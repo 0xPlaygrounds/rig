@@ -1,6 +1,6 @@
 // ================================================================
 //! xAI Completion Integration
-//! From [xAI Reference](https://docs.x.ai/api/endpoints#chat-completions)
+//! From [xAI Reference](https://docs.x.ai/docs/api-reference#chat-completions)
 // ================================================================
 
 use crate::{
