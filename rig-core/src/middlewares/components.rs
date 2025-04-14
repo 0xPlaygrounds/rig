@@ -123,12 +123,7 @@ where
 
     fn layer(&self, inner: S) -> Self::Service {
         let predicate = self.predicate.clone();
-        AwaitApprovalLayerServiceWithPredicate::new(
-            inner,
-            self.integration.clone(),
-            predicate,
-            self._t,
-        )
+        AwaitApprovalLayerServiceWithPredicate::new(inner, self.integration.clone(), predicate)
     }
 }
 
@@ -145,12 +140,12 @@ where
     R: Fn(&D) -> Pin<Box<dyn Future<Output = bool> + Send>> + Clone + Send + 'static,
     D: Debug,
 {
-    pub fn new(inner: S, integration: T, predicate: R, _t: PhantomData<D>) -> Self {
+    pub fn new(inner: S, integration: T, predicate: R) -> Self {
         Self {
             inner,
             integration,
             predicate,
-            _t,
+            _t: PhantomData,
         }
     }
 }

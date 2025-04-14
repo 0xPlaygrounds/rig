@@ -27,6 +27,8 @@ pub enum ServiceError {
     RequiredOptionNotFound(String),
     #[error("{0}")]
     Json(#[from] serde_json::Error),
+    #[error("Custom error: {0}")]
+    Other(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl ServiceError {
