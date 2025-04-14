@@ -8,9 +8,9 @@
 //! a simple bot with a specific system prompt to a complex RAG system with a set of dynamic
 //! context documents and tools.
 //!
-//! The [Agent] struct implements the [Completion] and [Prompt] traits, allowing it to be used for generating
-//! completions responses and prompts. The [Agent] struct also implements the [Chat] trait, which allows it to
-//! be used for generating chat completions.
+//! The [Agent] struct implements the [crate::completion::Completion] and [crate::completion::Prompt] traits,
+//! allowing it to be used for generating completions responses and prompts. The [Agent] struct also
+//! implements the [crate::completion::Chat] trait, which allows it to be used for generating chat completions.
 //!
 //! The [AgentBuilder] implements the builder pattern for creating instances of [Agent].
 //! It allows configuring the model, preamble, context documents, tools, temperature, and additional parameters

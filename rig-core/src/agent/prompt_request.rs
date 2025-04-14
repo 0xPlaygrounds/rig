@@ -79,10 +79,8 @@ impl<'c, 'a, M: CompletionModel> PromptRequest<'c, 'a, M, Simple> {
     }
 }
 
-/// Due to: RFC 2515, we have to use a `BoxFuture` for the `IntoFuture` implementation. In the
-///  future, we should be able to use `impl Future<...>` directly via the associated type.
-///
-/// Ref: https://github.com/rust-lang/rust/issues/63063
+/// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
+///  for the `IntoFuture` implementation. In the future, we should be able to use `impl Future<...>` directly via the associated type.
 impl<'c: 'a, 'a, M: CompletionModel, T: State + 'a> IntoFuture for PromptRequest<'c, 'a, M, T>
 where
     PromptRequest<'c, 'a, M, T>: SendPromptRequest<M, T>,
