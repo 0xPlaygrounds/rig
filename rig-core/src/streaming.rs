@@ -103,7 +103,7 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                 }
 
                 stream.choice = OneOrMany::many(choice)
-                        .expect("There should be at least one assistant message");
+                    .expect("There should be at least one assistant message");
 
                 Poll::Ready(None)
             }
