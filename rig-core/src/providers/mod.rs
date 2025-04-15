@@ -62,3 +62,4 @@ pub mod openrouter;
 pub mod perplexity;
 pub mod together;
 pub mod xai;
+pub mod aliyun;
