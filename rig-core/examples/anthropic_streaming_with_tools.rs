@@ -112,7 +112,7 @@ async fn main() -> Result<(), anyhow::Error> {
         println!("Usage: {:?} tokens", response.usage.output_tokens);
     };
 
-    println!("Message: {:?}", stream.message);
+    println!("Message: {:?}", stream.choice);
 
     Ok(())
 }

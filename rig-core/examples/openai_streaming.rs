@@ -21,7 +21,7 @@ async fn main() -> Result<(), anyhow::Error> {
         println!("Usage: {:?}", response.usage)
     };
 
-    println!("Message: {:?}", stream.message);
+    println!("Message: {:?}", stream.choice);
 
     Ok(())
 }

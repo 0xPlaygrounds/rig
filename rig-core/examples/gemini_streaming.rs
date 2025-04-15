@@ -26,6 +26,6 @@ async fn main() -> Result<(), anyhow::Error> {
         );
     };
 
-    println!("Message: {:?}", stream.message);
+    println!("Message: {:?}", stream.choice);
     Ok(())
 }
