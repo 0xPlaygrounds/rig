@@ -11,6 +11,7 @@ use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
+use tracing::debug;
 
 // ================================================================
 // OpenAI Completion Streaming API
@@ -26,10 +27,11 @@ pub struct StreamingFunction {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingToolCall {
     pub index: usize,
+    pub id: Option<String>,
     pub function: StreamingFunction,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct StreamingDelta {
     #[serde(default)]
     content: Option<String>,
@@ -37,12 +39,12 @@ struct StreamingDelta {
     tool_calls: Vec<StreamingToolCall>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct StreamingChoice {
     delta: StreamingDelta,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct StreamingCompletionChunk {
     choices: Vec<StreamingChoice>,
     usage: Option<Usage>,
@@ -94,7 +96,7 @@ pub async fn send_compatible_streaming_request(
         };
 
         let mut partial_data = None;
-        let mut calls: HashMap<usize, (String, String)> = HashMap::new();
+        let mut calls: HashMap<usize, (String, String, String)> = HashMap::new();
 
         while let Some(chunk_result) = stream.next().await {
             let chunk = match chunk_result {
@@ -139,6 +141,8 @@ pub async fn send_compatible_streaming_request(
                 let data = serde_json::from_str::<StreamingCompletionChunk>(&line);
 
                 let Ok(data) = data else {
+                    let err = data.unwrap_err();
+                    debug!("Couldn't serialize data as StreamingCompletionChunk: {:?}", err);
                     continue;
                 };
 
@@ -150,35 +154,39 @@ pub async fn send_compatible_streaming_request(
                     if !delta.tool_calls.is_empty() {
                         for tool_call in &delta.tool_calls {
                             let function = tool_call.function.clone();
-
                             // Start of tool call
                             // name: Some(String)
                             // arguments: None
                             if function.name.is_some() && function.arguments.is_empty() {
-                                calls.insert(tool_call.index, (function.name.clone().unwrap(), "".to_string()));
+                                let id = tool_call.id.clone().unwrap_or("".to_string());
+
+                                calls.insert(tool_call.index, (id, function.name.clone().unwrap(), "".to_string()));
                             }
                             // Part of tool call
                             // name: None
                             // arguments: Some(String)
                             else if function.name.is_none() && !function.arguments.is_empty() {
-                                let Some((name, arguments)) = calls.get(&tool_call.index) else {
+                                let Some((id, name, arguments)) = calls.get(&tool_call.index) else {
+                                    debug!("Partial tool call received but tool call was never started.");
                                     continue;
                                 };
 
                                 let new_arguments = &tool_call.function.arguments;
                                 let arguments = format!("{}{}", arguments, new_arguments);
 
-                                calls.insert(tool_call.index, (name.clone(), arguments));
+                                calls.insert(tool_call.index, (id.clone(), name.clone(), arguments));
                             }
                             // Entire tool call
                             else {
-                                let name = function.name.unwrap();
+                                let id = tool_call.id.clone().unwrap_or("".to_string());
+                                let name = function.name.expect("function name should be present for complete tool call");
                                 let arguments = function.arguments;
                                 let Ok(arguments) = serde_json::from_str(&arguments) else {
+                                    debug!("Couldn't serialize '{}' as a json value", arguments);
                                     continue;
                                 };
 
-                                yield Ok(streaming::RawStreamingChoice::ToolCall(name, "".to_string(), arguments))
+                                yield Ok(streaming::RawStreamingChoice::ToolCall(id, name, arguments))
                             }
                         }
                     }
@@ -195,12 +203,14 @@ pub async fn send_compatible_streaming_request(
             }
         }
 
-        for (_, (name, arguments)) in calls {
+        for (_, (id, name, arguments)) in calls {
             let Ok(arguments) = serde_json::from_str(&arguments) else {
                 continue;
             };
 
-            yield Ok(RawStreamingChoice::ToolCall(name, "".to_string(), arguments))
+            println!("{id} {name}");
+
+            yield Ok(RawStreamingChoice::ToolCall(id, name, arguments))
         }
 
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
