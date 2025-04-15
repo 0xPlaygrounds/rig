@@ -1,6 +1,6 @@
 [package]
 name = "rig-core"
-version = "0.11.0"
+version = "0.11.1"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -27,7 +27,7 @@ futures = "0.3.29"
 ordered-float = "4.2.0"
 schemars = "0.8.16"
 thiserror = "1.0.61"
-rig-derive = { version = "0.1.0", path = "./rig-core-derive", optional = true }
+rig-derive = { version = "0.1.1", path = "./rig-core-derive", optional = true }
 glob = "0.3.1"
 lopdf = { version = "0.35.0", optional = true }
 epub = { version = "2.1.2", optional = true }
