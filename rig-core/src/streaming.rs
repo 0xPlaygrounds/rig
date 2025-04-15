@@ -71,11 +71,11 @@ impl<R: Clone + Unpin> StreamingCompletionResponse<R> {
     }
 }
 
-impl<R: Clone + Unpin> Into<CompletionResponse<Option<R>>> for StreamingCompletionResponse<R> {
-    fn into(self) -> CompletionResponse<Option<R>> {
+impl<R: Clone + Unpin> From<StreamingCompletionResponse<R>> for CompletionResponse<Option<R>> {
+    fn from(value: StreamingCompletionResponse<R>) -> CompletionResponse<Option<R>> {
         CompletionResponse {
-            choice: self.choice,
-            raw_response: self.response,
+            choice: value.choice,
+            raw_response: value.response,
         }
     }
 }
