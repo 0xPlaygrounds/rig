@@ -11,7 +11,8 @@
 
 use crate::agent::Agent;
 use crate::completion::{
-    CompletionError, CompletionModel, CompletionRequest, CompletionRequestBuilder, Message,
+    CompletionError, CompletionModel, CompletionRequest, CompletionRequestBuilder,
+    CompletionResponse, Message,
 };
 use crate::message::{AssistantContent, ToolCall, ToolFunction};
 use crate::OneOrMany;
@@ -52,7 +53,7 @@ pub struct StreamingCompletionResponse<R: Clone + Unpin> {
     tool_calls: Vec<ToolCall>,
     /// The final aggregated message from the stream
     /// contains all text and tool calls generated
-    pub message: Message,
+    pub choice: OneOrMany<AssistantContent>,
     /// The final response from the stream, may be `None`
     /// if the provider didn't yield it during the stream
     pub response: Option<R>,
@@ -64,8 +65,17 @@ impl<R: Clone + Unpin> StreamingCompletionResponse<R> {
             inner,
             text: "".to_string(),
             tool_calls: vec![],
-            message: Message::assistant(""),
+            choice: OneOrMany::one(AssistantContent::text("")),
             response: None,
+        }
+    }
+}
+
+impl<R: Clone + Unpin> Into<CompletionResponse<Option<R>>> for StreamingCompletionResponse<R> {
+    fn into(self) -> CompletionResponse<Option<R>> {
+        CompletionResponse {
+            choice: self.choice,
+            raw_response: self.response,
         }
     }
 }
