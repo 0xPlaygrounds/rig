@@ -9,8 +9,7 @@ struct Greetings {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Initialize the Google Gemini client
-    // Create OpenAI client
+    // Initialize the Aliyun client
     let client = aliyun::Client::from_env();
 
     let embeddings = client
