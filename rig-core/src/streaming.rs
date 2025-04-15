@@ -91,21 +91,19 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
             Poll::Ready(None) => {
                 // This is run at the end of the inner stream to collect all tokens into
                 // a single unified `Message`.
-                let mut content = vec![];
+                let mut choice = vec![];
 
                 stream.tool_calls.iter().for_each(|tc| {
-                    content.push(AssistantContent::ToolCall(tc.clone()));
+                    choice.push(AssistantContent::ToolCall(tc.clone()));
                 });
 
                 // This is required to ensure there's always at least one item in the content
-                if content.is_empty() || !stream.text.is_empty() {
-                    content.insert(0, AssistantContent::text(stream.text.clone()));
+                if choice.is_empty() || !stream.text.is_empty() {
+                    choice.insert(0, AssistantContent::text(stream.text.clone()));
                 }
 
-                stream.message = Message::Assistant {
-                    content: OneOrMany::many(content)
-                        .expect("There should be at least one assistant message"),
-                };
+                stream.choice = OneOrMany::many(choice)
+                        .expect("There should be at least one assistant message");
 
                 Poll::Ready(None)
             }
