@@ -8622,7 +8622,7 @@ checksum = "57397d16646700483b67d2dd6511d79318f9d057fdbd21a4066aeac8b41d310a"
 
 [[package]]
 name = "rig-bedrock"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -8631,35 +8631,15 @@ dependencies = [
  "aws-smithy-types",
  "base64 0.22.1",
  "reqwest 0.12.15",
- "rig-core 0.11.0",
+ "rig-core 0.11.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rig-derive",
+ "ring 0.17.14",
  "schemars",
  "serde",
  "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "rig-core"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff893305131b471009ab11df388612beb603ed94bb12412c256fe197b7591aa6"
-dependencies = [
- "async-stream",
- "base64 0.22.1",
- "bytes",
- "futures",
- "glob",
- "mime_guess",
- "ordered-float",
- "reqwest 0.12.15",
- "schemars",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tracing",
 ]
 
 [[package]]
@@ -8693,6 +8673,27 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "worker",
+]
+
+[[package]]
+name = "rig-core"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb610bd7e61825e79ca79b7efcad93206256147e27cbf707dffd80b7622b5ca7"
+dependencies = [
+ "async-stream",
+ "base64 0.22.1",
+ "bytes",
+ "futures",
+ "glob",
+ "mime_guess",
+ "ordered-float",
+ "reqwest 0.12.15",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]
