@@ -8631,7 +8631,7 @@ dependencies = [
  "aws-smithy-types",
  "base64 0.22.1",
  "reqwest 0.12.15",
- "rig-core 0.11.0",
+ "rig-core",
  "rig-derive",
  "schemars",
  "serde",
@@ -8639,27 +8639,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "rig-core"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff893305131b471009ab11df388612beb603ed94bb12412c256fe197b7591aa6"
-dependencies = [
- "async-stream",
- "base64 0.22.1",
- "bytes",
- "futures",
- "glob",
- "mime_guess",
- "ordered-float",
- "reqwest 0.12.15",
- "schemars",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tracing",
 ]
 
 [[package]]
@@ -8703,7 +8682,7 @@ dependencies = [
  "indoc",
  "proc-macro2",
  "quote",
- "rig-core 0.11.1",
+ "rig-core",
  "serde",
  "serde_json",
  "syn 2.0.100",
@@ -8718,7 +8697,7 @@ dependencies = [
  "anyhow",
  "ethers",
  "reqwest 0.12.15",
- "rig-core 0.11.1",
+ "rig-core",
  "schemars",
  "serde",
  "serde_json",
@@ -8733,7 +8712,7 @@ version = "0.1.5"
 dependencies = [
  "anyhow",
  "fastembed",
- "rig-core 0.11.1",
+ "rig-core",
  "schemars",
  "serde",
  "serde_json",
@@ -8751,7 +8730,7 @@ dependencies = [
  "futures",
  "httpmock",
  "lancedb",
- "rig-core 0.11.1",
+ "rig-core",
  "serde",
  "serde_json",
  "tokio",
@@ -8765,7 +8744,7 @@ dependencies = [
  "futures",
  "httpmock",
  "mongodb",
- "rig-core 0.11.1",
+ "rig-core",
  "serde",
  "serde_json",
  "testcontainers",
@@ -8782,7 +8761,7 @@ dependencies = [
  "futures",
  "httpmock",
  "neo4rs",
- "rig-core 0.11.1",
+ "rig-core",
  "serde",
  "serde_json",
  "term_size",
@@ -8802,7 +8781,7 @@ dependencies = [
  "httpmock",
  "log",
  "pgvector",
- "rig-core 0.11.1",
+ "rig-core",
  "serde",
  "serde_json",
  "sqlx",
@@ -8821,7 +8800,7 @@ dependencies = [
  "anyhow",
  "httpmock",
  "qdrant-client",
- "rig-core 0.11.1",
+ "rig-core",
  "serde",
  "serde_json",
  "testcontainers",
@@ -8836,7 +8815,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "httpmock",
- "rig-core 0.11.1",
+ "rig-core",
  "rusqlite",
  "serde",
  "serde_json",
@@ -8853,7 +8832,7 @@ name = "rig-surrealdb"
 version = "0.1.4"
 dependencies = [
  "anyhow",
- "rig-core 0.11.1",
+ "rig-core",
  "serde",
  "serde_json",
  "surrealdb",
