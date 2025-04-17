@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.2](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.11.1...rig-core-v0.11.2) - 2025-04-17
+
+### Other
+
+- Update agent_with_huggingface.rs ([#401](https://github.com/0xPlaygrounds/rig/pull/401))
+
 ## [0.11.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.11.0...rig-core-v0.11.1) - 2025-04-12
 
 ### Added
