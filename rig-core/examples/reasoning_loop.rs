@@ -1,10 +1,68 @@
 use rig::{
-    completion::{Prompt, ToolDefinition},
+    agent::Agent,
+    completion::{CompletionError, CompletionModel, Prompt, PromptError, ToolDefinition},
+    extractor::Extractor,
+    message::Message,
     providers::anthropic,
     tool::Tool,
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+const CHAIN_OF_THOUGHT_PROMPT: &str = "
+You are an assistant that extracts reasoning steps from a given prompt.
+Do not return text, only return a tool call.
+";
+
+#[derive(Deserialize, Serialize, Debug, Clone, JsonSchema)]
+struct ChainOfThoughtSteps {
+    steps: Vec<String>,
+}
+
+struct ReasoningAgent<M: CompletionModel> {
+    chain_of_thought_extractor: Extractor<M, ChainOfThoughtSteps>,
+    executor: Agent<M>,
+}
+
+impl<M: CompletionModel> Prompt for ReasoningAgent<M> {
+    #[allow(refining_impl_trait)]
+    async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
+        let prompt: Message = prompt.into();
+        let mut chat_history = vec![prompt.clone()];
+        let extracted = self
+            .chain_of_thought_extractor
+            .extract(prompt)
+            .await
+            .map_err(|e| {
+                tracing::error!("Extraction error: {:?}", e);
+                CompletionError::ProviderError("".into())
+            })?;
+
+        if extracted.steps.is_empty() {
+            return Ok("No reasoning steps provided.".into());
+        }
+
+        let mut reasoning_prompt = String::new();
+        for (i, step) in extracted.steps.iter().enumerate() {
+            reasoning_prompt.push_str(&format!("Step {}: {}\n", i + 1, step));
+        }
+
+        let response = self
+            .executor
+            .prompt(reasoning_prompt.as_str())
+            .with_history(&mut chat_history)
+            .multi_turn(20)
+            .await?;
+
+        tracing::info!(
+            "full chat history generated: {}",
+            serde_json::to_string_pretty(&chat_history).unwrap()
+        );
+
+        Ok(response)
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -14,40 +72,38 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     // Create OpenAI client
-    let openai_client = anthropic::Client::from_env();
+    let anthropic_client = anthropic::Client::from_env();
 
-    // Create RAG agent with a single context prompt and a dynamic tool source
-    let agent = openai_client
-        .agent(anthropic::CLAUDE_3_5_SONNET)
-        .preamble(
-            "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
-            Follow these instructions closely. 
-            1. Consider the user's request carefully and identify the core elements of the request.
-            2. Select which tool among those made available to you is appropriate given the context. 
-            3. This is very important: never perform the operation yourself. 
-            "
-        )
-        .tool(Add)
-        .tool(Subtract)
-        .tool(Multiply)
-        .tool(Divide)
-        .build();
+    let agent = ReasoningAgent {
+        chain_of_thought_extractor: anthropic_client
+            .extractor(anthropic::CLAUDE_3_5_SONNET)
+            .preamble(CHAIN_OF_THOUGHT_PROMPT)
+            .build(),
+
+        executor: anthropic_client
+            .agent(anthropic::CLAUDE_3_5_SONNET)
+            .preamble(
+                "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
+                Follow these instructions closely. 
+                1. Consider the user's request carefully and identify the core elements of the request.
+                2. Select which tool among those made available to you is appropriate given the context. 
+                3. This is very important: never perform the operation yourself.
+                4. When you think you've finished calling tools for the operation, present the final result from the series of tool calls you made.
+                "
+            )
+            .tool(Add)
+            .tool(Subtract)
+            .tool(Multiply)
+            .tool(Divide)
+            .build(),
+    };
 
     // Prompt the agent and print the response
     let result = agent
-        .prompt("Calculate 5 - 2 = ?. Describe the result to me.")
-        .multi_turn(20)
+        .prompt("Calculate ((15 + 25) * (100 - 50)) / (200 / (10 + 10))")
         .await?;
 
-    println!("\n\nOpenAI Calculator Agent: {}", result);
-
-    // Prompt the agent again and print the response
-    let result = agent
-        .prompt("Calculate (3 + 5) / 9  = ?. Describe the result to me.")
-        .multi_turn(20)
-        .await?;
-
-    println!("\n\nOpenAI Calculator Agent: {}", result);
+    println!("\n\nReasoning Agent Chat History: {}", result);
 
     Ok(())
 }

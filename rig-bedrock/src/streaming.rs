@@ -28,7 +28,7 @@ impl StreamingCompletionModel for CompletionModel {
             .model_id(self.model.as_str());
 
         let tool_config = request.tools_config()?;
-        let prompt_with_history = request.prompt_with_history()?;
+        let prompt_with_history = request.messages()?;
         converse_builder = converse_builder
             .set_additional_model_request_fields(request.additional_params())
             .set_inference_config(request.inference_config())

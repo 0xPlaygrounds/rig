@@ -553,26 +553,20 @@ impl completion::CompletionModel for CompletionModel {
             ));
         };
 
-        let prompt_message: Message = completion_request
-            .prompt_with_context()
-            .try_into()
-            .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?;
+        let mut full_history = vec![];
+        if let Some(docs) = completion_request.normalized_documents() {
+            full_history.push(docs);
+        }
+        full_history.extend(completion_request.chat_history);
 
-        let mut messages = completion_request
-            .chat_history
+        let full_history = full_history
             .into_iter()
-            .map(|message| {
-                message
-                    .try_into()
-                    .map_err(|e: MessageError| CompletionError::RequestError(e.into()))
-            })
+            .map(Message::try_from)
             .collect::<Result<Vec<Message>, _>>()?;
-
-        messages.push(prompt_message);
 
         let mut request = json!({
             "model": self.model,
-            "messages": messages,
+            "messages": full_history,
             "max_tokens": max_tokens,
             "system": completion_request.preamble.unwrap_or("".to_string()),
         });
