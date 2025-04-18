@@ -6,6 +6,7 @@ use rig_bedrock::{
 use tracing::info;
 
 mod common;
+use common::adder_tool::Adder;
 
 /// Runs 4 agents based on AWS Bedrock (derived from the agent_with_grok example)
 #[tokio::main]
@@ -59,7 +60,7 @@ async fn tools() -> Result<(), anyhow::Error> {
         .await
         .preamble("You must only do math by using a tool.")
         .max_tokens(1024)
-        .tool(common::Adder)
+        .tool(Adder)
         .build();
 
     info!(
