@@ -12,6 +12,7 @@
 pub mod client;
 pub mod completion;
 pub mod embeddings;
+pub mod streaming;
 
 pub use client::Client;
 pub use client::{ApiErrorResponse, ApiResponse};
@@ -23,7 +24,7 @@ pub use embeddings::EmbeddingModel;
 // ================================================================
 
 /// `command-r-plus` completion model
-pub const COMMAND_R_PLUS: &str = "comman-r-plus";
+pub const COMMAND_R_PLUS: &str = "command-r-plus";
 /// `command-r` completion model
 pub const COMMAND_R: &str = "command-r";
 /// `command` completion model

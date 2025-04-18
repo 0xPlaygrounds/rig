@@ -91,8 +91,8 @@ impl Tool for Subtract {
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     // Create agent with a single context prompt and two tools
-    let calculator_agent = providers::anthropic::Client::from_env()
-        .agent(providers::anthropic::CLAUDE_3_5_SONNET)
+    let calculator_agent = providers::openrouter::Client::from_env()
+        .agent(providers::openrouter::GEMINI_FLASH_2_0)
         .preamble(
             "You are a calculator here to help the user perform arithmetic 
             operations. Use the tools provided to answer the user's question. 
@@ -109,7 +109,7 @@ async fn main() -> Result<(), anyhow::Error> {
     stream_to_stdout(calculator_agent, &mut stream).await?;
 
     if let Some(response) = stream.response {
-        println!("Usage: {:?} tokens", response.usage.output_tokens);
+        println!("Usage: {:?}", response.usage)
     };
 
     println!("Message: {:?}", stream.choice);
