@@ -55,6 +55,11 @@ impl<M: CompletionModel> Prompt for ReasoningAgent<M> {
             .multi_turn(20)
             .await?;
 
+        tracing::info!(
+            "full chat history generated: {}",
+            serde_json::to_string_pretty(&chat_history).unwrap()
+        );
+
         Ok(response)
     }
 }
@@ -67,22 +72,22 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     // Create OpenAI client
-    let openai_client = anthropic::Client::from_env();
+    let anthropic_client = anthropic::Client::from_env();
 
     let agent = ReasoningAgent {
-        chain_of_thought_extractor: openai_client
+        chain_of_thought_extractor: anthropic_client
             .extractor(anthropic::CLAUDE_3_5_SONNET)
             .preamble(CHAIN_OF_THOUGHT_PROMPT)
             .build(),
 
-        executor: openai_client
+        executor: anthropic_client
             .agent(anthropic::CLAUDE_3_5_SONNET)
             .preamble(
                 "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
                 Follow these instructions closely. 
                 1. Consider the user's request carefully and identify the core elements of the request.
                 2. Select which tool among those made available to you is appropriate given the context. 
-                3. This is very important: never perform the operation yourself. 
+                3. This is very important: never perform the operation yourself.
                 4. When you think you've finished calling tools for the operation, present the final result from the series of tool calls you made.
                 "
             )
@@ -95,10 +100,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Prompt the agent and print the response
     let result = agent
-        .prompt("Calculate x for the equation: `20x + 23 = 400x / (1 - x)`")
+        .prompt("Calculate ((15 + 25) * (100 - 50)) / (200 / (10 + 10))")
         .await?;
 
-    println!("\n\nReasoning Agent: {}", result);
+    println!("\n\nReasoning Agent Chat History: {}", result);
 
     Ok(())
 }

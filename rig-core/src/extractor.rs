@@ -36,10 +36,12 @@ use serde_json::json;
 
 use crate::{
     agent::{Agent, AgentBuilder},
-    completion::{CompletionModel, Prompt, PromptError, ToolDefinition},
-    message::Message,
+    completion::{Completion, CompletionError, CompletionModel, ToolDefinition},
+    message::{AssistantContent, Message, ToolCall, ToolFunction},
     tool::Tool,
 };
+
+const SUBMIT_TOOL_NAME: &str = "submit";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExtractionError {
@@ -49,8 +51,8 @@ pub enum ExtractionError {
     #[error("Failed to deserialize the extracted data: {0}")]
     DeserializationError(#[from] serde_json::Error),
 
-    #[error("PromptError: {0}")]
-    PromptError(#[from] PromptError),
+    #[error("CompletionError: {0}")]
+    CompletionError(#[from] CompletionError),
 }
 
 /// Extractor for structured data from text
@@ -64,13 +66,42 @@ where
     M: Sync,
 {
     pub async fn extract(&self, text: impl Into<Message> + Send) -> Result<T, ExtractionError> {
-        let summary = self.agent.prompt(text).await?;
+        let response = self.agent.completion(text, vec![]).await?.send().await?;
 
-        if summary.is_empty() {
-            return Err(ExtractionError::NoData);
+        let arguments = response
+            .choice
+            .into_iter()
+            // We filter tool calls to look for submit tool calls
+            .filter_map(|content| {
+                if let AssistantContent::ToolCall(ToolCall {
+                    function: ToolFunction { arguments, name },
+                    ..
+                }) = content
+                {
+                    if name == SUBMIT_TOOL_NAME {
+                        Some(arguments)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        if arguments.len() > 1 {
+            tracing::warn!(
+                "Multiple submit calls detected, using the last one. Providers / agents should only ensure one submit call."
+            );
         }
 
-        Ok(serde_json::from_str(&summary)?)
+        let raw_data = if let Some(arg) = arguments.into_iter().next() {
+            arg
+        } else {
+            return Err(ExtractionError::NoData);
+        };
+
+        Ok(serde_json::from_value(raw_data)?)
     }
 }
 
@@ -133,7 +164,7 @@ struct SubmitTool<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync> {
 struct SubmitError;
 
 impl<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync> Tool for SubmitTool<T> {
-    const NAME: &'static str = "submit";
+    const NAME: &'static str = SUBMIT_TOOL_NAME;
     type Error = SubmitError;
     type Args = T;
     type Output = T;

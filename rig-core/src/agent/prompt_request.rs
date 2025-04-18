@@ -1,7 +1,4 @@
-use std::{
-    future::{Future, IntoFuture},
-    marker::PhantomData,
-};
+use std::future::IntoFuture;
 
 use futures::{future::BoxFuture, stream, FutureExt, StreamExt};
 
@@ -14,67 +11,50 @@ use crate::{
 
 use super::Agent;
 
-pub trait State {}
-pub struct Simple;
-pub struct MultiTurn;
-
-impl State for Simple {}
-impl State for MultiTurn {}
-
-pub trait SendPromptRequest<M: CompletionModel, T: State> {
-    fn send(self) -> impl Future<Output = Result<String, PromptError>> + Send;
-}
-
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
-pub struct PromptRequest<'c, 'a, M: CompletionModel, T: State> {
+pub struct PromptRequest<'a, M: CompletionModel> {
     /// The prompt message to send to the model
     prompt: Message,
     /// Optional chat history to include with the prompt
     /// Note: chat history needs to outlive the agent as it might be used with other agents
-    chat_history: Option<&'c mut Vec<Message>>,
+    chat_history: Option<&'a mut Vec<Message>>,
     /// Maximum depth for multi-turn conversations (0 means no multi-turn)
     max_depth: usize,
     /// The agent to use for execution
     agent: &'a Agent<M>,
-
-    /// Typestate
-    _state: PhantomData<T>,
 }
 
-impl<'c: 'a, 'a, M: CompletionModel> PromptRequest<'c, 'a, M, Simple> {
+impl<'a, M: CompletionModel> PromptRequest<'a, M> {
     /// Create a new PromptRequest with the given prompt and model
-    pub fn new(agent: &'c Agent<M>, prompt: impl Into<Message>) -> Self {
+    pub fn new(agent: &'a Agent<M>, prompt: impl Into<Message>) -> Self {
         Self {
             prompt: prompt.into(),
             chat_history: None,
             max_depth: 0,
             agent,
-            _state: PhantomData,
         }
     }
 }
 
-impl<'c, 'a, M: CompletionModel> PromptRequest<'c, 'a, M, Simple> {
+impl<'a, M: CompletionModel> PromptRequest<'a, M> {
     /// Set the maximum depth for multi-turn conversations
-    pub fn multi_turn(self, depth: usize) -> PromptRequest<'c, 'a, M, MultiTurn> {
+    pub fn multi_turn(self, depth: usize) -> PromptRequest<'a, M> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
             max_depth: depth,
             agent: self.agent,
-            _state: PhantomData,
         }
     }
 
     /// Add chat history to the prompt request
-    pub fn with_history(self, history: &'c mut Vec<Message>) -> PromptRequest<'c, 'a, M, Simple> {
+    pub fn with_history(self, history: &'a mut Vec<Message>) -> PromptRequest<'a, M> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: Some(history),
             max_depth: self.max_depth,
             agent: self.agent,
-            _state: PhantomData,
         }
     }
 }
@@ -82,19 +62,16 @@ impl<'c, 'a, M: CompletionModel> PromptRequest<'c, 'a, M, Simple> {
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
 ///  for the `IntoFuture` implementation. In the future, we should be able to use `impl Future<...>`
 ///  directly via the associated type.
-impl<'c: 'a, 'a, M: CompletionModel, T: State + 'a> IntoFuture for PromptRequest<'c, 'a, M, T>
-where
-    PromptRequest<'c, 'a, M, T>: SendPromptRequest<M, T>,
-{
+impl<'a, M: CompletionModel> IntoFuture for PromptRequest<'a, M> {
     type Output = Result<String, PromptError>;
-    type IntoFuture = BoxFuture<'a, Self::Output>;
+    type IntoFuture = BoxFuture<'a, Self::Output>; // This future should not outlive the agent
 
     fn into_future(self) -> Self::IntoFuture {
         self.send().boxed()
     }
 }
 
-impl<M: CompletionModel, T: State> SendPromptRequest<M, T> for PromptRequest<'_, '_, M, MultiTurn> {
+impl<M: CompletionModel> PromptRequest<'_, M> {
     async fn send(self) -> Result<String, PromptError> {
         let agent = self.agent;
         let mut prompt = self.prompt;
@@ -192,40 +169,5 @@ impl<M: CompletionModel, T: State> SendPromptRequest<M, T> for PromptRequest<'_,
             chat_history: chat_history.clone(),
             prompt,
         })
-    }
-}
-
-impl<M: CompletionModel, T: State> SendPromptRequest<M, T> for PromptRequest<'_, '_, M, Simple> {
-    async fn send(self) -> Result<String, PromptError> {
-        let chat_history = if let Some(history) = self.chat_history {
-            history.clone()
-        } else {
-            Vec::new()
-        };
-
-        let resp = self
-            .agent
-            .completion(self.prompt, chat_history)
-            .await?
-            .send()
-            .await?;
-
-        tracing::debug!(?resp.choice);
-
-        if resp.choice.len() > 1 {
-            tracing::warn!("Parallel tool calls are only available when using multi turn. Use `agent.prompt(...).multi_turn(depth).await`!");
-        }
-
-        match resp.choice.first() {
-            AssistantContent::Text(text) => Ok(text.text.clone()),
-            AssistantContent::ToolCall(tool_call) => Ok(self
-                .agent
-                .tools
-                .call(
-                    &tool_call.function.name,
-                    tool_call.function.arguments.to_string(),
-                )
-                .await?),
-        }
     }
 }

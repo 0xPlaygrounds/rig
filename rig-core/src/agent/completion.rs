@@ -15,7 +15,6 @@ use crate::{
     vector_store::VectorStoreError,
 };
 
-use super::prompt_request;
 use super::prompt_request::PromptRequest;
 
 /// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
@@ -187,20 +186,14 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 
 #[allow(refining_impl_trait)]
 impl<M: CompletionModel> Prompt for Agent<M> {
-    fn prompt(
-        &self,
-        prompt: impl Into<Message> + Send,
-    ) -> PromptRequest<M, prompt_request::Simple> {
+    fn prompt(&self, prompt: impl Into<Message> + Send) -> PromptRequest<M> {
         PromptRequest::new(self, prompt)
     }
 }
 
 #[allow(refining_impl_trait)]
 impl<M: CompletionModel> Prompt for &Agent<M> {
-    fn prompt(
-        &self,
-        prompt: impl Into<Message> + Send,
-    ) -> PromptRequest<M, prompt_request::Simple> {
+    fn prompt(&self, prompt: impl Into<Message> + Send) -> PromptRequest<M> {
         PromptRequest::new(*self, prompt)
     }
 }
