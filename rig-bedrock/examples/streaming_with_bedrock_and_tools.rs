@@ -1,6 +1,7 @@
 use rig::streaming::{stream_to_stdout, StreamingPrompt};
 use rig_bedrock::{client::ClientBuilder, completion::AMAZON_NOVA_LITE};
 mod common;
+use common::adder_tool::Adder;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -17,7 +18,7 @@ async fn main() -> Result<(), anyhow::Error> {
             like 20 words",
         )
         .max_tokens(1024)
-        .tool(common::Adder)
+        .tool(Adder)
         .build();
 
     println!("Calculate 2 + 5");
