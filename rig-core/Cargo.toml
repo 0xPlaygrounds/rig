@@ -127,3 +127,8 @@ required-features = ["audio"]
 [[example]]
 name = "hyperbolic_audio_generation"
 required-features = ["audio"]
+
+
+[[example]]
+name = "aliyun_embeddings"
+required-features = ["derive"]
