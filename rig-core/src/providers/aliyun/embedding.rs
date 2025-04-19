@@ -1,7 +1,7 @@
 // ================================================================
 //! Aliyun Embedding API Integration
 //! Implementation of Aliyun embedding models for text vectorization
-//! From https://help.aliyun.com/zh/model-studio/developer-reference/text-embedding-synchronous-api?spm=a2c4g.11186623.help-menu-2400256.d_2_5_0.58654308woEHy7&scm=20140722.H_2712515._.OR_help-T_cn~zh-V_1#4c08e887c12ru
+//! From https://help.aliyun.com/zh/model-studio/developer-reference/text-embedding-synchronous-api
 // ================================================================
 
 use serde_json::json;
@@ -74,6 +74,8 @@ impl EmbeddingModel {
     /// * `Ok(())` if validation passes
     /// * `Err(EmbeddingError)` with appropriate error message if validation fails
     fn validate_documents(&self, documents: &[String]) -> Result<(), EmbeddingError> {
+        const AVG_CHARS_PER_TOKEN: usize = 4;
+
         if documents.len() > self.max_documents() {
             return Err(EmbeddingError::ProviderError(format!(
                 "Model {} supports maximum {} documents",
@@ -83,7 +85,7 @@ impl EmbeddingModel {
         }
 
         for (i, doc) in documents.iter().enumerate() {
-            let estimated_tokens = doc.len() / 4; // Rough estimate: average 4 characters per token
+            let estimated_tokens = doc.len() / AVG_CHARS_PER_TOKEN;
             if estimated_tokens > self.max_tokens() {
                 return Err(EmbeddingError::ProviderError(format!(
                     "Document #{} exceeds maximum token limit of {}",
@@ -142,7 +144,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             "encoding_format": "float",
         });
 
-        println!("{}", serde_json::to_string_pretty(&request).unwrap());
+        tracing::info!("{}", serde_json::to_string_pretty(&request).unwrap());
 
         let response = self
             .client
