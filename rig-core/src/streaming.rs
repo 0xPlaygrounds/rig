@@ -79,10 +79,18 @@ pub trait StreamingCompletion<M: StreamingCompletionModel> {
 /// Trait defining a streaming completion model
 pub trait StreamingCompletionModel: CompletionModel {
     /// Stream a completion response for the given request
+    #[cfg(not(target_arch = "wasm32"))]
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl Future<Output = Result<StreamingResult, CompletionError>>;
+    ) -> impl Future<Output = Result<StreamingResult, CompletionError>> + Send;
+
+    /// Stream a completion response for the given request
+    #[cfg(target_arch = "wasm32")]
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> impl Future<Output = Result<StreamingResult, CompletionError>> + Send;
 }
 
 /// helper function to stream a completion request to stdout
