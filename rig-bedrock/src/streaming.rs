@@ -5,7 +5,7 @@ use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig::streaming::StreamingCompletionResponse;
 use rig::{
     completion::CompletionError,
-    streaming::{RawStreamingChoice, StreamingCompletionModel, StreamingResult},
+    streaming::{RawStreamingChoice, StreamingCompletionModel},
 };
 
 #[derive(Default)]
