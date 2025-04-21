@@ -8622,7 +8622,7 @@ checksum = "57397d16646700483b67d2dd6511d79318f9d057fdbd21a4066aeac8b41d310a"
 
 [[package]]
 name = "rig-bedrock"
-version = "0.1.2"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-stream",
