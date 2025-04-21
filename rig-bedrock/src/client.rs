@@ -52,6 +52,12 @@ pub struct Client {
     pub(crate) aws_client: aws_sdk_bedrockruntime::Client,
 }
 
+impl From<aws_sdk_bedrockruntime::Client> for Client {
+    fn from(aws_client: aws_sdk_bedrockruntime::Client) -> Self {
+        Client { aws_client }
+    }
+}
+
 impl Client {
     pub fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)

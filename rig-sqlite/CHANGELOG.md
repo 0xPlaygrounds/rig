@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.1.8...rig-sqlite-v0.1.9) - 2025-04-12
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.1.8](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.1.7...rig-sqlite-v0.1.8) - 2025-03-31
 
 ### Other
