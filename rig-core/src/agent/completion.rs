@@ -8,7 +8,8 @@ use crate::{
         Message, Prompt, PromptError,
     },
     streaming::{
-        StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingCompletionResponse, StreamingPrompt
+        StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingCompletionResponse,
+        StreamingPrompt,
     },
     tool::ToolSet,
     vector_store::VectorStoreError,
@@ -224,7 +225,10 @@ impl<M: StreamingCompletionModel> StreamingCompletion<M> for Agent<M> {
 }
 
 impl<M: StreamingCompletionModel> StreamingPrompt<M::StreamingResponse> for Agent<M> {
-    async fn stream_prompt(&self, prompt: &str) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError> {
+    async fn stream_prompt(
+        &self,
+        prompt: &str,
+    ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError> {
         self.stream_chat(prompt, vec![]).await
     }
 }

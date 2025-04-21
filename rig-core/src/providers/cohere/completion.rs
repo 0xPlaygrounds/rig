@@ -436,7 +436,6 @@ impl CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<Value, CompletionError> {
-
         // Build up the order of messages (context, chat_history)
         let mut partial_history = vec![];
         if let Some(docs) = completion_request.normalized_documents() {
