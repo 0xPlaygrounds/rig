@@ -148,7 +148,10 @@ impl CompletionModel {
             Some(preamble) => vec![openai::Message::system(preamble)],
             None => vec![],
         };
-        let prompt: Vec<openai::Message> = completion_request.prompt_with_context().try_into()?;
+        if let Some(docs) = completion_request.normalized_documents() {
+            let docs: Vec<openai::Message> = docs.try_into()?;
+            full_history.extend(docs);
+        }
         let chat_history: Vec<openai::Message> = completion_request
             .chat_history
             .into_iter()
@@ -157,8 +160,9 @@ impl CompletionModel {
             .into_iter()
             .flatten()
             .collect();
+
         full_history.extend(chat_history);
-        full_history.extend(prompt);
+
         let mut request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,

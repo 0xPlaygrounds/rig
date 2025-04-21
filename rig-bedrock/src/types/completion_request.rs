@@ -6,6 +6,8 @@ use aws_sdk_bedrockruntime::types::{
     ToolSpecification,
 };
 use rig::completion::{CompletionError, Message};
+use rig::message::{ContentFormat, DocumentMediaType, UserContent};
+use rig::OneOrMany;
 
 pub struct AwsCompletionRequest(pub rig::completion::CompletionRequest);
 
@@ -69,13 +71,30 @@ impl AwsCompletionRequest {
             .map(|system_prompt| vec![SystemContentBlock::Text(system_prompt)])
     }
 
-    pub fn prompt_with_history(&self) -> Result<Vec<aws_bedrock::Message>, CompletionError> {
-        let mut chat_history = self.0.chat_history.to_owned();
-        let prompt_with_context = self.0.prompt_with_context();
-
+    pub fn messages(&self) -> Result<Vec<aws_bedrock::Message>, CompletionError> {
         let mut full_history: Vec<Message> = Vec::new();
-        full_history.append(&mut chat_history);
-        full_history.push(prompt_with_context);
+
+        if !self.0.documents.is_empty() {
+            let messages = self
+                .0
+                .documents
+                .iter()
+                .map(|doc| doc.to_string())
+                .collect::<Vec<_>>()
+                .join(" | ");
+
+            let content = OneOrMany::one(UserContent::document(
+                messages,
+                Some(ContentFormat::String),
+                Some(DocumentMediaType::TXT),
+            ));
+
+            full_history.push(Message::User { content });
+        }
+
+        self.0.chat_history.iter().for_each(|message| {
+            full_history.push(message.clone());
+        });
 
         full_history
             .into_iter()

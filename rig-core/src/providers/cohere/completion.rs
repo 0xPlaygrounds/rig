@@ -436,29 +436,35 @@ impl CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<Value, CompletionError> {
-        let prompt = completion_request.prompt_with_context();
 
-        let mut messages: Vec<message::Message> =
-            if let Some(preamble) = completion_request.preamble {
-                vec![preamble.into()]
-            } else {
-                vec![]
-            };
+        // Build up the order of messages (context, chat_history)
+        let mut partial_history = vec![];
+        if let Some(docs) = completion_request.normalized_documents() {
+            partial_history.push(docs);
+        }
+        partial_history.extend(completion_request.chat_history);
 
-        messages.extend(completion_request.chat_history);
-        messages.push(prompt);
+        // Initialize full history with preamble (or empty if non-existent)
+        let mut full_history: Vec<Message> = completion_request
+            .preamble
+            .map_or_else(Vec::new, |preamble| {
+                vec![Message::System { content: preamble }]
+            });
 
-        let messages: Vec<Message> = messages
-            .into_iter()
-            .map(|msg| msg.try_into())
-            .collect::<Result<Vec<Vec<_>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
+        // Convert and extend the rest of the history
+        full_history.extend(
+            partial_history
+                .into_iter()
+                .map(message::Message::try_into)
+                .collect::<Result<Vec<Vec<Message>>, _>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>(),
+        );
 
         let request = json!({
             "model": self.model,
-            "messages": messages,
+            "messages": full_history,
             "documents": completion_request.documents,
             "temperature": completion_request.temperature,
             "tools": completion_request.tools.into_iter().map(Tool::from).collect::<Vec<_>>(),

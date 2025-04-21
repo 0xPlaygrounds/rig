@@ -480,16 +480,14 @@ impl CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<serde_json::Value, CompletionError> {
-        // Add preamble to chat history (if available)
         let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
             Some(preamble) => vec![openai::Message::system(preamble)],
             None => vec![],
         };
-
-        // Convert prompt to user message
-        let prompt: Vec<openai::Message> = completion_request.prompt_with_context().try_into()?;
-
-        // Convert existing chat history
+        if let Some(docs) = completion_request.normalized_documents() {
+            let docs: Vec<openai::Message> = docs.try_into()?;
+            full_history.extend(docs);
+        }
         let chat_history: Vec<openai::Message> = completion_request
             .chat_history
             .into_iter()
@@ -499,9 +497,7 @@ impl CompletionModel {
             .flatten()
             .collect();
 
-        // Combine all messages into a single history
         full_history.extend(chat_history);
-        full_history.extend(prompt);
 
         let request = if completion_request.tools.is_empty() {
             json!({
@@ -793,6 +789,7 @@ mod azure_tests {
 
     use crate::completion::CompletionModel;
     use crate::embeddings::EmbeddingModel;
+    use crate::OneOrMany;
 
     #[tokio::test]
     #[ignore]
@@ -819,8 +816,7 @@ mod azure_tests {
         let completion = model
             .completion(CompletionRequest {
                 preamble: Some("You are a helpful assistant.".to_string()),
-                chat_history: vec![],
-                prompt: "Hello, world!".into(),
+                chat_history: OneOrMany::one("Hello!".into()),
                 documents: vec![],
                 max_tokens: Some(100),
                 temperature: Some(0.0),
