@@ -93,11 +93,10 @@ impl completion::CompletionModel for CompletionModel {
 }
 
 pub(crate) fn create_request_body(
-    mut completion_request: CompletionRequest,
+    completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, CompletionError> {
     let mut full_history = Vec::new();
-    full_history.append(&mut completion_request.chat_history);
-    full_history.push(completion_request.prompt_with_context());
+    full_history.extend(completion_request.chat_history);
 
     let additional_params = completion_request
         .additional_params

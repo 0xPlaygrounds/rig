@@ -229,6 +229,16 @@ impl Message {
             content: OneOrMany::one(AssistantContent::text(text)),
         }
     }
+
+    // Helper constructor to make creating tool result messages easier.
+    pub fn tool_result(id: impl Into<String>, content: impl Into<String>) -> Self {
+        Message::User {
+            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+                id: id.into(),
+                content: OneOrMany::one(ToolResultContent::text(content)),
+            })),
+        }
+    }
 }
 
 impl UserContent {
@@ -467,6 +477,12 @@ impl From<String> for Text {
     }
 }
 
+impl From<&String> for Text {
+    fn from(text: &String) -> Self {
+        text.to_owned().into()
+    }
+}
+
 impl From<&str> for Text {
     fn from(text: &str) -> Self {
         text.to_owned().into()
@@ -491,6 +507,14 @@ impl From<String> for Message {
 
 impl From<&str> for Message {
     fn from(text: &str) -> Self {
+        Message::User {
+            content: OneOrMany::one(UserContent::Text(text.into())),
+        }
+    }
+}
+
+impl From<&String> for Message {
+    fn from(text: &String) -> Self {
         Message::User {
             content: OneOrMany::one(UserContent::Text(text.into())),
         }
