@@ -67,7 +67,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 
         let request_body = json!({ "requests": requests  });
 
-        tracing::debug!(%request_body, "batch embed contents request");
+        tracing::debug!("{}", serde_json::to_string_pretty(&request_body).unwrap());
 
         let response = self
             .client
