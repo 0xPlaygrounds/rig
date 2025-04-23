@@ -178,7 +178,7 @@ pub trait StreamingCompletionModel: CompletionModel {
     ) -> impl Future<
         Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
     > + Send;
-    
+
     #[cfg(target_arch = "wasm32")]
     fn stream(
         &self,
