@@ -158,7 +158,7 @@ pub mod xai_api_types {
                             .iter()
                             .map(|call| {
                                 completion::AssistantContent::tool_call(
-                                    &call.function.name,
+                                    &call.id,
                                     &call.function.name,
                                     call.function.arguments.clone(),
                                 )
