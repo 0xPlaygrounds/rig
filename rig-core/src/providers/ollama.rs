@@ -488,7 +488,11 @@ impl StreamingCompletionModel for CompletionModel {
                             for tool_call in tool_calls.iter() {
                                 let function = tool_call.function.clone();
 
-                                yield Ok(RawStreamingChoice::ToolCall(function.name, "".to_string(), function.arguments));
+                                yield Ok(RawStreamingChoice::ToolCall {
+                                    id: "".to_string(),
+                                    name: function.name,
+                                    arguments: function.arguments
+                                });
                             }
                         }
                         _ => {

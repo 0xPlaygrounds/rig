@@ -249,11 +249,11 @@ fn handle_event(
                     &tool_call.input_json
                 };
                 match serde_json::from_str(json_str) {
-                    Ok(json_value) => Some(Ok(RawStreamingChoice::ToolCall(
-                        tool_call.name,
-                        tool_call.id,
-                        json_value,
-                    ))),
+                    Ok(json_value) => Some(Ok(RawStreamingChoice::ToolCall {
+                        name: tool_call.name,
+                        id: tool_call.id,
+                        arguments: json_value,
+                    })),
                     Err(e) => Some(Err(CompletionError::from(e))),
                 }
             } else {

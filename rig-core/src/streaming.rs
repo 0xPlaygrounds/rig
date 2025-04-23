@@ -29,7 +29,11 @@ pub enum RawStreamingChoice<R: Clone> {
     Message(String),
 
     /// A tool call response chunk
-    ToolCall(String, String, serde_json::Value),
+    ToolCall {
+        id: String,
+        name: String,
+        arguments: serde_json::Value,
+    },
 
     /// The final response object, must be yielded if you want the
     /// `response` field to be populated on the `StreamingCompletionResponse`
@@ -115,17 +119,21 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                     stream.text = format!("{}{}", stream.text, text.clone());
                     Poll::Ready(Some(Ok(AssistantContent::text(text))))
                 }
-                RawStreamingChoice::ToolCall(id, name, args) => {
+                RawStreamingChoice::ToolCall {
+                    id,
+                    name,
+                    arguments,
+                } => {
                     // Keep track of each tool call to aggregate the final message later
                     // and pass it to the outer stream
                     stream.tool_calls.push(ToolCall {
                         id: id.clone(),
                         function: ToolFunction {
                             name: name.clone(),
-                            arguments: args.clone(),
+                            arguments: arguments.clone(),
                         },
                     });
-                    Poll::Ready(Some(Ok(AssistantContent::tool_call(id, name, args))))
+                    Poll::Ready(Some(Ok(AssistantContent::tool_call(id, name, arguments))))
                 }
                 RawStreamingChoice::FinalResponse(response) => {
                     // Set the final response field and return the next item in the stream

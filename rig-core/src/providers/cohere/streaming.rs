@@ -169,11 +169,11 @@ impl StreamingCompletionModel for CompletionModel {
 
                             let Ok(args) = serde_json::from_str(&tc.2) else { continue; };
 
-                            yield Ok(RawStreamingChoice::ToolCall(
-                                tc.0,
-                                tc.1,
-                                args
-                            ));
+                            yield Ok(RawStreamingChoice::ToolCall {
+                                id: tc.0,
+                                name: tc.1,
+                                arguments: args
+                            });
 
                             current_tool_call = None;
                         },

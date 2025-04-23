@@ -300,7 +300,11 @@ pub async fn send_streaming_request(
 
         for (_, tool_call) in tool_calls.into_iter() {
 
-            yield Ok(streaming::RawStreamingChoice::ToolCall(tool_call.function.name, tool_call.id, tool_call.function.arguments));
+            yield Ok(streaming::RawStreamingChoice::ToolCall{
+                name: tool_call.function.name,
+                id: tool_call.id,
+                arguments: tool_call.function.arguments
+            });
         }
 
         yield Ok(streaming::RawStreamingChoice::FinalResponse(FinalCompletionResponse {

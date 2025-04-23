@@ -186,7 +186,7 @@ pub async fn send_compatible_streaming_request(
                                     continue;
                                 };
 
-                                yield Ok(streaming::RawStreamingChoice::ToolCall(id, name, arguments))
+                                yield Ok(streaming::RawStreamingChoice::ToolCall {id, name, arguments})
                             }
                         }
                     }
@@ -210,7 +210,7 @@ pub async fn send_compatible_streaming_request(
 
             println!("{id} {name}");
 
-            yield Ok(RawStreamingChoice::ToolCall(id, name, arguments))
+            yield Ok(RawStreamingChoice::ToolCall {id, name, arguments});
         }
 
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
