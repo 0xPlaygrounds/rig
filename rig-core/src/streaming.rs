@@ -171,6 +171,15 @@ pub trait StreamingCompletion<M: StreamingCompletionModel> {
 pub trait StreamingCompletionModel: CompletionModel {
     type StreamingResponse: Clone + Unpin;
     /// Stream a completion response for the given request
+    #[cfg(not(target_arch = "wasm32"))]
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> impl Future<
+        Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
+    > + Send;
+    
+    #[cfg(target_arch = "wasm32")]
     fn stream(
         &self,
         request: CompletionRequest,
