@@ -12,7 +12,5 @@ members = [
     "rig-eternalai",
     "rig-fastembed",
     "rig-surrealdb",
-    "rig-eternalai",
-    "rig-fastembed",
     "rig-bedrock",
 ]
