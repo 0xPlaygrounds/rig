@@ -1,7 +1,7 @@
 // ================================================================
 //! Aliyun Embedding API Integration
 //! Implementation of Aliyun embedding models for text vectorization
-//! From https://help.aliyun.com/zh/model-studio/developer-reference/text-embedding-synchronous-api
+//! From <https://help.aliyun.com/zh/model-studio/developer-reference/text-embedding-synchronous-api>
 // ================================================================
 
 use serde_json::json;
