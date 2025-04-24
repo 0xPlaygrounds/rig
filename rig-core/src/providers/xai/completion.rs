@@ -1,6 +1,6 @@
 // ================================================================
 //! xAI Completion Integration
-//! From [xAI Reference](https://docs.x.ai/api/endpoints#chat-completions)
+//! From [xAI Reference](https://docs.x.ai/docs/api-reference#chat-completions)
 // ================================================================
 
 use crate::{
@@ -10,7 +10,6 @@ use crate::{
 };
 
 use super::client::{xai_api_types::ApiResponse, Client};
-use crate::completion::CompletionRequest;
 use serde_json::{json, Value};
 use xai_api_types::{CompletionResponse, ToolDefinition};
 
@@ -30,22 +29,13 @@ pub struct CompletionModel {
 impl CompletionModel {
     pub(crate) fn create_completion_request(
         &self,
-        completion_request: CompletionRequest,
+        completion_request: completion::CompletionRequest,
     ) -> Result<Value, CompletionError> {
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
-            Some(preamble) => {
-                if preamble.is_empty() {
-                    vec![]
-                } else {
-                    vec![Message::system(preamble)]
-                }
-            }
-            None => vec![],
-        };
-
-        // Convert prompt to user message
-        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
+        // Convert documents into user message
+        let docs: Option<Vec<Message>> = completion_request
+            .normalized_documents()
+            .map(|docs| docs.try_into())
+            .transpose()?;
 
         // Convert existing chat history
         let chat_history: Vec<Message> = completion_request
@@ -57,9 +47,19 @@ impl CompletionModel {
             .flatten()
             .collect();
 
-        // Combine all messages into a single history
+        // Init full history with preamble (or empty if non-existant)
+        let mut full_history: Vec<Message> = match &completion_request.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
+        };
+
+        // Docs appear right after preamble, if they exist
+        if let Some(docs) = docs {
+            full_history.extend(docs)
+        }
+
+        // Chat history and prompt appear in the order they were provided
         full_history.extend(chat_history);
-        full_history.extend(prompt);
 
         let mut request = if completion_request.tools.is_empty() {
             json!({
@@ -158,7 +158,7 @@ pub mod xai_api_types {
                             .iter()
                             .map(|call| {
                                 completion::AssistantContent::tool_call(
-                                    &call.function.name,
+                                    &call.id,
                                     &call.function.name,
                                     call.function.arguments.clone(),
                                 )

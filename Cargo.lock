@@ -1135,6 +1135,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-sdk-bedrockruntime"
+version = "1.77.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4198493316dab97e1fed7716f3823462b73a34c518f4ee7b9799921645e232e5"
+dependencies = [
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-eventstream",
+ "aws-smithy-http",
+ "aws-smithy-json",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand",
+ "http 0.2.12",
+ "once_cell",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
 name = "aws-sdk-dynamodb"
 version = "1.69.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1259,11 +1283,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-smithy-eventstream"
+version = "0.60.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c45d3dddac16c5c59d553ece225a88870cf81b7b813c9cc17b78cf4685eac7a"
+dependencies = [
+ "aws-smithy-types",
+ "bytes",
+ "crc32fast",
+]
+
+[[package]]
 name = "aws-smithy-http"
 version = "0.62.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5949124d11e538ca21142d1fba61ab0a2a2c1bc3ed323cdb3e4b878bfb83166"
 dependencies = [
+ "aws-smithy-eventstream",
  "aws-smithy-runtime-api",
  "aws-smithy-types",
  "bytes",
@@ -8585,8 +8621,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57397d16646700483b67d2dd6511d79318f9d057fdbd21a4066aeac8b41d310a"
 
 [[package]]
+name = "rig-bedrock"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "aws-config",
+ "aws-sdk-bedrockruntime",
+ "aws-smithy-types",
+ "base64 0.22.1",
+ "reqwest 0.12.15",
+ "rig-core",
+ "rig-derive",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rig-core"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "anyhow",
  "assert_fs",
@@ -8620,17 +8677,23 @@ dependencies = [
 
 [[package]]
 name = "rig-derive"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
+ "convert_case 0.6.0",
  "indoc",
  "proc-macro2",
  "quote",
+ "rig-core",
+ "serde",
+ "serde_json",
  "syn 2.0.100",
+ "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]
 name = "rig-eternalai"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "ethers",
@@ -8646,7 +8709,7 @@ dependencies = [
 
 [[package]]
 name = "rig-fastembed"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "fastembed",
@@ -8660,7 +8723,7 @@ dependencies = [
 
 [[package]]
 name = "rig-lancedb"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -8676,7 +8739,7 @@ dependencies = [
 
 [[package]]
 name = "rig-mongodb"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "anyhow",
  "futures",
@@ -8693,7 +8756,7 @@ dependencies = [
 
 [[package]]
 name = "rig-neo4j"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "anyhow",
  "futures",
@@ -8712,7 +8775,7 @@ dependencies = [
 
 [[package]]
 name = "rig-postgres"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "dotenvy",
@@ -8733,7 +8796,7 @@ dependencies = [
 
 [[package]]
 name = "rig-qdrant"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "httpmock",
@@ -8748,7 +8811,7 @@ dependencies = [
 
 [[package]]
 name = "rig-sqlite"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -8767,7 +8830,7 @@ dependencies = [
 
 [[package]]
 name = "rig-surrealdb"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "rig-core",

@@ -452,7 +452,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         .iter()
                         .map(|call| {
                             completion::AssistantContent::tool_call(
-                                &call.function.name,
+                                &call.id,
                                 &call.function.name,
                                 call.function.arguments.clone(),
                             )
@@ -502,8 +502,10 @@ impl CompletionModel {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
         };
-
-        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
+        if let Some(docs) = completion_request.normalized_documents() {
+            let docs: Vec<Message> = docs.try_into()?;
+            full_history.extend(docs);
+        }
 
         let chat_history: Vec<Message> = completion_request
             .chat_history
@@ -516,7 +518,6 @@ impl CompletionModel {
             .collect();
 
         full_history.extend(chat_history);
-        full_history.extend(prompt);
 
         let model = self.client.sub_provider.model_identifier(&self.model);
 

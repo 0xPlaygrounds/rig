@@ -32,8 +32,15 @@ async fn main() -> Result<(), anyhow::Error> {
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store").execute().await?;
 
-    let table = db
-        .create_table(
+    let table = if db
+        .table_names()
+        .execute()
+        .await?
+        .contains(&"definitions".to_string())
+    {
+        db.open_table("definitions").execute().await?
+    } else {
+        db.create_table(
             "definitions",
             RecordBatchIterator::new(
                 vec![as_record_batch(embeddings, model.ndims())],
@@ -41,7 +48,8 @@ async fn main() -> Result<(), anyhow::Error> {
             ),
         )
         .execute()
-        .await?;
+        .await?
+    };
 
     let vector_store = LanceDbVectorIndex::new(table, model, "id", search_params).await?;
 
