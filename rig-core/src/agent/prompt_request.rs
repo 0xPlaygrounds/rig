@@ -82,6 +82,8 @@ impl<M: CompletionModel> PromptRequest<'_, M> {
         };
 
         let mut current_max_depth = 0;
+        let mut cache_documents = Vec::new();
+        let mut cache_tools = Vec::new();
         // We need to do atleast 2 loops for 1 roundtrip (user expects normal message)
         while current_max_depth <= self.max_depth + 1 {
             current_max_depth += 1;
@@ -94,11 +96,23 @@ impl<M: CompletionModel> PromptRequest<'_, M> {
                 );
             }
 
-            let resp = agent
-                .completion(prompt.clone(), chat_history.to_vec())
-                .await?
-                .send()
-                .await?;
+            let req = if current_max_depth == 1 {
+                let req = agent
+                    .completion(prompt.clone(), chat_history.to_vec())
+                    .await?;
+                cache_documents.extend_from_slice(req.get_documents());
+                cache_tools.extend_from_slice(req.get_tools());
+
+                req
+            } else {
+                agent
+                    .completion(prompt.clone(), chat_history.to_vec())
+                    .await?
+                    .documents(cache_documents.clone())
+                    .tools(cache_tools.clone())
+            };
+
+            let resp = req.send().await?;
 
             chat_history.push(prompt);
 

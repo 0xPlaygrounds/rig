@@ -362,6 +362,16 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         }
     }
 
+    /// Gets the documents for the completion request.
+    pub fn get_documents(&self) -> &[Document] {
+        &self.documents
+    }
+
+    /// Gets the tools for the completion request.
+    pub fn get_tools(&self) -> &[ToolDefinition] {
+        &self.tools
+    }
+
     /// Sets the preamble for the completion request.
     pub fn preamble(mut self, preamble: String) -> Self {
         self.preamble = Some(preamble);
