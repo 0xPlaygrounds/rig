@@ -82,10 +82,10 @@ impl StreamingCompletionModel for CompletionModel {
                                 if let Some(tool_call) = current_tool_call.take() {
                                     let tool_input = serde_json::from_str(tool_call.input_json.as_str())?;
                                     yield Ok(RawStreamingChoice::ToolCall {
-                                        id: tool_call.id,
                                         name: tool_call.name,
-                                        arguments: tool_input,
-                                    })
+                                        id: tool_call.id,
+                                        arguments: tool_input
+                                    });
                                 } else {
                                     yield Err(CompletionError::ProviderError("Failed to call tool".into()))
                                 }
