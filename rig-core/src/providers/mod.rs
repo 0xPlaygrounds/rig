@@ -45,6 +45,7 @@
 //! ```
 //! Note: The example above uses the OpenAI provider client, but the same pattern can
 //! be used with the Cohere provider client.
+pub mod aliyun;
 pub mod anthropic;
 pub mod azure;
 pub mod cohere;
@@ -62,4 +63,3 @@ pub mod openrouter;
 pub mod perplexity;
 pub mod together;
 pub mod xai;
-pub mod aliyun;
