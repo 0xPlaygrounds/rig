@@ -148,7 +148,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 
         let response = self
             .client
-            .post(&format!("/compatible-mode/v1/embeddings"))
+            .post("/compatible-mode/v1/embeddings")
             .json(&request)
             .send()
             .await?
