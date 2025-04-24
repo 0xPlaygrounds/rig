@@ -50,7 +50,7 @@ where
         let num_results = self.num_results;
 
         Box::pin(async move {
-            let Some(prompt) = req.prompt.rag_text() else {
+            let Some(prompt) = req.chat_history.last().rag_text() else {
                 return Err(ServiceError::required_option_not_exists("rag_text"));
             };
 
