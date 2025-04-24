@@ -106,7 +106,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("Calculate 2 - 5");
     let mut stream = calculator_agent.stream_prompt("Calculate 2 - 5").await?;
-    stream_to_stdout(calculator_agent, &mut stream).await?;
+    stream_to_stdout(&calculator_agent, &mut stream).await?;
 
     if let Some(response) = stream.response {
         println!("Usage: {:?} tokens", response.eval_count);

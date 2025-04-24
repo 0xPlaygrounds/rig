@@ -227,7 +227,7 @@ impl<M: StreamingCompletionModel> StreamingCompletion<M> for Agent<M> {
 impl<M: StreamingCompletionModel> StreamingPrompt<M::StreamingResponse> for Agent<M> {
     async fn stream_prompt(
         &self,
-        prompt: &str,
+        prompt: impl Into<Message> + Send,
     ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError> {
         self.stream_chat(prompt, vec![]).await
     }
@@ -236,7 +236,7 @@ impl<M: StreamingCompletionModel> StreamingPrompt<M::StreamingResponse> for Agen
 impl<M: StreamingCompletionModel> StreamingChat<M::StreamingResponse> for Agent<M> {
     async fn stream_chat(
         &self,
-        prompt: &str,
+        prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
     ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError> {
         self.stream_completion(prompt, chat_history)

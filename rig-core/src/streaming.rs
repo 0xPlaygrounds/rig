@@ -151,7 +151,7 @@ pub trait StreamingPrompt<R: Clone + Unpin>: Send + Sync {
     /// Stream a simple prompt to the model
     fn stream_prompt(
         &self,
-        prompt: &str,
+        prompt: impl Into<Message> + Send,
     ) -> impl Future<Output = Result<StreamingCompletionResponse<R>, CompletionError>>;
 }
 
@@ -160,7 +160,7 @@ pub trait StreamingChat<R: Clone + Unpin>: Send + Sync {
     /// Stream a chat with history to the model
     fn stream_chat(
         &self,
-        prompt: &str,
+        prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
     ) -> impl Future<Output = Result<StreamingCompletionResponse<R>, CompletionError>>;
 }
@@ -198,7 +198,7 @@ pub trait StreamingCompletionModel: CompletionModel {
 
 /// helper function to stream a completion request to stdout
 pub async fn stream_to_stdout<M: StreamingCompletionModel>(
-    agent: Agent<M>,
+    agent: &Agent<M>,
     stream: &mut StreamingCompletionResponse<M::StreamingResponse>,
 ) -> Result<(), std::io::Error> {
     print!("Response: ");
