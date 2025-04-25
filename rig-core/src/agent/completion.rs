@@ -69,11 +69,13 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
         let prompt = prompt.into();
 
         // Find the latest message in the chat history that contains RAG text
-        let rag_text = chat_history
-            .iter()
-            .rev()
-            .find_map(|message| message.rag_text());
-        let rag_text = rag_text.or_else(|| prompt.rag_text());
+        let rag_text = prompt.rag_text();
+        let rag_text = rag_text.or_else(|| {
+            chat_history
+                .iter()
+                .rev()
+                .find_map(|message| message.rag_text())
+        });
 
         let completion_request = self
             .model
