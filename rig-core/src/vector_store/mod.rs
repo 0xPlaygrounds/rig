@@ -7,6 +7,9 @@ use serde_json::Value;
 
 use crate::embeddings::EmbeddingError;
 use crate::{Embed, OneOrMany, embeddings::Embedding};
+use std::future::Future;
+
+use crate::{completion::ToolDefinition, tool::Tool};
 
 pub mod in_memory_store;
 pub mod request;
@@ -116,5 +119,71 @@ fn prune_document(document: serde_json::Value) -> Option<serde_json::Value> {
         Value::String(s) => Some(Value::String(s)),
         Value::Bool(b) => Some(Value::Bool(b)),
         Value::Null => Some(Value::Null),
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VectorStoreArgs {
+    pub query: String,
+    pub top_n: Option<usize>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VectorStoreOutput {
+    pub score: f64,
+    pub id: String,
+    pub document: Value,
+}
+
+impl<T: VectorStoreIndex> Tool for T {
+    const NAME: &'static str = "search_vector_store";
+
+    type Error = VectorStoreError;
+    type Args = VectorStoreArgs;
+    type Output = Vec<VectorStoreOutput>;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description:
+                "Retrieves the most relevant documents from a vector store based on a query."
+                    .to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The query string to search for relevant documents in the vector store."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "The number of top matching documents to retrieve.",
+                        "default": 5,
+                        "minimum": 1
+                    }
+                },
+                "required": ["query"]
+            }),
+        }
+    }
+
+    fn call(
+        &self,
+        args: Self::Args,
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send + Sync {
+        let query = args.query.clone();
+        let n = args.top_n.unwrap_or(5);
+
+        async move {
+            let results = futures::executor::block_on(self.top_n(&query, n))?;
+            Ok(results
+                .into_iter()
+                .map(|(score, id, document)| VectorStoreOutput {
+                    score,
+                    id,
+                    document,
+                })
+                .collect())
+        }
     }
 }
