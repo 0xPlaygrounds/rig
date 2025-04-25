@@ -177,7 +177,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Prompt the agent and print the response
     let response = calculator_rag
         .prompt("Calculate (3 - 7) + 17")
-         .multi_turn(10)
+        .multi_turn(10)
         .await?;
 
     println!("{}", response);
