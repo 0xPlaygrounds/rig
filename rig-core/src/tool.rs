@@ -316,6 +316,144 @@ where
     }
 }
 
+#[cfg(feature = "rmcp")]
+pub struct McpTool {
+    definition: rmcp::model::Tool,
+    client: rmcp::service::ServerSink,
+}
+
+#[cfg(feature = "rmcp")]
+impl McpTool {
+    pub fn from_mcp_server(
+        definition: rmcp::model::Tool,
+        client: rmcp::service::ServerSink,
+    ) -> Self {
+        Self { definition, client }
+    }
+}
+
+#[cfg(feature = "rmcp")]
+impl From<&rmcp::model::Tool> for ToolDefinition {
+    fn from(val: &rmcp::model::Tool) -> Self {
+        Self {
+            name: val.name.to_string(),
+            description: val.description.to_string(),
+            parameters: val.schema_as_json_value(),
+        }
+    }
+}
+
+#[cfg(feature = "rmcp")]
+impl From<rmcp::model::Tool> for ToolDefinition {
+    fn from(val: rmcp::model::Tool) -> Self {
+        Self {
+            name: val.name.to_string(),
+            description: val.description.to_string(),
+            parameters: val.schema_as_json_value(),
+        }
+    }
+}
+
+#[cfg(feature = "rmcp")]
+#[derive(Debug, thiserror::Error)]
+#[error("MCP tool error: {0}")]
+pub struct McpToolError(String);
+
+#[cfg(feature = "rmcp")]
+impl From<McpToolError> for ToolError {
+    fn from(e: McpToolError) -> Self {
+        ToolError::ToolCallError(Box::new(e))
+    }
+}
+
+#[cfg(feature = "rmcp")]
+impl ToolDyn for McpTool {
+    fn name(&self) -> String {
+        self.definition.name.to_string()
+    }
+
+    fn definition(
+        &self,
+        _prompt: String,
+    ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + Sync + '_>> {
+        Box::pin(async move {
+            ToolDefinition {
+                name: self.definition.name.to_string(),
+                description: self.definition.description.to_string(),
+                parameters: serde_json::to_value(&self.definition.input_schema).unwrap_or_default(),
+            }
+        })
+    }
+
+    fn call(
+        &self,
+        args: String,
+    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>> {
+        let name = self.definition.name.clone();
+        let arguments = serde_json::from_str(&args).unwrap_or_default();
+
+        Box::pin(async move {
+            let result = self
+                .client
+                .call_tool(rmcp::model::CallToolRequestParam { name, arguments })
+                .await
+                .map_err(|e| McpToolError(format!("Tool returned an error: {}", e)))?;
+
+            if result.is_error.unwrap_or(false) {
+                if let Some(error) = result.content.first() {
+                    if let Some(raw) = error.as_text() {
+                        return Err(McpToolError(raw.text.clone()).into());
+                    } else {
+                        return Err(McpToolError("Unsuppported error type".to_string()).into());
+                    }
+                } else {
+                    return Err(McpToolError("No error message returned".to_string()).into());
+                }
+            };
+
+            Ok(result
+                .content
+                .into_iter()
+                .map(|c| match c.raw {
+                    rmcp::model::RawContent::Text(raw) => raw.text,
+                    rmcp::model::RawContent::Image(raw) => {
+                        format!("data:{};base64,{}", raw.mime_type, raw.data)
+                    }
+                    rmcp::model::RawContent::Resource(raw) => match raw.resource {
+                        rmcp::model::ResourceContents::TextResourceContents {
+                            uri,
+                            mime_type,
+                            text,
+                        } => {
+                            format!(
+                                "{}{}:{}",
+                                mime_type
+                                    .map(|m| format!("data:{};", m))
+                                    .unwrap_or_default(),
+                                uri,
+                                text
+                            )
+                        }
+                        rmcp::model::ResourceContents::BlobResourceContents {
+                            uri,
+                            mime_type,
+                            blob,
+                        } => format!(
+                            "{}{}:{}",
+                            mime_type
+                                .map(|m| format!("data:{};", m))
+                                .unwrap_or_default(),
+                            uri,
+                            blob
+                        ),
+                    },
+                })
+                .collect::<Vec<_>>()
+                .join(""))
+        })
+    }
+}
+
 /// Wrapper trait to allow for dynamic dispatch of raggable tools
 pub trait ToolEmbeddingDyn: ToolDyn {
     fn context(&self) -> serde_json::Result<serde_json::Value>;
