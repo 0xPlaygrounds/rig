@@ -163,7 +163,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Example query that will exercise the complex agentic loop
     let query = "I'm a small business owner looking to reduce my company's carbon footprint. \
                 We have 25 employees in a 5000 sq ft office space and a small fleet of 5 delivery vehicles. \
-                What are the most cost-effective sustainability measures we could implement in the next 6-12 months?";
+                What are the most cost-effective sustainability measures we could implement in the next 6-12 months? Try to stay concise.";
 
     println!("Query: {}", query);
     println!("\nProcessing...\n");
