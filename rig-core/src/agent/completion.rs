@@ -67,7 +67,13 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
         chat_history: Vec<Message>,
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         let prompt = prompt.into();
-        let rag_text = prompt.rag_text().clone();
+
+        // Find the latest message in the chat history that contains RAG text
+        let rag_text = chat_history
+            .iter()
+            .rev()
+            .find_map(|message| message.rag_text());
+        let rag_text = rag_text.or_else(|| prompt.rag_text());
 
         let completion_request = self
             .model
@@ -79,6 +85,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
             .additional_params_opt(self.additional_params.clone())
             .documents(self.static_context.clone());
 
+        // If the agent has RAG text, we need to fetch the dynamic context and tools
         let agent = match &rag_text {
             Some(text) => {
                 let dynamic_context = stream::iter(self.dynamic_context.iter())
