@@ -288,11 +288,21 @@ impl completion::CompletionModel for CompletionModel {
         full_history.extend(chat_history);
         full_history.extend(prompt);
 
-        let request = json!({
+        let mut request = json!({
             "model": self.model,
             "messages": full_history,
             "temperature": completion_request.temperature,
         });
+
+        // Force Google AI Studio provider for Gemini models since it provides better quality
+        if self.model.contains("gemini") {
+            if let Some(obj) = request.as_object_mut() {
+                obj.insert(
+                    String::from("provider"),
+                    serde_json::json!({ "order": vec!["GoogleAIStudio".to_string()] }),
+                );
+            }
+        }
 
         let response = self
             .client
