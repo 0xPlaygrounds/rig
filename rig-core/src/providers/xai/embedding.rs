@@ -1,6 +1,6 @@
 // ================================================================
 //! xAI Embeddings Integration
-//! From [xAI Reference]()
+//! From [xAI Reference](https://api.x.ai/docs/#/v1/handle_embedding_request)
 // ================================================================
 
 use serde::Deserialize;
