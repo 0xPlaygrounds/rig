@@ -30,6 +30,11 @@ impl<T: Clone> OneOrMany<T> {
         self.first.clone()
     }
 
+    // Get the last item in the list.
+    pub fn last(&self) -> T {
+        self.rest.last().cloned().unwrap_or(self.first())
+    }
+
     /// Get the rest of the items in the list (excluding the first one).
     pub fn rest(&self) -> Vec<T> {
         self.rest.clone()

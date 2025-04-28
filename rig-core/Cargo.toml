@@ -39,6 +39,7 @@ bytes = "1.9.0"
 async-stream = "0.3.6"
 mime_guess = { version = "2.0.5" }
 base64 = { version = "0.22.1" }
+tower = "0.5.2"
 
 
 [dev-dependencies]
