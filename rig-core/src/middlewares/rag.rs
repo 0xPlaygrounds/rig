@@ -123,7 +123,7 @@ where
     }
 }
 
-pub trait RagSource: Send + Sync + 'static {
+pub trait RagSource: Clone + Send + Sync + 'static {
     type Output: Send + Serialize + for<'a> Deserialize<'a>;
     type Error: std::error::Error;
 
