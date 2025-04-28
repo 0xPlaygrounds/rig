@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 
-use crate::{embeddings::EmbeddingModel, vector_store::VectorStoreIndex};
+use crate::vector_store::VectorStoreIndex;
 
 pub struct SemanticRouter<V> {
     store: V,
@@ -22,6 +20,8 @@ where
     pub async fn select_route(&self, query: &str) -> Option<String> {
         let res = self.store.top_n(query, 1).await.ok()?;
         let (score, _, SemanticRoute { tag }) = res.first()?;
+
+        println!("{tag}, {score}");
 
         if *score < self.threshold {
             return None;
@@ -45,6 +45,12 @@ pub struct SemanticRouterBuilder<V> {
     threshold: Option<f64>,
 }
 
+impl<V> Default for SemanticRouterBuilder<V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<V> SemanticRouterBuilder<V> {
     pub fn new() -> Self {
         Self {
@@ -65,13 +71,19 @@ impl<V> SemanticRouterBuilder<V> {
         self
     }
 
-    pub fn build(self) -> Result<SemanticRouter<V>, Box<dyn std::error::Error>> {
+    pub fn build(self) -> Result<SemanticRouter<V>, SemanticRouterError> {
         let Some(store) = self.store else {
-            return Err("Vector store not present".into());
+            return Err(SemanticRouterError::StoreNotFound);
         };
 
         let threshold = self.threshold.unwrap_or(0.9);
 
         Ok(SemanticRouter { store, threshold })
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum SemanticRouterError {
+    #[error("Vector store not found")]
+    StoreNotFound,
 }
