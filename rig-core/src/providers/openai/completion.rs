@@ -650,7 +650,7 @@ impl CompletionModel {
 
         // o1-mini crashes if not using `developer` role for system messages. We can't globally
         //  change openai due to other providers that can be used with openai.
-        // 
+        //
         // I'm hesitant to only chk models that start with `o` as that can interfere with other
         //  providers.
         let full_history = if self.model.starts_with("o1-mini") {
