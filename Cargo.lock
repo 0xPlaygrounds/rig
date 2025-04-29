@@ -8633,6 +8633,7 @@ dependencies = [
  "reqwest 0.12.15",
  "rig-core",
  "rig-derive",
+ "ring 0.17.14",
  "schemars",
  "serde",
  "serde_json",
