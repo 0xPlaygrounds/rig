@@ -648,28 +648,6 @@ impl CompletionModel {
                 .collect::<Vec<_>>(),
         );
 
-        // o1-mini crashes if not using `developer` role for system messages. We can't globally
-        //  change openai due to other providers that can be used with openai.
-        //
-        // I'm hesitant to only chk models that start with `o` as that can interfere with other
-        //  providers.
-        let full_history = if self.model.starts_with("o1-mini") {
-            full_history
-                .into_iter()
-                .map(|msg| {
-                    let mut val = serde_json::to_value(&msg)?;
-                    if let Message::System { .. } = msg {
-                        if let Some(obj) = val.as_object_mut() {
-                            obj.insert("role".to_string(), json!("developer"));
-                        }
-                    }
-                    Ok(val)
-                })
-                .collect::<Result<Value, serde_json::Error>>()?
-        } else {
-            serde_json::to_value(&full_history)?
-        };
-
         let request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
