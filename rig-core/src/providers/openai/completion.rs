@@ -177,6 +177,7 @@ pub struct Choice {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
+    #[serde(alias = "developer")]
     System {
         #[serde(deserialize_with = "string_or_one_or_many")]
         content: OneOrMany<SystemContent>,
@@ -646,22 +647,6 @@ impl CompletionModel {
                 .flatten()
                 .collect::<Vec<_>>(),
         );
-
-        let full_history = full_history
-            .into_iter()
-            .map(|msg| {
-                let mut val = serde_json::to_value(&msg)?;
-                if let Message::System { .. } = msg {
-                    // TODO: better detection of `o` models
-                    if self.model.starts_with('o') {
-                        if let Some(obj) = val.as_object_mut() {
-                            obj.insert("role".to_string(), json!("developer"));
-                        }
-                    }
-                }
-                Ok(val)
-            })
-            .collect::<Result<Vec<Value>, serde_json::Error>>()?;
 
         let request = if completion_request.tools.is_empty() {
             json!({
