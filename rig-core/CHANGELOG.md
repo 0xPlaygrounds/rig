@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.11.1...rig-core-v0.12.0) - 2025-04-29
+
+### Added
+
+- add gpt-image-1 ([#418](https://github.com/0xPlaygrounds/rig/pull/418))
+- multi-turn / reasoning loops + parallel tool calling ([#370](https://github.com/0xPlaygrounds/rig/pull/370))
+
+### Fixed
+
+- system and developer messages for openai ([#430](https://github.com/0xPlaygrounds/rig/pull/430))
+- o-series models + constants ([#426](https://github.com/0xPlaygrounds/rig/pull/426))
+- dynamically pull rag text from chat history ([#425](https://github.com/0xPlaygrounds/rig/pull/425))
+- rig tool macro struct not public ([#409](https://github.com/0xPlaygrounds/rig/pull/409))
+- function call conversion typo ([#415](https://github.com/0xPlaygrounds/rig/pull/415))
+- deepseek function call conversion typo ([#414](https://github.com/0xPlaygrounds/rig/pull/414))
+
+### Other
+
+- Donot use async closure + Bump mcp-core ([#428](https://github.com/0xPlaygrounds/rig/pull/428))
+- Remove broken xAI reference link in embedding.rs ([#427](https://github.com/0xPlaygrounds/rig/pull/427))
+- Style/trace gemini embedding ([#411](https://github.com/0xPlaygrounds/rig/pull/411))
+- Update agent_with_huggingface.rs ([#401](https://github.com/0xPlaygrounds/rig/pull/401))
+
 ## [0.11.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.11.0...rig-core-v0.11.1) - 2025-04-12
 
 ### Added
