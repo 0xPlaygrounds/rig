@@ -6,30 +6,15 @@ use rig::{
 
 pub(crate) use crate::types::media_types::RigDocumentMediaType;
 use base64::{prelude::BASE64_STANDARD, Engine};
-use ring::digest::{Context, Digest, SHA256};
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct RigDocument(pub Document);
-
-impl RigDocument {
-    pub fn fingerprint(&self) -> String {
-        let mut context = Context::new(&SHA256);
-        context.update(self.0.data.as_bytes());
-        let digest: Digest = context.finish();
-        digest
-            .as_ref()
-            .to_vec()
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<String>()
-    }
-}
 
 impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
     type Error = CompletionError;
 
     fn try_from(value: RigDocument) -> Result<Self, Self::Error> {
-        let document_name = value.fingerprint();
         let document_media_type = value
             .0
             .media_type
@@ -51,6 +36,7 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
         let data = aws_smithy_types::Blob::new(document_data);
         let document_source = aws_bedrock::DocumentSource::Bytes(data);
 
+        let document_name = Uuid::new_v4().simple().to_string();
         let result = aws_bedrock::DocumentBlock::builder()
             .source(document_source)
             .name(document_name)
