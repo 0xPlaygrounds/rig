@@ -36,7 +36,8 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
         let data = aws_smithy_types::Blob::new(document_data);
         let document_source = aws_bedrock::DocumentSource::Bytes(data);
 
-        let document_name = Uuid::new_v4().simple().to_string();
+        let random_string = Uuid::new_v4().simple().to_string();
+        let document_name = format!("document-{}", random_string);
         let result = aws_bedrock::DocumentBlock::builder()
             .source(document_source)
             .name(document_name)
@@ -102,6 +103,9 @@ mod tests {
             .unwrap()
             .as_ref()
             .to_owned();
+
+        let doc_name = aws_document.name;
+        assert!(doc_name.starts_with("document-"));
         assert_eq!(aws_document_bytes, document_data)
     }
 
