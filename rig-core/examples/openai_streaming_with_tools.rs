@@ -98,6 +98,8 @@ impl Tool for Subtract {
     }
 }
 
+/// This is a (temporary) helper function to call tools when given a choice from a provider. This is
+/// designed to be used with streaming, where tool calling needs to be invoked by the client atm.
 async fn tool_call_helper<M: CompletionModel>(
     choice: OneOrMany<AssistantContent>,
     agent: &Agent<M>,
