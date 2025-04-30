@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.1.1...rig-bedrock-v0.1.2) - 2025-04-29
+
+### Added
+
+- multi-turn / reasoning loops + parallel tool calling ([#370](https://github.com/0xPlaygrounds/rig/pull/370))
+- support custom clients for bedrock ([#403](https://github.com/0xPlaygrounds/rig/pull/403))
+
 ## [0.1.1](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.1.0...rig-bedrock-v0.1.1) - 2025-04-12
 
 ### Other

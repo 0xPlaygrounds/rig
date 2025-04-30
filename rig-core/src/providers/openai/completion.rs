@@ -12,11 +12,19 @@ use serde_json::{json, Value};
 use std::convert::Infallible;
 use std::str::FromStr;
 
+/// `o4-mini-2025-04-16` completion model
+pub const O4_MINI_2025_04_16: &str = "o4-mini-2025-04-16";
+/// `o4-mini` completion model
+pub const O4_MINI: &str = "o4-mini";
+/// `o3` completion model
+pub const O3: &str = "o3";
 /// `o3-mini` completion model
 pub const O3_MINI: &str = "o3-mini";
 /// `o3-mini-2025-01-31` completion model
 pub const O3_MINI_2025_01_31: &str = "o3-mini-2025-01-31";
-/// 'o1' completion model
+/// `o1-pro` completion model
+pub const O1_PRO: &str = "o1-pro";
+/// `o1`` completion model
 pub const O1: &str = "o1";
 /// `o1-2024-12-17` completion model
 pub const O1_2024_12_17: &str = "o1-2024-12-17";
@@ -28,10 +36,21 @@ pub const O1_PREVIEW_2024_09_12: &str = "o1-preview-2024-09-12";
 pub const O1_MINI: &str = "o1-mini";
 /// `o1-mini-2024-09-12` completion model
 pub const O1_MINI_2024_09_12: &str = "o1-mini-2024-09-12";
+
+/// `gpt-4.1-mini` completion model
+pub const GPT_4_1_MINI: &str = "gpt-4.1-mini";
+/// `gpt-4.1-nano` completion model
+pub const GPT_4_1_NANO: &str = "gpt-4.1-nano";
+/// `gpt-4.1-2025-04-14` completion model
+pub const GPT_4_1_2025_04_14: &str = "gpt-4.1-2025-04-14";
+/// `gpt-4.1` completion model
+pub const GPT_4_1: &str = "gpt-4.1";
 /// `gpt-4.5-preview` completion model
 pub const GPT_4_5_PREVIEW: &str = "gpt-4.5-preview";
 /// `gpt-4.5-preview-2025-02-27` completion model
 pub const GPT_4_5_PREVIEW_2025_02_27: &str = "gpt-4.5-preview-2025-02-27";
+/// `gpt-4o-2024-11-20` completion model (this is newer than 4o)
+pub const GPT_4O_2024_11_20: &str = "gpt-4o-2024-11-20";
 /// `gpt-4o` completion model
 pub const GPT_4O: &str = "gpt-4o";
 /// `gpt-4o-mini` completion model
@@ -158,6 +177,7 @@ pub struct Choice {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
+    #[serde(alias = "developer")]
     System {
         #[serde(deserialize_with = "string_or_one_or_many")]
         content: OneOrMany<SystemContent>,
