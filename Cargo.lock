@@ -8633,6 +8633,7 @@ dependencies = [
  "reqwest 0.12.15",
  "rig-core",
  "rig-derive",
+ "rig-shared",
  "schemars",
  "serde",
  "serde_json",
@@ -8807,6 +8808,17 @@ dependencies = [
  "testcontainers",
  "tokio",
  "uuid 1.16.0",
+]
+
+[[package]]
+name = "rig-shared"
+version = "0.1.0"
+dependencies = [
+ "rig-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tracing",
 ]
 
 [[package]]

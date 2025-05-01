@@ -1,0 +1,12 @@
+[package]
+name = "rig-shared"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+rig-core = { path = "../rig-core" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror = "2.0.12"
+tracing.workspace = true

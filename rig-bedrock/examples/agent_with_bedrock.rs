@@ -3,9 +3,8 @@ use rig_bedrock::{
     client::{Client, ClientBuilder},
     completion::AMAZON_NOVA_LITE,
 };
+use rig_shared::tools::calculator::{Adder, Subtract};
 use tracing::info;
-
-mod common;
 
 /// Runs 4 agents based on AWS Bedrock (derived from the agent_with_grok example)
 #[tokio::main]
@@ -59,12 +58,13 @@ async fn tools() -> Result<(), anyhow::Error> {
         .await
         .preamble("You must only do math by using a tool.")
         .max_tokens(1024)
-        .tool(common::Adder)
+        .tool(Adder)
+        .tool(Subtract)
         .build();
 
     info!(
-        "Calculator Agent: add 400 and 20\nResult: {}",
-        calculator_agent.prompt("add 400 and 20").await?
+        "Calculator Agent: add 400 and 30 then subtract 10\nResult: {}",
+        calculator_agent.prompt("add 400 and 30 then subtract 10").multi_turn(20).await?
     );
 
     Ok(())
