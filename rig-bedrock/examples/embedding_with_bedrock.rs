@@ -1,12 +1,6 @@
-use rig::Embed;
 use rig_bedrock::{client::ClientBuilder, embedding::AMAZON_TITAN_EMBED_TEXT_V2_0};
+use rig_shared::fixtures::greetings::Greetings;
 use tracing::info;
-
-#[derive(rig_derive::Embed, Debug)]
-struct Greetings {
-    #[embed]
-    message: String,
-}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {

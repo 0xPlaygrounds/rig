@@ -6,6 +6,8 @@ license = "MIT"
 
 [dependencies]
 rig-core = { path = "../rig-core" }
+rig-derive = { path = "../rig-core/rig-core-derive" }
+schemars = "0.8.16"
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror = "2.0.12"

@@ -1,14 +1,6 @@
 use rig_bedrock::{client::ClientBuilder, completion::AMAZON_NOVA_LITE};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use rig_shared::fixtures::person::Person;
 use tracing::info;
-
-#[derive(Debug, Deserialize, JsonSchema, Serialize)]
-struct Person {
-    pub first_name: Option<String>,
-    pub last_name: Option<String>,
-    pub job: Option<String>,
-}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {

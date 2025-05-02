@@ -64,7 +64,10 @@ async fn tools() -> Result<(), anyhow::Error> {
 
     info!(
         "Calculator Agent: add 400 and 30 then subtract 10\nResult: {}",
-        calculator_agent.prompt("add 400 and 30 then subtract 10").multi_turn(20).await?
+        calculator_agent
+            .prompt("add 400 and 30 then subtract 10")
+            .multi_turn(20)
+            .await?
     );
 
     Ok(())

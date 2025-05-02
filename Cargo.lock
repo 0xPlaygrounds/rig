@@ -8632,7 +8632,6 @@ dependencies = [
  "base64 0.22.1",
  "reqwest 0.12.15",
  "rig-core",
- "rig-derive",
  "rig-shared",
  "schemars",
  "serde",
@@ -8815,6 +8814,8 @@ name = "rig-shared"
 version = "0.1.0"
 dependencies = [
  "rig-core",
+ "rig-derive",
+ "schemars",
  "serde",
  "serde_json",
  "thiserror 2.0.12",
