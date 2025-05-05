@@ -14,8 +14,16 @@ use syn::{
 mod basic;
 mod custom;
 mod embed;
+mod client;
 
 pub(crate) const EMBED: &str = "embed";
+
+
+#[proc_macro_derive(ProviderClient, attributes(client))]
+pub fn derive_provider_client(input: TokenStream) -> TokenStream {
+    client::provider_client(input)
+}
+
 
 /// References:
 /// <https://doc.rust-lang.org/book/ch19-06-macros.html#how-to-write-a-custom-derive-macro>

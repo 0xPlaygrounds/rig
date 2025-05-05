@@ -2,8 +2,8 @@
 //! It provides traits, structs, and enums for generating audio transcription requests,
 //! handling transcription responses, and defining transcription models.
 
+use futures::future::BoxFuture;
 use std::{fs, path::Path};
-
 use thiserror::Error;
 
 use crate::json_utils;
@@ -75,6 +75,29 @@ pub trait TranscriptionModel: Clone + Send + Sync {
     /// Generates a transcription request builder for the given `file`
     fn transcription_request(&self) -> TranscriptionRequestBuilder<Self> {
         TranscriptionRequestBuilder::new(self.clone())
+    }
+}
+
+pub trait TranscriptionModelDyn<'a>: Send + Sync {
+    fn transcription(
+        &'a self,
+        request: TranscriptionRequest,
+    ) -> BoxFuture<'a, Result<TranscriptionResponse<()>, TranscriptionError>>;
+}
+
+impl<'a, T: TranscriptionModel> TranscriptionModelDyn<'a> for T {
+    fn transcription(
+        &'a self,
+        request: TranscriptionRequest,
+    ) -> BoxFuture<'a, Result<TranscriptionResponse<()>, TranscriptionError>> {
+        Box::pin(async move {
+            let resp = self.transcription(request).await?;
+
+            Ok(TranscriptionResponse {
+                text: resp.text,
+                response: (),
+            })
+        })
     }
 }
 
