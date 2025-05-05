@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.1.2...rig-bedrock-v0.1.3) - 2025-04-30
+
+### Fixed
+
+- fixed bug with base64 encoding on AWS Bedrock ([#432](https://github.com/0xPlaygrounds/rig/pull/432))
+
 ## [0.1.2](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.1.1...rig-bedrock-v0.1.2) - 2025-04-29
 
 ### Added
