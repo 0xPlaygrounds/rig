@@ -10,6 +10,7 @@ use serde::Deserialize;
 use sqlite_vec::sqlite3_vec_init;
 use std::env;
 use tokio_rusqlite::Connection;
+use rig::client::EmbeddingsClient;
 
 #[derive(Embed, Clone, Debug, Deserialize)]
 struct Document {
