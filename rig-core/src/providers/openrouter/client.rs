@@ -1,11 +1,8 @@
 use crate::{
-    agent::AgentBuilder,
     client::{CompletionClient, ProviderClient},
-    extractor::ExtractorBuilder,
     impl_conversion_traits,
 };
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use super::completion::CompletionModel;
 
