@@ -133,7 +133,7 @@ impl<M: CompletionModel> PromptRequest<'_, M> {
             }
 
             let tool_content = stream::iter(tool_calls)
-                .then(async |choice| {
+                .then(|choice| async move {
                     if let AssistantContent::ToolCall(tool_call) = choice {
                         let output = agent
                             .tools

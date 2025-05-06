@@ -63,7 +63,7 @@
 //! For more information on how to use the completion functionality, refer to the documentation of
 //! the individual traits, structs, and enums defined in this module.
 
-use crate::streaming::{StreamingCompletionModel, StreamingResult};
+use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
 use crate::OneOrMany;
 use crate::{
     json_utils,
@@ -510,7 +510,9 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
 impl<M: StreamingCompletionModel> CompletionRequestBuilder<M> {
     /// Stream the completion request
-    pub async fn stream(self) -> Result<StreamingResult, CompletionError> {
+    pub async fn stream(
+        self,
+    ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError> {
         let model = self.model.clone();
         model.stream(self.build()).await
     }

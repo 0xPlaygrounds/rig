@@ -294,7 +294,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         #[derive(serde::Deserialize)]
-        struct #params_struct_name {
+        pub(crate) struct #params_struct_name {
             #(#param_names: #param_types,)*
         }
 

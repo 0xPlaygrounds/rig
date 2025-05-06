@@ -298,6 +298,9 @@ where
                     mcp_core::types::ToolResponseContent::Image { data, mime_type } => {
                         format!("data:{};base64,{}", mime_type, data)
                     }
+                    mcp_core::types::ToolResponseContent::Audio { data, mime_type } => {
+                        format!("data:{};base64,{}", mime_type, data)
+                    }
                     mcp_core::types::ToolResponseContent::Resource {
                         resource: mcp_core::types::ResourceContents { uri, mime_type },
                     } => {

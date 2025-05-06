@@ -2,9 +2,10 @@ use crate::types::completion_request::AwsCompletionRequest;
 use crate::{completion::CompletionModel, types::errors::AwsSdkConverseStreamError};
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
+use rig::streaming::StreamingCompletionResponse;
 use rig::{
     completion::CompletionError,
-    streaming::{StreamingChoice, StreamingCompletionModel, StreamingResult},
+    streaming::{RawStreamingChoice, StreamingCompletionModel},
 };
 
 #[derive(Default)]
@@ -15,10 +16,12 @@ struct ToolCallState {
 }
 
 impl StreamingCompletionModel for CompletionModel {
+    type StreamingResponse = ();
+
     async fn stream(
         &self,
         completion_request: rig::completion::CompletionRequest,
-    ) -> Result<StreamingResult, CompletionError> {
+    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
         let request = AwsCompletionRequest(completion_request);
 
         let mut converse_builder = self
@@ -40,7 +43,7 @@ impl StreamingCompletionModel for CompletionModel {
             Into::<CompletionError>::into(AwsSdkConverseStreamError(sdk_error))
         })?;
 
-        Ok(Box::pin(stream! {
+        let stream = Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
             let mut stream = response.stream;
             while let Ok(Some(output)) = stream.recv().await {
@@ -50,7 +53,7 @@ impl StreamingCompletionModel for CompletionModel {
                         match delta {
                             aws_bedrock::ContentBlockDelta::Text(text) => {
                                 if current_tool_call.is_none() {
-                                    yield Ok(StreamingChoice::Message(text))
+                                    yield Ok(RawStreamingChoice::Message(text))
                                 }
                             },
                             aws_bedrock::ContentBlockDelta::ToolUse(tool) => {
@@ -78,11 +81,11 @@ impl StreamingCompletionModel for CompletionModel {
                             aws_bedrock::StopReason::ToolUse => {
                                 if let Some(tool_call) = current_tool_call.take() {
                                     let tool_input = serde_json::from_str(tool_call.input_json.as_str())?;
-                                    yield Ok(StreamingChoice::ToolCall(
-                                        tool_call.name,
-                                        tool_call.id,
-                                        tool_input
-                                    ));
+                                    yield Ok(RawStreamingChoice::ToolCall {
+                                        name: tool_call.name,
+                                        id: tool_call.id,
+                                        arguments: tool_input
+                                    });
                                 } else {
                                     yield Err(CompletionError::ProviderError("Failed to call tool".into()))
                                 }
@@ -96,6 +99,8 @@ impl StreamingCompletionModel for CompletionModel {
                     _ => {}
                 }
             }
-        }))
+        });
+
+        Ok(StreamingCompletionResponse::new(stream))
     }
 }

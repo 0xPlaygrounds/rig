@@ -1,6 +1,6 @@
 //! A Rig vector store for Neo4j.
 //!
-//! This crate is a companion crate to the [rig-core crate](https://github.com/rig-ai/rig-core).
+//! This crate is a companion crate to the [rig-core crate](https://github.com/0xPlaygrounds/rig).
 //! It provides a vector store implementation that uses Neo4j as the underlying datastore.
 //!
 //! See the [README](https://github.com/0xPlaygrounds/rig/tree/main/rig-neo4j) for more information.

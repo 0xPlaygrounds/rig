@@ -40,13 +40,13 @@
 //! ```
 use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient};
 use crate::json_utils::merge_inplace;
-use crate::streaming::{StreamingChoice, StreamingCompletionModel, StreamingResult};
+use crate::streaming::{RawStreamingChoice, StreamingCompletionModel};
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     impl_conversion_traits, json_utils, message,
     message::{ImageDetail, Text},
-    Embed, OneOrMany,
+    streaming, Embed, OneOrMany,
 };
 use async_stream::stream;
 use futures::StreamExt;
@@ -427,8 +427,25 @@ impl completion::CompletionModel for CompletionModel {
     }
 }
 
+#[derive(Clone)]
+pub struct StreamingCompletionResponse {
+    pub done_reason: Option<String>,
+    pub total_duration: Option<u64>,
+    pub load_duration: Option<u64>,
+    pub prompt_eval_count: Option<u64>,
+    pub prompt_eval_duration: Option<u64>,
+    pub eval_count: Option<u64>,
+    pub eval_duration: Option<u64>,
+}
+
 impl StreamingCompletionModel for CompletionModel {
-    async fn stream(&self, request: CompletionRequest) -> Result<StreamingResult, CompletionError> {
+    type StreamingResponse = StreamingCompletionResponse;
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    {
         let mut request_payload = self.create_completion_request(request)?;
         merge_inplace(&mut request_payload, json!({"stream": true}));
 
@@ -448,7 +465,7 @@ impl StreamingCompletionModel for CompletionModel {
             return Err(CompletionError::ProviderError(err_text));
         }
 
-        Ok(Box::pin(stream! {
+        let stream = Box::pin(stream! {
             let mut stream = response.bytes_stream();
             while let Some(chunk_result) = stream.next().await {
                 let chunk = match chunk_result {
@@ -478,22 +495,40 @@ impl StreamingCompletionModel for CompletionModel {
                     match response.message {
                         Message::Assistant{ content, tool_calls, .. } => {
                             if !content.is_empty() {
-                                yield Ok(StreamingChoice::Message(content))
+                                yield Ok(RawStreamingChoice::Message(content))
                             }
 
                             for tool_call in tool_calls.iter() {
                                 let function = tool_call.function.clone();
 
-                                yield Ok(StreamingChoice::ToolCall(function.name, "".to_string(), function.arguments));
+                                yield Ok(RawStreamingChoice::ToolCall {
+                                    id: "".to_string(),
+                                    name: function.name,
+                                    arguments: function.arguments
+                                });
                             }
                         }
                         _ => {
                             continue;
                         }
                     }
+
+                    if response.done {
+                        yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                            total_duration: response.total_duration,
+                            load_duration: response.load_duration,
+                            prompt_eval_count: response.prompt_eval_count,
+                            prompt_eval_duration: response.prompt_eval_duration,
+                            eval_count: response.eval_count,
+                            eval_duration: response.eval_duration,
+                            done_reason: response.done_reason,
+                        }));
+                    }
                 }
             }
-        }))
+        });
+
+        Ok(streaming::StreamingCompletionResponse::new(stream))
     }
 }
 

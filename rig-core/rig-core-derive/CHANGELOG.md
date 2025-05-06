@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.1...rig-derive-v0.1.2) - 2025-04-29
+
+### Fixed
+
+- rig tool macro struct not public ([#409](https://github.com/0xPlaygrounds/rig/pull/409))
+
 ## [0.1.1](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.0...rig-derive-v0.1.1) - 2025-04-12
 
 ### Added
