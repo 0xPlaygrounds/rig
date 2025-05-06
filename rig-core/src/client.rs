@@ -89,6 +89,14 @@ pub trait EmbeddingsClient: ProviderClient {
     fn embeddings<D: Embed>(&self, model: &str) -> EmbeddingsBuilder<Self::EmbeddingModel, D> {
         EmbeddingsBuilder::new(self.embedding_model(model))
     }
+
+    fn embeddings_with_ndims<D: Embed>(
+        &self,
+        model: &str,
+        ndims: usize,
+    ) -> EmbeddingsBuilder<Self::EmbeddingModel, D> {
+        EmbeddingsBuilder::new(self.embedding_model_with_ndims(model, ndims))
+    }
 }
 
 pub trait EmbeddingsClientDyn: ProviderClient {

@@ -1,3 +1,4 @@
+use rig::client::{EmbeddingsClient, ProviderClient};
 use rig::{embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex, Embed};
 use rig_postgres::PostgresVectorStore;
 use serde::{Deserialize, Serialize};
