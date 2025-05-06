@@ -62,10 +62,6 @@
 //!
 //! For more information on how to use the completion functionality, refer to the documentation of
 //! the individual traits, structs, and enums defined in this module.
-use std::collections::HashMap;
-
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
 use crate::OneOrMany;
@@ -74,6 +70,10 @@ use crate::{
     message::{Message, UserContent},
     tool::ToolSetError,
 };
+use futures::future::BoxFuture;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use thiserror::Error;
 
 use super::message::{AssistantContent, ContentFormat, DocumentMediaType};
 
@@ -238,6 +238,31 @@ pub trait CompletionModel: Clone + Send + Sync {
     /// Generates a completion request builder for the given `prompt`.
     fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
         CompletionRequestBuilder::new(self.clone(), prompt)
+    }
+}
+pub trait CompletionModelDyn: Send + Sync {
+    fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> BoxFuture<'_, Result<CompletionResponse<()>, CompletionError>>;
+}
+
+impl<T> CompletionModelDyn for T
+where
+    T: CompletionModel,
+{
+    fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> BoxFuture<Result<CompletionResponse<()>, CompletionError>> {
+        Box::pin(async move {
+            self.completion(request)
+                .await
+                .map(|resp| CompletionResponse {
+                    choice: resp.choice,
+                    raw_response: (),
+                })
+        })
     }
 }
 

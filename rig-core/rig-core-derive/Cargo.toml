@@ -8,6 +8,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
 convert_case = { version = "0.6.0" }
+deluxe = { version = "0.5.0", features = ["full"] }
 indoc = "2.0.5"
 proc-macro2 = { version = "1.0.87", features = ["proc-macro"] }
 quote = "1.0.37"

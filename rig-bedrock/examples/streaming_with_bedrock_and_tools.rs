@@ -1,3 +1,4 @@
+use rig::client::CompletionClient;
 use rig::streaming::{stream_to_stdout, StreamingPrompt};
 use rig_bedrock::{client::ClientBuilder, completion::AMAZON_NOVA_LITE};
 mod common;

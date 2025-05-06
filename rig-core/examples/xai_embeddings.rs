@@ -1,15 +1,20 @@
+use rig::prelude::*;
 use rig::providers::xai;
+
 use rig::Embed;
 
 #[derive(Embed, Debug)]
+
 struct Greetings {
     #[embed]
     message: String,
 }
 
 #[tokio::main]
+
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize the xAI client
+
     let client = xai::Client::from_env();
 
     let embeddings = client

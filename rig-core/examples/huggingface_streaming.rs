@@ -1,3 +1,4 @@
+use rig::prelude::*;
 use std::env;
 
 use rig::{
@@ -6,14 +7,18 @@ use rig::{
 };
 
 #[tokio::main]
+
 async fn main() -> Result<(), anyhow::Error> {
     // Create streaming agent with a single context prompt
+
     let api_key = &env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY not set");
 
     println!("\n\nRunning Llama 3.1\n\n");
+
     hf_inference(api_key).await?;
 
     println!("\n\nRunning Deepseek R-1\n\n");
+
     together(api_key).await?;
 
     Ok(())
@@ -28,6 +33,7 @@ async fn hf_inference(api_key: &str) -> Result<(), anyhow::Error> {
         .build();
 
     // Stream the response and print chunks as they arrive
+
     let mut stream = agent
         .stream_prompt("When and where and what type is the next solar eclipse?")
         .await?;
@@ -47,6 +53,7 @@ async fn together(api_key: &str) -> Result<(), anyhow::Error> {
         .build();
 
     // Stream the response and print chunks as they arrive
+
     let mut stream = agent
         .stream_prompt("When and where and what type is the next solar eclipse?")
         .await?;
