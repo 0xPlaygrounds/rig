@@ -9,26 +9,24 @@
 //! let llama_3_1_8b = client.completion_model(openrouter::LLAMA_3_1_8B);
 //! ```
 
+use super::openai::AssistantContent;
+use crate::client::ProviderClient;
 use crate::{
-    agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
-    extractor::ExtractorBuilder,
-    json_utils,
+    impl_conversion_traits, json_utils,
     providers::openai::Message,
     OneOrMany,
 };
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use rig::client::CompletionClient;
+use serde::Deserialize;
 use serde_json::json;
-
-use super::openai::AssistantContent;
 
 // ================================================================
 // Main openrouter Client
 // ================================================================
 const OPENROUTER_API_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Client {
     base_url: String,
     http_client: reqwest::Client,
@@ -60,17 +58,23 @@ impl Client {
         }
     }
 
-    /// Create a new openrouter client from the `openrouter_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    pub fn from_env() -> Self {
-        let api_key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY not set");
-        Self::new(&api_key)
-    }
-
     fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.post(url)
     }
+}
+
+impl ProviderClient for Client {
+    /// Create a new openrouter client from the `OPENROUTER_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    fn from_env() -> Self {
+        let api_key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY not set");
+        Self::new(&api_key)
+    }
+}
+
+impl CompletionClient for Client {
+    type CompletionModel = CompletionModel;
 
     /// Create a completion model with the given name.
     ///
@@ -83,36 +87,17 @@ impl Client {
     ///
     /// let llama_3_1_8b = openrouter.completion_model(openrouter::LLAMA_3_1_8B);
     /// ```
-    pub fn completion_model(&self, model: &str) -> CompletionModel {
+    fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
-
-    /// Create an agent builder with the given completion model.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::openrouter::{Client, self};
-    ///
-    /// // Initialize the Eternal client
-    /// let openrouter = Client::new("your-openrouter-api-key");
-    ///
-    /// let agent = openrouter.agent(openrouter::LLAMA_3_1_8B)
-    ///    .preamble("You are comedian AI with a mission to make people laugh.")
-    ///    .temperature(0.0)
-    ///    .build();
-    /// ```
-    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    /// Create an extractor builder with the given completion model.
-    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
-        &self,
-        model: &str,
-    ) -> ExtractorBuilder<T, CompletionModel> {
-        ExtractorBuilder::new(self.completion_model(model))
-    }
 }
+
+impl_conversion_traits!(
+    AsEmbeddings,
+    AsTranscription,
+    AsImageGeneration,
+    AsAudioGeneration for Client
+);
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {

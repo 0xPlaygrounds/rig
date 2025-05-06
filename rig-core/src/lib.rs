@@ -86,6 +86,7 @@ pub mod agent;
 #[cfg(feature = "audio")]
 pub mod audio_generation;
 pub mod cli_chatbot;
+pub mod client;
 pub mod completion;
 pub mod embeddings;
 pub mod extractor;
@@ -100,7 +101,6 @@ pub mod streaming;
 pub mod tool;
 pub mod transcription;
 pub mod vector_store;
-pub mod client;
 
 // Re-export commonly used types and traits
 pub use completion::message;

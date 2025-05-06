@@ -1,3 +1,4 @@
+use futures::future::BoxFuture;
 use serde_json::Value;
 use thiserror::Error;
 
@@ -58,6 +59,29 @@ pub trait AudioGenerationModel: Clone + Send + Sync {
 
     fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<Self> {
         AudioGenerationRequestBuilder::new(self.clone())
+    }
+}
+
+pub trait AudioGenerationModelDyn: Send + Sync {
+    fn audio_generation(
+        &self,
+        request: AudioGenerationRequest,
+    ) -> BoxFuture<Result<AudioGenerationResponse<()>, AudioGenerationError>>;
+}
+
+impl<T: AudioGenerationModel> AudioGenerationModelDyn for T {
+    fn audio_generation(
+        &self,
+        request: AudioGenerationRequest,
+    ) -> BoxFuture<Result<AudioGenerationResponse<()>, AudioGenerationError>> {
+        Box::pin(async move {
+            let resp = self.audio_generation(request).await;
+
+            resp.map(|r| AudioGenerationResponse {
+                audio: r.audio,
+                response: (),
+            })
+        })
     }
 }
 

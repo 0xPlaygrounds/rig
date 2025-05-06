@@ -1,26 +1,30 @@
 use crate::agent::AgentBuilder;
-#[cfg(feature = "audio")]
-use crate::audio_generation::AudioGenerationModel;
-use crate::completion::{Completion, CompletionModel, CompletionModelDyn};
+use crate::completion::{CompletionModel, CompletionModelDyn};
 use crate::embeddings::{EmbeddingModel, EmbeddingsBuilder};
 use crate::extractor::ExtractorBuilder;
-#[cfg(feature = "image")]
-use crate::image_generation::ImageGenerationModel;
 use crate::transcription::{TranscriptionModel, TranscriptionModelDyn};
 use crate::Embed;
-use as_any::AsAny;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 use std::fmt::Debug;
 
 use crate::embeddings::embedding::EmbeddingModelDyn;
+#[cfg(feature = "derive")]
 pub use rig_derive::ProviderClient;
 
-pub trait ProviderClient: AsCompletion + AsTranscription + AsEmbeddings + Debug {
+pub trait ProviderClient:
+    AsCompletion + AsTranscription + AsEmbeddings + AsImageGeneration + AsAudioGeneration + Debug
+{
     fn from_env() -> Self
     where
         Self: Sized;
+
+    fn boxed(self) -> Box<dyn ProviderClient>
+    where
+        Self: Sized + 'static,
+    {
+        Box::new(self)
+    }
 }
 
 pub trait CompletionClient: ProviderClient {
@@ -117,16 +121,75 @@ impl<T: EmbeddingsClientDyn> AsEmbeddings for T {
 }
 
 #[cfg(feature = "image")]
-pub trait ImageGenerationClient: ProviderClient {
-    type ImageGenerationModel: ImageGenerationModel;
-    fn image_generation_model(&self, model: &str) -> Self::ImageGenerationModel;
+mod image {
+    use super::*;
+    use crate::image_generation::{ImageGenerationModel, ImageGenerationModelDyn};
+    pub trait ImageGenerationClient: ProviderClient {
+        type ImageGenerationModel: ImageGenerationModel;
+        fn image_generation_model(&self, model: &str) -> Self::ImageGenerationModel;
+    }
+
+    pub trait ImageGenerationClientDyn: ProviderClient {
+        fn image_generation_model<'a>(
+            &'a self,
+            model: &'a str,
+        ) -> Box<dyn ImageGenerationModelDyn + 'a>;
+    }
+
+    impl<T: ImageGenerationClient> ImageGenerationClientDyn for T {
+        fn image_generation_model<'a>(
+            &'a self,
+            model: &'a str,
+        ) -> Box<dyn ImageGenerationModelDyn + 'a> {
+            Box::new(self.image_generation_model(model))
+        }
+    }
+
+    impl<T: ImageGenerationClientDyn> AsImageGeneration for T {
+        fn as_image_generation(&self) -> Option<Box<&dyn ImageGenerationClientDyn>> {
+            Some(Box::new(self))
+        }
+    }
+}
+
+#[cfg(feature = "image")]
+pub use image::*;
+
+#[cfg(feature = "audio")]
+mod audio {
+    use super::*;
+    use crate::audio_generation::{AudioGenerationModel, AudioGenerationModelDyn};
+
+    pub trait AudioGenerationClient: ProviderClient {
+        type AudioGenerationModel: AudioGenerationModel;
+        fn audio_generation_model(&self, model: &str) -> Self::AudioGenerationModel;
+    }
+
+    pub trait AudioGenerationClientDyn: ProviderClient {
+        fn audio_generation_model<'a>(
+            &'a self,
+            model: &'a str,
+        ) -> Box<dyn AudioGenerationModelDyn + 'a>;
+    }
+
+    impl<T: AudioGenerationClient> AudioGenerationClientDyn for T {
+        fn audio_generation_model<'a>(
+            &'a self,
+            model: &'a str,
+        ) -> Box<dyn AudioGenerationModelDyn + 'a> {
+            Box::new(self.audio_generation_model(model))
+        }
+    }
+
+    impl<T: AudioGenerationClientDyn> AsAudioGeneration for T {
+        fn as_audio_generation(&self) -> Option<Box<&dyn AudioGenerationClientDyn>> {
+            Some(Box::new(self))
+        }
+    }
 }
 
 #[cfg(feature = "audio")]
-pub trait AudioGenerationClient: ProviderClient {
-    type AudioGenerationModel: AudioGenerationModel;
-    fn audio_generation_model(&self, model: &str) -> Self::AudioGenerationModel;
-}
+pub use audio::*;
 
 pub trait AsCompletion {
     fn as_completion(&self) -> Option<Box<&dyn CompletionClientDyn>> {
@@ -146,22 +209,60 @@ pub trait AsEmbeddings {
     }
 }
 
+pub trait AsAudioGeneration {
+    #[cfg(feature = "audio")]
+    fn as_audio_generation(&self) -> Option<Box<&dyn AudioGenerationClientDyn>> {
+        None
+    }
+}
+
+pub trait AsImageGeneration {
+    #[cfg(feature = "image")]
+    fn as_image_generation(&self) -> Option<Box<&dyn ImageGenerationClientDyn>> {
+        None
+    }
+}
+
+#[cfg(not(feature = "audio"))]
+impl<T: ProviderClient> AsAudioGeneration for T {}
+
+#[cfg(not(feature = "image"))]
+impl<T: ProviderClient> AsImageGeneration for T {}
+
+#[macro_export]
+macro_rules! impl_conversion_traits {
+    ($( $trait_:ident ),* for $struct_:ident ) => {
+        $(
+            impl_conversion_traits!(@impl $trait_ for $struct_);
+        )*
+    };
+    (@impl AsAudioGeneration for $struct_:ident ) => {
+        #[cfg(feature = "audio")]
+        impl rig::client::AsAudioGeneration for $struct_ {}
+    };
+    (@impl AsImageGeneration for $struct_:ident ) => {
+        #[cfg(feature = "image")]
+        impl rig::client::AsImageGeneration for $struct_ {}
+    };
+    (@impl $trait_:ident for $struct_:ident) => {
+        impl rig::client::$trait_ for $struct_ {}
+    };
+}
+
+pub use impl_conversion_traits;
+
 #[cfg(test)]
 mod tests {
     use crate::audio_generation::AudioGenerationModel;
     use crate::client::{
-        AsAny, AudioGenerationClient, CompletionClient, CompletionClientDyn, ProviderClient,
-        TranscriptionClient,
+        AudioGenerationClient, CompletionClient, CompletionClientDyn, ProviderClient,
     };
     use crate::completion::{Completion, CompletionModel, ToolDefinition};
     use crate::message::AssistantContent;
     use crate::providers::{anthropic, openai};
     use crate::tool::Tool;
-    use crate::transcription::TranscriptionModel;
-    use as_any::Downcast;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
-    use std::any::Any;
 
     macro_rules! generate_provider_tests {
         // entry point: split into functions and providers
@@ -309,15 +410,12 @@ mod tests {
         const TRANSCRIPTION: usize = 2;
         const EMBEDDINGS: usize = 4;
 
-        let clients: Vec<(Box<dyn ProviderClient>, usize)> = vec![
+        let clients: Vec<(Box<dyn CompletionClientDyn>, usize)> = vec![
             (
                 Box::new(openai::Client::from_env()),
                 COMPLETION + TRANSCRIPTION + EMBEDDINGS,
             ),
-            (
-                Box::new(anthropic::Client::from_env()), 
-                COMPLETION
-            ),
+            (Box::new(anthropic::Client::from_env()), COMPLETION),
         ];
 
         for (client, features) in clients {

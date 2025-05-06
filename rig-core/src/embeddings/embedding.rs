@@ -66,26 +66,24 @@ pub trait EmbeddingModelDyn: Sync + Send {
     fn ndims(&self) -> usize;
     fn embed_texts<'a>(
         &'a self,
-        texts: &'a str
+        texts: &'a str,
     ) -> BoxFuture<'a, Result<Embedding, EmbeddingError>>;
 }
 
-impl <T: EmbeddingModel> EmbeddingModelDyn for T {
+impl<T: EmbeddingModel> EmbeddingModelDyn for T {
     fn max_documents(&self) -> usize {
         T::MAX_DOCUMENTS
     }
-    
+
     fn ndims(&self) -> usize {
         self.ndims()
     }
-    
+
     fn embed_texts<'a>(
         &'a self,
-        texts: &'a str, 
+        texts: &'a str,
     ) -> BoxFuture<'a, Result<Embedding, EmbeddingError>> {
-        Box::pin(async move {
-            self.embed_text(texts).await
-        })
+        Box::pin(async move { self.embed_text(texts).await })
     }
 }
 

@@ -72,9 +72,7 @@ use crate::{
 };
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 use std::collections::HashMap;
-use std::future::Future;
 use thiserror::Error;
 
 use super::message::{AssistantContent, ContentFormat, DocumentMediaType};
@@ -242,30 +240,29 @@ pub trait CompletionModel: Clone + Send + Sync {
         CompletionRequestBuilder::new(self.clone(), prompt)
     }
 }
-pub trait CompletionModelDyn<'a>: Send + Sync {
+pub trait CompletionModelDyn: Send + Sync {
     fn completion(
-        &'a self,
+        &self,
         request: CompletionRequest,
-    ) -> BoxFuture<'a, Result<CompletionResponse<()>, CompletionError>>;
+    ) -> BoxFuture<'_, Result<CompletionResponse<()>, CompletionError>>;
 }
 
-impl<'a, T> CompletionModelDyn<'a> for T
+impl<T> CompletionModelDyn for T
 where
-    T: CompletionModel + Send + Sync + 'a,
+    T: CompletionModel,
 {
     fn completion(
-        &'a self,
+        &self,
         request: CompletionRequest,
-    ) -> BoxFuture<'a, Result<CompletionResponse<()>, CompletionError>> {
+    ) -> BoxFuture<Result<CompletionResponse<()>, CompletionError>> {
         Box::pin(async move {
-            let resp = self.completion(request)
+            self
+                .completion(request)
                 .await
                 .map(|resp| CompletionResponse {
                     choice: resp.choice,
-                    raw_response: ()
-                });
-            
-            resp
+                    raw_response: (),
+                })
         })
     }
 }

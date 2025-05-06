@@ -1,3 +1,4 @@
+use futures::future::BoxFuture;
 use serde_json::Value;
 use thiserror::Error;
 
@@ -59,6 +60,28 @@ pub trait ImageGenerationModel: Clone + Send + Sync {
 
     fn image_generation_request(&self) -> ImageGenerationRequestBuilder<Self> {
         ImageGenerationRequestBuilder::new(self.clone())
+    }
+}
+
+pub trait ImageGenerationModelDyn: Send + Sync {
+    fn image_generation(
+        &self,
+        request: ImageGenerationRequest,
+    ) -> BoxFuture<Result<ImageGenerationResponse<()>, ImageGenerationError>>;
+}
+
+impl<T: ImageGenerationModel> ImageGenerationModelDyn for T {
+    fn image_generation(
+        &self,
+        request: ImageGenerationRequest,
+    ) -> BoxFuture<Result<ImageGenerationResponse<()>, ImageGenerationError>> {
+        Box::pin(async {
+            let resp = self.image_generation(request).await;
+            resp.map(|r| ImageGenerationResponse {
+                image: r.image,
+                response: (),
+            })
+        })
     }
 }
 

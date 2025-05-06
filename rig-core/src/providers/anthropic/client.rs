@@ -1,7 +1,7 @@
 //! Anthropic client api implementation
 
 use super::completion::{CompletionModel, ANTHROPIC_VERSION_LATEST};
-use crate::client::{CompletionClient, ProviderClient};
+use crate::client::{impl_conversion_traits, CompletionClient, ProviderClient};
 
 // ================================================================
 // Main Anthropic Client
@@ -68,8 +68,7 @@ impl<'a> ClientBuilder<'a> {
     }
 }
 
-#[derive(Clone, Debug, ProviderClient)]
-#[client(features = ["completion"])]
+#[derive(Clone, Debug)]
 pub struct Client {
     base_url: String,
     http_client: reqwest::Client,
@@ -110,12 +109,10 @@ impl Client {
         }
     }
 
-
     pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.post(url)
     }
-
 }
 
 impl ProviderClient for Client {
@@ -133,3 +130,10 @@ impl CompletionClient for Client {
         CompletionModel::new(self.clone(), model)
     }
 }
+
+impl_conversion_traits!(
+    AsTranscription,
+    AsEmbeddings,
+    AsImageGeneration,
+    AsAudioGeneration for Client
+);

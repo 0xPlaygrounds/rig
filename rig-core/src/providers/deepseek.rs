@@ -9,16 +9,15 @@
 //! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_CHAT);
 //! ```
 
+use crate::client::{CompletionClient, ProviderClient};
 use crate::json_utils::merge;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
     completion::{self, CompletionError, CompletionModel, CompletionRequest},
-    extractor::ExtractorBuilder,
-    json_utils, message, OneOrMany,
+    impl_conversion_traits, json_utils, message, OneOrMany,
 };
 use reqwest::Client as HttpClient;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -27,7 +26,7 @@ use serde_json::json;
 // ================================================================
 const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Client {
     pub base_url: String,
     http_client: HttpClient,
@@ -37,12 +36,6 @@ impl Client {
     // Create a new DeepSeek client from an API key.
     pub fn new(api_key: &str) -> Self {
         Self::from_url(api_key, DEEPSEEK_API_BASE_URL)
-    }
-
-    // If you prefer the environment variable approach:
-    pub fn from_env() -> Self {
-        let api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY not set");
-        Self::new(&api_key)
     }
 
     // Handy for advanced usage, e.g. letting user override base_url or set timeouts:
@@ -70,28 +63,34 @@ impl Client {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.post(url)
     }
+}
+
+impl ProviderClient for Client {
+    // If you prefer the environment variable approach:
+    fn from_env() -> Self {
+        let api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY not set");
+        Self::new(&api_key)
+    }
+}
+
+impl CompletionClient for Client {
+    type CompletionModel = DeepSeekCompletionModel;
 
     /// Creates a DeepSeek completion model with the given `model_name`.
-    pub fn completion_model(&self, model_name: &str) -> DeepSeekCompletionModel {
+    fn completion_model(&self, model_name: &str) -> DeepSeekCompletionModel {
         DeepSeekCompletionModel {
             client: self.clone(),
             model: model_name.to_string(),
         }
     }
-
-    /// Optionally add an agent() convenience:
-    pub fn agent(&self, model_name: &str) -> crate::agent::AgentBuilder<DeepSeekCompletionModel> {
-        crate::agent::AgentBuilder::new(self.completion_model(model_name))
-    }
-
-    /// Create an extractor builder with the given completion model.
-    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
-        &self,
-        model: &str,
-    ) -> ExtractorBuilder<T, DeepSeekCompletionModel> {
-        ExtractorBuilder::new(self.completion_model(model))
-    }
 }
+
+impl_conversion_traits!(
+    AsEmbeddings,
+    AsTranscription,
+    AsImageGeneration,
+    AsAudioGeneration for Client
+);
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {

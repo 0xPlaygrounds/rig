@@ -9,12 +9,11 @@
 //! let gpt4o = client.completion_model(groq::GPT_4O);
 //! ```
 use super::openai::{send_compatible_streaming_request, CompletionResponse, TranscriptionResponse};
+use crate::client::{CompletionClient, TranscriptionClient};
 use crate::json_utils::merge;
 use crate::streaming::{StreamingCompletionModel, StreamingResult};
 use crate::{
-    agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
-    extractor::ExtractorBuilder,
     json_utils,
     message::{self, MessageError},
     providers::openai::ToolDefinition,
@@ -22,7 +21,8 @@ use crate::{
     OneOrMany,
 };
 use reqwest::multipart::Part;
-use schemars::JsonSchema;
+use rig::client::ProviderClient;
+use rig::impl_conversion_traits;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -31,7 +31,7 @@ use serde_json::{json, Value};
 // ================================================================
 const GROQ_API_BASE_URL: &str = "https://api.groq.com/openai/v1";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Client {
     base_url: String,
     http_client: reqwest::Client,
@@ -63,17 +63,23 @@ impl Client {
         }
     }
 
-    /// Create a new Groq client from the `GROQ_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    pub fn from_env() -> Self {
-        let api_key = std::env::var("GROQ_API_KEY").expect("GROQ_API_KEY not set");
-        Self::new(&api_key)
-    }
-
     fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.post(url)
     }
+}
+
+impl ProviderClient for Client {
+    /// Create a new Groq client from the `GROQ_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    fn from_env() -> Self {
+        let api_key = std::env::var("GROQ_API_KEY").expect("GROQ_API_KEY not set");
+        Self::new(&api_key)
+    }
+}
+
+impl CompletionClient for Client {
+    type CompletionModel = CompletionModel;
 
     /// Create a completion model with the given name.
     ///
@@ -86,9 +92,13 @@ impl Client {
     ///
     /// let gpt4 = groq.completion_model(groq::GPT_4);
     /// ```
-    pub fn completion_model(&self, model: &str) -> CompletionModel {
+    fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
+}
+
+impl TranscriptionClient for Client {
+    type TranscriptionModel = TranscriptionModel;
 
     /// Create a transcription model with the given name.
     ///
@@ -101,36 +111,16 @@ impl Client {
     ///
     /// let gpt4 = groq.transcription_model(groq::WHISPER_LARGE_V3);
     /// ```
-    pub fn transcription_model(&self, model: &str) -> TranscriptionModel {
+    fn transcription_model(&self, model: &str) -> TranscriptionModel {
         TranscriptionModel::new(self.clone(), model)
     }
-
-    /// Create an agent builder with the given completion model.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::groq::{Client, self};
-    ///
-    /// // Initialize the Groq client
-    /// let groq = Client::new("your-groq-api-key");
-    ///
-    /// let agent = groq.agent(groq::GPT_4)
-    ///    .preamble("You are comedian AI with a mission to make people laugh.")
-    ///    .temperature(0.0)
-    ///    .build();
-    /// ```
-    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    /// Create an extractor builder with the given completion model.
-    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
-        &self,
-        model: &str,
-    ) -> ExtractorBuilder<T, CompletionModel> {
-        ExtractorBuilder::new(self.completion_model(model))
-    }
 }
+
+impl_conversion_traits!(
+    AsEmbeddings,
+    AsImageGeneration,
+    AsAudioGeneration for Client
+);
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
@@ -260,7 +250,7 @@ pub const LLAMA_3_8B_8192: &str = "llama3-8b-8192";
 /// The `mixtral-8x7b-32768` model. Used for chat completion.
 pub const MIXTRAL_8X7B_32768: &str = "mixtral-8x7b-32768";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CompletionModel {
     client: Client,
     /// Name of the model (e.g.: deepseek-r1-distill-llama-70b)

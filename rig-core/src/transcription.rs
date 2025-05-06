@@ -78,18 +78,18 @@ pub trait TranscriptionModel: Clone + Send + Sync {
     }
 }
 
-pub trait TranscriptionModelDyn<'a>: Send + Sync {
+pub trait TranscriptionModelDyn: Send + Sync {
     fn transcription(
-        &'a self,
+        &self,
         request: TranscriptionRequest,
-    ) -> BoxFuture<'a, Result<TranscriptionResponse<()>, TranscriptionError>>;
+    ) -> BoxFuture<'_, Result<TranscriptionResponse<()>, TranscriptionError>>;
 }
 
-impl<'a, T: TranscriptionModel> TranscriptionModelDyn<'a> for T {
+impl<T: TranscriptionModel> TranscriptionModelDyn for T {
     fn transcription(
-        &'a self,
+        &self,
         request: TranscriptionRequest,
-    ) -> BoxFuture<'a, Result<TranscriptionResponse<()>, TranscriptionError>> {
+    ) -> BoxFuture<'_, Result<TranscriptionResponse<()>, TranscriptionError>> {
         Box::pin(async move {
             let resp = self.transcription(request).await?;
 
