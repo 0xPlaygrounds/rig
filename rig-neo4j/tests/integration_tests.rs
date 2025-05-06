@@ -6,13 +6,13 @@ use testcontainers::{
 };
 
 use futures::{StreamExt, TryStreamExt};
+use rig::client::EmbeddingsClient;
 use rig::vector_store::VectorStoreIndex;
 use rig::{
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
     Embed, OneOrMany,
 };
-use rig::client::EmbeddingsClient;
 use rig_neo4j::{vector_index::SearchParams, Neo4jClient, ToBoltType};
 
 const BOLT_PORT: u16 = 7687;

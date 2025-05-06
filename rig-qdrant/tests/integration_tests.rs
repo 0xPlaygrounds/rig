@@ -12,10 +12,10 @@ use qdrant_client::{
     },
     Payload, Qdrant,
 };
+use rig::client::EmbeddingsClient;
 use rig::{
     embeddings::EmbeddingsBuilder, providers::openai, vector_store::VectorStoreIndex, Embed,
 };
-use rig::client::EmbeddingsClient;
 use rig_qdrant::QdrantVectorStore;
 
 const QDRANT_PORT: u16 = 6333;

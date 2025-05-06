@@ -1,3 +1,4 @@
+use rig::client::EmbeddingsClient;
 use rig::{embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex, Embed};
 use rig_postgres::PostgresVectorStore;
 use serde::{Deserialize, Serialize};
@@ -8,7 +9,6 @@ use testcontainers::{
     runners::AsyncRunner,
     ContainerAsync, GenericImage, ImageExt,
 };
-use rig::client::EmbeddingsClient;
 
 const POSTGRES_PORT: u16 = 5432;
 
