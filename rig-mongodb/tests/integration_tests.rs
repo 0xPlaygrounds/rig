@@ -15,6 +15,7 @@ use testcontainers::{
     GenericImage, ImageExt,
 };
 use tokio::time::{sleep, Duration};
+use rig::client::EmbeddingsClient;
 
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq)]
 struct Word {

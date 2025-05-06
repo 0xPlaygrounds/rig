@@ -12,6 +12,7 @@ use rig::{
     providers::openai,
     Embed, OneOrMany,
 };
+use rig::client::EmbeddingsClient;
 use rig_neo4j::{vector_index::SearchParams, Neo4jClient, ToBoltType};
 
 const BOLT_PORT: u16 = 7687;

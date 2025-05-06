@@ -10,6 +10,7 @@ use rig_sqlite::{Column, ColumnValue, SqliteVectorStore, SqliteVectorStoreTable}
 use rusqlite::ffi::sqlite3_auto_extension;
 use sqlite_vec::sqlite3_vec_init;
 use tokio_rusqlite::Connection;
+use rig::client::EmbeddingsClient;
 
 #[derive(Embed, Clone, serde::Deserialize, Debug)]
 struct Word {
