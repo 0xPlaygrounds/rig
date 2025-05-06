@@ -1,13 +1,11 @@
-use rig::{
-    providers::together::{self},
-    streaming::{stream_to_stdout, StreamingPrompt},
-};
+use rig::providers::cohere;
+use rig::streaming::{stream_to_stdout, StreamingPrompt};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create streaming agent with a single context prompt
-    let agent = together::Client::from_env()
-        .agent(together::LLAMA_3_8B_CHAT_HF)
+    let agent = cohere::Client::from_env()
+        .agent(cohere::COMMAND)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();
@@ -18,6 +16,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     stream_to_stdout(&agent, &mut stream).await?;
+
+    if let Some(response) = stream.response {
+        println!("Usage: {:?} tokens", response.usage);
+    };
+
+    println!("Message: {:?}", stream.choice);
 
     Ok(())
 }

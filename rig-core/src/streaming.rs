@@ -11,59 +11,158 @@
 
 use crate::agent::Agent;
 use crate::completion::{
-    CompletionError, CompletionModel, CompletionRequest, CompletionRequestBuilder, Message,
+    CompletionError, CompletionModel, CompletionRequest, CompletionRequestBuilder,
+    CompletionResponse, Message,
 };
+use crate::message::{AssistantContent, ToolCall, ToolFunction};
+use crate::OneOrMany;
 use futures::{Stream, StreamExt};
 use std::boxed::Box;
-use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::pin::Pin;
+use std::task::{Context, Poll};
 
 /// Enum representing a streaming chunk from the model
-#[derive(Debug)]
-pub enum StreamingChoice {
+#[derive(Debug, Clone)]
+pub enum RawStreamingChoice<R: Clone> {
     /// A text chunk from a message response
     Message(String),
 
     /// A tool call response chunk
-    ToolCall(String, String, serde_json::Value),
+    ToolCall {
+        id: String,
+        name: String,
+        arguments: serde_json::Value,
+    },
+
+    /// The final response object, must be yielded if you want the
+    /// `response` field to be populated on the `StreamingCompletionResponse`
+    FinalResponse(R),
 }
 
-impl Display for StreamingChoice {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            StreamingChoice::Message(text) => write!(f, "{}", text),
-            StreamingChoice::ToolCall(name, id, params) => {
-                write!(f, "Tool call: {} {} {:?}", name, id, params)
-            }
+#[cfg(not(target_arch = "wasm32"))]
+pub type StreamingResult<R> =
+    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
+
+#[cfg(target_arch = "wasm32")]
+pub type StreamingResult<R> =
+    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>>>>;
+
+/// The response from a streaming completion request;
+/// message and response are populated at the end of the
+/// `inner` stream.
+pub struct StreamingCompletionResponse<R: Clone + Unpin> {
+    inner: StreamingResult<R>,
+    text: String,
+    tool_calls: Vec<ToolCall>,
+    /// The final aggregated message from the stream
+    /// contains all text and tool calls generated
+    pub choice: OneOrMany<AssistantContent>,
+    /// The final response from the stream, may be `None`
+    /// if the provider didn't yield it during the stream
+    pub response: Option<R>,
+}
+
+impl<R: Clone + Unpin> StreamingCompletionResponse<R> {
+    pub fn new(inner: StreamingResult<R>) -> StreamingCompletionResponse<R> {
+        Self {
+            inner,
+            text: "".to_string(),
+            tool_calls: vec![],
+            choice: OneOrMany::one(AssistantContent::text("")),
+            response: None,
         }
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub type StreamingResult =
-    Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>> + Send>>;
+impl<R: Clone + Unpin> From<StreamingCompletionResponse<R>> for CompletionResponse<Option<R>> {
+    fn from(value: StreamingCompletionResponse<R>) -> CompletionResponse<Option<R>> {
+        CompletionResponse {
+            choice: value.choice,
+            raw_response: value.response,
+        }
+    }
+}
 
-#[cfg(target_arch = "wasm32")]
-pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamingChoice, CompletionError>>>>;
+impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
+    type Item = Result<AssistantContent, CompletionError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let stream = self.get_mut();
+
+        match stream.inner.as_mut().poll_next(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(None) => {
+                // This is run at the end of the inner stream to collect all tokens into
+                // a single unified `Message`.
+                let mut choice = vec![];
+
+                stream.tool_calls.iter().for_each(|tc| {
+                    choice.push(AssistantContent::ToolCall(tc.clone()));
+                });
+
+                // This is required to ensure there's always at least one item in the content
+                if choice.is_empty() || !stream.text.is_empty() {
+                    choice.insert(0, AssistantContent::text(stream.text.clone()));
+                }
+
+                stream.choice = OneOrMany::many(choice)
+                    .expect("There should be at least one assistant message");
+
+                Poll::Ready(None)
+            }
+            Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
+            Poll::Ready(Some(Ok(choice))) => match choice {
+                RawStreamingChoice::Message(text) => {
+                    // Forward the streaming tokens to the outer stream
+                    // and concat the text together
+                    stream.text = format!("{}{}", stream.text, text.clone());
+                    Poll::Ready(Some(Ok(AssistantContent::text(text))))
+                }
+                RawStreamingChoice::ToolCall {
+                    id,
+                    name,
+                    arguments,
+                } => {
+                    // Keep track of each tool call to aggregate the final message later
+                    // and pass it to the outer stream
+                    stream.tool_calls.push(ToolCall {
+                        id: id.clone(),
+                        function: ToolFunction {
+                            name: name.clone(),
+                            arguments: arguments.clone(),
+                        },
+                    });
+                    Poll::Ready(Some(Ok(AssistantContent::tool_call(id, name, arguments))))
+                }
+                RawStreamingChoice::FinalResponse(response) => {
+                    // Set the final response field and return the next item in the stream
+                    stream.response = Some(response);
+
+                    stream.poll_next_unpin(cx)
+                }
+            },
+        }
+    }
+}
 
 /// Trait for high-level streaming prompt interface
-pub trait StreamingPrompt: Send + Sync {
+pub trait StreamingPrompt<R: Clone + Unpin>: Send + Sync {
     /// Stream a simple prompt to the model
     fn stream_prompt(
         &self,
-        prompt: &str,
-    ) -> impl Future<Output = Result<StreamingResult, CompletionError>>;
+        prompt: impl Into<Message> + Send,
+    ) -> impl Future<Output = Result<StreamingCompletionResponse<R>, CompletionError>>;
 }
 
 /// Trait for high-level streaming chat interface
-pub trait StreamingChat: Send + Sync {
+pub trait StreamingChat<R: Clone + Unpin>: Send + Sync {
     /// Stream a chat with history to the model
     fn stream_chat(
         &self,
-        prompt: &str,
+        prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> impl Future<Output = Result<StreamingResult, CompletionError>>;
+    ) -> impl Future<Output = Result<StreamingCompletionResponse<R>, CompletionError>>;
 }
 
 /// Trait for low-level streaming completion interface
@@ -78,29 +177,44 @@ pub trait StreamingCompletion<M: StreamingCompletionModel> {
 
 /// Trait defining a streaming completion model
 pub trait StreamingCompletionModel: CompletionModel {
+    type StreamingResponse: Clone + Unpin;
     /// Stream a completion response for the given request
+    #[cfg(not(target_arch = "wasm32"))]
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl Future<Output = Result<StreamingResult, CompletionError>>;
+    ) -> impl Future<
+        Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
+    > + Send;
+
+    #[cfg(target_arch = "wasm32")]
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> impl Future<
+        Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
+    >;
 }
 
 /// helper function to stream a completion request to stdout
 pub async fn stream_to_stdout<M: StreamingCompletionModel>(
-    agent: Agent<M>,
-    stream: &mut StreamingResult,
+    agent: &Agent<M>,
+    stream: &mut StreamingCompletionResponse<M::StreamingResponse>,
 ) -> Result<(), std::io::Error> {
     print!("Response: ");
     while let Some(chunk) = stream.next().await {
         match chunk {
-            Ok(StreamingChoice::Message(text)) => {
-                print!("{}", text);
+            Ok(AssistantContent::Text(text)) => {
+                print!("{}", text.text);
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(StreamingChoice::ToolCall(name, _, params)) => {
+            Ok(AssistantContent::ToolCall(tool_call)) => {
                 let res = agent
                     .tools
-                    .call(&name, params.to_string())
+                    .call(
+                        &tool_call.function.name,
+                        tool_call.function.arguments.to_string(),
+                    )
                     .await
                     .map_err(|e| std::io::Error::other(e.to_string()))?;
                 println!("\nResult: {}", res);
@@ -111,6 +225,7 @@ pub async fn stream_to_stdout<M: StreamingCompletionModel>(
             }
         }
     }
+
     println!(); // New line after streaming completes
 
     Ok(())

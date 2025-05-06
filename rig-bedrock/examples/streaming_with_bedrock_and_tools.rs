@@ -22,6 +22,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("Calculate 2 + 5");
     let mut stream = agent.stream_prompt("Calculate 2 + 5").await?;
-    stream_to_stdout(agent, &mut stream).await?;
+    stream_to_stdout(&agent, &mut stream).await?;
     Ok(())
 }
