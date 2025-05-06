@@ -256,8 +256,7 @@ where
         request: CompletionRequest,
     ) -> BoxFuture<Result<CompletionResponse<()>, CompletionError>> {
         Box::pin(async move {
-            self
-                .completion(request)
+            self.completion(request)
                 .await
                 .map(|resp| CompletionResponse {
                     choice: resp.choice,

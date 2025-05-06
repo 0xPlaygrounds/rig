@@ -236,21 +236,51 @@ macro_rules! impl_conversion_traits {
             impl_conversion_traits!(@impl $trait_ for $struct_);
         )*
     };
+
     (@impl AsAudioGeneration for $struct_:ident ) => {
-        #[cfg(feature = "audio")]
-        impl rig::client::AsAudioGeneration for $struct_ {}
+        rig::client::impl_audio_generation!($struct_);
     };
+
     (@impl AsImageGeneration for $struct_:ident ) => {
-        #[cfg(feature = "image")]
-        impl rig::client::AsImageGeneration for $struct_ {}
+        rig::client::impl_image_generation!($struct_);
     };
+
     (@impl $trait_:ident for $struct_:ident) => {
         impl rig::client::$trait_ for $struct_ {}
     };
 }
 
-pub use impl_conversion_traits;
+#[cfg(feature = "audio")]
+#[macro_export]
+macro_rules! impl_audio_generation {
+    ($struct_:ident) => {
+        impl rig::client::AsAudioGeneration for $struct_ {}
+    };
+}
 
+#[cfg(not(feature = "audio"))]
+#[macro_export]
+macro_rules! impl_audio_generation {
+    ($struct_:ident) => {};
+}
+
+#[cfg(feature = "image")]
+#[macro_export]
+macro_rules! impl_image_generation {
+    ($struct_:ident) => {
+        impl rig::client::AsImageGeneration for $struct_ {}
+    };
+}
+
+#[cfg(not(feature = "image"))]
+#[macro_export]
+macro_rules! impl_image_generation {
+    ($struct_:ident) => {};
+}
+
+pub use impl_audio_generation;
+pub use impl_conversion_traits;
+pub use impl_image_generation;
 #[cfg(test)]
 mod tests {
     use crate::audio_generation::AudioGenerationModel;

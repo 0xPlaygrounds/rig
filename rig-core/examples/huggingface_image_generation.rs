@@ -1,13 +1,20 @@
 use rig::image_generation::ImageGenerationModel;
+use rig::prelude::*;
+
 use rig::providers::huggingface;
+
 use std::env::args;
+
 use std::fs::File;
+
 use std::io::Write;
+
 use std::path::Path;
 
 const DEFAULT_PATH: &str = "./output.png";
 
 #[tokio::main]
+
 async fn main() {
     let arguments: Vec<String> = args().collect();
 

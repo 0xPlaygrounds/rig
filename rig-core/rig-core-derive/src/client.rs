@@ -38,6 +38,18 @@ pub fn provider_client(input: TokenStream) -> TokenStream {
                 as_trait_name: "AsEmbeddings",
             },
         ),
+        (
+            "image_generation",
+            FeatureInfo {
+                as_trait_name: "AsImageGeneration",
+            },
+        ),
+        (
+            "audio_generation",
+            FeatureInfo {
+                as_trait_name: "AsAudioGeneration",
+            },
+        ),
     ]);
 
     let mut impls = Vec::new();

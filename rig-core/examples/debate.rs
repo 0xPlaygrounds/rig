@@ -1,6 +1,8 @@
+use rig::prelude::*;
 use std::env;
 
 use anyhow::Result;
+
 use rig::{
     agent::Agent,
     completion::Prompt,
@@ -10,6 +12,7 @@ use rig::{
 
 struct Debater {
     gpt_4: Agent<openai::CompletionModel>,
+
     coral: Agent<cohere::CompletionModel>,
 }
 
@@ -22,11 +25,13 @@ impl Debater {
 
         let openai_client =
             openai::Client::new(&env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"));
+
         let cohere_client =
             cohere::Client::new(&env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set"));
 
         Self {
             gpt_4: openai_client.agent("gpt-4").preamble(position_a).build(),
+
             coral: cohere_client
                 .agent("command-r")
                 .preamble(position_b)
@@ -36,6 +41,7 @@ impl Debater {
 
     async fn rounds(&self, n: usize) -> Result<()> {
         let mut history_a: Vec<Message> = vec![];
+
         let mut history_b: Vec<Message> = vec![];
 
         let mut last_resp_b: Option<String> = None;
@@ -52,7 +58,9 @@ impl Debater {
                 .prompt(prompt_a.as_str())
                 .with_history(&mut history_a)
                 .await?;
+
             println!("GPT-4:\n{}", resp_a);
+
             println!("================================================================");
 
             let resp_b = self
@@ -60,7 +68,9 @@ impl Debater {
                 .prompt(resp_a.as_str())
                 .with_history(&mut history_b)
                 .await?;
+
             println!("Coral:\n{}", resp_b);
+
             println!("================================================================");
 
             last_resp_b = Some(resp_b)
@@ -71,26 +81,44 @@ impl Debater {
 }
 
 #[tokio::main]
+
 async fn main() -> Result<(), anyhow::Error> {
     // Create model
+
     let debator = Debater::new(
+
         "\
+
         You believe that religion is a useful concept. \
+
         This could be for security, financial, ethical, philosophical, metaphysical, religious or any kind of other reason. \
+
         You choose what your arguments are. \
+
         I will argue against you and you must rebuke me and try to convince me that I am wrong. \
+
         Make your statements short and concise. \
+
         ",
+
         "\
+
         You believe that religion is a harmful concept. \
+
         This could be for security, financial, ethical, philosophical, metaphysical, religious or any kind of other reason. \
+
         You choose what your arguments are. \
+
         I will argue against you and you must rebuke me and try to convince me that I am wrong. \
+
         Make your statements short and concise. \
+
         ",
+
     );
 
     // Run the debate for 4 rounds
+
     debator.rounds(4).await?;
 
     Ok(())
