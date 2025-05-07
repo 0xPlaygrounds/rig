@@ -2,11 +2,9 @@ use futures::{Stream, StreamExt};
 use rig::{
     agent::Agent,
     completion::{self, CompletionError, PromptError, ToolDefinition},
-    message::{
-        AssistantContent, Message, Text, ToolCall, ToolFunction, ToolResultContent, UserContent,
-    },
+    message::{AssistantContent, Message, Text, ToolResultContent, UserContent},
     providers::anthropic,
-    streaming::{StreamingChoice, StreamingCompletion},
+    streaming::{StreamingCompletion, StreamingCompletionModel},
     tool::{Tool, ToolSetError},
     OneOrMany,
 };
@@ -27,11 +25,58 @@ enum StreamingError {
 
 type StreamingResult = Pin<Box<dyn Stream<Item = Result<Text, StreamingError>> + Send>>;
 
-async fn multi_turn_prompt<M: rig::streaming::StreamingCompletionModel + Send + 'static>(
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // tracing_subscriber::registry()
+    //     .with(
+    //         tracing_subscriber::EnvFilter::try_from_default_env()
+    //             .unwrap_or_else(|_| "stdout=info".into()),
+    //     )
+    //     .with(tracing_subscriber::fmt::layer())
+    //     .init();
+
+    // Create Anthropic client
+    let anthropic_client = anthropic::Client::from_env();
+
+    // Create agent with a single context prompt and a calculator tools
+    let calculator_agent = anthropic_client
+        .agent(anthropic::CLAUDE_3_5_SONNET)
+        .preamble(
+            "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
+            Follow these instructions closely. 
+            1. Consider the user's request carefully and identify the core elements of the request.
+            2. Select which tool among those made available to you is appropriate given the context. 
+            3. This is very important: never perform the operation yourself. 
+            "
+        )
+        .tool(Add)
+        .tool(Subtract)
+        .tool(Multiply)
+        .tool(Divide)
+        .build();
+
+    // Prompt the agent and get the stream
+    let mut stream = multi_turn_prompt(
+        calculator_agent,
+        "Calculate 2 * (3 + 5) / 9  = ?. Describe the result to me.",
+        Vec::new(),
+    )
+    .await;
+
+    custom_stream_to_stdout(&mut stream).await?;
+
+    Ok(())
+}
+
+async fn multi_turn_prompt<M>(
     agent: Agent<M>,
     prompt: impl Into<Message> + Send,
     mut chat_history: Vec<completion::Message>,
-) -> StreamingResult {
+) -> StreamingResult
+where
+    M: StreamingCompletionModel + 'static,
+    <M as StreamingCompletionModel>::StreamingResponse: std::marker::Send,
+{
     let prompt: Message = prompt.into();
 
     (Box::pin(async_stream::stream! {
@@ -52,26 +97,18 @@ async fn multi_turn_prompt<M: rig::streaming::StreamingCompletionModel + Send + 
 
             while let Some(content) = stream.next().await {
                 match content {
-                    Ok(StreamingChoice::Message(text)) => {
-                        yield Ok(Text { text });
+                    Ok(AssistantContent::Text(text)) => {
+                        yield Ok(Text { text: text.text });
                         did_call_tool = false;
                     },
-                    Ok(StreamingChoice::ToolCall(name, id, arguments)) => {
+                    Ok(AssistantContent::ToolCall(tool_call)) => {
                         let tool_result =
-                            agent.tools.call(&name, arguments.to_string()).await?;
+                            agent.tools.call(&tool_call.function.name, tool_call.function.arguments.to_string()).await?;
 
-                        let tool_call = ToolCall {
-                            id: id.clone(),
-                            function: ToolFunction {
-                                name: name.clone(),
-                                arguments: arguments.clone(),
-                            },
-                        };
-
-                        let tool_call_msg = AssistantContent::ToolCall(tool_call);
+                        let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
 
                         tool_calls.push(tool_call_msg);
-                        tool_results.push((id, tool_result));
+                        tool_results.push((tool_call.id, tool_result));
 
                         did_call_tool = true;
                         // break;
@@ -112,49 +149,6 @@ async fn multi_turn_prompt<M: rig::streaming::StreamingCompletionModel + Send + 
         }
 
     })) as _
-}
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // tracing_subscriber::registry()
-    //     .with(
-    //         tracing_subscriber::EnvFilter::try_from_default_env()
-    //             .unwrap_or_else(|_| "stdout=info".into()),
-    //     )
-    //     .with(tracing_subscriber::fmt::layer())
-    //     .init();
-
-    // Create OpenAI client
-    let openai_client = anthropic::Client::from_env();
-
-    // Create RAG agent with a single context prompt and a dynamic tool source
-    let calculator_rag = openai_client
-        .agent(anthropic::CLAUDE_3_5_SONNET)
-        .preamble(
-            "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
-            Follow these instructions closely. 
-            1. Consider the user's request carefully and identify the core elements of the request.
-            2. Select which tool among those made available to you is appropriate given the context. 
-            3. This is very important: never perform the operation yourself. 
-            "
-        )
-        .tool(Add)
-        .tool(Subtract)
-        .tool(Multiply)
-        .tool(Divide)
-        .build();
-
-    // Prompt the agent and get the stream
-    let mut stream = multi_turn_prompt(
-        calculator_rag,
-        "Calculate 2 * (3 + 5) / 9  = ?. Describe the result to me.",
-        Vec::new(),
-    )
-    .await;
-
-    custom_stream_to_stdout(&mut stream).await?;
-
-    Ok(())
 }
 
 /// helper function to stream a completion request to stdout
