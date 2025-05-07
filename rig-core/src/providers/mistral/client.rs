@@ -1,6 +1,7 @@
-use serde::Deserialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-use crate::agent::AgentBuilder;
+use crate::{agent::AgentBuilder, extractor::ExtractorBuilder};
 
 use super::{
     embedding::{EmbeddingModel, MISTRAL_EMBED},
@@ -102,6 +103,14 @@ impl Client {
     /// ```
     pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
         AgentBuilder::new(self.completion_model(model))
+    }
+
+    /// Create an extractor builder with the given completion model.
+    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
+        &self,
+        model: &str,
+    ) -> ExtractorBuilder<T, CompletionModel> {
+        ExtractorBuilder::new(self.completion_model(model))
     }
 }
 
