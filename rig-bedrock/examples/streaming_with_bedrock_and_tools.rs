@@ -1,11 +1,11 @@
 use rig::streaming::{stream_to_stdout, StreamingPrompt};
 use rig_bedrock::{client::ClientBuilder, completion::AMAZON_NOVA_LITE};
-mod common;
+use rig_shared::tools::calculator::{Adder, Subtract};
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
-    // Create agent with a single context prompt and two tools
     let agent = ClientBuilder::new()
         .build()
         .await
@@ -17,10 +17,11 @@ async fn main() -> Result<(), anyhow::Error> {
             like 20 words",
         )
         .max_tokens(1024)
-        .tool(common::Adder)
+        .tool(Adder)
+        .tool(Subtract)
         .build();
 
-    println!("Calculate 2 + 5");
+    info!("Calculate 2 + 5");
     let mut stream = agent.stream_prompt("Calculate 2 + 5").await?;
     stream_to_stdout(&agent, &mut stream).await?;
     Ok(())
