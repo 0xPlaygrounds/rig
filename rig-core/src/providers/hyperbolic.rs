@@ -13,7 +13,7 @@ use super::openai::{send_compatible_streaming_request, AssistantContent};
 
 use crate::json_utils::merge_inplace;
 use crate::message;
-use crate::streaming::{StreamingCompletionModel, StreamingResult};
+use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -261,7 +261,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         .iter()
                         .map(|call| {
                             completion::AssistantContent::tool_call(
-                                &call.function.name,
+                                &call.id,
                                 &call.function.name,
                                 call.function.arguments.clone(),
                             )
@@ -391,13 +391,17 @@ impl completion::CompletionModel for CompletionModel {
 }
 
 impl StreamingCompletionModel for CompletionModel {
+    type StreamingResponse = openai::StreamingCompletionResponse;
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<StreamingResult, CompletionError> {
+    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
         let mut request = self.create_completion_request(completion_request)?;
 
-        merge_inplace(&mut request, json!({"stream": true}));
+        merge_inplace(
+            &mut request,
+            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        );
 
         let builder = self.client.post("/chat/completions").json(&request);
 
@@ -527,8 +531,10 @@ mod image_generation {
 // ======================================
 // Hyperbolic Audio Generation API
 // ======================================
+use crate::providers::openai;
 #[cfg(feature = "audio")]
 pub use audio_generation::*;
+
 #[cfg(feature = "audio")]
 mod audio_generation {
     use super::{ApiResponse, Client};

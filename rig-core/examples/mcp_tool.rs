@@ -16,7 +16,14 @@ use serde_json::json;
 #[tool(
     name = "Add",
     description = "Adds two numbers together.",
-    params(a = "The first number to add", b = "The second number to add")
+    params(a = "The first number to add", b = "The second number to add"),
+    annotations(
+        title = "Add",
+        readOnlyHint = false,
+        destructiveHint = false,
+        idempotentHint = false,
+        openWorldHint = false
+    )
 )]
 async fn add_tool(a: f64, b: f64) -> Result<ToolResponseContent> {
     Ok(tool_text_content!((a + b).to_string()))

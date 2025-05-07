@@ -91,8 +91,8 @@ impl Tool for Subtract {
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     // Create agent with a single context prompt and two tools
-    let calculator_agent = providers::together::Client::from_env()
-        .agent("meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo")
+    let calculator_agent = providers::openrouter::Client::from_env()
+        .agent(providers::openrouter::GEMINI_FLASH_2_0)
         .preamble(
             "You are a calculator here to help the user perform arithmetic 
             operations. Use the tools provided to answer the user's question. 
@@ -107,5 +107,12 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Calculate 2 - 5");
     let mut stream = calculator_agent.stream_prompt("Calculate 2 - 5").await?;
     stream_to_stdout(&calculator_agent, &mut stream).await?;
+
+    if let Some(response) = stream.response {
+        println!("Usage: {:?}", response.usage)
+    };
+
+    println!("Message: {:?}", stream.choice);
+
     Ok(())
 }
