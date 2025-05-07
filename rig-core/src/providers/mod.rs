@@ -55,6 +55,7 @@ pub mod groq;
 pub mod huggingface;
 pub mod hyperbolic;
 pub mod mira;
+pub mod mistral;
 pub mod moonshot;
 pub mod ollama;
 pub mod openai;
