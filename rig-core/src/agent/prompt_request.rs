@@ -72,7 +72,7 @@ impl<'a, M: CompletionModel> IntoFuture for PromptRequest<'a, M> {
 }
 
 impl<M: CompletionModel> PromptRequest<'_, M> {
-    async fn send(self) -> Result<String, PromptError> {
+    pub async fn send(self) -> Result<String, PromptError> {
         let agent = self.agent;
         let mut prompt = self.prompt;
         let chat_history = if let Some(history) = self.chat_history {

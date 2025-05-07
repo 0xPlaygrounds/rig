@@ -95,6 +95,7 @@ pub mod one_or_many;
 pub mod pipeline;
 pub mod providers;
 pub mod streaming;
+pub mod think_tool;
 pub mod tool;
 pub mod transcription;
 pub mod vector_store;
