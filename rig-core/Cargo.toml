@@ -49,8 +49,8 @@ tracing-subscriber = "0.3.18"
 tokio-test = "0.4.4"
 serde_path_to_error = "0.1.16"
 base64 = "0.22.1"
-mcp-core = { version = "0.1.46", features = ["sse"] }
-mcp-core-macros = { version = "0.1.22" }
+mcp-core = { version = "0.1.50", features = ["sse"] }
+mcp-core-macros = { version = "0.1.30" }
 
 [features]
 default = ["reqwest/default"]

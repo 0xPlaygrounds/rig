@@ -6540,9 +6540,9 @@ dependencies = [
 
 [[package]]
 name = "mcp-core-macros"
-version = "0.1.22"
+version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ea671b2ae3ba45f473c21f1c9a0effd890c3fdb0c1f2dcc55882c9f6403214c"
+checksum = "83ee80a2f496327e817b90f538b2930dd82c1a54ca253ddd375ee028613495d1"
 dependencies = [
  "async-trait",
  "convert_case 0.6.0",
