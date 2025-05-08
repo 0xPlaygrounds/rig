@@ -6519,9 +6519,9 @@ dependencies = [
 
 [[package]]
 name = "mcp-core"
-version = "0.1.46"
+version = "0.1.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2766f3db0a24119127ba5e380539f2a6351210456a6911de28dbaa8ce2761080"
+checksum = "a76673446eba2d1011f0dbc3b8668984f8b1ca2754b05b9c2bcd27d02ad73aa3"
 dependencies = [
  "actix-web",
  "anyhow",
