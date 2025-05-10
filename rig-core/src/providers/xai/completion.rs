@@ -47,7 +47,7 @@ impl CompletionModel {
             .flatten()
             .collect();
 
-        // Init full history with preamble (or empty if non-existant)
+        // Init full history with preamble (or empty if non-existent)
         let mut full_history: Vec<Message> = match &completion_request.preamble {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
