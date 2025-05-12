@@ -11,6 +11,7 @@ pub mod components;
 pub mod extractor;
 pub mod parallel;
 pub mod rag;
+pub mod tools;
 
 #[derive(Debug, Error)]
 pub enum ServiceError {

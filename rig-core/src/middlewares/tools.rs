@@ -44,7 +44,7 @@ where
     T: Send + 'static,
     S::Future: Send,
 {
-    type Response = (Vec<Message>, String, ToolResultContent);
+    type Response = (OneOrMany<Message>, String, ToolResultContent);
     type Error = ToolSetError;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 

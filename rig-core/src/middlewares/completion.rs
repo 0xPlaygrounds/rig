@@ -171,7 +171,7 @@ pub struct CompletionLayerService<M, S> {
 impl<M, S> Service<CompletionRequest> for CompletionLayerService<M, S>
 where
     M: CompletionModel + 'static,
-    S: Service<CompletionRequest, Response = (Vec<Message>, String, ToolResultContent)>
+    S: Service<CompletionRequest, Response = (OneOrMany<Message>, String, ToolResultContent)>
         + Clone
         + Send
         + 'static,
@@ -203,6 +203,8 @@ where
             let tool_result_message = Message::User {
                 content: OneOrMany::one(UserContent::tool_result(id, OneOrMany::one(tool_content))),
             };
+
+            let messages: Vec<Message> = messages.into_iter().collect();
 
             let mut req = CompletionRequestBuilder::new(model.clone(), tool_result_message)
                 .documents(documents.clone())
