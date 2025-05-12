@@ -8622,7 +8622,7 @@ checksum = "57397d16646700483b67d2dd6511d79318f9d057fdbd21a4066aeac8b41d310a"
 
 [[package]]
 name = "rig-bedrock"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -8644,7 +8644,7 @@ dependencies = [
 
 [[package]]
 name = "rig-core"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "assert_fs",
@@ -8693,7 +8693,7 @@ dependencies = [
 
 [[package]]
 name = "rig-eternalai"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "anyhow",
  "ethers",
@@ -8709,7 +8709,7 @@ dependencies = [
 
 [[package]]
 name = "rig-fastembed"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "fastembed",
@@ -8723,7 +8723,7 @@ dependencies = [
 
 [[package]]
 name = "rig-lancedb"
-version = "0.2.10"
+version = "0.2.11"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -8739,7 +8739,7 @@ dependencies = [
 
 [[package]]
 name = "rig-mongodb"
-version = "0.2.10"
+version = "0.2.11"
 dependencies = [
  "anyhow",
  "futures",
@@ -8756,7 +8756,7 @@ dependencies = [
 
 [[package]]
 name = "rig-neo4j"
-version = "0.2.10"
+version = "0.2.11"
 dependencies = [
  "anyhow",
  "futures",
@@ -8775,7 +8775,7 @@ dependencies = [
 
 [[package]]
 name = "rig-postgres"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "dotenvy",
@@ -8796,7 +8796,7 @@ dependencies = [
 
 [[package]]
 name = "rig-qdrant"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "anyhow",
  "httpmock",
@@ -8811,7 +8811,7 @@ dependencies = [
 
 [[package]]
 name = "rig-sqlite"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "anyhow",
  "chrono",
@@ -8830,7 +8830,7 @@ dependencies = [
 
 [[package]]
 name = "rig-surrealdb"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "rig-core",
