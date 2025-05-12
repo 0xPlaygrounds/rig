@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.12.0...rig-core-v0.13.0) - 2025-05-12
+
+### Added
+
+- Improve Streaming API ([#388](https://github.com/0xPlaygrounds/rig/pull/388))
+
+### Fixed
+
+- bump mcp-core to latest version and fixed breaking changes ([#443](https://github.com/0xPlaygrounds/rig/pull/443))
+
+### Other
+
+- fix some typos in comment ([#445](https://github.com/0xPlaygrounds/rig/pull/445))
+
 ## [0.12.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.11.1...rig-core-v0.12.0) - 2025-04-29
 
 ### Added
