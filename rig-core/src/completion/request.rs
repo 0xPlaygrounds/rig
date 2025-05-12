@@ -263,7 +263,7 @@ pub struct CompletionRequest {
 impl CompletionRequest {
     /// Returns documents normalized into a message (if any).
     /// Most providers do not accept documents directly as input, so it needs to convert into a
-    ///  `Message` so that it can be incorperated into `chat_history` as a
+    ///  `Message` so that it can be incorporated into `chat_history` as a
     pub fn normalized_documents(&self) -> Option<Message> {
         if self.documents.is_empty() {
             return None;

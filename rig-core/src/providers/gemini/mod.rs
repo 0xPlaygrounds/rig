@@ -25,7 +25,7 @@ pub mod gemini_api_types {
     pub enum ExecutionLanguage {
         /// Unspecified language. This value should not be used.
         LanguageUnspecified,
-        /// Python >= 3.10, with numpy and simpy available.
+        /// Python >= 3.10, with numpy and simply available.
         Python,
     }
 
