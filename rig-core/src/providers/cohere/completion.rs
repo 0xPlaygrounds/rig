@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-
+use std::future::Future;
 use crate::{
     completion::{self, CompletionError},
     json_utils, message, OneOrMany,
@@ -9,6 +9,7 @@ use super::client::Client;
 use crate::completion::CompletionRequest;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use crate::providers::cohere::streaming::StreamingCompletionResponse;
 
 #[derive(Debug, Deserialize)]
 pub struct CompletionResponse {
@@ -479,6 +480,10 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
+
+
+
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -504,6 +509,10 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+
+    fn stream(&self, request: CompletionRequest) -> impl Future<Output=Result<crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>> + Send {
+        CompletionModel::stream(self, request)
     }
 }
 #[cfg(test)]

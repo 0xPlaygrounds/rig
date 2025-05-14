@@ -2,7 +2,7 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::{ApiErrorResponse, ApiResponse, Client, Usage};
+use super::{ApiErrorResponse, ApiResponse, Client, StreamingCompletionResponse, Usage};
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::message::{AudioMediaType, ImageDetail};
 use crate::one_or_many::string_or_one_or_many;
@@ -10,6 +10,7 @@ use crate::{completion, json_utils, message, OneOrMany};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::Infallible;
+use std::future::Future;
 use std::str::FromStr;
 
 /// `o4-mini-2025-04-16` completion model
@@ -688,6 +689,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -720,5 +722,9 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+
+    fn stream(&self, request: CompletionRequest) -> impl Future<Output=Result<crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>> + Send {
+        CompletionModel::stream(self, request)
     }
 }

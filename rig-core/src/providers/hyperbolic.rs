@@ -14,7 +14,7 @@ use super::openai::{send_compatible_streaming_request, AssistantContent};
 use crate::client::{CompletionClient, ProviderClient};
 use crate::json_utils::merge_inplace;
 use crate::message;
-use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
+use crate::streaming::{StreamingCompletionResponse};
 
 use crate::impl_conversion_traits;
 use crate::providers::openai;
@@ -310,6 +310,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = openai::StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -341,10 +342,6 @@ impl completion::CompletionModel for CompletionModel {
             Err(CompletionError::ProviderError(response.text().await?))
         }
     }
-}
-
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = openai::StreamingCompletionResponse;
     async fn stream(
         &self,
         completion_request: CompletionRequest,

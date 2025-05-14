@@ -3,6 +3,7 @@
 //! From [Together AI Reference](https://docs.together.ai/docs/chat-overview)
 // ================================================================
 
+use std::future::Future;
 use crate::{
     completion::{self, CompletionError},
     json_utils,
@@ -10,7 +11,8 @@ use crate::{
 };
 
 use serde_json::json;
-
+use crate::completion::CompletionRequest;
+use crate::streaming::StreamingCompletionResponse;
 use super::client::{together_ai_api_types::ApiResponse, Client};
 
 // ================================================================
@@ -189,6 +191,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = openai::CompletionResponse;
+    type StreamingResponse = openai::StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -221,5 +224,9 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+
+    fn stream(&self, request: CompletionRequest) -> impl Future<Output=Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>> + Send {
+       CompletionModel::stream(self, request) 
     }
 }

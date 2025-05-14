@@ -13,7 +13,7 @@ use crate::client::{CompletionClient, ProviderClient};
 use crate::json_utils::merge;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
+use crate::streaming::{StreamingCompletionResponse};
 use crate::{
     completion::{self, CompletionError, CompletionModel, CompletionRequest},
     impl_conversion_traits, json_utils, message, OneOrMany,
@@ -430,6 +430,7 @@ impl DeepSeekCompletionModel {
 
 impl CompletionModel for DeepSeekCompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = openai::StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -460,10 +461,7 @@ impl CompletionModel for DeepSeekCompletionModel {
             Err(CompletionError::ProviderError(response.text().await?))
         }
     }
-}
 
-impl StreamingCompletionModel for DeepSeekCompletionModel {
-    type StreamingResponse = openai::StreamingCompletionResponse;
     async fn stream(
         &self,
         completion_request: CompletionRequest,

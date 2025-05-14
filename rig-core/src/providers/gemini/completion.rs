@@ -20,12 +20,12 @@ use gemini_api_types::{
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
-
+use std::future::Future;
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
     OneOrMany,
 };
-
+use crate::providers::gemini::streaming::StreamingCompletionResponse;
 use self::gemini_api_types::Schema;
 
 use super::Client;
@@ -51,6 +51,8 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = GenerateContentResponse;
+    type StreamingResponse = StreamingCompletionResponse;
+
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -89,6 +91,10 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }?
+    }
+
+    fn stream(&self, request: CompletionRequest) -> impl Future<Output=Result<crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>> + Send {
+        CompletionModel::stream(self, request)
     }
 }
 

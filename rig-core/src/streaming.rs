@@ -11,8 +11,7 @@
 
 use crate::agent::Agent;
 use crate::completion::{
-    CompletionError, CompletionModel, CompletionRequest, CompletionRequestBuilder,
-    CompletionResponse, Message,
+    CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message,
 };
 use crate::message::{AssistantContent, ToolCall, ToolFunction};
 use crate::OneOrMany;
@@ -52,7 +51,7 @@ pub type StreamingResult<R> =
 /// message and response are populated at the end of the
 /// `inner` stream.
 pub struct StreamingCompletionResponse<R: Clone + Unpin> {
-    inner: StreamingResult<R>,
+    pub(crate) inner: StreamingResult<R>,
     text: String,
     tool_calls: Vec<ToolCall>,
     /// The final aggregated message from the stream
@@ -64,7 +63,7 @@ pub struct StreamingCompletionResponse<R: Clone + Unpin> {
 }
 
 impl<R: Clone + Unpin> StreamingCompletionResponse<R> {
-    pub fn new(inner: StreamingResult<R>) -> StreamingCompletionResponse<R> {
+    pub fn stream(inner: StreamingResult<R>) -> StreamingCompletionResponse<R> {
         Self {
             inner,
             text: "".to_string(),
@@ -166,7 +165,7 @@ pub trait StreamingChat<R: Clone + Unpin>: Send + Sync {
 }
 
 /// Trait for low-level streaming completion interface
-pub trait StreamingCompletion<M: StreamingCompletionModel> {
+pub trait StreamingCompletion<M: CompletionModel> {
     /// Generate a streaming completion from a request
     fn stream_completion(
         &self,
@@ -175,29 +174,61 @@ pub trait StreamingCompletion<M: StreamingCompletionModel> {
     ) -> impl Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>;
 }
 
-/// Trait defining a streaming completion model
-pub trait StreamingCompletionModel: CompletionModel {
-    type StreamingResponse: Clone + Unpin;
-    /// Stream a completion response for the given request
-    #[cfg(not(target_arch = "wasm32"))]
-    fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> impl Future<
-        Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
-    > + Send;
+pub(crate) struct StreamingResultDyn<R: Clone + Unpin> {
+    pub(crate) inner: StreamingResult<R>,
+}
 
-    #[cfg(target_arch = "wasm32")]
-    fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> impl Future<
-        Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
-    >;
+impl<R: Clone + Unpin> Stream for StreamingResultDyn<R> {
+    type Item = Result<RawStreamingChoice<()>, CompletionError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let stream = self.get_mut();
+
+        match stream.inner.as_mut().poll_next(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
+            Poll::Ready(Some(Ok(chunk))) => match chunk {
+                RawStreamingChoice::FinalResponse(_) => {
+                    Poll::Ready(Some(Ok(RawStreamingChoice::FinalResponse(()))))
+                }
+                RawStreamingChoice::Message(m) => {
+                    Poll::Ready(Some(Ok(RawStreamingChoice::Message(m))))
+                }
+                RawStreamingChoice::ToolCall {
+                    id,
+                    name,
+                    arguments,
+                } => Poll::Ready(Some(Ok(RawStreamingChoice::ToolCall {
+                    id,
+                    name,
+                    arguments,
+                }))),
+            },
+        }
+    }
+}
+
+pub(crate) trait StreamingCompletionResponseDyn {
+    async fn inner_next(&mut self) -> Option<Result<RawStreamingChoice<()>, CompletionError>>;
+}
+
+impl<R: Clone + Unpin> StreamingCompletionResponseDyn for StreamingCompletionResponse<R> {
+    async fn inner_next(&mut self) -> Option<Result<RawStreamingChoice<()>, CompletionError>> {
+        self.inner.next().await.map(|res| {
+            res.map(|c| match c {
+                RawStreamingChoice::Message(m) => RawStreamingChoice::Message(m),
+                RawStreamingChoice::ToolCall { id, name, arguments } => RawStreamingChoice::ToolCall {
+                    id, name, arguments
+                },
+                RawStreamingChoice::FinalResponse(_) => RawStreamingChoice::FinalResponse(())
+            })
+        })
+    }
 }
 
 /// helper function to stream a completion request to stdout
-pub async fn stream_to_stdout<M: StreamingCompletionModel>(
+pub async fn stream_to_stdout<M: CompletionModel>(
     agent: &Agent<M>,
     stream: &mut StreamingCompletionResponse<M::StreamingResponse>,
 ) -> Result<(), std::io::Error> {

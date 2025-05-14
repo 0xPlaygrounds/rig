@@ -40,7 +40,7 @@
 //! ```
 use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient};
 use crate::json_utils::merge_inplace;
-use crate::streaming::{RawStreamingChoice, StreamingCompletionModel};
+use crate::streaming::{RawStreamingChoice};
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
@@ -390,8 +390,19 @@ impl CompletionModel {
 
 // ---------- CompletionModel Implementation ----------
 
+#[derive(Clone)]
+pub struct StreamingCompletionResponse {
+    pub done_reason: Option<String>,
+    pub total_duration: Option<u64>,
+    pub load_duration: Option<u64>,
+    pub prompt_eval_count: Option<u64>,
+    pub prompt_eval_duration: Option<u64>,
+    pub eval_count: Option<u64>,
+    pub eval_duration: Option<u64>,
+}
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -425,21 +436,6 @@ impl completion::CompletionModel for CompletionModel {
             Err(CompletionError::ProviderError(err_text))
         }
     }
-}
-
-#[derive(Clone)]
-pub struct StreamingCompletionResponse {
-    pub done_reason: Option<String>,
-    pub total_duration: Option<u64>,
-    pub load_duration: Option<u64>,
-    pub prompt_eval_count: Option<u64>,
-    pub prompt_eval_duration: Option<u64>,
-    pub eval_count: Option<u64>,
-    pub eval_duration: Option<u64>,
-}
-
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = StreamingCompletionResponse;
 
     async fn stream(
         &self,
@@ -528,7 +524,7 @@ impl StreamingCompletionModel for CompletionModel {
             }
         });
 
-        Ok(streaming::StreamingCompletionResponse::new(stream))
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }
 

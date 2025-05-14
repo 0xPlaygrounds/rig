@@ -11,6 +11,8 @@ use crate::{
 use serde_json::{json, Value};
 
 use crate::providers::openai::AssistantContent;
+use crate::providers::openrouter::streaming::FinalCompletionResponse;
+use crate::streaming::StreamingCompletionResponse;
 
 // ================================================================
 // OpenRouter Completion API
@@ -171,6 +173,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = FinalCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -201,5 +204,12 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+
+    async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        CompletionModel::stream(self, completion_request).await
     }
 }

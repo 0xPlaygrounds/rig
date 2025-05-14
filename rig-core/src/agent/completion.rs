@@ -1,20 +1,17 @@
 use std::collections::HashMap;
-
 use futures::{stream, StreamExt, TryStreamExt};
-
 use crate::{
     completion::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
         Message, Prompt, PromptError,
     },
     streaming::{
-        StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingCompletionResponse,
+        StreamingChat, StreamingCompletion, StreamingCompletionResponse,
         StreamingPrompt,
     },
     tool::ToolSet,
     vector_store::VectorStoreError,
 };
-
 use super::prompt_request::PromptRequest;
 
 /// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
@@ -221,7 +218,7 @@ impl<M: CompletionModel> Chat for Agent<M> {
     }
 }
 
-impl<M: StreamingCompletionModel> StreamingCompletion<M> for Agent<M> {
+impl<M: CompletionModel> StreamingCompletion<M> for Agent<M> {
     async fn stream_completion(
         &self,
         prompt: impl Into<Message> + Send,
@@ -233,7 +230,7 @@ impl<M: StreamingCompletionModel> StreamingCompletion<M> for Agent<M> {
     }
 }
 
-impl<M: StreamingCompletionModel> StreamingPrompt<M::StreamingResponse> for Agent<M> {
+impl<M: CompletionModel> StreamingPrompt<M::StreamingResponse> for Agent<M> {
     async fn stream_prompt(
         &self,
         prompt: impl Into<Message> + Send,
@@ -242,7 +239,7 @@ impl<M: StreamingCompletionModel> StreamingPrompt<M::StreamingResponse> for Agen
     }
 }
 
-impl<M: StreamingCompletionModel> StreamingChat<M::StreamingResponse> for Agent<M> {
+impl<M: CompletionModel> StreamingChat<M::StreamingResponse> for Agent<M> {
     async fn stream_chat(
         &self,
         prompt: impl Into<Message> + Send,

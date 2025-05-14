@@ -12,7 +12,7 @@
 use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
 
 use crate::json_utils::merge;
-use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
+use crate::streaming::{StreamingCompletionResponse};
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
@@ -491,7 +491,8 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = openai::CompletionResponse;
-
+    type StreamingResponse = openai::StreamingCompletionResponse;
+    
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -524,13 +525,6 @@ impl completion::CompletionModel for CompletionModel {
             Err(CompletionError::ProviderError(response.text().await?))
         }
     }
-}
-
-// -----------------------------------------------------
-// Azure OpenAI Streaming API
-// -----------------------------------------------------
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = openai::StreamingCompletionResponse;
     async fn stream(
         &self,
         request: CompletionRequest,
