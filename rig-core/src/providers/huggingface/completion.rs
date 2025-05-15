@@ -585,16 +585,14 @@ impl completion::CompletionModel for CompletionModel {
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
-    fn stream(
+    async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl Future<
-        Output = Result<
-            crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-            CompletionError,
-        >,
-    > + Send {
-        CompletionModel::stream(self, request)
+    ) -> Result<
+        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+        CompletionError,
+    > {
+        CompletionModel::stream(self, request).await
     }
 }
 
