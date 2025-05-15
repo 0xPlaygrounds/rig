@@ -529,7 +529,7 @@ impl TryFrom<Message> for message::Message {
             },
 
             // System messages should get stripped out when converting message's, this is just a
-            // stop gap to avoid obnoxious error handling or panic occuring.
+            // stop gap to avoid obnoxious error handling or panic occurring.
             Message::System { content, .. } => message::Message::User {
                 content: content.map(|content| message::UserContent::text(content.text)),
             },

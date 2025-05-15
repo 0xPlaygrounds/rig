@@ -24,6 +24,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::ffi::c_uint;
 use std::time::Duration;
+use rig::streaming::{RawStreamingChoice, StreamingCompletionResponse};
+use async_stream::stream;
+use rig::message::AssistantContent;
 
 // ================================================================
 // Main EternalAI Client
@@ -335,7 +338,7 @@ pub fn get_chain_id(key: &str) -> Option<&str> {
     None
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct CompletionResponse {
     pub id: String,
     pub object: String,
@@ -410,7 +413,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Choice {
     pub index: usize,
     pub message: Message,
@@ -466,6 +469,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = CompletionResponse;
 
     async fn completion(
         &self,
@@ -586,5 +590,30 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+
+    async fn stream(&self, request: CompletionRequest) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        let resp = self.completion(request).await?;
+        
+        let stream = Box::pin(stream! {
+            for c in resp.choice {
+                match &c {
+                    AssistantContent::Text(text) => {
+                        yield Ok(RawStreamingChoice::Message(text.text.clone()))
+                    }
+                    AssistantContent::ToolCall(tc) => {
+                        yield Ok(RawStreamingChoice::ToolCall {
+                            id: tc.id.clone(),
+                            name: tc.function.name.clone(),
+                            arguments: tc.function.arguments.clone(),
+                        })
+                    }
+                }
+            }
+            
+            yield Ok(RawStreamingChoice::FinalResponse(resp.raw_response.clone()));
+        });
+        
+        Ok(StreamingCompletionResponse::stream(stream))
     }
 }
