@@ -508,6 +508,7 @@ impl completion::CompletionModel for CompletionModel {
         }
     }
 
+    #[cfg_attr(feature = "worker", worker::send)]
     fn stream(
         &self,
         request: CompletionRequest,

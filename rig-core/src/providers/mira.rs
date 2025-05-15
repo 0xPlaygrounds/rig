@@ -346,6 +346,7 @@ impl completion::CompletionModel for CompletionModel {
         response.try_into()
     }
 
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         completion_request: CompletionRequest,

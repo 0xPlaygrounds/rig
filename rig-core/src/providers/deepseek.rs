@@ -462,6 +462,7 @@ impl CompletionModel for DeepSeekCompletionModel {
         }
     }
 
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         completion_request: CompletionRequest,

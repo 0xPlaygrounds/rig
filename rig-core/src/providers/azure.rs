@@ -525,6 +525,8 @@ impl completion::CompletionModel for CompletionModel {
             Err(CompletionError::ProviderError(response.text().await?))
         }
     }
+
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         request: CompletionRequest,

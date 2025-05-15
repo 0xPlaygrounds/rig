@@ -228,6 +228,7 @@ impl completion::CompletionModel for CompletionModel {
         }
     }
 
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         request: CompletionRequest,
