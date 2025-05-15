@@ -65,7 +65,7 @@
 
 use super::message::{AssistantContent, ContentFormat, DocumentMediaType};
 use crate::client::completion::CompletionModelHandle;
-use crate::streaming::{StreamingCompletionResponse};
+use crate::streaming::StreamingCompletionResponse;
 use crate::{
     json_utils,
     message::{Message, UserContent},
@@ -270,7 +270,7 @@ pub trait CompletionModelDyn: Send + Sync {
 impl<T, R> CompletionModelDyn for T
 where
     T: CompletionModel<StreamingResponse = R>,
-    R: Clone + Unpin + 'static
+    R: Clone + Unpin + 'static,
 {
     fn completion(
         &self,
@@ -297,7 +297,7 @@ where
             let stream = Box::pin(streaming::StreamingResultDyn { inner });
 
             Ok(StreamingCompletionResponse::stream(stream))
-        }) 
+        })
     }
 
     /// Generates a completion request builder for the given `prompt`.

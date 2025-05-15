@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use crate::client::audio_generation::AudioGenerationModelHandle;
 use futures::future::BoxFuture;
 use serde_json::Value;
+use std::sync::Arc;
 use thiserror::Error;
-use crate::client::audio_generation::AudioGenerationModelHandle;
 
 #[derive(Debug, Error)]
 pub enum AudioGenerationError {
@@ -70,7 +70,8 @@ pub trait AudioGenerationModelDyn: Send + Sync {
         request: AudioGenerationRequest,
     ) -> BoxFuture<Result<AudioGenerationResponse<()>, AudioGenerationError>>;
 
-    fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<AudioGenerationModelHandle>;
+    fn audio_generation_request(&self)
+        -> AudioGenerationRequestBuilder<AudioGenerationModelHandle>;
 }
 
 impl<T: AudioGenerationModel> AudioGenerationModelDyn for T {
@@ -88,7 +89,9 @@ impl<T: AudioGenerationModel> AudioGenerationModelDyn for T {
         })
     }
 
-    fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<AudioGenerationModelHandle> {
+    fn audio_generation_request(
+        &self,
+    ) -> AudioGenerationRequestBuilder<AudioGenerationModelHandle> {
         AudioGenerationRequestBuilder::new(AudioGenerationModelHandle {
             inner: Arc::new(self.clone()),
         })

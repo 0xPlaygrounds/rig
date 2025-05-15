@@ -14,7 +14,7 @@ use super::openai::{send_compatible_streaming_request, AssistantContent};
 use crate::client::{CompletionClient, ProviderClient};
 use crate::json_utils::merge_inplace;
 use crate::message;
-use crate::streaming::{StreamingCompletionResponse};
+use crate::streaming::StreamingCompletionResponse;
 
 use crate::impl_conversion_traits;
 use crate::providers::openai;

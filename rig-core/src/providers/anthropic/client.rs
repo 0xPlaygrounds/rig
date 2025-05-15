@@ -122,8 +122,6 @@ impl ProviderClient for Client {
         let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
         ClientBuilder::new(&api_key).build()
     }
-    
-    
 }
 
 impl CompletionClient for Client {

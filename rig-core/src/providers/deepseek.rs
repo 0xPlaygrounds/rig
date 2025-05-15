@@ -13,7 +13,7 @@ use crate::client::{CompletionClient, ProviderClient};
 use crate::json_utils::merge;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::{StreamingCompletionResponse};
+use crate::streaming::StreamingCompletionResponse;
 use crate::{
     completion::{self, CompletionError, CompletionModel, CompletionRequest},
     impl_conversion_traits, json_utils, message, OneOrMany,

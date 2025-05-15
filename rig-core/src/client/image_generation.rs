@@ -1,4 +1,3 @@
-
 #[cfg(feature = "image")]
 mod image {
     use crate::client::{AsImageGeneration, ProviderClient};

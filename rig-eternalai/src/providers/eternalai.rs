@@ -11,12 +11,15 @@
 
 use crate::eternalai_system_prompt_manager_toolset;
 use crate::json_utils;
+use async_stream::stream;
 use rig::agent::AgentBuilder;
 use rig::completion::{CompletionError, CompletionRequest};
 use rig::embeddings::{EmbeddingError, EmbeddingsBuilder};
 use rig::extractor::ExtractorBuilder;
 use rig::message;
+use rig::message::AssistantContent;
 use rig::providers::openai::{self, Message};
+use rig::streaming::{RawStreamingChoice, StreamingCompletionResponse};
 use rig::OneOrMany;
 use rig::{completion, embeddings, Embed};
 use schemars::JsonSchema;
@@ -24,9 +27,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::ffi::c_uint;
 use std::time::Duration;
-use rig::streaming::{RawStreamingChoice, StreamingCompletionResponse};
-use async_stream::stream;
-use rig::message::AssistantContent;
 
 // ================================================================
 // Main EternalAI Client
@@ -592,9 +592,12 @@ impl completion::CompletionModel for CompletionModel {
         }
     }
 
-    async fn stream(&self, request: CompletionRequest) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
         let resp = self.completion(request).await?;
-        
+
         let stream = Box::pin(stream! {
             for c in resp.choice {
                 match &c {
@@ -610,10 +613,10 @@ impl completion::CompletionModel for CompletionModel {
                     }
                 }
             }
-            
+
             yield Ok(RawStreamingChoice::FinalResponse(resp.raw_response.clone()));
         });
-        
+
         Ok(StreamingCompletionResponse::stream(stream))
     }
 }

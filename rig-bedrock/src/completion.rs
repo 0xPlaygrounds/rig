@@ -139,7 +139,10 @@ impl completion::CompletionModel for CompletionModel {
         AwsConverseOutput(response).try_into()
     }
 
-    async fn stream(&self, request: CompletionRequest) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
         CompletionModel::stream(self, request).await
     }
 }

@@ -1,7 +1,9 @@
-
 #[cfg(feature = "audio")]
 mod audio {
-    use crate::audio_generation::{AudioGenerationError, AudioGenerationModel, AudioGenerationModelDyn, AudioGenerationRequest, AudioGenerationResponse};
+    use crate::audio_generation::{
+        AudioGenerationError, AudioGenerationModel, AudioGenerationModelDyn,
+        AudioGenerationRequest, AudioGenerationResponse,
+    };
     use crate::client::{AsAudioGeneration, ProviderClient};
     use std::future::Future;
     use std::sync::Arc;
@@ -32,7 +34,7 @@ mod audio {
             Some(Box::new(self))
         }
     }
-    
+
     #[derive(Clone)]
     pub struct AudioGenerationModelHandle<'a> {
         pub(crate) inner: Arc<dyn AudioGenerationModelDyn + 'a>,
@@ -43,8 +45,9 @@ mod audio {
         fn audio_generation(
             &self,
             request: AudioGenerationRequest,
-        ) -> impl Future<Output = Result<AudioGenerationResponse<Self::Response>, AudioGenerationError>> + Send
-        {
+        ) -> impl Future<
+            Output = Result<AudioGenerationResponse<Self::Response>, AudioGenerationError>,
+        > + Send {
             self.inner.audio_generation(request)
         }
     }

@@ -1,7 +1,7 @@
 use crate::client::{AsEmbeddings, ProviderClient};
-use crate::Embed;
-use crate::embeddings::{EmbeddingModel, EmbeddingsBuilder};
 use crate::embeddings::embedding::EmbeddingModelDyn;
+use crate::embeddings::{EmbeddingModel, EmbeddingsBuilder};
+use crate::Embed;
 
 pub trait EmbeddingsClient: ProviderClient {
     type EmbeddingModel: EmbeddingModel;
@@ -27,8 +27,6 @@ pub trait EmbeddingsClientDyn: ProviderClient {
         model: &'a str,
         ndims: usize,
     ) -> Box<dyn EmbeddingModelDyn + 'a>;
-    
-    
 }
 
 impl<T: EmbeddingsClient> EmbeddingsClientDyn for T {

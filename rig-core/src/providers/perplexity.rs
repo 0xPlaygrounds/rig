@@ -21,7 +21,7 @@ use crate::completion::CompletionRequest;
 use crate::json_utils::merge;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::{StreamingCompletionResponse};
+use crate::streaming::StreamingCompletionResponse;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

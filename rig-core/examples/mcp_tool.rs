@@ -1,4 +1,3 @@
-use rig::prelude::*;
 use anyhow::Result;
 use mcp_core::types::ToolCapabilities;
 use mcp_core::{
@@ -9,6 +8,7 @@ use mcp_core::{
     types::{ServerCapabilities, ToolResponseContent},
 };
 use mcp_core_macros::{tool, tool_param};
+use rig::prelude::*;
 use rig::{
     completion::Prompt,
     providers::{self},

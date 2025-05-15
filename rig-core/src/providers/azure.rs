@@ -12,7 +12,7 @@
 use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
 
 use crate::json_utils::merge;
-use crate::streaming::{StreamingCompletionResponse};
+use crate::streaming::StreamingCompletionResponse;
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
@@ -492,7 +492,7 @@ impl CompletionModel {
 impl completion::CompletionModel for CompletionModel {
     type Response = openai::CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
-    
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,

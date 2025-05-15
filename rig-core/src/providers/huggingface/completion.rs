@@ -1,8 +1,10 @@
-use std::{convert::Infallible, str::FromStr};
-use std::future::Future;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
+use std::future::Future;
+use std::{convert::Infallible, str::FromStr};
 
+use super::client::Client;
+use crate::providers::openai::StreamingCompletionResponse;
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
@@ -10,8 +12,6 @@ use crate::{
     one_or_many::string_or_one_or_many,
     OneOrMany,
 };
-use crate::providers::openai::StreamingCompletionResponse;
-use super::client::Client;
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
@@ -584,7 +584,15 @@ impl completion::CompletionModel for CompletionModel {
         }
     }
 
-    fn stream(&self, request: CompletionRequest) -> impl Future<Output=Result<crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>> + Send {
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> impl Future<
+        Output = Result<
+            crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+            CompletionError,
+        >,
+    > + Send {
         CompletionModel::stream(self, request)
     }
 }

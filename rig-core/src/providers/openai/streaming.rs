@@ -4,7 +4,7 @@ use crate::json_utils;
 use crate::json_utils::merge;
 use crate::providers::openai::Usage;
 use crate::streaming;
-use crate::streaming::{RawStreamingChoice};
+use crate::streaming::RawStreamingChoice;
 use async_stream::stream;
 use futures::StreamExt;
 use reqwest::RequestBuilder;

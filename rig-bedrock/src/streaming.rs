@@ -3,10 +3,7 @@ use crate::{completion::CompletionModel, types::errors::AwsSdkConverseStreamErro
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig::streaming::StreamingCompletionResponse;
-use rig::{
-    completion::CompletionError,
-    streaming::{RawStreamingChoice},
-};
+use rig::{completion::CompletionError, streaming::RawStreamingChoice};
 
 #[derive(Default)]
 struct ToolCallState {

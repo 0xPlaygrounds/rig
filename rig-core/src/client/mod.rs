@@ -339,12 +339,12 @@ mod tests {
         let Some(client) = client.as_completion() else {
             return;
         };
-        
+
         let model = config.completion_model.expect(&format!(
             "{} does not have completion_model set",
             config.name
         ));
-        
+
         let model = client.completion_model(model);
 
         let resp = model
@@ -511,11 +511,11 @@ mod tests {
 
     async fn test_audio_generation_client(config: &ClientConfig) {
         let client = config.factory();
-        
+
         let Some(client) = client.as_audio_generation() else {
             return;
         };
-        
+
         let (model, voice) = config
             .audio_generation_model
             .expect(&format!("{} doesn't have the model set", config.name));

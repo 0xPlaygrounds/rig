@@ -724,7 +724,15 @@ impl completion::CompletionModel for CompletionModel {
         }
     }
 
-    fn stream(&self, request: CompletionRequest) -> impl Future<Output=Result<crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>> + Send {
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> impl Future<
+        Output = Result<
+            crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+            CompletionError,
+        >,
+    > + Send {
         CompletionModel::stream(self, request)
     }
 }

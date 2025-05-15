@@ -3,19 +3,19 @@
 //! From [xAI Reference](https://docs.x.ai/docs/api-reference#chat-completions)
 // ================================================================
 
-use std::future::Future;
 use crate::{
     completion::{self, CompletionError},
     json_utils,
     providers::openai::Message,
 };
+use std::future::Future;
 
 use super::client::{xai_api_types::ApiResponse, Client};
-use serde_json::{json, Value};
-use xai_api_types::{CompletionResponse, ToolDefinition};
 use crate::completion::CompletionRequest;
 use crate::providers::openai;
 use crate::streaming::StreamingCompletionResponse;
+use serde_json::{json, Value};
+use xai_api_types::{CompletionResponse, ToolDefinition};
 
 /// `grok-beta` completion model
 pub const GROK_BETA: &str = "grok-beta";
@@ -100,7 +100,7 @@ impl CompletionModel {
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
-    
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -125,8 +125,13 @@ impl completion::CompletionModel for CompletionModel {
         }
     }
 
-    fn stream(&self, request: CompletionRequest) -> impl Future<Output=Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>> + Send {
-        CompletionModel::stream(self, request) 
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> impl Future<
+        Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
+    > + Send {
+        CompletionModel::stream(self, request)
     }
 }
 

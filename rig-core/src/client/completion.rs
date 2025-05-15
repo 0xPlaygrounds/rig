@@ -61,7 +61,12 @@ pub trait CompletionClientDyn: ProviderClient {
     fn agent<'a>(&'a self, model: &'a str) -> AgentBuilder<CompletionModelHandle<'a>>;
 }
 
-impl<T: CompletionClient<CompletionModel = M>, M: CompletionModel<StreamingResponse = R> + 'static, R: Clone + Unpin + 'static> CompletionClientDyn for T {
+impl<
+        T: CompletionClient<CompletionModel = M>,
+        M: CompletionModel<StreamingResponse = R> + 'static,
+        R: Clone + Unpin + 'static,
+    > CompletionClientDyn for T
+{
     fn completion_model<'a>(&'a self, model: &'a str) -> Box<dyn CompletionModelDyn + 'a> {
         Box::new(self.completion_model(model))
     }

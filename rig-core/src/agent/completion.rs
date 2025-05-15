@@ -1,18 +1,15 @@
-use std::collections::HashMap;
-use futures::{stream, StreamExt, TryStreamExt};
+use super::prompt_request::PromptRequest;
 use crate::{
     completion::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
         Message, Prompt, PromptError,
     },
-    streaming::{
-        StreamingChat, StreamingCompletion, StreamingCompletionResponse,
-        StreamingPrompt,
-    },
+    streaming::{StreamingChat, StreamingCompletion, StreamingCompletionResponse, StreamingPrompt},
     tool::ToolSet,
     vector_store::VectorStoreError,
 };
-use super::prompt_request::PromptRequest;
+use futures::{stream, StreamExt, TryStreamExt};
+use std::collections::HashMap;
 
 /// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
 /// (i.e.: system prompt) and a static set of context documents and tools.
