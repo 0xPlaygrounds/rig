@@ -1,4 +1,5 @@
 //! All supported models <https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html>
+
 use crate::{
     client::Client,
     types::{
@@ -7,7 +8,8 @@ use crate::{
     },
 };
 
-use rig::completion::{self, CompletionError};
+use rig::completion::{self, CompletionError, CompletionRequest};
+use rig::streaming::StreamingCompletionResponse;
 
 /// `amazon.nova-canvas-v1:0`
 pub const AMAZON_NOVA_CANVAS: &str = "amazon.nova-canvas-v1:0";
@@ -106,6 +108,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = AwsConverseOutput;
+    type StreamingResponse = ();
 
     async fn completion(
         &self,
@@ -134,5 +137,9 @@ impl completion::CompletionModel for CompletionModel {
             .map_err(|sdk_error| Into::<CompletionError>::into(AwsSdkConverseError(sdk_error)))?;
 
         AwsConverseOutput(response).try_into()
+    }
+
+    async fn stream(&self, request: CompletionRequest) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        CompletionModel::stream(self, request).await
     }
 }

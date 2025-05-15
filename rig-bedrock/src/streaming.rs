@@ -5,7 +5,7 @@ use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig::streaming::StreamingCompletionResponse;
 use rig::{
     completion::CompletionError,
-    streaming::{RawStreamingChoice, StreamingCompletionModel},
+    streaming::{RawStreamingChoice},
 };
 
 #[derive(Default)]
@@ -15,13 +15,11 @@ struct ToolCallState {
     input_json: String,
 }
 
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = ();
-
-    async fn stream(
+impl CompletionModel {
+    pub(crate) async fn stream(
         &self,
         completion_request: rig::completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse<()>, CompletionError> {
         let request = AwsCompletionRequest(completion_request);
 
         let mut converse_builder = self
@@ -101,6 +99,6 @@ impl StreamingCompletionModel for CompletionModel {
             }
         });
 
-        Ok(StreamingCompletionResponse::new(stream))
+        Ok(StreamingCompletionResponse::stream(stream))
     }
 }

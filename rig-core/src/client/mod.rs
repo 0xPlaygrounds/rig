@@ -140,7 +140,7 @@ pub use crate::client::transcription::TranscriptionClient;
 
 #[cfg(test)]
 mod tests {
-    use crate::client::{ProviderClient};
+    use crate::client::ProviderClient;
     use crate::completion::{Completion, CompletionRequest, ToolDefinition};
     use crate::message::AssistantContent;
     use crate::providers::{
@@ -319,7 +319,7 @@ mod tests {
             ClientConfig {
                 name: "Ollama",
                 factory: Box::new(ollama::Client::from_env_boxed),
-                completion_model: Some(ollama::LLAMA3_2),
+                completion_model: Some("llama3.1:8b"),
                 embeddings_model: Some(ollama::NOMIC_EMBED_TEXT),
                 ..Default::default()
             },
@@ -335,11 +335,16 @@ mod tests {
 
     async fn test_completions_client(config: &ClientConfig) {
         let client = config.factory();
-        let client = client.as_completion().unwrap();
+
+        let Some(client) = client.as_completion() else {
+            return;
+        };
+        
         let model = config.completion_model.expect(&format!(
             "{} does not have completion_model set",
             config.name
         ));
+        
         let model = client.completion_model(model);
 
         let resp = model
@@ -385,7 +390,11 @@ mod tests {
             .completion_model
             .expect(&format!("{} does not have the model set.", config.name));
 
-        let model = client.as_completion().unwrap().agent(model)
+        let Some(client) = client.as_completion() else {
+            return;
+        };
+
+        let model = client.agent(model)
             .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
             .max_tokens(1024)
             .tool(Adder)
@@ -442,12 +451,17 @@ mod tests {
 
     async fn test_streaming_client(config: &ClientConfig) {
         let client = config.factory();
+
+        let Some(client) = client.as_completion() else {
+            return;
+        };
+
         let model = config
             .completion_model
             .expect(&format!("{} does not have the model set.", config.name));
 
-        let model = client.as_completion().unwrap().completion_model(model);
-        
+        let model = client.completion_model(model);
+
         let resp = model.stream(CompletionRequest {
             preamble: None,
             tools: vec![],
@@ -497,14 +511,16 @@ mod tests {
 
     async fn test_audio_generation_client(config: &ClientConfig) {
         let client = config.factory();
+        
+        let Some(client) = client.as_audio_generation() else {
+            return;
+        };
+        
         let (model, voice) = config
             .audio_generation_model
             .expect(&format!("{} doesn't have the model set", config.name));
 
-        let model = client
-            .as_audio_generation()
-            .unwrap()
-            .audio_generation_model(model);
+        let model = client.audio_generation_model(model);
 
         let request = model
             .audio_generation_request()

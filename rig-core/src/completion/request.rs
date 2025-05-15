@@ -65,16 +65,14 @@
 
 use super::message::{AssistantContent, ContentFormat, DocumentMediaType};
 use crate::client::completion::CompletionModelHandle;
-use crate::streaming::{RawStreamingChoice, StreamingCompletionResponse, StreamingCompletionResponseDyn};
+use crate::streaming::{StreamingCompletionResponse};
 use crate::{
     json_utils,
     message::{Message, UserContent},
     tool::ToolSetError,
 };
 use crate::{streaming, OneOrMany};
-use async_stream::stream;
 use futures::future::BoxFuture;
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;

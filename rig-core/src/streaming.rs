@@ -209,24 +209,6 @@ impl<R: Clone + Unpin> Stream for StreamingResultDyn<R> {
     }
 }
 
-pub(crate) trait StreamingCompletionResponseDyn {
-    async fn inner_next(&mut self) -> Option<Result<RawStreamingChoice<()>, CompletionError>>;
-}
-
-impl<R: Clone + Unpin> StreamingCompletionResponseDyn for StreamingCompletionResponse<R> {
-    async fn inner_next(&mut self) -> Option<Result<RawStreamingChoice<()>, CompletionError>> {
-        self.inner.next().await.map(|res| {
-            res.map(|c| match c {
-                RawStreamingChoice::Message(m) => RawStreamingChoice::Message(m),
-                RawStreamingChoice::ToolCall { id, name, arguments } => RawStreamingChoice::ToolCall {
-                    id, name, arguments
-                },
-                RawStreamingChoice::FinalResponse(_) => RawStreamingChoice::FinalResponse(())
-            })
-        })
-    }
-}
-
 /// helper function to stream a completion request to stdout
 pub async fn stream_to_stdout<M: CompletionModel>(
     agent: &Agent<M>,
