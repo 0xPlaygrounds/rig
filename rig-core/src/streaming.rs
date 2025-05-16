@@ -6,7 +6,6 @@
 //! - [StreamingPrompt]: Defines a high-level streaming LLM one-shot prompt interface
 //! - [StreamingChat]: Defines a high-level streaming LLM chat interface with history
 //! - [StreamingCompletion]: Defines a low-level streaming LLM completion interface
-//! - [StreamingCompletionModel]: Defines a streaming completion model interface
 //!
 
 use crate::agent::Agent;
