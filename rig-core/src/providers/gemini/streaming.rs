@@ -5,7 +5,7 @@ use serde::Deserialize;
 use super::completion::{create_request_body, gemini_api_types::ContentCandidate, CompletionModel};
 use crate::{
     completion::{CompletionError, CompletionRequest},
-    streaming::{self, StreamingCompletionModel},
+    streaming::{self},
 };
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -28,12 +28,11 @@ pub struct StreamingCompletionResponse {
     pub usage_metadata: PartialUsage,
 }
 
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = StreamingCompletionResponse;
-    async fn stream(
+impl CompletionModel {
+    pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let request = create_request_body(completion_request)?;
 
@@ -108,6 +107,6 @@ impl StreamingCompletionModel for CompletionModel {
             }
         });
 
-        Ok(streaming::StreamingCompletionResponse::new(stream))
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }

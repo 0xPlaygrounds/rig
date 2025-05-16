@@ -14,19 +14,18 @@ pub const GEMINI_1_5_PRO_8B: &str = "gemini-1.5-pro-8b";
 /// `gemini-1.0-pro` completion model
 pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 
+use self::gemini_api_types::Schema;
+use crate::providers::gemini::streaming::StreamingCompletionResponse;
+use crate::{
+    completion::{self, CompletionError, CompletionRequest},
+    OneOrMany,
+};
 use gemini_api_types::{
     Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
     GenerationConfig, Part, Role, Tool,
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
-
-use crate::{
-    completion::{self, CompletionError, CompletionRequest},
-    OneOrMany,
-};
-
-use self::gemini_api_types::Schema;
 
 use super::Client;
 
@@ -51,6 +50,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = GenerateContentResponse;
+    type StreamingResponse = StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -89,6 +89,17 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }?
+    }
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<
+        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+        CompletionError,
+    > {
+        CompletionModel::stream(self, request).await
     }
 }
 

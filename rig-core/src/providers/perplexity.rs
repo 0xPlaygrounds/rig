@@ -13,14 +13,15 @@ use crate::{
     agent::AgentBuilder,
     completion::{self, message, CompletionError, MessageError},
     extractor::ExtractorBuilder,
-    json_utils, OneOrMany,
+    impl_conversion_traits, json_utils, OneOrMany,
 };
 
+use crate::client::{CompletionClient, ProviderClient};
 use crate::completion::CompletionRequest;
 use crate::json_utils::merge;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
+use crate::streaming::StreamingCompletionResponse;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -30,7 +31,7 @@ use serde_json::{json, Value};
 // ================================================================
 const PERPLEXITY_API_BASE_URL: &str = "https://api.perplexity.ai";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Client {
     base_url: String,
     http_client: reqwest::Client,
@@ -39,13 +40,6 @@ pub struct Client {
 impl Client {
     pub fn new(api_key: &str) -> Self {
         Self::from_url(api_key, PERPLEXITY_API_BASE_URL)
-    }
-
-    /// Create a new Perplexity client from the `PERPLEXITY_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    pub fn from_env() -> Self {
-        let api_key = std::env::var("PERPLEXITY_API_KEY").expect("PERPLEXITY_API_KEY not set");
-        Self::new(&api_key)
     }
 
     pub fn from_url(api_key: &str, base_url: &str) -> Self {
@@ -72,10 +66,6 @@ impl Client {
         self.http_client.post(url)
     }
 
-    pub fn completion_model(&self, model: &str) -> CompletionModel {
-        CompletionModel::new(self.clone(), model)
-    }
-
     pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
         AgentBuilder::new(self.completion_model(model))
     }
@@ -87,6 +77,30 @@ impl Client {
         ExtractorBuilder::new(self.completion_model(model))
     }
 }
+
+impl ProviderClient for Client {
+    /// Create a new Perplexity client from the `PERPLEXITY_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    fn from_env() -> Self {
+        let api_key = std::env::var("PERPLEXITY_API_KEY").expect("PERPLEXITY_API_KEY not set");
+        Self::new(&api_key)
+    }
+}
+
+impl CompletionClient for Client {
+    type CompletionModel = CompletionModel;
+
+    fn completion_model(&self, model: &str) -> CompletionModel {
+        CompletionModel::new(self.clone(), model)
+    }
+}
+
+impl_conversion_traits!(
+    AsTranscription,
+    AsEmbeddings,
+    AsImageGeneration,
+    AsAudioGeneration for Client
+);
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
@@ -310,6 +324,7 @@ impl From<Message> for message::Message {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = openai::StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -340,10 +355,8 @@ impl completion::CompletionModel for CompletionModel {
             Err(CompletionError::ProviderError(response.text().await?))
         }
     }
-}
 
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = openai::StreamingCompletionResponse;
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         completion_request: completion::CompletionRequest,

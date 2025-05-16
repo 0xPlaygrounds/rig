@@ -10,10 +10,7 @@ use futures::StreamExt;
 use reqwest::RequestBuilder;
 use serde_json::{json, Value};
 
-use crate::{
-    completion::{CompletionError, CompletionRequest},
-    streaming::StreamingCompletionModel,
-};
+use crate::completion::{CompletionError, CompletionRequest};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -101,13 +98,11 @@ pub struct FinalCompletionResponse {
     pub usage: ResponseUsage,
 }
 
-impl StreamingCompletionModel for super::CompletionModel {
-    type StreamingResponse = FinalCompletionResponse;
-
-    async fn stream(
+impl super::CompletionModel {
+    pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    ) -> Result<streaming::StreamingCompletionResponse<FinalCompletionResponse>, CompletionError>
     {
         let request = self.create_completion_request(completion_request)?;
 
@@ -313,5 +308,5 @@ pub async fn send_streaming_request(
 
     });
 
-    Ok(streaming::StreamingCompletionResponse::new(stream))
+    Ok(streaming::StreamingCompletionResponse::stream(stream))
 }

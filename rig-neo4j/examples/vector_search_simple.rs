@@ -9,6 +9,7 @@
 use std::env;
 
 use futures::{StreamExt, TryStreamExt};
+use rig::client::EmbeddingsClient;
 use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},

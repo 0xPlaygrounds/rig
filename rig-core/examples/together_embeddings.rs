@@ -1,15 +1,20 @@
+use rig::prelude::*;
 use rig::providers::together;
+
 use rig::Embed;
 
 #[derive(Embed, Debug)]
+
 struct Greetings {
     #[embed]
     message: String,
 }
 
 #[tokio::main]
+
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize the together client
+
     let client = together::Client::from_env();
 
     let embeddings = client
