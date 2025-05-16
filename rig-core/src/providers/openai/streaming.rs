@@ -72,7 +72,7 @@ impl CompletionModel {
     }
 }
 
-pub async fn send_compatible_streaming_request (
+pub async fn send_compatible_streaming_request(
     request_builder: RequestBuilder,
 ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError> {
     let response = request_builder.send().await?;
