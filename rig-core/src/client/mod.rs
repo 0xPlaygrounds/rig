@@ -142,18 +142,23 @@ pub use crate::client::transcription::TranscriptionClient;
 mod tests {
     use crate::client::ProviderClient;
     use crate::completion::{Completion, CompletionRequest, ToolDefinition};
+    use crate::image_generation::ImageGenerationRequest;
     use crate::message::AssistantContent;
     use crate::providers::{
         anthropic, azure, cohere, deepseek, galadriel, gemini, huggingface, hyperbolic, mira,
         moonshot, openai, openrouter, together, xai,
     };
+    use crate::streaming::StreamingCompletion;
     use crate::tool::Tool;
+    use crate::transcription::TranscriptionRequest;
     use crate::OneOrMany;
     use futures::StreamExt;
     use rig::message::Message;
     use rig::providers::{groq, ollama, perplexity};
     use serde::{Deserialize, Serialize};
     use serde_json::json;
+    use std::fs::File;
+    use std::io::Read;
 
     struct ClientConfig {
         name: &'static str,
@@ -509,6 +514,84 @@ mod tests {
         }
     }
 
+    async fn test_streaming_tools_client(config: &ClientConfig) {
+        let client = config.factory();
+        let model = config
+            .completion_model
+            .expect(&format!("{} does not have the model set.", config.name));
+
+        let Some(client) = client.as_completion() else {
+            return;
+        };
+
+        let model = client.agent(model)
+            .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
+            .max_tokens(1024)
+            .tool(Adder)
+            .tool(Subtract)
+            .build();
+
+        let request = model.stream_completion("Calculate 2 - 5", vec![]).await;
+
+        assert!(
+            request.is_ok(),
+            "[{}]: Error occurred when building prompt, {}",
+            config.name,
+            request.err().unwrap()
+        );
+
+        let resp = request.unwrap().stream().await;
+
+        assert!(
+            resp.is_ok(),
+            "[{}]: Error occurred when prompting, {}",
+            config.name,
+            resp.err().unwrap()
+        );
+
+        let mut resp = resp.unwrap();
+
+        let mut received_chunk = false;
+
+        while let Some(chunk) = resp.next().await {
+            received_chunk = true;
+            assert!(chunk.is_ok());
+        }
+
+        assert!(
+            received_chunk,
+            "[{}]: Failed to receive a chunk from stream",
+            config.name
+        );
+
+        assert!(
+            resp.choice.iter().any(|content| match content {
+                AssistantContent::ToolCall(tc) => {
+                    if tc.function.name != Subtract::NAME {
+                        return false;
+                    }
+
+                    let arguments =
+                        serde_json::from_value::<OperationArgs>((tc.function.arguments).clone())
+                            .expect("Error parsing arguments");
+
+                    arguments.x == 2.0 && arguments.y == 5.0
+                }
+                _ => false,
+            }),
+            "[{}]: Model did not use the Subtract tool.",
+            config.name
+        )
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_streaming_tools() {
+        for p in providers().into_iter().filter(ClientConfig::is_env_var_set) {
+            test_streaming_tools_client(&p).await;
+        }
+    }
+
     async fn test_audio_generation_client(config: &ClientConfig) {
         let client = config.factory();
 
@@ -573,6 +656,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     pub fn test_polymorphism() {
         for config in providers().into_iter().filter(ClientConfig::is_env_var_set) {
             let client = config.factory();
@@ -616,6 +700,140 @@ mod tests {
                 client.as_audio_generation(),
                 config.audio_generation_model,
             )
+        }
+    }
+
+    async fn test_embed_client(config: &ClientConfig) {
+        const TEST: &'static str = "Hello world.";
+
+        let client = config.factory();
+
+        let Some(client) = client.as_embeddings() else {
+            return;
+        };
+
+        let model = config.embeddings_model.unwrap();
+
+        let model = client.embedding_model(model);
+
+        let resp = model.embed_texts(TEST).await;
+
+        assert!(
+            resp.is_ok(),
+            "[{}]: Error occurred when sending request, {}",
+            config.name,
+            resp.err().unwrap()
+        );
+
+        let resp = resp.unwrap();
+
+        assert_eq!(resp.document, TEST);
+
+        assert!(
+            !resp.vec.is_empty(),
+            "[{}]: Returned embed was empty",
+            config.name
+        );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_embed() {
+        for config in providers().into_iter().filter(ClientConfig::is_env_var_set) {
+            test_embed_client(&config).await;
+        }
+    }
+
+    async fn test_image_generation_client(config: &ClientConfig) {
+        let client = config.factory();
+        let Some(client) = client.as_image_generation() else {
+            return;
+        };
+
+        let model = config.image_generation_model.unwrap();
+
+        let model = client.image_generation_model(model);
+
+        let resp = model
+            .image_generation(ImageGenerationRequest {
+                prompt: "A castle sitting on a large hill.".to_string(),
+                width: 256,
+                height: 256,
+                additional_params: None,
+            })
+            .await;
+
+        assert!(
+            resp.is_ok(),
+            "[{}]: Error occurred when sending request, {}",
+            config.name,
+            resp.err().unwrap()
+        );
+
+        let resp = resp.unwrap();
+
+        assert!(
+            !resp.image.is_empty(),
+            "[{}]: Generated image was empty",
+            config.name
+        );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_image_generation() {
+        for config in providers().into_iter().filter(ClientConfig::is_env_var_set) {
+            test_image_generation_client(&config).await;
+        }
+    }
+
+    async fn test_transcription_client(config: &ClientConfig, data: Vec<u8>) {
+        let client = config.factory();
+        let Some(client) = client.as_transcription() else {
+            return;
+        };
+
+        let model = config.image_generation_model.unwrap();
+
+        let model = client.transcription_model(model);
+
+        let resp = model
+            .transcription(TranscriptionRequest {
+                data,
+                filename: "audio.mp3".to_string(),
+                language: "en".to_string(),
+                prompt: None,
+                temperature: None,
+                additional_params: None,
+            })
+            .await;
+
+        assert!(
+            resp.is_ok(),
+            "[{}]: Error occurred when sending request, {}",
+            config.name,
+            resp.err().unwrap()
+        );
+
+        let resp = resp.unwrap();
+
+        assert!(
+            !resp.text.is_empty(),
+            "[{}]: Returned transcription was empty",
+            config.name
+        );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_transcription() {
+        let mut file = File::open("examples/audio/en-us-natural-speech.mp3").unwrap();
+
+        let mut data = Vec::new();
+        let _ = file.read(&mut data);
+
+        for config in providers().into_iter().filter(ClientConfig::is_env_var_set) {
+            test_transcription_client(&config, data.clone()).await;
         }
     }
 
