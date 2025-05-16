@@ -7,7 +7,6 @@ use crate::{
     one_or_many::string_or_one_or_many,
     OneOrMany,
 };
-use std::future::Future;
 use std::{convert::Infallible, str::FromStr};
 
 use super::client::Client;

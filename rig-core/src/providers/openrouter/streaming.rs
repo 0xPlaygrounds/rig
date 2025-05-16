@@ -114,7 +114,7 @@ impl super::CompletionModel {
     }
 }
 
-pub async fn send_streaming_request<'a>(
+pub async fn send_streaming_request(
     request_builder: RequestBuilder,
 ) -> Result<streaming::StreamingCompletionResponse<FinalCompletionResponse>, CompletionError> {
     let response = request_builder.send().await?;

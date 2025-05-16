@@ -1,6 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
-use std::future::Future;
 use std::{convert::Infallible, str::FromStr};
 
 use super::client::Client;

@@ -10,7 +10,6 @@ use crate::{completion, json_utils, message, OneOrMany};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::Infallible;
-use std::future::Future;
 use std::str::FromStr;
 
 /// `o4-mini-2025-04-16` completion model

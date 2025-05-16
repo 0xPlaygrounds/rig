@@ -8,7 +8,6 @@ use crate::{
     json_utils,
     providers::openai,
 };
-use std::future::Future;
 
 use super::client::{together_ai_api_types::ApiResponse, Client};
 use crate::completion::CompletionRequest;

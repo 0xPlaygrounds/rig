@@ -33,7 +33,7 @@ pub struct CompletionModelHandle<'a> {
     pub inner: Arc<dyn CompletionModelDyn + 'a>,
 }
 
-impl<'a> CompletionModel for CompletionModelHandle<'a> {
+impl CompletionModel for CompletionModelHandle<'_> {
     type Response = ();
     type StreamingResponse = ();
 

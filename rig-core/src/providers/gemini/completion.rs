@@ -26,7 +26,6 @@ use gemini_api_types::{
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
-use std::future::Future;
 
 use super::Client;
 

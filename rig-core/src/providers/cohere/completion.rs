@@ -3,7 +3,6 @@ use crate::{
     json_utils, message, OneOrMany,
 };
 use std::collections::HashMap;
-use std::future::Future;
 
 use super::client::Client;
 use crate::completion::CompletionRequest;

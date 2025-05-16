@@ -39,7 +39,7 @@ mod audio {
     pub struct AudioGenerationModelHandle<'a> {
         pub(crate) inner: Arc<dyn AudioGenerationModelDyn + 'a>,
     }
-    impl<'a> AudioGenerationModel for AudioGenerationModelHandle<'a> {
+    impl AudioGenerationModel for AudioGenerationModelHandle<'_> {
         type Response = ();
 
         fn audio_generation(
