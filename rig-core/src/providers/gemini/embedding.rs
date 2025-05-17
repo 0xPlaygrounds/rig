@@ -35,8 +35,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 
     fn ndims(&self) -> usize {
         match self.model.as_str() {
-            EMBEDDING_001 => 768,
-            EMBEDDING_004 => 1024,
+            EMBEDDING_001 | EMBEDDING_004 => 768,
             _ => 0, // Default to 0 for unknown models
         }
     }
