@@ -88,7 +88,7 @@ impl<T: EmbeddingModel> EmbeddingModelDyn for T {
         &self,
         texts: Vec<String>,
     ) -> BoxFuture<Result<Vec<Embedding>, EmbeddingError>> {
-        Box::pin(self.embed_texts(texts.into_iter().map(String::from).collect::<Vec<_>>()))
+        Box::pin(self.embed_texts(texts.into_iter().collect::<Vec<_>>()))
     }
 }
 
