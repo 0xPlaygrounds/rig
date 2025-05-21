@@ -35,6 +35,8 @@ use super::Agent;
 pub struct AgentBuilder<M: CompletionModel> {
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     model: M,
+    /// Agent name (used in logging and agent-as-tool)
+    name: Option<String>,
     /// System prompt
     preamble: Option<String>,
     /// Context documents always available to the agent
@@ -59,6 +61,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
     pub fn new(model: M) -> Self {
         Self {
             model,
+            name: None,
             preamble: None,
             static_context: vec![],
             static_tools: vec![],
@@ -161,10 +164,17 @@ impl<M: CompletionModel> AgentBuilder<M> {
         self
     }
 
+    /// Set the name of the agent
+    pub fn name(mut self, name: &str) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
     /// Build the agent
     pub fn build(self) -> Agent<M> {
         Agent {
             model: self.model,
+            name: self.name,
             preamble: self.preamble.unwrap_or_default(),
             static_context: self.static_context,
             static_tools: self.static_tools,

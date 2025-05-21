@@ -502,15 +502,13 @@ impl CompletionModel {
 ///
 /// Dev Note: This is really bad design, I'm not sure why they did it like this..
 fn calculate_max_tokens(model: &str) -> Option<u64> {
-    if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
-        Some(8192)
-    } else if model.starts_with("claude-3-opus")
-        || model.starts_with("claude-3-sonnet")
-        || model.starts_with("claude-3-haiku")
-    {
-        Some(4096)
-    } else {
-        None
+    match model {
+        model if model.starts_with("claude-3-7-sonnet") => Some(64000),
+        model if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") => Some(8192),
+        model if model.starts_with("claude-3-opus")
+            || model.starts_with("claude-3-sonnet")
+            || model.starts_with("claude-3-haiku") => Some(4096),
+        _ => None,
     }
 }
 
