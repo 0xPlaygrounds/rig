@@ -2,11 +2,12 @@
 //! It provides traits, structs, and enums for generating audio transcription requests,
 //! handling transcription responses, and defining transcription models.
 
+use crate::client::transcription::TranscriptionModelHandle;
+use crate::json_utils;
 use futures::future::BoxFuture;
+use std::sync::Arc;
 use std::{fs, path::Path};
 use thiserror::Error;
-
-use crate::json_utils;
 
 // Errors
 #[derive(Debug, Error)]
@@ -83,6 +84,8 @@ pub trait TranscriptionModelDyn: Send + Sync {
         &self,
         request: TranscriptionRequest,
     ) -> BoxFuture<'_, Result<TranscriptionResponse<()>, TranscriptionError>>;
+
+    fn transcription_request(&self) -> TranscriptionRequestBuilder<TranscriptionModelHandle<'_>>;
 }
 
 impl<T: TranscriptionModel> TranscriptionModelDyn for T {
@@ -97,6 +100,12 @@ impl<T: TranscriptionModel> TranscriptionModelDyn for T {
                 text: resp.text,
                 response: (),
             })
+        })
+    }
+
+    fn transcription_request(&self) -> TranscriptionRequestBuilder<TranscriptionModelHandle<'_>> {
+        TranscriptionRequestBuilder::new(TranscriptionModelHandle {
+            inner: Arc::new(self.clone()),
         })
     }
 }

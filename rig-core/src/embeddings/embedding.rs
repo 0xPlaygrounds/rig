@@ -64,10 +64,11 @@ pub trait EmbeddingModel: Clone + Sync + Send {
 pub trait EmbeddingModelDyn: Sync + Send {
     fn max_documents(&self) -> usize;
     fn ndims(&self) -> usize;
-    fn embed_texts<'a>(
-        &'a self,
-        texts: &'a str,
-    ) -> BoxFuture<'a, Result<Embedding, EmbeddingError>>;
+    fn embed_text<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<Embedding, EmbeddingError>>;
+    fn embed_texts(
+        &self,
+        texts: Vec<String>,
+    ) -> BoxFuture<'_, Result<Vec<Embedding>, EmbeddingError>>;
 }
 
 impl<T: EmbeddingModel> EmbeddingModelDyn for T {
@@ -79,11 +80,15 @@ impl<T: EmbeddingModel> EmbeddingModelDyn for T {
         self.ndims()
     }
 
-    fn embed_texts<'a>(
-        &'a self,
-        texts: &'a str,
-    ) -> BoxFuture<'a, Result<Embedding, EmbeddingError>> {
-        Box::pin(async move { self.embed_text(texts).await })
+    fn embed_text<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<Embedding, EmbeddingError>> {
+        Box::pin(self.embed_text(text))
+    }
+
+    fn embed_texts(
+        &self,
+        texts: Vec<String>,
+    ) -> BoxFuture<Result<Vec<Embedding>, EmbeddingError>> {
+        Box::pin(self.embed_texts(texts.into_iter().map(String::from).collect::<Vec<_>>()))
     }
 }
 

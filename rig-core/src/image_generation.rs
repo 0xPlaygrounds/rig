@@ -1,5 +1,7 @@
+use crate::client::image_generation::ImageGenerationModelHandle;
 use futures::future::BoxFuture;
 use serde_json::Value;
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -68,6 +70,9 @@ pub trait ImageGenerationModelDyn: Send + Sync {
         &self,
         request: ImageGenerationRequest,
     ) -> BoxFuture<Result<ImageGenerationResponse<()>, ImageGenerationError>>;
+
+    fn image_generation_request(&self)
+        -> ImageGenerationRequestBuilder<ImageGenerationModelHandle>;
 }
 
 impl<T: ImageGenerationModel> ImageGenerationModelDyn for T {
@@ -81,6 +86,14 @@ impl<T: ImageGenerationModel> ImageGenerationModelDyn for T {
                 image: r.image,
                 response: (),
             })
+        })
+    }
+
+    fn image_generation_request(
+        &self,
+    ) -> ImageGenerationRequestBuilder<ImageGenerationModelHandle> {
+        ImageGenerationRequestBuilder::new(ImageGenerationModelHandle {
+            inner: Arc::new(self.clone()),
         })
     }
 }

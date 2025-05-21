@@ -324,6 +324,7 @@ mod tests {
             ClientConfig {
                 name: "Ollama",
                 factory: Box::new(ollama::Client::from_env_boxed),
+                env_variable: "OLLAMA_ENABLED",
                 completion_model: Some("llama3.1:8b"),
                 embeddings_model: Some(ollama::NOMIC_EMBED_TEXT),
                 ..Default::default()
@@ -716,7 +717,7 @@ mod tests {
 
         let model = client.embedding_model(model);
 
-        let resp = model.embed_texts(TEST).await;
+        let resp = model.embed_text(TEST).await;
 
         assert!(
             resp.is_ok(),

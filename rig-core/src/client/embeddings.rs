@@ -7,6 +7,7 @@ pub trait EmbeddingsClient: ProviderClient {
     type EmbeddingModel: EmbeddingModel;
     fn embedding_model(&self, model: &str) -> Self::EmbeddingModel;
     fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> Self::EmbeddingModel;
+
     fn embeddings<D: Embed>(&self, model: &str) -> EmbeddingsBuilder<Self::EmbeddingModel, D> {
         EmbeddingsBuilder::new(self.embedding_model(model))
     }
