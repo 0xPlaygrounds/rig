@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::sync::Arc;
 
-pub trait CompletionClient: ProviderClient {
+pub trait CompletionClient: ProviderClient + Clone {
     type CompletionModel: CompletionModel;
 
     fn completion_model(&self, model: &str) -> Self::CompletionModel;
@@ -56,7 +56,7 @@ impl CompletionModel for CompletionModelHandle<'_> {
 }
 
 pub trait CompletionClientDyn: ProviderClient {
-    fn completion_model<'a>(&'a self, model: &'a str) -> Box<dyn CompletionModelDyn + 'a>;
+    fn completion_model<'a>(&self, model: &'a str) -> Box<dyn CompletionModelDyn + 'a>;
 
     fn agent<'a>(&'a self, model: &'a str) -> AgentBuilder<CompletionModelHandle<'a>>;
 }
@@ -67,7 +67,7 @@ impl<
         R: Clone + Unpin + 'static,
     > CompletionClientDyn for T
 {
-    fn completion_model<'a>(&'a self, model: &'a str) -> Box<dyn CompletionModelDyn + 'a> {
+    fn completion_model<'a>(&self, model: &'a str) -> Box<dyn CompletionModelDyn + 'a> {
         Box::new(self.completion_model(model))
     }
 
@@ -78,8 +78,8 @@ impl<
     }
 }
 
-impl<T: CompletionClientDyn> AsCompletion for T {
-    fn as_completion(&self) -> Option<Box<&dyn CompletionClientDyn>> {
-        Some(Box::new(self))
+impl<T: CompletionClientDyn + Clone + 'static> AsCompletion for T {
+    fn as_completion(&self) -> Option<Box<dyn CompletionClientDyn>> {
+        Some(Box::new(self.clone()))
     }
 }

@@ -1,4 +1,5 @@
 pub mod audio_generation;
+pub mod builder;
 pub mod completion;
 pub mod embeddings;
 pub mod image_generation;
@@ -32,33 +33,33 @@ pub trait ProviderClient:
 }
 
 pub trait AsCompletion {
-    fn as_completion(&self) -> Option<Box<&dyn CompletionClientDyn>> {
+    fn as_completion(&self) -> Option<Box<dyn CompletionClientDyn>> {
         None
     }
 }
 
 pub trait AsTranscription {
-    fn as_transcription(&self) -> Option<Box<&dyn TranscriptionClientDyn>> {
+    fn as_transcription(&self) -> Option<Box<dyn TranscriptionClientDyn>> {
         None
     }
 }
 
 pub trait AsEmbeddings {
-    fn as_embeddings(&self) -> Option<Box<&dyn EmbeddingsClientDyn>> {
+    fn as_embeddings(&self) -> Option<Box<dyn EmbeddingsClientDyn>> {
         None
     }
 }
 
 pub trait AsAudioGeneration {
     #[cfg(feature = "audio")]
-    fn as_audio_generation(&self) -> Option<Box<&dyn AudioGenerationClientDyn>> {
+    fn as_audio_generation(&self) -> Option<Box<dyn AudioGenerationClientDyn>> {
         None
     }
 }
 
 pub trait AsImageGeneration {
     #[cfg(feature = "image")]
-    fn as_image_generation(&self) -> Option<Box<&dyn ImageGenerationClientDyn>> {
+    fn as_image_generation(&self) -> Option<Box<dyn ImageGenerationClientDyn>> {
         None
     }
 }
@@ -661,7 +662,6 @@ mod tests {
     pub fn test_polymorphism() {
         for config in providers().into_iter().filter(ClientConfig::is_env_var_set) {
             let client = config.factory();
-
             assert_feature(
                 config.name,
                 "AsCompletion",

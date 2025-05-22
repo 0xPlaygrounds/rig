@@ -7,30 +7,32 @@ mod image {
     };
     use std::future::Future;
     use std::sync::Arc;
-    pub trait ImageGenerationClient: ProviderClient {
+    pub trait ImageGenerationClient: ProviderClient + Clone {
         type ImageGenerationModel: ImageGenerationModel;
         fn image_generation_model(&self, model: &str) -> Self::ImageGenerationModel;
     }
 
     pub trait ImageGenerationClientDyn: ProviderClient {
         fn image_generation_model<'a>(
-            &'a self,
+            &self,
             model: &'a str,
         ) -> Box<dyn ImageGenerationModelDyn + 'a>;
     }
 
-    impl<T: ImageGenerationClient> ImageGenerationClientDyn for T {
+    impl<T: ImageGenerationClient<ImageGenerationModel = M>, M: ImageGenerationModel + 'static>
+        ImageGenerationClientDyn for T
+    {
         fn image_generation_model<'a>(
-            &'a self,
+            &self,
             model: &'a str,
         ) -> Box<dyn ImageGenerationModelDyn + 'a> {
             Box::new(self.image_generation_model(model))
         }
     }
 
-    impl<T: ImageGenerationClientDyn> AsImageGeneration for T {
-        fn as_image_generation(&self) -> Option<Box<&dyn ImageGenerationClientDyn>> {
-            Some(Box::new(self))
+    impl<T: ImageGenerationClientDyn + Clone + 'static> AsImageGeneration for T {
+        fn as_image_generation(&self) -> Option<Box<dyn ImageGenerationClientDyn>> {
+            Some(Box::new(self.clone()))
         }
     }
 
