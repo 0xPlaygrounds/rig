@@ -2,7 +2,6 @@ use super::completion::CompletionModel;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils::merge_inplace;
 use crate::providers::openai::{send_compatible_streaming_request, StreamingCompletionResponse};
-use crate::streaming::StreamingCompletionModel;
 use crate::{json_utils, streaming};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -54,12 +53,11 @@ struct CompletionChunk {
     choices: Vec<StreamingChoice>,
 }
 
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = StreamingCompletionResponse;
-    async fn stream(
+impl CompletionModel {
+    pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let mut request = self.create_request_body(&completion_request)?;
 

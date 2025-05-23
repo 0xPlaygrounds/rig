@@ -1,9 +1,8 @@
 use crate::image::ImageGenerationModel;
 use crate::{completion::CompletionModel, embedding::EmbeddingModel};
 use aws_config::{BehaviorVersion, Region};
-use rig::{agent::AgentBuilder, embeddings, extractor::ExtractorBuilder, Embed};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use rig::impl_conversion_traits;
+use rig::prelude::*;
 
 pub const DEFAULT_AWS_REGION: &str = "us-east-1";
 
@@ -47,7 +46,7 @@ impl Default for ClientBuilder<'_> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Client {
     pub(crate) aws_client: aws_sdk_bedrockruntime::Client,
 }
@@ -58,35 +57,45 @@ impl From<aws_sdk_bedrockruntime::Client> for Client {
     }
 }
 
-impl Client {
-    pub fn completion_model(&self, model: &str) -> CompletionModel {
+impl Client {}
+
+impl ProviderClient for Client {
+    fn from_env() -> Self
+    where
+        Self: Sized,
+    {
+        panic!("You should not call from_env to build a Bedrock client");
+    }
+}
+
+impl CompletionClient for Client {
+    type CompletionModel = CompletionModel;
+
+    fn completion_model(&self, model: &str) -> Self::CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
+}
 
-    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
+impl EmbeddingsClient for Client {
+    type EmbeddingModel = EmbeddingModel;
+
+    fn embedding_model(&self, model: &str) -> Self::EmbeddingModel {
+        EmbeddingModel::new(self.clone(), model, None)
     }
 
-    pub fn embedding_model(&self, model: &str, ndims: usize) -> EmbeddingModel {
+    fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> Self::EmbeddingModel {
         EmbeddingModel::new(self.clone(), model, Some(ndims))
     }
+}
 
-    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
-        &self,
-        model: &str,
-    ) -> ExtractorBuilder<T, CompletionModel> {
-        ExtractorBuilder::new(self.completion_model(model))
-    }
+impl ImageGenerationClient for Client {
+    type ImageGenerationModel = ImageGenerationModel;
 
-    pub fn embeddings<D: Embed>(
-        &self,
-        model: &str,
-        ndims: usize,
-    ) -> embeddings::EmbeddingsBuilder<EmbeddingModel, D> {
-        embeddings::EmbeddingsBuilder::new(self.embedding_model(model, ndims))
-    }
-
-    pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
+    fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
         ImageGenerationModel::new(self.clone(), model)
     }
 }
+impl_conversion_traits!(
+    AsTranscription,
+    AsAudioGeneration for Client
+);

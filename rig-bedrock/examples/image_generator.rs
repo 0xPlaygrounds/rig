@@ -1,3 +1,4 @@
+use rig::client::ImageGenerationClient;
 use rig::image_generation::ImageGenerationModel;
 use rig_bedrock::client::ClientBuilder;
 use rig_bedrock::image::AMAZON_NOVA_CANVAS;

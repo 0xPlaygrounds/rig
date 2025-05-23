@@ -80,10 +80,13 @@
 //! You can also implement your own vector store integration by defining types that
 //! implement the [VectorStoreIndex](crate::vector_store::VectorStoreIndex) trait.
 
+extern crate self as rig;
+
 pub mod agent;
 #[cfg(feature = "audio")]
 pub mod audio_generation;
 pub mod cli_chatbot;
+pub mod client;
 pub mod completion;
 pub mod embeddings;
 pub mod extractor;
@@ -93,6 +96,7 @@ pub(crate) mod json_utils;
 pub mod loaders;
 pub mod one_or_many;
 pub mod pipeline;
+pub mod prelude;
 pub mod providers;
 pub mod streaming;
 pub mod tool;

@@ -7,15 +7,14 @@ use crate::streaming::StreamingCompletionResponse;
 use crate::{
     completion::{CompletionError, CompletionRequest},
     json_utils::merge,
-    streaming::StreamingCompletionModel,
 };
 
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = openai::StreamingCompletionResponse;
-    async fn stream(
+impl CompletionModel {
+    pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse<openai::StreamingCompletionResponse>, CompletionError>
+    {
         let mut request = self.create_completion_request(completion_request)?;
 
         request = merge(request, json!({"stream_tokens": true}));
