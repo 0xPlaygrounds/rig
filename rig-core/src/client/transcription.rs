@@ -11,13 +11,13 @@ pub trait TranscriptionClient: ProviderClient + Clone {
 }
 
 pub trait TranscriptionClientDyn: ProviderClient {
-    fn transcription_model<'a>(&self, model: &'a str) -> Box<dyn TranscriptionModelDyn + 'a>;
+    fn transcription_model<'a>(&self, model: &str) -> Box<dyn TranscriptionModelDyn + 'a>;
 }
 
 impl<T: TranscriptionClient<TranscriptionModel = M>, M: TranscriptionModel + 'static>
     TranscriptionClientDyn for T
 {
-    fn transcription_model<'a>(&self, model: &'a str) -> Box<dyn TranscriptionModelDyn + 'a> {
+    fn transcription_model<'a>(&self, model: &str) -> Box<dyn TranscriptionModelDyn + 'a> {
         Box::new(self.transcription_model(model))
     }
 }

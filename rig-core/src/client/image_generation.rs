@@ -13,19 +13,13 @@ mod image {
     }
 
     pub trait ImageGenerationClientDyn: ProviderClient {
-        fn image_generation_model<'a>(
-            &self,
-            model: &'a str,
-        ) -> Box<dyn ImageGenerationModelDyn + 'a>;
+        fn image_generation_model<'a>(&self, model: &str) -> Box<dyn ImageGenerationModelDyn + 'a>;
     }
 
     impl<T: ImageGenerationClient<ImageGenerationModel = M>, M: ImageGenerationModel + 'static>
         ImageGenerationClientDyn for T
     {
-        fn image_generation_model<'a>(
-            &self,
-            model: &'a str,
-        ) -> Box<dyn ImageGenerationModelDyn + 'a> {
+        fn image_generation_model<'a>(&self, model: &str) -> Box<dyn ImageGenerationModelDyn + 'a> {
             Box::new(self.image_generation_model(model))
         }
     }

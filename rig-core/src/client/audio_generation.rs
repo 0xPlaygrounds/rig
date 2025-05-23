@@ -14,19 +14,13 @@ mod audio {
     }
 
     pub trait AudioGenerationClientDyn: ProviderClient {
-        fn audio_generation_model<'a>(
-            &self,
-            model: &'a str,
-        ) -> Box<dyn AudioGenerationModelDyn + 'a>;
+        fn audio_generation_model<'a>(&self, model: &str) -> Box<dyn AudioGenerationModelDyn + 'a>;
     }
 
     impl<T: AudioGenerationClient<AudioGenerationModel = M>, M: AudioGenerationModel + 'static>
         AudioGenerationClientDyn for T
     {
-        fn audio_generation_model<'a>(
-            &self,
-            model: &'a str,
-        ) -> Box<dyn AudioGenerationModelDyn + 'a> {
+        fn audio_generation_model<'a>(&self, model: &str) -> Box<dyn AudioGenerationModelDyn + 'a> {
             Box::new(self.audio_generation_model(model))
         }
     }

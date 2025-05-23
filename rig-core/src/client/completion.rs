@@ -56,9 +56,9 @@ impl CompletionModel for CompletionModelHandle<'_> {
 }
 
 pub trait CompletionClientDyn: ProviderClient {
-    fn completion_model<'a>(&self, model: &'a str) -> Box<dyn CompletionModelDyn + 'a>;
+    fn completion_model<'a>(&self, model: &str) -> Box<dyn CompletionModelDyn + 'a>;
 
-    fn agent<'a>(&'a self, model: &'a str) -> AgentBuilder<CompletionModelHandle<'a>>;
+    fn agent<'a>(&self, model: &str) -> AgentBuilder<CompletionModelHandle<'a>>;
 }
 
 impl<
@@ -67,11 +67,11 @@ impl<
         R: Clone + Unpin + 'static,
     > CompletionClientDyn for T
 {
-    fn completion_model<'a>(&self, model: &'a str) -> Box<dyn CompletionModelDyn + 'a> {
+    fn completion_model<'a>(&self, model: &str) -> Box<dyn CompletionModelDyn + 'a> {
         Box::new(self.completion_model(model))
     }
 
-    fn agent<'a>(&'a self, model: &'a str) -> AgentBuilder<CompletionModelHandle<'a>> {
+    fn agent<'a>(&self, model: &str) -> AgentBuilder<CompletionModelHandle<'a>> {
         AgentBuilder::new(CompletionModelHandle {
             inner: Arc::new(self.completion_model(model)),
         })

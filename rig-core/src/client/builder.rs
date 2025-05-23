@@ -1,3 +1,4 @@
+use crate::agent::Agent;
 use crate::client::ProviderClient;
 use crate::embeddings::embedding::EmbeddingModelDyn;
 use crate::providers::{
@@ -6,9 +7,27 @@ use crate::providers::{
 };
 use crate::transcription::TranscriptionModelDyn;
 use rig::completion::CompletionModelDyn;
-use std::any::Any;
 use std::collections::HashMap;
 use std::panic::{RefUnwindSafe, UnwindSafe};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ClientBuildError {
+    #[error("factory error: {}", .0)]
+    FactoryError(String),
+    #[error("invalid id string: {}", .0)]
+    InvalidIdString(String),
+    #[error("unsupported feature: {} for {}", .1, .0)]
+    UnsupportedFeature(String, String),
+    #[error("unknown provider")]
+    UnknownProvider,
+}
+
+pub type BoxCompletionModel<'a> = Box<dyn CompletionModelDyn + 'a>;
+pub type BoxAgentBuilder<'a> = AgentBuilder<CompletionModelHandle<'a>>;
+pub type BoxAgent<'a> = Agent<CompletionModelHandle<'a>>;
+pub type BoxEmbeddingModel<'a> = Box<dyn EmbeddingModelDyn + 'a>;
+pub type BoxTranscriptionModel<'a> = Box<dyn TranscriptionModelDyn + 'a>;
 
 pub struct DynClientBuilder {
     registry: HashMap<String, ClientFactory>,
@@ -19,16 +38,7 @@ impl Default for DynClientBuilder {
         Self::new()
     }
 }
-
-#[derive(Debug)]
-pub enum ClientBuildError {
-    FactoryError(Box<dyn Any + Send>),
-    InvalidIdString,
-    UnsupportedFeature(String),
-    UnknownProvider,
-}
-
-impl DynClientBuilder {
+impl<'a> DynClientBuilder {
     pub fn new() -> Self {
         Self {
             registry: HashMap::new(),
@@ -93,10 +103,11 @@ impl DynClientBuilder {
         factory.build()
     }
 
-    fn parse_id<'a>(&self, id: &'a str) -> Result<(&'a str, &'a str), ClientBuildError> {
+    pub fn parse(&self, id: &'a str) -> Result<(&'a str, &'a str), ClientBuildError> {
         let (provider, model) = id
             .split_once(":")
-            .ok_or(ClientBuildError::InvalidIdString)?;
+            .ok_or(ClientBuildError::InvalidIdString(id.to_string()))?;
+
         Ok((provider, model))
     }
 
@@ -106,56 +117,75 @@ impl DynClientBuilder {
             .ok_or(ClientBuildError::UnknownProvider)
     }
 
-    pub fn completion<'a>(
+    pub fn completion(
         &self,
         provider: &str,
-        model: &'a str,
-    ) -> Result<Box<dyn CompletionModelDyn + 'a>, ClientBuildError> {
+        model: &str,
+    ) -> Result<BoxCompletionModel<'a>, ClientBuildError> {
         let client = self.build(provider)?;
 
         let completion = client
             .as_completion()
             .ok_or(ClientBuildError::UnsupportedFeature(
+                provider.to_string(),
                 "completion".to_owned(),
             ))?;
 
         Ok(completion.completion_model(model))
     }
 
-    pub fn embeddings<'a>(
+    pub fn agent(
         &self,
         provider: &str,
-        model: &'a str,
+        model: &str,
+    ) -> Result<BoxAgentBuilder<'a>, ClientBuildError> {
+        let client = self.build(provider)?;
+
+        let client = client
+            .as_completion()
+            .ok_or(ClientBuildError::UnsupportedFeature(
+                provider.to_string(),
+                "completion".to_string(),
+            ))?;
+
+        Ok(client.agent(model))
+    }
+
+    pub fn embeddings(
+        &self,
+        provider: &str,
+        model: &str,
     ) -> Result<Box<dyn EmbeddingModelDyn + 'a>, ClientBuildError> {
         let client = self.build(provider)?;
 
         let embeddings = client
             .as_embeddings()
             .ok_or(ClientBuildError::UnsupportedFeature(
+                provider.to_string(),
                 "embeddings".to_owned(),
             ))?;
 
         Ok(embeddings.embedding_model(model))
     }
-
-    pub fn transcription<'a>(
+    pub fn transcription(
         &self,
         provider: &str,
-        model: &'a str,
+        model: &str,
     ) -> Result<Box<dyn TranscriptionModelDyn + 'a>, ClientBuildError> {
         let client = self.build(provider)?;
         let transcription =
             client
                 .as_transcription()
                 .ok_or(ClientBuildError::UnsupportedFeature(
+                    provider.to_string(),
                     "transcription".to_owned(),
                 ))?;
 
         Ok(transcription.transcription_model(model))
     }
 
-    pub fn id<'a>(&'a self, id: &'a str) -> Result<ProviderModelId<'a>, ClientBuildError> {
-        let (provider, model) = self.parse_id(id)?;
+    pub fn id<'id>(&'a self, id: &'id str) -> Result<ProviderModelId<'a, 'id>, ClientBuildError> {
+        let (provider, model) = self.parse(id)?;
 
         Ok(ProviderModelId {
             builder: self,
@@ -165,22 +195,26 @@ impl DynClientBuilder {
     }
 }
 
-pub struct ProviderModelId<'a> {
-    builder: &'a DynClientBuilder,
-    provider: &'a str,
-    model: &'a str,
+pub struct ProviderModelId<'builder, 'id> {
+    builder: &'builder DynClientBuilder,
+    provider: &'id str,
+    model: &'id str,
 }
 
-impl<'a> ProviderModelId<'a> {
-    pub fn completion(self) -> Result<Box<dyn CompletionModelDyn + 'a>, ClientBuildError> {
+impl<'builder> ProviderModelId<'builder, '_> {
+    pub fn completion(self) -> Result<BoxCompletionModel<'builder>, ClientBuildError> {
         self.builder.completion(self.provider, self.model)
     }
 
-    pub fn embedding(self) -> Result<Box<dyn EmbeddingModelDyn + 'a>, ClientBuildError> {
+    pub fn agent(self) -> Result<BoxAgentBuilder<'builder>, ClientBuildError> {
+        self.builder.agent(self.provider, self.model)
+    }
+
+    pub fn embedding(self) -> Result<BoxEmbeddingModel<'builder>, ClientBuildError> {
         self.builder.embeddings(self.provider, self.model)
     }
 
-    pub fn transcription(self) -> Result<Box<dyn TranscriptionModelDyn + 'a>, ClientBuildError> {
+    pub fn transcription(self) -> Result<BoxTranscriptionModel<'builder>, ClientBuildError> {
         self.builder.transcription(self.provider, self.model)
     }
 }
@@ -191,17 +225,20 @@ mod image {
     use crate::image_generation::ImageGenerationModelDyn;
     use rig::client::builder::{DynClientBuilder, ProviderModelId};
 
+    pub type BoxImageGenerationModel<'a> = Box<dyn ImageGenerationModelDyn + 'a>;
+
     impl DynClientBuilder {
         pub fn image_generation<'a>(
             &self,
             provider: &str,
-            model: &'a str,
-        ) -> Result<Box<dyn ImageGenerationModelDyn + 'a>, ClientBuildError> {
+            model: &str,
+        ) -> Result<BoxImageGenerationModel<'a>, ClientBuildError> {
             let client = self.build(provider)?;
             let image =
                 client
                     .as_image_generation()
                     .ok_or(ClientBuildError::UnsupportedFeature(
+                        provider.to_string(),
                         "image_generation".to_string(),
                     ))?;
 
@@ -209,14 +246,16 @@ mod image {
         }
     }
 
-    impl<'a> ProviderModelId<'a> {
+    impl<'builder> ProviderModelId<'builder, '_> {
         pub fn image_generation(
             self,
-        ) -> Result<Box<dyn ImageGenerationModelDyn + 'a>, ClientBuildError> {
+        ) -> Result<Box<dyn ImageGenerationModelDyn + 'builder>, ClientBuildError> {
             self.builder.image_generation(self.provider, self.model)
         }
     }
 }
+#[cfg(feature = "image")]
+pub use image::*;
 
 #[cfg(feature = "audio")]
 mod audio {
@@ -224,17 +263,20 @@ mod audio {
     use crate::client::builder::DynClientBuilder;
     use crate::client::builder::{ClientBuildError, ProviderModelId};
 
+    pub type BoxAudioGenerationModel<'a> = Box<dyn AudioGenerationModelDyn + 'a>;
+
     impl DynClientBuilder {
         pub fn audio_generation<'a>(
             &self,
             provider: &str,
-            model: &'a str,
-        ) -> Result<Box<dyn AudioGenerationModelDyn + 'a>, ClientBuildError> {
+            model: &str,
+        ) -> Result<BoxAudioGenerationModel<'a>, ClientBuildError> {
             let client = self.build(provider)?;
             let audio =
                 client
                     .as_audio_generation()
                     .ok_or(ClientBuildError::UnsupportedFeature(
+                        provider.to_string(),
                         "audio_generation".to_owned(),
                     ))?;
 
@@ -242,14 +284,18 @@ mod audio {
         }
     }
 
-    impl<'a> ProviderModelId<'a> {
+    impl<'builder> ProviderModelId<'builder, '_> {
         pub fn audio_generation(
             self,
-        ) -> Result<Box<dyn AudioGenerationModelDyn + 'a>, ClientBuildError> {
+        ) -> Result<Box<dyn AudioGenerationModelDyn + 'builder>, ClientBuildError> {
             self.builder.audio_generation(self.provider, self.model)
         }
     }
 }
+use crate::agent::AgentBuilder;
+use crate::client::completion::CompletionModelHandle;
+#[cfg(feature = "audio")]
+pub use audio::*;
 
 pub struct ClientFactory {
     pub name: String,
@@ -268,7 +314,8 @@ impl ClientFactory {
     }
 
     pub fn build(&self) -> Result<Box<dyn ProviderClient>, ClientBuildError> {
-        std::panic::catch_unwind(|| (self.factory)()).map_err(ClientBuildError::FactoryError)
+        std::panic::catch_unwind(|| (self.factory)())
+            .map_err(|e| ClientBuildError::FactoryError(format!("{:?}", e)))
     }
 }
 

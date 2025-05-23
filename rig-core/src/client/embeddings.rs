@@ -22,10 +22,10 @@ pub trait EmbeddingsClient: ProviderClient + Clone {
 }
 
 pub trait EmbeddingsClientDyn: ProviderClient {
-    fn embedding_model<'a>(&self, model: &'a str) -> Box<dyn EmbeddingModelDyn + 'a>;
+    fn embedding_model<'a>(&self, model: &str) -> Box<dyn EmbeddingModelDyn + 'a>;
     fn embedding_model_with_ndims<'a>(
-        &'a self,
-        model: &'a str,
+        &self,
+        model: &str,
         ndims: usize,
     ) -> Box<dyn EmbeddingModelDyn + 'a>;
 }
@@ -33,13 +33,13 @@ pub trait EmbeddingsClientDyn: ProviderClient {
 impl<T: EmbeddingsClient<EmbeddingModel = M>, M: EmbeddingModel + 'static> EmbeddingsClientDyn
     for T
 {
-    fn embedding_model<'a>(&self, model: &'a str) -> Box<dyn EmbeddingModelDyn + 'a> {
+    fn embedding_model<'a>(&self, model: &str) -> Box<dyn EmbeddingModelDyn + 'a> {
         Box::new(self.embedding_model(model))
     }
 
     fn embedding_model_with_ndims<'a>(
-        &'a self,
-        model: &'a str,
+        &self,
+        model: &str,
         ndims: usize,
     ) -> Box<dyn EmbeddingModelDyn + 'a> {
         Box::new(self.embedding_model_with_ndims(model, ndims))
