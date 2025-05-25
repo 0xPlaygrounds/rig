@@ -31,11 +31,12 @@ async fn main() -> Result<(), anyhow::Error> {
         std::env::var("MILVUS_DATABASE_NAME").expect("the MILVUS_DATABASE_NAME env var to exist");
     let milvus_user =
         std::env::var("MILVUS_USERNAME").expect("the MILVUS_USERNAME env var to exist");
-    let database_name =
+    let milvus_password =
         std::env::var("MILVUS_PASSWORD").expect("the MILVUS_PASSWORD env var to exist");
 
     let vector_store =
-        rig_milvus::MilvusVectorStore::new(model.clone(), base_url, database_name, collection_name);
+        rig_milvus::MilvusVectorStore::new(model.clone(), base_url, database_name, collection_name)
+            .auth(milvus_user, milvus_password);
 
     // create test documents with mocked embeddings
     let words = vec![
