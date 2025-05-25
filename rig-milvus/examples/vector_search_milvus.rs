@@ -35,7 +35,7 @@ async fn main() -> Result<(), anyhow::Error> {
         std::env::var("MILVUS_PASSWORD").expect("the MILVUS_PASSWORD env var to exist");
 
     let vector_store =
-        rig_milvus::MilvusVectorStore::new(model, base_url, database_name, collection_name);
+        rig_milvus::MilvusVectorStore::new(model.clone(), base_url, database_name, collection_name);
 
     // create test documents with mocked embeddings
     let words = vec![
