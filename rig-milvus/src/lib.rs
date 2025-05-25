@@ -74,7 +74,7 @@ struct SearchResultDataOnlyId {
 }
 
 impl<M: EmbeddingModel> MilvusVectorStore<M> {
-    /// Creates a new instance of `QdrantVectorStore`.
+    /// Creates a new instance of `MilvusVectorStore`.
     ///
     /// # Arguments
     /// * `model` - Embedding model instance
@@ -92,7 +92,7 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
         }
     }
 
-    /// Adds your token. Required if using a Milvus instance that requires authentication.
+    /// Forms the auth token for Milvus from your username and password. Required if using a Milvus instance that requires authentication.
     pub fn auth(mut self, username: String, password: String) -> Self {
         let str = format!("{username}:{password}");
         self.token = Some(str);
@@ -100,7 +100,7 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
         self
     }
 
-    /// Creates an insertion request.
+    /// Creates a Milvus insertion request.
     fn create_insert_request(&self, data: Vec<CreateRecord>) -> InsertRequest {
         InsertRequest {
             data,
@@ -109,7 +109,7 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
         }
     }
 
-    /// Creates a semantic search request.
+    /// Creates a Milvus semantic search request.
     fn create_search_request(&self, data: Vec<f64>, limit: usize) -> SearchRequest {
         SearchRequest {
             collection_name: &self.collection_name,
