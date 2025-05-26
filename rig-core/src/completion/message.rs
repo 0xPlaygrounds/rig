@@ -601,11 +601,8 @@ impl From<OneOrMany<UserContent>> for Message {
 
 impl From<ToolCall> for Message {
     fn from(tool_call: ToolCall) -> Self {
-        Message::User {
-            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
-                id: tool_call.id,
-                content: OneOrMany::one(ToolResultContent::text(tool_call.function.name)),
-            })),
+        Message::Assistant {
+            content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
         }
     }
 }

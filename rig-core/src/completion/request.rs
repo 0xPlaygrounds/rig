@@ -315,6 +315,7 @@ where
 }
 
 /// Struct representing a general completion request that can be sent to a completion model provider.
+#[derive(Debug, Clone)]
 pub struct CompletionRequest {
     /// The preamble to be sent to the completion model provider
     pub preamble: Option<String>,
