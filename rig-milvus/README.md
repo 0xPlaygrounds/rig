@@ -2,7 +2,7 @@
 This crate integrates [Milvus](https://milvus.io/) into Rig, allowing you to easily use RAG with this database.
 
 ## Installation
-To install this crate, run the following command in a Rust project directory which will add `rig-surrealdb` as a dependency (requires `rig-core` added for intended usage):
+To install this crate, run the following command in a Rust project directory which will add `rig-milvus` as a dependency (requires `rig-core` added for intended usage):
 ```bash
 cargo add rig-milvus
 ```
@@ -11,7 +11,7 @@ There's a couple of different ways you can run Milvus:
 - [Through a Docker container, either locally or on Docker-compatible architecture](https://milvus.io/docs/install_standalone-docker.md)
   - Their Docker container requires using an install script to use which is listed on the page and can be found directly on the Milvus repo.
   - They also support Kubernetes, although you will probably need to already know how to use Kubernetes to do this.
-- [Using the Zilliz cloud offering](https://surrealdb.com/cloud)
+- [Using the Zilliz cloud offering](https://zilliz.com/cloud)
   - Using the cloud offering you can manage your Milvus instance through their web UI.
 
 Before creating a collection that is compliant with `rig-milvus`, ensure you set up your Milvus related environment variables:

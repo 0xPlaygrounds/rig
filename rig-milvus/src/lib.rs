@@ -142,13 +142,14 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
             "{base_url}/v2/vectordb/entities/insert",
             base_url = self.base_url
         );
+
         let data = documents
             .into_iter()
-            .flat_map(|(document, embeddings)| {
-                let json_document: serde_json::Value = serde_json::to_value(&document).unwrap();
-                let json_document_as_string = serde_json::to_string(&json_document).unwrap();
+            .map(|(document, embeddings)| {
+                let json_document: serde_json::Value = serde_json::to_value(&document)?;
+                let json_document_as_string = serde_json::to_string(&json_document)?;
 
-                embeddings
+                let embeddings = embeddings
                     .into_iter()
                     .map(|embedding| {
                         let embedded_text = embedding.document;
@@ -160,8 +161,12 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
                             embedding,
                         }
                     })
-                    .collect::<Vec<CreateRecord>>()
+                    .collect::<Vec<CreateRecord>>();
+                Ok(embeddings)
             })
+            .collect::<Result<Vec<Vec<CreateRecord>>, VectorStoreError>>()?
+            .into_iter()
+            .flatten()
             .collect::<Vec<CreateRecord>>();
 
         let mut client = self.client.post(url);
@@ -173,23 +178,20 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
 
         let body = serde_json::to_string(&insert_request).unwrap();
 
-        let res = client
-            .body(body)
-            .send()
-            .await
-            .map_err(|x| VectorStoreError::DatastoreError(x.to_string().into()))?;
+        let res = client.body(body).send().await?;
 
         if res.status() != StatusCode::OK {
-            let res = res.text().await.unwrap();
+            let status = res.status();
+            let text = res.text().await?;
 
-            return Err(VectorStoreError::DatastoreError(res.to_string().into()));
+            return Err(VectorStoreError::ExternalAPIError(status, text));
         }
 
         Ok(())
     }
 }
 
-impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MilvusVectorStore<M> {
+impl<M: EmbeddingModel> VectorStoreIndex for MilvusVectorStore<M> {
     /// Search for the top `n` nearest neighbors to the given query within the Milvus vector store.
     /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
@@ -210,24 +212,18 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MilvusVe
             client = client.header("Authentication", format!("Bearer {token}"));
         }
 
-        let body = serde_json::to_string(&body).unwrap();
+        let body = serde_json::to_string(&body)?;
 
-        let res = client
-            .body(body)
-            .send()
-            .await
-            .map_err(|x| VectorStoreError::DatastoreError(x.to_string().into()))?;
+        let res = client.body(body).send().await?;
 
         if res.status() != StatusCode::OK {
-            let res = res.text().await.unwrap();
+            let status = res.status();
+            let text = res.text().await?;
 
-            return Err(VectorStoreError::DatastoreError(res.to_string().into()));
+            return Err(VectorStoreError::ExternalAPIError(status, text));
         }
 
-        let json: SearchResult<T> = res
-            .json()
-            .await
-            .map_err(|x| VectorStoreError::DatastoreError(x.to_string().into()))?;
+        let json: SearchResult<T> = res.json().await?;
 
         let res = json
             .data
@@ -258,24 +254,18 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for MilvusVe
             client = client.header("Authentication", format!("Bearer {token}"));
         }
 
-        let body = serde_json::to_string(&body).unwrap();
+        let body = serde_json::to_string(&body)?;
 
-        let res = client
-            .body(body)
-            .send()
-            .await
-            .map_err(|x| VectorStoreError::DatastoreError(x.to_string().into()))?;
+        let res = client.body(body).send().await?;
 
         if res.status() != StatusCode::OK {
-            let res = res.text().await.unwrap();
+            let status = res.status();
+            let text = res.text().await?;
 
-            return Err(VectorStoreError::DatastoreError(res.to_string().into()));
+            return Err(VectorStoreError::ExternalAPIError(status, text));
         }
 
-        let json: SearchResultOnlyId = res
-            .json()
-            .await
-            .map_err(|x| VectorStoreError::DatastoreError(x.to_string().into()))?;
+        let json: SearchResultOnlyId = res.json().await?;
 
         let res = json
             .data
