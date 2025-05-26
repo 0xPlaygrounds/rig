@@ -10,11 +10,41 @@ use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::sync::Arc;
 
+/// A provider client with completion capabilities.
+/// Clone is required for conversions between client types.
 pub trait CompletionClient: ProviderClient + Clone {
+    /// The type of CompletionModel used by the client.
     type CompletionModel: CompletionModel;
 
+    /// Create a completion model with the given name.
+    ///
+    /// # Example with OpenAI
+    /// ```
+    /// use rig::prelude::*;
+    /// use rig::providers::openai::{Client, self};
+    ///
+    /// // Initialize the OpenAI client
+    /// let openai = Client::new("your-open-ai-api-key");
+    ///
+    /// let gpt4 = openai.completion_model(openai::GPT_4);
+    /// ```
     fn completion_model(&self, model: &str) -> Self::CompletionModel;
 
+    /// Create an agent builder with the given completion model.
+    ///
+    /// # Example with OpenAI
+    /// ```
+    /// use rig::prelude::*;
+    /// use rig::providers::openai::{Client, self};
+    ///
+    /// // Initialize the OpenAI client
+    /// let openai = Client::new("your-open-ai-api-key");
+    ///
+    /// let agent = openai.agent(openai::GPT_4)
+    ///    .preamble("You are comedian AI with a mission to make people laugh.")
+    ///    .temperature(0.0)
+    ///    .build();
+    /// ```
     fn agent(&self, model: &str) -> AgentBuilder<Self::CompletionModel> {
         AgentBuilder::new(self.completion_model(model))
     }
@@ -28,6 +58,7 @@ pub trait CompletionClient: ProviderClient + Clone {
     }
 }
 
+/// Wraps a CompletionModel in a dyn-compatible way for AgentBuilder.
 #[derive(Clone)]
 pub struct CompletionModelHandle<'a> {
     pub inner: Arc<dyn CompletionModelDyn + 'a>,
@@ -56,8 +87,11 @@ impl CompletionModel for CompletionModelHandle<'_> {
 }
 
 pub trait CompletionClientDyn: ProviderClient {
+
+    /// Create a completion model with the given name.
     fn completion_model<'a>(&self, model: &str) -> Box<dyn CompletionModelDyn + 'a>;
 
+    /// Create an agent builder with the given completion model.
     fn agent<'a>(&self, model: &str) -> AgentBuilder<CompletionModelHandle<'a>>;
 }
 

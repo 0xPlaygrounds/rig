@@ -8,8 +8,23 @@ mod audio {
     use std::future::Future;
     use std::sync::Arc;
 
+    /// A provider client with audio generation capabilities.
+    /// Clone is required for conversions between client types.
     pub trait AudioGenerationClient: ProviderClient + Clone {
+        /// The AudioGenerationModel used by the Client
         type AudioGenerationModel: AudioGenerationModel;
+
+        /// Create an audio generation model with the given name.
+        ///
+        /// # Example
+        /// ```
+        /// use rig::providers::openai::{Client, self};
+        ///
+        /// // Initialize the OpenAI client
+        /// let openai = Client::new("your-open-ai-api-key");
+        ///
+        /// let tts = openai.audio_generation_model(openai::TTS_1);
+        /// ``` 
         fn audio_generation_model(&self, model: &str) -> Self::AudioGenerationModel;
     }
 
@@ -31,6 +46,8 @@ mod audio {
         }
     }
 
+
+    /// Wraps a AudioGenerationModel in a dyn-compatible way for AudioGenerationRequestBuilder.
     #[derive(Clone)]
     pub struct AudioGenerationModelHandle<'a> {
         pub(crate) inner: Arc<dyn AudioGenerationModelDyn + 'a>,

@@ -7,12 +7,30 @@ mod image {
     };
     use std::future::Future;
     use std::sync::Arc;
+
+    /// A provider client with image generation capabilities.
+    /// Clone is required for conversions between client types.
     pub trait ImageGenerationClient: ProviderClient + Clone {
+        /// The ImageGenerationModel used by the Client
         type ImageGenerationModel: ImageGenerationModel;
+
+        /// Create an image generation model with the given name.
+        ///
+        /// # Example with OpenAI
+        /// ```
+        /// use rig::prelude::*;
+        /// use rig::providers::openai::{Client, self};
+        ///
+        /// // Initialize the OpenAI client
+        /// let openai = Client::new("your-open-ai-api-key");
+        ///
+        /// let gpt4 = openai.image_generation_model(openai::DALL_E_3);
+        /// ```
         fn image_generation_model(&self, model: &str) -> Self::ImageGenerationModel;
     }
 
     pub trait ImageGenerationClientDyn: ProviderClient {
+        /// Create an image generation model with the given name.
         fn image_generation_model<'a>(&self, model: &str) -> Box<dyn ImageGenerationModelDyn + 'a>;
     }
 
@@ -29,7 +47,8 @@ mod image {
             Some(Box::new(self.clone()))
         }
     }
-
+    
+    /// Wraps a ImageGenerationModel in a dyn-compatible way for ImageGenerationRequestBuilder.
     #[derive(Clone)]
     pub struct ImageGenerationModelHandle<'a> {
         pub(crate) inner: Arc<dyn ImageGenerationModelDyn + 'a>,

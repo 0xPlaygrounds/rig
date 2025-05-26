@@ -1,3 +1,7 @@
+//! This module provides traits for defining and creating provider clients.
+//! Clients are used to create models for completion, embeddings, etc.
+//! Dyn-compatible traits have been provided to allow for more provider-agnostic code. 
+
 pub mod audio_generation;
 pub mod builder;
 pub mod completion;
@@ -9,13 +13,21 @@ pub mod transcription;
 pub use rig_derive::ProviderClient;
 use std::fmt::Debug;
 
+/// The base ProviderClient trait, facilitates conversion between client types 
+/// and creating a client from the environment.
+/// 
+/// All conversion traits must be implemented, they are automatically 
+/// implemented if the respective client trait is implemented.
 pub trait ProviderClient:
     AsCompletion + AsTranscription + AsEmbeddings + AsImageGeneration + AsAudioGeneration + Debug
 {
+    /// Create a client from the process's environment. 
+    /// Panics if an environment is improperly configured.
     fn from_env() -> Self
     where
         Self: Sized;
 
+    /// A helper method to box the client.
     fn boxed(self) -> Box<dyn ProviderClient>
     where
         Self: Sized + 'static,
@@ -23,6 +35,8 @@ pub trait ProviderClient:
         Box::new(self)
     }
 
+    /// Create a boxed client from the process's environment.
+    /// Panics if an environment is improperly configured. 
     fn from_env_boxed<'a>() -> Box<dyn ProviderClient + 'a>
     where
         Self: Sized,
@@ -32,24 +46,28 @@ pub trait ProviderClient:
     }
 }
 
+/// Attempt to convert a ProviderClient to a CompletionClient
 pub trait AsCompletion {
     fn as_completion(&self) -> Option<Box<dyn CompletionClientDyn>> {
         None
     }
 }
 
+/// Attempt to convert a ProviderClient to a TranscriptionClient
 pub trait AsTranscription {
     fn as_transcription(&self) -> Option<Box<dyn TranscriptionClientDyn>> {
         None
     }
 }
 
+/// Attempt to convert a ProviderClient to a EmbeddingsClient
 pub trait AsEmbeddings {
     fn as_embeddings(&self) -> Option<Box<dyn EmbeddingsClientDyn>> {
         None
     }
 }
 
+/// Attempt to convert a ProviderClient to a AudioGenerationClient
 pub trait AsAudioGeneration {
     #[cfg(feature = "audio")]
     fn as_audio_generation(&self) -> Option<Box<dyn AudioGenerationClientDyn>> {
@@ -57,6 +75,7 @@ pub trait AsAudioGeneration {
     }
 }
 
+/// Attempt to convert a ProviderClient to a ImageGenerationClient
 pub trait AsImageGeneration {
     #[cfg(feature = "image")]
     fn as_image_generation(&self) -> Option<Box<dyn ImageGenerationClientDyn>> {
@@ -70,6 +89,14 @@ impl<T: ProviderClient> AsAudioGeneration for T {}
 #[cfg(not(feature = "image"))]
 impl<T: ProviderClient> AsImageGeneration for T {}
 
+/// Implements the conversion traits for a given struct
+/// ```rust
+/// pub struct Client;
+/// impl ProviderClient for Client {
+///     ...
+/// }
+/// impl_conversion_traits!(AsCompletion, AsEmbeddings for Client);
+/// ```
 #[macro_export]
 macro_rules! impl_conversion_traits {
     ($( $trait_:ident ),* for $struct_:ident ) => {
