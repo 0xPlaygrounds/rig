@@ -13,6 +13,7 @@ use rig::{
 };
 
 use neo4rs::*;
+use rig::client::EmbeddingsClient;
 use rig_neo4j::{
     vector_index::{IndexConfig, SearchParams},
     Neo4jClient, ToBoltType,

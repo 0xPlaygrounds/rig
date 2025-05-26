@@ -1,3 +1,4 @@
+use rig::client::EmbeddingsClient;
 use rig::Embed;
 use rig_bedrock::{client::ClientBuilder, embedding::AMAZON_TITAN_EMBED_TEXT_V2_0};
 use tracing::info;
@@ -18,7 +19,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let client = ClientBuilder::new().build().await;
 
     let embeddings = client
-        .embeddings(AMAZON_TITAN_EMBED_TEXT_V2_0, 256)
+        .embeddings_with_ndims(AMAZON_TITAN_EMBED_TEXT_V2_0, 256)
         .document(Greetings {
             message: "aa".to_string(),
         })?

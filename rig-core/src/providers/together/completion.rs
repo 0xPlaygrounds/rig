@@ -9,9 +9,10 @@ use crate::{
     providers::openai,
 };
 
-use serde_json::json;
-
 use super::client::{together_ai_api_types::ApiResponse, Client};
+use crate::completion::CompletionRequest;
+use crate::streaming::StreamingCompletionResponse;
+use serde_json::json;
 
 // ================================================================
 // Together Completion Models
@@ -189,6 +190,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = openai::CompletionResponse;
+    type StreamingResponse = openai::StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -221,5 +223,13 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        CompletionModel::stream(self, request).await
     }
 }

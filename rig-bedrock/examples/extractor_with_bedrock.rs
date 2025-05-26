@@ -1,3 +1,4 @@
+use rig::client::CompletionClient;
 use rig_bedrock::{client::ClientBuilder, completion::AMAZON_NOVA_LITE};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

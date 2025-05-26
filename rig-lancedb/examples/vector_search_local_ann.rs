@@ -3,6 +3,7 @@ use std::sync::Arc;
 use arrow_array::RecordBatchIterator;
 use fixture::{as_record_batch, schema, words, Word};
 use lancedb::index::vector::IvfPqIndexBuilder;
+use rig::client::{EmbeddingsClient, ProviderClient};
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},

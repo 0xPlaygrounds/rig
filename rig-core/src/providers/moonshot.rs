@@ -9,19 +9,17 @@
 //! let moonshot_model = client.completion_model(moonshot::MOONSHOT_CHAT);
 //! ```
 
+use crate::client::{CompletionClient, ProviderClient};
 use crate::json_utils::merge;
-use crate::message;
 use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
+use crate::streaming::StreamingCompletionResponse;
 use crate::{
-    agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
-    extractor::ExtractorBuilder,
     json_utils,
     providers::openai,
 };
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use crate::{impl_conversion_traits, message};
+use serde::Deserialize;
 use serde_json::{json, Value};
 
 // ================================================================
@@ -29,7 +27,7 @@ use serde_json::{json, Value};
 // ================================================================
 const MOONSHOT_API_BASE_URL: &str = "https://api.moonshot.cn/v1";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Client {
     base_url: String,
     http_client: reqwest::Client,
@@ -61,17 +59,23 @@ impl Client {
         }
     }
 
-    /// Create a new Moonshot client from the `MOONSHOT_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    pub fn from_env() -> Self {
-        let api_key = std::env::var("MOONSHOT_API_KEY").expect("MOONSHOT_API_KEY not set");
-        Self::new(&api_key)
-    }
-
     fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.post(url)
     }
+}
+
+impl ProviderClient for Client {
+    /// Create a new Moonshot client from the `MOONSHOT_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    fn from_env() -> Self {
+        let api_key = std::env::var("MOONSHOT_API_KEY").expect("MOONSHOT_API_KEY not set");
+        Self::new(&api_key)
+    }
+}
+
+impl CompletionClient for Client {
+    type CompletionModel = CompletionModel;
 
     /// Create a completion model with the given name.
     ///
@@ -84,23 +88,17 @@ impl Client {
     ///
     /// let completion_model = moonshot.completion_model(moonshot::MOONSHOT_CHAT);
     /// ```
-    pub fn completion_model(&self, model: &str) -> CompletionModel {
+    fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
-
-    /// Create an agent builder with the given completion model.
-    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    /// Create an extractor builder with the given completion model.
-    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
-        &self,
-        model: &str,
-    ) -> ExtractorBuilder<T, CompletionModel> {
-        ExtractorBuilder::new(self.completion_model(model))
-    }
 }
+
+impl_conversion_traits!(
+    AsEmbeddings,
+    AsTranscription,
+    AsImageGeneration,
+    AsAudioGeneration for Client
+);
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
@@ -195,6 +193,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = openai::CompletionResponse;
+    type StreamingResponse = openai::StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -228,11 +227,8 @@ impl completion::CompletionModel for CompletionModel {
             Err(CompletionError::ProviderError(response.text().await?))
         }
     }
-}
 
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = openai::StreamingCompletionResponse;
-
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         request: CompletionRequest,

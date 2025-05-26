@@ -1,13 +1,15 @@
-use std::fmt::Display;
-
 use super::completion::CompletionModel;
-use crate::agent::AgentBuilder;
+#[cfg(feature = "image")]
+use crate::client::ImageGenerationClient;
+use crate::client::{CompletionClient, ProviderClient, TranscriptionClient};
 #[cfg(feature = "image")]
 use crate::image_generation::ImageGenerationError;
 #[cfg(feature = "image")]
 use crate::providers::huggingface::image_generation::ImageGenerationModel;
 use crate::providers::huggingface::transcription::TranscriptionModel;
 use crate::transcription::TranscriptionError;
+use rig::client::impl_conversion_traits;
+use std::fmt::Display;
 
 // ================================================================
 // Main Huggingface Client
@@ -136,7 +138,7 @@ impl ClientBuilder {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Client {
     base_url: String,
     http_client: reqwest::Client,
@@ -179,17 +181,24 @@ impl Client {
             sub_provider,
         }
     }
-    /// Create a new Huggingface client from the `HUGGINGFACE_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    pub fn from_env() -> Self {
-        let api_key = std::env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY is not set");
-        Self::new(&api_key)
-    }
 
     pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.post(url)
     }
+}
+
+impl ProviderClient for Client {
+    /// Create a new Huggingface client from the `HUGGINGFACE_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    fn from_env() -> Self {
+        let api_key = std::env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY is not set");
+        Self::new(&api_key)
+    }
+}
+
+impl CompletionClient for Client {
+    type CompletionModel = CompletionModel;
 
     /// Create a new completion model with the given name
     ///
@@ -202,9 +211,13 @@ impl Client {
     ///
     /// let completion_model = client.completion_model(huggingface::GEMMA_2);
     /// ```
-    pub fn completion_model(&self, model: &str) -> CompletionModel {
+    fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
+}
+
+impl TranscriptionClient for Client {
+    type TranscriptionModel = TranscriptionModel;
 
     /// Create a new transcription model with the given name
     ///
@@ -218,9 +231,14 @@ impl Client {
     /// let completion_model = client.transcription_model(huggingface::WHISPER_LARGE_V3);
     /// ```
     ///
-    pub fn transcription_model(&self, model: &str) -> TranscriptionModel {
+    fn transcription_model(&self, model: &str) -> TranscriptionModel {
         TranscriptionModel::new(self.clone(), model)
     }
+}
+
+#[cfg(feature = "image")]
+impl ImageGenerationClient for Client {
+    type ImageGenerationModel = ImageGenerationModel;
 
     /// Create a new image generation model with the given name
     ///
@@ -233,26 +251,9 @@ impl Client {
     ///
     /// let completion_model = client.image_generation_model(huggingface::WHISPER_LARGE_V3);
     /// ```
-    #[cfg(feature = "image")]
-    pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
+    fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
         ImageGenerationModel::new(self.clone(), model)
     }
-
-    /// Create an agent builder with the given completion model.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::huggingface::{Client, self};
-    ///
-    /// // Initialize the Anthropic client
-    /// let client = Client::new("your-huggingface-api-key");
-    ///
-    /// let agent = client.agent(huggingface::GEMMA_2)
-    ///    .preamble("You are comedian AI with a mission to make people laugh.")
-    ///    .temperature(0.0)
-    ///    .build();
-    /// ```
-    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
 }
+
+impl_conversion_traits!(AsEmbeddings, AsAudioGeneration for Client);

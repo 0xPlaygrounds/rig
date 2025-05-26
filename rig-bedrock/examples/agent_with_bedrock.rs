@@ -1,3 +1,4 @@
+use rig::client::CompletionClient;
 use rig::{agent::AgentBuilder, completion::Prompt, loaders::FileLoader};
 use rig_bedrock::{
     client::{Client, ClientBuilder},

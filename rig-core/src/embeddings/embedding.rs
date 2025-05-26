@@ -6,6 +6,7 @@
 //! Finally, the module defines the [EmbeddingError] enum, which represents various errors that
 //! can occur during embedding generation or processing.
 
+use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, thiserror::Error)]
@@ -57,6 +58,34 @@ pub trait EmbeddingModel: Clone + Sync + Send {
                 .pop()
                 .expect("There should be at least one embedding"))
         }
+    }
+}
+
+pub trait EmbeddingModelDyn: Sync + Send {
+    fn max_documents(&self) -> usize;
+    fn ndims(&self) -> usize;
+    fn embed_text<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<Embedding, EmbeddingError>>;
+    fn embed_texts(
+        &self,
+        texts: Vec<String>,
+    ) -> BoxFuture<'_, Result<Vec<Embedding>, EmbeddingError>>;
+}
+
+impl<T: EmbeddingModel> EmbeddingModelDyn for T {
+    fn max_documents(&self) -> usize {
+        T::MAX_DOCUMENTS
+    }
+
+    fn ndims(&self) -> usize {
+        self.ndims()
+    }
+
+    fn embed_text<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<Embedding, EmbeddingError>> {
+        Box::pin(self.embed_text(text))
+    }
+
+    fn embed_texts(&self, texts: Vec<String>) -> BoxFuture<Result<Vec<Embedding>, EmbeddingError>> {
+        Box::pin(self.embed_texts(texts.into_iter().collect::<Vec<_>>()))
     }
 }
 

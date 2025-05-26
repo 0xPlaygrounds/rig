@@ -1,4 +1,5 @@
 use anyhow::Result;
+use rig::prelude::*;
 use rig::streaming::stream_to_stdout;
 use rig::{completion::ToolDefinition, providers, streaming::StreamingPrompt, tool::Tool};
 use serde::{Deserialize, Serialize};

@@ -1,36 +1,48 @@
+use rig::prelude::*;
 use std::env::args;
 
 use rig::providers::huggingface;
+
 use rig::{
     providers::{azure, gemini, groq, openai},
     transcription::TranscriptionModel,
 };
 
 #[tokio::main]
+
 async fn main() {
     // Load the path from the first command line argument
+
     let args = args().collect::<Vec<_>>();
 
     if args.len() <= 1 {
         println!("No file was specified!");
+
         return;
     }
 
     let file_path = args[1].clone();
+
     println!("Transcribing {}", &file_path);
 
     whisper(&file_path).await;
+
     gemini(&file_path).await;
+
     azure(&file_path).await;
+
     groq(&file_path).await;
+
     huggingface(&file_path).await;
 }
 
 async fn whisper(file_path: &str) {
     // Create an OAI client
+
     let openai = openai::Client::from_env();
 
     // Create the whisper transcription model
+
     let whisper = openai.transcription_model(openai::WHISPER_1);
 
     let response = whisper
@@ -47,9 +59,11 @@ async fn whisper(file_path: &str) {
 
 async fn gemini(file_path: &str) {
     // Create an OAI client
+
     let gemini = gemini::Client::from_env();
 
     // Create the whisper transcription model
+
     let gemini = gemini.transcription_model(gemini::transcription::GEMINI_1_5_FLASH);
 
     let response = gemini
@@ -85,6 +99,7 @@ async fn groq(file_path: &str) {
     let groq = groq::Client::from_env();
 
     // Create the whisper transcription model
+
     let whisper = groq.transcription_model(groq::WHISPER_LARGE_V3);
 
     let response = whisper

@@ -8,6 +8,7 @@ use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::env;
 
+use rig::client::EmbeddingsClient;
 use rig::{
     embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex, Embed,
 };
