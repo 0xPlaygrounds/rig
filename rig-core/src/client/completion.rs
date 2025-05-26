@@ -87,7 +87,6 @@ impl CompletionModel for CompletionModelHandle<'_> {
 }
 
 pub trait CompletionClientDyn: ProviderClient {
-
     /// Create a completion model with the given name.
     fn completion_model<'a>(&self, model: &str) -> Box<dyn CompletionModelDyn + 'a>;
 

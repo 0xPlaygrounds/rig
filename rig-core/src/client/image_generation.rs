@@ -47,7 +47,7 @@ mod image {
             Some(Box::new(self.clone()))
         }
     }
-    
+
     /// Wraps a ImageGenerationModel in a dyn-compatible way for ImageGenerationRequestBuilder.
     #[derive(Clone)]
     pub struct ImageGenerationModelHandle<'a> {

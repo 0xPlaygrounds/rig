@@ -5,13 +5,12 @@ use crate::transcription::{
 };
 use std::sync::Arc;
 
-
 /// A provider client with transcription capabilities.
 /// Clone is required for conversions between client types.
 pub trait TranscriptionClient: ProviderClient + Clone {
     /// The type of TranscriptionModel used by the Client
     type TranscriptionModel: TranscriptionModel;
-    
+
     /// Create a transcription model with the given name.
     ///
     /// # Example with OpenAI

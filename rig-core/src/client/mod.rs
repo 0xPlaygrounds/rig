@@ -1,6 +1,6 @@
 //! This module provides traits for defining and creating provider clients.
 //! Clients are used to create models for completion, embeddings, etc.
-//! Dyn-compatible traits have been provided to allow for more provider-agnostic code. 
+//! Dyn-compatible traits have been provided to allow for more provider-agnostic code.
 
 pub mod audio_generation;
 pub mod builder;
@@ -13,15 +13,15 @@ pub mod transcription;
 pub use rig_derive::ProviderClient;
 use std::fmt::Debug;
 
-/// The base ProviderClient trait, facilitates conversion between client types 
+/// The base ProviderClient trait, facilitates conversion between client types
 /// and creating a client from the environment.
-/// 
-/// All conversion traits must be implemented, they are automatically 
+///
+/// All conversion traits must be implemented, they are automatically
 /// implemented if the respective client trait is implemented.
 pub trait ProviderClient:
     AsCompletion + AsTranscription + AsEmbeddings + AsImageGeneration + AsAudioGeneration + Debug
 {
-    /// Create a client from the process's environment. 
+    /// Create a client from the process's environment.
     /// Panics if an environment is improperly configured.
     fn from_env() -> Self
     where
@@ -36,7 +36,7 @@ pub trait ProviderClient:
     }
 
     /// Create a boxed client from the process's environment.
-    /// Panics if an environment is improperly configured. 
+    /// Panics if an environment is improperly configured.
     fn from_env_boxed<'a>() -> Box<dyn ProviderClient + 'a>
     where
         Self: Sized,

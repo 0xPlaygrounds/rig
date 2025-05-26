@@ -24,7 +24,7 @@ mod audio {
         /// let openai = Client::new("your-open-ai-api-key");
         ///
         /// let tts = openai.audio_generation_model(openai::TTS_1);
-        /// ``` 
+        /// ```
         fn audio_generation_model(&self, model: &str) -> Self::AudioGenerationModel;
     }
 
@@ -45,7 +45,6 @@ mod audio {
             Some(Box::new(self.clone()))
         }
     }
-
 
     /// Wraps a AudioGenerationModel in a dyn-compatible way for AudioGenerationRequestBuilder.
     #[derive(Clone)]
