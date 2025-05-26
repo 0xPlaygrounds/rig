@@ -4,7 +4,6 @@ use rig::providers::mistral;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;
 use rig::vector_store::VectorStoreIndex;
 use rig::Embed;
-use rig_derive::Embed;
 use serde::{Deserialize, Serialize};
 
 #[derive(Embed, Debug, Serialize, Deserialize, Eq, PartialEq)]
