@@ -295,14 +295,15 @@ impl completion::CompletionModel for CompletionModel {
         });
 
         // Force Google AI Studio provider for Gemini models since it provides better quality
-        if self.model.contains("gemini") {
-            if let Some(obj) = request.as_object_mut() {
-                obj.insert(
-                    String::from("provider"),
-                    serde_json::json!({ "order": vec!["GoogleAIStudio".to_string()] }),
-                );
-            }
-        }
+        // It is better to do it from within the OpenRouter dashboard
+        // if self.model.contains("gemini") {
+        //     if let Some(obj) = request.as_object_mut() {
+        //         obj.insert(
+        //             String::from("provider"),
+        //             serde_json::json!({ "order": vec!["GoogleAIStudio".to_string()] }),
+        //         );
+        //     }
+        // }
 
         let response = self
             .client
