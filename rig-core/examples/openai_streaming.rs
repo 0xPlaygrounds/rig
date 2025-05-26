@@ -15,7 +15,13 @@ async fn main() -> Result<(), anyhow::Error> {
         .stream_prompt("When and where and what type is the next solar eclipse?")
         .await?;
 
-    stream_to_stdout(agent, &mut stream).await?;
+    stream_to_stdout(&agent, &mut stream).await?;
+
+    if let Some(response) = stream.response {
+        println!("Usage: {:?}", response.usage)
+    };
+
+    println!("Message: {:?}", stream.choice);
 
     Ok(())
 }

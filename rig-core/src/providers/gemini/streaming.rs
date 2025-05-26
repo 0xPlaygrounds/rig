@@ -2,12 +2,17 @@ use async_stream::stream;
 use futures::StreamExt;
 use serde::Deserialize;
 
+use super::completion::{create_request_body, gemini_api_types::ContentCandidate, CompletionModel};
 use crate::{
     completion::{CompletionError, CompletionRequest},
-    streaming::{self, StreamingCompletionModel, StreamingResult},
+    streaming::{self, StreamingCompletionModel},
 };
 
-use super::completion::{create_request_body, gemini_api_types::ContentCandidate, CompletionModel};
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PartialUsage {
+    pub total_token_count: i32,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -15,13 +20,21 @@ pub struct StreamGenerateContentResponse {
     /// Candidate responses from the model.
     pub candidates: Vec<ContentCandidate>,
     pub model_version: Option<String>,
+    pub usage_metadata: Option<PartialUsage>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StreamingCompletionResponse {
+    pub usage_metadata: PartialUsage,
 }
 
 impl StreamingCompletionModel for CompletionModel {
+    type StreamingResponse = StreamingCompletionResponse;
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<StreamingResult, CompletionError> {
+    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    {
         let request = create_request_body(completion_request)?;
 
         let response = self
@@ -42,7 +55,7 @@ impl StreamingCompletionModel for CompletionModel {
             )));
         }
 
-        Ok(Box::pin(stream! {
+        let stream = Box::pin(stream! {
             let mut stream = response.bytes_stream();
 
             while let Some(chunk_result) = stream.next().await {
@@ -74,13 +87,27 @@ impl StreamingCompletionModel for CompletionModel {
 
                     match choice.content.parts.first() {
                         super::completion::gemini_api_types::Part::Text(text)
-                            => yield Ok(streaming::StreamingChoice::Message(text)),
+                            => yield Ok(streaming::RawStreamingChoice::Message(text)),
                         super::completion::gemini_api_types::Part::FunctionCall(function_call)
-                            => yield Ok(streaming::StreamingChoice::ToolCall(function_call.name, "".to_string(), function_call.args)),
+                            => yield Ok(streaming::RawStreamingChoice::ToolCall {
+                                    name: function_call.name,
+                                    id: "".to_string(),
+                                    arguments: function_call.args
+                                }),
                         _ => panic!("Unsupported response type with streaming.")
                     };
+
+                    if choice.finish_reason.is_some() {
+                        yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                            usage_metadata: PartialUsage {
+                                total_token_count: data.usage_metadata.unwrap().total_token_count,
+                            }
+                        }))
+                    }
                 }
             }
-        }))
+        });
+
+        Ok(streaming::StreamingCompletionResponse::new(stream))
     }
 }

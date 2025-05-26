@@ -6579,9 +6579,9 @@ dependencies = [
 
 [[package]]
 name = "mcp-core"
-version = "0.1.44"
+version = "0.1.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef1a0764c61c969c6ec90e4841ae0040f60344f22255fddc206bbf791fa34898"
+checksum = "a76673446eba2d1011f0dbc3b8668984f8b1ca2754b05b9c2bcd27d02ad73aa3"
 dependencies = [
  "actix-web",
  "anyhow",
@@ -6600,9 +6600,9 @@ dependencies = [
 
 [[package]]
 name = "mcp-core-macros"
-version = "0.1.21"
+version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fd72aa93fd891a69734fc3120e5a3d4e360eeb6598b1fe11770c3f12a85fcc3"
+checksum = "83ee80a2f496327e817b90f538b2930dd82c1a54ca253ddd375ee028613495d1"
 dependencies = [
  "async-trait",
  "convert_case 0.6.0",
@@ -8682,7 +8682,7 @@ checksum = "57397d16646700483b67d2dd6511d79318f9d057fdbd21a4066aeac8b41d310a"
 
 [[package]]
 name = "rig-bedrock"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -8699,11 +8699,12 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid 1.16.0",
 ]
 
 [[package]]
 name = "rig-core"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "assert_fs",
@@ -8737,7 +8738,7 @@ dependencies = [
 
 [[package]]
 name = "rig-derive"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "convert_case 0.6.0",
  "indoc",
@@ -8753,7 +8754,7 @@ dependencies = [
 
 [[package]]
 name = "rig-eternalai"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "ethers",
@@ -8769,7 +8770,7 @@ dependencies = [
 
 [[package]]
 name = "rig-fastembed"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "fastembed",
@@ -8783,7 +8784,7 @@ dependencies = [
 
 [[package]]
 name = "rig-lancedb"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -8799,7 +8800,7 @@ dependencies = [
 
 [[package]]
 name = "rig-mongodb"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "anyhow",
  "futures",
@@ -8816,7 +8817,7 @@ dependencies = [
 
 [[package]]
 name = "rig-neo4j"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "anyhow",
  "futures",
@@ -8835,7 +8836,7 @@ dependencies = [
 
 [[package]]
 name = "rig-postgres"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "dotenvy",
@@ -8856,7 +8857,7 @@ dependencies = [
 
 [[package]]
 name = "rig-qdrant"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "httpmock",
@@ -8871,7 +8872,7 @@ dependencies = [
 
 [[package]]
 name = "rig-sqlite"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "chrono",
@@ -8890,7 +8891,7 @@ dependencies = [
 
 [[package]]
 name = "rig-surrealdb"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "rig-core",

@@ -1,9 +1,9 @@
 use super::completion::CompletionModel;
 use crate::completion::{CompletionError, CompletionRequest};
-use crate::json_utils;
 use crate::json_utils::merge_inplace;
-use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::{StreamingCompletionModel, StreamingResult};
+use crate::providers::openai::{send_compatible_streaming_request, StreamingCompletionResponse};
+use crate::streaming::StreamingCompletionModel;
+use crate::{json_utils, streaming};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::Infallible;
@@ -55,14 +55,19 @@ struct CompletionChunk {
 }
 
 impl StreamingCompletionModel for CompletionModel {
+    type StreamingResponse = StreamingCompletionResponse;
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<StreamingResult, CompletionError> {
+    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    {
         let mut request = self.create_request_body(&completion_request)?;
 
         // Enable streaming
-        merge_inplace(&mut request, json!({"stream": true}));
+        merge_inplace(
+            &mut request,
+            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        );
 
         if let Some(ref params) = completion_request.additional_params {
             merge_inplace(&mut request, params.clone());

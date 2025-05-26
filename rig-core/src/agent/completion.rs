@@ -8,8 +8,8 @@ use crate::{
         Message, Prompt, PromptError,
     },
     streaming::{
-        StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingPrompt,
-        StreamingResult,
+        StreamingChat, StreamingCompletion, StreamingCompletionModel, StreamingCompletionResponse,
+        StreamingPrompt,
     },
     tool::ToolSet,
     vector_store::VectorStoreError,
@@ -67,7 +67,15 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
         chat_history: Vec<Message>,
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         let prompt = prompt.into();
-        let rag_text = prompt.rag_text().clone();
+
+        // Find the latest message in the chat history that contains RAG text
+        let rag_text = prompt.rag_text();
+        let rag_text = rag_text.or_else(|| {
+            chat_history
+                .iter()
+                .rev()
+                .find_map(|message| message.rag_text())
+        });
 
         let completion_request = self
             .model
@@ -79,6 +87,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
             .additional_params_opt(self.additional_params.clone())
             .documents(self.static_context.clone());
 
+        // If the agent has RAG text, we need to fetch the dynamic context and tools
         let agent = match &rag_text {
             Some(text) => {
                 let dynamic_context = stream::iter(self.dynamic_context.iter())
@@ -224,18 +233,21 @@ impl<M: StreamingCompletionModel> StreamingCompletion<M> for Agent<M> {
     }
 }
 
-impl<M: StreamingCompletionModel> StreamingPrompt for Agent<M> {
-    async fn stream_prompt(&self, prompt: &str) -> Result<StreamingResult, CompletionError> {
+impl<M: StreamingCompletionModel> StreamingPrompt<M::StreamingResponse> for Agent<M> {
+    async fn stream_prompt(
+        &self,
+        prompt: impl Into<Message> + Send,
+    ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError> {
         self.stream_chat(prompt, vec![]).await
     }
 }
 
-impl<M: StreamingCompletionModel> StreamingChat for Agent<M> {
+impl<M: StreamingCompletionModel> StreamingChat<M::StreamingResponse> for Agent<M> {
     async fn stream_chat(
         &self,
-        prompt: &str,
+        prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> Result<StreamingResult, CompletionError> {
+    ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError> {
         self.stream_completion(prompt, chat_history)
             .await?
             .stream()

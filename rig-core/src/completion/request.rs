@@ -67,7 +67,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::streaming::{StreamingCompletionModel, StreamingResult};
+use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
 use crate::OneOrMany;
 use crate::{
     json_utils,
@@ -242,6 +242,7 @@ pub trait CompletionModel: Clone + Send + Sync {
 }
 
 /// Struct representing a general completion request that can be sent to a completion model provider.
+#[derive(Debug, Clone)]
 pub struct CompletionRequest {
     /// The preamble to be sent to the completion model provider
     pub preamble: Option<String>,
@@ -263,7 +264,7 @@ pub struct CompletionRequest {
 impl CompletionRequest {
     /// Returns documents normalized into a message (if any).
     /// Most providers do not accept documents directly as input, so it needs to convert into a
-    ///  `Message` so that it can be incorperated into `chat_history` as a
+    ///  `Message` so that it can be incorporated into `chat_history` as a
     pub fn normalized_documents(&self) -> Option<Message> {
         if self.documents.is_empty() {
             return None;
@@ -485,7 +486,9 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
 impl<M: StreamingCompletionModel> CompletionRequestBuilder<M> {
     /// Stream the completion request
-    pub async fn stream(self) -> Result<StreamingResult, CompletionError> {
+    pub async fn stream(
+        self,
+    ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError> {
         let model = self.model.clone();
         model.stream(self.build()).await
     }

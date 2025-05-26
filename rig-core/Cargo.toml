@@ -1,6 +1,6 @@
 [package]
 name = "rig-core"
-version = "0.11.1"
+version = "0.12.0"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -27,14 +27,14 @@ futures = "0.3.29"
 ordered-float = "4.2.0"
 schemars = "0.8.16"
 thiserror = "1.0.61"
-rig-derive = { version = "0.1.1", path = "./rig-core-derive", optional = true }
+rig-derive = { version = "0.1.2", path = "./rig-core-derive", optional = true }
 glob = "0.3.1"
 lopdf = { version = "0.35.0", optional = true }
 epub = { version = "2.1.2", optional = true }
 quick-xml = { version = "0.37.2", optional = true }
 rayon = { version = "1.10.0", optional = true }
 worker = { version = "0.5", optional = true }
-mcp-core = { version = "0.1.42", optional = true }
+mcp-core = { version = "0.1.50", optional = true }
 rmcp = { version = "0.1.5", features = ["client"], optional = true }
 bytes = "1.9.0"
 async-stream = "0.3.6"
@@ -50,8 +50,8 @@ tracing-subscriber = "0.3.18"
 tokio-test = "0.4.4"
 serde_path_to_error = "0.1.16"
 base64 = "0.22.1"
-mcp-core = { version = "0.1.42", features = ["sse"] }
-mcp-core-macros = { version = "0.1.1" }
+mcp-core = { version = "0.1.50", features = ["sse"] }
+mcp-core-macros = { version = "0.1.30" }
 rmcp = { version = "0.1.5", features = [
     "server",
     "client",
@@ -139,3 +139,7 @@ required-features = ["audio"]
 [[example]]
 name = "hyperbolic_audio_generation"
 required-features = ["audio"]
+
+[[example]]
+name = "mistral_embeddings"
+required-features = ["derive"]

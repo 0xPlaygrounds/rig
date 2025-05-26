@@ -230,7 +230,7 @@ impl Message {
         }
     }
 
-    // Helper constructor to make creating tool result messages easier.
+    /// Helper constructor to make creating tool result messages easier.
     pub fn tool_result(id: impl Into<String>, content: impl Into<String>) -> Self {
         Message::User {
             content: OneOrMany::one(UserContent::ToolResult(ToolResult {
@@ -568,6 +568,61 @@ impl From<String> for AssistantContent {
 impl From<String> for UserContent {
     fn from(text: String) -> Self {
         UserContent::text(text)
+    }
+}
+
+impl From<AssistantContent> for Message {
+    fn from(content: AssistantContent) -> Self {
+        Message::Assistant {
+            content: OneOrMany::one(content),
+        }
+    }
+}
+
+impl From<UserContent> for Message {
+    fn from(content: UserContent) -> Self {
+        Message::User {
+            content: OneOrMany::one(content),
+        }
+    }
+}
+
+impl From<OneOrMany<AssistantContent>> for Message {
+    fn from(content: OneOrMany<AssistantContent>) -> Self {
+        Message::Assistant { content }
+    }
+}
+
+impl From<OneOrMany<UserContent>> for Message {
+    fn from(content: OneOrMany<UserContent>) -> Self {
+        Message::User { content }
+    }
+}
+
+impl From<ToolCall> for Message {
+    fn from(tool_call: ToolCall) -> Self {
+        Message::Assistant {
+            content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
+        }
+    }
+}
+
+impl From<ToolResult> for Message {
+    fn from(tool_result: ToolResult) -> Self {
+        Message::User {
+            content: OneOrMany::one(UserContent::ToolResult(tool_result)),
+        }
+    }
+}
+
+impl From<ToolResultContent> for Message {
+    fn from(tool_result_content: ToolResultContent) -> Self {
+        Message::User {
+            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+                id: String::new(),
+                content: OneOrMany::one(tool_result_content),
+            })),
+        }
     }
 }
 
