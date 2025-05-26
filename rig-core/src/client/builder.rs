@@ -72,8 +72,9 @@ impl<'a> DynClientBuilder {
                 DefaultProviders::HYPERBOLIC,
                 hyperbolic::Client::from_env_boxed,
             ),
-            ClientFactory::new(DefaultProviders::MIRA, mira::Client::from_env_boxed),
             ClientFactory::new(DefaultProviders::MOONSHOT, moonshot::Client::from_env_boxed),
+            ClientFactory::new(DefaultProviders::MIRA, mira::Client::from_env_boxed),
+            ClientFactory::new(DefaultProviders::MISTRAL, mistral::Client::from_env_boxed),
             ClientFactory::new(DefaultProviders::OLLAMA, ollama::Client::from_env_boxed),
             ClientFactory::new(
                 DefaultProviders::PERPLEXITY,
@@ -296,6 +297,7 @@ use crate::agent::AgentBuilder;
 use crate::client::completion::CompletionModelHandle;
 #[cfg(feature = "audio")]
 pub use audio::*;
+use rig::providers::mistral;
 
 pub struct ClientFactory {
     pub name: String,
@@ -334,8 +336,9 @@ impl DefaultProviders {
     pub const GALADRIEL: &'static str = "galadriel";
     pub const GROQ: &'static str = "groq";
     pub const HYPERBOLIC: &'static str = "hyperbolic";
-    pub const MIRA: &'static str = "mira";
     pub const MOONSHOT: &'static str = "moonshot";
+    pub const MIRA: &'static str = "mira";
+    pub const MISTRAL: &'static str = "mistral";
     pub const OLLAMA: &'static str = "ollama";
     pub const PERPLEXITY: &'static str = "perplexity";
 }
