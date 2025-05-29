@@ -276,7 +276,7 @@ impl TryFrom<message::ImageMediaType> for ImageFormat {
             message::ImageMediaType::WEBP => ImageFormat::WEBP,
             _ => {
                 return Err(MessageError::ConversionError(
-                    format!("Unsupported image media type: {:?}", media_type).to_owned(),
+                    format!("Unsupported image media type: {media_type:?}").to_owned(),
                 ))
             }
         })
@@ -428,7 +428,7 @@ impl TryFrom<Content> for message::AssistantContent {
             }
             _ => {
                 return Err(MessageError::ConversionError(
-                    format!("Unsupported content type for Assistant role: {:?}", content)
+                    format!("Unsupported content type for Assistant role: {content:?}")
                         .to_owned(),
                 ))
             }
@@ -497,7 +497,7 @@ impl TryFrom<Message> for message::Message {
 
                 _ => {
                     return Err(MessageError::ConversionError(
-                        format!("Unsupported message for Assistant role: {:?}", message).to_owned(),
+                        format!("Unsupported message for Assistant role: {message:?}").to_owned(),
                     ))
                 }
             },

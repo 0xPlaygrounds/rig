@@ -217,10 +217,10 @@ pub async fn stream_to_stdout<M: StreamingCompletionModel>(
                     )
                     .await
                     .map_err(|e| std::io::Error::other(e.to_string()))?;
-                println!("\nResult: {}", res);
+                println!("\nResult: {res}");
             }
             Err(e) => {
-                eprintln!("Error: {}", e);
+                eprintln!("Error: {e}");
                 break;
             }
         }

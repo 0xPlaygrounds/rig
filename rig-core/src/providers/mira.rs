@@ -123,7 +123,7 @@ impl Client {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", api_key))
+            HeaderValue::from_str(&format!("Bearer {api_key}"))
                 .map_err(|_| MiraError::InvalidApiKey)?,
         );
         headers.insert(
@@ -334,8 +334,7 @@ impl completion::CompletionModel for CompletionModel {
             let status = response.status().as_u16();
             let error_text = response.text().await.unwrap_or_default();
             return Err(CompletionError::ProviderError(format!(
-                "API error: {} - {}",
-                status, error_text
+                "API error: {status} - {error_text}"
             )));
         }
 
@@ -409,7 +408,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                             match c {
                                 AssistantContent::Text(text) => Ok(completion::AssistantContent::text(&text.text)),
                                 other => Err(CompletionError::ResponseError(
-                                    format!("Unsupported content type: {:?}. The Mira provider currently only supports text content", other)
+                                    format!("Unsupported content type: {other:?}. The Mira provider currently only supports text content")
                                 ))
                             }
                         }).collect::<Result<Vec<_>, _>>()?
@@ -533,8 +532,7 @@ impl TryFrom<serde_json::Value> for Message {
                 content: OneOrMany::one(AssistantContent::Text(message::Text { text: content })),
             }),
             _ => Err(CompletionError::ResponseError(format!(
-                "Unsupported message role: {}",
-                role
+                "Unsupported message role: {role}"
             ))),
         }
     }
