@@ -330,15 +330,14 @@ pub mod gemini_api_types {
                                     }
                                     _ => {
                                         return Err(message::MessageError::ConversionError(
-                                            format!("Unsupported media type {:?}", mime_type),
+                                            format!("Unsupported media type {mime_type:?}"),
                                         ))
                                     }
                                 }
                             }
                             _ => {
                                 return Err(message::MessageError::ConversionError(format!(
-                                    "Unsupported gemini content part type: {:?}",
-                                    part
+                                    "Unsupported gemini content part type: {part:?}"
                                 )))
                             }
                         })
@@ -353,8 +352,7 @@ pub mod gemini_api_types {
                             }
                             _ => {
                                 return Err(message::MessageError::ConversionError(format!(
-                                    "Unsupported part type: {:?}",
-                                    part
+                                    "Unsupported part type: {part:?}"
                                 )))
                             }
                         })
@@ -425,8 +423,7 @@ pub mod gemini_api_types {
                         name: id,
                         response: Some(serde_json::from_str(&content).map_err(|e| {
                             message::MessageError::ConversionError(format!(
-                                "Failed to parse tool response: {}",
-                                e
+                                "Failed to parse tool response: {e}"
                             ))
                         })?),
                     }))
@@ -444,8 +441,7 @@ pub mod gemini_api_types {
                             data,
                         })),
                         _ => Err(message::MessageError::ConversionError(format!(
-                            "Unsupported image media type {:?}",
-                            media_type
+                            "Unsupported image media type {media_type:?}"
                         ))),
                     },
                     None => Err(message::MessageError::ConversionError(
@@ -468,8 +464,7 @@ pub mod gemini_api_types {
                             data,
                         })),
                         _ => Err(message::MessageError::ConversionError(format!(
-                            "Unsupported document media type {:?}",
-                            media_type
+                            "Unsupported document media type {media_type:?}"
                         ))),
                     },
                     None => Err(message::MessageError::ConversionError(

@@ -138,7 +138,7 @@ impl std::fmt::Display for Document {
                 sorted_props.sort_by(|a, b| a.0.cmp(b.0));
                 let metadata = sorted_props
                     .iter()
-                    .map(|(k, v)| format!("{}: {:?}", k, v))
+                    .map(|(k, v)| format!("{k}: {v:?}"))
                     .collect::<Vec<_>>()
                     .join(" ");
                 format!("<metadata {} />\n{}", metadata, self.text)

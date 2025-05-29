@@ -67,7 +67,7 @@ impl Client {
             AzureOpenAIAuth::Token(token) => {
                 headers.insert(
                     "Authorization",
-                    format!("Bearer {}", token)
+                    format!("Bearer {token}")
                         .parse()
                         .expect("Token should parse"),
                 );

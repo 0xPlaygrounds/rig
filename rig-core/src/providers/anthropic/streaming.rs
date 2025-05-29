@@ -199,7 +199,7 @@ impl StreamingCompletionModel for CompletionModel {
                         }
                     },
                     Err(e) => {
-                        yield Err(CompletionError::ResponseError(format!("SSE Error: {}", e)));
+                        yield Err(CompletionError::ResponseError(format!("SSE Error: {e}")));
                         break;
                     }
                 }

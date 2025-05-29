@@ -122,7 +122,7 @@ where
             Poll::Ready(Some(Err(e))) => {
                 // Propagate stream errors
                 Poll::Ready(Some(Err(JSONLDecoderError::ParseError(
-                    serde_json::Error::custom(format!("Stream error: {}", e)),
+                    serde_json::Error::custom(format!("Stream error: {e}")),
                 ))))
             }
             Poll::Ready(None) => {
