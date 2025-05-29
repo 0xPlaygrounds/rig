@@ -428,8 +428,7 @@ impl TryFrom<Content> for message::AssistantContent {
             }
             _ => {
                 return Err(MessageError::ConversionError(
-                    format!("Unsupported content type for Assistant role: {content:?}")
-                        .to_owned(),
+                    format!("Unsupported content type for Assistant role: {content:?}").to_owned(),
                 ))
             }
         })
