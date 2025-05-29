@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.12.0...rig-core-v0.13.0) - 2025-05-29
+
+### Added
+
+- *(rig-744)* Add support for Milvus vector store ([#463](https://github.com/0xPlaygrounds/rig/pull/463))
+- Improve Streaming API ([#388](https://github.com/0xPlaygrounds/rig/pull/388))
+
+### Fixed
+
+- *(rig-757)* CI fails because of new clippy lints ([#470](https://github.com/0xPlaygrounds/rig/pull/470))
+- *(extractor)* correct typo in extractor prompt ([#460](https://github.com/0xPlaygrounds/rig/pull/460))
+- *(message)* correct ToolCall to Message conversion ([#461](https://github.com/0xPlaygrounds/rig/pull/461))
+- Fix `dims` value for gemini's `EMBEDDING_004` ([#452](https://github.com/0xPlaygrounds/rig/pull/452)) ([#453](https://github.com/0xPlaygrounds/rig/pull/453))
+- bump mcp-core to latest version and fixed breaking changes ([#443](https://github.com/0xPlaygrounds/rig/pull/443))
+
+### Other
+
+- Only PDF docs are supported by their API ([#465](https://github.com/0xPlaygrounds/rig/pull/465))
+- Add mistral provider ([#437](https://github.com/0xPlaygrounds/rig/pull/437))
+- `impl {Debug,Clone} for CompletionRequest` ([#457](https://github.com/0xPlaygrounds/rig/pull/457))
+- fix some typos in comment ([#445](https://github.com/0xPlaygrounds/rig/pull/445))
+
 ## [0.12.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.11.1...rig-core-v0.12.0) - 2025-04-29
 
 ### Added
