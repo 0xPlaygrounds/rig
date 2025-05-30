@@ -278,14 +278,12 @@ impl completion::CompletionModel for CompletionModel {
 
                     let message = &response.choices[0].message;
                     let mut content = Vec::new();
-
                     // Add text content if present
                     if let Some(text) = &message.content {
                         if !text.trim().is_empty() {
                             content.push(completion::message::AssistantContent::text(text.clone()));
                         }
                     }
-
                     // Add tool calls if present
                     if let Some(tool_calls) = &message.tool_calls {
                         for tool_call in tool_calls {
@@ -300,12 +298,10 @@ impl completion::CompletionModel for CompletionModel {
                             ));
                         }
                     }
-
                     // Ensure we have at least some content
                     if content.is_empty() {
                         content.push(completion::message::AssistantContent::text(String::new()));
                     }
-
                     let choice = OneOrMany::many(content).map_err(|_| {
                         CompletionError::ResponseError(
                             "Response contained no valid content".to_owned(),
