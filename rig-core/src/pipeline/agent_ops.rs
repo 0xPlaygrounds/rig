@@ -1,6 +1,9 @@
+use std::future::IntoFuture;
+
 use crate::{
     completion::{self, CompletionModel},
     extractor::{ExtractionError, Extractor},
+    message::Message,
     vector_store,
 };
 
@@ -79,14 +82,14 @@ impl<P, In> Prompt<P, In> {
 
 impl<P, In> Op for Prompt<P, In>
 where
-    P: completion::Prompt,
+    P: completion::Prompt + Send + Sync,
     In: Into<String> + Send + Sync,
 {
     type Input = In;
     type Output = Result<String, completion::PromptError>;
 
-    async fn call(&self, input: Self::Input) -> Self::Output {
-        self.prompt.prompt(input.into()).await
+    fn call(&self, input: Self::Input) -> impl std::future::Future<Output = Self::Output> + Send {
+        self.prompt.prompt(input.into()).into_future()
     }
 }
 
@@ -127,13 +130,13 @@ impl<M, Input, Output> Op for Extract<M, Input, Output>
 where
     M: CompletionModel,
     Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
-    Input: Into<String> + Send + Sync,
+    Input: Into<Message> + Send + Sync,
 {
     type Input = Input;
     type Output = Result<Output, ExtractionError>;
 
     async fn call(&self, input: Self::Input) -> Self::Output {
-        self.extractor.extract(&input.into()).await
+        self.extractor.extract(input).await
     }
 }
 
@@ -159,6 +162,7 @@ pub mod tests {
     pub struct MockModel;
 
     impl Prompt for MockModel {
+        #[allow(refining_impl_trait)]
         async fn prompt(&self, prompt: impl Into<message::Message>) -> Result<String, PromptError> {
             let msg: message::Message = prompt.into();
             let prompt = match msg {

@@ -1,6 +1,6 @@
 //! A Rig vector store for Neo4j.
 //!
-//! This crate is a companion crate to the [rig-core crate](https://github.com/rig-ai/rig-core).
+//! This crate is a companion crate to the [rig-core crate](https://github.com/0xPlaygrounds/rig).
 //! It provides a vector store implementation that uses Neo4j as the underlying datastore.
 //!
 //! See the [README](https://github.com/0xPlaygrounds/rig/tree/main/rig-neo4j) for more information.
@@ -277,7 +277,7 @@ impl Neo4jClient {
     /// ### Arguments
     /// * `index_name` - The name of the index to create.
     /// * `node_label` - The label of the nodes to which the index will be applied. For example, if your nodes have
-    ///                  the label `:Movie`, pass "Movie" as the `node_label` parameter.
+    ///   the label `:Movie`, pass "Movie" as the `node_label` parameter.
     /// * `embedding_prop_name` (optional) - The name of the property that contains the embedding vectors. Defaults to "embedding".
     ///
     pub async fn create_vector_index(

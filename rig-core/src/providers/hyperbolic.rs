@@ -9,6 +9,11 @@
 //! let llama_3_1_8b = client.completion_model(hyperbolic::LLAMA_3_1_8B);
 //! ```
 
+use super::openai::{send_compatible_streaming_request, AssistantContent};
+
+use crate::json_utils::merge_inplace;
+use crate::message;
+use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -17,11 +22,10 @@ use crate::{
     providers::openai::Message,
     OneOrMany,
 };
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-
-use super::openai::AssistantContent;
+use serde_json::{json, Value};
 
 // ================================================================
 // Main Hyperbolic Client
@@ -49,7 +53,7 @@ impl Client {
                     let mut headers = reqwest::header::HeaderMap::new();
                     headers.insert(
                         "Authorization",
-                        format!("Bearer {}", api_key)
+                        format!("Bearer {api_key}")
                             .parse()
                             .expect("Bearer token should parse"),
                     );
@@ -85,6 +89,38 @@ impl Client {
     /// ```
     pub fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
+    }
+
+    /// Create an image generation model with the given name.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::hyperbolic::{Client, self};
+    ///
+    /// // Initialize the Hyperbolic client
+    /// let hyperbolic = Client::new("your-hyperbolic-api-key");
+    ///
+    /// let llama_3_1_8b = hyperbolic.image_generation_model(hyperbolic::SSD);
+    /// ```
+    #[cfg(feature = "image")]
+    pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
+        ImageGenerationModel::new(self.clone(), model)
+    }
+
+    /// Create a completion model with the given name.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::hyperbolic::{Client, self};
+    ///
+    /// // Initialize the Hyperbolic client
+    /// let hyperbolic = Client::new("your-hyperbolic-api-key");
+    ///
+    /// let tts = hyperbolic.audio_generation_model("EN");
+    /// ```
+    #[cfg(feature = "audio")]
+    pub fn audio_generation_model(&self, language: &str) -> AudioGenerationModel {
+        AudioGenerationModel::new(self.clone(), language)
     }
 
     /// Create an agent builder with the given completion model.
@@ -225,7 +261,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         .iter()
                         .map(|call| {
                             completion::AssistantContent::tool_call(
-                                &call.function.name,
+                                &call.id,
                                 &call.function.name,
                                 call.function.arguments.clone(),
                             )
@@ -267,6 +303,50 @@ pub struct CompletionModel {
 }
 
 impl CompletionModel {
+    pub(crate) fn create_completion_request(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<Value, CompletionError> {
+        // Build up the order of messages (context, chat_history, prompt)
+        let mut partial_history = vec![];
+        if let Some(docs) = completion_request.normalized_documents() {
+            partial_history.push(docs);
+        }
+        partial_history.extend(completion_request.chat_history);
+
+        // Initialize full history with preamble (or empty if non-existent)
+        let mut full_history: Vec<Message> = completion_request
+            .preamble
+            .map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
+
+        // Convert and extend the rest of the history
+        full_history.extend(
+            partial_history
+                .into_iter()
+                .map(message::Message::try_into)
+                .collect::<Result<Vec<Vec<Message>>, _>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>(),
+        );
+
+        let request = json!({
+            "model": self.model,
+            "messages": full_history,
+            "temperature": completion_request.temperature,
+        });
+
+        let request = if let Some(params) = completion_request.additional_params {
+            json_utils::merge(request, params)
+        } else {
+            request
+        };
+
+        Ok(request)
+    }
+}
+
+impl CompletionModel {
     pub fn new(client: Client, model: &str) -> Self {
         Self {
             client,
@@ -283,45 +363,12 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
-
-        // Convert prompt to user message
-        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
-
-        // Convert existing chat history
-        let chat_history: Vec<Message> = completion_request
-            .chat_history
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        // Combine all messages into a single history
-        full_history.extend(chat_history);
-        full_history.extend(prompt);
-
-        let request = json!({
-            "model": self.model,
-            "messages": full_history,
-            "temperature": completion_request.temperature,
-        });
+        let request = self.create_completion_request(completion_request)?;
 
         let response = self
             .client
             .post("/chat/completions")
-            .json(
-                &if let Some(params) = completion_request.additional_params {
-                    json_utils::merge(request, params)
-                } else {
-                    request
-                },
-            )
+            .json(&request)
             .send()
             .await?;
 
@@ -339,6 +386,238 @@ impl completion::CompletionModel for CompletionModel {
             }
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
+        }
+    }
+}
+
+impl StreamingCompletionModel for CompletionModel {
+    type StreamingResponse = openai::StreamingCompletionResponse;
+    async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        let mut request = self.create_completion_request(completion_request)?;
+
+        merge_inplace(
+            &mut request,
+            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        );
+
+        let builder = self.client.post("/chat/completions").json(&request);
+
+        send_compatible_streaming_request(builder).await
+    }
+}
+
+// =======================================
+// Hyperbolic Image Generation API
+// =======================================
+
+#[cfg(feature = "image")]
+pub use image_generation::*;
+
+#[cfg(feature = "image")]
+mod image_generation {
+    use super::{ApiResponse, Client};
+    use crate::image_generation;
+    use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+    use crate::json_utils::merge_inplace;
+    use base64::prelude::BASE64_STANDARD;
+    use base64::Engine;
+    use serde::Deserialize;
+    use serde_json::json;
+
+    pub const SDXL1_0_BASE: &str = "SDXL1.0-base";
+    pub const SD2: &str = "SD2";
+    pub const SD1_5: &str = "SD1.5";
+    pub const SSD: &str = "SSD";
+    pub const SDXL_TURBO: &str = "SDXL-turbo";
+    pub const SDXL_CONTROLNET: &str = "SDXL-ControlNet";
+    pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
+
+    #[cfg(feature = "image")]
+    #[derive(Clone)]
+    pub struct ImageGenerationModel {
+        client: Client,
+        pub model: String,
+    }
+
+    #[cfg(feature = "image")]
+    impl ImageGenerationModel {
+        pub(crate) fn new(client: Client, model: &str) -> ImageGenerationModel {
+            Self {
+                client,
+                model: model.to_string(),
+            }
+        }
+    }
+
+    #[cfg(feature = "image")]
+    #[derive(Clone, Deserialize)]
+    pub struct Image {
+        image: String,
+    }
+
+    #[cfg(feature = "image")]
+    #[derive(Clone, Deserialize)]
+    pub struct ImageGenerationResponse {
+        images: Vec<Image>,
+    }
+
+    #[cfg(feature = "image")]
+    impl TryFrom<ImageGenerationResponse>
+        for image_generation::ImageGenerationResponse<ImageGenerationResponse>
+    {
+        type Error = ImageGenerationError;
+
+        fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
+            let data = BASE64_STANDARD
+                .decode(&value.images[0].image)
+                .expect("Could not decode image.");
+
+            Ok(Self {
+                image: data,
+                response: value,
+            })
+        }
+    }
+
+    #[cfg(feature = "image")]
+    impl image_generation::ImageGenerationModel for ImageGenerationModel {
+        type Response = ImageGenerationResponse;
+
+        async fn image_generation(
+            &self,
+            generation_request: ImageGenerationRequest,
+        ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
+        {
+            let mut request = json!({
+                "model_name": self.model,
+                "prompt": generation_request.prompt,
+                "height": generation_request.height,
+                "width": generation_request.width,
+            });
+
+            if let Some(params) = generation_request.additional_params {
+                merge_inplace(&mut request, params);
+            }
+
+            let response = self
+                .client
+                .post("/image/generation")
+                .json(&request)
+                .send()
+                .await?;
+
+            if !response.status().is_success() {
+                return Err(ImageGenerationError::ProviderError(format!(
+                    "{}: {}",
+                    response.status().as_str(),
+                    response.text().await?
+                )));
+            }
+
+            match response
+                .json::<ApiResponse<ImageGenerationResponse>>()
+                .await?
+            {
+                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Err(err) => Err(ImageGenerationError::ResponseError(err.message)),
+            }
+        }
+    }
+}
+
+// ======================================
+// Hyperbolic Audio Generation API
+// ======================================
+use crate::providers::openai;
+#[cfg(feature = "audio")]
+pub use audio_generation::*;
+
+#[cfg(feature = "audio")]
+mod audio_generation {
+    use super::{ApiResponse, Client};
+    use crate::audio_generation;
+    use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
+    use base64::prelude::BASE64_STANDARD;
+    use base64::Engine;
+    use serde::Deserialize;
+    use serde_json::json;
+
+    #[derive(Clone)]
+    pub struct AudioGenerationModel {
+        client: Client,
+        pub langauge: String,
+    }
+
+    impl AudioGenerationModel {
+        pub(crate) fn new(client: Client, language: &str) -> AudioGenerationModel {
+            Self {
+                client,
+                langauge: language.to_string(),
+            }
+        }
+    }
+
+    #[derive(Clone, Deserialize)]
+    pub struct AudioGenerationResponse {
+        audio: String,
+    }
+
+    impl TryFrom<AudioGenerationResponse>
+        for audio_generation::AudioGenerationResponse<AudioGenerationResponse>
+    {
+        type Error = AudioGenerationError;
+
+        fn try_from(value: AudioGenerationResponse) -> Result<Self, Self::Error> {
+            let data = BASE64_STANDARD
+                .decode(&value.audio)
+                .expect("Could not decode audio.");
+
+            Ok(Self {
+                audio: data,
+                response: value,
+            })
+        }
+    }
+
+    impl audio_generation::AudioGenerationModel for AudioGenerationModel {
+        type Response = AudioGenerationResponse;
+
+        async fn audio_generation(
+            &self,
+            request: AudioGenerationRequest,
+        ) -> Result<audio_generation::AudioGenerationResponse<Self::Response>, AudioGenerationError>
+        {
+            let request = json!({
+                "language": self.langauge,
+                "speaker": request.voice,
+                "text": request.text,
+                "speed": request.speed
+            });
+
+            let response = self
+                .client
+                .post("/audio/generation")
+                .json(&request)
+                .send()
+                .await?;
+
+            if !response.status().is_success() {
+                return Err(AudioGenerationError::ProviderError(format!(
+                    "{}: {}",
+                    response.status(),
+                    response.text().await?
+                )));
+            }
+
+            match serde_json::from_str::<ApiResponse<AudioGenerationResponse>>(
+                &response.text().await?,
+            )? {
+                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Err(err) => Err(AudioGenerationError::ProviderError(err.message)),
+            }
         }
     }
 }

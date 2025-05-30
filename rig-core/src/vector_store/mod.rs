@@ -1,4 +1,5 @@
 use futures::future::BoxFuture;
+use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -20,6 +21,12 @@ pub enum VectorStoreError {
 
     #[error("Missing Id: {0}")]
     MissingIdError(String),
+
+    #[error("HTTP request error: {0}")]
+    ReqwestError(#[from] reqwest::Error),
+
+    #[error("External call to API returned an error. Error code: {0} Message: {1}")]
+    ExternalAPIError(StatusCode, String),
 }
 
 /// Trait for vector store indexes

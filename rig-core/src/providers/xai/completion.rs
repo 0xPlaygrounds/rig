@@ -1,6 +1,6 @@
 // ================================================================
 //! xAI Completion Integration
-//! From [xAI Reference](https://docs.x.ai/api/endpoints#chat-completions)
+//! From [xAI Reference](https://docs.x.ai/docs/api-reference#chat-completions)
 // ================================================================
 
 use crate::{
@@ -9,10 +9,9 @@ use crate::{
     providers::openai::Message,
 };
 
-use serde_json::json;
-use xai_api_types::{CompletionResponse, ToolDefinition};
-
 use super::client::{xai_api_types::ApiResponse, Client};
+use serde_json::{json, Value};
+use xai_api_types::{CompletionResponse, ToolDefinition};
 
 /// `grok-beta` completion model
 pub const GROK_BETA: &str = "grok-beta";
@@ -23,41 +22,20 @@ pub const GROK_BETA: &str = "grok-beta";
 
 #[derive(Clone)]
 pub struct CompletionModel {
-    client: Client,
+    pub(crate) client: Client,
     pub model: String,
 }
 
 impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
-}
-
-impl completion::CompletionModel for CompletionModel {
-    type Response = CompletionResponse;
-
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn completion(
+    pub(crate) fn create_completion_request(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
-            Some(preamble) => {
-                if preamble.is_empty() {
-                    vec![]
-                } else {
-                    vec![Message::system(preamble)]
-                }
-            }
-            None => vec![],
-        };
-
-        // Convert prompt to user message
-        let prompt: Vec<Message> = completion_request.prompt_with_context().try_into()?;
+    ) -> Result<Value, CompletionError> {
+        // Convert documents into user message
+        let docs: Option<Vec<Message>> = completion_request
+            .normalized_documents()
+            .map(|docs| docs.try_into())
+            .transpose()?;
 
         // Convert existing chat history
         let chat_history: Vec<Message> = completion_request
@@ -69,9 +47,19 @@ impl completion::CompletionModel for CompletionModel {
             .flatten()
             .collect();
 
-        // Combine all messages into a single history
+        // Init full history with preamble (or empty if non-existent)
+        let mut full_history: Vec<Message> = match &completion_request.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
+        };
+
+        // Docs appear right after preamble, if they exist
+        if let Some(docs) = docs {
+            full_history.extend(docs)
+        }
+
+        // Chat history and prompt appear in the order they were provided
         full_history.extend(chat_history);
-        full_history.extend(prompt);
 
         let mut request = if completion_request.tools.is_empty() {
             json!({
@@ -94,6 +82,26 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             request
         };
+
+        Ok(request)
+    }
+    pub fn new(client: Client, model: &str) -> Self {
+        Self {
+            client,
+            model: model.to_string(),
+        }
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    type Response = CompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let request = self.create_completion_request(completion_request)?;
 
         let response = self
             .client
@@ -150,7 +158,7 @@ pub mod xai_api_types {
                             .iter()
                             .map(|call| {
                                 completion::AssistantContent::tool_call(
-                                    &call.function.name,
+                                    &call.id,
                                     &call.function.name,
                                     call.function.arguments.clone(),
                                 )

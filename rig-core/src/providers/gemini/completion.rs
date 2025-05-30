@@ -26,6 +26,8 @@ use crate::{
     OneOrMany,
 };
 
+use self::gemini_api_types::Schema;
+
 use super::Client;
 
 // =================================================================
@@ -34,7 +36,7 @@ use super::Client;
 
 #[derive(Clone)]
 pub struct CompletionModel {
-    client: Client,
+    pub(crate) client: Client,
     pub model: String,
 }
 
@@ -53,54 +55,9 @@ impl completion::CompletionModel for CompletionModel {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
-        mut completion_request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
-        let mut full_history = Vec::new();
-        full_history.append(&mut completion_request.chat_history);
-
-        full_history.push(completion_request.prompt_with_context());
-
-        // Handle Gemini specific parameters
-        let additional_params = completion_request
-            .additional_params
-            .unwrap_or_else(|| Value::Object(Map::new()));
-        let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?;
-
-        // Set temperature from completion_request or additional_params
-        if let Some(temp) = completion_request.temperature {
-            generation_config.temperature = Some(temp);
-        }
-
-        // Set max_tokens from completion_request or additional_params
-        if let Some(max_tokens) = completion_request.max_tokens {
-            generation_config.max_output_tokens = Some(max_tokens);
-        }
-
-        let system_instruction = completion_request.preamble.clone().map(|preamble| Content {
-            parts: OneOrMany::one(preamble.into()),
-            role: Some(Role::Model),
-        });
-
-        let request = GenerateContentRequest {
-            contents: full_history
-                .into_iter()
-                .map(|msg| {
-                    msg.try_into()
-                        .map_err(|e| CompletionError::RequestError(Box::new(e)))
-                })
-                .collect::<Result<Vec<_>, _>>()?,
-            generation_config: Some(generation_config),
-            safety_settings: None,
-            tools: Some(
-                completion_request
-                    .tools
-                    .into_iter()
-                    .map(Tool::try_from)
-                    .collect::<Result<Vec<_>, _>>()?,
-            ),
-            tool_config: None,
-            system_instruction,
-        };
+        let request = create_request_body(completion_request)?;
 
         tracing::debug!(
             "Sending completion request to Gemini API {}",
@@ -135,15 +92,70 @@ impl completion::CompletionModel for CompletionModel {
     }
 }
 
+pub(crate) fn create_request_body(
+    completion_request: CompletionRequest,
+) -> Result<GenerateContentRequest, CompletionError> {
+    let mut full_history = Vec::new();
+    full_history.extend(completion_request.chat_history);
+
+    let additional_params = completion_request
+        .additional_params
+        .unwrap_or_else(|| Value::Object(Map::new()));
+
+    let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?;
+
+    if let Some(temp) = completion_request.temperature {
+        generation_config.temperature = Some(temp);
+    }
+
+    if let Some(max_tokens) = completion_request.max_tokens {
+        generation_config.max_output_tokens = Some(max_tokens);
+    }
+
+    let system_instruction = completion_request.preamble.clone().map(|preamble| Content {
+        parts: OneOrMany::one(preamble.into()),
+        role: Some(Role::Model),
+    });
+
+    let request = GenerateContentRequest {
+        contents: full_history
+            .into_iter()
+            .map(|msg| {
+                msg.try_into()
+                    .map_err(|e| CompletionError::RequestError(Box::new(e)))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        generation_config: Some(generation_config),
+        safety_settings: None,
+        tools: Some(
+            completion_request
+                .tools
+                .into_iter()
+                .map(Tool::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+        tool_config: None,
+        system_instruction,
+    };
+
+    Ok(request)
+}
+
 impl TryFrom<completion::ToolDefinition> for Tool {
     type Error = CompletionError;
 
     fn try_from(tool: completion::ToolDefinition) -> Result<Self, Self::Error> {
+        let parameters: Option<Schema> =
+            if tool.parameters == serde_json::json!({"type": "object", "properties": {}}) {
+                None
+            } else {
+                Some(tool.parameters.try_into()?)
+            };
         Ok(Self {
             function_declarations: FunctionDeclaration {
                 name: tool.name,
                 description: tool.description,
-                parameters: Some(tool.parameters.try_into()?),
+                parameters,
             },
             code_execution: None,
         })
@@ -318,15 +330,14 @@ pub mod gemini_api_types {
                                     }
                                     _ => {
                                         return Err(message::MessageError::ConversionError(
-                                            format!("Unsupported media type {:?}", mime_type),
+                                            format!("Unsupported media type {mime_type:?}"),
                                         ))
                                     }
                                 }
                             }
                             _ => {
                                 return Err(message::MessageError::ConversionError(format!(
-                                    "Unsupported gemini content part type: {:?}",
-                                    part
+                                    "Unsupported gemini content part type: {part:?}"
                                 )))
                             }
                         })
@@ -341,8 +352,7 @@ pub mod gemini_api_types {
                             }
                             _ => {
                                 return Err(message::MessageError::ConversionError(format!(
-                                    "Unsupported part type: {:?}",
-                                    part
+                                    "Unsupported part type: {part:?}"
                                 )))
                             }
                         })
@@ -413,8 +423,7 @@ pub mod gemini_api_types {
                         name: id,
                         response: Some(serde_json::from_str(&content).map_err(|e| {
                             message::MessageError::ConversionError(format!(
-                                "Failed to parse tool response: {}",
-                                e
+                                "Failed to parse tool response: {e}"
                             ))
                         })?),
                     }))
@@ -432,8 +441,7 @@ pub mod gemini_api_types {
                             data,
                         })),
                         _ => Err(message::MessageError::ConversionError(format!(
-                            "Unsupported image media type {:?}",
-                            media_type
+                            "Unsupported image media type {media_type:?}"
                         ))),
                     },
                     None => Err(message::MessageError::ConversionError(
@@ -456,8 +464,7 @@ pub mod gemini_api_types {
                             data,
                         })),
                         _ => Err(message::MessageError::ConversionError(format!(
-                            "Unsupported document media type {:?}",
-                            media_type
+                            "Unsupported document media type {media_type:?}"
                         ))),
                     },
                     None => Err(message::MessageError::ConversionError(
@@ -596,7 +603,7 @@ pub mod gemini_api_types {
         HarmCategoryCivicIntegrity,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone, Default)]
     #[serde(rename_all = "camelCase")]
     pub struct UsageMetadata {
         pub prompt_token_count: i32,
@@ -717,7 +724,7 @@ pub mod gemini_api_types {
     /// Gemini API Configuration options for model generation and outputs. Not all parameters are
     /// configurable for every model. From [Gemini API Reference](https://ai.google.dev/api/generate-content#generationconfig)
     /// ### Rig Note:
-    /// Can be used to cosntruct a typesafe `additional_params` in rig::[AgentBuilder](crate::agent::AgentBuilder).
+    /// Can be used to construct a typesafe `additional_params` in rig::[AgentBuilder](crate::agent::AgentBuilder).
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct GenerationConfig {

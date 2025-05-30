@@ -36,7 +36,7 @@ pub async fn cli_chatbot(chatbot: impl Chat) -> Result<(), PromptError> {
 
                 tracing::info!("Response:\n{}\n", response);
             }
-            Err(error) => println!("Error reading input: {}", error),
+            Err(error) => println!("Error reading input: {error}"),
         }
     }
 

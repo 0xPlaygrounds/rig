@@ -5,7 +5,7 @@ use std::{convert::Infallible, str::FromStr};
 use crate::{
     completion::{self, CompletionError},
     json_utils,
-    message::{self, MessageError},
+    message::{self, DocumentMediaType, MessageError},
     one_or_many::string_or_one_or_many,
     OneOrMany,
 };
@@ -18,6 +18,9 @@ use super::client::Client;
 // ================================================================
 // Anthropic Completion API
 // ================================================================
+/// `claude-3-7-sonnet-latest` completion model
+pub const CLAUDE_3_7_SONNET: &str = "claude-3-7-sonnet-latest";
+
 /// `claude-3-5-sonnet-latest` completion model
 pub const CLAUDE_3_5_SONNET: &str = "claude-3-5-sonnet-latest";
 
@@ -213,6 +216,9 @@ pub enum ImageFormat {
     WEBP,
 }
 
+/// The document format to be used.
+///
+/// Currently, Anthropic only supports PDF for text documents over the API (within a message). You can find more information about this here: <https://docs.anthropic.com/en/docs/build-with-claude/pdf-support>
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum DocumentFormat {
@@ -270,7 +276,7 @@ impl TryFrom<message::ImageMediaType> for ImageFormat {
             message::ImageMediaType::WEBP => ImageFormat::WEBP,
             _ => {
                 return Err(MessageError::ConversionError(
-                    format!("Unsupported image media type: {:?}", media_type).to_owned(),
+                    format!("Unsupported image media type: {media_type:?}").to_owned(),
                 ))
             }
         })
@@ -285,6 +291,19 @@ impl From<ImageFormat> for message::ImageMediaType {
             ImageFormat::GIF => message::ImageMediaType::GIF,
             ImageFormat::WEBP => message::ImageMediaType::WEBP,
         }
+    }
+}
+
+impl TryFrom<DocumentMediaType> for DocumentFormat {
+    type Error = MessageError;
+    fn try_from(value: DocumentMediaType) -> Result<Self, Self::Error> {
+        if !matches!(value, DocumentMediaType::PDF) {
+            return Err(MessageError::ConversionError(
+                "Anthropic only supports PDF documents".to_string(),
+            ));
+        };
+
+        Ok(DocumentFormat::PDF)
     }
 }
 
@@ -363,10 +382,20 @@ impl TryFrom<message::Message> for Message {
                         };
                         Ok(Content::Image { source })
                     }
-                    message::UserContent::Document(message::Document { data, format, .. }) => {
+                    message::UserContent::Document(message::Document {
+                        data,
+                        format,
+                        media_type,
+                    }) => {
+                        let Some(media_type) = media_type else {
+                            return Err(MessageError::ConversionError(
+                                "Document media type is required".to_string(),
+                            ));
+                        };
+
                         let source = DocumentSource {
                             data,
-                            media_type: DocumentFormat::PDF,
+                            media_type: media_type.try_into()?,
                             r#type: match format {
                                 Some(format) => format.try_into()?,
                                 None => SourceType::BASE64,
@@ -399,8 +428,7 @@ impl TryFrom<Content> for message::AssistantContent {
             }
             _ => {
                 return Err(MessageError::ConversionError(
-                    format!("Unsupported content type for Assistant role: {:?}", content)
-                        .to_owned(),
+                    format!("Unsupported content type for Assistant role: {content:?}").to_owned(),
                 ))
             }
         })
@@ -468,7 +496,7 @@ impl TryFrom<Message> for message::Message {
 
                 _ => {
                     return Err(MessageError::ConversionError(
-                        format!("Unsupported message for Assistant role: {:?}", message).to_owned(),
+                        format!("Unsupported message for Assistant role: {message:?}").to_owned(),
                     ))
                 }
             },
@@ -550,26 +578,20 @@ impl completion::CompletionModel for CompletionModel {
             ));
         };
 
-        let prompt_message: Message = completion_request
-            .prompt_with_context()
-            .try_into()
-            .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?;
+        let mut full_history = vec![];
+        if let Some(docs) = completion_request.normalized_documents() {
+            full_history.push(docs);
+        }
+        full_history.extend(completion_request.chat_history);
 
-        let mut messages = completion_request
-            .chat_history
+        let full_history = full_history
             .into_iter()
-            .map(|message| {
-                message
-                    .try_into()
-                    .map_err(|e: MessageError| CompletionError::RequestError(e.into()))
-            })
+            .map(Message::try_from)
             .collect::<Result<Vec<Message>, _>>()?;
-
-        messages.push(prompt_message);
 
         let mut request = json!({
             "model": self.model,
-            "messages": messages,
+            "messages": full_history,
             "max_tokens": max_tokens,
             "system": completion_request.preamble.unwrap_or("".to_string()),
         });

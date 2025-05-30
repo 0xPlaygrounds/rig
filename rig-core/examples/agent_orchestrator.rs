@@ -1,6 +1,6 @@
 use std::env;
 
-use rig::providers::openai::Client;
+use rig::providers::openai::client::Client;
 
 use schemars::JsonSchema;
 

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.10](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.9...rig-lancedb-v0.2.10) - 2025-04-29
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.9](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.8...rig-lancedb-v0.2.9) - 2025-04-12
+
+### Other
+
+- *(lancedb)* docs, make examples idempotent ([#387](https://github.com/0xPlaygrounds/rig/pull/387))
+
+## [0.2.8](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.7...rig-lancedb-v0.2.8) - 2025-03-31
+
+### Other
+
+- added mcp_tool + Example ([#335](https://github.com/0xPlaygrounds/rig/pull/335))
+
+## [0.2.7](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.6...rig-lancedb-v0.2.7) - 2025-03-17
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.2.6](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.5...rig-lancedb-v0.2.6) - 2025-03-03
 
 ### Other

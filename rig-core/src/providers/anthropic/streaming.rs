@@ -4,10 +4,11 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefinition, Usage};
+use super::decoders::sse::from_response as sse_from_response;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils::merge_inplace;
-use crate::message::MessageError;
-use crate::streaming::{StreamingChoice, StreamingCompletionModel, StreamingResult};
+use crate::streaming;
+use crate::streaming::{RawStreamingChoice, StreamingCompletionModel, StreamingResult};
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -28,10 +29,12 @@ pub enum StreamingEvent {
     },
     MessageDelta {
         delta: MessageDelta,
-        usage: Usage,
+        usage: PartialUsage,
     },
     MessageStop,
     Ping,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,6 +61,13 @@ pub struct MessageDelta {
     pub stop_sequence: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct PartialUsage {
+    pub output_tokens: usize,
+    #[serde(default)]
+    pub input_tokens: Option<usize>,
+}
+
 #[derive(Default)]
 struct ToolCallState {
     name: String,
@@ -65,11 +75,18 @@ struct ToolCallState {
     input_json: String,
 }
 
+#[derive(Clone)]
+pub struct StreamingCompletionResponse {
+    pub usage: PartialUsage,
+}
+
 impl StreamingCompletionModel for CompletionModel {
+    type StreamingResponse = StreamingCompletionResponse;
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<StreamingResult, CompletionError> {
+    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    {
         let max_tokens = if let Some(tokens) = completion_request.max_tokens {
             tokens
         } else if let Some(tokens) = self.default_max_tokens {
@@ -80,26 +97,20 @@ impl StreamingCompletionModel for CompletionModel {
             ));
         };
 
-        let prompt_message: Message = completion_request
-            .prompt_with_context()
-            .try_into()
-            .map_err(|e: MessageError| CompletionError::RequestError(e.into()))?;
+        let mut full_history = vec![];
+        if let Some(docs) = completion_request.normalized_documents() {
+            full_history.push(docs);
+        }
+        full_history.extend(completion_request.chat_history);
 
-        let mut messages = completion_request
-            .chat_history
+        let full_history = full_history
             .into_iter()
-            .map(|message| {
-                message
-                    .try_into()
-                    .map_err(|e: MessageError| CompletionError::RequestError(e.into()))
-            })
+            .map(Message::try_from)
             .collect::<Result<Vec<Message>, _>>()?;
-
-        messages.push(prompt_message);
 
         let mut request = json!({
             "model": self.model,
-            "messages": messages,
+            "messages": full_history,
             "max_tokens": max_tokens,
             "system": completion_request.preamble.unwrap_or("".to_string()),
             "stream": true,
@@ -142,82 +153,118 @@ impl StreamingCompletionModel for CompletionModel {
             return Err(CompletionError::ProviderError(response.text().await?));
         }
 
-        Ok(Box::pin(stream! {
+        // Use our SSE decoder to directly handle Server-Sent Events format
+        let sse_stream = sse_from_response(response);
+
+        let stream: StreamingResult<Self::StreamingResponse> = Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
-            let mut stream = response.bytes_stream();
+            let mut sse_stream = Box::pin(sse_stream);
+            let mut input_tokens = 0;
 
-            while let Some(chunk_result) = stream.next().await {
-                let chunk = match chunk_result {
-                    Ok(c) => c,
-                    Err(e) => {
-                        yield Err(CompletionError::from(e));
-                        break;
-                    }
-                };
+            while let Some(sse_result) = sse_stream.next().await {
+                match sse_result {
+                    Ok(sse) => {
+                        // Parse the SSE data as a StreamingEvent
+                        match serde_json::from_str::<StreamingEvent>(&sse.data) {
+                            Ok(event) => {
+                                match &event {
+                                    StreamingEvent::MessageStart { message } => {
+                                        input_tokens = message.usage.input_tokens;
+                                    },
+                                    StreamingEvent::MessageDelta { delta, usage } => {
+                                        if delta.stop_reason.is_some() {
 
-                let text = match String::from_utf8(chunk.to_vec()) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        yield Err(CompletionError::ResponseError(e.to_string()));
-                        break;
-                    }
-                };
-
-                for line in text.lines() {
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        if let Ok(event) = serde_json::from_str::<StreamingEvent>(data) {
-                            match event {
-                                StreamingEvent::ContentBlockDelta { delta, .. } => {
-                                    match delta {
-                                        ContentDelta::TextDelta { text } => {
-                                            if current_tool_call.is_none() {
-                                                yield Ok(StreamingChoice::Message(text));
-                                            }
-                                        }
-                                        ContentDelta::InputJsonDelta { partial_json } => {
-                                            if let Some(ref mut tool_call) = current_tool_call {
-                                                tool_call.input_json.push_str(&partial_json);
-                                            }
+                                            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                                                usage: PartialUsage {
+                                                    output_tokens: usage.output_tokens,
+                                                    input_tokens: Some(input_tokens.try_into().expect("Failed to convert input_tokens to usize")),
+                                                }
+                                            }))
                                         }
                                     }
+                                    _ => {}
                                 }
-                                StreamingEvent::ContentBlockStart {
-                                    content_block: Content::ToolUse { id, name, .. },
-                                    ..
-                                } => {
-                                    current_tool_call = Some(ToolCallState {
-                                        name,
-                                        id,
-                                        input_json: String::new(),
-                                    });
+
+                                if let Some(result) = handle_event(&event, &mut current_tool_call) {
+                                    yield result;
                                 }
-                                StreamingEvent::ContentBlockStop { .. } => {
-                                    if let Some(tool_call) = current_tool_call.take() {
-                                        let json_str = if tool_call.input_json.is_empty() {
-                                            "{}"
-                                        } else {
-                                            &tool_call.input_json
-                                        };
-                                        match serde_json::from_str(json_str) {
-                                            Ok(json_value) => {
-                                                yield Ok(StreamingChoice::ToolCall(
-                                                    tool_call.name,
-                                                    tool_call.id,
-                                                    json_value,
-                                                ));
-                                            }
-                                            Err(e) => {
-                                                yield Err(CompletionError::from(e));
-                                            }
-                                        }
-                                    }
-                                },
-                                _ => {}
+                            },
+                            Err(e) => {
+                                if !sse.data.trim().is_empty() {
+                                    yield Err(CompletionError::ResponseError(
+                                        format!("Failed to parse JSON: {} (Data: {})", e, sse.data)
+                                    ));
+                                }
                             }
                         }
+                    },
+                    Err(e) => {
+                        yield Err(CompletionError::ResponseError(format!("SSE Error: {e}")));
+                        break;
                     }
                 }
             }
-        }))
+        });
+
+        Ok(streaming::StreamingCompletionResponse::new(stream))
+    }
+}
+
+fn handle_event(
+    event: &StreamingEvent,
+    current_tool_call: &mut Option<ToolCallState>,
+) -> Option<Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>> {
+    match event {
+        StreamingEvent::ContentBlockDelta { delta, .. } => match delta {
+            ContentDelta::TextDelta { text } => {
+                if current_tool_call.is_none() {
+                    return Some(Ok(RawStreamingChoice::Message(text.clone())));
+                }
+                None
+            }
+            ContentDelta::InputJsonDelta { partial_json } => {
+                if let Some(ref mut tool_call) = current_tool_call {
+                    tool_call.input_json.push_str(partial_json);
+                }
+                None
+            }
+        },
+        StreamingEvent::ContentBlockStart { content_block, .. } => match content_block {
+            Content::ToolUse { id, name, .. } => {
+                *current_tool_call = Some(ToolCallState {
+                    name: name.clone(),
+                    id: id.clone(),
+                    input_json: String::new(),
+                });
+                None
+            }
+            // Handle other content types - they don't need special handling
+            _ => None,
+        },
+        StreamingEvent::ContentBlockStop { .. } => {
+            if let Some(tool_call) = current_tool_call.take() {
+                let json_str = if tool_call.input_json.is_empty() {
+                    "{}"
+                } else {
+                    &tool_call.input_json
+                };
+                match serde_json::from_str(json_str) {
+                    Ok(json_value) => Some(Ok(RawStreamingChoice::ToolCall {
+                        name: tool_call.name,
+                        id: tool_call.id,
+                        arguments: json_value,
+                    })),
+                    Err(e) => Some(Err(CompletionError::from(e))),
+                }
+            } else {
+                None
+            }
+        }
+        // Ignore other event types or handle as needed
+        StreamingEvent::MessageStart { .. }
+        | StreamingEvent::MessageDelta { .. }
+        | StreamingEvent::MessageStop
+        | StreamingEvent::Ping
+        | StreamingEvent::Unknown => None,
     }
 }

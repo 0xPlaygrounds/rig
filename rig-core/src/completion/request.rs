@@ -67,7 +67,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::streaming::{StreamingCompletionModel, StreamingResult};
+use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
 use crate::OneOrMany;
 use crate::{
     json_utils,
@@ -75,7 +75,7 @@ use crate::{
     tool::ToolSetError,
 };
 
-use super::message::AssistantContent;
+use super::message::{AssistantContent, ContentFormat, DocumentMediaType};
 
 // Errors
 #[derive(Debug, Error)]
@@ -108,6 +108,13 @@ pub enum PromptError {
 
     #[error("ToolCallError: {0}")]
     ToolError(#[from] ToolSetError),
+
+    #[error("MaxDepthError: (reached limit: {max_depth})")]
+    MaxDepthError {
+        max_depth: usize,
+        chat_history: Vec<Message>,
+        prompt: Message,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -131,7 +138,7 @@ impl std::fmt::Display for Document {
                 sorted_props.sort_by(|a, b| a.0.cmp(b.0));
                 let metadata = sorted_props
                     .iter()
-                    .map(|(k, v)| format!("{}: {:?}", k, v))
+                    .map(|(k, v)| format!("{k}: {v:?}"))
                     .collect::<Vec<_>>()
                     .join(" ");
                 format!("<metadata {} />\n{}", metadata, self.text)
@@ -163,7 +170,7 @@ pub trait Prompt: Send + Sync {
     fn prompt(
         &self,
         prompt: impl Into<Message> + Send,
-    ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
+    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: Send>;
 }
 
 /// Trait defining a high-level LLM chat interface (i.e.: prompt and chat history in, response out).
@@ -180,7 +187,7 @@ pub trait Chat: Send + Sync {
         &self,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<String, PromptError>> + Send;
+    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: Send>;
 }
 
 /// Trait defining a low-level LLM completion interface
@@ -235,13 +242,13 @@ pub trait CompletionModel: Clone + Send + Sync {
 }
 
 /// Struct representing a general completion request that can be sent to a completion model provider.
+#[derive(Debug, Clone)]
 pub struct CompletionRequest {
-    /// The prompt to be sent to the completion model provider
-    pub prompt: Message,
     /// The preamble to be sent to the completion model provider
     pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider
-    pub chat_history: Vec<Message>,
+    /// The very last message will always be the prompt (hense why there is *always* one)
+    pub chat_history: OneOrMany<Message>,
     /// The documents to be sent to the completion model provider
     pub documents: Vec<Document>,
     /// The tools to be sent to the completion model provider
@@ -255,23 +262,33 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
-    pub fn prompt_with_context(&self) -> Message {
-        let mut new_prompt = self.prompt.clone();
-        if let Message::User { ref mut content } = new_prompt {
-            if !self.documents.is_empty() {
-                let attachments = self
-                    .documents
-                    .iter()
-                    .map(|doc| doc.to_string())
-                    .collect::<Vec<_>>()
-                    .join("");
-                let formatted_content = format!("<attachments>\n{}</attachments>", attachments);
-                let mut new_content = vec![UserContent::text(formatted_content)];
-                new_content.extend(content.clone());
-                *content = OneOrMany::many(new_content).expect("This has more than 1 item");
-            }
+    /// Returns documents normalized into a message (if any).
+    /// Most providers do not accept documents directly as input, so it needs to convert into a
+    ///  `Message` so that it can be incorporated into `chat_history` as a
+    pub fn normalized_documents(&self) -> Option<Message> {
+        if self.documents.is_empty() {
+            return None;
         }
-        new_prompt
+
+        // Most providers will convert documents into a text unless it can handle document messages.
+        // We use `UserContent::document` for those who handle it directly!
+        let messages = self
+            .documents
+            .iter()
+            .map(|doc| {
+                UserContent::document(
+                    doc.to_string(),
+                    // In the future, we can customize `Document` to pass these extra types through.
+                    // Most providers ditch these but they might want to use them.
+                    Some(ContentFormat::String),
+                    Some(DocumentMediaType::TXT),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        Some(Message::User {
+            content: OneOrMany::many(messages).expect("There will be atleast one document"),
+        })
     }
 }
 
@@ -446,10 +463,12 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
+        let chat_history = OneOrMany::many([self.chat_history, vec![self.prompt]].concat())
+            .expect("There will always be atleast the prompt");
+
         CompletionRequest {
-            prompt: self.prompt,
             preamble: self.preamble,
-            chat_history: self.chat_history,
+            chat_history,
             documents: self.documents,
             tools: self.tools,
             temperature: self.temperature,
@@ -467,7 +486,9 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
 impl<M: StreamingCompletionModel> CompletionRequestBuilder<M> {
     /// Stream the completion request
-    pub async fn stream(self) -> Result<StreamingResult, CompletionError> {
+    pub async fn stream(
+        self,
+    ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError> {
         let model = self.model.clone();
         model.stream(self.build()).await
     }
@@ -475,7 +496,6 @@ impl<M: StreamingCompletionModel> CompletionRequestBuilder<M> {
 
 #[cfg(test)]
 mod tests {
-    use crate::OneOrMany;
 
     use super::*;
 
@@ -513,7 +533,7 @@ mod tests {
     }
 
     #[test]
-    fn test_prompt_with_context_with_documents() {
+    fn test_normalize_documents_with_documents() {
         let doc1 = Document {
             id: "doc1".to_string(),
             text: "Document 1 text.".to_string(),
@@ -527,9 +547,8 @@ mod tests {
         };
 
         let request = CompletionRequest {
-            prompt: "What is the capital of France?".into(),
             preamble: None,
-            chat_history: Vec::new(),
+            chat_history: OneOrMany::one("What is the capital of France?".into()),
             documents: vec![doc1, doc2],
             tools: Vec::new(),
             temperature: None,
@@ -539,19 +558,35 @@ mod tests {
 
         let expected = Message::User {
             content: OneOrMany::many(vec![
-                UserContent::text(concat!(
-                    "<attachments>\n",
-                    "<file id: doc1>\nDocument 1 text.\n</file>\n",
-                    "<file id: doc2>\nDocument 2 text.\n</file>\n",
-                    "</attachments>"
-                )),
-                UserContent::text("What is the capital of France?"),
+                UserContent::document(
+                    "<file id: doc1>\nDocument 1 text.\n</file>\n".to_string(),
+                    Some(ContentFormat::String),
+                    Some(DocumentMediaType::TXT),
+                ),
+                UserContent::document(
+                    "<file id: doc2>\nDocument 2 text.\n</file>\n".to_string(),
+                    Some(ContentFormat::String),
+                    Some(DocumentMediaType::TXT),
+                ),
             ])
-            .expect("This has more than 1 item"),
+            .expect("There will be at least one document"),
         };
 
-        request.prompt_with_context();
+        assert_eq!(request.normalized_documents(), Some(expected));
+    }
 
-        assert_eq!(request.prompt_with_context(), expected);
+    #[test]
+    fn test_normalize_documents_without_documents() {
+        let request = CompletionRequest {
+            preamble: None,
+            chat_history: OneOrMany::one("What is the capital of France?".into()),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            additional_params: None,
+        };
+
+        assert_eq!(request.normalized_documents(), None);
     }
 }

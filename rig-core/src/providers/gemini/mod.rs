@@ -12,6 +12,9 @@
 pub mod client;
 pub mod completion;
 pub mod embedding;
+pub mod streaming;
+pub mod transcription;
+
 pub use client::Client;
 
 pub mod gemini_api_types {
@@ -22,7 +25,7 @@ pub mod gemini_api_types {
     pub enum ExecutionLanguage {
         /// Unspecified language. This value should not be used.
         LanguageUnspecified,
-        /// Python >= 3.10, with numpy and simpy available.
+        /// Python >= 3.10, with numpy and simply available.
         Python,
     }
 

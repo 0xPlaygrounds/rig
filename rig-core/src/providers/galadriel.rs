@@ -10,6 +10,10 @@
 //!
 //! let gpt4o = client.completion_model(galadriel::GPT_4O);
 //! ```
+use super::openai;
+use crate::json_utils::merge;
+use crate::providers::openai::send_compatible_streaming_request;
+use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -18,9 +22,7 @@ use crate::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-
-use super::openai;
+use serde_json::{json, Value};
 
 // ================================================================
 // Main Galadriel Client
@@ -56,14 +58,14 @@ impl Client {
                     let mut headers = reqwest::header::HeaderMap::new();
                     headers.insert(
                         "Authorization",
-                        format!("Bearer {}", api_key)
+                        format!("Bearer {api_key}")
                             .parse()
                             .expect("Bearer token should parse"),
                     );
                     if let Some(key) = fine_tune_api_key {
                         headers.insert(
                             "Fine-Tune-Authorization",
-                            format!("Bearer {}", key)
+                            format!("Bearer {key}")
                                 .parse()
                                 .expect("Bearer token should parse"),
                         );
@@ -392,22 +394,17 @@ pub struct CompletionModel {
 }
 
 impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
-}
-
-impl completion::CompletionModel for CompletionModel {
-    type Response = CompletionResponse;
-
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn completion(
+    pub(crate) fn create_completion_request(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+    ) -> Result<Value, CompletionError> {
+        // Build up the order of messages (context, chat_history, prompt)
+        let mut partial_history = vec![];
+        if let Some(docs) = completion_request.normalized_documents() {
+            partial_history.push(docs);
+        }
+        partial_history.extend(completion_request.chat_history);
+
         // Add preamble to chat history (if available)
         let mut full_history: Vec<Message> = match &completion_request.preamble {
             Some(preamble) => vec![Message {
@@ -418,19 +415,13 @@ impl completion::CompletionModel for CompletionModel {
             None => vec![],
         };
 
-        // Convert prompt to user message
-        let prompt: Message = completion_request.prompt_with_context().try_into()?;
-
-        // Convert existing chat history
-        let chat_history: Vec<Message> = completion_request
-            .chat_history
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Message>, _>>()?;
-
-        // Combine all messages into a single history
-        full_history.extend(chat_history);
-        full_history.push(prompt);
+        // Convert and extend the rest of the history
+        full_history.extend(
+            partial_history
+                .into_iter()
+                .map(message::Message::try_into)
+                .collect::<Result<Vec<Message>, _>>()?,
+        );
 
         let request = if completion_request.tools.is_empty() {
             json!({
@@ -448,16 +439,39 @@ impl completion::CompletionModel for CompletionModel {
             })
         };
 
+        let request = if let Some(params) = completion_request.additional_params {
+            json_utils::merge(request, params)
+        } else {
+            request
+        };
+
+        Ok(request)
+    }
+}
+
+impl CompletionModel {
+    pub fn new(client: Client, model: &str) -> Self {
+        Self {
+            client,
+            model: model.to_string(),
+        }
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    type Response = CompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let request = self.create_completion_request(completion_request)?;
+
         let response = self
             .client
             .post("/chat/completions")
-            .json(
-                &if let Some(params) = completion_request.additional_params {
-                    json_utils::merge(request, params)
-                } else {
-                    request
-                },
-            )
+            .json(&request)
             .send()
             .await?;
 
@@ -478,5 +492,25 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+}
+
+impl StreamingCompletionModel for CompletionModel {
+    type StreamingResponse = openai::StreamingCompletionResponse;
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        let mut request = self.create_completion_request(request)?;
+
+        request = merge(
+            request,
+            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        );
+
+        let builder = self.client.post("/chat/completions").json(&request);
+
+        send_compatible_streaming_request(builder).await
     }
 }

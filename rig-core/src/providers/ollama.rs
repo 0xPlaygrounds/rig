@@ -38,6 +38,8 @@
 //! let agent = client.agent("llama3.2");
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
+use crate::json_utils::merge_inplace;
+use crate::streaming::{RawStreamingChoice, StreamingCompletionModel};
 use crate::{
     agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
@@ -45,15 +47,16 @@ use crate::{
     extractor::ExtractorBuilder,
     json_utils, message,
     message::{ImageDetail, Text},
-    Embed, OneOrMany,
+    streaming, Embed, OneOrMany,
 };
+use async_stream::stream;
+use futures::StreamExt;
 use reqwest;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::Infallible;
 use std::{convert::TryFrom, str::FromStr};
-
 // ---------- Main Client ----------
 
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
@@ -317,20 +320,32 @@ impl CompletionModel {
             model: model.to_owned(),
         }
     }
-}
 
-// ---------- CompletionModel Implementation ----------
-
-impl completion::CompletionModel for CompletionModel {
-    type Response = CompletionResponse;
-
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn completion(
+    fn create_completion_request(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<Value, CompletionError> {
+        // Build up the order of messages (context, chat_history)
+        let mut partial_history = vec![];
+        if let Some(docs) = completion_request.normalized_documents() {
+            partial_history.push(docs);
+        }
+        partial_history.extend(completion_request.chat_history);
+
+        // Initialize full history with preamble (or empty if non-existent)
+        let mut full_history: Vec<Message> = completion_request
+            .preamble
+            .map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
+
+        // Convert and extend the rest of the history
+        full_history.extend(
+            partial_history
+                .into_iter()
+                .map(|msg| msg.try_into())
+                .collect::<Result<Vec<Message>, _>>()?,
+        );
+
         // Convert internal prompt into a provider Message
-        let prompt: Message = completion_request.prompt_with_context().try_into()?;
         let options = if let Some(extra) = completion_request.additional_params {
             json_utils::merge(
                 json!({ "temperature": completion_request.temperature }),
@@ -339,16 +354,6 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             json!({ "temperature": completion_request.temperature })
         };
-
-        // Chat mode: assemble full conversation history including preamble and chat history
-        let mut full_history = Vec::new();
-        if let Some(preamble) = completion_request.preamble {
-            full_history.push(Message::system(&preamble));
-        }
-        for msg in completion_request.chat_history.into_iter() {
-            full_history.push(Message::try_from(msg)?);
-        }
-        full_history.push(prompt);
 
         let mut request_payload = json!({
             "model": self.model,
@@ -365,6 +370,23 @@ impl completion::CompletionModel for CompletionModel {
         }
 
         tracing::debug!(target: "rig", "Chat mode payload: {}", request_payload);
+
+        Ok(request_payload)
+    }
+}
+
+// ---------- CompletionModel Implementation ----------
+
+impl completion::CompletionModel for CompletionModel {
+    type Response = CompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+        let request_payload = self.create_completion_request(completion_request)?;
+
         let response = self
             .client
             .post("api/chat")
@@ -389,6 +411,111 @@ impl completion::CompletionModel for CompletionModel {
                 .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
             Err(CompletionError::ProviderError(err_text))
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct StreamingCompletionResponse {
+    pub done_reason: Option<String>,
+    pub total_duration: Option<u64>,
+    pub load_duration: Option<u64>,
+    pub prompt_eval_count: Option<u64>,
+    pub prompt_eval_duration: Option<u64>,
+    pub eval_count: Option<u64>,
+    pub eval_duration: Option<u64>,
+}
+
+impl StreamingCompletionModel for CompletionModel {
+    type StreamingResponse = StreamingCompletionResponse;
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    {
+        let mut request_payload = self.create_completion_request(request)?;
+        merge_inplace(&mut request_payload, json!({"stream": true}));
+
+        let response = self
+            .client
+            .post("api/chat")
+            .json(&request_payload)
+            .send()
+            .await
+            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let err_text = response
+                .text()
+                .await
+                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            return Err(CompletionError::ProviderError(err_text));
+        }
+
+        let stream = Box::pin(stream! {
+            let mut stream = response.bytes_stream();
+            while let Some(chunk_result) = stream.next().await {
+                let chunk = match chunk_result {
+                    Ok(c) => c,
+                    Err(e) => {
+                        yield Err(CompletionError::from(e));
+                        break;
+                    }
+                };
+
+                let text = match String::from_utf8(chunk.to_vec()) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        yield Err(CompletionError::ResponseError(e.to_string()));
+                        break;
+                    }
+                };
+
+
+                for line in text.lines() {
+                    let line = line.to_string();
+
+                    let Ok(response) = serde_json::from_str::<CompletionResponse>(&line) else {
+                        continue;
+                    };
+
+                    match response.message {
+                        Message::Assistant{ content, tool_calls, .. } => {
+                            if !content.is_empty() {
+                                yield Ok(RawStreamingChoice::Message(content))
+                            }
+
+                            for tool_call in tool_calls.iter() {
+                                let function = tool_call.function.clone();
+
+                                yield Ok(RawStreamingChoice::ToolCall {
+                                    id: "".to_string(),
+                                    name: function.name,
+                                    arguments: function.arguments
+                                });
+                            }
+                        }
+                        _ => {
+                            continue;
+                        }
+                    }
+
+                    if response.done {
+                        yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                            total_duration: response.total_duration,
+                            load_duration: response.load_duration,
+                            prompt_eval_count: response.prompt_eval_count,
+                            prompt_eval_duration: response.prompt_eval_duration,
+                            eval_count: response.eval_count,
+                            eval_duration: response.eval_duration,
+                            done_reason: response.done_reason,
+                        }));
+                    }
+                }
+            }
+        });
+
+        Ok(streaming::StreamingCompletionResponse::new(stream))
     }
 }
 
