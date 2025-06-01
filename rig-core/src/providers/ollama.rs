@@ -39,6 +39,7 @@
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
 use crate::json_utils::merge_inplace;
+use crate::message::MessageError;
 use crate::streaming::{RawStreamingChoice, StreamingCompletionModel};
 use crate::{
     agent::AgentBuilder,
@@ -615,6 +616,31 @@ impl TryFrom<crate::message::Message> for Message {
                     match uc {
                         crate::message::UserContent::Text(t) => texts.push(t.text),
                         crate::message::UserContent::Image(img) => images.push(img.data),
+                        crate::message::UserContent::ToolResult(result) => {
+                            let crate::message::ToolResultContent::Text(_) = result.content.first()
+                            else {
+                                return Err(MessageError::ConversionError(
+                                    "Non-text tool results not supported".to_string(),
+                                ));
+                            };
+
+                            let content = result
+                                .content
+                                .into_iter()
+                                .map(ToolResultContent::try_from)
+                                .collect::<Result<Vec<ToolResultContent>, MessageError>>()?;
+
+                            let content = OneOrMany::many(content).map_err(|x| {
+                                MessageError::ConversionError(format!(
+                                    "Couldn't make a OneOrMany from a list of tool results: {x}"
+                                ))
+                            })?;
+
+                            return Ok(Message::ToolResult {
+                                tool_call_id: result.id,
+                                content,
+                            });
+                        }
                         _ => {} // Audio variant removed since Ollama API does not support it.
                     }
                 }
@@ -726,6 +752,19 @@ impl Message {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolResultContent {
     text: String,
+}
+
+impl TryFrom<crate::message::ToolResultContent> for ToolResultContent {
+    type Error = MessageError;
+    fn try_from(value: crate::message::ToolResultContent) -> Result<Self, Self::Error> {
+        let crate::message::ToolResultContent::Text(Text { text }) = value else {
+            return Err(MessageError::ConversionError(
+                "Non-text tool results not supported".into(),
+            ));
+        };
+
+        Ok(Self { text })
+    }
 }
 
 impl FromStr for ToolResultContent {
