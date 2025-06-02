@@ -13,7 +13,7 @@ serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0.108"
 tracing = "0.1.40"
 schemars = "0.8.16"
-fastembed = "4.4.0"
+fastembed = "4.9.0"
 
 [dev-dependencies]
 anyhow = "1.0.75"
