@@ -593,10 +593,7 @@ pub enum Message {
         name: Option<String>,
     },
     #[serde(rename = "Tool")]
-    ToolResult {
-        tool_call_id: String,
-        content: OneOrMany<ToolResultContent>,
-    },
+    ToolResult { name: String, content: String },
 }
 
 /// -----------------------------
@@ -630,8 +627,8 @@ impl TryFrom<crate::message::Message> for Message {
                             })?;
 
                             return Ok(Message::ToolResult {
-                                tool_call_id: result.id,
-                                content,
+                                name: result.id,
+                                content: content.first().text,
                             });
                         }
                         _ => {} // Audio variant removed since Ollama API does not support it.
@@ -716,13 +713,10 @@ impl From<Message> for crate::completion::Message {
                     text: content,
                 })),
             },
-            Message::ToolResult {
-                tool_call_id,
-                content,
-            } => crate::completion::Message::User {
+            Message::ToolResult { name, content } => crate::completion::Message::User {
                 content: OneOrMany::one(message::UserContent::tool_result(
-                    tool_call_id,
-                    content.map(|content| message::ToolResultContent::text(content.text)),
+                    name,
+                    OneOrMany::one(message::ToolResultContent::Text(Text { text: content })),
                 )),
             },
         }
