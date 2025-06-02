@@ -617,13 +617,6 @@ impl TryFrom<crate::message::Message> for Message {
                         crate::message::UserContent::Text(t) => texts.push(t.text),
                         crate::message::UserContent::Image(img) => images.push(img.data),
                         crate::message::UserContent::ToolResult(result) => {
-                            let crate::message::ToolResultContent::Text(_) = result.content.first()
-                            else {
-                                return Err(MessageError::ConversionError(
-                                    "Non-text tool results not supported".to_string(),
-                                ));
-                            };
-
                             let content = result
                                 .content
                                 .into_iter()
