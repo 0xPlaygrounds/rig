@@ -36,7 +36,7 @@ fn client() -> providers::xai::Client {
 /// Create a partial xAI agent (grok)
 fn partial_agent() -> AgentBuilder<providers::xai::completion::CompletionModel> {
     let client = client();
-    client.agent(providers::xai::GROK_BETA)
+    client.agent(providers::xai::GROK_3_MINI)
 }
 
 /// Create an xAI agent (grok) with a preamble
@@ -84,7 +84,7 @@ async fn tools() -> Result<(), anyhow::Error> {
 /// This example loads in all the rust examples from the rig-core crate and uses them as\\
 ///  context for the agent
 async fn loaders() -> Result<(), anyhow::Error> {
-    let model = client().completion_model(providers::xai::GROK_BETA);
+    let model = client().completion_model(providers::xai::GROK_3_MINI);
 
     // Load in all the rust examples
     let examples = FileLoader::with_glob("rig-core/examples/*.rs")?
@@ -110,7 +110,7 @@ async fn loaders() -> Result<(), anyhow::Error> {
 }
 
 async fn context() -> Result<(), anyhow::Error> {
-    let model = client().completion_model(providers::xai::GROK_BETA);
+    let model = client().completion_model(providers::xai::GROK_3_MINI);
 
     // Create an agent with multiple context documents
     let agent = AgentBuilder::new(model)
