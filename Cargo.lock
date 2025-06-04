@@ -1137,7 +1137,7 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "tracing",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -1899,7 +1899,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "time",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -2750,7 +2750,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "url",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -2893,7 +2893,7 @@ dependencies = [
  "regex",
  "sha2",
  "unicode-segmentation",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -5749,7 +5749,7 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -5963,7 +5963,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -6069,7 +6069,7 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -6588,7 +6588,7 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -6738,7 +6738,7 @@ dependencies = [
  "smallvec",
  "tagptr",
  "thiserror 1.0.69",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -6786,7 +6786,7 @@ dependencies = [
  "tokio-rustls 0.24.1",
  "tokio-util",
  "typed-builder",
- "uuid 1.16.0",
+ "uuid 1.17.0",
  "webpki-roots 0.25.4",
 ]
 
@@ -8642,7 +8642,7 @@ dependencies = [
  "revision-derive 0.11.0",
  "roaring",
  "rust_decimal",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -8702,7 +8702,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -8804,6 +8804,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-milvus"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "reqwest 0.12.15",
+ "rig-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing-subscriber",
+ "uuid 1.17.0",
+]
+
+[[package]]
 name = "rig-mongodb"
 version = "0.2.10"
 dependencies = [
@@ -8857,7 +8871,7 @@ dependencies = [
  "tokio-test",
  "tracing",
  "tracing-subscriber",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -8872,7 +8886,7 @@ dependencies = [
  "serde_json",
  "testcontainers",
  "tokio",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -8906,7 +8920,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -8962,7 +8976,7 @@ dependencies = [
  "rkyv_derive",
  "seahash",
  "tinyvec",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -10072,7 +10086,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "url",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -10153,7 +10167,7 @@ dependencies = [
  "stringprep",
  "thiserror 2.0.12",
  "tracing",
- "uuid 1.16.0",
+ "uuid 1.17.0",
  "whoami",
 ]
 
@@ -10191,7 +10205,7 @@ dependencies = [
  "stringprep",
  "thiserror 2.0.12",
  "tracing",
- "uuid 1.16.0",
+ "uuid 1.17.0",
  "whoami",
 ]
 
@@ -10216,7 +10230,7 @@ dependencies = [
  "sqlx-core",
  "tracing",
  "url",
- "uuid 1.16.0",
+ "uuid 1.17.0",
 ]
 
 [[package]]
@@ -10408,7 +10422,7 @@ dependencies = [
  "tracing",
  "trice",
  "url",
- "uuid 1.16.0",
+ "uuid 1.17.0",
  "wasm-bindgen-futures",
  "wasmtimer",
  "ws_stream_wasm",
@@ -10498,7 +10512,7 @@ dependencies = [
  "ulid",
  "unicase",
  "url",
- "uuid 1.16.0",
+ "uuid 1.17.0",
  "vart 0.8.1",
  "wasm-bindgen-futures",
  "wasmtimer",
@@ -10723,7 +10737,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "time",
- "uuid 1.16.0",
+ "uuid 1.17.0",
  "winapi",
 ]
 
@@ -11752,9 +11766,9 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "1.16.0"
+version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "458f7a779bf54acc9f347480ac654f68407d3aab21269a6e3c9f922acd9e2da9"
+checksum = "3cf4199d1e5d15ddd86a694e4d0dffa9c323ce759fea589f00fef9d81cc1931d"
 dependencies = [
  "getrandom 0.3.2",
  "js-sys",

@@ -31,7 +31,7 @@ impl Client {
                     );
                     headers.insert(
                         "Authorization",
-                        format!("Bearer {}", api_key)
+                        format!("Bearer {api_key}")
                             .parse()
                             .expect("Bearer token should parse"),
                     );

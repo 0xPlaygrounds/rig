@@ -398,7 +398,7 @@ impl TryFrom<Message> for message::Message {
                             message::ToolResultContent::text(
                                 serde_json::to_string(&document.data).map_err(|e| {
                                     message::MessageError::ConversionError(
-                                        format!("Failed to convert tool result document content into text: {}", e),
+                                        format!("Failed to convert tool result document content into text: {e}"),
                                     )
                                 })?,
                             )

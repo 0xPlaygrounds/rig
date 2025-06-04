@@ -171,7 +171,7 @@ pub async fn send_compatible_streaming_request(
                                 };
 
                                 let new_arguments = &tool_call.function.arguments;
-                                let arguments = format!("{}{}", arguments, new_arguments);
+                                let arguments = format!("{arguments}{new_arguments}");
 
                                 calls.insert(tool_call.index, (id.clone(), name.clone(), arguments));
                             }

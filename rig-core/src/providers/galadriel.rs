@@ -56,14 +56,14 @@ impl Client {
                     let mut headers = reqwest::header::HeaderMap::new();
                     headers.insert(
                         "Authorization",
-                        format!("Bearer {}", api_key)
+                        format!("Bearer {api_key}")
                             .parse()
                             .expect("Bearer token should parse"),
                     );
                     if let Some(key) = fine_tune_api_key {
                         headers.insert(
                             "Fine-Tune-Authorization",
-                            format!("Bearer {}", key)
+                            format!("Bearer {key}")
                                 .parse()
                                 .expect("Bearer token should parse"),
                         );

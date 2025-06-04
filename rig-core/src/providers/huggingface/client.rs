@@ -35,7 +35,7 @@ impl SubProvider {
     /// in the url and in the request body.
     pub fn completion_endpoint(&self, model: &str) -> String {
         match self {
-            SubProvider::HFInference => format!("/{}/v1/chat/completions", model),
+            SubProvider::HFInference => format!("/{model}/v1/chat/completions"),
             _ => "/v1/chat/completions".to_string(),
         }
     }
@@ -45,10 +45,9 @@ impl SubProvider {
     /// in the url and in the request body.
     pub fn transcription_endpoint(&self, model: &str) -> Result<String, TranscriptionError> {
         match self {
-            SubProvider::HFInference => Ok(format!("/{}", model)),
+            SubProvider::HFInference => Ok(format!("/{model}")),
             _ => Err(TranscriptionError::ProviderError(format!(
-                "transcription endpoint is not supported yet for {}",
-                self
+                "transcription endpoint is not supported yet for {self}"
             ))),
         }
     }
@@ -69,7 +68,7 @@ impl SubProvider {
 
     pub fn model_identifier(&self, model: &str) -> String {
         match self {
-            SubProvider::Fireworks => format!("accounts/fireworks/models/{}", model),
+            SubProvider::Fireworks => format!("accounts/fireworks/models/{model}"),
             _ => model.to_string(),
         }
     }
@@ -100,7 +99,7 @@ impl Display for SubProvider {
             SubProvider::Custom(route) => route.clone(),
         };
 
-        write!(f, "{}", route)
+        write!(f, "{route}")
     }
 }
 

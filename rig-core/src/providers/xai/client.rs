@@ -28,7 +28,7 @@ impl Client {
                     );
                     headers.insert(
                         "Authorization",
-                        format!("Bearer {}", api_key)
+                        format!("Bearer {api_key}")
                             .parse()
                             .expect("Bearer token should parse"),
                     );
@@ -102,6 +102,58 @@ impl EmbeddingsClient for Client {
     /// ```
     fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> EmbeddingModel {
         EmbeddingModel::new(self.clone(), model, ndims)
+    }
+    /// Create an embedding builder with the given embedding model.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::xai::{Client, self};
+    ///
+    /// // Initialize the xAI client
+    /// let xai = Client::new("your-xai-api-key");
+    ///
+    /// let embeddings = xai.embeddings(xai::embedding::EMBEDDING_V1)
+    ///     .simple_document("doc0", "Hello, world!")
+    ///     .simple_document("doc1", "Goodbye, world!")
+    ///     .build()
+    ///     .await
+    ///     .expect("Failed to embed documents");
+    /// ```
+    pub fn embeddings<D: Embed>(
+        &self,
+        model: &str,
+    ) -> embeddings::EmbeddingsBuilder<EmbeddingModel, D> {
+        embeddings::EmbeddingsBuilder::new(self.embedding_model(model))
+    }
+
+    /// Create a completion model with the given name.
+    pub fn completion_model(&self, model: &str) -> CompletionModel {
+        CompletionModel::new(self.clone(), model)
+    }
+
+    /// Create an agent builder with the given completion model.
+    /// # Example
+    /// ```
+    /// use rig::providers::xai::{Client, self};
+    ///
+    /// // Initialize the xAI client
+    /// let xai = Client::new("your-xai-api-key");
+    ///
+    /// let agent = xai.agent(xai::completion::GROK_3_MINI)
+    ///    .preamble("You are comedian AI with a mission to make people laugh.")
+    ///    .temperature(0.0)
+    ///    .build();
+    /// ```
+    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
+        AgentBuilder::new(self.completion_model(model))
+    }
+
+    /// Create an extractor builder with the given completion model.
+    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
+        &self,
+        model: &str,
+    ) -> ExtractorBuilder<T, CompletionModel> {
+        ExtractorBuilder::new(self.completion_model(model))
     }
 }
 

@@ -233,7 +233,7 @@ pub async fn send_streaming_request(
                                 };
 
                                 // Concatenate the new chunk
-                                let combined = format!("{}{}", current_args, chunk);
+                                let combined = format!("{current_args}{chunk}");
 
                                 // Try to parse as JSON if it looks complete
                                 if combined.trim_start().starts_with('{') && combined.trim_end().ends_with('}') {
