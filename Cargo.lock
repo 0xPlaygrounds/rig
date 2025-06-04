@@ -4032,15 +4032,16 @@ checksum = "9afc2bd4d5a73106dd53d10d73d3401c2f32730ba2c0b93ddb888a8983680471"
 
 [[package]]
 name = "fastembed"
-version = "4.9.0"
+version = "4.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0862db9823f387ca704e85d48fc44ae9409d780b23fd237db03f644f55eb3ae"
+checksum = "04c269a76bfc6cea69553b7d040acb16c793119cebd97c756d21e08d0f075ff8"
 dependencies = [
  "anyhow",
  "hf-hub",
  "image",
  "ndarray 0.16.1",
  "ort",
+ "ort-sys",
  "rayon",
  "serde_json",
  "tokenizers",
