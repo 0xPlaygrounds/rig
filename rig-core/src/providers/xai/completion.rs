@@ -13,8 +13,14 @@ use super::client::{xai_api_types::ApiResponse, Client};
 use serde_json::{json, Value};
 use xai_api_types::{CompletionResponse, ToolDefinition};
 
-/// `grok-beta` completion model
-pub const GROK_BETA: &str = "grok-beta";
+/// xAI completion models as of 2025-06-04
+pub const GROK_2_1212: &str = "grok-2-1212";
+pub const GROK_2_VISION_1212: &str = "grok-2-vision-1212";
+pub const GROK_3: &str = "grok-3";
+pub const GROK_3_FAST: &str = "grok-3-fast";
+pub const GROK_3_MINI: &str = "grok-3-mini";
+pub const GROK_3_MINI_FAST: &str = "grok-3-mini-fast";
+pub const GROK_2_IMAGE_1212: &str = "grok-2-image-1212";
 
 // =================================================================
 // Rig Implementation Types

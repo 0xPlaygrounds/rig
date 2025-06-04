@@ -134,7 +134,7 @@ impl Client {
     /// // Initialize the xAI client
     /// let xai = Client::new("your-xai-api-key");
     ///
-    /// let agent = xai.agent(xai::completion::GROK_BETA)
+    /// let agent = xai.agent(xai::completion::GROK_3_MINI)
     ///    .preamble("You are comedian AI with a mission to make people laugh.")
     ///    .temperature(0.0)
     ///    .build();
