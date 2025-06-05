@@ -9,6 +9,9 @@ use rig::{
     Embed,
 };
 
+/// The `rig-fastembed` client.
+///
+/// Use this as your main entrypoint for any `rig-fastembed` functionality.
 #[derive(Clone)]
 pub struct Client;
 
@@ -19,7 +22,7 @@ impl Default for Client {
 }
 
 impl Client {
-    /// Create a new Fastembed client.
+    /// Create a new `rig-fastembed` client.
     pub fn new() -> Self {
         Self
     }
@@ -32,13 +35,13 @@ impl Client {
     /// ```
     /// use rig_fastembed::{Client, FastembedModel};
     ///
-    /// // Initialize the OpenAI client
-    /// let fastembed_client = Client::new("your-open-ai-api-key");
+    /// // Initialize the `rig-fastembed` client
+    /// let fastembed_client = rig_fastembed::Client::new();
     ///
     /// let embedding_model = fastembed_client.embedding_model(&FastembedModel::AllMiniLML6V2Q);
     /// ```
     pub fn embedding_model(&self, model: &FastembedModel) -> EmbeddingModel {
-        let ndims = fetch_model_ndims(model);
+        let ndims = TextEmbedding::get_model_info(model).unwrap().dim;
 
         EmbeddingModel::new(model, ndims)
     }
@@ -139,38 +142,5 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             .collect::<Vec<embeddings::Embedding>>();
 
         Ok(docs)
-    }
-}
-
-/// As seen on the text embedding model cards file: <https://github.com/Anush008/fastembed-rs/blob/main/src/models/text_embedding.rs>
-pub fn fetch_model_ndims(model: &FastembedModel) -> usize {
-    match model {
-        FastembedModel::AllMiniLML6V2
-        | FastembedModel::AllMiniLML6V2Q
-        | FastembedModel::AllMiniLML12V2
-        | FastembedModel::AllMiniLML12V2Q
-        | FastembedModel::BGESmallENV15
-        | FastembedModel::BGESmallENV15Q
-        | FastembedModel::ParaphraseMLMiniLML12V2Q
-        | FastembedModel::ParaphraseMLMiniLML12V2
-        | FastembedModel::MultilingualE5Small => 384,
-        FastembedModel::BGESmallZHV15 | FastembedModel::ClipVitB32 => 512,
-        FastembedModel::BGEBaseENV15
-        | FastembedModel::BGEBaseENV15Q
-        | FastembedModel::NomicEmbedTextV1
-        | FastembedModel::NomicEmbedTextV15
-        | FastembedModel::NomicEmbedTextV15Q
-        | FastembedModel::ParaphraseMLMpnetBaseV2
-        | FastembedModel::MultilingualE5Base
-        | FastembedModel::GTEBaseENV15
-        | FastembedModel::GTEBaseENV15Q
-        | FastembedModel::JinaEmbeddingsV2BaseCode => 768,
-        FastembedModel::BGELargeENV15
-        | FastembedModel::BGELargeENV15Q
-        | FastembedModel::MultilingualE5Large
-        | FastembedModel::MxbaiEmbedLargeV1
-        | FastembedModel::MxbaiEmbedLargeV1Q
-        | FastembedModel::GTELargeENV15
-        | FastembedModel::GTELargeENV15Q => 1024,
     }
 }
