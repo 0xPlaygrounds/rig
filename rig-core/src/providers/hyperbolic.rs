@@ -520,14 +520,14 @@ mod audio_generation {
     #[derive(Clone)]
     pub struct AudioGenerationModel {
         client: Client,
-        pub langauge: String,
+        pub language: String,
     }
 
     impl AudioGenerationModel {
         pub(crate) fn new(client: Client, language: &str) -> AudioGenerationModel {
             Self {
                 client,
-                langauge: language.to_string(),
+                language: language.to_string(),
             }
         }
     }
@@ -563,7 +563,7 @@ mod audio_generation {
         ) -> Result<audio_generation::AudioGenerationResponse<Self::Response>, AudioGenerationError>
         {
             let request = json!({
-                "language": self.langauge,
+                "language": self.language,
                 "speaker": request.voice,
                 "text": request.text,
                 "speed": request.speed
