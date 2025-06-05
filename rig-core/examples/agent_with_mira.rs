@@ -1,9 +1,12 @@
+use rig::prelude::*;
 use rig::{
     completion::{Prompt, ToolDefinition},
     providers,
     tool::Tool,
 };
+
 use serde::{Deserialize, Serialize};
+
 use serde_json::json;
 
 #[tokio::main]
@@ -15,8 +18,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Initialize the Mira client using environment variables
-    let client = providers::mira::Client::from_env()
-        .map_err(|e| anyhow::anyhow!("Failed to initialize Mira client: {}", e))?;
+    let client = providers::mira::Client::from_env();
 
     // Test API connection first by listing models
     println!("\nTesting API connection by listing models...");
@@ -60,7 +62,6 @@ async fn main() -> Result<(), anyhow::Error> {
         "Mira Calculator Agent: {}",
         calculator_agent.prompt("Calculate 15 - 7").await?
     );
-
     Ok(())
 }
 
@@ -76,9 +77,9 @@ struct MathError;
 
 #[derive(Deserialize, Serialize)]
 struct Adder;
+
 impl Tool for Adder {
     const NAME: &'static str = "add";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
@@ -108,12 +109,11 @@ impl Tool for Adder {
         Ok(result)
     }
 }
-
 #[derive(Deserialize, Serialize)]
 struct Subtract;
+
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;

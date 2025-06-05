@@ -2,11 +2,12 @@
 //! It provides traits, structs, and enums for generating audio transcription requests,
 //! handling transcription responses, and defining transcription models.
 
-use std::{fs, path::Path};
-
-use thiserror::Error;
-
+use crate::client::transcription::TranscriptionModelHandle;
 use crate::json_utils;
+use futures::future::BoxFuture;
+use std::sync::Arc;
+use std::{fs, path::Path};
+use thiserror::Error;
 
 // Errors
 #[derive(Debug, Error)]
@@ -75,6 +76,37 @@ pub trait TranscriptionModel: Clone + Send + Sync {
     /// Generates a transcription request builder for the given `file`
     fn transcription_request(&self) -> TranscriptionRequestBuilder<Self> {
         TranscriptionRequestBuilder::new(self.clone())
+    }
+}
+
+pub trait TranscriptionModelDyn: Send + Sync {
+    fn transcription(
+        &self,
+        request: TranscriptionRequest,
+    ) -> BoxFuture<'_, Result<TranscriptionResponse<()>, TranscriptionError>>;
+
+    fn transcription_request(&self) -> TranscriptionRequestBuilder<TranscriptionModelHandle<'_>>;
+}
+
+impl<T: TranscriptionModel> TranscriptionModelDyn for T {
+    fn transcription(
+        &self,
+        request: TranscriptionRequest,
+    ) -> BoxFuture<'_, Result<TranscriptionResponse<()>, TranscriptionError>> {
+        Box::pin(async move {
+            let resp = self.transcription(request).await?;
+
+            Ok(TranscriptionResponse {
+                text: resp.text,
+                response: (),
+            })
+        })
+    }
+
+    fn transcription_request(&self) -> TranscriptionRequestBuilder<TranscriptionModelHandle<'_>> {
+        TranscriptionRequestBuilder::new(TranscriptionModelHandle {
+            inner: Arc::new(self.clone()),
+        })
     }
 }
 

@@ -7,20 +7,19 @@
 //! let client = mira::Client::new("YOUR_API_KEY");
 //!
 //! ```
+use crate::client::{CompletionClient, ProviderClient};
 use crate::json_utils::merge;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
+use crate::streaming::StreamingCompletionResponse;
 use crate::{
-    agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
-    extractor::ExtractorBuilder,
+    impl_conversion_traits,
     message::{self, AssistantContent, Message, UserContent},
     OneOrMany,
 };
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::string::FromUtf8Error;
 use thiserror::Error;
@@ -108,7 +107,7 @@ struct ModelInfo {
     id: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 /// Client for interacting with the Mira API
 pub struct Client {
     base_url: String,
@@ -142,13 +141,6 @@ impl Client {
                 .expect("Failed to build HTTP client"),
             headers,
         })
-    }
-
-    /// Create a new Mira client from the `MIRA_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    pub fn from_env() -> Result<Self, MiraError> {
-        let api_key = std::env::var("MIRA_API_KEY").expect("MIRA_API_KEY not set");
-        Self::new(&api_key)
     }
 
     /// Create a new Mira client with a custom base URL and API key
@@ -190,25 +182,31 @@ impl Client {
 
         Ok(models.data.into_iter().map(|model| model.id).collect())
     }
+}
 
-    /// Create a completion model with the given name.
-    pub fn completion_model(&self, model: &str) -> CompletionModel {
-        CompletionModel::new(self.to_owned(), model)
-    }
-
-    /// Create an agent builder with the given completion model.
-    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    /// Create an extractor builder with the given completion model.
-    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
-        &self,
-        model: &str,
-    ) -> ExtractorBuilder<T, CompletionModel> {
-        ExtractorBuilder::new(self.completion_model(model))
+impl ProviderClient for Client {
+    /// Create a new Mira client from the `MIRA_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    fn from_env() -> Self {
+        let api_key = std::env::var("MIRA_API_KEY").expect("MIRA_API_KEY not set");
+        Self::new(&api_key).expect("Could not create Mira Client")
     }
 }
+
+impl CompletionClient for Client {
+    type CompletionModel = CompletionModel;
+    /// Create a completion model with the given name.
+    fn completion_model(&self, model: &str) -> CompletionModel {
+        CompletionModel::new(self.to_owned(), model)
+    }
+}
+
+impl_conversion_traits!(
+    AsEmbeddings,
+    AsTranscription,
+    AsImageGeneration,
+    AsAudioGeneration for Client
+);
 
 #[derive(Clone)]
 pub struct CompletionModel {
@@ -305,6 +303,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = openai::StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -345,10 +344,8 @@ impl completion::CompletionModel for CompletionModel {
 
         response.try_into()
     }
-}
 
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = openai::StreamingCompletionResponse;
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         completion_request: CompletionRequest,

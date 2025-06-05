@@ -1,3 +1,4 @@
+use rig::prelude::*;
 use rig::{
     completion::{Prompt, ToolDefinition},
     providers,
@@ -5,7 +6,6 @@ use rig::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt()
@@ -18,8 +18,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .agent("deepseek-chat")
         .preamble("You are a helpful assistant.")
         .build();
-
     let answer = agent.prompt("Tell me a joke").await?;
+
     println!("Answer: {}", answer);
 
     // Create agent with a single context prompt and two tools
@@ -33,6 +33,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Prompt the agent and print the response
     println!("Calculate 2 - 5");
+
     println!(
         "DeepSeek Calculator Agent: {}",
         calculator_agent.prompt("Calculate 2 - 5").await?
@@ -53,9 +54,9 @@ struct MathError;
 
 #[derive(Deserialize, Serialize)]
 struct Adder;
+
 impl Tool for Adder {
     const NAME: &'static str = "add";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
@@ -86,12 +87,11 @@ impl Tool for Adder {
         Ok(result)
     }
 }
-
 #[derive(Deserialize, Serialize)]
 struct Subtract;
+
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
@@ -116,7 +116,6 @@ impl Tool for Subtract {
         }))
         .expect("Tool Definition")
     }
-
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("[tool-call] Subtracting {} from {}", args.y, args.x);
         let result = args.x - args.y;

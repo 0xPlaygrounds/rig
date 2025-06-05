@@ -1,4 +1,9 @@
-use rig::{Embed, embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex};
+use rig::{
+    Embed,
+    client::{EmbeddingsClient, ProviderClient},
+    embeddings::EmbeddingsBuilder,
+    vector_store::VectorStoreIndex,
+};
 use serde::{Deserialize, Serialize};
 
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `WordDefinition`

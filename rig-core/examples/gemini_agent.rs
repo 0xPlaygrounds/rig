@@ -1,10 +1,10 @@
+use rig::prelude::*;
 use rig::{
     completion::Prompt,
     providers::gemini::{self, completion::gemini_api_types::GenerationConfig},
 };
 #[tracing::instrument(ret)]
 #[tokio::main]
-
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
@@ -27,7 +27,6 @@ async fn main() -> Result<(), anyhow::Error> {
             ..Default::default()
         })?) // Unwrap the Result to get the Value
         .build();
-
     tracing::info!("Prompting the agent...");
 
     // Prompt the agent and print the response

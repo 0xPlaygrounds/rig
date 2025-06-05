@@ -1,3 +1,4 @@
+use rig::prelude::*;
 use rig::providers::openai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

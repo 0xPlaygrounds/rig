@@ -1,6 +1,6 @@
-use std::env;
-
+use rig::prelude::*;
 use rig::{completion::Prompt, providers};
+use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -17,6 +17,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Prompt the agent and print the response
     let response = comedian_agent.prompt("Entertain me!").await?;
+
     println!("{}", response);
 
     Ok(())

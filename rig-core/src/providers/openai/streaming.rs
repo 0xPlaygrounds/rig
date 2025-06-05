@@ -4,7 +4,7 @@ use crate::json_utils;
 use crate::json_utils::merge;
 use crate::providers::openai::Usage;
 use crate::streaming;
-use crate::streaming::{RawStreamingChoice, StreamingCompletionModel};
+use crate::streaming::RawStreamingChoice;
 use async_stream::stream;
 use futures::StreamExt;
 use reqwest::RequestBuilder;
@@ -55,12 +55,11 @@ pub struct StreamingCompletionResponse {
     pub usage: Usage,
 }
 
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = StreamingCompletionResponse;
-    async fn stream(
+impl CompletionModel {
+    pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let mut request = self.create_completion_request(completion_request)?;
         request = merge(
@@ -216,5 +215,5 @@ pub async fn send_compatible_streaming_request(
         }))
     });
 
-    Ok(streaming::StreamingCompletionResponse::new(inner))
+    Ok(streaming::StreamingCompletionResponse::stream(inner))
 }

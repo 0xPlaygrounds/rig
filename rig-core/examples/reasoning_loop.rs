@@ -1,3 +1,4 @@
+use rig::prelude::*;
 use rig::{
     agent::Agent,
     completion::{CompletionError, CompletionModel, Prompt, PromptError, ToolDefinition},
@@ -38,28 +39,23 @@ impl<M: CompletionModel> Prompt for ReasoningAgent<M> {
                 tracing::error!("Extraction error: {:?}", e);
                 CompletionError::ProviderError("".into())
             })?;
-
         if extracted.steps.is_empty() {
             return Ok("No reasoning steps provided.".into());
         }
-
         let mut reasoning_prompt = String::new();
         for (i, step) in extracted.steps.iter().enumerate() {
             reasoning_prompt.push_str(&format!("Step {}: {}\n", i + 1, step));
         }
-
         let response = self
             .executor
             .prompt(reasoning_prompt.as_str())
             .with_history(&mut chat_history)
             .multi_turn(20)
             .await?;
-
         tracing::info!(
             "full chat history generated: {}",
             serde_json::to_string_pretty(&chat_history).unwrap()
         );
-
         Ok(response)
     }
 }
@@ -71,9 +67,8 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    // Create OpenAI client
+    // Create Anthropic client
     let anthropic_client = anthropic::Client::from_env();
-
     let agent = ReasoningAgent {
         chain_of_thought_extractor: anthropic_client
             .extractor(anthropic::CLAUDE_3_5_SONNET)
@@ -84,9 +79,9 @@ async fn main() -> anyhow::Result<()> {
             .agent(anthropic::CLAUDE_3_5_SONNET)
             .preamble(
                 "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
-                Follow these instructions closely. 
+                Follow these instructions closely.
                 1. Consider the user's request carefully and identify the core elements of the request.
-                2. Select which tool among those made available to you is appropriate given the context. 
+                2. Select which tool among those made available to you is appropriate given the context.
                 3. This is very important: never perform the operation yourself.
                 4. When you think you've finished calling tools for the operation, present the final result from the series of tool calls you made.
                 "
@@ -120,9 +115,9 @@ struct MathError;
 
 #[derive(Deserialize, Serialize)]
 struct Add;
+
 impl Tool for Add {
     const NAME: &'static str = "add";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
@@ -147,22 +142,18 @@ impl Tool for Add {
         }))
         .expect("Tool Definition")
     }
-
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
         Ok(result)
     }
 }
-
 #[derive(Deserialize, Serialize)]
 struct Subtract;
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
-
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         serde_json::from_value(json!({
             "name": "subtract",
@@ -191,9 +182,9 @@ impl Tool for Subtract {
 }
 
 struct Multiply;
+
 impl Tool for Multiply {
     const NAME: &'static str = "multiply";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
@@ -226,9 +217,9 @@ impl Tool for Multiply {
 }
 
 struct Divide;
+
 impl Tool for Divide {
     const NAME: &'static str = "divide";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;

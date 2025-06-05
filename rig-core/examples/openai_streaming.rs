@@ -1,3 +1,4 @@
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::{stream_to_stdout, StreamingPrompt};
 

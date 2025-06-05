@@ -38,22 +38,20 @@
 //! let agent = client.agent("llama3.2");
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
+use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient};
 use crate::json_utils::merge_inplace;
 use crate::message::MessageError;
-use crate::streaming::{RawStreamingChoice, StreamingCompletionModel};
+use crate::streaming::RawStreamingChoice;
 use crate::{
-    agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
-    extractor::ExtractorBuilder,
-    json_utils, message,
+    impl_conversion_traits, json_utils, message,
     message::{ImageDetail, Text},
     streaming, Embed, OneOrMany,
 };
 use async_stream::stream;
 use futures::StreamExt;
 use reqwest;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::Infallible;
@@ -62,7 +60,7 @@ use std::{convert::TryFrom, str::FromStr};
 
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Client {
     base_url: String,
     http_client: reqwest::Client,
@@ -90,28 +88,43 @@ impl Client {
         let url = format!("{}/{}", self.base_url, path);
         self.http_client.post(url)
     }
-    pub fn embedding_model(&self, model: &str) -> EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, 0)
-    }
-    pub fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, ndims)
-    }
-    pub fn embeddings<D: Embed>(&self, model: &str) -> EmbeddingsBuilder<EmbeddingModel, D> {
-        EmbeddingsBuilder::new(self.embedding_model(model))
-    }
-    pub fn completion_model(&self, model: &str) -> CompletionModel {
-        CompletionModel::new(self.clone(), model)
-    }
-    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
-        &self,
-        model: &str,
-    ) -> ExtractorBuilder<T, CompletionModel> {
-        ExtractorBuilder::new(self.completion_model(model))
+}
+
+impl ProviderClient for Client {
+    fn from_env() -> Self
+    where
+        Self: Sized,
+    {
+        Client::default()
     }
 }
+
+impl CompletionClient for Client {
+    type CompletionModel = CompletionModel;
+
+    fn completion_model(&self, model: &str) -> CompletionModel {
+        CompletionModel::new(self.clone(), model)
+    }
+}
+
+impl EmbeddingsClient for Client {
+    type EmbeddingModel = EmbeddingModel;
+    fn embedding_model(&self, model: &str) -> EmbeddingModel {
+        EmbeddingModel::new(self.clone(), model, 0)
+    }
+    fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> EmbeddingModel {
+        EmbeddingModel::new(self.clone(), model, ndims)
+    }
+    fn embeddings<D: Embed>(&self, model: &str) -> EmbeddingsBuilder<EmbeddingModel, D> {
+        EmbeddingsBuilder::new(self.embedding_model(model))
+    }
+}
+
+impl_conversion_traits!(
+    AsTranscription,
+    AsImageGeneration,
+    AsAudioGeneration for Client
+);
 
 // ---------- API Error and Response Structures ----------
 
@@ -378,8 +391,19 @@ impl CompletionModel {
 
 // ---------- CompletionModel Implementation ----------
 
+#[derive(Clone)]
+pub struct StreamingCompletionResponse {
+    pub done_reason: Option<String>,
+    pub total_duration: Option<u64>,
+    pub load_duration: Option<u64>,
+    pub prompt_eval_count: Option<u64>,
+    pub prompt_eval_duration: Option<u64>,
+    pub eval_count: Option<u64>,
+    pub eval_duration: Option<u64>,
+}
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -413,22 +437,8 @@ impl completion::CompletionModel for CompletionModel {
             Err(CompletionError::ProviderError(err_text))
         }
     }
-}
 
-#[derive(Clone)]
-pub struct StreamingCompletionResponse {
-    pub done_reason: Option<String>,
-    pub total_duration: Option<u64>,
-    pub load_duration: Option<u64>,
-    pub prompt_eval_count: Option<u64>,
-    pub prompt_eval_duration: Option<u64>,
-    pub eval_count: Option<u64>,
-    pub eval_duration: Option<u64>,
-}
-
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = StreamingCompletionResponse;
-
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         request: CompletionRequest,
@@ -516,7 +526,7 @@ impl StreamingCompletionModel for CompletionModel {
             }
         });
 
-        Ok(streaming::StreamingCompletionResponse::new(stream))
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }
 

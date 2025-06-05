@@ -1,4 +1,5 @@
 use rig::audio_generation::AudioGenerationModel;
+use rig::prelude::*;
 use rig::providers::openai;
 use std::env::args;
 use std::fs::File;
@@ -21,7 +22,6 @@ async fn main() {
     let mut file = File::create_new(path).expect("Failed to create file");
 
     let openai = openai::Client::from_env();
-
     let tts = openai.audio_generation_model(openai::TTS_1);
 
     let response = tts

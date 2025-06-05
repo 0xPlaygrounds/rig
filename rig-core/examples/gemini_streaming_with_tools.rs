@@ -1,4 +1,5 @@
 use anyhow::Result;
+use rig::prelude::*;
 use rig::streaming::stream_to_stdout;
 use rig::{completion::ToolDefinition, providers, streaming::StreamingPrompt, tool::Tool};
 use serde::{Deserialize, Serialize};
@@ -16,9 +17,9 @@ struct MathError;
 
 #[derive(Deserialize, Serialize)]
 struct Adder;
+
 impl Tool for Adder {
     const NAME: &'static str = "add";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
@@ -49,12 +50,11 @@ impl Tool for Adder {
         Ok(result)
     }
 }
-
 #[derive(Deserialize, Serialize)]
 struct Subtract;
+
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
@@ -86,17 +86,17 @@ impl Tool for Subtract {
         Ok(result)
     }
 }
-
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
+
     // Create agent with a single context prompt and two tools
     let calculator_agent = providers::gemini::Client::from_env()
         .agent(providers::gemini::completion::GEMINI_1_5_FLASH)
         .preamble(
-            "You are a calculator here to help the user perform arithmetic 
-            operations. Use the tools provided to answer the user's question. 
-            make your answer long, so we can test the streaming functionality, 
+            "You are a calculator here to help the user perform arithmetic
+            operations. Use the tools provided to answer the user's question.
+            make your answer long, so we can test the streaming functionality,
             like 20 words",
         )
         .max_tokens(1024)
@@ -105,7 +105,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     println!("Calculate 2 - 5");
+
     let mut stream = calculator_agent.stream_prompt("Calculate 2 - 5").await?;
+
     stream_to_stdout(&calculator_agent, &mut stream).await?;
 
     if let Some(response) = stream.response {

@@ -1,8 +1,7 @@
-use std::env;
-
+use rig::prelude::*;
 use rig::providers::openai::client::Client;
-
 use schemars::JsonSchema;
+use std::env;
 
 #[derive(serde::Deserialize, JsonSchema, serde::Serialize, Debug)]
 struct Specification {
@@ -65,7 +64,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let mut vec: Vec<TaskResults> = Vec::new();
-
     for task in specification.tasks {
         let results = content_agent
             .extract(&format!(
@@ -78,7 +76,6 @@ async fn main() -> Result<(), anyhow::Error> {
             ))
             .await
             .unwrap();
-
         vec.push(results);
     }
 
@@ -94,7 +91,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let task_results_raw_json = serde_json::to_string_pretty(&vec).unwrap();
-
     let results = judge_agent.extract(&task_results_raw_json).await.unwrap();
 
     println!("Results: {results:?}");

@@ -1,7 +1,7 @@
-use std::env;
-
 use rig::pipeline::{self, Op, TryOp};
+use rig::prelude::*;
 use rig::providers::openai::client::Client;
+use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -20,7 +20,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let default_agent = openai_client.agent("gpt-4").build();
-
     let chain = pipeline::new()
         // Use our classifier agent to classify the agent under a number of fixed topics
         .prompt(animal_agent)

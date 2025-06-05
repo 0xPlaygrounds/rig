@@ -1,3 +1,4 @@
+use rig::prelude::*;
 use rig::{
     pipeline::{self, agent_ops, TryOp},
     providers::openai,
@@ -6,22 +7,22 @@ use rig::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, JsonSchema, Serialize)]
 /// A record containing extracted names
+#[derive(Debug, Deserialize, JsonSchema, Serialize)]
 pub struct Names {
     /// The names extracted from the text
     pub names: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema, Serialize)]
 /// A record containing extracted topics
+#[derive(Debug, Deserialize, JsonSchema, Serialize)]
 pub struct Topics {
     /// The topics extracted from the text
     pub topics: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema, Serialize)]
 /// A record containing extracted sentiment
+#[derive(Debug, Deserialize, JsonSchema, Serialize)]
 pub struct Sentiment {
     /// The sentiment of the text (-1 being negative, 1 being positive)
     pub sentiment: f64,
@@ -37,12 +38,10 @@ async fn main() -> anyhow::Result<()> {
         .extractor::<Names>("gpt-4")
         .preamble("Extract names (e.g.: of people, places) from the given text.")
         .build();
-
     let topics_extractor = openai
         .extractor::<Topics>("gpt-4")
         .preamble("Extract topics from the given text.")
         .build();
-
     let sentiment_extractor = openai
         .extractor::<Sentiment>("gpt-4")
         .preamble(

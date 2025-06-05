@@ -1,3 +1,4 @@
+use rig::prelude::*;
 use rig::providers::xai;
 use rig::Embed;
 
@@ -11,7 +12,6 @@ struct Greetings {
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize the xAI client
     let client = xai::Client::from_env();
-
     let embeddings = client
         .embeddings(xai::embedding::EMBEDDING_V1)
         .document(Greetings {

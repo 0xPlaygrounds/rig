@@ -1,9 +1,9 @@
-use std::env;
-
+use rig::prelude::*;
 use rig::{
     completion::Prompt,
     providers::anthropic::{self, CLAUDE_3_5_SONNET},
 };
+use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -24,6 +24,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = agent
         .prompt("When and where and what type is the next solar eclipse?")
         .await?;
+
     println!("{}", response);
 
     Ok(())

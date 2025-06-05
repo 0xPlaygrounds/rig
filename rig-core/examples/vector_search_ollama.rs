@@ -1,9 +1,11 @@
+use rig::prelude::*;
 use rig::{
     embeddings::EmbeddingsBuilder,
     providers,
     vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
     Embed,
 };
+
 use serde::{Deserialize, Serialize};
 
 // Shape of data that needs to be RAG'ed.
@@ -20,7 +22,6 @@ struct WordDefinition {
 async fn main() -> Result<(), anyhow::Error> {
     // Create ollama client
     let client = providers::ollama::Client::from_url("http://localhost:11434");
-
     let embedding_model = client.embedding_model("nomic-embed-text");
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())

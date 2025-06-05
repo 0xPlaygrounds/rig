@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use rig::prelude::*;
 use rig::{
     embeddings::EmbeddingsBuilder, loaders::PdfFileLoader, providers::openai,
     vector_store::in_memory_store::InMemoryVectorStore, Embed,
@@ -15,7 +16,6 @@ struct Document {
 
 fn load_pdf(path: PathBuf) -> Result<Vec<String>> {
     const CHUNK_SIZE: usize = 2000;
-
     let content_chunks = PdfFileLoader::with_glob(path.to_str().context("Invalid path")?)?
         .read()
         .into_iter()
@@ -30,7 +30,6 @@ fn load_pdf(path: PathBuf) -> Result<Vec<String>> {
         .flat_map(|content| {
             let mut chunks = Vec::new();
             let mut current = String::new();
-
             for word in content.split_whitespace() {
                 if current.len() + word.len() + 1 > CHUNK_SIZE && !current.is_empty() {
                     chunks.push(std::mem::take(&mut current).trim().to_string());
@@ -38,19 +37,15 @@ fn load_pdf(path: PathBuf) -> Result<Vec<String>> {
                 current.push_str(word);
                 current.push(' ');
             }
-
             if !current.is_empty() {
                 chunks.push(current.trim().to_string());
             }
-
             chunks
         })
         .collect::<Vec<_>>();
-
     if content_chunks.is_empty() {
         anyhow::bail!("No content found in PDF file: {}", path.display());
     }
-
     Ok(content_chunks)
 }
 
@@ -61,10 +56,8 @@ async fn main() -> Result<()> {
 
     // Load PDFs using Rig's built-in PDF loader
     let documents_dir = std::env::current_dir()?.join("rig-core/examples/documents");
-
     let pdf_chunks =
         load_pdf(documents_dir.join("deepseek_r1.pdf")).context("Failed to load pdf documents")?;
-
     println!("Successfully loaded and chunked PDF documents");
 
     // Create embedding model
@@ -83,13 +76,11 @@ async fn main() -> Result<()> {
 
     // Build embeddings
     let embeddings = builder.build().await?;
-
     println!("Successfully generated embeddings");
 
     // Create vector store and index
     let vector_store = InMemoryVectorStore::from_documents(embeddings);
     let index = vector_store.index(model);
-
     println!("Successfully created vector store and index");
 
     // Create RAG agent

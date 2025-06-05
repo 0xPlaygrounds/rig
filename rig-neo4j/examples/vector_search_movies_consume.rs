@@ -18,6 +18,7 @@ use rig_neo4j::{vector_index::SearchParams, Neo4jClient};
 
 use std::env;
 
+use rig::client::EmbeddingsClient;
 use rig::{
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,

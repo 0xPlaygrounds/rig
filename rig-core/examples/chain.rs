@@ -1,3 +1,4 @@
+use rig::prelude::*;
 use std::env;
 
 use rig::{
@@ -13,7 +14,6 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     let openai_client = Client::new(&openai_api_key);
-
     let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     // Create embeddings for our documents
@@ -29,7 +29,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create vector store index
     let index = vector_store.index(embedding_model);
-
     let agent = openai_client.agent("gpt-4")
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
@@ -68,8 +67,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Prompt the agent and print the response
     let response = chain.call("What does \"glarb-glarb\" mean?").await?;
-
     println!("{:?}", response);
-
     Ok(())
 }

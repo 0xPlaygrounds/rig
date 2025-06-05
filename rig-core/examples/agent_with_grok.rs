@@ -1,5 +1,4 @@
-use std::env;
-
+use rig::prelude::*;
 use rig::{
     agent::AgentBuilder,
     completion::{Prompt, ToolDefinition},
@@ -9,22 +8,19 @@ use rig::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::env;
 
 /// Runs 4 agents based on grok (derived from the other examples)
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     println!("Running basic agent with grok");
     basic().await?;
-
     println!("\nRunning grok agent with tools");
     tools().await?;
-
     println!("\nRunning grok agent with loaders");
     loaders().await?;
-
     println!("\nRunning grok agent with context");
     context().await?;
-
     println!("\n\nAll agents ran successfully");
     Ok(())
 }
@@ -41,23 +37,19 @@ fn partial_agent() -> AgentBuilder<providers::xai::completion::CompletionModel> 
 
 /// Create an xAI agent (grok) with a preamble
 /// Based upon the `agent` example
-///
 /// This example creates a comedian agent with a preamble
 async fn basic() -> Result<(), anyhow::Error> {
     let comedian_agent = partial_agent()
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
-
     // Prompt the agent and print the response
     let response = comedian_agent.prompt("Entertain me!").await?;
     println!("{}", response);
-
     Ok(())
 }
 
 /// Create an xAI agent (grok) with tools
 /// Based upon the `tools` example
-///
 /// This example creates a calculator agent with two tools: add and subtract
 async fn tools() -> Result<(), anyhow::Error> {
     // Create agent with a single context prompt and two tools
@@ -67,25 +59,21 @@ async fn tools() -> Result<(), anyhow::Error> {
         .tool(Adder)
         .tool(Subtract)
         .build();
-
     // Prompt the agent and print the response
     println!("Calculate 2 - 5");
     println!(
         "Calculator Agent: {}",
         calculator_agent.prompt("Calculate 2 - 5").await?
     );
-
     Ok(())
 }
 
 /// Create an xAI agent (grok) with loaders
 /// Based upon the `loaders` example
-///
 /// This example loads in all the rust examples from the rig-core crate and uses them as\\
 ///  context for the agent
 async fn loaders() -> Result<(), anyhow::Error> {
     let model = client().completion_model(providers::xai::GROK_3_MINI);
-
     // Load in all the rust examples
     let examples = FileLoader::with_glob("rig-core/examples/*.rs")?
         .read_with_path()
@@ -121,31 +109,24 @@ async fn context() -> Result<(), anyhow::Error> {
 
     // Prompt the agent and print the response
     let response = agent.prompt("What does \"glarb-glarb\" mean?").await?;
-
     println!("{}", response);
-
     Ok(())
 }
-
 #[derive(Deserialize)]
 struct OperationArgs {
     x: i32,
     y: i32,
 }
-
 #[derive(Debug, thiserror::Error)]
 #[error("Math error")]
 struct MathError;
-
 #[derive(Deserialize, Serialize)]
 struct Adder;
 impl Tool for Adder {
     const NAME: &'static str = "add";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
-
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "add".to_string(),
@@ -165,22 +146,18 @@ impl Tool for Adder {
             }),
         }
     }
-
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
         Ok(result)
     }
 }
-
 #[derive(Deserialize, Serialize)]
 struct Subtract;
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
-
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         serde_json::from_value(json!({
             "name": "subtract",
@@ -201,7 +178,6 @@ impl Tool for Subtract {
         }))
         .expect("Tool Definition")
     }
-
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x - args.y;
         Ok(result)

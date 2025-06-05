@@ -1,3 +1,4 @@
+use rig::prelude::*;
 use rig::{
     providers::gemini::{self, completion::GEMINI_1_5_FLASH},
     streaming::{stream_to_stdout, StreamingPrompt},
@@ -27,5 +28,6 @@ async fn main() -> Result<(), anyhow::Error> {
     };
 
     println!("Message: {:?}", stream.choice);
+
     Ok(())
 }

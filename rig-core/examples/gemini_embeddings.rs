@@ -1,3 +1,4 @@
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::Embed;
 

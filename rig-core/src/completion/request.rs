@@ -62,20 +62,21 @@
 //!
 //! For more information on how to use the completion functionality, refer to the documentation of
 //! the individual traits, structs, and enums defined in this module.
-use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
-
-use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
-use crate::OneOrMany;
+use super::message::{AssistantContent, ContentFormat, DocumentMediaType};
+use crate::client::completion::CompletionModelHandle;
+use crate::streaming::StreamingCompletionResponse;
 use crate::{
     json_utils,
     message::{Message, UserContent},
     tool::ToolSetError,
 };
-
-use super::message::{AssistantContent, ContentFormat, DocumentMediaType};
+use crate::{streaming, OneOrMany};
+use futures::future::BoxFuture;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
+use thiserror::Error;
 
 // Errors
 #[derive(Debug, Error)]
@@ -227,6 +228,8 @@ pub struct CompletionResponse<T> {
 pub trait CompletionModel: Clone + Send + Sync {
     /// The raw response type returned by the underlying completion model.
     type Response: Send + Sync;
+    /// The raw response type returned by the underlying completion model when streaming.
+    type StreamingResponse: Clone + Unpin + Send + Sync;
 
     /// Generates a completion response for the given completion request.
     fn completion(
@@ -235,9 +238,79 @@ pub trait CompletionModel: Clone + Send + Sync {
     ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::Response>, CompletionError>>
            + Send;
 
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> impl std::future::Future<
+        Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
+    > + Send;
+
     /// Generates a completion request builder for the given `prompt`.
     fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
         CompletionRequestBuilder::new(self.clone(), prompt)
+    }
+}
+pub trait CompletionModelDyn: Send + Sync {
+    fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> BoxFuture<'_, Result<CompletionResponse<()>, CompletionError>>;
+
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> BoxFuture<Result<StreamingCompletionResponse<()>, CompletionError>>;
+
+    fn completion_request(
+        &self,
+        prompt: Message,
+    ) -> CompletionRequestBuilder<CompletionModelHandle<'_>>;
+}
+
+impl<T, R> CompletionModelDyn for T
+where
+    T: CompletionModel<StreamingResponse = R>,
+    R: Clone + Unpin + 'static,
+{
+    fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> BoxFuture<Result<CompletionResponse<()>, CompletionError>> {
+        Box::pin(async move {
+            self.completion(request)
+                .await
+                .map(|resp| CompletionResponse {
+                    choice: resp.choice,
+                    raw_response: (),
+                })
+        })
+    }
+
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> BoxFuture<Result<StreamingCompletionResponse<()>, CompletionError>> {
+        Box::pin(async move {
+            let resp = self.stream(request).await?;
+            let inner = resp.inner;
+
+            let stream = Box::pin(streaming::StreamingResultDyn { inner });
+
+            Ok(StreamingCompletionResponse::stream(stream))
+        })
+    }
+
+    /// Generates a completion request builder for the given `prompt`.
+    fn completion_request(
+        &self,
+        prompt: Message,
+    ) -> CompletionRequestBuilder<CompletionModelHandle<'_>> {
+        CompletionRequestBuilder::new(
+            CompletionModelHandle {
+                inner: Arc::new(self.clone()),
+            },
+            prompt,
+        )
     }
 }
 
@@ -482,13 +555,15 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         let model = self.model.clone();
         model.completion(self.build()).await
     }
-}
 
-impl<M: StreamingCompletionModel> CompletionRequestBuilder<M> {
     /// Stream the completion request
-    pub async fn stream(
+    pub async fn stream<'a>(
         self,
-    ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError>
+    where
+        <M as CompletionModel>::StreamingResponse: 'a,
+        Self: 'a,
+    {
         let model = self.model.clone();
         model.stream(self.build()).await
     }

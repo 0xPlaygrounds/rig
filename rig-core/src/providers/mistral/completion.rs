@@ -1,16 +1,16 @@
-use std::{convert::Infallible, str::FromStr};
-
+use async_stream::stream;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::{convert::Infallible, str::FromStr};
 
+use super::client::{Client, Usage};
+use crate::streaming::{RawStreamingChoice, StreamingCompletionResponse};
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
     json_utils, message,
     providers::mistral::client::ApiResponse,
     OneOrMany,
 };
-
-use super::client::{Client, Usage};
 
 pub const CODESTRAL: &str = "codestral-latest";
 pub const MISTRAL_LARGE: &str = "mistral-large-latest";
@@ -41,7 +41,7 @@ pub enum UserContent {
     Text { text: String },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Choice {
     pub index: usize,
     pub message: Message,
@@ -321,7 +321,7 @@ impl CompletionModel {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct CompletionResponse {
     pub id: String,
     pub object: String,
@@ -385,6 +385,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = CompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -415,6 +416,35 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        let resp = self.completion(request).await?;
+
+        let stream = Box::pin(stream! {
+            for c in resp.choice.clone() {
+                match c {
+                    message::AssistantContent::Text(t) => {
+                        yield Ok(RawStreamingChoice::Message(t.text.clone()))
+                    }
+                    message::AssistantContent::ToolCall(tc) => {
+                        yield Ok(RawStreamingChoice::ToolCall {
+                            id: tc.id.clone(),
+                            name: tc.function.name.clone(),
+                            arguments: tc.function.arguments.clone(),
+                        })
+                    }
+                }
+            }
+
+            yield Ok(RawStreamingChoice::FinalResponse(resp.raw_response.clone()));
+        });
+
+        Ok(StreamingCompletionResponse::stream(stream))
     }
 }
 
