@@ -57,7 +57,6 @@ pub type BoxTranscriptionModel<'a> = Box<dyn TranscriptionModelDyn + 'a>;
 ///     println!("Response from Anthropic (using Claude 3.7 Sonnet): {res_anthropic}");
 /// }
 /// ```
-#[derive(Debug, Clone)]
 pub struct DynClientBuilder {
     registry: HashMap<String, ClientFactory>,
 }
@@ -349,7 +348,6 @@ use crate::client::completion::CompletionModelHandle;
 pub use audio::*;
 use rig::providers::mistral;
 
-#[derive(Debug, Clone)]
 pub struct ClientFactory {
     pub name: String,
     pub factory: Box<dyn Fn() -> Box<dyn ProviderClient>>,

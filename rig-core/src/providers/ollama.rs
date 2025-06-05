@@ -41,7 +41,7 @@
 use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient};
 use crate::json_utils::merge_inplace;
 use crate::message::MessageError;
-use crate::streaming::{RawStreamingChoice, StreamingCompletionModel};
+use crate::streaming::RawStreamingChoice;
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
