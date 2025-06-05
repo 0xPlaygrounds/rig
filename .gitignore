@@ -1,6 +1,9 @@
-.env
 target/
 .DS_Store
 .idea/
 .vscode/
 .devcontainer/
+
+# env
+.env
+.envrc
