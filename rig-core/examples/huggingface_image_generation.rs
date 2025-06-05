@@ -1,20 +1,14 @@
 use rig::image_generation::ImageGenerationModel;
 use rig::prelude::*;
-
 use rig::providers::huggingface;
-
 use std::env::args;
-
 use std::fs::File;
-
 use std::io::Write;
-
 use std::path::Path;
 
 const DEFAULT_PATH: &str = "./output.png";
 
 #[tokio::main]
-
 async fn main() {
     let arguments: Vec<String> = args().collect();
 
@@ -25,11 +19,9 @@ async fn main() {
     };
 
     let path = Path::new(&path);
-
     let mut file = File::create_new(path).expect("Failed to create file");
 
     let huggingface = huggingface::Client::from_env();
-
     let dalle = huggingface.image_generation_model(huggingface::STABLE_DIFFUSION_3);
 
     let response = dalle

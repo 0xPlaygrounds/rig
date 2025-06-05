@@ -1,20 +1,14 @@
 use rig::image_generation::ImageGenerationModel;
 use rig::prelude::*;
-
 use rig::providers::openai;
-
 use std::env::args;
-
 use std::fs::File;
-
 use std::io::Write;
-
 use std::path::Path;
 
 const DEFAULT_PATH: &str = "./output.png";
 
 #[tokio::main]
-
 async fn main() {
     let arguments: Vec<String> = args().collect();
 
@@ -25,11 +19,9 @@ async fn main() {
     };
 
     let path = Path::new(&path);
-
     let mut file = File::create_new(path).expect("Failed to create file");
 
     let openai = openai::Client::from_env();
-
     let dalle = openai.image_generation_model(openai::DALL_E_2);
 
     let response = dalle

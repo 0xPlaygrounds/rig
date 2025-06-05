@@ -5,10 +5,8 @@ use rig::{
 };
 
 #[tokio::main]
-
 async fn main() -> Result<(), anyhow::Error> {
     // Create streaming agent with a single context prompt
-
     let agent = gemini::Client::from_env()
         .agent(GEMINI_1_5_FLASH)
         .preamble("Be precise and concise.")
@@ -16,7 +14,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Stream the response and print chunks as they arrive
-
     let mut stream = agent
         .stream_prompt("When and where and what type is the next solar eclipse?")
         .await?;
@@ -31,5 +28,6 @@ async fn main() -> Result<(), anyhow::Error> {
     };
 
     println!("Message: {:?}", stream.choice);
+
     Ok(())
 }

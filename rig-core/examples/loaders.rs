@@ -1,7 +1,6 @@
 use rig::loaders::FileLoader;
 
 #[tokio::main]
-
 async fn main() -> Result<(), anyhow::Error> {
     FileLoader::with_glob("cargo.toml")?
         .read()

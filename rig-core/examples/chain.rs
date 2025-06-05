@@ -10,46 +10,29 @@ use rig::{
 };
 
 #[tokio::main]
-
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-
     let openai_client = Client::new(&openai_api_key);
-
     let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     // Create embeddings for our documents
-
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-
         .document("Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")?
-
         .document("Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")?
-
         .document("Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.")?
-
         .build()
-
         .await?;
 
     // Create vector store with the embeddings
-
     let vector_store = InMemoryVectorStore::from_documents(embeddings);
 
     // Create vector store index
-
     let index = vector_store.index(embedding_model);
-
     let agent = openai_client.agent("gpt-4")
-
         .preamble("
-
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
-
         ")
-
         .build();
 
     let chain = pipeline::new()
@@ -74,10 +57,8 @@ async fn main() -> Result<(), anyhow::Error> {
                     .join("\n"),
                 prompt,
             ),
-
             Err(err) => {
                 println!("Error: {}! Prompting without additional context", err);
-
                 format!("{prompt}")
             }
         })
@@ -85,10 +66,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .prompt(agent);
 
     // Prompt the agent and print the response
-
     let response = chain.call("What does \"glarb-glarb\" mean?").await?;
-
     println!("{:?}", response);
-
     Ok(())
 }
