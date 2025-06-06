@@ -162,9 +162,9 @@ pub async fn send_compatible_streaming_request(
                                 calls.insert(tool_call.index, (id, function.name.clone().unwrap(), "".to_string()));
                             }
                             // Part of tool call
-                            // name: None
+                            // name: None or Empty String
                             // arguments: Some(String)
-                            else if function.name.is_none() && !function.arguments.is_empty() {
+                            else if function.name.clone().is_none_or(|s| s.is_empty()) && !function.arguments.is_empty() {
                                 let Some((id, name, arguments)) = calls.get(&tool_call.index) else {
                                     debug!("Partial tool call received but tool call was never started.");
                                     continue;
