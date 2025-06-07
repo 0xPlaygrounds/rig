@@ -98,6 +98,7 @@ pub mod one_or_many;
 pub mod pipeline;
 pub mod prelude;
 pub mod providers;
+pub mod semantic_routing;
 pub mod streaming;
 pub mod tool;
 pub mod transcription;
