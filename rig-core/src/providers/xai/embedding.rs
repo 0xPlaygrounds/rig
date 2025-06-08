@@ -21,10 +21,14 @@ pub const EMBEDDING_V1: &str = "v1";
 
 #[derive(Debug, Deserialize)]
 pub struct EmbeddingResponse {
-    pub object: String,
-    pub data: Vec<EmbeddingData>,
-    pub model: String,
-    pub usage: Usage,
+    token_ids: Vec<EmbeddingToken>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EmbeddingToken {
+    pub token_id: usize,
+    pub string_token: String,
+    token_bytes: Vec<f64>,
 }
 
 impl From<ApiErrorResponse> for EmbeddingError {
@@ -76,9 +80,12 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
 
+        // Instead of the endpoint being called "embeddings",
+        // in xAI it's actually called "tokenize-text"
+        // ref: <https://docs.x.ai/docs/api-reference#tokenize-text>
         let response = self
             .client
-            .post("/v1/embeddings")
+            .post("/v1/tokenize-text")
             .json(&json!({
                 "model": self.model,
                 "input": documents,
@@ -89,19 +96,19 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         if response.status().is_success() {
             match response.json::<ApiResponse<EmbeddingResponse>>().await? {
                 ApiResponse::Ok(response) => {
-                    if response.data.len() != documents.len() {
+                    if response.token_ids.len() != documents.len() {
                         return Err(EmbeddingError::ResponseError(
                             "Response data length does not match input length".into(),
                         ));
                     }
 
                     Ok(response
-                        .data
+                        .token_ids
                         .into_iter()
                         .zip(documents.into_iter())
                         .map(|(embedding, document)| embeddings::Embedding {
                             document,
-                            vec: embedding.embedding,
+                            vec: embedding.token_bytes,
                         })
                         .collect())
                 }
