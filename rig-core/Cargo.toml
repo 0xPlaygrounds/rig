@@ -133,3 +133,7 @@ required-features = ["audio"]
 [[example]]
 name = "mistral_embeddings"
 required-features = ["derive"]
+
+[[example]]
+name = "voyageai_embeddings"
+required-features = ["derive"]
