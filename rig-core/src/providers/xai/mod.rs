@@ -11,9 +11,7 @@
 
 pub mod client;
 pub mod completion;
-pub mod embedding;
 pub mod streaming;
 
 pub use client::Client;
 pub use completion::GROK_3_MINI;
-pub use embedding::EMBEDDING_V1;
