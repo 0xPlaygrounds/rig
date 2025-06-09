@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.14](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.13...rig-qdrant-v0.1.14) - 2025-06-09
+
+### Other
+
+- Introduce Client Traits and Testing ([#440](https://github.com/0xPlaygrounds/rig/pull/440))
+
 ## [0.1.13](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.12...rig-qdrant-v0.1.13) - 2025-04-29
 
 ### Other
