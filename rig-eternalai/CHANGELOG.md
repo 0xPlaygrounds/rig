@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.7](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.2.6...rig-eternalai-v0.2.7) - 2025-06-09
+
+### Other
+
+- Introduce Client Traits and Testing ([#440](https://github.com/0xPlaygrounds/rig/pull/440))
+
 ## [0.2.6](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.2.5...rig-eternalai-v0.2.6) - 2025-04-29
 
 ### Added
