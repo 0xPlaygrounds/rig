@@ -2,14 +2,17 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::{ApiErrorResponse, ApiResponse, Client, StreamingCompletionResponse, Usage};
+use super::{ApiErrorResponse, ApiResponse, Client, StreamingCompletionResponse};
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::message::{AudioMediaType, ImageDetail};
 use crate::one_or_many::string_or_one_or_many;
+use crate::providers::anthropic::completion::Role;
 use crate::{completion, json_utils, message, OneOrMany};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Map, Value};
+use std::collections::HashMap;
 use std::convert::Infallible;
+
 use std::str::FromStr;
 
 /// `o4-mini-2025-04-16` completion model
@@ -88,27 +91,682 @@ pub const GPT_35_TURBO_1106: &str = "gpt-3.5-turbo-1106";
 /// `gpt-3.5-turbo-instruct` completion model
 pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
 
-#[derive(Debug, Deserialize)]
-pub struct CompletionResponse {
-    pub id: String,
-    pub object: String,
-    pub created: u64,
-    pub model: String,
-    pub system_fingerprint: Option<String>,
-    pub choices: Vec<Choice>,
-    pub usage: Option<Usage>,
+/// The completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
+/// Intended to be derived from [`crate::completion::request::CompletionRequest`].
+#[derive(Debug, Deserialize, Serialize)]
+pub struct NewCompletionRequest {
+    input: Vec<Message>,
+    model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instructions: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    // TODO: Fix this before opening a PR!
+    // tool_choice: Option<T>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinition>,
+    /// Additional parameters
+    #[serde(skip_serializing_if = "Option::is_none")]
+    addtl_params: Option<AddtlParams>,
 }
 
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum OpenAITool {
+    Function(InputFunction),
+    FileSearch(InputFileSearch),
+    WebSearchPreview(InputWebSearchPreview),
+    #[serde(rename = "web_search_preview_2025_03_11")]
+    WebSearchPreview20250311(InputWebSearchPreview),
+    ComputerUsePreview(InputComputerUse),
+    Mcp(InputMcpTool),
+    CodeInterpreter(InputCodeInterpreter),
+    ImageGeneration(InputImageGen),
+    LocalShell,
+}
+
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+struct InputImageGen {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    background: Option<ImageGenBackground>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input_image_mask: Option<ImageMask>,
+    /// The model to use. Defaults to gpt-image-1.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    /// Moderation level. Defaults to "auto".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    moderation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_compression: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_format: Option<ImageOutputFormat>,
+    /// Number of partial images to generate in streaming mode, from 0 (default value) to 3.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    partial_images: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    quality: Option<ImageQuality>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    size: Option<ImageSize>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+enum ImageSize {
+    /// Default
+    Auto,
+    /// Square (1024x1024)
+    Square,
+    /// Wide (1024x1536)
+    Wide,
+    /// Tall (1536x1024)
+    Tall,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
+enum ImageQuality {
+    Auto,
+    Low,
+    Medium,
+    High,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
+enum ImageOutputFormat {
+    Jpeg,
+    Png,
+    Webp,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct ImageMask {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_id: Option<String>,
+    /// base64 encoded image
+    #[serde(skip_serializing_if = "Option::is_none")]
+    image_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
+enum ImageGenBackground {
+    Auto,
+    Opaque,
+    Transparent,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct InputCodeInterpreter {
+    container_id: InterpreterContainer,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
+enum InterpreterContainer {
+    IdOnly(Id),
+    Object(ContainerObjectConfig),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Id(String);
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum ContainerObjectConfig {
+    Auto { file_ids: Option<Vec<String>> },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct InputMcpTool {
+    server_label: String,
+    server_url: String,
+    allowed_tools: McpAllowedTools,
+    headers: HashMap<String, String>,
+    require_approval: serde_json::Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
+enum McpAllowedTools {
+    Array(Vec<String>),
+    Object { tool_names: Vec<String> },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct InputComputerUse {
+    display_height: String,
+    display_width: String,
+    environment: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct InputWebSearchPreview {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    search_size_context: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user_location: Option<UserLocArgs>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum UserLocArgs {
+    Approximate {
+        city: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        country: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        region: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        timezone: Option<String>,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct InputFileSearch {
+    vector_store_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filter: Option<FileSearchFilter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_num_results: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ranking_options: Option<RankingOptions>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct RankingOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ranker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    score_threshold: Option<f64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct InputFunction {
+    name: String,
+    parameters: serde_json::Value,
+    strict: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+}
+
+/// Additional parameters for the completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
+/// Intended to be derived from [`crate::completion::request::CompletionRequest`].
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct AddtlParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    background: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text: Option<TextConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    include: Option<Vec<Include>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_p: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    truncation: Option<TruncationStrategy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user: Option<String>,
+    #[serde(skip_serializing_if = "Map::is_empty")]
+    metadata: serde_json::Map<String, serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parallel_tool_calls: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    previous_response_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning: Option<Reasoning>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    service_tier: Option<OpenAIServiceTier>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    store: Option<bool>,
+}
+
+/// Attempt to try and create a `NewCompletionRequest` from a model name and [`crate::completion::CompletionRequest`]
+impl TryFrom<(String, CompletionRequest)> for NewCompletionRequest {
+    type Error = CompletionError;
+    fn try_from((model, req): (String, CompletionRequest)) -> Result<Self, Self::Error> {
+        let input = {
+            let mut partial_history = vec![];
+            if let Some(docs) = req.normalized_documents() {
+                partial_history.push(docs);
+            }
+            partial_history.extend(req.chat_history);
+
+            // Initialize full history with preamble (or empty if non-existent)
+            let mut full_history: Vec<Message> = Vec::new();
+
+            // Convert and extend the rest of the history
+            full_history.extend(
+                partial_history
+                    .into_iter()
+                    .map(message::Message::try_into)
+                    .collect::<Result<Vec<Vec<Message>>, _>>()?
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>(),
+            );
+            full_history
+        };
+
+        let stream = req
+            .additional_params
+            .clone()
+            .unwrap_or(Value::Null)
+            .as_bool();
+
+        let addtl_params = if let Some(map) = req.additional_params {
+            serde_json::from_value::<AddtlParams>(map).ok()
+        } else {
+            None
+        };
+
+        Ok(Self {
+            input,
+            model,
+            instructions: req.preamble,
+            max_output_tokens: req.max_tokens,
+            stream,
+            tools: req.tools.into_iter().map(ToolDefinition::from).collect(),
+            temperature: req.temperature,
+            addtl_params,
+        })
     }
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
+enum TruncationStrategy {
+    Auto,
+    #[default]
+    Disabled,
+}
 
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct TextConfig {
+    format: TextFormat,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum TextFormat {
+    JsonSchema(StructuredOutputsInput),
+    Text,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct StructuredOutputsInput {
+    /// The name of your schema.
+    name: String,
+    /// Your required output schema. It is recommended that you use the JsonSchema macro, which you can check out at <https://docs.rs/schemars/latest/schemars/trait.JsonSchema.html>.
+    schema: serde_json::Value,
+    /// Enable strict output. If you are using your AI agent in a data pipeline or another scenario that requires the data to be absolutely fixed to a given schema, it is recommended to set this to true.
+    strict: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+struct Reasoning {
+    effort: Option<ReasoningEffort>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    summary: Option<ReasoningSummaryLevel>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
+enum OpenAIServiceTier {
+    #[default]
+    Auto,
+    Default,
+    Flex,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
+enum ReasoningEffort {
+    Low,
+    #[default]
+    Medium,
+    High,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
+enum ReasoningSummaryLevel {
+    #[default]
+    Auto,
+    Concise,
+    Detailed,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+enum Include {
+    #[serde(rename = "file_search_call.results")]
+    FileSearchCallResults,
+    #[serde(rename = "message.input_image.image_url")]
+    MessageInputImageImageUrl,
+    #[serde(rename = "computer_call.output.image_url")]
+    ComputerCallOutputOutputImageUrl,
+    #[serde(rename = "reasoning.encrypted_content")]
+    ReasoningEncryptedContent,
+    #[serde(rename = "code_interpreter_call.outputs")]
+    CodeInterpreterCallOutputs,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct NewCompletionResponse {
+    /// The ID of a completion response.
+    id: String,
+    /// The type of the object.
+    object: ResponseObject,
+    /// The time at which a given response has been created, in seconds from the UNIX epoch (01/01/1970 00:00:00).
+    created_at: u64,
+    status: ResponseStatus,
+    error: Option<ResponseError>,
+    incomplete_details: Option<IncompleteDetailsReason>,
+    instructions: Option<String>,
+    max_token_output: Option<u64>,
+    metadata: Map<String, serde_json::Value>,
+    model: String,
+    usage: Usage,
+    output: Vec<Output>,
+    #[serde(flatten)]
+    addtl_params: Option<AddtlParams>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum Output {
+    Message(OutputMessage),
+    FileSearchCall(OutputFileSearch),
+    FunctionCall(OutputFunctionCall),
+    WebSearchCall(OutputWebSearchCall),
+    ComputerCall(OutputComputerCall),
+    Reasoning(OutputReasoning),
+    ImageGenerationCall(OutputImageGeneration),
+    CodeInterpreterToolCall(OutputCodeInterpreterToolCall),
+    LocalShellCall(OutputLocalShellCall),
+    McpCall(OutputMcpToolCall),
+    McpListTools(OutputMcpListTools),
+    McpApprovalRequest(McpApprovalRequest),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct McpApprovalRequest {
+    id: String,
+    arguments: serde_json::Value,
+    name: String,
+    server_label: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ApprovalStatus {
+    Pending,
+    Approved,
+    Denied,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct OutputMcpListTools {
+    id: String,
+    server_label: String,
+    tools: Vec<McpTool>,
+    status: ToolStatus,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct McpTool {
+    name: String,
+    input_schema: serde_json::Value,
+    annotations: Option<Vec<serde_json::Value>>,
+    description: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct OutputMcpToolCall {
+    id: String,
+    arguments: serde_json::Value,
+    name: String,
+    server_label: String,
+    error: Option<String>,
+    output: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct OutputLocalShellCall {
+    id: String,
+    call_id: String,
+    action: ShellAction,
+    status: ToolStatus,
+    output: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum ShellAction {
+    Exec(ShellActionArgs),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct ShellActionArgs {
+    /// The command to run (split up as a Vec<String>)
+    command: Vec<String>,
+    env: HashMap<String, String>,
+    timeout_ms: Option<u64>,
+    user: Option<String>,
+    working_directory: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct OutputCodeInterpreterToolCall {
+    id: String,
+    container_id: String,
+    /// The code to run
+    code: String,
+    results: Vec<InterpreterOutput>,
+    status: ToolStatus,
+    outputs: Vec<CodeInterpreterOutput>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum InterpreterOutput {
+    Logs { logs: String },
+    Files { files: Vec<FileId> },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct FileId {
+    file_id: String,
+    mime_type: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum CodeInterpreterOutput {
+    Text { text: String },
+    Image { image_url: String },
+    File { file_id: String },
+    DataFrame { csv_url: String },
+    // etc...
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct OutputImageGeneration {
+    id: String,
+    status: ToolStatus,
+    /// Base64
+    result: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct OutputReasoning {
+    id: String,
+    status: ToolStatus,
+    summary: Vec<Summary>,
+    encrypted_content: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum Summary {
+    SummaryText { text: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct OutputComputerCall {
+    id: String,
+    call_id: String,
+    pending_safety_checks: Vec<ComputerCallSafetyCheck>,
+    status: ToolStatus,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct ComputerCallSafetyCheck {
+    code: String,
+    id: String,
+    message: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct OutputWebSearchCall {
+    id: String,
+    status: ToolStatus,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct OutputFunctionCall {
+    id: String,
+    arguments: serde_json::Value,
+    call_id: String,
+    name: String,
+    status: ToolStatus,
+    content: Vec<AssistantContent>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
+enum ToolStatus {
+    InProgress,
+    Completed,
+    Incomplete,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct OutputMessage {
+    id: String,
+    role: OutputRole,
+    status: ResponseStatus,
+    content: Vec<AssistantContent>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
+enum OutputRole {
+    Assistant,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct OutputFileSearch {
+    id: String,
+    queries: Vec<String>,
+    status: SearchStatus,
+    results: Option<Vec<SearchResult>>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct SearchResult {
+    attributes: Map<String, serde_json::Value>,
+    file_id: String,
+    filename: String,
+    score: f64,
+    text: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
+enum SearchStatus {
+    InProgress,
+    Searching,
+    Incomplete,
+    Failed,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Usage {
+    input_tokens: u64,
+    input_tokens_details: InputTokensDetails,
+    output_tokens: u64,
+    output_tokens_details: OutputTokensDetails,
+    total_tokens: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct InputTokensDetails {
+    cached_tokens: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct OutputTokensDetails {
+    reasoning_tokens: u64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+struct IncompleteDetailsReason {
+    reason: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+struct ResponseError {
+    code: String,
+    message: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
+enum ResponseObject {
+    Response,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
+enum ResponseStatus {
+    InProgress,
+    Completed,
+    Failed,
+    Cancelled,
+    Queued,
+    Incomplete,
+}
+
+impl TryFrom<NewCompletionResponse> for completion::CompletionResponse<NewCompletionResponse> {
+    type Error = CompletionError;
+    fn try_from(response: NewCompletionResponse) -> Result<Self, Self::Error> {
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
@@ -166,12 +824,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Choice {
-    pub index: usize,
-    pub message: Message,
-    pub logprobs: Option<serde_json::Value>,
-    pub finish_reason: String,
+impl From<ApiErrorResponse> for CompletionError {
+    fn from(err: ApiErrorResponse) -> Self {
+        CompletionError::ProviderError(err.message)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -625,94 +1281,35 @@ impl CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<Value, CompletionError> {
-        // Build up the order of messages (context, chat_history)
-        let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
-            partial_history.push(docs);
-        }
-        partial_history.extend(completion_request.chat_history);
+        let req = NewCompletionRequest::try_from((self.model.clone(), completion_request))?;
+        let json_req = serde_json::to_value(req)?;
 
-        // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<Message> = completion_request
-            .preamble
-            .map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
-
-        // Convert and extend the rest of the history
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(message::Message::try_into)
-                .collect::<Result<Vec<Vec<Message>>, _>>()?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
-        );
-
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": "auto",
-            })
-        };
-
-        // only include temperature if it exists
-        // because some models don't support temperature
-        let request = if let Some(temperature) = completion_request.temperature {
-            json_utils::merge(
-                request,
-                json!({
-                    "temperature": temperature,
-                }),
-            )
-        } else {
-            request
-        };
-
-        let request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
-
-        Ok(request)
+        Ok(json_req)
     }
 }
 
 impl completion::CompletionModel for CompletionModel {
-    type Response = CompletionResponse;
+    type Response = NewCompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
         let request = self.create_completion_request(completion_request)?;
 
-        let response = self
-            .client
-            .post("/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
+        let response = self.client.post("/responses").json(&request).send().await?;
 
         if response.status().is_success() {
             let t = response.text().await?;
             tracing::debug!(target: "rig", "OpenAI completion error: {}", t);
 
-            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
+            match serde_json::from_str::<ApiResponse<Self::Response>>(&t)? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "OpenAI completion token usage: {:?}",
-                        response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
+                        response.usage.total_tokens.to_string()
                     );
                     response.try_into()
                 }
@@ -731,6 +1328,6 @@ impl completion::CompletionModel for CompletionModel {
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        CompletionModel::stream(self, request).await
+        Self::stream(self, request).await
     }
 }
