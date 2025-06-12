@@ -99,10 +99,6 @@ name = "gemini_embeddings"
 required-features = ["derive"]
 
 [[example]]
-name = "xai_embeddings"
-required-features = ["derive"]
-
-[[example]]
 name = "agent_with_moonshot"
 required-features = ["derive"]
 
