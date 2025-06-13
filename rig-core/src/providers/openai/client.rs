@@ -22,6 +22,7 @@ use serde::Deserialize;
 // Main OpenAI Client
 // ================================================================
 const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
+
 #[derive(Clone, Debug)]
 pub struct Client {
     base_url: String,
@@ -186,6 +187,7 @@ pub(crate) enum ApiResponse<T> {
     Ok(T),
     Err(ApiErrorResponse),
 }
+
 #[cfg(test)]
 mod tests {
     use crate::message::ImageDetail;
