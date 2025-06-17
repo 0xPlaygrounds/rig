@@ -98,7 +98,7 @@ mod tests {
             detail: None,
         });
         let aws_image: Result<aws_bedrock::ImageBlock, _> = rig_image.clone().try_into();
-        assert_eq!(aws_image.is_ok(), true);
+        assert!(aws_image.is_ok());
         let aws_image = aws_image.unwrap();
         assert_eq!(aws_image.format, aws_bedrock::ImageFormat::Jpeg);
         let img_data = BASE64_STANDARD.decode(rig_image.0.data).unwrap();
