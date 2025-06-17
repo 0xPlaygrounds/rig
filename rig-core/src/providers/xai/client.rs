@@ -6,44 +6,63 @@ use crate::client::{impl_conversion_traits, CompletionClient, ProviderClient};
 // ================================================================
 const XAI_BASE_URL: &str = "https://api.x.ai";
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Client {
     base_url: String,
+    api_key: String,
+    default_headers: reqwest::header::HeaderMap,
     http_client: reqwest::Client,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("default_headers", &self.default_headers)
+            .field("api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
     pub fn new(api_key: &str) -> Self {
         Self::from_url(api_key, XAI_BASE_URL)
     }
+
     fn from_url(api_key: &str, base_url: &str) -> Self {
+        let mut default_headers = reqwest::header::HeaderMap::new();
+        default_headers.insert(
+            reqwest::header::CONTENT_TYPE,
+            "application/json".parse().unwrap(),
+        );
+
         Self {
             base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
+            default_headers,
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        reqwest::header::CONTENT_TYPE,
-                        "application/json".parse().unwrap(),
-                    );
-                    headers.insert(
-                        "Authorization",
-                        format!("Bearer {api_key}")
-                            .parse()
-                            .expect("Bearer token should parse"),
-                    );
-                    headers
-                })
                 .build()
                 .expect("xAI reqwest client should build"),
         }
+    }
+
+    /// Use your own `reqwest::Client`.
+    /// The required headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
     }
 
     pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
         tracing::debug!("POST {}", url);
-        self.http_client.post(url)
+        self.http_client
+            .post(url)
+            .bearer_auth(&self.api_key)
+            .headers(self.default_headers.clone())
     }
 }
 
