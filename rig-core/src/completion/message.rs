@@ -51,6 +51,7 @@ pub enum UserContent {
 pub enum AssistantContent {
     Text(Text),
     ToolCall(ToolCall),
+    Reasoning(Reasoning),
 }
 
 /// Tool result content containing information about a tool call and it's resulting content.
@@ -79,6 +80,24 @@ pub struct ToolCall {
 pub struct ToolFunction {
     pub name: String,
     pub arguments: serde_json::Value,
+}
+
+/// Model reasoning.
+/// Used with models that have reasoning capabilities (eg, gpt-o3)
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Reasoning {
+    pub content: String,
+}
+
+impl<T> From<T> for Reasoning
+where
+    T: Into<String>,
+{
+    fn from(value: T) -> Self {
+        Self {
+            content: value.into(),
+        }
+    }
 }
 
 // ================================================================
@@ -316,6 +335,10 @@ impl AssistantContent {
                 arguments,
             },
         })
+    }
+
+    pub fn reasoning(content: impl Into<String>) -> Self {
+        Self::Reasoning(Reasoning::from(content))
     }
 }
 
@@ -603,6 +626,14 @@ impl From<ToolCall> for Message {
     fn from(tool_call: ToolCall) -> Self {
         Message::Assistant {
             content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
+        }
+    }
+}
+
+impl From<Reasoning> for Message {
+    fn from(reasoning: Reasoning) -> Self {
+        Message::Assistant {
+            content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
         }
     }
 }
