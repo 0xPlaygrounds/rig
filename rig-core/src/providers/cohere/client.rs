@@ -21,11 +21,21 @@ pub enum ApiResponse<T> {
 // ================================================================
 const COHERE_API_BASE_URL: &str = "https://api.cohere.ai";
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Client {
     base_url: String,
     api_key: String,
     http_client: reqwest::Client,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {

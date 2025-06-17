@@ -72,7 +72,9 @@ impl Client {
             format!("{}/{}?alt=sse&key={}", self.base_url, path, self.api_key).replace("//", "/");
 
         tracing::debug!("POST {}/{}?alt=sse&key={}", self.base_url, path, "****");
-        self.http_client.post(url)
+        self.http_client
+            .post(url)
+            .headers(self.default_headers.clone())
     }
 
     /// Create an agent builder with the given completion model.
