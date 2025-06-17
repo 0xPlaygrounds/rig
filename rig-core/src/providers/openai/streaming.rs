@@ -35,8 +35,8 @@ pub struct StreamingToolCall {
 struct StreamingDelta {
     #[serde(default)]
     content: Option<String>,
-    #[serde(default, deserialize_with = "json_utils::null_or_vec")]
-    tool_calls: Vec<StreamingToolCall>,
+    #[serde(default)]
+    tool_calls: Option<Vec<StreamingToolCall>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -150,42 +150,44 @@ pub async fn send_compatible_streaming_request(
 
                     let delta = &choice.delta;
 
-                    if !delta.tool_calls.is_empty() {
-                        for tool_call in &delta.tool_calls {
-                            let function = tool_call.function.clone();
-                            // Start of tool call
-                            // name: Some(String)
-                            // arguments: None
-                            if function.name.is_some() && function.arguments.is_empty() {
-                                let id = tool_call.id.clone().unwrap_or("".to_string());
+                    if let Some(tool_calls) = delta.tool_calls.clone() {
+                        if !tool_calls.is_empty() {
+                            for tool_call in &tool_calls {
+                                let function = tool_call.function.clone();
+                                // Start of tool call
+                                // name: Some(String)
+                                // arguments: None
+                                if function.name.is_some() && function.arguments.is_empty() {
+                                    let id = tool_call.id.clone().unwrap_or("".to_string());
 
-                                calls.insert(tool_call.index, (id, function.name.clone().unwrap(), "".to_string()));
-                            }
-                            // Part of tool call
-                            // name: None or Empty String
-                            // arguments: Some(String)
-                            else if function.name.clone().is_none_or(|s| s.is_empty()) && !function.arguments.is_empty() {
-                                let Some((id, name, arguments)) = calls.get(&tool_call.index) else {
-                                    debug!("Partial tool call received but tool call was never started.");
-                                    continue;
-                                };
+                                    calls.insert(tool_call.index, (id, function.name.clone().unwrap(), "".to_string()));
+                                }
+                                // Part of tool call
+                                // name: None or Empty String
+                                // arguments: Some(String)
+                                else if function.name.clone().is_none_or(|s| s.is_empty()) && !function.arguments.is_empty() {
+                                    let Some((id, name, arguments)) = calls.get(&tool_call.index) else {
+                                        debug!("Partial tool call received but tool call was never started.");
+                                        continue;
+                                    };
 
-                                let new_arguments = &tool_call.function.arguments;
-                                let arguments = format!("{arguments}{new_arguments}");
+                                    let new_arguments = &tool_call.function.arguments;
+                                    let arguments = format!("{arguments}{new_arguments}");
 
-                                calls.insert(tool_call.index, (id.clone(), name.clone(), arguments));
-                            }
-                            // Entire tool call
-                            else {
-                                let id = tool_call.id.clone().unwrap_or("".to_string());
-                                let name = function.name.expect("function name should be present for complete tool call");
-                                let arguments = function.arguments;
-                                let Ok(arguments) = serde_json::from_str(&arguments) else {
-                                    debug!("Couldn't serialize '{}' as a json value", arguments);
-                                    continue;
-                                };
+                                    calls.insert(tool_call.index, (id.clone(), name.clone(), arguments));
+                                }
+                                // Entire tool call
+                                else {
+                                    let id = tool_call.id.clone().unwrap_or("".to_string());
+                                    let name = function.name.expect("function name should be present for complete tool call");
+                                    let arguments = function.arguments;
+                                    let Ok(arguments) = serde_json::from_str(&arguments) else {
+                                        debug!("Couldn't serialize '{}' as a json value", arguments);
+                                        continue;
+                                    };
 
-                                yield Ok(streaming::RawStreamingChoice::ToolCall {id, name, arguments})
+                                    yield Ok(streaming::RawStreamingChoice::ToolCall {id, name, arguments})
+                                }
                             }
                         }
                     }
