@@ -1,5 +1,4 @@
-use std::env;
-
+use rig::prelude::*;
 use rig::providers::openai::client::Client;
 use rig::{
     embeddings::EmbeddingsBuilder,
@@ -8,6 +7,7 @@ use rig::{
     Embed,
 };
 use serde::{Deserialize, Serialize};
+use std::env;
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
@@ -24,9 +24,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     let openai_client = Client::new(&openai_api_key);
-
     let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
-
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(vec![
             WordDefinition {
@@ -63,7 +61,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create vector store index
     let index = vector_store.index(embedding_model);
-
     let results = index
         .top_n::<WordDefinition>("I need to buy something in a fictional universe. What type of money can I use for this?", 1)
         .await?

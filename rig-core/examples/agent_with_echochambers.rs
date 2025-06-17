@@ -1,5 +1,6 @@
 use anyhow::Result;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use rig::prelude::*;
 use rig::{
     cli_chatbot::cli_chatbot,
     completion::ToolDefinition,
@@ -48,11 +49,9 @@ struct SendMessage {
 
 impl Tool for SendMessage {
     const NAME: &'static str = "send_message";
-
     type Error = EchoChamberError;
     type Args = SendMessageArgs;
     type Output = serde_json::Value;
-
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "send_message".to_string(),
@@ -97,9 +96,8 @@ impl Tool for SendMessage {
 
         // Format content with quotes as shown in the JavaScript example
         let content = format!("\"{}\"", args.content);
-
         let response = client
-            .post(&format!(
+            .post(format!(
                 "https://echochambers.ai/api/rooms/{}/message",
                 args.room_id
             ))
@@ -137,11 +135,9 @@ struct GetHistory;
 
 impl Tool for GetHistory {
     const NAME: &'static str = "get_history";
-
     type Error = EchoChamberError;
     type Args = GetHistoryArgs;
     type Output = serde_json::Value;
-
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "get_history".to_string(),
@@ -165,17 +161,14 @@ impl Tool for GetHistory {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let mut url = format!("https://echochambers.ai/api/rooms/{}/history", args.room_id);
-
         if let Some(limit) = args.limit {
             url = format!("{}?limit={}", url, limit);
         }
-
         let response = client
             .get(&url)
             .send()
             .await
             .map_err(|e| EchoChamberError(e.to_string()))?;
-
         let data = response
             .json()
             .await
@@ -190,7 +183,6 @@ struct GetRoomMetrics;
 
 impl Tool for GetRoomMetrics {
     const NAME: &'static str = "get_room_metrics";
-
     type Error = EchoChamberError;
     type Args = GetMetricsArgs;
     type Output = serde_json::Value;
@@ -214,14 +206,13 @@ impl Tool for GetRoomMetrics {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
-            .get(&format!(
+            .get(format!(
                 "https://echochambers.ai/api/metrics/rooms/{}",
                 args.room_id
             ))
             .send()
             .await
             .map_err(|e| EchoChamberError(e.to_string()))?;
-
         let data = response
             .json()
             .await
@@ -229,18 +220,14 @@ impl Tool for GetRoomMetrics {
         Ok(data)
     }
 }
-
 // GetAgentMetrics Tool
 #[derive(Deserialize, Serialize)]
 struct GetAgentMetrics;
-
 impl Tool for GetAgentMetrics {
     const NAME: &'static str = "get_agent_metrics";
-
     type Error = EchoChamberError;
     type Args = GetMetricsArgs;
     type Output = serde_json::Value;
-
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "get_agent_metrics".to_string(),
@@ -256,18 +243,16 @@ impl Tool for GetAgentMetrics {
             }),
         }
     }
-
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
-            .get(&format!(
+            .get(format!(
                 "https://echochambers.ai/api/metrics/agents/{}",
                 args.room_id
             ))
             .send()
             .await
             .map_err(|e| EchoChamberError(e.to_string()))?;
-
         let data = response
             .json()
             .await
@@ -275,18 +260,14 @@ impl Tool for GetAgentMetrics {
         Ok(data)
     }
 }
-
 // GetMetricsHistory Tool
 #[derive(Deserialize, Serialize)]
 struct GetMetricsHistory;
-
 impl Tool for GetMetricsHistory {
     const NAME: &'static str = "get_metrics_history";
-
     type Error = EchoChamberError;
     type Args = GetMetricsArgs;
     type Output = serde_json::Value;
-
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "get_metrics_history".to_string(),
@@ -302,18 +283,16 @@ impl Tool for GetMetricsHistory {
             }),
         }
     }
-
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
-            .get(&format!(
+            .get(format!(
                 "https://echochambers.ai/api/metrics/history/{}",
                 args.room_id
             ))
             .send()
             .await
             .map_err(|e| EchoChamberError(e.to_string()))?;
-
         let data = response
             .json()
             .await
@@ -321,7 +300,6 @@ impl Tool for GetMetricsHistory {
         Ok(data)
     }
 }
-
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Get API keys from environment
@@ -352,14 +330,14 @@ async fn main() -> Result<(), anyhow::Error> {
                        'model': '<model>'
                    }
                }
-            
+
             Available operations:
             - Send a message to a room (requires room_id, content, and sender info)
             - Get message history from a room (requires room_id, optional limit)
             - Get room metrics (requires room_id)
             - Get agent metrics (requires room_id)
             - Get metrics history (requires room_id)
-            
+
             Example:
             User: Send a message to room 'general' saying 'Hello, world!'
             Assistant: I'll help you send a message to the general room.
@@ -385,6 +363,5 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Start the CLI chatbot
     cli_chatbot(echochambers_agent).await?;
-
     Ok(())
 }

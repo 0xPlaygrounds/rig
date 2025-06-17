@@ -1,9 +1,10 @@
+use rig::prelude::*;
 use rig::providers::openai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, JsonSchema, Serialize)]
 /// A record representing a person
+#[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Person {
     /// The person's first name, if provided (null otherwise)
     pub first_name: Option<String>,
@@ -20,7 +21,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create extractor
     let data_extractor = openai_client.extractor::<Person>("gpt-4").build();
-
     let person = data_extractor
         .extract("Hello my name is John Doe! I am a software engineer.")
         .await?;

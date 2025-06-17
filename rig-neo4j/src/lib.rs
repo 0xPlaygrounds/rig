@@ -14,7 +14,7 @@
 //! file from /products to /plugins in the Neo4j home directory, or, if you are using Docker, by starting
 //! the Docker container with the extra parameter `--env NEO4J_PLUGINS='["genai"]'`.
 //!
-//! For more information, see [Operations Manual → Configure plugins](https://neo4j.com/docs/operations-manual/current/plugins/configure/).
+//! For more information, see [Operations Manual → Configure plugins](https://neo4j.com/docs/upgrade-migration-guide/current/version-5/migration/install-and-configure/#_plugins).
 //!
 //! ### Pre-existing Vector Index
 //!

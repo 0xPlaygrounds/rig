@@ -2,7 +2,7 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::{ApiErrorResponse, ApiResponse, Client, Usage};
+use super::{ApiErrorResponse, ApiResponse, Client, StreamingCompletionResponse, Usage};
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::message::{AudioMediaType, ImageDetail};
 use crate::one_or_many::string_or_one_or_many;
@@ -528,7 +528,7 @@ impl TryFrom<Message> for message::Message {
             },
 
             // System messages should get stripped out when converting message's, this is just a
-            // stop gap to avoid obnoxious error handling or panic occuring.
+            // stop gap to avoid obnoxious error handling or panic occurring.
             Message::System { content, .. } => message::Message::User {
                 content: content.map(|content| message::UserContent::text(content.text)),
             },
@@ -688,6 +688,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -720,5 +721,16 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<
+        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+        CompletionError,
+    > {
+        CompletionModel::stream(self, request).await
     }
 }

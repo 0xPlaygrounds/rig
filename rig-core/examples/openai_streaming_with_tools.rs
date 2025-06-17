@@ -3,6 +3,7 @@ use futures::{stream, StreamExt};
 use rig::agent::Agent;
 use rig::completion::{CompletionError, CompletionModel};
 use rig::message::{AssistantContent, UserContent};
+use rig::prelude::*;
 use rig::streaming::{stream_to_stdout, StreamingChat};
 use rig::tool::ToolSetError;
 use rig::OneOrMany;
@@ -27,9 +28,9 @@ struct MathError;
 
 #[derive(Deserialize, Serialize)]
 struct Adder;
+
 impl Tool for Adder {
     const NAME: &'static str = "add";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
@@ -63,9 +64,9 @@ impl Tool for Adder {
 
 #[derive(Deserialize, Serialize)]
 struct Subtract;
+
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
@@ -107,7 +108,6 @@ async fn tool_call_helper<M: CompletionModel>(
     let (tool_calls, _): (Vec<_>, Vec<_>) = choice
         .iter()
         .partition(|choice| matches!(choice, AssistantContent::ToolCall(_)));
-
     let tool_content = stream::iter(tool_calls)
         .then(async |choice| {
             if let AssistantContent::ToolCall(tool_call) = choice {
@@ -131,20 +131,20 @@ async fn tool_call_helper<M: CompletionModel>(
         .into_iter()
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
-
     Ok(OneOrMany::many(tool_content).expect("Should always have at least one tool call"))
 }
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
+
     // Create agent with a single context prompt and two tools
     let calculator_agent = providers::openai::Client::from_env()
         .agent(providers::openai::GPT_4O)
         .preamble(
-            "You are a calculator here to help the user perform arithmetic 
-            operations. Use the tools provided to answer the user's question. 
-            make your answer long, so we can test the streaming functionality, 
+            "You are a calculator here to help the user perform arithmetic
+            operations. Use the tools provided to answer the user's question.
+            make your answer long, so we can test the streaming functionality,
             like 20 words",
         )
         .max_tokens(1024)
@@ -165,7 +165,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("Message: {:?}", stream.choice);
     chat_history.push(stream.choice.clone().into());
-
     let tool_results = tool_call_helper(stream.choice, &calculator_agent).await?;
 
     let mut stream = calculator_agent

@@ -7,6 +7,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .into_iter()
         .for_each(|result| match result {
             Ok(content) => println!("{}", content),
+
             Err(e) => eprintln!("Error reading file: {}", e),
         });
 

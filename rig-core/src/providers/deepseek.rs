@@ -9,17 +9,16 @@
 //! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_CHAT);
 //! ```
 
+use crate::client::{CompletionClient, ProviderClient};
 use crate::json_utils::merge;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
+use crate::streaming::StreamingCompletionResponse;
 use crate::{
     completion::{self, CompletionError, CompletionModel, CompletionRequest},
-    extractor::ExtractorBuilder,
-    json_utils, message, OneOrMany,
+    impl_conversion_traits, json_utils, message, OneOrMany,
 };
 use reqwest::Client as HttpClient;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -31,7 +30,18 @@ const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com";
 #[derive(Clone)]
 pub struct Client {
     pub base_url: String,
+    api_key: String,
     http_client: HttpClient,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
@@ -40,59 +50,58 @@ impl Client {
         Self::from_url(api_key, DEEPSEEK_API_BASE_URL)
     }
 
-    // If you prefer the environment variable approach:
-    pub fn from_env() -> Self {
-        let api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY not set");
-        Self::new(&api_key)
-    }
-
-    // Handy for advanced usage, e.g. letting user override base_url or set timeouts:
+    /// Set your own URL.
+    /// Useful if you need to access an alternative website that supports the DeepSeek API specification.
     pub fn from_url(api_key: &str, base_url: &str) -> Self {
-        // Possibly configure a custom HTTP client here if needed.
         Self {
             base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        "Authorization",
-                        format!("Bearer {}", api_key)
-                            .parse()
-                            .expect("Bearer token should parse"),
-                    );
-                    headers
-                })
                 .build()
                 .expect("DeepSeek reqwest client should build"),
         }
     }
 
-    fn post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url)
+    /// Use your own `reqwest::Client`.
+    /// The required headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
     }
 
+    fn post(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        self.http_client.post(url).bearer_auth(&self.api_key)
+    }
+}
+
+impl ProviderClient for Client {
+    // If you prefer the environment variable approach:
+    fn from_env() -> Self {
+        let api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY not set");
+        Self::new(&api_key)
+    }
+}
+
+impl CompletionClient for Client {
+    type CompletionModel = DeepSeekCompletionModel;
+
     /// Creates a DeepSeek completion model with the given `model_name`.
-    pub fn completion_model(&self, model_name: &str) -> DeepSeekCompletionModel {
+    fn completion_model(&self, model_name: &str) -> DeepSeekCompletionModel {
         DeepSeekCompletionModel {
             client: self.clone(),
             model: model_name.to_string(),
         }
     }
-
-    /// Optionally add an agent() convenience:
-    pub fn agent(&self, model_name: &str) -> crate::agent::AgentBuilder<DeepSeekCompletionModel> {
-        crate::agent::AgentBuilder::new(self.completion_model(model_name))
-    }
-
-    /// Create an extractor builder with the given completion model.
-    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
-        &self,
-        model: &str,
-    ) -> ExtractorBuilder<T, DeepSeekCompletionModel> {
-        ExtractorBuilder::new(self.completion_model(model))
-    }
 }
+
+impl_conversion_traits!(
+    AsEmbeddings,
+    AsTranscription,
+    AsImageGeneration,
+    AsAudioGeneration for Client
+);
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
@@ -431,6 +440,7 @@ impl DeepSeekCompletionModel {
 
 impl CompletionModel for DeepSeekCompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = openai::StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -461,10 +471,8 @@ impl CompletionModel for DeepSeekCompletionModel {
             Err(CompletionError::ProviderError(response.text().await?))
         }
     }
-}
 
-impl StreamingCompletionModel for DeepSeekCompletionModel {
-    type StreamingResponse = openai::StreamingCompletionResponse;
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         completion_request: CompletionRequest,

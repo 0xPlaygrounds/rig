@@ -10,11 +10,20 @@ use crate::{
 };
 
 use super::client::{xai_api_types::ApiResponse, Client};
+use crate::completion::CompletionRequest;
+use crate::providers::openai;
+use crate::streaming::StreamingCompletionResponse;
 use serde_json::{json, Value};
 use xai_api_types::{CompletionResponse, ToolDefinition};
 
-/// `grok-beta` completion model
-pub const GROK_BETA: &str = "grok-beta";
+/// xAI completion models as of 2025-06-04
+pub const GROK_2_1212: &str = "grok-2-1212";
+pub const GROK_2_VISION_1212: &str = "grok-2-vision-1212";
+pub const GROK_3: &str = "grok-3";
+pub const GROK_3_FAST: &str = "grok-3-fast";
+pub const GROK_3_MINI: &str = "grok-3-mini";
+pub const GROK_3_MINI_FAST: &str = "grok-3-mini-fast";
+pub const GROK_2_IMAGE_1212: &str = "grok-2-image-1212";
 
 // =================================================================
 // Rig Implementation Types
@@ -47,7 +56,7 @@ impl CompletionModel {
             .flatten()
             .collect();
 
-        // Init full history with preamble (or empty if non-existant)
+        // Init full history with preamble (or empty if non-existent)
         let mut full_history: Vec<Message> = match &completion_request.preamble {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
@@ -95,6 +104,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = openai::StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -118,6 +128,14 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        CompletionModel::stream(self, request).await
     }
 }
 

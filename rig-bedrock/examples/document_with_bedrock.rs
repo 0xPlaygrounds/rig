@@ -6,6 +6,7 @@ use rig::{
 };
 
 use base64::{prelude::BASE64_STANDARD, Engine};
+use rig::client::CompletionClient;
 use rig_bedrock::{client::ClientBuilder, completion::AMAZON_NOVA_LITE};
 use tracing::info;
 

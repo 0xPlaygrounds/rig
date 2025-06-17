@@ -4,6 +4,7 @@ use arrow_array::RecordBatchIterator;
 use fixture::{as_record_batch, schema, words, Word};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::{
+    client::EmbeddingsClient,
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai,
     vector_store::VectorStoreIndex,

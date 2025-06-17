@@ -1,11 +1,11 @@
-use std::{env, vec};
-
+use rig::prelude::*;
 use rig::providers::openai::client::Client;
 use rig::{
     completion::Prompt, embeddings::EmbeddingsBuilder, providers::openai::TEXT_EMBEDDING_ADA_002,
     vector_store::in_memory_store::InMemoryVectorStore, Embed,
 };
 use serde::Serialize;
+use std::{env, vec};
 
 // Data to be RAGged.
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `WordDefinition`
@@ -29,7 +29,6 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     let openai_client = Client::new(&openai_api_key);
-
     let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
@@ -68,7 +67,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create vector store index
     let index = vector_store.index(embedding_model);
-
     let rag_agent = openai_client.agent("gpt-4")
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.

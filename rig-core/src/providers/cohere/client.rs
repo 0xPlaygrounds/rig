@@ -1,11 +1,8 @@
-use crate::{
-    agent::AgentBuilder, embeddings::EmbeddingsBuilder, extractor::ExtractorBuilder, Embed,
-};
-
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use crate::{embeddings::EmbeddingsBuilder, Embed};
 
 use super::{CompletionModel, EmbeddingModel};
+use crate::client::{impl_conversion_traits, CompletionClient, EmbeddingsClient, ProviderClient};
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct ApiErrorResponse {
@@ -27,7 +24,18 @@ const COHERE_API_BASE_URL: &str = "https://api.cohere.ai";
 #[derive(Clone)]
 pub struct Client {
     base_url: String,
+    api_key: String,
     http_client: reqwest::Client,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
@@ -38,32 +46,32 @@ impl Client {
     pub fn from_url(api_key: &str, base_url: &str) -> Self {
         Self {
             base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        "Authorization",
-                        format!("Bearer {}", api_key)
-                            .parse()
-                            .expect("Bearer token should parse"),
-                    );
-                    headers
-                })
                 .build()
                 .expect("Cohere reqwest client should build"),
         }
     }
 
-    /// Create a new Cohere client from the `COHERE_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    pub fn from_env() -> Self {
-        let api_key = std::env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set");
-        Self::new(&api_key)
+    /// Use your own `reqwest::Client`.
+    /// The API key will be automatically attached upon trying to make a request, so you shouldn't need to add it as a default header.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
     }
 
     pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url)
+        self.http_client.post(url).bearer_auth(&self.api_key)
+    }
+
+    pub fn embeddings<D: Embed>(
+        &self,
+        model: &str,
+        input_type: &str,
+    ) -> EmbeddingsBuilder<EmbeddingModel, D> {
+        EmbeddingsBuilder::new(self.embedding_model(model, input_type))
     }
 
     /// Note: default embedding dimension of 0 will be used if model is not known.
@@ -90,27 +98,43 @@ impl Client {
     ) -> EmbeddingModel {
         EmbeddingModel::new(self.clone(), model, input_type, ndims)
     }
+}
 
-    pub fn embeddings<D: Embed>(
-        &self,
-        model: &str,
-        input_type: &str,
-    ) -> EmbeddingsBuilder<EmbeddingModel, D> {
-        EmbeddingsBuilder::new(self.embedding_model(model, input_type))
-    }
-
-    pub fn completion_model(&self, model: &str) -> CompletionModel {
-        CompletionModel::new(self.clone(), model)
-    }
-
-    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
-        &self,
-        model: &str,
-    ) -> ExtractorBuilder<T, CompletionModel> {
-        ExtractorBuilder::new(self.completion_model(model))
+impl ProviderClient for Client {
+    /// Create a new Cohere client from the `COHERE_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    fn from_env() -> Self {
+        let api_key = std::env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set");
+        Self::new(&api_key)
     }
 }
+
+impl CompletionClient for Client {
+    type CompletionModel = CompletionModel;
+
+    fn completion_model(&self, model: &str) -> Self::CompletionModel {
+        CompletionModel::new(self.clone(), model)
+    }
+}
+
+impl EmbeddingsClient for Client {
+    type EmbeddingModel = EmbeddingModel;
+
+    fn embedding_model(&self, model: &str) -> Self::EmbeddingModel {
+        self.embedding_model(model, "search_document")
+    }
+
+    fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> Self::EmbeddingModel {
+        self.embedding_model_with_ndims(model, "search_document", ndims)
+    }
+
+    fn embeddings<D: Embed>(&self, model: &str) -> EmbeddingsBuilder<Self::EmbeddingModel, D> {
+        self.embeddings(model, "search_document")
+    }
+}
+
+impl_conversion_traits!(
+    AsTranscription,
+    AsImageGeneration,
+    AsAudioGeneration for Client
+);

@@ -11,16 +11,14 @@
 //! let gpt4o = client.completion_model(galadriel::GPT_4O);
 //! ```
 use super::openai;
+use crate::client::{CompletionClient, ProviderClient};
 use crate::json_utils::merge;
 use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
+use crate::streaming::StreamingCompletionResponse;
 use crate::{
-    agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
-    extractor::ExtractorBuilder,
-    json_utils, message, OneOrMany,
+    impl_conversion_traits, json_utils, message, OneOrMany,
 };
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -32,7 +30,20 @@ const GALADRIEL_API_BASE_URL: &str = "https://api.galadriel.com/v1/verified";
 #[derive(Clone)]
 pub struct Client {
     base_url: String,
+    api_key: String,
+    fine_tune_api_key: Option<String>,
     http_client: reqwest::Client,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("api_key", &"<REDACTED>")
+            .field("fine_tune_api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
@@ -53,42 +64,39 @@ impl Client {
     ) -> Self {
         Self {
             base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
+            fine_tune_api_key: fine_tune_api_key.map(|x| x.to_string()),
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        "Authorization",
-                        format!("Bearer {}", api_key)
-                            .parse()
-                            .expect("Bearer token should parse"),
-                    );
-                    if let Some(key) = fine_tune_api_key {
-                        headers.insert(
-                            "Fine-Tune-Authorization",
-                            format!("Bearer {}", key)
-                                .parse()
-                                .expect("Bearer token should parse"),
-                        );
-                    }
-                    headers
-                })
                 .build()
                 .expect("Galadriel reqwest client should build"),
         }
     }
 
+    fn post(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let mut client = self.http_client.post(url).bearer_auth(&self.api_key);
+
+        if let Some(fine_tune_key) = self.fine_tune_api_key.clone() {
+            client = client.header("Fine-Tune-Authorization", fine_tune_key);
+        }
+
+        client
+    }
+}
+
+impl ProviderClient for Client {
     /// Create a new Galadriel client from the `GALADRIEL_API_KEY` environment variable,
     /// and optionally from the `GALADRIEL_FINE_TUNE_API_KEY` environment variable.
     /// Panics if the `GALADRIEL_API_KEY` environment variable is not set.
-    pub fn from_env() -> Self {
+    fn from_env() -> Self {
         let api_key = std::env::var("GALADRIEL_API_KEY").expect("GALADRIEL_API_KEY not set");
         let fine_tune_api_key = std::env::var("GALADRIEL_FINE_TUNE_API_KEY").ok();
         Self::new(&api_key, fine_tune_api_key.as_deref())
     }
-    fn post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url)
-    }
+}
+
+impl CompletionClient for Client {
+    type CompletionModel = CompletionModel;
 
     /// Create a completion model with the given name.
     ///
@@ -101,36 +109,17 @@ impl Client {
     ///
     /// let gpt4 = galadriel.completion_model(galadriel::GPT_4);
     /// ```
-    pub fn completion_model(&self, model: &str) -> CompletionModel {
+    fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
-
-    /// Create an agent builder with the given completion model.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::galadriel::{Client, self};
-    ///
-    /// // Initialize the Galadriel client
-    /// let galadriel = Client::new("your-galadriel-api-key", None);
-    ///
-    /// let agent = galadriel.agent(galadriel::GPT_4)
-    ///    .preamble("You are comedian AI with a mission to make people laugh.")
-    ///    .temperature(0.0)
-    ///    .build();
-    /// ```
-    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    /// Create an extractor builder with the given completion model.
-    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
-        &self,
-        model: &str,
-    ) -> ExtractorBuilder<T, CompletionModel> {
-        ExtractorBuilder::new(self.completion_model(model))
-    }
 }
+
+impl_conversion_traits!(
+    AsEmbeddings,
+    AsTranscription,
+    AsImageGeneration,
+    AsAudioGeneration for Client
+);
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
@@ -460,6 +449,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = openai::StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -493,11 +483,8 @@ impl completion::CompletionModel for CompletionModel {
             Err(CompletionError::ProviderError(response.text().await?))
         }
     }
-}
 
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = openai::StreamingCompletionResponse;
-
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         request: CompletionRequest,

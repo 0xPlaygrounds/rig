@@ -1,3 +1,4 @@
+use rig::prelude::*;
 use rig::{
     completion::{Prompt, ToolDefinition},
     providers,
@@ -5,7 +6,6 @@ use rig::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt()
@@ -37,7 +37,6 @@ async fn main() -> Result<(), anyhow::Error> {
         "Cohere Calculator Agent: {}",
         calculator_agent.prompt("Calculate 2 - 5").await?
     );
-
     Ok(())
 }
 
@@ -53,9 +52,9 @@ struct MathError;
 
 #[derive(Deserialize, Serialize)]
 struct Adder;
+
 impl Tool for Adder {
     const NAME: &'static str = "add";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
@@ -79,23 +78,19 @@ impl Tool for Adder {
             }),
         }
     }
-
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("[tool-call] Adding {} and {}", args.x, args.y);
         let result = args.x + args.y;
         Ok(result)
     }
 }
-
 #[derive(Deserialize, Serialize)]
 struct Subtract;
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
-
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         serde_json::from_value(json!({
             "name": "subtract",

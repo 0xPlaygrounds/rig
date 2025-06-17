@@ -1,3 +1,4 @@
+use rig::prelude::*;
 use std::env;
 
 use rig::{

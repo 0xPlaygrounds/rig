@@ -1,3 +1,4 @@
+use rig::prelude::*;
 use rig::{
     completion::Prompt, embeddings::EmbeddingsBuilder, providers::ollama::Client,
     vector_store::in_memory_store::InMemoryVectorStore, Embed,
@@ -25,7 +26,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create ollama client
     let ollama_client = Client::new();
-
     let embedding_model = ollama_client.embedding_model("nomic-embed-text");
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
@@ -64,7 +64,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create vector store index
     let index = vector_store.index(embedding_model);
-
     let rag_agent = ollama_client.agent("qwen2.5:14b")
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.

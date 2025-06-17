@@ -1,4 +1,5 @@
 use rig::image_generation::ImageGenerationModel;
+use rig::prelude::*;
 use rig::providers::hyperbolic;
 use std::env::args;
 use std::fs::File;
@@ -21,7 +22,6 @@ async fn main() {
     let mut file = File::create_new(path).expect("Failed to create file");
 
     let hyperbolic = hyperbolic::Client::from_env();
-
     let stable_diffusion = hyperbolic.image_generation_model(hyperbolic::SDXL_TURBO);
 
     let response = stable_diffusion

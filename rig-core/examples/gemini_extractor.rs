@@ -1,3 +1,4 @@
+use rig::client::ProviderClient;
 use rig::providers::gemini;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

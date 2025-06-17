@@ -6,6 +6,7 @@ use testcontainers::{
 };
 
 use futures::{StreamExt, TryStreamExt};
+use rig::client::EmbeddingsClient;
 use rig::vector_store::VectorStoreIndex;
 use rig::{
     embeddings::{Embedding, EmbeddingsBuilder},

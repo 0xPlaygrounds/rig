@@ -8,7 +8,7 @@ use super::decoders::sse::from_response as sse_from_response;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils::merge_inplace;
 use crate::streaming;
-use crate::streaming::{RawStreamingChoice, StreamingCompletionModel, StreamingResult};
+use crate::streaming::{RawStreamingChoice, StreamingResult};
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -80,12 +80,11 @@ pub struct StreamingCompletionResponse {
     pub usage: PartialUsage,
 }
 
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = StreamingCompletionResponse;
-    async fn stream(
+impl CompletionModel {
+    pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let max_tokens = if let Some(tokens) = completion_request.max_tokens {
             tokens
@@ -156,7 +155,7 @@ impl StreamingCompletionModel for CompletionModel {
         // Use our SSE decoder to directly handle Server-Sent Events format
         let sse_stream = sse_from_response(response);
 
-        let stream: StreamingResult<Self::StreamingResponse> = Box::pin(stream! {
+        let stream: StreamingResult<StreamingCompletionResponse> = Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
             let mut sse_stream = Box::pin(sse_stream);
             let mut input_tokens = 0;
@@ -199,14 +198,14 @@ impl StreamingCompletionModel for CompletionModel {
                         }
                     },
                     Err(e) => {
-                        yield Err(CompletionError::ResponseError(format!("SSE Error: {}", e)));
+                        yield Err(CompletionError::ResponseError(format!("SSE Error: {e}")));
                         break;
                     }
                 }
             }
         });
 
-        Ok(streaming::StreamingCompletionResponse::new(stream))
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }
 

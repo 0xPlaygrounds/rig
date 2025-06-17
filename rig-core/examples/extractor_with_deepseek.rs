@@ -1,9 +1,10 @@
+use rig::prelude::*;
 use rig::providers::deepseek;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, JsonSchema, Serialize)]
 /// A record representing a person
+#[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Person {
     /// The person's first name, if provided (null otherwise)
     pub first_name: Option<String>,
@@ -22,7 +23,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let data_extractor = deepseek_client
         .extractor::<Person>(deepseek::DEEPSEEK_CHAT)
         .build();
-
     let person = data_extractor
         .extract("Hello my name is John Doe! I am a software engineer.")
         .await?;

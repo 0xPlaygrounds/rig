@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.1.3...rig-bedrock-v0.2.0) - 2025-06-09
+
+### Added
+
+- Improve Streaming API ([#388](https://github.com/0xPlaygrounds/rig/pull/388))
+
+### Other
+
+- Introduce Client Traits and Testing ([#440](https://github.com/0xPlaygrounds/rig/pull/440))
+
 ## [0.1.3](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.1.2...rig-bedrock-v0.1.3) - 2025-04-30
 
 ### Fixed

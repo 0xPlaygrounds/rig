@@ -1,8 +1,7 @@
-use std::env;
-
 use rig::pipeline::{self, Op};
+use rig::prelude::*;
 use rig::providers::openai::client::Client;
-
+use std::env;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client

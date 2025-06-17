@@ -1,4 +1,5 @@
 use rig::agent::AgentBuilder;
+use rig::prelude::*;
 use rig::providers::moonshot::{CompletionModel, MOONSHOT_CHAT};
 use rig::{completion::Prompt, providers};
 
@@ -6,10 +7,8 @@ use rig::{completion::Prompt, providers};
 async fn main() -> Result<(), anyhow::Error> {
     println!("Running basic agent with moonshot");
     basic_moonshot().await?;
-
     println!("\nRunning moonshot agent with context");
     context_moonshot().await?;
-
     println!("\n\nAll agents ran successfully");
     Ok(())
 }
@@ -31,7 +30,6 @@ async fn basic_moonshot() -> Result<(), anyhow::Error> {
     // Prompt the agent and print the response
     let response = comedian_agent.prompt("Entertain me!").await?;
     println!("{}", response);
-
     Ok(())
 }
 
@@ -45,8 +43,6 @@ async fn context_moonshot() -> Result<(), anyhow::Error> {
 
     // Prompt the agent and print the response
     let response = agent.prompt("What does \"glarb-glarb\" mean?").await?;
-
     println!("{}", response);
-
     Ok(())
 }

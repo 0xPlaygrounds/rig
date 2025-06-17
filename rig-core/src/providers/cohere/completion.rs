@@ -1,12 +1,12 @@
-use std::collections::HashMap;
-
 use crate::{
     completion::{self, CompletionError},
     json_utils, message, OneOrMany,
 };
+use std::collections::HashMap;
 
 use super::client::Client;
 use crate::completion::CompletionRequest;
+use crate::providers::cohere::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -398,7 +398,7 @@ impl TryFrom<Message> for message::Message {
                             message::ToolResultContent::text(
                                 serde_json::to_string(&document.data).map_err(|e| {
                                     message::MessageError::ConversionError(
-                                        format!("Failed to convert tool result document content into text: {}", e),
+                                        format!("Failed to convert tool result document content into text: {e}"),
                                     )
                                 })?,
                             )
@@ -479,6 +479,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -504,6 +505,17 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             Err(CompletionError::ProviderError(response.text().await?))
         }
+    }
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<
+        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+        CompletionError,
+    > {
+        CompletionModel::stream(self, request).await
     }
 }
 #[cfg(test)]

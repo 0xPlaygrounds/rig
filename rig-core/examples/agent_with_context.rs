@@ -1,7 +1,6 @@
-use std::env;
-
+use rig::prelude::*;
 use rig::{agent::AgentBuilder, completion::Prompt, providers::cohere};
-
+use std::env;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI and Cohere clients

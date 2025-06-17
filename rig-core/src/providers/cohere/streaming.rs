@@ -1,7 +1,7 @@
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::providers::cohere::completion::Usage;
 use crate::providers::cohere::CompletionModel;
-use crate::streaming::{RawStreamingChoice, StreamingCompletionModel};
+use crate::streaming::RawStreamingChoice;
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
@@ -60,13 +60,11 @@ pub struct StreamingCompletionResponse {
     pub usage: Option<Usage>,
 }
 
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = StreamingCompletionResponse;
-
-    async fn stream(
+impl CompletionModel {
+    pub(crate) async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let request = self.create_completion_request(request)?;
         let request = json_utils::merge(request, json!({"stream": true}));
@@ -183,6 +181,6 @@ impl StreamingCompletionModel for CompletionModel {
             }
         });
 
-        Ok(streaming::StreamingCompletionResponse::new(stream))
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }

@@ -1,11 +1,15 @@
+use rig::prelude::*;
 use std::env;
 
 use rig::pipeline::agent_ops::extract;
+
 use rig::providers::openai::client::Client;
+
 use rig::{
     parallel,
     pipeline::{self, passthrough, Op},
 };
+
 use schemars::JsonSchema;
 
 #[derive(serde::Deserialize, JsonSchema, serde::Serialize)]
@@ -13,7 +17,6 @@ struct DocumentScore {
     /// The score of the document
     score: f32,
 }
-
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client

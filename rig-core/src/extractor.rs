@@ -124,9 +124,10 @@ impl<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync, M: Compl
                     You are an AI assistant whose purpose is to extract structured data from the provided text.\n\
                     You will have access to a `submit` function that defines the structure of the data to extract from the provided text.\n\
                     Use the `submit` function to submit the structured data.\n\
-                    Be sure to fill out every field and ALWAYS CALL THE `submit` function, event with default values!!!.
+                    Be sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.
                 ")
                 .tool(SubmitTool::<T> {_t: PhantomData}),
+
             _t: PhantomData,
         }
     }
@@ -142,6 +143,11 @@ impl<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync, M: Compl
     /// Add a context document to the extractor
     pub fn context(mut self, doc: &str) -> Self {
         self.agent_builder = self.agent_builder.context(doc);
+        self
+    }
+
+    pub fn additional_params(mut self, params: serde_json::Value) -> Self {
+        self.agent_builder = self.agent_builder.additional_params(params);
         self
     }
 

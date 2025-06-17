@@ -11,20 +11,20 @@
 
 use super::openai::{send_compatible_streaming_request, AssistantContent};
 
+use crate::client::{CompletionClient, ProviderClient};
 use crate::json_utils::merge_inplace;
 use crate::message;
-use crate::streaming::{StreamingCompletionModel, StreamingCompletionResponse};
+use crate::streaming::StreamingCompletionResponse;
+
+use crate::impl_conversion_traits;
+use crate::providers::openai;
 use crate::{
-    agent::AgentBuilder,
     completion::{self, CompletionError, CompletionRequest},
-    extractor::ExtractorBuilder,
     json_utils,
     providers::openai::Message,
     OneOrMany,
 };
-
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 
 // ================================================================
@@ -35,7 +35,18 @@ const HYPERBOLIC_API_BASE_URL: &str = "https://api.hyperbolic.xyz/v1";
 #[derive(Clone)]
 pub struct Client {
     base_url: String,
+    api_key: String,
     http_client: reqwest::Client,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
@@ -48,33 +59,38 @@ impl Client {
     pub fn from_url(api_key: &str, base_url: &str) -> Self {
         Self {
             base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        "Authorization",
-                        format!("Bearer {}", api_key)
-                            .parse()
-                            .expect("Bearer token should parse"),
-                    );
-                    headers
-                })
                 .build()
                 .expect("OpenAI reqwest client should build"),
         }
     }
 
-    /// Create a new Hyperbolic client from the `HYPERBOLIC_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    pub fn from_env() -> Self {
-        let api_key = std::env::var("HYPERBOLIC_API_KEY").expect("HYPERBOLIC_API_KEY not set");
-        Self::new(&api_key)
+    /// Use your own `reqwest::Client`.
+    /// The required headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
     }
 
     fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url)
+        self.http_client.post(url).bearer_auth(&self.api_key)
     }
+}
+
+impl ProviderClient for Client {
+    /// Create a new Hyperbolic client from the `HYPERBOLIC_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    fn from_env() -> Self {
+        let api_key = std::env::var("HYPERBOLIC_API_KEY").expect("HYPERBOLIC_API_KEY not set");
+        Self::new(&api_key)
+    }
+}
+
+impl CompletionClient for Client {
+    type CompletionModel = CompletionModel;
 
     /// Create a completion model with the given name.
     ///
@@ -87,68 +103,15 @@ impl Client {
     ///
     /// let llama_3_1_8b = hyperbolic.completion_model(hyperbolic::LLAMA_3_1_8B);
     /// ```
-    pub fn completion_model(&self, model: &str) -> CompletionModel {
+    fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
-
-    /// Create an image generation model with the given name.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::hyperbolic::{Client, self};
-    ///
-    /// // Initialize the Hyperbolic client
-    /// let hyperbolic = Client::new("your-hyperbolic-api-key");
-    ///
-    /// let llama_3_1_8b = hyperbolic.image_generation_model(hyperbolic::SSD);
-    /// ```
-    #[cfg(feature = "image")]
-    pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
-        ImageGenerationModel::new(self.clone(), model)
-    }
-
-    /// Create a completion model with the given name.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::hyperbolic::{Client, self};
-    ///
-    /// // Initialize the Hyperbolic client
-    /// let hyperbolic = Client::new("your-hyperbolic-api-key");
-    ///
-    /// let tts = hyperbolic.audio_generation_model("EN");
-    /// ```
-    #[cfg(feature = "audio")]
-    pub fn audio_generation_model(&self, language: &str) -> AudioGenerationModel {
-        AudioGenerationModel::new(self.clone(), language)
-    }
-
-    /// Create an agent builder with the given completion model.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::hyperbolic::{Client, self};
-    ///
-    /// // Initialize the Eternal client
-    /// let hyperbolic = Client::new("your-hyperbolic-api-key");
-    ///
-    /// let agent = hyperbolic.agent(hyperbolic::LLAMA_3_1_8B)
-    ///    .preamble("You are comedian AI with a mission to make people laugh.")
-    ///    .temperature(0.0)
-    ///    .build();
-    /// ```
-    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    /// Create an extractor builder with the given completion model.
-    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
-        &self,
-        model: &str,
-    ) -> ExtractorBuilder<T, CompletionModel> {
-        ExtractorBuilder::new(self.completion_model(model))
-    }
 }
+
+impl_conversion_traits!(
+    AsEmbeddings,
+    AsTranscription for Client
+);
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
@@ -357,6 +320,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = openai::StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -388,10 +352,8 @@ impl completion::CompletionModel for CompletionModel {
             Err(CompletionError::ProviderError(response.text().await?))
         }
     }
-}
 
-impl StreamingCompletionModel for CompletionModel {
-    type StreamingResponse = openai::StreamingCompletionResponse;
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -419,6 +381,7 @@ pub use image_generation::*;
 #[cfg(feature = "image")]
 mod image_generation {
     use super::{ApiResponse, Client};
+    use crate::client::ImageGenerationClient;
     use crate::image_generation;
     use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
     use crate::json_utils::merge_inplace;
@@ -526,12 +489,30 @@ mod image_generation {
             }
         }
     }
+
+    impl ImageGenerationClient for Client {
+        type ImageGenerationModel = ImageGenerationModel;
+
+        /// Create an image generation model with the given name.
+        ///
+        /// # Example
+        /// ```
+        /// use rig::providers::hyperbolic::{Client, self};
+        ///
+        /// // Initialize the Hyperbolic client
+        /// let hyperbolic = Client::new("your-hyperbolic-api-key");
+        ///
+        /// let llama_3_1_8b = hyperbolic.image_generation_model(hyperbolic::SSD);
+        /// ```
+        fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
+            ImageGenerationModel::new(self.clone(), model)
+        }
+    }
 }
 
 // ======================================
 // Hyperbolic Audio Generation API
 // ======================================
-use crate::providers::openai;
 #[cfg(feature = "audio")]
 pub use audio_generation::*;
 
@@ -540,6 +521,7 @@ mod audio_generation {
     use super::{ApiResponse, Client};
     use crate::audio_generation;
     use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
+    use crate::client::AudioGenerationClient;
     use base64::prelude::BASE64_STANDARD;
     use base64::Engine;
     use serde::Deserialize;
@@ -548,14 +530,14 @@ mod audio_generation {
     #[derive(Clone)]
     pub struct AudioGenerationModel {
         client: Client,
-        pub langauge: String,
+        pub language: String,
     }
 
     impl AudioGenerationModel {
         pub(crate) fn new(client: Client, language: &str) -> AudioGenerationModel {
             Self {
                 client,
-                langauge: language.to_string(),
+                language: language.to_string(),
             }
         }
     }
@@ -591,7 +573,7 @@ mod audio_generation {
         ) -> Result<audio_generation::AudioGenerationResponse<Self::Response>, AudioGenerationError>
         {
             let request = json!({
-                "language": self.langauge,
+                "language": self.language,
                 "speaker": request.voice,
                 "text": request.text,
                 "speed": request.speed
@@ -618,6 +600,24 @@ mod audio_generation {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(err) => Err(AudioGenerationError::ProviderError(err.message)),
             }
+        }
+    }
+    impl AudioGenerationClient for Client {
+        type AudioGenerationModel = AudioGenerationModel;
+
+        /// Create a completion model with the given name.
+        ///
+        /// # Example
+        /// ```
+        /// use rig::providers::hyperbolic::{Client, self};
+        ///
+        /// // Initialize the Hyperbolic client
+        /// let hyperbolic = Client::new("your-hyperbolic-api-key");
+        ///
+        /// let tts = hyperbolic.audio_generation_model("EN");
+        /// ```
+        fn audio_generation_model(&self, language: &str) -> AudioGenerationModel {
+            AudioGenerationModel::new(self.clone(), language)
         }
     }
 }

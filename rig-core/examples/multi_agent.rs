@@ -1,5 +1,4 @@
-use std::env;
-
+use rig::prelude::*;
 use rig::{
     agent::{Agent, AgentBuilder},
     cli_chatbot::cli_chatbot,
@@ -7,6 +6,7 @@ use rig::{
     message::Message,
     providers::openai::Client as OpenAIClient,
 };
+use std::env;
 
 /// Represents a multi agent application that consists of two components:
 /// an agent specialized in translating prompt into english and a simple GPT-4 model.
@@ -46,9 +46,7 @@ impl<M: CompletionModel> Chat for EnglishTranslator<M> {
             .translator_agent
             .chat(prompt, chat_history.clone())
             .await?;
-
         println!("Translated prompt: {}", translated_prompt);
-
         // Answer the prompt using gpt4
         self.gpt4
             .chat(translated_prompt.as_str(), chat_history)
@@ -63,16 +61,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = OpenAIClient::new(&openai_api_key);
     let model = openai_client.completion_model("gpt-4");
 
-    // Create OpenAI client
-    // let cohere_api_key = env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set");
-    // let cohere_client = CohereClient::new(&cohere_api_key);
-    // let model = cohere_client.completion_model("command-r");
-
     // Create model
     let translator = EnglishTranslator::new(model);
 
     // Spin up a chatbot using the agent
     cli_chatbot(translator).await?;
-
     Ok(())
 }

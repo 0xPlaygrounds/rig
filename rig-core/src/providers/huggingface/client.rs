@@ -1,13 +1,15 @@
-use std::fmt::Display;
-
 use super::completion::CompletionModel;
-use crate::agent::AgentBuilder;
+#[cfg(feature = "image")]
+use crate::client::ImageGenerationClient;
+use crate::client::{CompletionClient, ProviderClient, TranscriptionClient};
 #[cfg(feature = "image")]
 use crate::image_generation::ImageGenerationError;
 #[cfg(feature = "image")]
 use crate::providers::huggingface::image_generation::ImageGenerationModel;
 use crate::providers::huggingface::transcription::TranscriptionModel;
 use crate::transcription::TranscriptionError;
+use rig::client::impl_conversion_traits;
+use std::fmt::Display;
 
 // ================================================================
 // Main Huggingface Client
@@ -33,7 +35,7 @@ impl SubProvider {
     /// in the url and in the request body.
     pub fn completion_endpoint(&self, model: &str) -> String {
         match self {
-            SubProvider::HFInference => format!("/{}/v1/chat/completions", model),
+            SubProvider::HFInference => format!("/{model}/v1/chat/completions"),
             _ => "/v1/chat/completions".to_string(),
         }
     }
@@ -43,10 +45,9 @@ impl SubProvider {
     /// in the url and in the request body.
     pub fn transcription_endpoint(&self, model: &str) -> Result<String, TranscriptionError> {
         match self {
-            SubProvider::HFInference => Ok(format!("/{}", model)),
+            SubProvider::HFInference => Ok(format!("/{model}")),
             _ => Err(TranscriptionError::ProviderError(format!(
-                "transcription endpoint is not supported yet for {}",
-                self
+                "transcription endpoint is not supported yet for {self}"
             ))),
         }
     }
@@ -67,7 +68,7 @@ impl SubProvider {
 
     pub fn model_identifier(&self, model: &str) -> String {
         match self {
-            SubProvider::Fireworks => format!("accounts/fireworks/models/{}", model),
+            SubProvider::Fireworks => format!("accounts/fireworks/models/{model}"),
             _ => model.to_string(),
         }
     }
@@ -98,7 +99,7 @@ impl Display for SubProvider {
             SubProvider::Custom(route) => route.clone(),
         };
 
-        write!(f, "{}", route)
+        write!(f, "{route}")
     }
 }
 
@@ -139,8 +140,22 @@ impl ClientBuilder {
 #[derive(Clone)]
 pub struct Client {
     base_url: String,
+    default_headers: reqwest::header::HeaderMap,
+    api_key: String,
     http_client: reqwest::Client,
     pub(crate) sub_provider: SubProvider,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("default_headers", &self.default_headers)
+            .field("sub_provider", &self.sub_provider)
+            .field("api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
@@ -153,43 +168,54 @@ impl Client {
 
     /// Create a new Client with the given API key and base API URL.
     pub fn from_url(api_key: &str, base_url: &str, sub_provider: SubProvider) -> Self {
+        let mut default_headers = reqwest::header::HeaderMap::new();
+        default_headers.insert(
+            "Content-Type",
+            "application/json"
+                .parse()
+                .expect("Failed to parse Content-Type"),
+        );
         let http_client = reqwest::Client::builder()
-            .default_headers({
-                let mut headers = reqwest::header::HeaderMap::new();
-                headers.insert(
-                    "Authorization",
-                    format!("Bearer {api_key}")
-                        .parse()
-                        .expect("Failed to parse API key"),
-                );
-                headers.insert(
-                    "Content-Type",
-                    "application/json"
-                        .parse()
-                        .expect("Failed to parse Content-Type"),
-                );
-                headers
-            })
             .build()
             .expect("Failed to build HTTP client");
 
         Self {
             base_url: base_url.to_owned(),
+            api_key: api_key.to_string(),
+            default_headers,
             http_client,
             sub_provider,
         }
     }
-    /// Create a new Huggingface client from the `HUGGINGFACE_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    pub fn from_env() -> Self {
-        let api_key = std::env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY is not set");
-        Self::new(&api_key)
+
+    /// Use your own `reqwest::Client`.
+    /// The API key will be automatically attached upon trying to make a request, so you shouldn't need to add it as a default header.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
     }
 
     pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url)
+        self.http_client
+            .post(url)
+            .bearer_auth(&self.api_key)
+            .headers(self.default_headers.clone())
     }
+}
+
+impl ProviderClient for Client {
+    /// Create a new Huggingface client from the `HUGGINGFACE_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    fn from_env() -> Self {
+        let api_key = std::env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY is not set");
+        Self::new(&api_key)
+    }
+}
+
+impl CompletionClient for Client {
+    type CompletionModel = CompletionModel;
 
     /// Create a new completion model with the given name
     ///
@@ -202,9 +228,13 @@ impl Client {
     ///
     /// let completion_model = client.completion_model(huggingface::GEMMA_2);
     /// ```
-    pub fn completion_model(&self, model: &str) -> CompletionModel {
+    fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
+}
+
+impl TranscriptionClient for Client {
+    type TranscriptionModel = TranscriptionModel;
 
     /// Create a new transcription model with the given name
     ///
@@ -218,9 +248,14 @@ impl Client {
     /// let completion_model = client.transcription_model(huggingface::WHISPER_LARGE_V3);
     /// ```
     ///
-    pub fn transcription_model(&self, model: &str) -> TranscriptionModel {
+    fn transcription_model(&self, model: &str) -> TranscriptionModel {
         TranscriptionModel::new(self.clone(), model)
     }
+}
+
+#[cfg(feature = "image")]
+impl ImageGenerationClient for Client {
+    type ImageGenerationModel = ImageGenerationModel;
 
     /// Create a new image generation model with the given name
     ///
@@ -233,26 +268,9 @@ impl Client {
     ///
     /// let completion_model = client.image_generation_model(huggingface::WHISPER_LARGE_V3);
     /// ```
-    #[cfg(feature = "image")]
-    pub fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
+    fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
         ImageGenerationModel::new(self.clone(), model)
     }
-
-    /// Create an agent builder with the given completion model.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::huggingface::{Client, self};
-    ///
-    /// // Initialize the Anthropic client
-    /// let client = Client::new("your-huggingface-api-key");
-    ///
-    /// let agent = client.agent(huggingface::GEMMA_2)
-    ///    .preamble("You are comedian AI with a mission to make people laugh.")
-    ///    .temperature(0.0)
-    ///    .build();
-    /// ```
-    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
 }
+
+impl_conversion_traits!(AsEmbeddings, AsAudioGeneration for Client);

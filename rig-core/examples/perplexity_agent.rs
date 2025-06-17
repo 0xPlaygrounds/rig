@@ -1,10 +1,9 @@
-use std::env;
-
 use rig::{
     completion::Prompt,
     providers::{self, perplexity::SONAR},
 };
 use serde_json::json;
+use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -28,6 +27,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = agent
         .prompt("When and where and what type is the next solar eclipse?")
         .await?;
+
     println!("{}", response);
 
     Ok(())

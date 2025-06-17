@@ -1,17 +1,16 @@
-use std::env;
-
+use rig::prelude::*;
 use rig::{
     agent::AgentBuilder,
     completion::Prompt,
     loaders::FileLoader,
     providers::openai::{self, GPT_4O},
 };
+use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let openai_client =
         openai::Client::new(&env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"));
-
     let model = openai_client.completion_model(GPT_4O);
 
     // Load in all the rust examples
@@ -31,8 +30,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = agent
         .prompt("Which rust example is best suited for the operation 1 + 2")
         .await?;
-
     println!("{}", response);
-
     Ok(())
 }

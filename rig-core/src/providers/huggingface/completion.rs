@@ -1,8 +1,9 @@
-use std::{convert::Infallible, str::FromStr};
-
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
+use std::{convert::Infallible, str::FromStr};
 
+use super::client::Client;
+use crate::providers::openai::StreamingCompletionResponse;
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
@@ -10,8 +11,6 @@ use crate::{
     one_or_many::string_or_one_or_many,
     OneOrMany,
 };
-
-use super::client::Client;
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
@@ -542,6 +541,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -581,6 +581,17 @@ impl completion::CompletionModel for CompletionModel {
                 response.text().await?
             )))
         }
+    }
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<
+        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+        CompletionError,
+    > {
+        CompletionModel::stream(self, request).await
     }
 }
 

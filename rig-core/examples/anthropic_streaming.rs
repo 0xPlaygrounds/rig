@@ -1,8 +1,8 @@
+use rig::prelude::*;
 use rig::{
     providers::anthropic::{self, CLAUDE_3_5_SONNET},
     streaming::{stream_to_stdout, StreamingPrompt},
 };
-
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create streaming agent with a single context prompt
@@ -24,6 +24,5 @@ async fn main() -> Result<(), anyhow::Error> {
     };
 
     println!("Message: {:?}", stream.choice);
-
     Ok(())
 }
