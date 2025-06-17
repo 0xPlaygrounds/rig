@@ -84,6 +84,15 @@ impl Client {
                 .expect("Ollama reqwest client should build"),
         }
     }
+
+    /// Use your own `reqwest::Client`.
+    /// The required headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
+    }
+
     fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path);
         self.http_client.post(url)

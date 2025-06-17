@@ -27,10 +27,21 @@ use serde_json::json;
 // ================================================================
 const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com";
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Client {
     pub base_url: String,
+    api_key: String,
     http_client: HttpClient,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
@@ -39,30 +50,29 @@ impl Client {
         Self::from_url(api_key, DEEPSEEK_API_BASE_URL)
     }
 
-    // Handy for advanced usage, e.g. letting user override base_url or set timeouts:
+    /// Set your own URL.
+    /// Useful if you need to access an alternative website that supports the DeepSeek API specification.
     pub fn from_url(api_key: &str, base_url: &str) -> Self {
-        // Possibly configure a custom HTTP client here if needed.
         Self {
             base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        "Authorization",
-                        format!("Bearer {api_key}")
-                            .parse()
-                            .expect("Bearer token should parse"),
-                    );
-                    headers
-                })
                 .build()
                 .expect("DeepSeek reqwest client should build"),
         }
     }
 
+    /// Use your own `reqwest::Client`.
+    /// The required headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
+    }
+
     fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url)
+        self.http_client.post(url).bearer_auth(&self.api_key)
     }
 }
 

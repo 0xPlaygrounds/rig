@@ -18,11 +18,23 @@ use serde::{Deserialize, Serialize};
 // ================================================================
 const GEMINI_API_BASE_URL: &str = "https://generativelanguage.googleapis.com";
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Client {
     base_url: String,
     api_key: String,
+    default_headers: reqwest::header::HeaderMap,
     http_client: reqwest::Client,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("default_headers", &self.default_headers)
+            .field("api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
@@ -30,28 +42,29 @@ impl Client {
         Self::from_url(api_key, GEMINI_API_BASE_URL)
     }
     pub fn from_url(api_key: &str, base_url: &str) -> Self {
+        let mut default_headers = reqwest::header::HeaderMap::new();
+        default_headers.insert(
+            reqwest::header::CONTENT_TYPE,
+            "application/json".parse().unwrap(),
+        );
         Self {
             base_url: base_url.to_string(),
             api_key: api_key.to_string(),
+            default_headers,
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        reqwest::header::CONTENT_TYPE,
-                        "application/json".parse().unwrap(),
-                    );
-                    headers
-                })
                 .build()
                 .expect("Gemini reqwest client should build"),
         }
     }
 
     pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
+        // API key gets inserted as query param - no need to add bearer auth or headers
         let url = format!("{}/{}?key={}", self.base_url, path, self.api_key).replace("//", "/");
 
         tracing::debug!("POST {}/{}?key={}", self.base_url, path, "****");
-        self.http_client.post(url)
+        self.http_client
+            .post(url)
+            .headers(self.default_headers.clone())
     }
 
     pub fn post_sse(&self, path: &str) -> reqwest::RequestBuilder {
