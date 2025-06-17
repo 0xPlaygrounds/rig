@@ -231,6 +231,9 @@ pub async fn stream_to_stdout<M: CompletionModel>(
                     .map_err(|e| std::io::Error::other(e.to_string()))?;
                 println!("\nResult: {res}");
             }
+            Ok(AssistantContent::Reasoning(_)) => {
+                unimplemented!("Not implemented yet - come back later!")
+            }
             Err(e) => {
                 eprintln!("Error: {e}");
                 break;
