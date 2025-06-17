@@ -1,10 +1,11 @@
 use futures::{Stream, StreamExt};
 use rig::{
     agent::Agent,
-    completion::{self, CompletionError, PromptError, ToolDefinition},
+    client::{CompletionClient, ProviderClient},
+    completion::{self, CompletionError, CompletionModel, PromptError, ToolDefinition},
     message::{AssistantContent, Message, Text, ToolResultContent, UserContent},
     providers::anthropic,
-    streaming::{StreamingCompletion, StreamingCompletionModel},
+    streaming::StreamingCompletion,
     tool::{Tool, ToolSetError},
     OneOrMany,
 };
@@ -74,8 +75,8 @@ async fn multi_turn_prompt<M>(
     mut chat_history: Vec<completion::Message>,
 ) -> StreamingResult
 where
-    M: StreamingCompletionModel + 'static,
-    <M as StreamingCompletionModel>::StreamingResponse: std::marker::Send,
+    M: CompletionModel + 'static,
+    <M as CompletionModel>::StreamingResponse: std::marker::Send,
 {
     let prompt: Message = prompt.into();
 
