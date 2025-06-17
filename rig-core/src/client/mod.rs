@@ -531,6 +531,7 @@ mod tests {
                     );
                 }
                 AssistantContent::ToolCall(_) => {}
+                AssistantContent::Reasoning(_) => {}
             }
         }
     }

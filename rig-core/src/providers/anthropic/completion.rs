@@ -318,6 +318,9 @@ impl From<message::AssistantContent> for Content {
                     input: function.arguments,
                 }
             }
+            message::AssistantContent::Reasoning(message::Reasoning { .. }) => {
+                unimplemented!("Not implemented yet - check back later!")
+            }
         }
     }
 }

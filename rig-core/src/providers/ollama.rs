@@ -671,6 +671,9 @@ impl TryFrom<crate::message::Message> for Message {
                                 },
                             });
                         }
+                        crate::message::AssistantContent::Reasoning(_) => {
+                            unimplemented!("Not implemented yet - check back later!")
+                        }
                     }
                 }
                 let content_str = texts.join(" ");

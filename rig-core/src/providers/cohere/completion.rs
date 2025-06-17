@@ -326,6 +326,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                             }),
                         });
                     }
+                    message::AssistantContent::Reasoning(message::Reasoning { .. }) => {
+                        unimplemented!("Not implemented yet - check back later!")
+                    }
                 });
 
                 vec![Message::Assistant {

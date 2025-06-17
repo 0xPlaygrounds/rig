@@ -209,6 +209,9 @@ impl TryFrom<message::Message> for Message {
                                 "Tool calls do not exist on this message".into(),
                             ))
                         }
+                        message::AssistantContent::Reasoning(message::Reasoning { .. }) => {
+                            unimplemented!("Not implemented yet - check back later!")
+                        }
                     }
                 }
 

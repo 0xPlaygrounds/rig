@@ -515,6 +515,9 @@ pub mod gemini_api_types {
             match content {
                 message::AssistantContent::Text(message::Text { text }) => text.into(),
                 message::AssistantContent::ToolCall(tool_call) => tool_call.into(),
+                message::AssistantContent::Reasoning(message::Reasoning { .. }) => {
+                    unimplemented!("Not implemented yet - check back later!")
+                }
             }
         }
     }
