@@ -151,13 +151,7 @@ pub(crate) fn create_request_body(
             .collect::<Result<Vec<_>, _>>()?,
         generation_config: Some(generation_config),
         safety_settings: None,
-        tools: Some(
-            completion_request
-                .tools
-                .into_iter()
-                .map(Tool::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
-        ),
+        tools: Some(Tool::try_from(completion_request.tools)?),
         tool_config: None,
         system_instruction,
     };
@@ -176,11 +170,51 @@ impl TryFrom<completion::ToolDefinition> for Tool {
                 Some(tool.parameters.try_into()?)
             };
         Ok(Self {
-            function_declarations: FunctionDeclaration {
+            function_declarations: OneOrMany::one(FunctionDeclaration {
                 name: tool.name,
                 description: tool.description,
                 parameters,
-            },
+            }),
+            code_execution: None,
+        })
+    }
+}
+
+impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
+    type Error = CompletionError;
+
+    fn try_from(tools: Vec<completion::ToolDefinition>) -> Result<Self, Self::Error> {
+        let mut functions = Vec::new();
+
+        for tool in tools {
+            let parameters =
+                if tool.parameters == serde_json::json!({"type": "object", "properties": {}}) {
+                    None
+                } else {
+                    match tool.parameters.try_into() {
+                        Ok(schema) => Some(schema),
+                        Err(e) => {
+                            let emsg = format!(
+                                "Tool '{}' could not be converted to a schema: {:?}",
+                                tool.name, e,
+                            );
+                            return Err(CompletionError::ProviderError(emsg));
+                        }
+                    }
+                };
+
+            functions.push(FunctionDeclaration {
+                name: tool.name,
+                description: tool.description,
+                parameters,
+            });
+        }
+
+        let function_declarations: OneOrMany<FunctionDeclaration> = OneOrMany::many(functions)
+            .map_err(|x| CompletionError::ProviderError(x.to_string()))?;
+
+        Ok(Self {
+            function_declarations,
             code_execution: None,
         })
     }
@@ -235,7 +269,7 @@ pub mod gemini_api_types {
     // Gemini API Types
     // =================================================================
     use serde::{Deserialize, Serialize};
-    use serde_json::Value;
+    use serde_json::{json, Value};
 
     use crate::{
         completion::CompletionError,
@@ -445,11 +479,7 @@ pub mod gemini_api_types {
                     };
                     Ok(Part::FunctionResponse(FunctionResponse {
                         name: id,
-                        response: Some(serde_json::from_str(&content).map_err(|e| {
-                            message::MessageError::ConversionError(format!(
-                                "Failed to parse tool response: {e}"
-                            ))
-                        })?),
+                        response: Some(json!({ "result": content })),
                     }))
                 }
                 message::UserContent::Image(message::Image {
@@ -581,7 +611,7 @@ pub mod gemini_api_types {
         /// with a maximum length of 63.
         pub name: String,
         /// The function response in JSON object format.
-        pub response: Option<HashMap<String, serde_json::Value>>,
+        pub response: Option<serde_json::Value>,
     }
 
     /// URI based data.
@@ -841,7 +871,7 @@ pub mod gemini_api_types {
     /// The Schema object allows the definition of input and output data types. These types can be objects, but also
     /// primitives and arrays. Represents a select subset of an OpenAPI 3.0 schema object.
     /// From [Gemini API Reference](https://ai.google.dev/api/caching#Schema)
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize, Clone)]
     pub struct Schema {
         pub r#type: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -934,7 +964,7 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct GenerateContentRequest {
         pub contents: Vec<Content>,
-        pub tools: Option<Vec<Tool>>,
+        pub tools: Option<Tool>,
         pub tool_config: Option<ToolConfig>,
         /// Optional. Configuration options for model generation and outputs.
         pub generation_config: Option<GenerationConfig>,
@@ -961,11 +991,11 @@ pub mod gemini_api_types {
     #[derive(Debug, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct Tool {
-        pub function_declarations: FunctionDeclaration,
+        pub function_declarations: OneOrMany<FunctionDeclaration>,
         pub code_execution: Option<CodeExecution>,
     }
 
-    #[derive(Debug, Serialize)]
+    #[derive(Debug, Serialize, Clone)]
     #[serde(rename_all = "camelCase")]
     pub struct FunctionDeclaration {
         pub name: String,
