@@ -273,7 +273,7 @@ pub mod gemini_api_types {
 
     use crate::{
         completion::CompletionError,
-        message::{self, MimeType as _},
+        message::{self, MessageError, MimeType as _},
         one_or_many::string_or_one_or_many,
         providers::gemini::gemini_api_types::{CodeExecutionResult, ExecutableCode},
         OneOrMany,
@@ -477,9 +477,12 @@ pub mod gemini_api_types {
                             ))
                         }
                     };
+                    // Convert to JSON since this value may be a valid JSON value
+                    let result: serde_json::Value = serde_json::from_str(&content)
+                        .map_err(|x| MessageError::ConversionError(x.to_string()))?;
                     Ok(Part::FunctionResponse(FunctionResponse {
                         name: id,
-                        response: Some(json!({ "result": content })),
+                        response: Some(json!({ "result": result })),
                     }))
                 }
                 message::UserContent::Image(message::Image {
