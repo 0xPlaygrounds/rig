@@ -29,7 +29,7 @@ impl TryFrom<RigMessage> for aws_bedrock::Message {
                     .build()
                     .map_err(|e| CompletionError::RequestError(Box::new(e)))?
             }
-            Message::Assistant { content } => aws_bedrock::Message::builder()
+            Message::Assistant { content, .. } => aws_bedrock::Message::builder()
                 .role(aws_bedrock::ConversationRole::Assistant)
                 .set_content(Some(
                     content
@@ -62,7 +62,7 @@ impl TryFrom<aws_bedrock::Message> for RigMessage {
                 let content = OneOrMany::many(assistant_content)
                     .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
 
-                Ok(RigMessage(Message::Assistant { content }))
+                Ok(RigMessage(Message::Assistant { content, id: None }))
             }
             aws_bedrock::ConversationRole::User => {
                 let user_content = message
