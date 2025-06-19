@@ -61,6 +61,7 @@ impl TryFrom<RawMessage> for message::Message {
                 content: OneOrMany::one(UserContent::Text(message::Text { text: raw.content })),
             }),
             "assistant" => Ok(message::Message::Assistant {
+                id: None,
                 content: OneOrMany::one(AssistantContent::Text(message::Text {
                     text: raw.content,
                 })),
@@ -271,7 +272,7 @@ impl CompletionModel {
                         .join("\n");
                     ("user", text)
                 }
-                Message::Assistant { content } => {
+                Message::Assistant { content, .. } => {
                     let text = content
                         .iter()
                         .map(|c| match c {
@@ -385,7 +386,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 let message = message::Message::try_from(choice.message.clone())?;
 
                 match message {
-                    Message::Assistant { content } => {
+                    Message::Assistant { content, .. } => {
                         if content.is_empty() {
                             return Err(CompletionError::ResponseError(
                                 "Response contained empty content".to_owned(),
@@ -469,7 +470,7 @@ impl From<Message> for serde_json::Value {
                     "content": text
                 })
             }
-            Message::Assistant { content } => {
+            Message::Assistant { content, .. } => {
                 let text = content
                     .iter()
                     .map(|c| match c {
@@ -526,6 +527,7 @@ impl TryFrom<serde_json::Value> for Message {
                 content: OneOrMany::one(UserContent::Text(message::Text { text: content })),
             }),
             "assistant" => Ok(Message::Assistant {
+                id: None,
                 content: OneOrMany::one(AssistantContent::Text(message::Text { text: content })),
             }),
             _ => Err(CompletionError::ResponseError(format!(
@@ -569,7 +571,7 @@ mod tests {
 
         // Test string content format
         match assistant_message {
-            Message::Assistant { content } => {
+            Message::Assistant { content, .. } => {
                 assert_eq!(
                     content.first(),
                     AssistantContent::Text(message::Text {
@@ -594,7 +596,7 @@ mod tests {
 
         // Test array content format
         match assistant_message_array {
-            Message::Assistant { content } => {
+            Message::Assistant { content, .. } => {
                 assert_eq!(
                     content.first(),
                     AssistantContent::Text(message::Text {

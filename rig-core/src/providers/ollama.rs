@@ -714,6 +714,7 @@ impl From<Message> for crate::completion::Message {
                     );
                 }
                 crate::completion::Message::Assistant {
+                    id: None,
                     content: OneOrMany::many(assistant_contents).unwrap(),
                 }
             }

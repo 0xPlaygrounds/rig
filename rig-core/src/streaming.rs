@@ -126,6 +126,7 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                     // and pass it to the outer stream
                     stream.tool_calls.push(ToolCall {
                         id: id.clone(),
+                        call_id: None,
                         function: ToolFunction {
                             name: name.clone(),
                             arguments: arguments.clone(),

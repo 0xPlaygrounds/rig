@@ -111,7 +111,7 @@ impl TryFrom<message::Message> for Vec<Message> {
 
                 Ok(messages)
             }
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let (text_content, tool_calls) = content.into_iter().fold(
                     (Vec::new(), Vec::new()),
                     |(mut texts, mut tools), content| {

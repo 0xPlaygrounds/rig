@@ -108,6 +108,7 @@ impl<M: CompletionModel> PromptRequest<'_, M> {
                 .partition(|choice| matches!(choice, AssistantContent::ToolCall(_)));
 
             chat_history.push(Message::Assistant {
+                id: None,
                 content: resp.choice.clone(),
             });
 
@@ -142,10 +143,18 @@ impl<M: CompletionModel> PromptRequest<'_, M> {
                                 tool_call.function.arguments.to_string(),
                             )
                             .await?;
-                        Ok(UserContent::tool_result(
-                            tool_call.id.clone(),
-                            OneOrMany::one(output.into()),
-                        ))
+                        if let Some(call_id) = tool_call.call_id.clone() {
+                            Ok(UserContent::tool_result_with_call_id(
+                                tool_call.id.clone(),
+                                call_id,
+                                OneOrMany::one(output.into()),
+                            ))
+                        } else {
+                            Ok(UserContent::tool_result(
+                                tool_call.id.clone(),
+                                OneOrMany::one(output.into()),
+                            ))
+                        }
                     } else {
                         unreachable!(
                             "This should never happen as we already filtered for `ToolCall`"

@@ -285,7 +285,7 @@ impl TryFrom<message::Message> for Message {
                 }
             }
 
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let collapsed_content = content
                     .into_iter()
                     .map(|content| {

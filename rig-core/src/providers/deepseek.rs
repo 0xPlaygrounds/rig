@@ -233,7 +233,7 @@ impl TryFrom<message::Message> for Vec<Message> {
 
                 Ok(messages)
             }
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let mut messages: Vec<Message> = vec![];
 
                 // extract tool calls
