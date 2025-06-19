@@ -291,7 +291,7 @@ mod tests {
                 factory: Box::new(xai::Client::from_env_boxed),
                 env_variable: "XAI_API_KEY",
                 completion_model: Some(xai::GROK_3_MINI),
-                embeddings_model: Some(xai::EMBEDDING_V1),
+                embeddings_model: None,
                 ..Default::default()
             },
             ClientConfig {

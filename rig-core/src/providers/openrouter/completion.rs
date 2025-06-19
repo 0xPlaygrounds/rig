@@ -158,7 +158,7 @@ impl CompletionModel {
             "model": self.model,
             "messages": full_history,
             "temperature": completion_request.temperature,
-            "tool_calls": completion_request.tools
+            "tools": completion_request.tools
         });
 
         let request = if let Some(params) = completion_request.additional_params {

@@ -18,7 +18,7 @@ use crate::{
     message::{self, AssistantContent, Message, UserContent},
     OneOrMany,
 };
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::string::FromUtf8Error;
@@ -107,12 +107,24 @@ struct ModelInfo {
     id: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 /// Client for interacting with the Mira API
 pub struct Client {
     base_url: String,
-    client: reqwest::Client,
+    http_client: reqwest::Client,
+    api_key: String,
     headers: HeaderMap,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("api_key", &"<REDACTED>")
+            .field("headers", &self.headers)
+            .finish()
+    }
 }
 
 impl Client {
@@ -120,11 +132,6 @@ impl Client {
     pub fn new(api_key: &str) -> Result<Self, MiraError> {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {api_key}"))
-                .map_err(|_| MiraError::InvalidApiKey)?,
-        );
         headers.insert(
             reqwest::header::ACCEPT,
             HeaderValue::from_static("application/json"),
@@ -136,7 +143,8 @@ impl Client {
 
         Ok(Self {
             base_url: MIRA_API_BASE_URL.to_string(),
-            client: reqwest::Client::builder()
+            api_key: api_key.to_string(),
+            http_client: reqwest::Client::builder()
                 .build()
                 .expect("Failed to build HTTP client"),
             headers,
@@ -153,13 +161,22 @@ impl Client {
         Ok(client)
     }
 
+    /// Use your own `reqwest::Client`.
+    /// The required headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
+    }
+
     /// List available models
     pub async fn list_models(&self) -> Result<Vec<String>, MiraError> {
         let url = format!("{}/v1/models", self.base_url);
 
         let response = self
-            .client
+            .http_client
             .get(&url)
+            .bearer_auth(&self.api_key)
             .headers(self.headers.clone())
             .send()
             .await?;
@@ -321,8 +338,9 @@ impl completion::CompletionModel for CompletionModel {
 
         let response = self
             .client
-            .client
+            .http_client
             .post(format!("{}/v1/chat/completions", self.client.base_url))
+            .bearer_auth(&self.client.api_key)
             .headers(self.client.headers.clone())
             .json(&mira_request)
             .send()
@@ -356,7 +374,7 @@ impl completion::CompletionModel for CompletionModel {
 
         let builder = self
             .client
-            .client
+            .http_client
             .post(format!("{}/v1/chat/completions", self.client.base_url))
             .headers(self.client.headers.clone())
             .json(&request);
