@@ -423,8 +423,6 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             }
             partial_history.extend(req.chat_history);
 
-            println!("{partial_history:?}");
-
             // Initialize full history with preamble (or empty if non-existent)
             let mut full_history: Vec<InputItem> = Vec::new();
 
@@ -439,7 +437,6 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
                     .collect::<Vec<InputItem>>(),
             );
 
-            println!("{full_history:?}");
             full_history
         };
 
@@ -525,30 +522,6 @@ pub struct CompletionResponse {
     pub tools: Vec<ResponsesToolDefinition>,
     #[serde(flatten)]
     pub addtl_params: AddtlParams,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub background: Option<bool>,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub text: Option<TextConfig>,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub include: Option<Vec<Include>>,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub top_p: Option<f64>,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub truncation: Option<TruncationStrategy>,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub user: Option<String>,
-    // #[serde(skip_serializing_if = "Map::is_empty")]
-    // pub metadata: serde_json::Map<String, serde_json::Value>,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub parallel_tool_calls: Option<bool>,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub previous_response_id: Option<String>,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub reasoning: Option<Reasoning>,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub service_tier: Option<OpenAIServiceTier>,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub store: Option<bool>,
 }
 
 /// Additional parameters for the completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
@@ -736,7 +709,7 @@ impl completion::CompletionModel for ResponsesCompletionModel {
         let request = self.create_completion_request(completion_request)?;
         let request = serde_json::to_value(request)?;
 
-        println!("Input: {}", serde_json::to_string_pretty(&request)?);
+        tracing::debug!("Input: {}", serde_json::to_string_pretty(&request)?);
 
         let response = self.client.post("/responses").json(&request).send().await?;
 

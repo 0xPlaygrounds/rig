@@ -25,7 +25,7 @@ pub enum StreamingCompletionChunk {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingCompletionResponse {
-    usage: ResponsesUsage,
+    pub usage: ResponsesUsage,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -37,7 +37,6 @@ pub struct ResponseChunk {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type")]
 pub enum ResponseChunkKind {
     #[serde(rename = "response.created")]
     ResponseCreated,
@@ -53,7 +52,7 @@ pub enum ResponseChunkKind {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ItemChunk {
-    pub item_id: String,
+    pub item_id: Option<String>,
     pub output_index: u64,
     #[serde(flatten)]
     pub data: ItemChunkKind,
@@ -63,9 +62,9 @@ pub struct ItemChunk {
 #[serde(tag = "type")]
 pub enum ItemChunkKind {
     #[serde(rename = "response.output_item.added")]
-    OutputItemAdded(Output),
+    OutputItemAdded(StreamingItemDoneOutput),
     #[serde(rename = "response.output_item.done")]
-    OutputItemDone(Output),
+    OutputItemDone(StreamingItemDoneOutput),
     #[serde(rename = "response.content_part.added")]
     ContentPartAdded(ContentPartChunk),
     #[serde(rename = "response.content_part.done")]
@@ -90,6 +89,12 @@ pub enum ItemChunkKind {
     ReasoningSummaryTextAdded(SummaryTextChunk),
     #[serde(rename = "response.reasoning_summary_text.done")]
     ReasoningSummaryTextDone(SummaryTextChunk),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StreamingItemDoneOutput {
+    pub sequence_number: u64,
+    pub item: Output,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -177,7 +182,8 @@ pub async fn send_compatible_streaming_request(
         let mut final_usage = ResponsesUsage::new();
 
         let mut partial_data = None;
-        // let mut calls: HashMap<usize, (String, String, String)> = HashMap::new();
+
+        let mut tool_calls: Vec<RawStreamingChoice<StreamingCompletionResponse>> = Vec::new();
 
         while let Some(chunk_result) = stream.next().await {
             let chunk = match chunk_result {
@@ -195,7 +201,6 @@ pub async fn send_compatible_streaming_request(
                     break;
                 }
             };
-
 
             for line in text.lines() {
                 let mut line = line.to_string();
@@ -227,13 +232,15 @@ pub async fn send_compatible_streaming_request(
                     continue;
                 };
 
+                debug!("Data get: {data:?}");
+
 
                 if let StreamingCompletionChunk::Delta(chunk) = &data {
                     match &chunk.data {
                         ItemChunkKind::OutputItemDone(ref message) => {
 
                             match message {
-                                Output::Message(message) => {
+                                StreamingItemDoneOutput {  item: Output::Message(message), .. } => {
                                         let message = match message.content.first().unwrap() {
                                             AssistantContent::OutputText(Text { text}) => text,
                                             AssistantContent::Refusal { refusal } => refusal
@@ -241,11 +248,19 @@ pub async fn send_compatible_streaming_request(
 
                                         yield Ok(streaming::RawStreamingChoice::Message(message.clone()))
                                 }
-                                Output::FunctionCall(func) => {
-                                    yield Ok(streaming::RawStreamingChoice::ToolCall { id: func.id.clone(), name: func.name.clone(), arguments: func.arguments.clone() })
+                                StreamingItemDoneOutput {  item: Output::FunctionCall(func), .. } => {
+                                    tool_calls.push(streaming::RawStreamingChoice::ToolCall { id: func.id.clone(), call_id: Some(func.call_id.clone()), name: func.name.clone(), arguments: func.arguments.clone() });
                                 }
                             }
                         }
+                        ItemChunkKind::OutputTextDelta(delta) => {
+                            let OutputTextChunkData::Delta { ref delta } = delta.data else {
+                                panic!("Placeholder error!");
+                            };
+
+                            yield Ok(streaming::RawStreamingChoice::Message(delta.clone()))
+                        }
+
                         _ => { continue }
                     }
                 }
@@ -258,13 +273,9 @@ pub async fn send_compatible_streaming_request(
             }
         }
 
-        // for (_, (id, name, arguments)) in calls {
-        //     let Ok(arguments) = serde_json::from_str(&arguments) else {
-        //         continue;
-        //     };
-
-        //     yield Ok(RawStreamingChoice::ToolCall {id, name, arguments});
-        // }
+        for tool_call in tool_calls {
+            yield Ok(tool_call)
+        }
 
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
             usage: final_usage.clone()

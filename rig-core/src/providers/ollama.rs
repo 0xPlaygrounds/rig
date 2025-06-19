@@ -502,7 +502,8 @@ impl completion::CompletionModel for CompletionModel {
                                 yield Ok(RawStreamingChoice::ToolCall {
                                     id: "".to_string(),
                                     name: function.name,
-                                    arguments: function.arguments
+                                    arguments: function.arguments,
+                                    call_id: None
                                 });
                             }
                         }

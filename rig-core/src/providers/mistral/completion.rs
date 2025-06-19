@@ -436,6 +436,7 @@ impl completion::CompletionModel for CompletionModel {
                             id: tc.id.clone(),
                             name: tc.function.name.clone(),
                             arguments: tc.function.arguments.clone(),
+                             call_id: None
                         })
                     }
                 }

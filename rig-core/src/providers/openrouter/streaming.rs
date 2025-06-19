@@ -300,7 +300,8 @@ pub async fn send_streaming_request(
             yield Ok(streaming::RawStreamingChoice::ToolCall{
                 name: tool_call.function.name,
                 id: tool_call.id,
-                arguments: tool_call.function.arguments
+                arguments: tool_call.function.arguments,
+                call_id: None
             });
         }
 
