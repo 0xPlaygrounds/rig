@@ -59,14 +59,16 @@ async fn main() -> Result<(), anyhow::Error> {
             ),
             Err(err) => {
                 println!("Error: {}! Prompting without additional context", err);
-                format!("{prompt}")
+                prompt
             }
         })
         // Chain a "prompt" operation which will prompt out agent with the final prompt
         .prompt(agent);
 
     // Prompt the agent and print the response
-    let response = chain.call("What does \"glarb-glarb\" mean?").await?;
+    let response = chain
+        .call("What does \"glarb-glarb\" mean?".to_string())
+        .await?;
     println!("{:?}", response);
     Ok(())
 }
