@@ -14,6 +14,7 @@ use crate::completion::{
 };
 use crate::message::{AssistantContent, ToolCall, ToolFunction};
 use crate::OneOrMany;
+use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use std::boxed::Box;
 use std::future::Future;
@@ -50,7 +51,8 @@ pub type StreamingResult<R> =
 /// message and response are populated at the end of the
 /// `inner` stream.
 pub struct StreamingCompletionResponse<R: Clone + Unpin> {
-    pub(crate) inner: StreamingResult<R>,
+    pub(crate) inner: Abortable<StreamingResult<R>>,
+    pub(crate) abort_handle: AbortHandle,
     text: String,
     tool_calls: Vec<ToolCall>,
     /// The final aggregated message from the stream
@@ -63,13 +65,20 @@ pub struct StreamingCompletionResponse<R: Clone + Unpin> {
 
 impl<R: Clone + Unpin> StreamingCompletionResponse<R> {
     pub fn stream(inner: StreamingResult<R>) -> StreamingCompletionResponse<R> {
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        let abortable_stream = Abortable::new(inner, abort_registration);
         Self {
-            inner,
+            inner: abortable_stream,
+            abort_handle,
             text: "".to_string(),
             tool_calls: vec![],
             choice: OneOrMany::one(AssistantContent::text("")),
             response: None,
         }
+    }
+
+    pub fn cancel(&self) {
+        self.abort_handle.abort();
     }
 }
 
@@ -88,7 +97,7 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();
 
-        match stream.inner.as_mut().poll_next(cx) {
+        match Pin::new(&mut stream.inner).poll_next(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(None) => {
                 // This is run at the end of the inner stream to collect all tokens into
@@ -109,7 +118,13 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
 
                 Poll::Ready(None)
             }
-            Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
+            Poll::Ready(Some(Err(err))) => {
+                if matches!(err, CompletionError::ProviderError(ref e) if e.to_string().contains("aborted"))
+                {
+                    return Poll::Ready(None); // Treat cancellation as stream termination
+                }
+                Poll::Ready(Some(Err(err)))
+            }
             Poll::Ready(Some(Ok(choice))) => match choice {
                 RawStreamingChoice::Message(text) => {
                     // Forward the streaming tokens to the outer stream
@@ -232,6 +247,10 @@ pub async fn stream_to_stdout<M: CompletionModel>(
                 println!("\nResult: {res}");
             }
             Err(e) => {
+                if e.to_string().contains("aborted") {
+                    println!("\nStream cancelled.");
+                    break;
+                }
                 eprintln!("Error: {e}");
                 break;
             }
