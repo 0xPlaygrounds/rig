@@ -12,5 +12,6 @@ members = [
     "rig-surrealdb",
     "rig-eternalai",
     "rig-fastembed",
+    "rig-scylladb",
     "rig-bedrock", "rig-milvus",
 ]
