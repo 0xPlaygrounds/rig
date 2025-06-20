@@ -1,8 +1,7 @@
-use super::completion::CompletionModel;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils;
 use crate::json_utils::merge;
-use crate::providers::openai::Usage;
+use crate::providers::openai::completion::{CompletionModel, Usage};
 use crate::streaming;
 use crate::streaming::RawStreamingChoice;
 use async_stream::stream;
@@ -185,7 +184,7 @@ pub async fn send_compatible_streaming_request(
                                     continue;
                                 };
 
-                                yield Ok(streaming::RawStreamingChoice::ToolCall {id, name, arguments})
+                                yield Ok(streaming::RawStreamingChoice::ToolCall {id, name, arguments, call_id: None })
                             }
                         }
                     }
@@ -207,7 +206,7 @@ pub async fn send_compatible_streaming_request(
                 continue;
             };
 
-            yield Ok(RawStreamingChoice::ToolCall {id, name, arguments});
+            yield Ok(RawStreamingChoice::ToolCall {id, name, arguments, call_id: None });
         }
 
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {

@@ -26,6 +26,8 @@ impl Tool for Adder {
     type Args = OperationArgs;
     type Output = i32;
 
+    // NOTE: Use of `additionalProperties` is required if you're using OpenAI's strict mode
+    // which is on by default. Otherwise, you don't need to include it.
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "add".to_string(),
@@ -41,7 +43,9 @@ impl Tool for Adder {
                         "type": "number",
                         "description": "The second number to add"
                     }
-                }
+                },
+                "required": ["x", "y"],
+                "additionalProperties": false
             }),
         }
     }
@@ -77,8 +81,11 @@ impl Tool for Subtract {
                         "type": "number",
                         "description": "The number to subtract"
                     }
-                }
-            }
+                },
+
+                "required": ["x", "y"],
+                "additionalProperties": false
+            },
         }))
         .expect("Tool Definition")
     }
