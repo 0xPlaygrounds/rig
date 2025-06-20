@@ -27,10 +27,23 @@ use serde_json::{json, Value};
 // ================================================================
 const GALADRIEL_API_BASE_URL: &str = "https://api.galadriel.com/v1/verified";
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Client {
     base_url: String,
+    api_key: String,
+    fine_tune_api_key: Option<String>,
     http_client: reqwest::Client,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("api_key", &"<REDACTED>")
+            .field("fine_tune_api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
@@ -51,25 +64,9 @@ impl Client {
     ) -> Self {
         Self {
             base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
+            fine_tune_api_key: fine_tune_api_key.map(|x| x.to_string()),
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        "Authorization",
-                        format!("Bearer {api_key}")
-                            .parse()
-                            .expect("Bearer token should parse"),
-                    );
-                    if let Some(key) = fine_tune_api_key {
-                        headers.insert(
-                            "Fine-Tune-Authorization",
-                            format!("Bearer {key}")
-                                .parse()
-                                .expect("Bearer token should parse"),
-                        );
-                    }
-                    headers
-                })
                 .build()
                 .expect("Galadriel reqwest client should build"),
         }
@@ -77,7 +74,13 @@ impl Client {
 
     fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url)
+        let mut client = self.http_client.post(url).bearer_auth(&self.api_key);
+
+        if let Some(fine_tune_key) = self.fine_tune_api_key.clone() {
+            client = client.header("Fine-Tune-Authorization", fine_tune_key);
+        }
+
+        client
     }
 }
 
