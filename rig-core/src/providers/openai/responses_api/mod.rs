@@ -456,9 +456,10 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             .as_bool();
 
         let addtl_params = if let Some(map) = req.additional_params {
-            serde_json::from_value::<AddtlParams>(map).ok()
+            serde_json::from_value::<AddtlParams>(map).expect("Converting additional parameters to AddtlParams should never fail as every field is an Option")
         } else {
-            None
+            // If there's no additional parameters, initialise an empty object
+            AddtlParams::default()
         };
 
         Ok(Self {
@@ -546,7 +547,7 @@ pub struct CompletionResponse {
 
 /// Additional parameters for the completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
 /// Intended to be derived from [`crate::completion::request::CompletionRequest`].
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct AddtlParams {
     /// Whether or not a given model task should run in the background (ie a detached process).
     #[serde(skip_serializing_if = "Option::is_none")]
