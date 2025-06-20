@@ -1,3 +1,5 @@
+//! The streaming module for the OpenAI Responses API.
+//! Please see the `openai_streaming` or `openai_streaming_with_tools` example for more practical usage.
 use crate::completion::CompletionError;
 use crate::message::Text;
 use crate::providers::openai::responses_api::{
@@ -16,6 +18,11 @@ use super::{CompletionResponse, Output};
 // ================================================================
 // OpenAI Responses Streaming API
 // ================================================================
+
+/// A streaming completion chunk.
+/// Streaming chunks can come in one of two forms:
+/// - A response chunk (where the completed response will have the total token usage)
+/// - An item chunk commonly referred to as a delta. In the completions API this would be referred to as the message delta.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum StreamingCompletionChunk {
@@ -23,19 +30,27 @@ pub enum StreamingCompletionChunk {
     Delta(ItemChunk),
 }
 
+/// The final streaming response from the OpenAI Responses API.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingCompletionResponse {
+    /// Token usage
     pub usage: ResponsesUsage,
 }
 
+/// A response chunk from OpenAI's response API.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ResponseChunk {
+    /// The response chunk type
     #[serde(rename = "type")]
     pub kind: ResponseChunkKind,
+    /// The response itself
     pub response: CompletionResponse,
+    /// The item sequence
     pub sequence_number: u64,
 }
 
+/// Response chunk type.
+/// Renames are used to ensure that this type gets (de)serialized properly.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ResponseChunkKind {
     #[serde(rename = "response.created")]
@@ -50,14 +65,20 @@ pub enum ResponseChunkKind {
     ResponseIncomplete,
 }
 
+/// An item message chunk from OpenAI's Responses API.
+/// See
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ItemChunk {
+    /// Item ID. Optional.
     pub item_id: Option<String>,
+    /// The output index of the item from a given streamed response.
     pub output_index: u64,
+    /// The item type chunk, as well as the inner data.
     #[serde(flatten)]
     pub data: ItemChunkKind,
 }
 
+/// The item chunk type from OpenAI's Responses API.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type")]
 pub enum ItemChunkKind {
