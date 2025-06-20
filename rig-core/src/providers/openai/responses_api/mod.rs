@@ -59,7 +59,7 @@ impl CompletionRequest {
     where
         S: Into<String>,
     {
-        self.addtl_params.text = Some(TextConfig::json(schema_name, schema));
+        self.addtl_params.text = Some(TextConfig::structured_output(schema_name, schema));
 
         self
     }
@@ -606,13 +606,7 @@ pub struct TextConfig {
 }
 
 impl TextConfig {
-    pub(crate) fn text() -> Self {
-        Self {
-            format: TextFormat::Text,
-        }
-    }
-
-    pub(crate) fn json<S>(name: S, schema: serde_json::Value) -> Self
+    pub(crate) fn structured_output<S>(name: S, schema: serde_json::Value) -> Self
     where
         S: Into<String>,
     {
