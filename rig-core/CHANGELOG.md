@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.13.0...rig-core-v0.14.0) - 2025-06-20
+
+### Added
+
+- *(rig-766)* add support for Voyage AI ([#493](https://github.com/0xPlaygrounds/rig/pull/493))
+- *(rig-789)* add support for loading in pdfs/files as Vec<u8> ([#523](https://github.com/0xPlaygrounds/rig/pull/523))
+- multi turn streaming example ([#413](https://github.com/0xPlaygrounds/rig/pull/413))
+- *(rig-754)* support custom client configurations ([#511](https://github.com/0xPlaygrounds/rig/pull/511))
+
+### Fixed
+
+- *(rig-783)* tool call example doesn't work with Gemini and OpenRouter ([#515](https://github.com/0xPlaygrounds/rig/pull/515))
+- *(rig-773)* xAI embeddings endpoint is wrong ([#492](https://github.com/0xPlaygrounds/rig/pull/492))
+
+### Other
+
+- Fix `ToolResult` serialization in ollama provider ([#504](https://github.com/0xPlaygrounds/rig/pull/504))
+
 ## [0.13.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.12.0...rig-core-v0.13.0) - 2025-06-09
 
 ### Added

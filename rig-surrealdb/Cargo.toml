@@ -1,13 +1,13 @@
 [package]
 name = "rig-surrealdb"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 description = "SurrealDB vector store implementation for the rig framework"
 license = "MIT"
 
 [dependencies]
 surrealdb = { version = "2.1.4", features = ["protocol-ws", "kv-mem"] }
-rig-core = { path = "../rig-core", version = "0.13.0", features = ["derive"] }
+rig-core = { path = "../rig-core", version = "0.14.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1"
