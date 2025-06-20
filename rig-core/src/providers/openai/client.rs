@@ -197,6 +197,7 @@ pub(crate) enum ApiResponse<T> {
     Ok(T),
     Err(ApiErrorResponse),
 }
+
 #[cfg(test)]
 mod tests {
     use crate::message::ImageDetail;
