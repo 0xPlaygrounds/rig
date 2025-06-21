@@ -261,3 +261,79 @@ pub async fn stream_to_stdout<M: CompletionModel>(
 
     Ok(())
 }
+
+// Test module
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+    use async_stream::stream;
+    use tokio::time::sleep;
+
+    #[derive(Debug, Clone)]
+    pub struct MockResponse {
+        pub token_count: u32,
+    }
+
+    fn create_mock_stream() -> StreamingCompletionResponse<MockResponse> {
+        let stream = stream! {
+            // Simulate text chunks
+            yield Ok(RawStreamingChoice::Message("hello 1".to_string()));
+            sleep(Duration::from_millis(100)).await;
+            yield Ok(RawStreamingChoice::Message("hello 2".to_string()));
+            sleep(Duration::from_millis(100)).await;
+            yield Ok(RawStreamingChoice::Message("hello 3".to_string()));
+            sleep(Duration::from_millis(100)).await;
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 15 }));
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let pinned_stream: StreamingResult<MockResponse> = Box::pin(stream);
+        #[cfg(target_arch = "wasm32")]
+        let pinned_stream: StreamingResult<MockResponse> = Box::pin(stream);
+
+        StreamingCompletionResponse::stream(pinned_stream)
+    }
+
+    #[tokio::test]
+    async fn test_stream_cancellation() {
+        let mut stream = create_mock_stream();
+
+        println!("Response: ");
+        let mut chunk_count = 0;
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Ok(AssistantContent::Text(text)) => {
+                    print!("{}", text.text);
+                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
+                    chunk_count += 1;
+                }
+                Ok(AssistantContent::ToolCall(tc)) => {
+                    println!("\nTool Call: {:?}", tc);
+                    chunk_count += 1;
+                }
+                Err(e) => {
+                    eprintln!("Error: {:?}", e);
+                    break;
+                }
+            }
+
+            // cancel after 2 chunks
+            if chunk_count >= 2 {
+                println!("\nCancelling stream...");
+                stream.cancel();
+                println!("Stream cancelled.");
+                break;
+            }
+        }
+
+        // verify no further chunks are yielded
+        let next_chunk = stream.next().await;
+        assert!(
+            next_chunk.is_none(),
+            "Expected no further chunks after cancellation, got {:?}",
+            next_chunk
+        );
+    }
+}
