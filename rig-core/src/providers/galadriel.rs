@@ -72,6 +72,14 @@ impl Client {
         }
     }
 
+    /// Use your own `reqwest::Client`.
+    /// The default headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
+    }
+
     fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         let mut client = self.http_client.post(url).bearer_auth(&self.api_key);
