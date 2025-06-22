@@ -103,6 +103,14 @@ where
 
         Ok(serde_json::from_value(raw_data)?)
     }
+
+    pub async fn get_inner(&self) -> &Agent<M> {
+        &self.agent
+    }
+
+    pub async fn into_inner(self) -> Agent<M> {
+        self.agent
+    }
 }
 
 /// Builder for the Extractor
