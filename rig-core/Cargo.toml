@@ -52,6 +52,7 @@ serde_path_to_error = "0.1.16"
 base64 = "0.22.1"
 mcp-core = { version = "0.1.50", features = ["sse"] }
 mcp-core-macros = { version = "0.1.30" }
+rig-fastembed = { version = "0.2.0", path = "../rig-fastembed" }
 
 
 [features]

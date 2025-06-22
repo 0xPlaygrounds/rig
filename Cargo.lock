@@ -8732,6 +8732,7 @@ dependencies = [
  "rayon",
  "reqwest 0.12.15",
  "rig-derive",
+ "rig-fastembed",
  "schemars",
  "serde",
  "serde_json",
