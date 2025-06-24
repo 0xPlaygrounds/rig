@@ -9,6 +9,9 @@ use crate::{
 #[cfg(feature = "mcp")]
 use crate::tool::McpTool;
 
+#[cfg(feature = "rmcp")]
+use crate::tool::McpTool;
+
 use super::Agent;
 
 /// A builder for creating an agent
@@ -115,6 +118,15 @@ impl<M: CompletionModel> AgentBuilder<M> {
         let toolname = tool.name.clone();
         self.tools.add_tool(McpTool::from_mcp_server(tool, client));
         self.static_tools.push(toolname);
+        self
+    }
+
+    // Add an MCP tool to the agent
+    #[cfg(feature = "rmcp")]
+    pub fn mcp_tool(mut self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
+        let toolname = tool.name.clone();
+        self.tools.add_tool(McpTool::from_mcp_server(tool, client));
+        self.static_tools.push(toolname.to_string());
         self
     }
 
