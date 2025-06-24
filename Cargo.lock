@@ -8284,6 +8284,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_pcg"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b48ac3f7ffaab7fac4d2376632268aa5f89abdb55f7ebf8f4d11fffccb2320f7"
+dependencies = [
+ "rand_core 0.9.3",
+]
+
+[[package]]
 name = "rand_xorshift"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8895,6 +8904,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-scylladb"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "futures",
+ "httpmock",
+ "rig-core",
+ "scylla",
+ "serde",
+ "serde_json",
+ "testcontainers",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid 1.17.0",
+]
+
+[[package]]
 name = "rig-sqlite"
 version = "0.1.11"
 dependencies = [
@@ -9460,6 +9488,63 @@ checksum = "da046153aa2352493d6cb7da4b6e5c0c057d8a1d0a9aa8560baffdd945acd414"
 dependencies = [
  "ring 0.17.14",
  "untrusted 0.9.0",
+]
+
+[[package]]
+name = "scylla"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f4d5b7fe3cb3e140d374238f5f916eb810053562287a01d66ac685e305c166f"
+dependencies = [
+ "arc-swap",
+ "async-trait",
+ "bytes",
+ "chrono",
+ "dashmap 5.5.3",
+ "futures",
+ "hashbrown 0.14.5",
+ "itertools 0.14.0",
+ "rand 0.9.0",
+ "rand_pcg",
+ "scylla-cql",
+ "smallvec",
+ "socket2",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "uuid 1.17.0",
+]
+
+[[package]]
+name = "scylla-cql"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "507db4914c625c86d32c5c00ed1add75eaf966a2d4ba9772b601b2563701df58"
+dependencies = [
+ "byteorder",
+ "bytes",
+ "chrono",
+ "itertools 0.14.0",
+ "lz4_flex",
+ "scylla-macros",
+ "snap",
+ "stable_deref_trait",
+ "thiserror 2.0.12",
+ "tokio",
+ "uuid 1.17.0",
+ "yoke",
+]
+
+[[package]]
+name = "scylla-macros"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8efb4b519ab70556c8d3adfd4f192c635d0c7c72d4f125d2b79713742c98f39d"
+dependencies = [
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.100",
 ]
 
 [[package]]
