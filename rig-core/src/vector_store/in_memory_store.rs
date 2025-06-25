@@ -39,7 +39,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         Self { embeddings: store }
     }
 
-    /// Create a new [InMemoryVectorStore] from documents and and their corresponding embeddings with ids.
+    /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings with ids.
     pub fn from_documents_with_ids(
         documents: impl IntoIterator<Item = (impl ToString, D, OneOrMany<Embedding>)>,
     ) -> Self {
