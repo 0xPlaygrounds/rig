@@ -8,6 +8,7 @@ members = [
     "rig-postgres",
     "rig-qdrant",
     "rig-core/rig-core-derive",
+    "rig-scylladb",
     "rig-sqlite",
     "rig-surrealdb",
     "rig-eternalai",
