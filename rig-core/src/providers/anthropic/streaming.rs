@@ -252,6 +252,7 @@ fn handle_event(
                         name: tool_call.name,
                         id: tool_call.id,
                         arguments: json_value,
+                        call_id: None,
                     })),
                     Err(e) => Some(Err(CompletionError::from(e))),
                 }

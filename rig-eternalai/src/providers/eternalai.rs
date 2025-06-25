@@ -607,6 +607,7 @@ impl completion::CompletionModel for CompletionModel {
                     AssistantContent::ToolCall(tc) => {
                         yield Ok(RawStreamingChoice::ToolCall {
                             id: tc.id.clone(),
+                            call_id: None,
                             name: tc.function.name.clone(),
                             arguments: tc.function.arguments.clone(),
                         })

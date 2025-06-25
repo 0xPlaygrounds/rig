@@ -91,7 +91,8 @@ impl CompletionModel {
                             => yield Ok(streaming::RawStreamingChoice::ToolCall {
                                     name: function_call.name,
                                     id: "".to_string(),
-                                    arguments: function_call.args
+                                    arguments: function_call.args,
+                                    call_id: None
                                 }),
                         _ => panic!("Unsupported response type with streaming.")
                     };
