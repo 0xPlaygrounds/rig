@@ -1,13 +1,13 @@
 use rig::client::EmbeddingsClient;
-use rig::{embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex, Embed};
+use rig::{Embed, embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex};
 use rig_postgres::PostgresVectorStore;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use sqlx::{PgPool, postgres::PgPoolOptions};
 use testcontainers::{
+    ContainerAsync, GenericImage, ImageExt,
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
-    ContainerAsync, GenericImage, ImageExt,
 };
 
 const POSTGRES_PORT: u16 = 5432;

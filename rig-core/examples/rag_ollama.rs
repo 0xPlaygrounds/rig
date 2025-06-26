@@ -1,7 +1,7 @@
 use rig::prelude::*;
 use rig::{
-    completion::Prompt, embeddings::EmbeddingsBuilder, providers::ollama::Client,
-    vector_store::in_memory_store::InMemoryVectorStore, Embed,
+    Embed, completion::Prompt, embeddings::EmbeddingsBuilder, providers::ollama::Client,
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::Serialize;
 

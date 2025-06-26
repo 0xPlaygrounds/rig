@@ -35,7 +35,7 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
             return Err(syn::Error::new_spanned(
                 input,
                 "Embed derive macro should only be used on structs",
-            ))
+            ));
         }
     };
 

@@ -1,7 +1,7 @@
 use rig::prelude::*;
 use rig::{
     providers::anthropic::{self, CLAUDE_3_5_SONNET},
-    streaming::{stream_to_stdout, StreamingPrompt},
+    streaming::{StreamingPrompt, stream_to_stdout},
 };
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {

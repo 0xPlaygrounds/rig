@@ -3,12 +3,12 @@ use serde::Deserialize;
 use super::client::{ApiErrorResponse, ApiResponse, Client, Usage};
 
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
     providers::openai::Message,
-    OneOrMany,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::providers::openai::AssistantContent;
 use crate::providers::openrouter::streaming::FinalCompletionResponse;

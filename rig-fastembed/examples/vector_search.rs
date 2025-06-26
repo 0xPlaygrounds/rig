@@ -1,7 +1,7 @@
 use rig::{
-    embeddings::EmbeddingsBuilder,
-    vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
     Embed,
+    embeddings::EmbeddingsBuilder,
+    vector_store::{VectorStoreIndex, in_memory_store::InMemoryVectorStore},
 };
 use rig_fastembed::FastembedModel;
 use serde::{Deserialize, Serialize};

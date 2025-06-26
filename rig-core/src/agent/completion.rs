@@ -8,7 +8,7 @@ use crate::{
     tool::ToolSet,
     vector_store::VectorStoreError,
 };
-use futures::{stream, StreamExt, TryStreamExt};
+use futures::{StreamExt, TryStreamExt, stream};
 use std::collections::HashMap;
 
 /// Struct representing an LLM agent. An agent is an LLM model combined with a preamble

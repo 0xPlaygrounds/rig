@@ -1,11 +1,11 @@
 //! Anthropic completion api implementation
 
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError},
     json_utils,
     message::{self, DocumentMediaType, MessageError},
     one_or_many::string_or_one_or_many,
-    OneOrMany,
 };
 use std::{convert::Infallible, str::FromStr};
 
@@ -107,7 +107,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     _ => {
                         return Err(CompletionError::ResponseError(
                             "Response did not contain a message or tool call".into(),
-                        ))
+                        ));
                     }
                 })
             })
@@ -277,7 +277,7 @@ impl TryFrom<message::ImageMediaType> for ImageFormat {
             _ => {
                 return Err(MessageError::ConversionError(
                     format!("Unsupported image media type: {media_type:?}").to_owned(),
-                ))
+                ));
             }
         })
     }
@@ -372,7 +372,7 @@ impl TryFrom<message::Message> for Message {
                                 None => {
                                     return Err(MessageError::ConversionError(
                                         "Image media type is required".to_owned(),
-                                    ))
+                                    ));
                                 }
                             },
                             r#type: match format {
@@ -429,7 +429,7 @@ impl TryFrom<Content> for message::AssistantContent {
             _ => {
                 return Err(MessageError::ConversionError(
                     format!("Unsupported content type for Assistant role: {content:?}").to_owned(),
-                ))
+                ));
             }
         })
     }
@@ -484,7 +484,7 @@ impl TryFrom<Message> for message::Message {
                         _ => {
                             return Err(MessageError::ConversionError(
                                 "Unsupported content type for User role".to_owned(),
-                            ))
+                            ));
                         }
                     })
                 })?,
@@ -497,7 +497,7 @@ impl TryFrom<Message> for message::Message {
                 _ => {
                     return Err(MessageError::ConversionError(
                         format!("Unsupported message for Assistant role: {message:?}").to_owned(),
-                    ))
+                    ));
                 }
             },
         })

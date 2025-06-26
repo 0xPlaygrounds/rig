@@ -1,4 +1,4 @@
-use syn::{parse_quote, Attribute, DataStruct, Meta};
+use syn::{Attribute, DataStruct, Meta, parse_quote};
 
 use crate::EMBED;
 

@@ -1,8 +1,8 @@
 use rig::{
+    Embed,
     client::{EmbeddingsClient, ProviderClient},
     embeddings::EmbeddingsBuilder,
     vector_store::VectorStoreIndex,
-    Embed,
 };
 use serde::{Deserialize, Serialize};
 

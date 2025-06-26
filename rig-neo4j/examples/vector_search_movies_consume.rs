@@ -14,7 +14,7 @@
 //! [examples/vector_search_movies_add_embeddings.rs](examples/vector_search_movies_add_embeddings.rs) provides an example of
 //! how to add embeddings to an existing `recommendations` database.
 use neo4rs::ConfigBuilder;
-use rig_neo4j::{vector_index::SearchParams, Neo4jClient};
+use rig_neo4j::{Neo4jClient, vector_index::SearchParams};
 
 use std::env;
 

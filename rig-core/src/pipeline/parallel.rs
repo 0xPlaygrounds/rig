@@ -279,7 +279,7 @@ mod tests {
     use super::*;
     use crate::pipeline::{
         self,
-        op::{map, Sequential},
+        op::{Sequential, map},
         passthrough, then,
     };
 

@@ -7,7 +7,7 @@ use rig::providers::openai::client::Client;
 
 use rig::{
     parallel,
-    pipeline::{self, passthrough, Op},
+    pipeline::{self, Op, passthrough},
 };
 
 use schemars::JsonSchema;

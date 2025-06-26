@@ -8,7 +8,7 @@ use crate::{
 use async_stream::stream;
 use futures::StreamExt;
 use reqwest::RequestBuilder;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::completion::{CompletionError, CompletionRequest};
 use serde::{Deserialize, Serialize};

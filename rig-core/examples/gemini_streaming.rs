@@ -1,7 +1,7 @@
 use rig::prelude::*;
 use rig::{
     providers::gemini::{self, completion::GEMINI_1_5_FLASH},
-    streaming::{stream_to_stdout, StreamingPrompt},
+    streaming::{StreamingPrompt, stream_to_stdout},
 };
 
 #[tokio::main]

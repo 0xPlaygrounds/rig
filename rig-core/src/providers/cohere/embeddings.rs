@@ -1,4 +1,4 @@
-use super::{client::ApiResponse, Client};
+use super::{Client, client::ApiResponse};
 
 use crate::embeddings::{self, EmbeddingError};
 

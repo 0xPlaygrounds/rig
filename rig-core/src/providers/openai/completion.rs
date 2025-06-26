@@ -6,9 +6,9 @@ use super::{ApiErrorResponse, ApiResponse, Client, StreamingCompletionResponse, 
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::message::{AudioMediaType, ImageDetail};
 use crate::one_or_many::string_or_one_or_many;
-use crate::{completion, json_utils, message, OneOrMany};
+use crate::{OneOrMany, completion, json_utils, message};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::convert::Infallible;
 use std::str::FromStr;
 

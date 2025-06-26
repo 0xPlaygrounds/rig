@@ -2,9 +2,9 @@ use aws_sdk_bedrockruntime::operation::converse::ConverseOutput;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig::{
+    OneOrMany,
     completion::CompletionError,
     message::{AssistantContent, Text, ToolCall, ToolFunction},
-    OneOrMany,
 };
 
 use crate::types::message::RigMessage;
@@ -116,7 +116,7 @@ mod tests {
 
     use super::AwsConverseOutput;
     use aws_sdk_bedrockruntime::types as aws_bedrock;
-    use rig::{completion, message::AssistantContent, OneOrMany};
+    use rig::{OneOrMany, completion, message::AssistantContent};
 
     #[test]
     fn aws_converse_output_to_completion_response() {

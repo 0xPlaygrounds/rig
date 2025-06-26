@@ -6,9 +6,9 @@ use std::io::BufReader;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
+use super::RawTextProcessor;
 use super::errors::EpubLoaderError;
 use super::text_processors::TextProcessor;
-use super::RawTextProcessor;
 
 // ================================================================
 // Implementing Loadable trait for loading epubs

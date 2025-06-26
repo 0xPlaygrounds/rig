@@ -4,7 +4,7 @@ use std::env;
 use rig::{
     embeddings::EmbeddingsBuilder,
     parallel,
-    pipeline::{self, agent_ops::lookup, passthrough, Op},
+    pipeline::{self, Op, agent_ops::lookup, passthrough},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::in_memory_store::InMemoryVectorStore,
 };

@@ -1,6 +1,6 @@
 //! Anthropic client api implementation
-use super::completion::{CompletionModel, ANTHROPIC_VERSION_LATEST};
-use crate::client::{impl_conversion_traits, CompletionClient, ProviderClient};
+use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
+use crate::client::{CompletionClient, ProviderClient, impl_conversion_traits};
 
 // ================================================================
 // Main Anthropic Client

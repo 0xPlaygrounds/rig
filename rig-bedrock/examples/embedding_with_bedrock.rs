@@ -1,5 +1,5 @@
-use rig::client::EmbeddingsClient;
 use rig::Embed;
+use rig::client::EmbeddingsClient;
 use rig_bedrock::{client::ClientBuilder, embedding::AMAZON_TITAN_EMBED_TEXT_V2_0};
 use tracing::info;
 

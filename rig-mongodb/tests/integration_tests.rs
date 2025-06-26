@@ -1,21 +1,21 @@
 use futures::StreamExt;
 use mongodb::{
+    Collection, SearchIndexModel,
     bson::{self, doc},
     options::ClientOptions,
-    Collection, SearchIndexModel,
 };
 use rig::client::EmbeddingsClient;
 use rig::{
-    embeddings::EmbeddingsBuilder, providers::openai, vector_store::VectorStoreIndex, Embed,
+    Embed, embeddings::EmbeddingsBuilder, providers::openai, vector_store::VectorStoreIndex,
 };
 use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 use serde_json::json;
 use testcontainers::{
+    GenericImage, ImageExt,
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
-    GenericImage, ImageExt,
 };
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq)]
 struct Word {
