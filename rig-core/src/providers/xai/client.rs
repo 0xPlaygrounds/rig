@@ -1,5 +1,5 @@
 use super::completion::CompletionModel;
-use crate::client::{impl_conversion_traits, CompletionClient, ProviderClient};
+use crate::client::{CompletionClient, ProviderClient, impl_conversion_traits};
 
 // ================================================================
 // xAI Client

@@ -1,9 +1,9 @@
-use crate::providers::huggingface::completion::ApiResponse;
 use crate::providers::huggingface::Client;
+use crate::providers::huggingface::completion::ApiResponse;
 use crate::transcription;
 use crate::transcription::TranscriptionError;
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use serde::Deserialize;
 use serde_json::json;
 

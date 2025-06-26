@@ -1,15 +1,15 @@
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{convert::Infallible, str::FromStr};
 
 use super::client::Client;
 use crate::providers::openai::StreamingCompletionResponse;
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
     message::{self},
     one_or_many::string_or_one_or_many,
-    OneOrMany,
 };
 
 #[derive(Debug, Deserialize)]

@@ -1,7 +1,7 @@
 [package]
 name = "rig-lancedb"
 version = "0.2.11"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 readme = "README.md"
 description = "Rig vector store index integration for LanceDB."

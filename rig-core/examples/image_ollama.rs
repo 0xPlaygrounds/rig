@@ -1,8 +1,8 @@
-use base64::{prelude::BASE64_STANDARD, Engine};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::prelude::*;
 use rig::providers::ollama;
 use rig::{
-    completion::{message::Image, Prompt},
+    completion::{Prompt, message::Image},
     message::{ContentFormat, ImageMediaType},
 };
 use tokio::fs;

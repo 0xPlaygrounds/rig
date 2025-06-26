@@ -1,7 +1,7 @@
-use crate::{embeddings::EmbeddingsBuilder, Embed};
+use crate::{Embed, embeddings::EmbeddingsBuilder};
 
 use super::{CompletionModel, EmbeddingModel};
-use crate::client::{impl_conversion_traits, CompletionClient, EmbeddingsClient, ProviderClient};
+use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient, impl_conversion_traits};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]

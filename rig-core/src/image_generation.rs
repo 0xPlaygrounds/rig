@@ -72,7 +72,7 @@ pub trait ImageGenerationModelDyn: Send + Sync {
     ) -> BoxFuture<Result<ImageGenerationResponse<()>, ImageGenerationError>>;
 
     fn image_generation_request(&self)
-        -> ImageGenerationRequestBuilder<ImageGenerationModelHandle>;
+    -> ImageGenerationRequestBuilder<ImageGenerationModelHandle>;
 }
 
 impl<T: ImageGenerationModel> ImageGenerationModelDyn for T {

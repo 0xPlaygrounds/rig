@@ -1,7 +1,7 @@
 use mongodb::{
+    Client as MongoClient, Collection,
     bson::{self, doc},
     options::ClientOptions,
-    Client as MongoClient, Collection,
 };
 use rig::providers::openai::TEXT_EMBEDDING_ADA_002;
 use serde::{Deserialize, Deserializer};
@@ -10,7 +10,7 @@ use std::env;
 
 use rig::client::EmbeddingsClient;
 use rig::{
-    embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex, Embed,
+    Embed, embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex,
 };
 use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 

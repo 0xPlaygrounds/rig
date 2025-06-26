@@ -1,7 +1,7 @@
 [package]
 name = "rig-fastembed"
 version = "0.2.0"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 readme = "README.md"
 description = "Rig vector store index integration for Fastembed. https://github.com/Anush008/fastembed-rs"

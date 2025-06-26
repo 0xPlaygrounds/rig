@@ -1,13 +1,13 @@
 use qdrant_client::{
-    qdrant::{
-        point_id::PointIdOptions, PointId, PointStruct, Query, QueryPoints, UpsertPointsBuilder,
-    },
     Payload, Qdrant,
+    qdrant::{
+        PointId, PointStruct, Query, QueryPoints, UpsertPointsBuilder, point_id::PointIdOptions,
+    },
 };
 use rig::{
+    Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{VectorStoreError, VectorStoreIndex},
-    Embed, OneOrMany,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

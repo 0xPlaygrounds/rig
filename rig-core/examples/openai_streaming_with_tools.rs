@@ -1,12 +1,12 @@
 use anyhow::Result;
-use futures::{stream, StreamExt};
+use futures::{StreamExt, stream};
+use rig::OneOrMany;
 use rig::agent::Agent;
 use rig::completion::{CompletionError, CompletionModel};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
-use rig::streaming::{stream_to_stdout, StreamingChat};
+use rig::streaming::{StreamingChat, stream_to_stdout};
 use rig::tool::ToolSetError;
-use rig::OneOrMany;
 use rig::{
     completion::{Message, ToolDefinition},
     providers,

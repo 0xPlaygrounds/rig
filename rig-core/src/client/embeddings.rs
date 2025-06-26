@@ -1,7 +1,7 @@
+use crate::Embed;
 use crate::client::{AsEmbeddings, ProviderClient};
 use crate::embeddings::embedding::EmbeddingModelDyn;
 use crate::embeddings::{EmbeddingModel, EmbeddingsBuilder};
-use crate::Embed;
 
 /// A provider client with embedding capabilities.
 /// Clone is required for conversions between client types.

@@ -47,8 +47,9 @@ pub trait Transcription<M: TranscriptionModel> {
         &self,
         filename: &str,
         data: &[u8],
-    ) -> impl std::future::Future<Output = Result<TranscriptionRequestBuilder<M>, TranscriptionError>>
-           + Send;
+    ) -> impl std::future::Future<
+        Output = Result<TranscriptionRequestBuilder<M>, TranscriptionError>,
+    > + Send;
 }
 
 /// General transcription response struct that contains the transcription text

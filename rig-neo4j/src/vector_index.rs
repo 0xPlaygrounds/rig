@@ -9,7 +9,7 @@ use rig::{
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{VectorStoreError, VectorStoreIndex},
 };
-use serde::{de::Error, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::Error};
 
 use crate::Neo4jClient;
 

@@ -9,7 +9,7 @@ use crate::{
     providers::openai,
 };
 
-use super::client::{together_ai_api_types::ApiResponse, Client};
+use super::client::{Client, together_ai_api_types::ApiResponse};
 use crate::completion::CompletionRequest;
 use crate::streaming::StreamingCompletionResponse;
 use serde_json::json;

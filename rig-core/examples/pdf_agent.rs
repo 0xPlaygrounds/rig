@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use rig::prelude::*;
 use rig::{
-    embeddings::EmbeddingsBuilder, loaders::PdfFileLoader, providers::openai,
-    vector_store::in_memory_store::InMemoryVectorStore, Embed,
+    Embed, embeddings::EmbeddingsBuilder, loaders::PdfFileLoader, providers::openai,
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

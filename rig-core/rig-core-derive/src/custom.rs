@@ -1,5 +1,5 @@
 use quote::ToTokens;
-use syn::{meta::ParseNestedMeta, ExprPath};
+use syn::{ExprPath, meta::ParseNestedMeta};
 
 use crate::EMBED;
 

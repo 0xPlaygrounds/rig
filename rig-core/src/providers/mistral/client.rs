@@ -1,8 +1,8 @@
 use serde::Deserialize;
 
 use super::{
-    embedding::{EmbeddingModel, MISTRAL_EMBED},
     CompletionModel,
+    embedding::{EmbeddingModel, MISTRAL_EMBED},
 };
 use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient};
 use crate::impl_conversion_traits;

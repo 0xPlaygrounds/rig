@@ -13,14 +13,14 @@ use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     impl_conversion_traits,
     message::{self, AssistantContent, Message, UserContent},
-    OneOrMany,
 };
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::string::FromUtf8Error;
 use thiserror::Error;
 use tracing;
@@ -529,13 +529,13 @@ impl TryFrom<serde_json::Value> for Message {
                 _ => {
                     return Err(CompletionError::ResponseError(
                         "Message content must be string or array".to_owned(),
-                    ))
+                    ));
                 }
             },
             None => {
                 return Err(CompletionError::ResponseError(
                     "Message missing content field".to_owned(),
-                ))
+                ));
             }
         };
 

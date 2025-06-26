@@ -1,5 +1,5 @@
 use anyhow::Result;
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use rig::prelude::*;
 use rig::{
     cli_chatbot::cli_chatbot,

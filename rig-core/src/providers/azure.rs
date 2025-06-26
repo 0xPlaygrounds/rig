@@ -9,7 +9,7 @@
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
 
-use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
+use super::openai::{TranscriptionResponse, send_compatible_streaming_request};
 
 use crate::json_utils::merge;
 use crate::streaming::StreamingCompletionResponse;
@@ -811,9 +811,9 @@ mod audio_generation {
 mod azure_tests {
     use super::*;
 
+    use crate::OneOrMany;
     use crate::completion::CompletionModel;
     use crate::embeddings::EmbeddingModel;
-    use crate::OneOrMany;
 
     #[tokio::test]
     #[ignore]

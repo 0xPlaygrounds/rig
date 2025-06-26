@@ -1,23 +1,23 @@
 use std::sync::Arc;
 
 use arrow_array::{
+    Array, ArrowPrimitiveType, OffsetSizeTrait, RecordBatch, RunArray, StructArray, UnionArray,
     cast::AsArray,
     types::{
         ArrowDictionaryKeyType, BinaryType, ByteArrayType, Date32Type, Date64Type, Decimal128Type,
         DurationMicrosecondType, DurationMillisecondType, DurationNanosecondType,
-        DurationSecondType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type,
+        DurationSecondType, Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type,
         IntervalDayTime, IntervalDayTimeType, IntervalMonthDayNano, IntervalMonthDayNanoType,
         IntervalYearMonthType, LargeBinaryType, LargeUtf8Type, RunEndIndexType,
         Time32MillisecondType, Time32SecondType, Time64MicrosecondType, Time64NanosecondType,
         TimestampMicrosecondType, TimestampMillisecondType, TimestampNanosecondType,
-        TimestampSecondType, UInt16Type, UInt32Type, UInt64Type, UInt8Type, Utf8Type,
+        TimestampSecondType, UInt8Type, UInt16Type, UInt32Type, UInt64Type, Utf8Type,
     },
-    Array, ArrowPrimitiveType, OffsetSizeTrait, RecordBatch, RunArray, StructArray, UnionArray,
 };
 use lancedb::arrow::arrow_schema::{ArrowError, DataType, IntervalUnit, TimeUnit};
 use rig::vector_store::VectorStoreError;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::serde_to_rig_error;
 
@@ -246,7 +246,7 @@ fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError>
                         ArrowError::CastError(format!(
                             "Dictionary keys type is not accepted: {keys_type:?}"
                         )),
-                    )))
+                    )));
                 }
             };
 
@@ -326,7 +326,7 @@ fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError>
                         ArrowError::CastError(format!(
                             "RunEndEncoded index type is not accepted: {index_type:?}"
                         )),
-                    )))
+                    )));
                 }
             };
 
@@ -611,15 +611,15 @@ mod tests {
     use std::sync::Arc;
 
     use arrow_array::{
+        ArrayRef, BinaryArray, FixedSizeListArray, Float32Array, Float64Array, GenericListArray,
+        Int8Array, Int16Array, Int32Array, Int64Array, LargeBinaryArray, LargeStringArray,
+        MapArray, RecordBatch, StringArray, StructArray, UInt8Array, UInt16Array, UInt32Array,
+        UInt64Array,
         builder::{
             FixedSizeListBuilder, ListBuilder, StringBuilder, StringDictionaryBuilder,
             StringRunBuilder, UnionBuilder,
         },
-        types::{Float64Type, Int16Type, Int32Type, Int8Type},
-        ArrayRef, BinaryArray, FixedSizeListArray, Float32Array, Float64Array, GenericListArray,
-        Int16Array, Int32Array, Int64Array, Int8Array, LargeBinaryArray, LargeStringArray,
-        MapArray, RecordBatch, StringArray, StructArray, UInt16Array, UInt32Array, UInt64Array,
-        UInt8Array,
+        types::{Float64Type, Int8Type, Int16Type, Int32Type},
     };
     use lancedb::arrow::arrow_schema::{DataType, Field, Fields};
     use serde_json::json;

@@ -1,20 +1,20 @@
 use serde_json::json;
 use testcontainers::{
+    GenericImage,
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
-    GenericImage,
 };
 
 use qdrant_client::{
+    Payload, Qdrant,
     qdrant::{
         CreateCollectionBuilder, Distance, PointStruct, QueryPointsBuilder, UpsertPointsBuilder,
         VectorParamsBuilder,
     },
-    Payload, Qdrant,
 };
 use rig::client::EmbeddingsClient;
 use rig::{
-    embeddings::EmbeddingsBuilder, providers::openai, vector_store::VectorStoreIndex, Embed,
+    Embed, embeddings::EmbeddingsBuilder, providers::openai, vector_store::VectorStoreIndex,
 };
 use rig_qdrant::QdrantVectorStore;
 

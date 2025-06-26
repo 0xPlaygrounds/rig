@@ -1,12 +1,12 @@
 use std::fmt::Display;
 
 use rig::{
+    Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{VectorStoreError, VectorStoreIndex},
-    Embed, OneOrMany,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use surrealdb::{sql::Thing, Connection, Surreal};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use surrealdb::{Connection, Surreal, sql::Thing};
 
 pub use surrealdb::engine::local::Mem;
 pub use surrealdb::engine::remote::ws::{Ws, Wss};

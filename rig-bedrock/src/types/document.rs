@@ -5,7 +5,7 @@ use rig::{
 };
 
 pub(crate) use crate::types::media_types::RigDocumentMediaType;
-use base64::{prelude::BASE64_STANDARD, Engine};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -76,7 +76,7 @@ impl TryFrom<aws_bedrock::DocumentBlock> for RigDocument {
 #[cfg(test)]
 mod tests {
     use aws_sdk_bedrockruntime::types as aws_bedrock;
-    use base64::{prelude::BASE64_STANDARD, Engine};
+    use base64::{Engine, prelude::BASE64_STANDARD};
     use rig::{
         completion::CompletionError,
         message::{ContentFormat, Document, DocumentMediaType},

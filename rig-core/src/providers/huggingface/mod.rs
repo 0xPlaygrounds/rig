@@ -20,7 +20,7 @@ pub mod transcription;
 
 pub use client::{Client, ClientBuilder, SubProvider};
 pub use completion::{
-    GEMMA_2, META_LLAMA_3_1, PHI_4, QWEN2_5, QWEN2_5_CODER, QWEN2_VL, QWEN_QVQ_PREVIEW,
+    GEMMA_2, META_LLAMA_3_1, PHI_4, QWEN_QVQ_PREVIEW, QWEN2_5, QWEN2_5_CODER, QWEN2_VL,
     SMALLTHINKER_PREVIEW,
 };
 

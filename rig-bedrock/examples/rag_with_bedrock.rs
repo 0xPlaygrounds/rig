@@ -2,8 +2,8 @@ use std::vec;
 
 use rig::client::{CompletionClient, EmbeddingsClient};
 use rig::{
-    completion::Prompt, embeddings::EmbeddingsBuilder,
-    vector_store::in_memory_store::InMemoryVectorStore, Embed,
+    Embed, completion::Prompt, embeddings::EmbeddingsBuilder,
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use rig_bedrock::{
     client::ClientBuilder, completion::AMAZON_NOVA_LITE, embedding::AMAZON_TITAN_EMBED_TEXT_V2_0,

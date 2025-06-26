@@ -1,9 +1,9 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig::{
+    OneOrMany,
     completion::CompletionError,
     message::{Text, ToolResult, ToolResultContent, UserContent},
-    OneOrMany,
 };
 
 use super::{document::RigDocument, image::RigImage, tool::RigToolResultContent};
@@ -96,9 +96,9 @@ mod tests {
     use crate::types::user_content::RigUserContent;
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use rig::{
+        OneOrMany,
         completion::CompletionError,
         message::{ToolResultContent, UserContent},
-        OneOrMany,
     };
 
     #[test]
