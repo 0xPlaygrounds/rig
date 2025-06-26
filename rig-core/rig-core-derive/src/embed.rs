@@ -41,7 +41,7 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
-    let gen = quote! {
+    let r#gen = quote! {
         // Note: `Embed` trait is imported with the macro.
 
         impl #impl_generics Embed for #name #ty_generics #where_clause {
@@ -53,7 +53,7 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
         }
     };
 
-    Ok(gen)
+    Ok(r#gen)
 }
 
 trait StructParser {
