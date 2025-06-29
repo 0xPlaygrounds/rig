@@ -30,7 +30,7 @@ async fn vector_search_test() {
         .await
         .expect("Error getting docker port");
 
-    println!("Container started on host:port {}:{}", host, port);
+    println!("Container started on host:port {host}:{port}");
 
     // connect to Postgres
     let pg_pool = connect_to_postgres(host, port).await;
@@ -105,8 +105,7 @@ async fn vector_search_test() {
 
     let (distance, full_query_id, doc) = results[0].clone();
     println!(
-        "Distance: {}, id: {}, document: {:?}",
-        distance, full_query_id, doc
+        "Distance: {distance}, id: {full_query_id}, document: {doc:?}"
     );
 
     assert_eq!(doc.name, "glarb-glarb");
@@ -125,7 +124,7 @@ async fn vector_search_test() {
     );
 
     let (distance, id) = results[0].clone();
-    println!("Distance: {}, id: {}", distance, id);
+    println!("Distance: {distance}, id: {id}");
 
     assert_eq!(id, full_query_id);
 }
@@ -151,8 +150,7 @@ async fn connect_to_postgres(host: String, port: u16) -> PgPool {
         .max_connections(50)
         .idle_timeout(std::time::Duration::from_secs(5))
         .connect(&format!(
-            "postgres://postgres:postgres@{}:{}/rig",
-            host, port
+            "postgres://postgres:postgres@{host}:{port}/rig"
         ))
         .await
         .expect("Failed to create postgres pool")

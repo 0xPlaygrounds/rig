@@ -4,7 +4,6 @@ use rig::providers;
 use rig::tool::Tool;
 use rig_derive::rig_tool;
 use std::time::Duration;
-use tracing_subscriber;
 
 // Example demonstrating async tool usage
 #[rig_tool(
@@ -48,7 +47,7 @@ async fn main() {
         "Process the text 'concurrent calls' with a delay of 200ms",
         "Process the text 'error handling' with a delay of 'not a number'",
     ] {
-        println!("User: {}", prompt);
+        println!("User: {prompt}");
         println!("Agent: {}", async_agent.prompt(prompt).await.unwrap());
     }
 }

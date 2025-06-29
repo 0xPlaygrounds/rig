@@ -102,10 +102,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .top_n::<Document>("What is a linglingdong?", 1)
         .await?
         .into_iter()
-        .map(|(score, id, doc)| (score, id, doc))
         .collect::<Vec<_>>();
 
-    println!("Results: {:?}", results);
+    println!("Results: {results:?}");
 
     let id_results = index
         .top_n_ids("What is a linglingdong?", 1)
@@ -113,7 +112,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .into_iter()
         .collect::<Vec<_>>();
 
-    println!("ID results: {:?}", id_results);
+    println!("ID results: {id_results:?}");
 
     Ok(())
 }

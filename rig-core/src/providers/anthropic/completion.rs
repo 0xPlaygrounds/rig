@@ -750,17 +750,14 @@ mod tests {
             })
         };
 
-        match assistant_message {
-            Message { role, content } => {
-                assert_eq!(role, Role::Assistant);
-                assert_eq!(
-                    content.first(),
-                    Content::Text {
-                        text: "\n\nHello there, how may I assist you today?".to_owned()
-                    }
-                );
+        let Message { role, content } = assistant_message;
+        assert_eq!(role, Role::Assistant);
+        assert_eq!(
+            content.first(),
+            Content::Text {
+                text: "\n\nHello there, how may I assist you today?".to_owned()
             }
-        }
+        );
 
         match assistant_message2 {
             Message { role, content } => {

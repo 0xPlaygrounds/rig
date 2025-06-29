@@ -82,7 +82,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .top_n::<Word>("What is a linglingdong?", 1)
         .await?;
 
-    println!("Results: {:?}", results);
+    println!("Results: {results:?}");
 
     Ok(())
 }

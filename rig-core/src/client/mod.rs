@@ -374,10 +374,9 @@ mod tests {
             return;
         };
 
-        let model = config.completion_model.expect(&format!(
-            "{} does not have completion_model set",
-            config.name
-        ));
+        let model = config
+            .completion_model
+            .unwrap_or_else(|| panic!("{} does not have completion_model set", config.name));
 
         let model = client.completion_model(model);
 
@@ -400,8 +399,7 @@ mod tests {
                 assert!(text.text.to_lowercase().contains("paris"));
             }
             _ => {
-                assert!(
-                    false,
+                unreachable!(
                     "[{}]: First choice wasn't a Text message, {:?}",
                     config.name,
                     resp.choice.first()
@@ -422,7 +420,7 @@ mod tests {
         let client = config.factory();
         let model = config
             .completion_model
-            .expect(&format!("{} does not have the model set.", config.name));
+            .unwrap_or_else(|| panic!("{} does not have the model set.", config.name));
 
         let Some(client) = client.as_completion() else {
             return;
@@ -492,7 +490,7 @@ mod tests {
 
         let model = config
             .completion_model
-            .expect(&format!("{} does not have the model set.", config.name));
+            .unwrap_or_else(|| panic!("{} does not have the model set.", config.name));
 
         let model = client.completion_model(model);
 
@@ -547,7 +545,7 @@ mod tests {
         let client = config.factory();
         let model = config
             .completion_model
-            .expect(&format!("{} does not have the model set.", config.name));
+            .unwrap_or_else(|| panic!("{} does not have the model set.", config.name));
 
         let Some(client) = client.as_completion() else {
             return;
@@ -630,7 +628,7 @@ mod tests {
 
         let (model, voice) = config
             .audio_generation_model
-            .expect(&format!("{} doesn't have the model set", config.name));
+            .unwrap_or_else(|| panic!("{} doesn't have the model set", config.name));
 
         let model = client.audio_generation_model(model);
 
@@ -651,7 +649,7 @@ mod tests {
         let resp = resp.unwrap();
 
         assert!(
-            resp.audio.len() > 0,
+            !resp.audio.is_empty(),
             "[{}]: Returned audio was empty",
             config.name
         );
@@ -732,7 +730,7 @@ mod tests {
     }
 
     async fn test_embed_client(config: &ClientConfig) {
-        const TEST: &'static str = "Hello world.";
+        const TEST: &str = "Hello world.";
 
         let client = config.factory();
 

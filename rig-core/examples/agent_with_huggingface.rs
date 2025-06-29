@@ -70,7 +70,7 @@ async fn basic() -> Result<(), anyhow::Error> {
 
     let response = comedian_agent.prompt("Entertain me!").await?;
 
-    println!("{}", response);
+    println!("{response}");
 
     Ok(())
 }
@@ -135,7 +135,7 @@ async fn loaders() -> Result<(), anyhow::Error> {
 
     let agent = examples
         .fold(AgentBuilder::new(model), |builder, (path, content)| {
-            builder.context(format!("Rust Example {:?}:\n{}", path, content).as_str())
+            builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
         })
         .build();
 
@@ -145,7 +145,7 @@ async fn loaders() -> Result<(), anyhow::Error> {
         .prompt("Which rust example is best suited for the operation 1 + 2")
         .await?;
 
-    println!("{}", response);
+    println!("{response}");
 
     Ok(())
 }
@@ -169,7 +169,7 @@ async fn context() -> Result<(), anyhow::Error> {
 
     let response = agent.prompt("What does \"glarb-glarb\" mean?").await?;
 
-    println!("{}", response);
+    println!("{response}");
 
     Ok(())
 }

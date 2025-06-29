@@ -583,7 +583,7 @@ mod tests {
         };
 
         let expected = "<file id: 123>\nThis is a test document.\n</file>\n";
-        assert_eq!(format!("{}", doc), expected);
+        assert_eq!(format!("{doc}"), expected);
     }
 
     #[test]
@@ -604,7 +604,7 @@ mod tests {
             "This is a test document.\n",
             "</file>\n"
         );
-        assert_eq!(format!("{}", doc), expected);
+        assert_eq!(format!("{doc}"), expected);
     }
 
     #[test]

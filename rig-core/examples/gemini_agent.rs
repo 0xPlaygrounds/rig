@@ -37,7 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing::info!("Response: {:?}", response);
 
     match response {
-        Ok(response) => println!("{}", response),
+        Ok(response) => println!("{response}"),
         Err(e) => {
             tracing::error!("Error: {:?}", e);
             return Err(e.into());

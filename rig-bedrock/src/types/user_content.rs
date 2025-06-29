@@ -105,12 +105,12 @@ mod tests {
     fn aws_content_block_to_user_content() {
         let cb = aws_bedrock::ContentBlock::Text("42".into());
         let user_content: Result<RigUserContent, _> = cb.try_into();
-        assert_eq!(user_content.is_ok(), true);
+        assert!(user_content.is_ok());
         let content = match user_content.unwrap().0 {
             rig::message::UserContent::Text(text) => Ok(text),
             _ => Err("Invalid content type"),
         };
-        assert_eq!(content.is_ok(), true);
+        assert!(content.is_ok());
         assert_eq!(content.unwrap().text, "42")
     }
 
@@ -124,12 +124,12 @@ mod tests {
                 .unwrap(),
         );
         let user_content: Result<RigUserContent, _> = cb.try_into();
-        assert_eq!(user_content.is_ok(), true);
+        assert!(user_content.is_ok());
         let content = match user_content.unwrap().0 {
             rig::message::UserContent::ToolResult(tool_result) => Ok(tool_result),
             _ => Err("Invalid content type"),
         };
-        assert_eq!(content.is_ok(), true);
+        assert!(content.is_ok());
         let content = content.unwrap();
         assert_eq!(content.id, "123");
         assert_eq!(
@@ -149,7 +149,7 @@ mod tests {
             ),
         );
         let user_content: Result<RigUserContent, _> = cb.try_into();
-        assert_eq!(user_content.is_ok(), false);
+        assert!(!user_content.is_ok());
         assert_eq!(
             user_content.err().unwrap().to_string(),
             CompletionError::ProviderError(
@@ -163,7 +163,7 @@ mod tests {
     fn user_content_to_aws_content_block() {
         let uc = RigUserContent(UserContent::Text("txt".into()));
         let aws_content_blocks: Result<Vec<aws_bedrock::ContentBlock>, _> = uc.try_into();
-        assert_eq!(aws_content_blocks.is_ok(), true);
+        assert!(aws_content_blocks.is_ok());
         let aws_content_blocks = aws_content_blocks.unwrap();
         assert_eq!(
             aws_content_blocks,

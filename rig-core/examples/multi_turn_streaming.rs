@@ -158,11 +158,11 @@ async fn custom_stream_to_stdout(stream: &mut StreamingResult) -> Result<(), std
     while let Some(content) = stream.next().await {
         match content {
             Ok(Text { text }) => {
-                print!("{}", text);
+                print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
             Err(err) => {
-                eprintln!("Error: {}", err);
+                eprintln!("Error: {err}");
             }
         }
     }
