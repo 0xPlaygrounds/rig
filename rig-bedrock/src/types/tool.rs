@@ -112,7 +112,7 @@ mod tests {
             .unwrap();
         let aws_tool = aws_bedrock::ToolResultContentBlock::Document(aws_document);
         let tool: Result<RigToolResultContent, _> = aws_tool.try_into();
-        assert!(!tool.is_ok());
+        assert!(tool.is_err());
         assert_eq!(
             tool.err().unwrap().to_string(),
             CompletionError::ProviderError(

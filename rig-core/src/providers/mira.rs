@@ -637,10 +637,7 @@ mod tests {
         // Convert back to our Message type
         let converted_message: Message = mira_value.try_into().unwrap();
 
-        // Convert back to original format
-        let final_message: message::Message = converted_message.try_into().unwrap();
-
-        assert_eq!(original_message, final_message);
+        assert_eq!(original_message, converted_message);
     }
 
     #[test]

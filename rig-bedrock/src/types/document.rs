@@ -172,7 +172,7 @@ mod tests {
             .build()
             .unwrap();
         let rig_document: Result<RigDocument, _> = aws_document.clone().try_into();
-        assert!(!rig_document.is_ok());
+        assert!(rig_document.is_err());
         assert_eq!(
             rig_document.err().unwrap().to_string(),
             CompletionError::ProviderError("Unsupported media type xlsx".into()).to_string()

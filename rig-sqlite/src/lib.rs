@@ -191,9 +191,8 @@ impl<E: EmbeddingModel + 'static, T: SqliteVectorStoreTable + 'static> SqliteVec
             )?;
             last_id = txn.last_insert_rowid();
 
-            let embeddings_sql = format!(
-                "INSERT INTO {table_name}_embeddings (rowid, embedding) VALUES (?1, ?2)"
-            );
+            let embeddings_sql =
+                format!("INSERT INTO {table_name}_embeddings (rowid, embedding) VALUES (?1, ?2)");
 
             let mut stmt = txn.prepare(&embeddings_sql)?;
             for (i, embedding) in embeddings.iter().enumerate() {

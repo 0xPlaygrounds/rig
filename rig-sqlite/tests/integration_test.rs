@@ -8,7 +8,7 @@ use rig::{
     Embed, OneOrMany,
 };
 use rig_sqlite::{Column, ColumnValue, SqliteVectorStore, SqliteVectorStoreTable};
-use rusqlite::ffi::sqlite3_auto_extension;
+use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use sqlite_vec::sqlite3_vec_init;
 use tokio_rusqlite::Connection;
 
@@ -43,12 +43,17 @@ impl SqliteVectorStoreTable for Word {
     }
 }
 
+type SqliteExtensionFn =
+    unsafe extern "C" fn(*mut sqlite3, *mut *mut i8, *const sqlite3_api_routines) -> i32;
+
 #[tokio::test]
 async fn vector_search_test() {
     // Initialize the `sqlite-vec`extension
     // See: https://alexgarcia.xyz/sqlite-vec/rust.html
     unsafe {
-        sqlite3_auto_extension(Some(std::mem::transmute(sqlite3_vec_init as *const ())));
+        sqlite3_auto_extension(Some(std::mem::transmute::<*const (), SqliteExtensionFn>(
+            sqlite3_vec_init as *const (),
+        )));
     }
 
     // Initialize SQLite connection

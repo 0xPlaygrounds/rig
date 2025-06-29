@@ -149,7 +149,7 @@ mod tests {
             ),
         );
         let user_content: Result<RigUserContent, _> = cb.try_into();
-        assert!(!user_content.is_ok());
+        assert!(user_content.is_err());
         assert_eq!(
             user_content.err().unwrap().to_string(),
             CompletionError::ProviderError(

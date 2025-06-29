@@ -759,81 +759,79 @@ mod tests {
             }
         );
 
-        match assistant_message2 {
-            Message { role, content } => {
-                assert_eq!(role, Role::Assistant);
-                assert_eq!(content.len(), 2);
+        let Message { role, content } = assistant_message2;
+        {
+            assert_eq!(role, Role::Assistant);
+            assert_eq!(content.len(), 2);
 
-                let mut iter = content.into_iter();
+            let mut iter = content.into_iter();
 
-                match iter.next().unwrap() {
-                    Content::Text { text } => {
-                        assert_eq!(text, "\n\nHello there, how may I assist you today?");
-                    }
-                    _ => panic!("Expected text content"),
+            match iter.next().unwrap() {
+                Content::Text { text } => {
+                    assert_eq!(text, "\n\nHello there, how may I assist you today?");
                 }
-
-                match iter.next().unwrap() {
-                    Content::ToolUse { id, name, input } => {
-                        assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
-                        assert_eq!(name, "get_weather");
-                        assert_eq!(input, json!({"location": "San Francisco, CA"}));
-                    }
-                    _ => panic!("Expected tool use content"),
-                }
-
-                assert_eq!(iter.next(), None);
+                _ => panic!("Expected text content"),
             }
+
+            match iter.next().unwrap() {
+                Content::ToolUse { id, name, input } => {
+                    assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
+                    assert_eq!(name, "get_weather");
+                    assert_eq!(input, json!({"location": "San Francisco, CA"}));
+                }
+                _ => panic!("Expected tool use content"),
+            }
+
+            assert_eq!(iter.next(), None);
         }
 
-        match user_message {
-            Message { role, content } => {
-                assert_eq!(role, Role::User);
-                assert_eq!(content.len(), 3);
+        let Message { role, content } = user_message;
+        {
+            assert_eq!(role, Role::User);
+            assert_eq!(content.len(), 3);
 
-                let mut iter = content.into_iter();
+            let mut iter = content.into_iter();
 
-                match iter.next().unwrap() {
-                    Content::Image { source } => {
-                        assert_eq!(
-                            source,
-                            ImageSource {
-                                data: "/9j/4AAQSkZJRg...".to_owned(),
-                                media_type: ImageFormat::JPEG,
-                                r#type: SourceType::BASE64,
-                            }
-                        );
-                    }
-                    _ => panic!("Expected image content"),
+            match iter.next().unwrap() {
+                Content::Image { source } => {
+                    assert_eq!(
+                        source,
+                        ImageSource {
+                            data: "/9j/4AAQSkZJRg...".to_owned(),
+                            media_type: ImageFormat::JPEG,
+                            r#type: SourceType::BASE64,
+                        }
+                    );
                 }
-
-                match iter.next().unwrap() {
-                    Content::Text { text } => {
-                        assert_eq!(text, "What is in this image?");
-                    }
-                    _ => panic!("Expected text content"),
-                }
-
-                match iter.next().unwrap() {
-                    Content::ToolResult {
-                        tool_use_id,
-                        content,
-                        is_error,
-                    } => {
-                        assert_eq!(tool_use_id, "toolu_01A09q90qw90lq917835lq9");
-                        assert_eq!(
-                            content.first(),
-                            ToolResultContent::Text {
-                                text: "15 degrees".to_owned()
-                            }
-                        );
-                        assert_eq!(is_error, None);
-                    }
-                    _ => panic!("Expected tool result content"),
-                }
-
-                assert_eq!(iter.next(), None);
+                _ => panic!("Expected image content"),
             }
+
+            match iter.next().unwrap() {
+                Content::Text { text } => {
+                    assert_eq!(text, "What is in this image?");
+                }
+                _ => panic!("Expected text content"),
+            }
+
+            match iter.next().unwrap() {
+                Content::ToolResult {
+                                            tool_use_id,
+                                            content,
+                                            is_error,
+                                        } => {
+                    assert_eq!(tool_use_id, "toolu_01A09q90qw90lq917835lq9");
+                    assert_eq!(
+                                    content.first(),
+                                    ToolResultContent::Text {
+                                        text: "15 degrees".to_owned()
+                                    }
+                                );
+                    assert_eq!(is_error, None);
+                }
+                _ => panic!("Expected tool result content"),
+            }
+
+            assert_eq!(iter.next(), None);
         }
     }
 
