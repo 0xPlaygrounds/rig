@@ -134,7 +134,7 @@ mod tests {
                 .unwrap();
         let completion: Result<completion::CompletionResponse<AwsConverseOutput>, _> =
             AwsConverseOutput(converse_output).try_into();
-        assert_eq!(completion.is_ok(), true);
+        assert!(completion.is_ok());
         let completion = completion.unwrap();
         assert_eq!(
             completion.choice,
@@ -146,7 +146,7 @@ mod tests {
     fn aws_content_block_to_assistant_content() {
         let content_block = aws_bedrock::ContentBlock::Text("text".into());
         let rig_assistant_content: Result<RigAssistantContent, _> = content_block.try_into();
-        assert_eq!(rig_assistant_content.is_ok(), true);
+        assert!(rig_assistant_content.is_ok());
         assert_eq!(
             rig_assistant_content.unwrap().0,
             AssistantContent::Text("text".into())

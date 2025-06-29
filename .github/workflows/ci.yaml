@@ -71,7 +71,7 @@ jobs:
       - name: Run clippy action
         uses: clechasseur/rs-clippy-check@v3
         with:
-          args: --all-features
+          args: --all-features --all-targets
 
   test:
     name: stable / test

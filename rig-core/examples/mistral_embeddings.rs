@@ -36,7 +36,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let results = index.top_n::<Greetings>("Hello, World", 1).await?;
 
-    println!("{:?}", results);
+    println!("{results:?}");
 
     Ok(())
 }

@@ -17,11 +17,11 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 enum StreamingError {
     #[error("CompletionError: {0}")]
-    CompletionError(#[from] CompletionError),
+    Completion(#[from] CompletionError),
     #[error("PromptError: {0}")]
-    PromptError(#[from] PromptError),
+    Prompt(#[from] PromptError),
     #[error("ToolSetError: {0}")]
-    ToolError(#[from] ToolSetError),
+    Tool(#[from] ToolSetError),
 }
 
 type StreamingResult = Pin<Box<dyn Stream<Item = Result<Text, StreamingError>> + Send>>;
@@ -158,11 +158,11 @@ async fn custom_stream_to_stdout(stream: &mut StreamingResult) -> Result<(), std
     while let Some(content) = stream.next().await {
         match content {
             Ok(Text { text }) => {
-                print!("{}", text);
+                print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
             Err(err) => {
-                eprintln!("Error: {}", err);
+                eprintln!("Error: {err}");
             }
         }
     }

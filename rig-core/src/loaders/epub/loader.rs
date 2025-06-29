@@ -484,7 +484,7 @@ mod tests {
         assert_eq!(chapters.len(), 3);
 
         for chapter in chapters {
-            assert!(matches!(chapter.1, Ok(_)));
+            assert!(chapter.1.is_ok());
         }
     }
 

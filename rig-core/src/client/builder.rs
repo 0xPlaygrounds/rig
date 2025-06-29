@@ -366,7 +366,7 @@ impl ClientFactory {
 
     pub fn build(&self) -> Result<Box<dyn ProviderClient>, ClientBuildError> {
         std::panic::catch_unwind(|| (self.factory)())
-            .map_err(|e| ClientBuildError::FactoryError(format!("{:?}", e)))
+            .map_err(|e| ClientBuildError::FactoryError(format!("{e:?}")))
     }
 }
 

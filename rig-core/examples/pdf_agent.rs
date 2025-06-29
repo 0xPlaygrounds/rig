@@ -22,7 +22,7 @@ fn load_pdf(path: PathBuf) -> Result<Vec<String>> {
         .filter_map(|result| {
             result
                 .map_err(|e| {
-                    eprintln!("Error reading PDF content: {}", e);
+                    eprintln!("Error reading PDF content: {e}");
                     e
                 })
                 .ok()
@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
     // Add chunks from pdf documents
     for (i, chunk) in pdf_chunks.into_iter().enumerate() {
         builder = builder.document(Document {
-            id: format!("pdf_document_{}", i),
+            id: format!("pdf_document_{i}"),
             content: chunk,
         })?;
     }

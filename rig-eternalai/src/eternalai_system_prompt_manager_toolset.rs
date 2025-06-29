@@ -44,17 +44,17 @@ pub async fn get_on_chain_system_prompt(
         "#
     );
     let provider =
-        Provider::<Http>::try_from(rpc_url).map_err(|e| format!("Failed to parse url: {}", e))?;
+        Provider::<Http>::try_from(rpc_url).map_err(|e| format!("Failed to parse url: {e}"))?;
     let client = Arc::new(provider);
     let contract_address: Address = contract_addr
         .parse()
-        .map_err(|e| format!("invalid contract address: {}", e))?;
+        .map_err(|e| format!("invalid contract address: {e}"))?;
     let contract = SystemPromptManagementContract::new(contract_address, client);
     let system_prompts: Vec<Bytes> = contract
         .get_agent_system_prompt(U256::from(agent_id))
         .call()
         .await
-        .map_err(|e| format!("invalid agent system prompt: {}", e))?;
+        .map_err(|e| format!("invalid agent system prompt: {e}"))?;
 
     let decoded_strings: Vec<String> = system_prompts
         .iter()

@@ -260,7 +260,7 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
         tracing::info!(target: "rig",
             "Selected documents: {}",
             results.iter()
-                .map(|(distance, id, _)| format!("{} ({})", id, distance))
+                .map(|(distance, id, _)| format!("{id} ({distance})"))
                 .collect::<Vec<String>>()
                 .join(", ")
         );
@@ -303,7 +303,7 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
         tracing::info!(target: "rig",
             "Selected documents: {}",
             results.iter()
-                .map(|(distance, id)| format!("{} ({})", id, distance))
+                .map(|(distance, id)| format!("{id} ({distance})"))
                 .collect::<Vec<String>>()
                 .join(", ")
         );

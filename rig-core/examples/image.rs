@@ -45,7 +45,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Prompt the agent and print the response
     let response = agent.prompt(image).await?;
 
-    println!("{}", response);
+    println!("{response}");
 
     Ok(())
 }

@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
         .multi_turn(20)
         .await?;
 
-    println!("\n\nOpenAI Calculator Agent: {}", result);
+    println!("\n\nOpenAI Calculator Agent: {result}");
 
     // Prompt the agent again and print the response
     let result = agent
@@ -48,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
         .multi_turn(20)
         .await?;
 
-    println!("\n\nOpenAI Calculator Agent: {}", result);
+    println!("\n\nOpenAI Calculator Agent: {result}");
 
     Ok(())
 }

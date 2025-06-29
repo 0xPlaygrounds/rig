@@ -410,7 +410,7 @@ mod tests {
     #[tokio::test]
     async fn test_map_err_constructor() {
         let op1 = map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") });
-        let op2 = then(|err: &str| async move { format!("Error: {}", err) });
+        let op2 = then(|err: &str| async move { format!("Error: {err}") });
         let op3 = map(|err: String| err.len());
 
         let pipeline = MapErr::new(MapErr::new(op1, op2), op3);
@@ -422,7 +422,7 @@ mod tests {
     #[tokio::test]
     async fn test_map_err_chain() {
         let pipeline = map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
-            .map_err(|err| format!("Error: {}", err))
+            .map_err(|err| format!("Error: {err}"))
             .map_err(|err| err.len());
 
         let result = pipeline.try_call(1).await;
@@ -454,7 +454,7 @@ mod tests {
     #[tokio::test]
     async fn test_or_else_constructor() {
         let op1 = map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") });
-        let op2 = then(|err: &str| async move { Err(format!("Error: {}", err)) });
+        let op2 = then(|err: &str| async move { Err(format!("Error: {err}")) });
         let op3 = map(|err: String| Ok::<i32, String>(err.len() as i32));
 
         let pipeline = OrElse::new(OrElse::new(op1, op2), op3);
@@ -466,7 +466,7 @@ mod tests {
     #[tokio::test]
     async fn test_or_else_chain() {
         let pipeline = map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
-            .or_else(|err| async move { Err(format!("Error: {}", err)) })
+            .or_else(|err| async move { Err(format!("Error: {err}")) })
             .or_else(|err| async move { Ok::<i32, String>(err.len() as i32) });
 
         let result = pipeline.try_call(1).await.unwrap();

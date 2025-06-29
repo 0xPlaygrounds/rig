@@ -32,5 +32,5 @@ async fn main() {
         .await
         .expect("Failed to extract sentiment");
 
-    println!("GPT-4: {:?}", sentiment);
+    println!("GPT-4: {sentiment:?}");
 }

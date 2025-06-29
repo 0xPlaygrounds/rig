@@ -27,7 +27,7 @@ async fn main() -> Result<(), anyhow::Error> {
             println!("Successfully connected to Mira API!");
             println!("Available models:");
             for model in models {
-                println!("- {}", model);
+                println!("- {model}");
             }
             println!("\nProceeding with chat completion...\n");
         }
@@ -45,7 +45,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Send a message and get response
     let response = agent.prompt("What are the 7 wonders of the world?").await?;
-    println!("Basic Agent Response: {}", response);
+    println!("Basic Agent Response: {response}");
 
     // Create a calculator agent with tools
     let calculator_agent = client

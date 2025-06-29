@@ -2,7 +2,6 @@ use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers;
 use rig_derive::rig_tool;
-use tracing_subscriber;
 
 // Simple example with no attributes
 #[rig_tool]
@@ -66,7 +65,7 @@ async fn main() {
         "What is 10 + 20?",
         "Add 100 and 200",
     ] {
-        println!("User: {}", prompt);
+        println!("User: {prompt}");
         println!("Agent: {}", calculator_agent.prompt(prompt).await.unwrap());
     }
 }

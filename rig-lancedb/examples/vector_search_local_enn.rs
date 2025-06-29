@@ -59,7 +59,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .top_n_ids("My boss says I zindle too much, what does that mean?", 1)
         .await?;
 
-    println!("Results: {:?}", results);
+    println!("Results: {results:?}");
 
     Ok(())
 }

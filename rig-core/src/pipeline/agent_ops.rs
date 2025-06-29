@@ -172,7 +172,7 @@ pub mod tests {
                 },
                 _ => unreachable!(),
             };
-            Ok(format!("Mock response: {}", prompt))
+            Ok(format!("Mock response: {prompt}"))
         }
     }
 

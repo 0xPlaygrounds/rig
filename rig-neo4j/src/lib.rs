@@ -255,8 +255,7 @@ impl Neo4jClient {
                 std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     format!(
-                        "Index `{}` not found in database. Available indexes: {:?}",
-                        index_name, indexes
+                        "Index `{index_name}` not found in database. Available indexes: {indexes:?}"
                     ),
                 ),
             )));

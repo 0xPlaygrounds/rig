@@ -181,7 +181,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .multi_turn(10)
         .await?;
 
-    println!("{}", response);
+    println!("{response}");
 
     Ok(())
 }

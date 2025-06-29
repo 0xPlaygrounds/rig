@@ -121,7 +121,7 @@ async fn vector_search_test() {
         .documents(
             (0..256)
                 .map(|i| Word {
-                    id: format!("doc{}", i),
+                    id: format!("doc{i}"),
                     definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
                 })
         ).unwrap()

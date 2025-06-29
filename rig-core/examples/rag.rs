@@ -78,7 +78,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Prompt the agent and print the response
     let response = rag_agent.prompt("What does \"glarb-glarb\" mean?").await?;
 
-    println!("{}", response);
+    println!("{response}");
 
     Ok(())
 }

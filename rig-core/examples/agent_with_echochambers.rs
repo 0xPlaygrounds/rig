@@ -118,7 +118,7 @@ impl Tool for SendMessage {
                 .text()
                 .await
                 .map_err(|e| EchoChamberError(e.to_string()))?;
-            return Err(EchoChamberError(format!("API error: {}", error_text)));
+            return Err(EchoChamberError(format!("API error: {error_text}")));
         }
 
         let data = response
@@ -162,7 +162,7 @@ impl Tool for GetHistory {
         let client = reqwest::Client::new();
         let mut url = format!("https://echochambers.ai/api/rooms/{}/history", args.room_id);
         if let Some(limit) = args.limit {
-            url = format!("{}?limit={}", url, limit);
+            url = format!("{url}?limit={limit}");
         }
         let response = client
             .get(&url)
