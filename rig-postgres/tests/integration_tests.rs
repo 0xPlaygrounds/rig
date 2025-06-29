@@ -104,9 +104,7 @@ async fn vector_search_test() {
     );
 
     let (distance, full_query_id, doc) = results[0].clone();
-    println!(
-        "Distance: {distance}, id: {full_query_id}, document: {doc:?}"
-    );
+    println!("Distance: {distance}, id: {full_query_id}, document: {doc:?}");
 
     assert_eq!(doc.name, "glarb-glarb");
 
@@ -149,9 +147,7 @@ async fn connect_to_postgres(host: String, port: u16) -> PgPool {
     PgPoolOptions::new()
         .max_connections(50)
         .idle_timeout(std::time::Duration::from_secs(5))
-        .connect(&format!(
-            "postgres://postgres:postgres@{host}:{port}/rig"
-        ))
+        .connect(&format!("postgres://postgres:postgres@{host}:{port}/rig"))
         .await
         .expect("Failed to create postgres pool")
 }

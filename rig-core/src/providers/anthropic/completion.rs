@@ -815,17 +815,17 @@ mod tests {
 
             match iter.next().unwrap() {
                 Content::ToolResult {
-                                            tool_use_id,
-                                            content,
-                                            is_error,
-                                        } => {
+                    tool_use_id,
+                    content,
+                    is_error,
+                } => {
                     assert_eq!(tool_use_id, "toolu_01A09q90qw90lq917835lq9");
                     assert_eq!(
-                                    content.first(),
-                                    ToolResultContent::Text {
-                                        text: "15 degrees".to_owned()
-                                    }
-                                );
+                        content.first(),
+                        ToolResultContent::Text {
+                            text: "15 degrees".to_owned()
+                        }
+                    );
                     assert_eq!(is_error, None);
                 }
                 _ => panic!("Expected tool result content"),

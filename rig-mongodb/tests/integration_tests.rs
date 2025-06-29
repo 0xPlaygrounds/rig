@@ -205,12 +205,9 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
                             .ok()
                             .map(|i| {
                                 // Check both name and status
-                                let name_matches = i
-                                    .get_str("name")
-                                    .ok() == Some(VECTOR_SEARCH_INDEX_NAME);
-                                let status_ready = i
-                                    .get_str("status")
-                                    .ok() == Some("READY");
+                                let name_matches =
+                                    i.get_str("name").ok() == Some(VECTOR_SEARCH_INDEX_NAME);
+                                let status_ready = i.get_str("status").ok() == Some("READY");
                                 name_matches && status_ready
                             })
                             .unwrap_or(false)
@@ -231,9 +228,7 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
         }
     }
 
-    panic!(
-        "Failed to create search index after {max_attempts} attempts"
-    );
+    panic!("Failed to create search index after {max_attempts} attempts");
 }
 
 async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Document> {
