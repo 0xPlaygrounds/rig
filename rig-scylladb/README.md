@@ -2,18 +2,6 @@
 
 Vector store implementation for [ScyllaDB](https://www.scylladb.com/). This integration provides vector storage and similarity search using ScyllaDB as the backend.
 
-## Installation
-
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-rig-scylladb = { git = "https://github.com/0xPlaygrounds/rig", package = "rig-scylladb" }
-rig-core = "0.4.0"
-```
-
-You can also run `cargo add rig-scylladb rig-core` to add the most recent versions of the dependencies to your project.
-
 ## Usage
 
 ```rust

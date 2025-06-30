@@ -73,7 +73,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    println!("Inserting {} word definitions into ScyllaDB...", words.len());
+    tracing::info!("Inserting {} word definitions into ScyllaDB...", words.len());
 
     // Insert documents with their embeddings
     let documents_with_embeddings = embeddings
@@ -86,20 +86,20 @@ async fn main() -> Result<(), anyhow::Error> {
         .await
         .expect("Failed to insert documents");
 
-    println!("Documents inserted successfully!");
+    tracing::info!("Documents inserted successfully!");
 
     // Test similarity search
     let query = "What is Rust programming language?";
-    println!("\nSearching for: '{}'", query);
+    tracing::info!("Searching for: '{}'", query);
 
     let results = vector_store
         .top_n::<Word>(query, 3)
         .await
         .expect("Failed to search vectors");
 
-    println!("\nTop 3 similar definitions:");
+    tracing::info!("Top 3 similar definitions:");
     for (i, (score, id, word)) in results.iter().enumerate() {
-        println!(
+        tracing::info!(
             "{}. Score: {:.4}, ID: {}, Definition: {}",
             i + 1,
             score,
@@ -109,29 +109,29 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Test ID-only search
-    println!("\nSearching for IDs only...");
+    tracing::info!("Searching for IDs only...");
     let id_results = vector_store
         .top_n_ids(query, 2)
         .await
         .expect("Failed to search vector IDs");
 
-    println!("Top 2 similar document IDs:");
+    tracing::info!("Top 2 similar document IDs:");
     for (i, (score, id)) in id_results.iter().enumerate() {
-        println!("{}. Score: {:.4}, ID: {}", i + 1, score, id);
+        tracing::info!("{}. Score: {:.4}, ID: {}", i + 1, score, id);
     }
 
     // Test with different query
     let database_query = "distributed database system";
-    println!("\nSearching for: '{}'", database_query);
+    tracing::info!("Searching for: '{}'", database_query);
 
     let db_results = vector_store
         .top_n::<Word>(database_query, 2)
         .await
         .expect("Failed to search vectors");
 
-    println!("Top 2 similar definitions:");
+    tracing::info!("Top 2 similar definitions:");
     for (i, (score, id, word)) in db_results.iter().enumerate() {
-        println!(
+        tracing::info!(
             "{}. Score: {:.4}, ID: {}, Definition: {}",
             i + 1,
             score,
@@ -140,7 +140,7 @@ async fn main() -> Result<(), anyhow::Error> {
         );
     }
 
-    println!("\n✅ ScyllaDB vector search example completed successfully!");
+    tracing::info!("✅ ScyllaDB vector search example completed successfully!");
 
     Ok(())
 } 
