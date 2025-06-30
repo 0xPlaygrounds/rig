@@ -160,7 +160,7 @@ macro_rules! tuple_pattern {
 
 #[macro_export]
 macro_rules! parallel {
-    ($($es:expr_2021),+ $(,)?) => {
+    ($($es:expr),+ $(,)?) => {
         $crate::parallel_internal! {
             current_position: []
             values_and_positions: []
@@ -260,7 +260,7 @@ macro_rules! try_parallel_internal {
 
 #[macro_export]
 macro_rules! try_parallel {
-    ($($es:expr_2021),+ $(,)?) => {
+    ($($es:expr),+ $(,)?) => {
         $crate::try_parallel_internal! {
             current_position: []
             values_and_positions: []
