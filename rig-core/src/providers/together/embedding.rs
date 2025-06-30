@@ -9,8 +9,8 @@ use serde_json::json;
 use crate::embeddings::{self, EmbeddingError};
 
 use super::{
-    client::together_ai_api_types::{ApiErrorResponse, ApiResponse},
     Client,
+    client::together_ai_api_types::{ApiErrorResponse, ApiResponse},
 };
 
 // ================================================================

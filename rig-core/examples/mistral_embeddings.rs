@@ -1,9 +1,9 @@
+use rig::Embed;
 use rig::client::{EmbeddingsClient, ProviderClient};
 use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::mistral;
-use rig::vector_store::in_memory_store::InMemoryVectorStore;
 use rig::vector_store::VectorStoreIndex;
-use rig::Embed;
+use rig::vector_store::in_memory_store::InMemoryVectorStore;
 use serde::{Deserialize, Serialize};
 
 #[derive(Embed, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -36,7 +36,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let results = index.top_n::<Greetings>("Hello, World", 1).await?;
 
-    println!("{:?}", results);
+    println!("{results:?}");
 
     Ok(())
 }

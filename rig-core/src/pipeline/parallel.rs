@@ -279,7 +279,7 @@ mod tests {
     use super::*;
     use crate::pipeline::{
         self,
-        op::{map, Sequential},
+        op::{Sequential, map},
         passthrough, then,
     };
 
@@ -297,7 +297,7 @@ mod tests {
     async fn test_parallel_nested() {
         let op1 = map(|x: i32| x + 1);
         let op2 = map(|x: i32| x * 3);
-        let op3 = map(|x: i32| format!("{} is the number!", x));
+        let op3 = map(|x: i32| format!("{x} is the number!"));
         let op4 = map(|x: i32| x - 1);
 
         let pipeline = Parallel::new(Parallel::new(Parallel::new(op1, op2), op3), op4);
@@ -310,7 +310,7 @@ mod tests {
     async fn test_parallel_nested_rev() {
         let op1 = map(|x: i32| x + 1);
         let op2 = map(|x: i32| x * 3);
-        let op3 = map(|x: i32| format!("{} is the number!", x));
+        let op3 = map(|x: i32| format!("{x} is the number!"));
         let op4 = map(|x: i32| x == 1);
 
         let pipeline = Parallel::new(op1, Parallel::new(op2, Parallel::new(op3, op4)));
@@ -340,7 +340,7 @@ mod tests {
                 Parallel::new(
                     map(|x: i32| x * 3),
                     Parallel::new(
-                        map(|x: i32| format!("{} is the number!", x)),
+                        map(|x: i32| format!("{x} is the number!")),
                         map(|x: i32| x == 1),
                     ),
                 ),
@@ -371,7 +371,7 @@ mod tests {
         let pipeline = parallel!(
             passthrough(),
             op2,
-            map(|x: i32| format!("{} is the number!", x)),
+            map(|x: i32| format!("{x} is the number!")),
             map(|x: i32| x == 1)
         );
 
@@ -387,7 +387,7 @@ mod tests {
                 Parallel::new(
                     map(|x: i32| Ok::<_, String>(x * 3)),
                     Parallel::new(
-                        map(|x: i32| Err::<i32, _>(format!("{} is the number!", x))),
+                        map(|x: i32| Err::<i32, _>(format!("{x} is the number!"))),
                         map(|x: i32| Ok::<_, String>(x == 1)),
                     ),
                 ),
@@ -406,7 +406,7 @@ mod tests {
         let pipeline = try_parallel!(
             map(|x: i32| Ok::<_, String>(x)),
             op2,
-            map(|x: i32| Ok::<_, String>(format!("{} is the number!", x))),
+            map(|x: i32| Ok::<_, String>(format!("{x} is the number!"))),
             map(|x: i32| Ok::<_, String>(x == 1))
         );
 
@@ -421,7 +421,7 @@ mod tests {
         let pipeline = try_parallel!(
             map(|x: i32| Ok::<_, String>(x)),
             op2,
-            map(|x: i32| Err::<i32, _>(format!("{} is the number!", x))),
+            map(|x: i32| Err::<i32, _>(format!("{x} is the number!"))),
             map(|x: i32| Ok::<_, String>(x == 1))
         );
 

@@ -1,6 +1,6 @@
 use rig::{
-    embeddings::{self, embed::EmbedError, TextEmbedder},
     Embed,
+    embeddings::{self, TextEmbedder, embed::EmbedError},
 };
 use serde::Serialize;
 

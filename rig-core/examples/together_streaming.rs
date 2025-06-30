@@ -1,7 +1,7 @@
 use rig::prelude::*;
 use rig::{
     providers::together::{self},
-    streaming::{stream_to_stdout, StreamingPrompt},
+    streaming::{StreamingPrompt, stream_to_stdout},
 };
 
 #[tokio::main]

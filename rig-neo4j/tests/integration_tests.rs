@@ -1,19 +1,19 @@
 use serde_json::json;
 use testcontainers::{
+    GenericImage, ImageExt,
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
-    GenericImage, ImageExt,
 };
 
 use futures::{StreamExt, TryStreamExt};
 use rig::client::EmbeddingsClient;
 use rig::vector_store::VectorStoreIndex;
 use rig::{
+    Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
-    Embed, OneOrMany,
 };
-use rig_neo4j::{vector_index::SearchParams, Neo4jClient, ToBoltType};
+use rig_neo4j::{Neo4jClient, ToBoltType, vector_index::SearchParams};
 
 const BOLT_PORT: u16 = 7687;
 const HTTP_PORT: u16 = 7474;
@@ -181,7 +181,7 @@ async fn vector_search_test() {
         std::thread::sleep(std::time::Duration::from_secs(5));
     }
 
-    println!("Index exists: {:?}", index_exists);
+    println!("Index exists: {index_exists:?}");
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings

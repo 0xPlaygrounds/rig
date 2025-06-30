@@ -2,13 +2,13 @@ use super::{
     completion::CompletionModel, embedding::EmbeddingModel, transcription::TranscriptionModel,
 };
 use crate::client::{
-    impl_conversion_traits, CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient,
+    CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient, impl_conversion_traits,
 };
 use crate::{
+    Embed,
     agent::AgentBuilder,
     embeddings::{self},
     extractor::ExtractorBuilder,
-    Embed,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -65,6 +65,14 @@ impl Client {
         self.http_client
             .post(url)
             .headers(self.default_headers.clone())
+    }
+
+    /// Use your own `reqwest::Client`.
+    /// The default headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
     }
 
     pub fn post_sse(&self, path: &str) -> reqwest::RequestBuilder {

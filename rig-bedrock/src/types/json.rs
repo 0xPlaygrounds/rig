@@ -112,7 +112,7 @@ mod tests {
 
         let value: Value = serde_json::from_str(json).unwrap();
         let document: AwsDocument = value.into();
-        println!("{:?}", document);
+        println!("{document:?}");
     }
 
     #[test]
@@ -177,6 +177,6 @@ mod tests {
         ])));
 
         let json: Value = document.into();
-        println!("{:?}", json);
+        println!("{json:?}");
     }
 }

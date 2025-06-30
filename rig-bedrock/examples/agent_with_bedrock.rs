@@ -106,7 +106,7 @@ async fn loaders() -> Result<(), anyhow::Error> {
     // Create an agent with multiple context documents
     let agent = examples
         .fold(AgentBuilder::new(model), |builder, (path, content)| {
-            builder.context(format!("Rust Example {:?}:\n{}", path, content).as_str())
+            builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
         })
         .preamble("Answer the question")
         .build();

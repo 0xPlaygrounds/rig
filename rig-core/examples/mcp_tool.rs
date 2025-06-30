@@ -75,7 +75,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .tools
         .into_iter()
         .fold(agent_builder, |builder, tool| {
-            builder.mcp_tool(tool, mcp_client.clone().into())
+            builder.mcp_tool(tool, mcp_client.clone())
         });
     let agent = agent_builder.build();
 

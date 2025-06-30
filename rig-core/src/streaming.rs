@@ -8,6 +8,7 @@
 //! - [StreamingCompletion]: Defines a low-level streaming LLM completion interface
 //!
 
+use crate::OneOrMany;
 use crate::agent::Agent;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message,
