@@ -26,7 +26,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await
         .expect("Failed to embed documents");
 
-    println!("{:?}", embeddings);
+    println!("{embeddings:?}");
 
     Ok(())
 }

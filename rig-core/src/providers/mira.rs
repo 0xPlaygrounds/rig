@@ -632,15 +632,12 @@ mod tests {
         };
 
         // Convert to Mira format
-        let mira_value: serde_json::Value = original_message.clone().try_into().unwrap();
+        let mira_value: serde_json::Value = original_message.clone().into();
 
         // Convert back to our Message type
         let converted_message: Message = mira_value.try_into().unwrap();
 
-        // Convert back to original format
-        let final_message: message::Message = converted_message.try_into().unwrap();
-
-        assert_eq!(original_message, final_message);
+        assert_eq!(original_message, converted_message);
     }
 
     #[test]

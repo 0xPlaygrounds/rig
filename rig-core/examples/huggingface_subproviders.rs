@@ -54,7 +54,7 @@ async fn tools(model: &str, sub_provider: SubProvider) -> Result<(), anyhow::Err
         .tool(Subtract)
         .build();
     // Prompt the agent and print the response
-    println!("Asking {} on {:?} to Calculate 2 - 5", model, sub_provider);
+    println!("Asking {model} on {sub_provider:?} to Calculate 2 - 5");
     println!(
         "Calculator Agent: {}",
         calculator_agent.prompt("Calculate 2 - 5").await?

@@ -366,7 +366,7 @@ mod tests {
             .unwrap();
 
         result.sort_by(|(fake_definition_1, _), (fake_definition_2, _)| {
-            fake_definition_1.cmp(&fake_definition_2)
+            fake_definition_1.cmp(fake_definition_2)
         });
 
         assert_eq!(result.len(), 2);

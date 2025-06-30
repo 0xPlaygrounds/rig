@@ -100,7 +100,7 @@ mod tests {
             content: OneOrMany::one(UserContent::Text("text".into())),
         };
         let aws_message: Result<aws_bedrock::Message, _> = RigMessage(message).try_into();
-        assert_eq!(aws_message.is_ok(), true);
+        assert!(aws_message.is_ok());
         let aws_message = aws_message.unwrap();
         assert_eq!(aws_message.role, aws_bedrock::ConversationRole::User);
         assert_eq!(

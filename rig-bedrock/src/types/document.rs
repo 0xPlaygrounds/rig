@@ -37,7 +37,7 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
         let document_source = aws_bedrock::DocumentSource::Bytes(data);
 
         let random_string = Uuid::new_v4().simple().to_string();
-        let document_name = format!("document-{}", random_string);
+        let document_name = format!("document-{random_string}");
         let result = aws_bedrock::DocumentBlock::builder()
             .source(document_source)
             .name(document_name)
@@ -92,7 +92,7 @@ mod tests {
             media_type: Some(DocumentMediaType::PDF),
         });
         let aws_document: Result<aws_bedrock::DocumentBlock, _> = rig_document.clone().try_into();
-        assert_eq!(aws_document.is_ok(), true);
+        assert!(aws_document.is_ok());
         let aws_document = aws_document.unwrap();
         assert_eq!(aws_document.format, aws_bedrock::DocumentFormat::Pdf);
         let document_data = rig_document.0.data.as_bytes().to_vec();
@@ -156,7 +156,7 @@ mod tests {
             .build()
             .unwrap();
         let rig_document: Result<RigDocument, _> = aws_document.clone().try_into();
-        assert_eq!(rig_document.is_ok(), true);
+        assert!(rig_document.is_ok());
         let rig_document = rig_document.unwrap().0;
         assert_eq!(rig_document.media_type.unwrap(), DocumentMediaType::PDF)
     }
@@ -172,7 +172,7 @@ mod tests {
             .build()
             .unwrap();
         let rig_document: Result<RigDocument, _> = aws_document.clone().try_into();
-        assert_eq!(rig_document.is_ok(), false);
+        assert!(rig_document.is_err());
         assert_eq!(
             rig_document.err().unwrap().to_string(),
             CompletionError::ProviderError("Unsupported media type xlsx".into()).to_string()

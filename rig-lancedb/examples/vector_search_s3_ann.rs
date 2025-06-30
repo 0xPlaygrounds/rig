@@ -38,7 +38,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .documents(
             (0..256)
                 .map(|i| Word {
-                    id: format!("doc{}", i),
+                    id: format!("doc{i}"),
                     definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
                 })
         )?
@@ -90,7 +90,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .top_n::<Word>("I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?", 1)
         .await?;
 
-    println!("Results: {:?}", results);
+    println!("Results: {results:?}");
 
     Ok(())
 }

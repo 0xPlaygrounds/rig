@@ -90,7 +90,7 @@ impl FromStr for VectorSimilarityFunction {
             "cosine" => Ok(VectorSimilarityFunction::Cosine),
             "euclidean" => Ok(VectorSimilarityFunction::Euclidean),
             _ => Err(VectorStoreError::JsonError(serde_json::Error::custom(
-                format!("Invalid similarity function: {}", s),
+                format!("Invalid similarity function: {s}"),
             ))),
         }
     }
@@ -133,7 +133,7 @@ impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
         n: usize,
     ) -> Query {
         let where_clause = match &self.search_params.post_vector_search_filter {
-            Some(filter) => format!("WHERE {}", filter),
+            Some(filter) => format!("WHERE {filter}"),
             None => "".to_string(),
         };
 

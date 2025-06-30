@@ -29,7 +29,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Set up model directory
     let model_dir = Path::new("./models/Qdrant--all-MiniLM-L6-v2-onnx/snapshots");
-    println!("Loading model from: {:?}", model_dir);
+    println!("Loading model from: {model_dir:?}");
 
     // Load model files
     let onnx_file =
@@ -51,7 +51,7 @@ async fn main() -> Result<(), anyhow::Error> {
         UserDefinedEmbeddingModel::new(onnx_file, tokenizer_files).with_pooling(Pooling::Mean);
 
     let embedding_model =
-        EmbeddingModel::new_from_user_defined(user_defined_model, 384, &test_model_info);
+        EmbeddingModel::new_from_user_defined(user_defined_model, 384, test_model_info);
 
     // Create documents
     let documents = vec![
@@ -99,7 +99,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .map(|(score, id, doc)| (score, id, doc.word))
         .collect::<Vec<_>>();
 
-    println!("Results: {:?}", results);
+    println!("Results: {results:?}");
 
     Ok(())
 }

@@ -32,7 +32,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .documents(
             (0..256)
                 .map(|i| Word {
-                    id: format!("doc{}", i),
+                    id: format!("doc{i}"),
                     definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
                 })
         )?
@@ -78,7 +78,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .top_n::<Word>("My boss says I zindle too much, what does that mean?", 1)
         .await?;
 
-    println!("Results: {:?}", results);
+    println!("Results: {results:?}");
 
     Ok(())
 }

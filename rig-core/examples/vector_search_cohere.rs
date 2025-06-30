@@ -70,7 +70,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .map(|(score, id, doc)| (score, id, doc.word))
         .collect::<Vec<_>>();
 
-    println!("Results: {:?}", results);
+    println!("Results: {results:?}");
 
     Ok(())
 }

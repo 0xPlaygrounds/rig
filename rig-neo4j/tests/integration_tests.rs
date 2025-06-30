@@ -181,7 +181,7 @@ async fn vector_search_test() {
         std::thread::sleep(std::time::Duration::from_secs(5));
     }
 
-    println!("Index exists: {:?}", index_exists);
+    println!("Index exists: {index_exists:?}");
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
