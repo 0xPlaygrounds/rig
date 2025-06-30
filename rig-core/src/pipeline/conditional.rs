@@ -46,7 +46,7 @@
 /// ```
 #[macro_export]
 macro_rules! conditional {
-    ($enum:ident, $( $variant:ident => $op:expr ),+ $(,)?) => {
+    ($enum:ident, $( $variant:ident => $op:expr_2021 ),+ $(,)?) => {
         {
             #[allow(non_snake_case)]
             struct ConditionalOp<$($variant),+> {
@@ -125,7 +125,7 @@ macro_rules! conditional {
 /// ```
 #[macro_export]
 macro_rules! try_conditional {
-    ($enum:ident, $( $variant:ident => $op:expr ),+ $(,)?) => {
+    ($enum:ident, $( $variant:ident => $op:expr_2021 ),+ $(,)?) => {
         {
             #[allow(non_snake_case)]
             struct TryConditionalOp<$( $variant ),+> {
