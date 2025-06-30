@@ -220,9 +220,7 @@ mod tests {
         }
 
         fn factory(&self) -> Box<dyn ProviderClient + '_> {
-            let client = self.factory.as_ref()();
-
-            client
+            self.factory.as_ref()()
         }
     }
 

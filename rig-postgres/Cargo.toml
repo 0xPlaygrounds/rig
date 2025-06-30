@@ -1,7 +1,7 @@
 [package]
 name = "rig-postgres"
 version = "0.1.9"
-edition = "2021"
+edition = "2024"
 description = "PostgreSQL-based vector store implementation for the rig framework"
 license = "MIT"
 readme = "README.md"
