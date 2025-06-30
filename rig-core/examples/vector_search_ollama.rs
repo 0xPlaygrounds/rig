@@ -1,9 +1,9 @@
 use rig::prelude::*;
 use rig::{
+    Embed,
     embeddings::EmbeddingsBuilder,
     providers,
-    vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-    Embed,
+    vector_store::{VectorStoreIndex, in_memory_store::InMemoryVectorStore},
 };
 
 use serde::{Deserialize, Serialize};

@@ -1,6 +1,6 @@
+use rig::Embed;
 use rig::prelude::*;
 use rig::providers::voyageai;
-use rig::Embed;
 
 #[derive(Embed, Debug)]
 struct Greetings {

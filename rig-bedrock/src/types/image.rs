@@ -5,7 +5,7 @@ use rig::{
     message::{ContentFormat, Image, ImageMediaType, MimeType},
 };
 
-use base64::{prelude::BASE64_STANDARD, Engine};
+use base64::{Engine, prelude::BASE64_STANDARD};
 
 #[derive(Clone)]
 pub struct RigImage(pub Image);
@@ -80,7 +80,7 @@ impl TryFrom<aws_bedrock::ImageBlock> for RigImage {
 #[cfg(test)]
 mod tests {
     use aws_sdk_bedrockruntime::types as aws_bedrock;
-    use base64::{prelude::BASE64_STANDARD, Engine};
+    use base64::{Engine, prelude::BASE64_STANDARD};
     use rig::{
         completion::CompletionError,
         message::{ContentFormat, Image, ImageMediaType},

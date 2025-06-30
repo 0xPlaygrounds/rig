@@ -1,19 +1,19 @@
 use serde_json::json;
 use testcontainers::{
+    GenericImage, ImageExt,
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
-    GenericImage, ImageExt,
 };
 
 use futures::{StreamExt, TryStreamExt};
 use rig::client::EmbeddingsClient;
 use rig::vector_store::VectorStoreIndex;
 use rig::{
+    Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
-    Embed, OneOrMany,
 };
-use rig_neo4j::{vector_index::SearchParams, Neo4jClient, ToBoltType};
+use rig_neo4j::{Neo4jClient, ToBoltType, vector_index::SearchParams};
 
 const BOLT_PORT: u16 = 7687;
 const HTTP_PORT: u16 = 7474;

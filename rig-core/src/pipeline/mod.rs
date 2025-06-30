@@ -97,7 +97,7 @@ pub mod conditional;
 
 use std::future::Future;
 
-pub use op::{map, passthrough, then, Op};
+pub use op::{Op, map, passthrough, then};
 pub use try_op::TryOp;
 
 use crate::{completion, extractor::Extractor, vector_store};

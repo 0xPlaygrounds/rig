@@ -1,10 +1,10 @@
 use rig::prelude::*;
 use rig::providers::openai::client::Client;
 use rig::{
+    Embed,
     embeddings::EmbeddingsBuilder,
     providers::openai::TEXT_EMBEDDING_ADA_002,
-    vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-    Embed,
+    vector_store::{VectorStoreIndex, in_memory_store::InMemoryVectorStore},
 };
 use serde::{Deserialize, Serialize};
 use std::env;

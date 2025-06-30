@@ -32,7 +32,10 @@ async fn main() -> Result<(), anyhow::Error> {
             println!("\nProceeding with chat completion...\n");
         }
         Err(e) => {
-            return Err(anyhow::anyhow!("Failed to connect to Mira API: {}. Please verify your API key and network connection.", e));
+            return Err(anyhow::anyhow!(
+                "Failed to connect to Mira API: {}. Please verify your API key and network connection.",
+                e
+            ));
         }
     }
 

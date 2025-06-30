@@ -1,6 +1,6 @@
+use rig::OneOrMany;
 use rig::embeddings::{Embedding, EmbeddingModel};
 use rig::vector_store::{VectorStoreError, VectorStoreIndex};
-use rig::OneOrMany;
 use serde::Deserialize;
 use std::marker::PhantomData;
 use tokio_rusqlite::Connection;

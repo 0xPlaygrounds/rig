@@ -16,11 +16,12 @@ use crate::json_utils::merge;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
-    impl_conversion_traits, json_utils, message, OneOrMany,
+    impl_conversion_traits, json_utils, message,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // ================================================================
 // Main Galadriel Client

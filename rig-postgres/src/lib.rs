@@ -1,11 +1,11 @@
 use std::fmt::Display;
 
 use rig::{
+    Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{VectorStoreError, VectorStoreIndex},
-    Embed, OneOrMany,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use sqlx::PgPool;
 use uuid::Uuid;

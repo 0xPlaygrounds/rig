@@ -1,7 +1,7 @@
 use std::{convert::Infallible, error::Error};
 
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 
 // ================================================================
 // Implementing TextProcessor trait for post-processing epubs

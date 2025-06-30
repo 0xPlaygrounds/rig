@@ -1,9 +1,9 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig::{
+    OneOrMany,
     completion::CompletionError,
     message::{AssistantContent, Message, UserContent},
-    OneOrMany,
 };
 
 use super::{assistant_content::RigAssistantContent, user_content::RigUserContent};
@@ -90,8 +90,8 @@ mod tests {
     use crate::types::message::RigMessage;
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use rig::{
-        message::{Message, UserContent},
         OneOrMany,
+        message::{Message, UserContent},
     };
 
     #[test]
