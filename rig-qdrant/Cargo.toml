@@ -1,7 +1,7 @@
 [package]
 name = "rig-qdrant"
 version = "0.1.14"
-edition = "2024"
+edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "Rig vector store index integration for Qdrant. https://qdrant.tech"

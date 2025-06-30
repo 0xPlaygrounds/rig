@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
     "rig-core",
     "rig-lancedb",
@@ -14,6 +14,9 @@ members = [
     "rig-fastembed",
     "rig-bedrock", "rig-milvus",
 ]
+
+[workspace.package]
+edition = "2024"
 
 [workspace.dependencies]
 anyhow = "1.0.94"
