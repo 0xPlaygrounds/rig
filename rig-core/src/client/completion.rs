@@ -95,10 +95,10 @@ pub trait CompletionClientDyn: ProviderClient {
 }
 
 impl<
-        T: CompletionClient<CompletionModel = M>,
-        M: CompletionModel<StreamingResponse = R> + 'static,
-        R: Clone + Unpin + 'static,
-    > CompletionClientDyn for T
+    T: CompletionClient<CompletionModel = M>,
+    M: CompletionModel<StreamingResponse = R> + 'static,
+    R: Clone + Unpin + 'static,
+> CompletionClientDyn for T
 {
     fn completion_model<'a>(&self, model: &str) -> Box<dyn CompletionModelDyn + 'a> {
         Box::new(self.completion_model(model))

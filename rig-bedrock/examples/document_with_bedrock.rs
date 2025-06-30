@@ -1,11 +1,11 @@
 use reqwest::Client;
 
 use rig::{
-    completion::{message::Document, Prompt},
+    completion::{Prompt, message::Document},
     message::{ContentFormat, DocumentMediaType},
 };
 
-use base64::{prelude::BASE64_STANDARD, Engine};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::client::CompletionClient;
 use rig_bedrock::{client::ClientBuilder, completion::AMAZON_NOVA_LITE};
 use tracing::info;

@@ -54,7 +54,7 @@ impl TryFrom<aws_bedrock::ToolResultContentBlock> for RigToolResultContent {
 #[cfg(test)]
 mod tests {
     use aws_sdk_bedrockruntime::types as aws_bedrock;
-    use base64::{prelude::BASE64_STANDARD, Engine};
+    use base64::{Engine, prelude::BASE64_STANDARD};
     use rig::{
         completion::CompletionError,
         message::{ContentFormat, Image, ImageMediaType, Text, ToolResultContent},
@@ -66,7 +66,7 @@ mod tests {
     fn rig_tool_text_to_aws_tool() {
         let tool = RigToolResultContent(ToolResultContent::Text(Text { text: "42".into() }));
         let aws_tool: Result<aws_bedrock::ToolResultContentBlock, _> = tool.try_into();
-        assert_eq!(aws_tool.is_ok(), true);
+        assert!(aws_tool.is_ok());
         assert_eq!(
             String::from(aws_tool.unwrap().as_text().unwrap()),
             String::from("42")
@@ -83,20 +83,20 @@ mod tests {
         };
         let tool = RigToolResultContent(ToolResultContent::Image(image));
         let aws_tool: Result<aws_bedrock::ToolResultContentBlock, _> = tool.try_into();
-        assert_eq!(aws_tool.is_ok(), true);
-        assert_eq!(aws_tool.unwrap().is_image(), true)
+        assert!(aws_tool.is_ok());
+        assert!(aws_tool.unwrap().is_image())
     }
 
     #[test]
     fn aws_tool_to_rig_tool() {
         let aws_tool = aws_bedrock::ToolResultContentBlock::Text("txt".into());
         let tool: Result<RigToolResultContent, _> = aws_tool.try_into();
-        assert_eq!(tool.is_ok(), true);
+        assert!(tool.is_ok());
         let tool = match tool.unwrap().0 {
             ToolResultContent::Text(text) => Ok(text),
             _ => Err("tool doesn't contain text"),
         };
-        assert_eq!(tool.is_ok(), true);
+        assert!(tool.is_ok());
         assert_eq!(tool.unwrap().text, String::from("txt"))
     }
 
@@ -112,7 +112,7 @@ mod tests {
             .unwrap();
         let aws_tool = aws_bedrock::ToolResultContentBlock::Document(aws_document);
         let tool: Result<RigToolResultContent, _> = aws_tool.try_into();
-        assert_eq!(tool.is_ok(), false);
+        assert!(tool.is_err());
         assert_eq!(
             tool.err().unwrap().to_string(),
             CompletionError::ProviderError(

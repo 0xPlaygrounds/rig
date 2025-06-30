@@ -5,8 +5,8 @@ use fastembed::{
     InitOptions, InitOptionsUserDefined, ModelInfo, TextEmbedding, UserDefinedEmbeddingModel,
 };
 use rig::{
-    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     Embed,
+    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
 };
 
 /// The `rig-fastembed` client.

@@ -75,7 +75,7 @@ impl VectorDistance for crate::embeddings::Embedding {
 
 #[cfg(feature = "rayon")]
 mod rayon {
-    use crate::embeddings::{distance::VectorDistance, Embedding};
+    use crate::embeddings::{Embedding, distance::VectorDistance};
     use rayon::prelude::*;
 
     impl VectorDistance for Embedding {

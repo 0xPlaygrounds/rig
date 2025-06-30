@@ -1,21 +1,21 @@
 use futures::StreamExt;
 use mongodb::{
+    Collection, SearchIndexModel,
     bson::{self, doc},
     options::ClientOptions,
-    Collection, SearchIndexModel,
 };
 use rig::client::EmbeddingsClient;
 use rig::{
-    embeddings::EmbeddingsBuilder, providers::openai, vector_store::VectorStoreIndex, Embed,
+    Embed, embeddings::EmbeddingsBuilder, providers::openai, vector_store::VectorStoreIndex,
 };
 use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 use serde_json::json;
 use testcontainers::{
+    GenericImage, ImageExt,
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
-    GenericImage, ImageExt,
 };
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq)]
 struct Word {
@@ -203,17 +203,12 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
                     if indexes.iter().any(|idx| {
                         idx.as_ref()
                             .ok()
-                            .and_then(|i| {
+                            .map(|i| {
                                 // Check both name and status
-                                let name_matches = i
-                                    .get_str("name")
-                                    .ok()
-                                    .map_or(false, |name| name == VECTOR_SEARCH_INDEX_NAME);
-                                let status_ready = i
-                                    .get_str("status")
-                                    .ok()
-                                    .map_or(false, |status| status == "READY");
-                                Some(name_matches && status_ready)
+                                let name_matches =
+                                    i.get_str("name").ok() == Some(VECTOR_SEARCH_INDEX_NAME);
+                                let status_ready = i.get_str("status").ok() == Some("READY");
+                                name_matches && status_ready
                             })
                             .unwrap_or(false)
                     }) {
@@ -233,10 +228,7 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
         }
     }
 
-    panic!(
-        "Failed to create search index after {} attempts",
-        max_attempts
-    );
+    panic!("Failed to create search index after {max_attempts} attempts");
 }
 
 async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Document> {

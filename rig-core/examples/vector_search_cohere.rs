@@ -1,8 +1,8 @@
 use rig::{
+    Embed,
     embeddings::EmbeddingsBuilder,
     providers::cohere::{Client, EMBED_ENGLISH_V3},
-    vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-    Embed,
+    vector_store::{VectorStoreIndex, in_memory_store::InMemoryVectorStore},
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -70,7 +70,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .map(|(score, id, doc)| (score, id, doc.word))
         .collect::<Vec<_>>();
 
-    println!("Results: {:?}", results);
+    println!("Results: {results:?}");
 
     Ok(())
 }

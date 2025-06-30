@@ -16,11 +16,12 @@ use crate::json_utils::merge;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
-    impl_conversion_traits, json_utils, message, OneOrMany,
+    impl_conversion_traits, json_utils, message,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // ================================================================
 // Main Galadriel Client
@@ -70,6 +71,14 @@ impl Client {
                 .build()
                 .expect("Galadriel reqwest client should build"),
         }
+    }
+
+    /// Use your own `reqwest::Client`.
+    /// The default headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
     }
 
     fn post(&self, path: &str) -> reqwest::RequestBuilder {

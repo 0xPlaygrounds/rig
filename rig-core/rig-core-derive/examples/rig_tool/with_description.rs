@@ -3,7 +3,6 @@ use rig::completion::Prompt;
 use rig::providers;
 use rig::tool::Tool;
 use rig_derive::rig_tool;
-use tracing_subscriber;
 
 // Example with description attribute
 #[rig_tool(description = "Perform basic arithmetic operations")]
@@ -22,7 +21,7 @@ fn calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool::ToolE
             }
         }
         _ => Err(rig::tool::ToolError::ToolCallError(
-            format!("Unknown operation: {}", operation).into(),
+            format!("Unknown operation: {operation}").into(),
         )),
     }
 }
@@ -52,7 +51,7 @@ async fn main() {
         "Divide 20 by 5",
         "What is 10 / 0?",
     ] {
-        println!("User: {}", prompt);
+        println!("User: {prompt}");
         println!("Agent: {}", calculator_agent.prompt(prompt).await.unwrap());
     }
 }

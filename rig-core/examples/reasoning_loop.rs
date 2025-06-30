@@ -98,7 +98,7 @@ async fn main() -> anyhow::Result<()> {
         .prompt("Calculate ((15 + 25) * (100 - 50)) / (200 / (10 + 10))")
         .await?;
 
-    println!("\n\nReasoning Agent Chat History: {}", result);
+    println!("\n\nReasoning Agent Chat History: {result}");
 
     Ok(())
 }

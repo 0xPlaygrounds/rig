@@ -58,10 +58,9 @@ impl SubProvider {
     #[cfg(feature = "image")]
     pub fn image_generation_endpoint(&self, model: &str) -> Result<String, ImageGenerationError> {
         match self {
-            SubProvider::HFInference => Ok(format!("/{}", model)),
+            SubProvider::HFInference => Ok(format!("/{model}")),
             _ => Err(ImageGenerationError::ProviderError(format!(
-                "image generation endpoint is not supported yet for {}",
-                self
+                "image generation endpoint is not supported yet for {self}"
             ))),
         }
     }

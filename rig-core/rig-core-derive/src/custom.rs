@@ -1,5 +1,5 @@
 use quote::ToTokens;
-use syn::{meta::ParseNestedMeta, ExprPath};
+use syn::{ExprPath, meta::ParseNestedMeta};
 
 use crate::EMBED;
 
@@ -66,7 +66,7 @@ impl CustomAttributeParser for syn::Attribute {
                 let path = meta.path.to_token_stream().to_string().replace(' ', "");
                 Err(syn::Error::new_spanned(
                     meta.path,
-                    format_args!("unknown embedding field attribute `{}`", path),
+                    format_args!("unknown embedding field attribute `{path}`"),
                 ))
             }
         })?;
@@ -91,7 +91,7 @@ impl CustomAttributeParser for syn::Attribute {
                 if !suffix.is_empty() {
                     return Err(syn::Error::new_spanned(
                         lit_str,
-                        format!("unexpected suffix `{}` on string literal", suffix),
+                        format!("unexpected suffix `{suffix}` on string literal"),
                     ));
                 }
                 lit_str.clone()
@@ -99,8 +99,7 @@ impl CustomAttributeParser for syn::Attribute {
                 return Err(syn::Error::new_spanned(
                     value,
                     format!(
-                        "expected {} attribute to be a string: `{} = \"...\"`",
-                        EMBED_WITH, EMBED_WITH
+                        "expected {EMBED_WITH} attribute to be a string: `{EMBED_WITH} = \"...\"`"
                     ),
                 ));
             };

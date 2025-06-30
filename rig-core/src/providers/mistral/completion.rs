@@ -1,15 +1,15 @@
 use async_stream::stream;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{convert::Infallible, str::FromStr};
 
 use super::client::{Client, Usage};
 use crate::streaming::{RawStreamingChoice, StreamingCompletionResponse};
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     json_utils, message,
     providers::mistral::client::ApiResponse,
-    OneOrMany,
 };
 
 pub const CODESTRAL: &str = "codestral-latest";

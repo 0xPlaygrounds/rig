@@ -71,7 +71,7 @@ pub trait AudioGenerationModelDyn: Send + Sync {
     ) -> BoxFuture<Result<AudioGenerationResponse<()>, AudioGenerationError>>;
 
     fn audio_generation_request(&self)
-        -> AudioGenerationRequestBuilder<AudioGenerationModelHandle>;
+    -> AudioGenerationRequestBuilder<AudioGenerationModelHandle>;
 }
 
 impl<T: AudioGenerationModel> AudioGenerationModelDyn for T {

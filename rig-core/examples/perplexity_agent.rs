@@ -28,7 +28,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .prompt("When and where and what type is the next solar eclipse?")
         .await?;
 
-    println!("{}", response);
+    println!("{response}");
 
     Ok(())
 }

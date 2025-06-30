@@ -1,6 +1,6 @@
 use lancedb::{
-    query::{QueryBase, VectorQuery},
     DistanceType,
+    query::{QueryBase, VectorQuery},
 };
 use rig::{
     embeddings::embedding::EmbeddingModel,

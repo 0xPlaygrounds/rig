@@ -9,11 +9,11 @@ use crate::{
     providers::openai::Message,
 };
 
-use super::client::{xai_api_types::ApiResponse, Client};
+use super::client::{Client, xai_api_types::ApiResponse};
 use crate::completion::CompletionRequest;
 use crate::providers::openai;
 use crate::streaming::StreamingCompletionResponse;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use xai_api_types::{CompletionResponse, ToolDefinition};
 
 /// xAI completion models as of 2025-06-04
@@ -142,9 +142,9 @@ impl completion::CompletionModel for CompletionModel {
 pub mod xai_api_types {
     use serde::{Deserialize, Serialize};
 
+    use crate::OneOrMany;
     use crate::completion::{self, CompletionError};
     use crate::providers::openai::{AssistantContent, Message};
-    use crate::OneOrMany;
 
     impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
         type Error = CompletionError;

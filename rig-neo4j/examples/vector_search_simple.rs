@@ -11,12 +11,12 @@ use std::env;
 use futures::{StreamExt, TryStreamExt};
 use rig::client::EmbeddingsClient;
 use rig::{
+    Embed,
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex as _,
-    Embed,
 };
-use rig_neo4j::{vector_index::SearchParams, Neo4jClient, ToBoltType};
+use rig_neo4j::{Neo4jClient, ToBoltType, vector_index::SearchParams};
 
 #[derive(Embed, Clone, Debug)]
 pub struct Word {
@@ -109,7 +109,7 @@ async fn main() -> Result<(), anyhow::Error> {
         std::thread::sleep(std::time::Duration::from_secs(5));
     }
 
-    println!("Index exists: {:?}", index_exists);
+    println!("Index exists: {index_exists:?}");
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
@@ -134,16 +134,15 @@ async fn main() -> Result<(), anyhow::Error> {
         .map(|(score, id, doc)| (score, id, doc.document))
         .collect::<Vec<_>>();
 
-    println!("Results: {:?}", results);
+    println!("Results: {results:?}");
 
     let id_results = index
         .top_n_ids("What is a linglingdong?", 1)
         .await?
         .into_iter()
-        .map(|(score, id)| (score, id))
         .collect::<Vec<_>>();
 
-    println!("ID results: {:?}", id_results);
+    println!("ID results: {id_results:?}");
 
     Ok(())
 }

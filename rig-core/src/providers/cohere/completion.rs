@@ -1,6 +1,7 @@
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError},
-    json_utils, message, OneOrMany,
+    json_utils, message,
 };
 use std::collections::HashMap;
 
@@ -8,7 +9,7 @@ use super::client::Client;
 use crate::completion::CompletionRequest;
 use crate::providers::cohere::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Deserialize)]
 pub struct CompletionResponse {

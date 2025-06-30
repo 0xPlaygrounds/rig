@@ -6,9 +6,9 @@ use std::io::BufReader;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
+use super::RawTextProcessor;
 use super::errors::EpubLoaderError;
 use super::text_processors::TextProcessor;
-use super::RawTextProcessor;
 
 // ================================================================
 // Implementing Loadable trait for loading epubs
@@ -484,7 +484,7 @@ mod tests {
         assert_eq!(chapters.len(), 3);
 
         for chapter in chapters {
-            assert!(matches!(chapter.1, Ok(_)));
+            assert!(chapter.1.is_ok());
         }
     }
 

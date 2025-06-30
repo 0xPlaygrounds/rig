@@ -1,7 +1,7 @@
 use std::{convert::Infallible, error::Error};
 
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 
 // ================================================================
 // Implementing TextProcessor trait for post-processing epubs
@@ -29,7 +29,7 @@ pub enum XmlProcessingError {
     Xml(#[from] quick_xml::Error),
 
     #[error("Failed to unescape XML entity: {0}")]
-    Unescape(#[from] quick_xml::events::attributes::AttrError),
+    Encoding(#[from] quick_xml::encoding::EncodingError),
 
     #[error("Invalid UTF-8 sequence: {0}")]
     Utf8(#[from] std::string::FromUtf8Error),
@@ -49,7 +49,7 @@ impl TextProcessor for StripXmlProcessor {
         loop {
             match reader.read_event()? {
                 Event::Text(e) => {
-                    let text = e.unescape()?.into_owned();
+                    let text = e.decode()?;
                     if !text.trim().is_empty() {
                         if last_was_text {
                             result.push(' ');
