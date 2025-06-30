@@ -104,7 +104,8 @@ impl ProviderClient for Client {
     where
         Self: Sized,
     {
-        Client::default()
+        let api_base = std::env::var("OLLAMA_API_BASE_URL").expect("OLLAMA_API_BASE_URL not set");
+        Self::from_url(&api_base)
     }
 }
 
