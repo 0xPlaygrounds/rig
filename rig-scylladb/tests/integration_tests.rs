@@ -1,12 +1,12 @@
 use rig::client::EmbeddingsClient;
-use rig::{embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex, Embed};
-use rig_scylladb::{create_session, ScyllaDbVectorStore};
+use rig::{Embed, embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex};
+use rig_scylladb::{ScyllaDbVectorStore, create_session};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use testcontainers::{
+    GenericImage,
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
-    GenericImage,
 };
 
 const SCYLLA_PORT: u16 = 9042;
@@ -40,23 +40,32 @@ async fn vector_search_test() {
     println!("Container started on host:port {}:{}", host, port);
 
     // Wait for ScyllaDB to be ready and retry connection
-    println!("🔌 Attempting to connect to ScyllaDB at {}:{}...", host, port);
+    println!(
+        "🔌 Attempting to connect to ScyllaDB at {}:{}...",
+        host, port
+    );
     let session = {
         let mut retries = 0;
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-            
+
             match create_session(&format!("{}:{}", host, port)).await {
                 Ok(session) => {
                     println!("✅ Successfully connected to ScyllaDB!");
                     break session;
-                },
+                }
                 Err(e) => {
                     retries += 1;
                     if retries >= 15 {
-                        panic!("Failed to connect to ScyllaDB after {} retries: {:?}", retries, e);
+                        panic!(
+                            "Failed to connect to ScyllaDB after {} retries: {:?}",
+                            retries, e
+                        );
                     }
-                    println!("🔄 Connection attempt {} failed, retrying in 5 seconds... (attempt {}/15): {}", retries, retries, e);
+                    println!(
+                        "🔄 Connection attempt {} failed, retrying in 5 seconds... (attempt {}/15): {}",
+                        retries, retries, e
+                    );
                 }
             }
         }
@@ -126,10 +135,7 @@ async fn vector_search_test() {
     );
 
     let (distance, id, doc) = results[0].clone();
-    println!(
-        "Distance: {}, id: {}, document: {:?}",
-        distance, id, doc
-    );
+    println!("Distance: {}, id: {}, document: {:?}", distance, id, doc);
 
     assert_eq!(doc.id, "doc1");
     assert!(doc.definition.contains("glarb-glarb"));
@@ -169,12 +175,12 @@ async fn vector_search_test() {
 async fn start_container() -> testcontainers::ContainerAsync<GenericImage> {
     use std::time::Duration;
     use testcontainers::ImageExt;
-    
+
     println!("🚀 Starting ScyllaDB container (this may take 2-5 minutes)...");
-    
+
     // Setup a local ScyllaDB container for testing. NOTE: docker service must be running.
     // ScyllaDB takes a long time to start, so we:
-    // 1. Use a smaller/faster image configuration  
+    // 1. Use a smaller/faster image configuration
     // 2. Use developer mode for faster startup
     // 3. Set a generous timeout
     // 4. Use multiple wait strategies for better reliability
@@ -186,7 +192,7 @@ async fn start_container() -> testcontainers::ContainerAsync<GenericImage> {
         .start()
         .await
         .expect("Failed to start ScyllaDB container");
-        
+
     println!("✅ ScyllaDB container started successfully!");
     container
 }
@@ -328,21 +334,19 @@ async fn test_mock_server_setup() {
     let server = create_openai_mock_service().await;
     let openai_client = rig::providers::openai::Client::from_url("TEST", &server.base_url());
     let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
-    
+
     // Test that we can create embeddings with the mock
-    let words = vec![
-        Word {
-            id: "test1".to_string(),
-            definition: "Test definition".to_string(),
-        }
-    ];
-    
+    let words = vec![Word {
+        id: "test1".to_string(),
+        definition: "Test definition".to_string(),
+    }];
+
     let result = EmbeddingsBuilder::new(model)
         .documents(words)
         .unwrap()
         .build()
         .await;
-    
+
     match &result {
         Ok(embeddings) => {
             assert_eq!(embeddings.len(), 1);
@@ -352,6 +356,6 @@ async fn test_mock_server_setup() {
             panic!("Failed to create embeddings: {:?}", e);
         }
     }
-    
+
     println!("✅ Mock server test passed!");
-} 
+}

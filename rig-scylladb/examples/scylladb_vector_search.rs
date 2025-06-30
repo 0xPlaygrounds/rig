@@ -1,11 +1,11 @@
 use rig::{
+    Embed,
     client::EmbeddingsClient,
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
-    Embed,
 };
-use rig_scylladb::{create_session, ScyllaDbVectorStore};
+use rig_scylladb::{ScyllaDbVectorStore, create_session};
 use serde::{Deserialize, Serialize};
 use std::env;
 
@@ -37,8 +37,8 @@ async fn main() -> Result<(), anyhow::Error> {
         model.clone(),
         session,
         "word_definitions", // keyspace
-        "words",           // table
-        1536,             // dimensions for text-embedding-ada-002
+        "words",            // table
+        1536,               // dimensions for text-embedding-ada-002
     )
     .await
     .expect("Failed to create ScyllaDB vector store");
@@ -55,11 +55,13 @@ async fn main() -> Result<(), anyhow::Error> {
         },
         Word {
             id: "doc2".to_string(),
-            definition: "A systems programming language focused on safety and performance".to_string(),
+            definition: "A systems programming language focused on safety and performance"
+                .to_string(),
         },
         Word {
             id: "doc3".to_string(),
-            definition: "A vector database for storing and querying high-dimensional data".to_string(),
+            definition: "A vector database for storing and querying high-dimensional data"
+                .to_string(),
         },
         Word {
             id: "doc4".to_string(),
@@ -73,7 +75,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    tracing::info!("Inserting {} word definitions into ScyllaDB...", words.len());
+    tracing::info!(
+        "Inserting {} word definitions into ScyllaDB...",
+        words.len()
+    );
 
     // Insert documents with their embeddings
     let documents_with_embeddings = embeddings
@@ -143,4 +148,4 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing::info!("✅ ScyllaDB vector search example completed successfully!");
 
     Ok(())
-} 
+}

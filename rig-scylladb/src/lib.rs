@@ -1,10 +1,10 @@
 use rig::{
+    Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{VectorStoreError, VectorStoreIndex},
-    Embed, OneOrMany,
 };
 use scylla::{
-    client::{session::Session, session_builder::SessionBuilder, Compression},
+    client::{Compression, session::Session, session_builder::SessionBuilder},
     statement::prepared::PreparedStatement,
 };
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 /// Represents a vector store implementation using ScyllaDB as the backend.
-/// 
+///
 /// ScyllaDB is a high-performance NoSQL database that's compatible with Apache Cassandra
 /// and provides excellent performance for vector storage and similarity search operations.
 pub struct ScyllaDbVectorStore<M: EmbeddingModel> {
@@ -36,7 +36,7 @@ struct VectorRecord {
     id: Uuid,
     vector: Vec<f32>,
     metadata: String, // JSON serialized metadata
-    created_at: i64, // Unix timestamp
+    created_at: i64,  // Unix timestamp
 }
 
 impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
@@ -56,51 +56,53 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
         dimensions: usize,
     ) -> Result<Self, VectorStoreError> {
         let session = Arc::new(session);
-        
+
         // Create keyspace if it doesn't exist
         let create_keyspace_cql = format!(
-            "CREATE KEYSPACE IF NOT EXISTS {} WITH REPLICATION = {{
+            "CREATE KEYSPACE IF NOT EXISTS {keyspace} WITH REPLICATION = {{
                 'class': 'SimpleStrategy',
                 'replication_factor': 1
-            }}",
-            keyspace
+            }}"
         );
-        session.query_unpaged(create_keyspace_cql, &[]).await
+        session
+            .query_unpaged(create_keyspace_cql, &[])
+            .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
         // Create table for storing vectors
         // Note: Once ScyllaDB vector search is fully available, we'll use VECTOR type
         // For now, we use a list of floats and implement similarity search in application code
         let create_table_cql = format!(
-            "CREATE TABLE IF NOT EXISTS {}.{} (
+            "CREATE TABLE IF NOT EXISTS {keyspace}.{table} (
                 id UUID PRIMARY KEY,
                 vector LIST<FLOAT>,
                 metadata TEXT,
                 created_at BIGINT
-            )",
-            keyspace, table
+            )"
         );
-        session.query_unpaged(create_table_cql, &[]).await
+        session
+            .query_unpaged(create_table_cql, &[])
+            .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
         // Prepare statements for better performance
         let insert_stmt = session
             .prepare(format!(
-                "INSERT INTO {}.{} (id, vector, metadata, created_at) VALUES (?, ?, ?, ?)",
-                keyspace, table
+                "INSERT INTO {keyspace}.{table} (id, vector, metadata, created_at) VALUES (?, ?, ?, ?)"
             ))
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
         let search_stmt = session
-            .prepare(format!("SELECT id, vector, metadata, created_at FROM {}.{}", keyspace, table))
+            .prepare(format!(
+                "SELECT id, vector, metadata, created_at FROM {keyspace}.{table}"
+            ))
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
         let get_by_id_stmt = session
             .prepare(format!(
-                "SELECT id, vector, metadata, created_at FROM {}.{} WHERE id = ?",
-                keyspace, table
+                "SELECT id, vector, metadata, created_at FROM {keyspace}.{table} WHERE id = ?"
             ))
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
@@ -137,10 +139,11 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
         &self,
         id: &str,
     ) -> Result<Option<T>, VectorStoreError> {
-        let uuid = Uuid::parse_str(id)
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-        
-        let result = self.session
+        let uuid =
+            Uuid::parse_str(id).map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+        let result = self
+            .session
             .execute_unpaged(&self.get_by_id_stmt, (uuid,))
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
@@ -149,16 +152,18 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
             .into_rows_result()
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
-        if let Some(first_row) = rows_result.rows::<(Uuid, Vec<f32>, String, i64)>()
+        if let Some(first_row) = rows_result
+            .rows::<(Uuid, Vec<f32>, String, i64)>()
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?
-            .next() {
-            let (_, _, metadata, _) = first_row
-                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            .next()
+        {
+            let (_, _, metadata, _) =
+                first_row.map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
             let payload: T = serde_json::from_str(&metadata)?;
             return Ok(Some(payload));
         }
-        
+
         Ok(None)
     }
 
@@ -173,19 +178,20 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
 
             for embedding in embeddings.into_iter() {
                 let vector: Vec<f32> = embedding.vec.into_iter().map(|x| x as f32).collect();
-                
+
                 if vector.len() != self.dimensions {
                     return Err(VectorStoreError::DatastoreError(
                         format!(
                             "Vector dimension mismatch: expected {}, got {}",
                             self.dimensions,
                             vector.len()
-                        ).into()
+                        )
+                        .into(),
                     ));
                 }
 
                 let id = Uuid::new_v4();
-                
+
                 self.session
                     .execute_unpaged(&self.insert_stmt, (id, vector, &metadata, now))
                     .await
@@ -201,7 +207,7 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
         let dot_product: f32 = vec1.iter().zip(vec2.iter()).map(|(a, b)| a * b).sum();
         let norm1: f32 = vec1.iter().map(|x| x * x).sum::<f32>().sqrt();
         let norm2: f32 = vec2.iter().map(|x| x * x).sum::<f32>().sqrt();
-        
+
         if norm1 == 0.0 || norm2 == 0.0 {
             0.0
         } else {
@@ -229,9 +235,10 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for ScyllaDb
         n: usize,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let query_vector = self.generate_query_vector(query).await?;
-        
+
         // Fetch all vectors (this will be optimized once ScyllaDB vector search is available)
-        let results = self.session
+        let results = self
+            .session
             .execute_unpaged(&self.search_stmt, &[])
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
@@ -241,24 +248,26 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for ScyllaDb
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
         let mut candidates = Vec::new();
-        
-        for row_result in rows_result.rows::<(Uuid, Vec<f32>, String, i64)>()
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))? {
-            let (id, vector, metadata, _) = row_result
-                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-            
+
+        for row_result in rows_result
+            .rows::<(Uuid, Vec<f32>, String, i64)>()
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?
+        {
+            let (id, vector, metadata, _) =
+                row_result.map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
             let similarity = Self::cosine_similarity(&query_vector, &vector);
             let score = similarity as f64;
-            
+
             let payload: T = serde_json::from_str(&metadata)?;
-            
+
             candidates.push((score, id.to_string(), payload));
         }
-        
+
         // Sort by similarity score (descending) and take top n
         candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
         candidates.truncate(n);
-        
+
         Ok(candidates)
     }
 
@@ -270,8 +279,9 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for ScyllaDb
         n: usize,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         let query_vector = self.generate_query_vector(query).await?;
-        
-        let results = self.session
+
+        let results = self
+            .session
             .execute_unpaged(&self.search_stmt, &[])
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
@@ -281,22 +291,24 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for ScyllaDb
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
         let mut candidates = Vec::new();
-        
-        for row_result in rows_result.rows::<(Uuid, Vec<f32>, String, i64)>()
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))? {
-            let (id, vector, _, _) = row_result
-                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-            
+
+        for row_result in rows_result
+            .rows::<(Uuid, Vec<f32>, String, i64)>()
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?
+        {
+            let (id, vector, _, _) =
+                row_result.map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
             let similarity = Self::cosine_similarity(&query_vector, &vector);
             let score = similarity as f64;
-            
+
             candidates.push((score, id.to_string()));
         }
-        
+
         // Sort by similarity score (descending) and take top n
         candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
         candidates.truncate(n);
-        
+
         Ok(candidates)
     }
 }
@@ -309,4 +321,4 @@ pub async fn create_session(uri: &str) -> Result<Session, VectorStoreError> {
         .build()
         .await
         .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))
-} 
+}
