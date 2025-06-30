@@ -1,5 +1,6 @@
 use futures::{Stream, StreamExt};
 use rig::{
+    OneOrMany,
     agent::Agent,
     client::{CompletionClient, ProviderClient},
     completion::{self, CompletionError, CompletionModel, PromptError, ToolDefinition},
@@ -7,7 +8,6 @@ use rig::{
     providers::anthropic,
     streaming::StreamingCompletion,
     tool::{Tool, ToolSetError},
-    OneOrMany,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;

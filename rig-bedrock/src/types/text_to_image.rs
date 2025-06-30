@@ -1,5 +1,5 @@
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use rig::image_generation;
 use rig::image_generation::ImageGenerationError;
 use serde::{Deserialize, Serialize};

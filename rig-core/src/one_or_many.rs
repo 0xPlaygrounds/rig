@@ -195,10 +195,9 @@ impl<T: Clone> Iterator for IntoIter<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(first) = self.first.take() {
-            Some(first)
-        } else {
-            self.rest.next()
+        match self.first.take() {
+            Some(first) => Some(first),
+            _ => self.rest.next(),
         }
     }
 }

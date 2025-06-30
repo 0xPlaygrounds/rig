@@ -1,5 +1,5 @@
 use rig::client::CompletionClient;
-use rig::streaming::{stream_to_stdout, StreamingPrompt};
+use rig::streaming::{StreamingPrompt, stream_to_stdout};
 use rig_bedrock::{client::ClientBuilder, completion::AMAZON_NOVA_LITE};
 
 #[tokio::main]

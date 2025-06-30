@@ -12,6 +12,7 @@
 use crate::eternalai_system_prompt_manager_toolset;
 use crate::json_utils;
 use async_stream::stream;
+use rig::OneOrMany;
 use rig::agent::AgentBuilder;
 use rig::completion::{CompletionError, CompletionRequest};
 use rig::embeddings::{EmbeddingError, EmbeddingsBuilder};
@@ -20,11 +21,10 @@ use rig::message;
 use rig::message::AssistantContent;
 use rig::providers::openai::{self, Message};
 use rig::streaming::{RawStreamingChoice, StreamingCompletionResponse};
-use rig::OneOrMany;
-use rig::{completion, embeddings, Embed};
+use rig::{Embed, completion, embeddings};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::ffi::c_uint;
 use std::time::Duration;
 

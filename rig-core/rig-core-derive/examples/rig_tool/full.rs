@@ -20,7 +20,7 @@ fn string_processor(text: String, operation: String) -> Result<String, rig::tool
         _ => {
             return Err(rig::tool::ToolError::ToolCallError(
                 format!("Unknown operation: {operation}").into(),
-            ))
+            ));
         }
     };
 

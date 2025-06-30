@@ -66,12 +66,12 @@
 use super::message::{AssistantContent, ContentFormat, DocumentMediaType};
 use crate::client::completion::CompletionModelHandle;
 use crate::streaming::StreamingCompletionResponse;
+use crate::{OneOrMany, streaming};
 use crate::{
     json_utils,
     message::{Message, UserContent},
     tool::ToolSetError,
 };
-use crate::{streaming, OneOrMany};
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -235,8 +235,9 @@ pub trait CompletionModel: Clone + Send + Sync {
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::Response>, CompletionError>>
-           + Send;
+    ) -> impl std::future::Future<
+        Output = Result<CompletionResponse<Self::Response>, CompletionError>,
+    > + Send;
 
     fn stream(
         &self,

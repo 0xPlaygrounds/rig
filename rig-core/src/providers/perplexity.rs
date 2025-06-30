@@ -10,10 +10,11 @@
 //! ```
 
 use crate::{
+    OneOrMany,
     agent::AgentBuilder,
-    completion::{self, message, CompletionError, MessageError},
+    completion::{self, CompletionError, MessageError, message},
     extractor::ExtractorBuilder,
-    impl_conversion_traits, json_utils, OneOrMany,
+    impl_conversion_traits, json_utils,
 };
 
 use crate::client::{CompletionClient, ProviderClient};
@@ -24,7 +25,7 @@ use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // ================================================================
 // Main Cohere Client

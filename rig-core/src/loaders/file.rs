@@ -214,11 +214,7 @@ impl FileLoader<'_, Result<PathBuf, FileLoaderError>> {
         Ok(FileLoader {
             iterator: Box::new(fs::read_dir(directory)?.filter_map(|entry| {
                 let path = entry.ok()?.path();
-                if path.is_file() {
-                    Some(Ok(path))
-                } else {
-                    None
-                }
+                if path.is_file() { Some(Ok(path)) } else { None }
             })),
         })
     }

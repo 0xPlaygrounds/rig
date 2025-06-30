@@ -222,7 +222,7 @@ fn handle_event(
                 None
             }
             ContentDelta::InputJsonDelta { partial_json } => {
-                if let Some(ref mut tool_call) = current_tool_call {
+                if let Some(tool_call) = current_tool_call {
                     tool_call.input_json.push_str(partial_json);
                 }
                 None

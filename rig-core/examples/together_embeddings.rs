@@ -1,6 +1,6 @@
+use rig::Embed;
 use rig::prelude::*;
 use rig::providers::together;
-use rig::Embed;
 
 #[derive(Embed, Debug)]
 struct Greetings {

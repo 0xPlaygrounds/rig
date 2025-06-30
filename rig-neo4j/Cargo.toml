@@ -1,7 +1,7 @@
 [package]
 name = "rig-neo4j"
 version = "0.2.11"
-edition = "2021"
+edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "Neo4j implementation of a Rig vector store."

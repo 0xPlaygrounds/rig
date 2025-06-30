@@ -1,7 +1,7 @@
 [package]
 name = "rig-core"
 version = "0.13.0"
-edition = "2021"
+edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "An opinionated library for building LLM powered applications."

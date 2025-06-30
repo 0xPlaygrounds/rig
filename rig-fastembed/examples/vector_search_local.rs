@@ -1,11 +1,11 @@
 use fastembed::{
-    read_file_to_bytes, EmbeddingModel as FastembedModel, Pooling,
-    TextEmbedding as FastembedTextEmbedding, TokenizerFiles, UserDefinedEmbeddingModel,
+    EmbeddingModel as FastembedModel, Pooling, TextEmbedding as FastembedTextEmbedding,
+    TokenizerFiles, UserDefinedEmbeddingModel, read_file_to_bytes,
 };
 use rig::{
-    embeddings::EmbeddingsBuilder,
-    vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
     Embed,
+    embeddings::EmbeddingsBuilder,
+    vector_store::{VectorStoreIndex, in_memory_store::InMemoryVectorStore},
 };
 use rig_fastembed::EmbeddingModel;
 use serde::{Deserialize, Serialize};

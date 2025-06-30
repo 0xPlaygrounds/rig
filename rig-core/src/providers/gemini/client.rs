@@ -2,13 +2,13 @@ use super::{
     completion::CompletionModel, embedding::EmbeddingModel, transcription::TranscriptionModel,
 };
 use crate::client::{
-    impl_conversion_traits, CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient,
+    CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient, impl_conversion_traits,
 };
 use crate::{
+    Embed,
     agent::AgentBuilder,
     embeddings::{self},
     extractor::ExtractorBuilder,
-    Embed,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

@@ -54,7 +54,7 @@ impl TryFrom<aws_bedrock::ToolResultContentBlock> for RigToolResultContent {
 #[cfg(test)]
 mod tests {
     use aws_sdk_bedrockruntime::types as aws_bedrock;
-    use base64::{prelude::BASE64_STANDARD, Engine};
+    use base64::{Engine, prelude::BASE64_STANDARD};
     use rig::{
         completion::CompletionError,
         message::{ContentFormat, Image, ImageMediaType, Text, ToolResultContent},

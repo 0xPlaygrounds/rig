@@ -7,7 +7,7 @@ use serde_json::json;
 
 use crate::embeddings::{self, EmbeddingError};
 
-use super::{client::ApiResponse, Client};
+use super::{Client, client::ApiResponse};
 
 /// `embedding-001` embedding model
 pub const EMBEDDING_001: &str = "embedding-001";
