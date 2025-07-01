@@ -7,14 +7,14 @@
 //! let openai_client = rig::providers::openai::Client::from_env();
 //! let model = openai_client.completion_model.completion_model("gpt-4o").completions_api();
 //! ```
-use super::{responses_api::streaming::StreamingCompletionResponse, Client};
+use super::{Client, responses_api::streaming::StreamingCompletionResponse};
 use super::{ImageUrl, InputAudio, SystemContent};
 use crate::completion::CompletionError;
 use crate::json_utils;
 use crate::message::{AudioMediaType, MessageError, Text};
 use crate::one_or_many::string_or_one_or_many;
 
-use crate::{completion, message, OneOrMany};
+use crate::{OneOrMany, completion, message};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 

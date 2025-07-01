@@ -258,8 +258,7 @@ pub async fn send_compatible_streaming_request(
 
                 if let StreamingCompletionChunk::Delta(chunk) = &data {
                     match &chunk.data {
-                        ItemChunkKind::OutputItemDone(ref message) => {
-
+                        ItemChunkKind::OutputItemDone(message) => {
                             match message {
                                 StreamingItemDoneOutput {  item: Output::Message(message), .. } => {
                                         let message = match message.content.first().unwrap() {

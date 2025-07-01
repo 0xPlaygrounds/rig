@@ -2,7 +2,7 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::{streaming::StreamingCompletionResponse, ApiErrorResponse, ApiResponse, Client};
+use super::{ApiErrorResponse, ApiResponse, Client, streaming::StreamingCompletionResponse};
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::message::{AudioMediaType, ImageDetail};
 use crate::one_or_many::string_or_one_or_many;

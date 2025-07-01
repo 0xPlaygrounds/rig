@@ -1,4 +1,4 @@
-use super::{completion::Usage, ApiErrorResponse, ApiResponse, Client};
+use super::{ApiErrorResponse, ApiResponse, Client, completion::Usage};
 use crate::embeddings;
 use crate::embeddings::EmbeddingError;
 use serde::Deserialize;
