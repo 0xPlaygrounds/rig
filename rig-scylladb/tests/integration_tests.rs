@@ -37,19 +37,16 @@ async fn vector_search_test() {
         .await
         .expect("Error getting docker port");
 
-    println!("Container started on host:port {}:{}", host, port);
+    println!("Container started on host:port {host}:{port}");
 
     // Wait for ScyllaDB to be ready and retry connection
-    println!(
-        "🔌 Attempting to connect to ScyllaDB at {}:{}...",
-        host, port
-    );
+    println!("🔌 Attempting to connect to ScyllaDB at {host}:{port}...");
     let session = {
         let mut retries = 0;
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
-            match create_session(&format!("{}:{}", host, port)).await {
+            match create_session(&format!("{host}:{port}")).await {
                 Ok(session) => {
                     println!("✅ Successfully connected to ScyllaDB!");
                     break session;
@@ -57,15 +54,9 @@ async fn vector_search_test() {
                 Err(e) => {
                     retries += 1;
                     if retries >= 15 {
-                        panic!(
-                            "Failed to connect to ScyllaDB after {} retries: {:?}",
-                            retries, e
-                        );
+                        panic!("Failed to connect to ScyllaDB after {retries} retries: {e:?}");
                     }
-                    println!(
-                        "🔄 Connection attempt {} failed, retrying in 5 seconds... (attempt {}/15): {}",
-                        retries, retries, e
-                    );
+                    println!("🔄 Connection attempt {retries} failed, retrying in 5 seconds... (attempt {retries}/15): {e}");
                 }
             }
         }
@@ -135,7 +126,7 @@ async fn vector_search_test() {
     );
 
     let (distance, id, doc) = results[0].clone();
-    println!("Distance: {}, id: {}, document: {:?}", distance, id, doc);
+    println!("Distance: {distance}, id: {id}, document: {doc:?}");
 
     assert_eq!(doc.id, "doc1");
     assert!(doc.definition.contains("glarb-glarb"));
@@ -154,7 +145,7 @@ async fn vector_search_test() {
     );
 
     let (id_distance, result_id) = id_results[0].clone();
-    println!("Distance: {}, id: {}", id_distance, result_id);
+    println!("Distance: {id_distance}, id: {result_id}");
 
     assert_eq!(result_id, id);
 
@@ -352,8 +343,8 @@ async fn test_mock_server_setup() {
             assert_eq!(embeddings.len(), 1);
         }
         Err(e) => {
-            println!("Error creating embeddings: {:?}", e);
-            panic!("Failed to create embeddings: {:?}", e);
+            println!("Error creating embeddings: {e:?}");
+            panic!("Failed to create embeddings: {e:?}");
         }
     }
 
