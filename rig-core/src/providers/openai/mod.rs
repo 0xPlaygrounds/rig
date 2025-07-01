@@ -31,5 +31,3 @@ pub use audio_generation::{TTS_1, TTS_1_HD};
 pub use image_generation::*;
 pub use streaming::*;
 pub use transcription::*;
-
-pub mod legacy;
