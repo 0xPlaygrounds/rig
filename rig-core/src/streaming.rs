@@ -273,12 +273,12 @@ mod tests {
 
     #[derive(Debug, Clone)]
     pub struct MockResponse {
-        pub token_count: u32,
+        #[allow(dead_code)]
+        token_count: u32,
     }
 
     fn create_mock_stream() -> StreamingCompletionResponse<MockResponse> {
         let stream = stream! {
-            // Simulate text chunks
             yield Ok(RawStreamingChoice::Message("hello 1".to_string()));
             sleep(Duration::from_millis(100)).await;
             yield Ok(RawStreamingChoice::Message("hello 2".to_string()));
@@ -310,16 +310,15 @@ mod tests {
                     chunk_count += 1;
                 }
                 Ok(AssistantContent::ToolCall(tc)) => {
-                    println!("\nTool Call: {:?}", tc);
+                    println!("\nTool Call: {tc:?}");
                     chunk_count += 1;
                 }
                 Err(e) => {
-                    eprintln!("Error: {:?}", e);
+                    eprintln!("Error: {e:?}");
                     break;
                 }
             }
 
-            // cancel after 2 chunks
             if chunk_count >= 2 {
                 println!("\nCancelling stream...");
                 stream.cancel();
@@ -328,12 +327,10 @@ mod tests {
             }
         }
 
-        // verify no further chunks are yielded
         let next_chunk = stream.next().await;
         assert!(
             next_chunk.is_none(),
-            "Expected no further chunks after cancellation, got {:?}",
-            next_chunk
+            "Expected no further chunks after cancellation, got {next_chunk:?}"
         );
     }
 }
