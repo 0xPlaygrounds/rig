@@ -1,5 +1,5 @@
 use rig::client::{EmbeddingsClient, ProviderClient};
-use rig::{embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex, Embed};
+use rig::{Embed, embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex};
 use rig_postgres::PostgresVectorStore;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
@@ -91,7 +91,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("#{} results for query: {}", results.len(), query);
     for (distance, _id, doc) in results.iter() {
-        println!("Result distance {} for word: {}", distance, doc);
+        println!("Result distance {distance} for word: {doc}");
 
         // expected output (even if we have 2 entries on glarb-glarb the index only gives closest match)
         // Result distance 0.2988549857990437 for word: glarb-glarb

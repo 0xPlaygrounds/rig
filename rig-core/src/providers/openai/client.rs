@@ -204,7 +204,7 @@ mod tests {
     use crate::providers::openai::{
         AssistantContent, Function, ImageUrl, Message, ToolCall, ToolType, UserContent,
     };
-    use crate::{message, OneOrMany};
+    use crate::{OneOrMany, message};
     use serde_path_to_error::deserialize;
 
     #[test]

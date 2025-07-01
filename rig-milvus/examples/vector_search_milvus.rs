@@ -1,8 +1,8 @@
 use rig::{
+    Embed,
     client::{EmbeddingsClient, ProviderClient},
     embeddings::EmbeddingsBuilder,
     vector_store::VectorStoreIndex,
-    Embed,
 };
 use serde::{Deserialize, Serialize};
 
@@ -74,7 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("#{} results for query: {}", results.len(), query);
     for (distance, _id, doc) in results.iter() {
-        println!("Result distance {} for word: {}", distance, doc);
+        println!("Result distance {distance} for word: {doc}");
 
         // expected output
         // Result distance 0.693218142100547 for word: glarb-glarb

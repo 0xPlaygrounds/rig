@@ -10,6 +10,6 @@ pub mod tool;
 
 pub mod distance;
 pub use builder::EmbeddingsBuilder;
-pub use embed::{to_texts, Embed, EmbedError, TextEmbedder};
+pub use embed::{Embed, EmbedError, TextEmbedder, to_texts};
 pub use embedding::{Embedding, EmbeddingError, EmbeddingModel};
 pub use tool::ToolSchema;

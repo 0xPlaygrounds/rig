@@ -66,12 +66,12 @@
 use super::message::{AssistantContent, ContentFormat, DocumentMediaType};
 use crate::client::completion::CompletionModelHandle;
 use crate::streaming::StreamingCompletionResponse;
+use crate::{OneOrMany, streaming};
 use crate::{
     json_utils,
     message::{Message, UserContent},
     tool::ToolSetError,
 };
-use crate::{streaming, OneOrMany};
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -235,8 +235,9 @@ pub trait CompletionModel: Clone + Send + Sync {
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::Response>, CompletionError>>
-           + Send;
+    ) -> impl std::future::Future<
+        Output = Result<CompletionResponse<Self::Response>, CompletionError>,
+    > + Send;
 
     fn stream(
         &self,
@@ -294,7 +295,9 @@ where
             let resp = self.stream(request).await?;
             let inner = resp.inner;
 
-            let stream = Box::pin(streaming::StreamingResultDyn { inner });
+            let stream = Box::pin(streaming::StreamingResultDyn {
+                inner: Box::pin(inner),
+            });
 
             Ok(StreamingCompletionResponse::stream(stream))
         })
@@ -583,7 +586,7 @@ mod tests {
         };
 
         let expected = "<file id: 123>\nThis is a test document.\n</file>\n";
-        assert_eq!(format!("{}", doc), expected);
+        assert_eq!(format!("{doc}"), expected);
     }
 
     #[test]
@@ -604,7 +607,7 @@ mod tests {
             "This is a test document.\n",
             "</file>\n"
         );
-        assert_eq!(format!("{}", doc), expected);
+        assert_eq!(format!("{doc}"), expected);
     }
 
     #[test]

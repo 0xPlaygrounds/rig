@@ -97,7 +97,7 @@ pub mod conditional;
 
 use std::future::Future;
 
-pub use op::{map, passthrough, then, Op};
+pub use op::{Op, map, passthrough, then};
 pub use try_op::TryOp;
 
 use crate::{completion, extractor::Extractor, vector_store};
@@ -311,7 +311,7 @@ mod tests {
         let model = MockModel;
 
         let chain = super::new()
-            .map(|input| format!("User query: {}", input))
+            .map(|input| format!("User query: {input}"))
             .prompt(model);
 
         let result = chain
@@ -327,7 +327,7 @@ mod tests {
         let model = MockModel;
 
         let chain = super::with_error::<()>()
-            .map(|input| format!("User query: {}", input))
+            .map(|input| format!("User query: {input}"))
             .prompt(model);
 
         let result = chain
@@ -365,7 +365,7 @@ mod tests {
             ))
             .map(|(query, maybe_docs)| match maybe_docs {
                 Ok(docs) => format!("User query: {}\n\nTop documents:\n{}", query, docs[0].2.foo),
-                Err(err) => format!("Error: {}", err),
+                Err(err) => format!("Error: {err}"),
             })
             .prompt(MockModel);
 

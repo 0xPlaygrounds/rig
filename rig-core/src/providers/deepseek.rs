@@ -11,12 +11,14 @@
 
 use crate::client::{CompletionClient, ProviderClient};
 use crate::json_utils::merge;
+use crate::message::Document;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionModel, CompletionRequest},
-    impl_conversion_traits, json_utils, message, OneOrMany,
+    impl_conversion_traits, json_utils, message,
 };
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
@@ -236,6 +238,12 @@ impl TryFrom<message::Message> for Vec<Message> {
                             content: text.text,
                             name: None,
                         }),
+                        message::UserContent::Document(Document { data, .. }) => {
+                            Some(Message::User {
+                                content: data,
+                                name: None,
+                            })
+                        }
                         _ => None,
                     })
                     .collect::<Vec<_>>();
@@ -391,9 +399,11 @@ impl DeepSeekCompletionModel {
     ) -> Result<serde_json::Value, CompletionError> {
         // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];
+
         if let Some(docs) = completion_request.normalized_documents() {
             partial_history.push(docs);
         }
+
         partial_history.extend(completion_request.chat_history);
 
         // Initialize full history with preamble (or empty if non-existent)
@@ -451,6 +461,8 @@ impl CompletionModel for DeepSeekCompletionModel {
         crate::completion::CompletionError,
     > {
         let request = self.create_completion_request(completion_request)?;
+
+        tracing::debug!("DeepSeek completion request: {request:?}");
 
         let response = self
             .client

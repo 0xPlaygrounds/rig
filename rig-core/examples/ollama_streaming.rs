@@ -1,7 +1,7 @@
 use rig::prelude::*;
 use rig::providers::ollama;
 
-use rig::streaming::{stream_to_stdout, StreamingPrompt};
+use rig::streaming::{StreamingPrompt, stream_to_stdout};
 
 #[tokio::main]
 

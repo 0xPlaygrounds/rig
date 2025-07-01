@@ -20,7 +20,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let answer = agent.prompt("Tell me a joke").await?;
-    println!("Answer: {}", answer);
+    println!("Answer: {answer}");
 
     // Create agent with a single context prompt and two tools
     let calculator_agent = client

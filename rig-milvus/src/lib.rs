@@ -1,8 +1,8 @@
 use reqwest::StatusCode;
 use rig::{
+    Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{VectorStoreError, VectorStoreIndex},
-    Embed, OneOrMany,
 };
 use serde::{Deserialize, Serialize};
 

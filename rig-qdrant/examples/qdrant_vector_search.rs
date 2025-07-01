@@ -10,15 +10,15 @@ use std::env;
 
 use anyhow::anyhow;
 use qdrant_client::{
-    qdrant::{CreateCollectionBuilder, Distance, QueryPointsBuilder, VectorParamsBuilder},
     Qdrant,
+    qdrant::{CreateCollectionBuilder, Distance, QueryPointsBuilder, VectorParamsBuilder},
 };
 use rig::client::EmbeddingsClient;
 use rig::{
+    Embed,
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex,
-    Embed,
 };
 use rig_qdrant::QdrantVectorStore;
 
@@ -82,7 +82,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .top_n::<Word>("What is a linglingdong?", 1)
         .await?;
 
-    println!("Results: {:?}", results);
+    println!("Results: {results:?}");
 
     Ok(())
 }
