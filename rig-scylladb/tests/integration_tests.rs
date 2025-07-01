@@ -56,7 +56,9 @@ async fn vector_search_test() {
                     if retries >= 15 {
                         panic!("Failed to connect to ScyllaDB after {retries} retries: {e:?}");
                     }
-                    println!("🔄 Connection attempt {retries} failed, retrying in 5 seconds... (attempt {retries}/15): {e}");
+                    println!(
+                        "🔄 Connection attempt {retries} failed, retrying in 5 seconds... (attempt {retries}/15): {e}"
+                    );
                 }
             }
         }
