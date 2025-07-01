@@ -14,7 +14,6 @@ use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message,
 };
 use crate::message::{AssistantContent, ToolCall, ToolFunction};
-use crate::OneOrMany;
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use std::boxed::Box;
