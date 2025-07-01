@@ -124,9 +124,11 @@ pub async fn send_compatible_streaming_request(
                 }
                 // Otherwise full data line
                 else {
-                    let Some(data) = line.strip_prefix("data: ") else {
+                    let Some(data) = line.strip_prefix("data:") else {
                         continue;
                     };
+
+                    let data = data.trim_start();
 
                     // Partial data, split somewhere in the middle
                     if !line.ends_with("}") {

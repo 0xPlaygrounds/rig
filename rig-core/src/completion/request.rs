@@ -295,7 +295,9 @@ where
             let resp = self.stream(request).await?;
             let inner = resp.inner;
 
-            let stream = Box::pin(streaming::StreamingResultDyn { inner });
+            let stream = Box::pin(streaming::StreamingResultDyn {
+                inner: Box::pin(inner),
+            });
 
             Ok(StreamingCompletionResponse::stream(stream))
         })
