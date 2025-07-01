@@ -1,5 +1,5 @@
-use super::{completion::CompletionModel, embedding::EmbeddingModel, M2_BERT_80M_8K_RETRIEVAL};
-use crate::client::{impl_conversion_traits, EmbeddingsClient, ProviderClient};
+use super::{M2_BERT_80M_8K_RETRIEVAL, completion::CompletionModel, embedding::EmbeddingModel};
+use crate::client::{EmbeddingsClient, ProviderClient, impl_conversion_traits};
 use rig::client::CompletionClient;
 
 // ================================================================

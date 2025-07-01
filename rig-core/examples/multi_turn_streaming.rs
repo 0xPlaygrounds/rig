@@ -1,5 +1,6 @@
 use futures::{Stream, StreamExt};
 use rig::{
+    OneOrMany,
     agent::Agent,
     client::{CompletionClient, ProviderClient},
     completion::{self, CompletionError, CompletionModel, PromptError, ToolDefinition},
@@ -7,7 +8,6 @@ use rig::{
     providers::anthropic,
     streaming::StreamingCompletion,
     tool::{Tool, ToolSetError},
-    OneOrMany,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -159,11 +159,11 @@ async fn custom_stream_to_stdout(stream: &mut StreamingResult) -> Result<(), std
     while let Some(content) = stream.next().await {
         match content {
             Ok(Text { text }) => {
-                print!("{}", text);
+                print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
             Err(err) => {
-                eprintln!("Error: {}", err);
+                eprintln!("Error: {err}");
             }
         }
     }

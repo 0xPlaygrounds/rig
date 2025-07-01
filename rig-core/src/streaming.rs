@@ -8,12 +8,12 @@
 //! - [StreamingCompletion]: Defines a low-level streaming LLM completion interface
 //!
 
+use crate::OneOrMany;
 use crate::agent::Agent;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message,
 };
 use crate::message::{AssistantContent, ToolCall, ToolFunction};
-use crate::OneOrMany;
 use futures::{Stream, StreamExt};
 use std::boxed::Box;
 use std::future::Future;

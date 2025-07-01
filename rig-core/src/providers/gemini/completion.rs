@@ -30,8 +30,8 @@ pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 use self::gemini_api_types::Schema;
 use crate::providers::gemini::streaming::StreamingCompletionResponse;
 use crate::{
-    completion::{self, CompletionError, CompletionRequest},
     OneOrMany,
+    completion::{self, CompletionError, CompletionRequest},
 };
 use gemini_api_types::{
     Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
@@ -243,7 +243,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                     _ => {
                         return Err(CompletionError::ResponseError(
                             "Response did not contain a message or tool call".into(),
-                        ))
+                        ));
                     }
                 })
             })
@@ -269,14 +269,14 @@ pub mod gemini_api_types {
     // Gemini API Types
     // =================================================================
     use serde::{Deserialize, Serialize};
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     use crate::{
+        OneOrMany,
         completion::CompletionError,
         message::{self, MessageError, MimeType as _},
         one_or_many::string_or_one_or_many,
         providers::gemini::gemini_api_types::{CodeExecutionResult, ExecutableCode},
-        OneOrMany,
     };
 
     /// Response from the model supporting multiple candidate responses.
@@ -389,14 +389,14 @@ pub mod gemini_api_types {
                                     _ => {
                                         return Err(message::MessageError::ConversionError(
                                             format!("Unsupported media type {mime_type:?}"),
-                                        ))
+                                        ));
                                     }
                                 }
                             }
                             _ => {
                                 return Err(message::MessageError::ConversionError(format!(
                                     "Unsupported gemini content part type: {part:?}"
-                                )))
+                                )));
                             }
                         })
                     })?,
@@ -412,7 +412,7 @@ pub mod gemini_api_types {
                             _ => {
                                 return Err(message::MessageError::ConversionError(format!(
                                     "Unsupported part type: {part:?}"
-                                )))
+                                )));
                             }
                         })
                     })?,
@@ -475,7 +475,7 @@ pub mod gemini_api_types {
                         message::ToolResultContent::Image(_) => {
                             return Err(message::MessageError::ConversionError(
                                 "Tool result content must be text".to_string(),
-                            ))
+                            ));
                         }
                     };
                     // Convert to JSON since this value may be a valid JSON value

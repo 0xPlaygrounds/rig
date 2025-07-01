@@ -39,7 +39,7 @@ async fn basic_eternalai() -> Result<(), anyhow::Error> {
 
     // Prompt the agent and print the response
     let response = comedian_agent.prompt("Entertain me!").await?;
-    println!("{}", response);
+    println!("{response}");
 
     Ok(())
 }
@@ -61,7 +61,7 @@ async fn context_eternalai() -> Result<(), anyhow::Error> {
     // Prompt the agent and print the response
     let response = agent.prompt("What does \"glarb-glarb\" mean?").await?;
 
-    println!("{}", response);
+    println!("{response}");
 
     Ok(())
 }

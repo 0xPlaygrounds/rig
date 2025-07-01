@@ -1,27 +1,27 @@
 [package]
 name = "rig-lancedb"
 version = "0.2.11"
-edition = "2021"
+edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "Rig vector store index integration for LanceDB."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
-lancedb = "0.18.1"
-rig-core = { path = "../rig-core", version = "0.13.0" }
-arrow-array = "54.2.1"
-serde_json = "1.0.128"
-serde = "1.0.210"
-futures = "0.3.30"
+lancedb = { workspace = true }
+rig-core = { workspace = true }
+arrow-array = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+futures = { workspace = true }
 
 # https://github.com/jhpratt/deranged/issues/18
-deranged = "=0.4.0"
+deranged = { workspace = true }
 
 [dev-dependencies]
-tokio = "1.40.0"
-anyhow = "1.0.89"
-httpmock = "0.7.0"
+tokio = { workspace = true }
+anyhow = { workspace = true }
+httpmock = { workspace = true }
 
 [[example]]
 name = "vector_search_local_ann"

@@ -1,6 +1,6 @@
+use rig::OneOrMany;
 use rig::embeddings::{Embedding, EmbeddingModel};
 use rig::vector_store::{VectorStoreError, VectorStoreIndex};
-use rig::OneOrMany;
 use serde::Deserialize;
 use std::marker::PhantomData;
 use tokio_rusqlite::Connection;
@@ -97,7 +97,7 @@ impl<E: EmbeddingModel + 'static, T: SqliteVectorStoreTable + 'static> SqliteVec
         let schema = T::schema();
 
         // Build the table schema
-        let mut create_table = format!("CREATE TABLE IF NOT EXISTS {} (", table_name);
+        let mut create_table = format!("CREATE TABLE IF NOT EXISTS {table_name} (");
 
         // Add columns
         let mut first = true;
@@ -140,8 +140,7 @@ impl<E: EmbeddingModel + 'static, T: SqliteVectorStoreTable + 'static> SqliteVec
 
             // Create embeddings table
             conn.execute_batch(&format!(
-                "CREATE VIRTUAL TABLE IF NOT EXISTS {}_embeddings USING vec0(embedding float[{}])",
-                table_name, dims
+                "CREATE VIRTUAL TABLE IF NOT EXISTS {table_name}_embeddings USING vec0(embedding float[{dims}])"
             ))?;
 
             conn.execute_batch("COMMIT")?;
@@ -176,7 +175,7 @@ impl<E: EmbeddingModel + 'static, T: SqliteVectorStoreTable + 'static> SqliteVec
             let columns = values.iter().map(|(col, _)| *col).collect::<Vec<_>>();
 
             let placeholders = (1..=values.len())
-                .map(|i| format!("?{}", i))
+                .map(|i| format!("?{i}"))
                 .collect::<Vec<_>>();
 
             let insert_sql = format!(
@@ -192,10 +191,8 @@ impl<E: EmbeddingModel + 'static, T: SqliteVectorStoreTable + 'static> SqliteVec
             )?;
             last_id = txn.last_insert_rowid();
 
-            let embeddings_sql = format!(
-                "INSERT INTO {}_embeddings (rowid, embedding) VALUES (?1, ?2)",
-                table_name
-            );
+            let embeddings_sql =
+                format!("INSERT INTO {table_name}_embeddings (rowid, embedding) VALUES (?1, ?2)");
 
             let mut stmt = txn.prepare(&embeddings_sql)?;
             for (i, embedding) in embeddings.iter().enumerate() {
@@ -353,12 +350,11 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                 // Build SELECT statement with all columns
                 let select_cols = column_names.join(", ");
                 let mut stmt = conn.prepare(&format!(
-                    "SELECT d.{}, e.distance 
-                    FROM {}_embeddings e
-                    JOIN {} d ON e.rowid = d.rowid
+                    "SELECT d.{select_cols}, e.distance 
+                    FROM {table_name}_embeddings e
+                    JOIN {table_name} d ON e.rowid = d.rowid
                     WHERE e.embedding MATCH ?1 AND k = ?2
-                    ORDER BY e.distance",
-                    select_cols, table_name, table_name
+                    ORDER BY e.distance"
                 ))?;
 
                 let rows = stmt
@@ -414,11 +410,10 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
             .call(move |conn| {
                 let mut stmt = conn.prepare(&format!(
                     "SELECT d.id, e.distance 
-                     FROM {0}_embeddings e
-                     JOIN {0} d ON e.rowid = d.rowid
+                     FROM {table_name}_embeddings e
+                     JOIN {table_name} d ON e.rowid = d.rowid
                      WHERE e.embedding MATCH ?1 AND k = ?2
-                     ORDER BY e.distance",
-                    table_name
+                     ORDER BY e.distance"
                 ))?;
 
                 let results = stmt

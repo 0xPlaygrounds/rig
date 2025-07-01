@@ -1,12 +1,12 @@
 use std::future::IntoFuture;
 
-use futures::{future::BoxFuture, stream, FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, future::BoxFuture, stream};
 
 use crate::{
+    OneOrMany,
     completion::{Completion, CompletionError, CompletionModel, Message, PromptError},
     message::{AssistantContent, UserContent},
     tool::ToolSetError,
-    OneOrMany,
 };
 
 use super::Agent;

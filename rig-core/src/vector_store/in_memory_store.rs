@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{VectorStoreError, VectorStoreIndex};
 use crate::{
-    embeddings::{distance::VectorDistance, Embedding, EmbeddingModel},
     OneOrMany,
+    embeddings::{Embedding, EmbeddingModel, distance::VectorDistance},
 };
 
 /// [InMemoryVectorStore] is a simple in-memory vector store that stores embeddings
@@ -39,7 +39,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         Self { embeddings: store }
     }
 
-    /// Create a new [InMemoryVectorStore] from documents and and their corresponding embeddings with ids.
+    /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings with ids.
     pub fn from_documents_with_ids(
         documents: impl IntoIterator<Item = (impl ToString, D, OneOrMany<Embedding>)>,
     ) -> Self {
@@ -263,7 +263,7 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
 mod tests {
     use std::cmp::Reverse;
 
-    use crate::{embeddings::embedding::Embedding, OneOrMany};
+    use crate::{OneOrMany, embeddings::embedding::Embedding};
 
     use super::{InMemoryVectorStore, RankingItem};
 

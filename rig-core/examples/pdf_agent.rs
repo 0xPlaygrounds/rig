@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use rig::prelude::*;
 use rig::{
-    embeddings::EmbeddingsBuilder, loaders::PdfFileLoader, providers::openai,
-    vector_store::in_memory_store::InMemoryVectorStore, Embed,
+    Embed, embeddings::EmbeddingsBuilder, loaders::PdfFileLoader, providers::openai,
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -22,7 +22,7 @@ fn load_pdf(path: PathBuf) -> Result<Vec<String>> {
         .filter_map(|result| {
             result
                 .map_err(|e| {
-                    eprintln!("Error reading PDF content: {}", e);
+                    eprintln!("Error reading PDF content: {e}");
                     e
                 })
                 .ok()
@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
     // Add chunks from pdf documents
     for (i, chunk) in pdf_chunks.into_iter().enumerate() {
         builder = builder.document(Document {
-            id: format!("pdf_document_{}", i),
+            id: format!("pdf_document_{i}"),
             content: chunk,
         })?;
     }

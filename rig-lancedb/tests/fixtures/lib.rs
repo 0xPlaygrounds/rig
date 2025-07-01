@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use arrow_array::{types::Float64Type, ArrayRef, FixedSizeListArray, RecordBatch, StringArray};
+use arrow_array::{ArrayRef, FixedSizeListArray, RecordBatch, StringArray, types::Float64Type};
 use lancedb::arrow::arrow_schema::{DataType, Field, Fields, Schema};
 use rig::embeddings::Embedding;
 use rig::{Embed, OneOrMany};

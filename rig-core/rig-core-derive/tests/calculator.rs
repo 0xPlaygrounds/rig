@@ -24,7 +24,7 @@ async fn calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool:
             }
         }
         _ => Err(rig::tool::ToolError::ToolCallError(
-            format!("Unknown operation: {}", operation).into(),
+            format!("Unknown operation: {operation}").into(),
         )),
     }
 }
@@ -52,7 +52,7 @@ fn sync_calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool::
             }
         }
         _ => Err(rig::tool::ToolError::ToolCallError(
-            format!("Unknown operation: {}", operation).into(),
+            format!("Unknown operation: {operation}").into(),
         )),
     }
 }
@@ -60,11 +60,11 @@ fn sync_calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool::
 #[tokio::test]
 async fn test_calculator_tool() {
     // Create an instance of our tool
-    let calculator = Calculator::default();
+    let calculator = Calculator;
 
     // Test tool information
     let definition = calculator.definition(String::default()).await;
-    println!("{:?}", definition);
+    println!("{definition:?}");
     assert_eq!(calculator.name(), "calculator");
     assert_eq!(
         definition.description,
@@ -131,7 +131,7 @@ async fn test_calculator_tool() {
     assert!(matches!(err, rig::tool::ToolError::ToolCallError(_)));
 
     // Test sync calculator
-    let sync_calculator = SyncCalculator::default();
+    let sync_calculator = SyncCalculator;
     let result = sync_calculator
         .call(SyncCalculatorParameters {
             x: 5,

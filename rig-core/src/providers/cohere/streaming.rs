@@ -1,6 +1,6 @@
 use crate::completion::{CompletionError, CompletionRequest};
-use crate::providers::cohere::completion::Usage;
 use crate::providers::cohere::CompletionModel;
+use crate::providers::cohere::completion::Usage;
 use crate::streaming::RawStreamingChoice;
 use crate::{json_utils, streaming};
 use async_stream::stream;

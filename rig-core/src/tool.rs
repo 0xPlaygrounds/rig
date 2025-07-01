@@ -275,7 +275,7 @@ where
                 .client
                 .call_tool(&name, Some(args))
                 .await
-                .map_err(|e| McpToolError(format!("Tool returned an error: {}", e)))?;
+                .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
 
             if result.is_error.unwrap_or(false) {
                 if let Some(error) = result.content.first() {
@@ -314,7 +314,7 @@ where
                             embedded_resource
                                 .resource
                                 .mime_type
-                                .map(|m| format!("data:{};", m))
+                                .map(|m| format!("data:{m};"))
                                 .unwrap_or_default(),
                             embedded_resource.resource.uri
                         )

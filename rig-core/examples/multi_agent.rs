@@ -46,7 +46,7 @@ impl<M: CompletionModel> Chat for EnglishTranslator<M> {
             .translator_agent
             .chat(prompt, chat_history.clone())
             .await?;
-        println!("Translated prompt: {}", translated_prompt);
+        println!("Translated prompt: {translated_prompt}");
         // Answer the prompt using gpt4
         self.gpt4
             .chat(translated_prompt.as_str(), chat_history)

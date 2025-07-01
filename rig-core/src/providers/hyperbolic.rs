@@ -9,7 +9,7 @@
 //! let llama_3_1_8b = client.completion_model(hyperbolic::LLAMA_3_1_8B);
 //! ```
 
-use super::openai::{send_compatible_streaming_request, AssistantContent};
+use super::openai::{AssistantContent, send_compatible_streaming_request};
 
 use crate::client::{CompletionClient, ProviderClient};
 use crate::json_utils::merge_inplace;
@@ -19,13 +19,13 @@ use crate::streaming::StreamingCompletionResponse;
 use crate::impl_conversion_traits;
 use crate::providers::openai;
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
     providers::openai::Message,
-    OneOrMany,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // ================================================================
 // Main Hyperbolic Client
@@ -385,8 +385,8 @@ mod image_generation {
     use crate::image_generation;
     use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
     use crate::json_utils::merge_inplace;
-    use base64::prelude::BASE64_STANDARD;
     use base64::Engine;
+    use base64::prelude::BASE64_STANDARD;
     use serde::Deserialize;
     use serde_json::json;
 
@@ -522,8 +522,8 @@ mod audio_generation {
     use crate::audio_generation;
     use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
     use crate::client::AudioGenerationClient;
-    use base64::prelude::BASE64_STANDARD;
     use base64::Engine;
+    use base64::prelude::BASE64_STANDARD;
     use serde::Deserialize;
     use serde_json::json;
 

@@ -8,13 +8,10 @@ use rig::{
     providers,
     tool::Tool,
 };
-
 use serde::{Deserialize, Serialize};
-
 use serde_json::json;
 
 /// Runs 4 agents based on deepseek R1 (derived from the other examples)
-
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     println!("Running basic agent with deepseek R1");
@@ -35,14 +32,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
 fn client() -> providers::huggingface::Client {
     let api_key = &env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY not set");
-
     providers::huggingface::ClientBuilder::new(api_key).build()
 }
 
 /// Create a partial huggingface agent (deepseek R1)
 fn partial_agent() -> AgentBuilder<providers::huggingface::completion::CompletionModel> {
     let client = client();
-
     client.agent("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
 }
 
@@ -57,7 +52,7 @@ async fn basic() -> Result<(), anyhow::Error> {
 
     let response = comedian_agent.prompt("Entertain me!").await?;
 
-    println!("{}", response);
+    println!("{response}");
 
     Ok(())
 }
@@ -83,7 +78,7 @@ async fn tools() -> Result<(), anyhow::Error> {
 
 /// Create an huggingface agent (deepseek R1) with loaders, based upon the `loaders` example
 /// This example loads in all the rust examples from the rig-core crate and uses them as
-///  context for the agent
+/// context for the agent
 async fn loaders() -> Result<(), anyhow::Error> {
     let model = client().completion_model("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B");
     // Load in all the rust examples
@@ -95,14 +90,16 @@ async fn loaders() -> Result<(), anyhow::Error> {
     // Create an agent with multiple context documents
     let agent = examples
         .fold(AgentBuilder::new(model), |builder, (path, content)| {
-            builder.context(format!("Rust Example {:?}:\n{}", path, content).as_str())
+            builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
         })
         .build();
     // Prompt the agent and print the response
     let response = agent
         .prompt("Which rust example is best suited for the operation 1 + 2")
         .await?;
-    println!("{}", response);
+
+    println!("{response}");
+
     Ok(())
 }
 
@@ -116,7 +113,9 @@ async fn context() -> Result<(), anyhow::Error> {
         .build();
     // Prompt the agent and print the response
     let response = agent.prompt("What does \"glarb-glarb\" mean?").await?;
-    println!("{}", response);
+
+    println!("{response}");
+
     Ok(())
 }
 
@@ -167,7 +166,6 @@ impl Tool for Adder {
 
 #[derive(Deserialize, Serialize)]
 struct Subtract;
-
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
     type Error = MathError;

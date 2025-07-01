@@ -1,9 +1,9 @@
 use rig::prelude::*;
 use rig::{
+    Embed,
     embeddings::EmbeddingsBuilder,
     providers,
-    vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
-    Embed,
+    vector_store::{VectorStoreIndex, in_memory_store::InMemoryVectorStore},
 };
 
 use serde::{Deserialize, Serialize};
@@ -68,7 +68,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .map(|(score, id, doc)| (score, id, doc.word))
         .collect::<Vec<_>>();
 
-    println!("Results: {:?}", results);
+    println!("Results: {results:?}");
 
     let id_results = index
         .top_n_ids("I need to buy something in a fictional universe. What type of money can I use for this?", 1)
@@ -76,7 +76,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .into_iter()
         .collect::<Vec<_>>();
 
-    println!("ID results: {:?}", id_results);
+    println!("ID results: {id_results:?}");
 
     Ok(())
 }

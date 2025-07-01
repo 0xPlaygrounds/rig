@@ -5,10 +5,10 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use std::{collections::HashMap, ops::Deref};
 use syn::{
+    DeriveInput, Expr, ExprLit, Lit, Meta, PathArguments, ReturnType, Token, Type,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    DeriveInput, Expr, ExprLit, Lit, Meta, PathArguments, ReturnType, Token, Type,
 };
 
 mod basic;
@@ -215,7 +215,9 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                                 // Convert the error type to a string for comparison
                                 let error_str = quote!(#error).to_string().replace(" ", "");
                                 if !error_str.contains("rig::tool::ToolError") {
-                                    panic!("Expected rig::tool::ToolError as second type parameter but found {}", error_str);
+                                    panic!(
+                                        "Expected rig::tool::ToolError as second type parameter but found {error_str}"
+                                    );
                                 }
 
                                 quote!(#output)
@@ -259,7 +261,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                 let param_name = &param_ident.ident;
                 let param_name_str = param_name.to_string();
                 let ty = &pat_type.ty;
-                let default_parameter_description = format!("Parameter {}", param_name_str);
+                let default_parameter_description = format!("Parameter {param_name_str}");
                 let description = args
                     .param_descriptions
                     .get(&param_name_str)

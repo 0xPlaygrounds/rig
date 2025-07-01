@@ -468,7 +468,7 @@ mod tests {
             .map(|result| {
                 let (path, pages) = result;
                 pages.iter().for_each(|(page_no, content)| {
-                    println!("{:?} Page {}: {:?}", path, page_no, content);
+                    println!("{path:?} Page {page_no}: {content:?}");
                 });
                 (path, pages)
             })

@@ -1,6 +1,6 @@
 use rig::prelude::*;
 use rig::{
-    pipeline::{self, agent_ops, TryOp},
+    pipeline::{self, TryOp, agent_ops},
     providers::openai,
     try_parallel,
 };
