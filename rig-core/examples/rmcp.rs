@@ -1,13 +1,12 @@
+//! An example of how you can use `rmcp` with Rig to create an MCP friendly agent.
 use std::sync::Arc;
 
 use rmcp::ServiceExt;
 
 use rig::{
     client::{CompletionClient, ProviderClient},
-    completion::{Prompt, ToolDefinition},
+    completion::Prompt,
     providers::openai,
-    tool::ToolSet,
-    tool::rmcp::McpTool,
 };
 use rmcp::{
     Error as McpError, RoleServer, ServerHandler,
@@ -37,8 +36,14 @@ pub struct StructRequest {
 
 #[derive(Clone)]
 pub struct Counter {
-    counter: Arc<Mutex<i32>>,
+    pub counter: Arc<Mutex<i32>>,
     tool_router: ToolRouter<Counter>,
+}
+
+impl Default for Counter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[tool_router]
@@ -214,12 +219,12 @@ async fn main() -> anyhow::Result<()> {
                                         .serve_connection(io, service)
                                         .await
                                     {
-                                        eprintln!("Connection error: {:?}", e);
+                                        eprintln!("Connection error: {e:?}");
                                     }
                                 });
                             }
                             Err(e) => {
-                                eprintln!("Accept error: {:?}", e);
+                                eprintln!("Accept error: {e:?}");
                             }
                         }
                     }
@@ -253,7 +258,7 @@ async fn main() -> anyhow::Result<()> {
 
     // takes the `OPENAI_API_KEY` as an env var on usage
     let openai_client = openai::Client::from_env();
-    let mut agent = openai_client
+    let agent = openai_client
         .agent("gpt-4o")
         .preamble("You are a helpful assistant who has access to a number of tools from an MCP server designed to be used for incrementing and decrementing a counter.");
 
