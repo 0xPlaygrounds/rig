@@ -52,7 +52,6 @@ impl Tool for Adder {
                     }
                 },
                 "required": ["x", "y"],
-                "additionalProperties": false
             }),
         }
     }
@@ -89,7 +88,6 @@ impl Tool for Subtract {
                     }
                 },
                 "required": ["x", "y"],
-                "additionalProperties": false
             }
         }))
         .expect("Tool Definition")

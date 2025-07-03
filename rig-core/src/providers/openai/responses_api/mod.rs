@@ -51,7 +51,7 @@ pub struct CompletionRequest {
     pub tools: Vec<ResponsesToolDefinition>,
     /// Additional parameters
     #[serde(flatten)]
-    pub addtl_params: AddtlParams,
+    pub additional_parameters: AdditionalParameters,
 }
 
 impl CompletionRequest {
@@ -59,13 +59,13 @@ impl CompletionRequest {
     where
         S: Into<String>,
     {
-        self.addtl_params.text = Some(TextConfig::structured_output(schema_name, schema));
+        self.additional_parameters.text = Some(TextConfig::structured_output(schema_name, schema));
 
         self
     }
 
     pub fn with_reasoning(mut self, reasoning: Reasoning) -> Self {
-        self.addtl_params.reasoning = Some(reasoning);
+        self.additional_parameters.reasoning = Some(reasoning);
 
         self
     }
@@ -267,9 +267,20 @@ impl From<completion::ToolDefinition> for ResponsesToolDefinition {
     fn from(value: completion::ToolDefinition) -> Self {
         let completion::ToolDefinition {
             name,
-            parameters,
+            mut parameters,
             description,
         } = value;
+
+        let parameters = parameters
+            .as_object_mut()
+            .expect("parameters should be a JSON object");
+        parameters.insert(
+            "additionalProperties".to_string(),
+            serde_json::Value::Bool(false),
+        );
+
+        let parameters = serde_json::Value::Object(parameters.clone());
+
         Self {
             name,
             parameters,
@@ -455,11 +466,11 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             .unwrap_or(Value::Null)
             .as_bool();
 
-        let addtl_params = if let Some(map) = req.additional_params {
-            serde_json::from_value::<AddtlParams>(map).expect("Converting additional parameters to AddtlParams should never fail as every field is an Option")
+        let additional_parameters = if let Some(map) = req.additional_params {
+            serde_json::from_value::<AdditionalParameters>(map).expect("Converting additional parameters to AdditionalParameters should never fail as every field is an Option")
         } else {
             // If there's no additional parameters, initialise an empty object
-            AddtlParams::default()
+            AdditionalParameters::default()
         };
 
         Ok(Self {
@@ -474,7 +485,7 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
                 .map(ResponsesToolDefinition::from)
                 .collect(),
             temperature: req.temperature,
-            addtl_params,
+            additional_parameters,
         })
     }
 }
@@ -542,13 +553,13 @@ pub struct CompletionResponse {
     pub tools: Vec<ResponsesToolDefinition>,
     /// Additional parameters
     #[serde(flatten)]
-    pub addtl_params: AddtlParams,
+    pub additional_parameters: AdditionalParameters,
 }
 
 /// Additional parameters for the completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
 /// Intended to be derived from [`crate::completion::request::CompletionRequest`].
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
-pub struct AddtlParams {
+pub struct AdditionalParameters {
     /// Whether or not a given model task should run in the background (ie a detached process).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background: Option<bool>,
