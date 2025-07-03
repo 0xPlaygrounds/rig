@@ -50,6 +50,18 @@ base64 = { workspace = true }
 mcp-core = { workspace = true, features = ["sse"] }
 mcp-core-macros = { workspace = true }
 
+# Required for `rmcp` example
+hyper-util = { version = "0.1.14", features = ["service", "server"] }
+rmcp = { version = "0.2.1", features = [
+    "client",
+    "reqwest",                                  # required for some strange reason
+    "transport-streamable-http-client",
+    "transport-streamable-http-server-session",
+    "transport-streamable-http-server",
+    "transport-worker",
+] }
+axum = "0.8.4"
+
 
 [features]
 default = ["reqwest/default"]
@@ -131,3 +143,7 @@ required-features = ["derive"]
 [[example]]
 name = "voyageai_embeddings"
 required-features = ["derive"]
+
+[[example]]
+name = "rmcp"
+required-features = ["rmcp"]
