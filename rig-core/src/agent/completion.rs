@@ -1,4 +1,4 @@
-use super::prompt_request::PromptRequest;
+use super::prompt_request::{self, PromptRequest};
 use crate::{
     completion::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
@@ -189,14 +189,20 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 
 #[allow(refining_impl_trait)]
 impl<M: CompletionModel> Prompt for Agent<M> {
-    fn prompt(&self, prompt: impl Into<Message> + Send) -> PromptRequest<M> {
+    fn prompt(
+        &self,
+        prompt: impl Into<Message> + Send,
+    ) -> PromptRequest<prompt_request::Standard, M> {
         PromptRequest::new(self, prompt)
     }
 }
 
 #[allow(refining_impl_trait)]
 impl<M: CompletionModel> Prompt for &Agent<M> {
-    fn prompt(&self, prompt: impl Into<Message> + Send) -> PromptRequest<M> {
+    fn prompt(
+        &self,
+        prompt: impl Into<Message> + Send,
+    ) -> PromptRequest<prompt_request::Standard, M> {
         PromptRequest::new(*self, prompt)
     }
 }
