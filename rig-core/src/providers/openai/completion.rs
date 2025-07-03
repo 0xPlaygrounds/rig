@@ -697,6 +697,11 @@ impl completion::CompletionModel for CompletionModel {
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let request = self.create_completion_request(completion_request)?;
 
+        tracing::debug!(
+            "OpenAI request: {request}",
+            request = serde_json::to_string_pretty(&request).unwrap()
+        );
+
         let response = self
             .client
             .post("/chat/completions")
