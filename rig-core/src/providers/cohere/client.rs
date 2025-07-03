@@ -1,4 +1,4 @@
-use crate::{Embed, client::ProviderValue, embeddings::EmbeddingsBuilder};
+use crate::{Embed, embeddings::EmbeddingsBuilder};
 
 use super::{CompletionModel, EmbeddingModel};
 use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient, impl_conversion_traits};

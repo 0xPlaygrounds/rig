@@ -110,7 +110,7 @@ impl ProviderClient for Client {
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
-        let crate::client::ProviderValue::Simple(api_key) = input else {
+        let crate::client::ProviderValue::Simple(_) = input else {
             panic!("Incorrect provider value type")
         };
 
