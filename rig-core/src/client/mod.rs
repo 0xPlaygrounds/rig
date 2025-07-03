@@ -44,6 +44,64 @@ pub trait ProviderClient:
     {
         Box::new(Self::from_env())
     }
+
+    fn from_val(input: ProviderValue) -> Self
+    where
+        Self: Sized;
+
+    /// Create a boxed client from the process's environment.
+    /// Panics if an environment is improperly configured.
+    fn from_val_boxed<'a>(input: ProviderValue) -> Box<dyn ProviderClient + 'a>
+    where
+        Self: Sized,
+        Self: 'a,
+    {
+        Box::new(Self::from_val(input))
+    }
+}
+
+#[derive(Clone)]
+pub enum ProviderValue {
+    Simple(String),
+    ApiKeyWithOptionalKey(String, Option<String>),
+    ApiKeyWithVersionAndHeader(String, String, String),
+}
+
+impl From<&str> for ProviderValue {
+    fn from(value: &str) -> Self {
+        Self::Simple(value.to_string())
+    }
+}
+
+impl From<String> for ProviderValue {
+    fn from(value: String) -> Self {
+        Self::Simple(value)
+    }
+}
+
+impl<P> From<(P, Option<P>)> for ProviderValue
+where
+    P: AsRef<str>,
+{
+    fn from((api_key, optional_key): (P, Option<P>)) -> Self {
+        Self::ApiKeyWithOptionalKey(
+            api_key.as_ref().to_string(),
+            optional_key.map(|x| x.as_ref().to_string()),
+        )
+    }
+}
+
+impl<P> From<(P, P, P)> for ProviderValue
+where
+    P: AsRef<str>,
+{
+    fn from((api_key, version, header): (P, P, P)) -> Self {
+        Self::ApiKeyWithVersionAndHeader(
+            api_key.as_ref().to_string(),
+            version.as_ref().to_string(),
+            header.as_ref().to_string(),
+        )
+    }
 }
 
 /// Attempt to convert a ProviderClient to a CompletionClient
@@ -188,9 +246,12 @@ mod tests {
     use std::fs::File;
     use std::io::Read;
 
+    use super::ProviderValue;
+
     struct ClientConfig {
         name: &'static str,
-        factory: Box<dyn Fn() -> Box<dyn ProviderClient>>,
+        factory_env: Box<dyn Fn() -> Box<dyn ProviderClient>>,
+        factory_val: Box<dyn Fn(ProviderValue) -> Box<dyn ProviderClient>>,
         env_variable: &'static str,
         completion_model: Option<&'static str>,
         embeddings_model: Option<&'static str>,
@@ -203,7 +264,8 @@ mod tests {
         fn default() -> Self {
             Self {
                 name: "",
-                factory: Box::new(|| panic!("Not implemented")),
+                factory_env: Box::new(|| panic!("Not implemented")),
+                factory_val: Box::new(|_| panic!("Not implemented")),
                 env_variable: "",
                 completion_model: None,
                 embeddings_model: None,
@@ -219,8 +281,12 @@ mod tests {
             self.env_variable.is_empty() || std::env::var(self.env_variable).is_ok()
         }
 
-        fn factory(&self) -> Box<dyn ProviderClient + '_> {
-            self.factory.as_ref()()
+        fn factory_env(&self) -> Box<dyn ProviderClient + '_> {
+            self.factory_env.as_ref()()
+        }
+
+        fn factory_val(&self, val: ProviderValue) -> Box<dyn ProviderClient + '_> {
+            self.factory_val.as_ref()(val)
         }
     }
 
@@ -228,14 +294,16 @@ mod tests {
         vec![
             ClientConfig {
                 name: "Anthropic",
-                factory: Box::new(anthropic::Client::from_env_boxed),
+                factory_env: Box::new(anthropic::Client::from_env_boxed),
+                factory_val: Box::new(anthropic::Client::from_val_boxed),
                 env_variable: "ANTHROPIC_API_KEY",
                 completion_model: Some(anthropic::CLAUDE_3_5_SONNET),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Cohere",
-                factory: Box::new(cohere::Client::from_env_boxed),
+                factory_env: Box::new(cohere::Client::from_env_boxed),
+                factory_val: Box::new(cohere::Client::from_val_boxed),
                 env_variable: "COHERE_API_KEY",
                 completion_model: Some(cohere::COMMAND_R),
                 embeddings_model: Some(cohere::EMBED_ENGLISH_LIGHT_V2),
@@ -243,7 +311,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Gemini",
-                factory: Box::new(gemini::Client::from_env_boxed),
+                factory_env: Box::new(gemini::Client::from_env_boxed),
+                factory_val: Box::new(gemini::Client::from_val_boxed),
                 env_variable: "GEMINI_API_KEY",
                 completion_model: Some(gemini::completion::GEMINI_2_0_FLASH),
                 embeddings_model: Some(gemini::embedding::EMBEDDING_001),
@@ -252,7 +321,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Huggingface",
-                factory: Box::new(huggingface::Client::from_env_boxed),
+                factory_env: Box::new(huggingface::Client::from_env_boxed),
+                factory_val: Box::new(huggingface::Client::from_val_boxed),
                 env_variable: "HUGGINGFACE_API_KEY",
                 completion_model: Some(huggingface::PHI_4),
                 transcription_model: Some(huggingface::WHISPER_SMALL),
@@ -261,7 +331,8 @@ mod tests {
             },
             ClientConfig {
                 name: "OpenAI",
-                factory: Box::new(openai::Client::from_env_boxed),
+                factory_env: Box::new(openai::Client::from_env_boxed),
+                factory_val: Box::new(openai::Client::from_val_boxed),
                 env_variable: "OPENAI_API_KEY",
                 completion_model: Some(openai::GPT_4O),
                 embeddings_model: Some(openai::TEXT_EMBEDDING_ADA_002),
@@ -271,14 +342,16 @@ mod tests {
             },
             ClientConfig {
                 name: "OpenRouter",
-                factory: Box::new(openrouter::Client::from_env_boxed),
+                factory_env: Box::new(openrouter::Client::from_env_boxed),
+                factory_val: Box::new(openrouter::Client::from_val_boxed),
                 env_variable: "OPENROUTER_API_KEY",
                 completion_model: Some(openrouter::CLAUDE_3_7_SONNET),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Together",
-                factory: Box::new(together::Client::from_env_boxed),
+                factory_env: Box::new(together::Client::from_env_boxed),
+                factory_val: Box::new(together::Client::from_val_boxed),
                 env_variable: "TOGETHER_API_KEY",
                 completion_model: Some(together::ALPACA_7B),
                 embeddings_model: Some(together::BERT_BASE_UNCASED),
@@ -286,7 +359,8 @@ mod tests {
             },
             ClientConfig {
                 name: "XAI",
-                factory: Box::new(xai::Client::from_env_boxed),
+                factory_env: Box::new(xai::Client::from_env_boxed),
+                factory_val: Box::new(xai::Client::from_val_boxed),
                 env_variable: "XAI_API_KEY",
                 completion_model: Some(xai::GROK_3_MINI),
                 embeddings_model: None,
@@ -294,7 +368,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Azure",
-                factory: Box::new(azure::Client::from_env_boxed),
+                factory_env: Box::new(azure::Client::from_env_boxed),
+                factory_val: Box::new(azure::Client::from_val_boxed),
                 env_variable: "AZURE_API_KEY",
                 completion_model: Some(azure::GPT_4O),
                 embeddings_model: Some(azure::TEXT_EMBEDDING_ADA_002),
@@ -304,21 +379,24 @@ mod tests {
             },
             ClientConfig {
                 name: "Deepseek",
-                factory: Box::new(deepseek::Client::from_env_boxed),
+                factory_env: Box::new(deepseek::Client::from_env_boxed),
+                factory_val: Box::new(deepseek::Client::from_val_boxed),
                 env_variable: "DEEPSEEK_API_KEY",
                 completion_model: Some(deepseek::DEEPSEEK_CHAT),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Galadriel",
-                factory: Box::new(galadriel::Client::from_env_boxed),
+                factory_env: Box::new(galadriel::Client::from_env_boxed),
+                factory_val: Box::new(galadriel::Client::from_val_boxed),
                 env_variable: "GALADRIEL_API_KEY",
                 completion_model: Some(galadriel::GPT_4O),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Groq",
-                factory: Box::new(groq::Client::from_env_boxed),
+                factory_env: Box::new(groq::Client::from_env_boxed),
+                factory_val: Box::new(groq::Client::from_val_boxed),
                 env_variable: "GROQ_API_KEY",
                 completion_model: Some(groq::MIXTRAL_8X7B_32768),
                 transcription_model: Some(groq::DISTIL_WHISPER_LARGE_V3),
@@ -326,7 +404,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Hyperbolic",
-                factory: Box::new(hyperbolic::Client::from_env_boxed),
+                factory_env: Box::new(hyperbolic::Client::from_env_boxed),
+                factory_val: Box::new(hyperbolic::Client::from_val_boxed),
                 env_variable: "HYPERBOLIC_API_KEY",
                 completion_model: Some(hyperbolic::LLAMA_3_1_8B),
                 image_generation_model: Some(hyperbolic::SD1_5),
@@ -335,21 +414,24 @@ mod tests {
             },
             ClientConfig {
                 name: "Mira",
-                factory: Box::new(mira::Client::from_env_boxed),
+                factory_env: Box::new(mira::Client::from_env_boxed),
+                factory_val: Box::new(mira::Client::from_val_boxed),
                 env_variable: "MIRA_API_KEY",
                 completion_model: Some("gpt-4o"),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Moonshot",
-                factory: Box::new(moonshot::Client::from_env_boxed),
+                factory_env: Box::new(moonshot::Client::from_env_boxed),
+                factory_val: Box::new(moonshot::Client::from_val_boxed),
                 env_variable: "MOONSHOT_API_KEY",
                 completion_model: Some(moonshot::MOONSHOT_CHAT),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Ollama",
-                factory: Box::new(ollama::Client::from_env_boxed),
+                factory_env: Box::new(ollama::Client::from_env_boxed),
+                factory_val: Box::new(ollama::Client::from_val_boxed),
                 env_variable: "OLLAMA_ENABLED",
                 completion_model: Some("llama3.1:8b"),
                 embeddings_model: Some(ollama::NOMIC_EMBED_TEXT),
@@ -357,7 +439,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Perplexity",
-                factory: Box::new(perplexity::Client::from_env_boxed),
+                factory_env: Box::new(perplexity::Client::from_env_boxed),
+                factory_val: Box::new(perplexity::Client::from_val_boxed),
                 env_variable: "PERPLEXITY_API_KEY",
                 completion_model: Some(perplexity::SONAR),
                 ..Default::default()
@@ -366,7 +449,7 @@ mod tests {
     }
 
     async fn test_completions_client(config: &ClientConfig) {
-        let client = config.factory();
+        let client = config.factory_env();
 
         let Some(client) = client.as_completion() else {
             return;
@@ -415,7 +498,7 @@ mod tests {
     }
 
     async fn test_tools_client(config: &ClientConfig) {
-        let client = config.factory();
+        let client = config.factory_env();
         let model = config
             .completion_model
             .unwrap_or_else(|| panic!("{} does not have the model set.", config.name));
@@ -480,7 +563,7 @@ mod tests {
     }
 
     async fn test_streaming_client(config: &ClientConfig) {
-        let client = config.factory();
+        let client = config.factory_env();
 
         let Some(client) = client.as_completion() else {
             return;
@@ -540,7 +623,7 @@ mod tests {
     }
 
     async fn test_streaming_tools_client(config: &ClientConfig) {
-        let client = config.factory();
+        let client = config.factory_env();
         let model = config
             .completion_model
             .unwrap_or_else(|| panic!("{} does not have the model set.", config.name));
@@ -618,7 +701,7 @@ mod tests {
     }
 
     async fn test_audio_generation_client(config: &ClientConfig) {
-        let client = config.factory();
+        let client = config.factory_env();
 
         let Some(client) = client.as_audio_generation() else {
             return;
@@ -684,7 +767,7 @@ mod tests {
     #[ignore]
     pub fn test_polymorphism() {
         for config in providers().into_iter().filter(ClientConfig::is_env_var_set) {
-            let client = config.factory();
+            let client = config.factory_env();
             assert_feature(
                 config.name,
                 "AsCompletion",
@@ -730,7 +813,7 @@ mod tests {
     async fn test_embed_client(config: &ClientConfig) {
         const TEST: &str = "Hello world.";
 
-        let client = config.factory();
+        let client = config.factory_env();
 
         let Some(client) = client.as_embeddings() else {
             return;
@@ -769,7 +852,7 @@ mod tests {
     }
 
     async fn test_image_generation_client(config: &ClientConfig) {
-        let client = config.factory();
+        let client = config.factory_env();
         let Some(client) = client.as_image_generation() else {
             return;
         };
@@ -812,7 +895,7 @@ mod tests {
     }
 
     async fn test_transcription_client(config: &ClientConfig, data: Vec<u8>) {
-        let client = config.factory();
+        let client = config.factory_env();
         let Some(client) = client.as_transcription() else {
             return;
         };

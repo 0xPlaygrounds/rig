@@ -1,4 +1,4 @@
-use crate::{Embed, embeddings::EmbeddingsBuilder};
+use crate::{Embed, client::ProviderValue, embeddings::EmbeddingsBuilder};
 
 use super::{CompletionModel, EmbeddingModel};
 use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient, impl_conversion_traits};
@@ -105,6 +105,13 @@ impl ProviderClient for Client {
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set");
+        Self::new(&api_key)
+    }
+
+    fn from_val(input: crate::client::ProviderValue) -> Self {
+        let crate::client::ProviderValue::Simple(api_key) = input else {
+            panic!("Incorrect provider value type")
+        };
         Self::new(&api_key)
     }
 }

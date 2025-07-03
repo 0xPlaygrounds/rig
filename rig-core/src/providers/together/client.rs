@@ -74,6 +74,13 @@ impl ProviderClient for Client {
         let api_key = std::env::var("TOGETHER_API_KEY").expect("TOGETHER_API_KEY not set");
         Self::new(&api_key)
     }
+
+    fn from_val(input: crate::client::ProviderValue) -> Self {
+        let crate::client::ProviderValue::Simple(api_key) = input else {
+            panic!("Incorrect provider value type")
+        };
+        Self::new(&api_key)
+    }
 }
 
 impl CompletionClient for Client {
