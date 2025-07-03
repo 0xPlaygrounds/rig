@@ -119,8 +119,15 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
+        let usage = completion::Usage {
+            prompt_tokens: response.usage.input_tokens as u64,
+            completion_tokens: response.usage.output_tokens as u64,
+            total_tokens: (response.usage.input_tokens + response.usage.output_tokens) as u64,
+        };
+
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }

@@ -248,9 +248,19 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 "Response contained no message or tool call (empty)".to_owned(),
             )
         })?;
+        let usage = response
+            .usage
+            .as_ref()
+            .map(|usage| completion::Usage {
+                prompt_tokens: usage.prompt_tokens as u64,
+                completion_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
+                total_tokens: usage.total_tokens as u64,
+            })
+            .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }

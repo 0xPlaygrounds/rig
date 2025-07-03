@@ -128,7 +128,33 @@ impl From<ApiErrorResponse> for CompletionError {
 pub struct CompletionResponse {
     // We'll match the JSON:
     pub choices: Vec<Choice>,
-    // you may want usage or other fields
+    pub usage: Usage,
+    // you may want other fields
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct Usage {
+    pub completion_tokens: u32,
+    pub prompt_tokens: u32,
+    pub prompt_cache_hit_tokens: u32,
+    pub prompt_cache_miss_tokens: u32,
+    pub total_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completion_tokens_details: Option<CompletionTokensDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct CompletionTokensDetails {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<u32>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct PromptTokensDetails {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cached_tokens: Option<u32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -378,8 +404,15 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
+        let usage = completion::Usage {
+            prompt_tokens: response.usage.prompt_tokens as u64,
+            completion_tokens: response.usage.completion_tokens as u64,
+            total_tokens: response.usage.total_tokens as u64,
+        };
+
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }

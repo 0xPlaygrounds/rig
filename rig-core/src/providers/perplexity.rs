@@ -203,6 +203,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 content,
             } => Ok(completion::CompletionResponse {
                 choice: OneOrMany::one(content.clone().into()),
+                usage: completion::Usage {
+                    prompt_tokens: response.usage.prompt_tokens as u64,
+                    completion_tokens: response.usage.completion_tokens as u64,
+                    total_tokens: response.usage.total_tokens as u64,
+                },
                 raw_response: response,
             }),
             _ => Err(CompletionError::ResponseError(

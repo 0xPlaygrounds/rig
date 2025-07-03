@@ -394,16 +394,25 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let content = match &response {
-            CompletionResponse::Structured { choices, .. } => {
+        let (content, usage) = match &response {
+            CompletionResponse::Structured { choices, usage, .. } => {
                 let choice = choices.first().ok_or_else(|| {
                     CompletionError::ResponseError("Response contained no choices".to_owned())
                 })?;
 
+                let usage = usage
+                    .as_ref()
+                    .map(|usage| completion::Usage {
+                        prompt_tokens: usage.prompt_tokens as u64,
+                        completion_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
+                        total_tokens: usage.total_tokens as u64,
+                    })
+                    .unwrap_or_default();
+
                 // Convert RawMessage to message::Message
                 let message = message::Message::try_from(choice.message.clone())?;
 
-                match message {
+                let content = match message {
                     Message::Assistant { content, .. } => {
                         if content.is_empty() {
                             return Err(CompletionError::ResponseError(
@@ -435,11 +444,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                             "Received user message in response where assistant message was expected".to_owned()
                         ));
                     }
-                }
+                };
+
+                (content, usage)
             }
-            CompletionResponse::Simple(text) => {
-                vec![completion::AssistantContent::text(text)]
-            }
+            CompletionResponse::Simple(text) => (
+                vec![completion::AssistantContent::text(text)],
+                completion::Usage::new(),
+            ),
         };
 
         let choice = OneOrMany::many(content).map_err(|_| {
@@ -450,6 +462,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }
