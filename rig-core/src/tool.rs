@@ -186,281 +186,297 @@ impl<T: Tool> ToolDyn for T {
 }
 
 #[cfg(feature = "mcp")]
-pub struct McpTool<T: mcp_core::transport::Transport> {
-    definition: mcp_core::types::Tool,
-    client: mcp_core::client::Client<T>,
-}
+pub mod mcp {
+    use crate::completion::ToolDefinition;
+    use crate::tool::ToolDyn;
+    use crate::tool::ToolError;
+    use std::pin::Pin;
 
-#[cfg(feature = "mcp")]
-impl<T> McpTool<T>
-where
-    T: mcp_core::transport::Transport,
-{
-    pub fn from_mcp_server(
+    pub struct McpTool<T: mcp_core::transport::Transport> {
         definition: mcp_core::types::Tool,
         client: mcp_core::client::Client<T>,
-    ) -> Self {
-        Self { definition, client }
     }
-}
 
-#[cfg(feature = "mcp")]
-impl From<&mcp_core::types::Tool> for ToolDefinition {
-    fn from(val: &mcp_core::types::Tool) -> Self {
-        Self {
-            name: val.name.to_owned(),
-            description: val.description.to_owned().unwrap_or_default(),
-            parameters: val.input_schema.to_owned(),
+    impl<T> McpTool<T>
+    where
+        T: mcp_core::transport::Transport,
+    {
+        pub fn from_mcp_server(
+            definition: mcp_core::types::Tool,
+            client: mcp_core::client::Client<T>,
+        ) -> Self {
+            Self { definition, client }
         }
     }
-}
 
-#[cfg(feature = "mcp")]
-impl From<mcp_core::types::Tool> for ToolDefinition {
-    fn from(val: mcp_core::types::Tool) -> Self {
-        Self {
-            name: val.name,
-            description: val.description.unwrap_or_default(),
-            parameters: val.input_schema,
-        }
-    }
-}
-
-#[cfg(feature = "mcp")]
-#[derive(Debug, thiserror::Error)]
-#[error("MCP tool error: {0}")]
-pub struct McpToolError(String);
-
-#[cfg(feature = "mcp")]
-impl From<McpToolError> for ToolError {
-    fn from(e: McpToolError) -> Self {
-        ToolError::ToolCallError(Box::new(e))
-    }
-}
-
-#[cfg(feature = "mcp")]
-impl<T> ToolDyn for McpTool<T>
-where
-    T: mcp_core::transport::Transport,
-{
-    fn name(&self) -> String {
-        self.definition.name.clone()
-    }
-
-    fn definition(
-        &self,
-        _prompt: String,
-    ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + Sync + '_>> {
-        Box::pin(async move {
-            ToolDefinition {
-                name: self.definition.name.clone(),
-                description: match &self.definition.description {
-                    Some(desc) => desc.clone(),
-                    None => String::new(),
-                },
-                parameters: serde_json::to_value(&self.definition.input_schema).unwrap_or_default(),
+    impl From<&mcp_core::types::Tool> for ToolDefinition {
+        fn from(val: &mcp_core::types::Tool) -> Self {
+            Self {
+                name: val.name.to_owned(),
+                description: val.description.to_owned().unwrap_or_default(),
+                parameters: val.input_schema.to_owned(),
             }
-        })
+        }
     }
 
-    fn call(
-        &self,
-        args: String,
-    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>> {
-        let name = self.definition.name.clone();
-        let args_clone = args.clone();
-        let args: serde_json::Value = serde_json::from_str(&args_clone).unwrap_or_default();
-        Box::pin(async move {
-            let result = self
-                .client
-                .call_tool(&name, Some(args))
-                .await
-                .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
+    impl From<mcp_core::types::Tool> for ToolDefinition {
+        fn from(val: mcp_core::types::Tool) -> Self {
+            Self {
+                name: val.name,
+                description: val.description.unwrap_or_default(),
+                parameters: val.input_schema,
+            }
+        }
+    }
 
-            if result.is_error.unwrap_or(false) {
-                if let Some(error) = result.content.first() {
-                    match error {
-                        mcp_core::types::ToolResponseContent::Text(text_content) => {
-                            return Err(McpToolError(text_content.text.clone()).into());
+    #[derive(Debug, thiserror::Error)]
+    #[error("MCP tool error: {0}")]
+    pub struct McpToolError(String);
+
+    impl From<McpToolError> for ToolError {
+        fn from(e: McpToolError) -> Self {
+            ToolError::ToolCallError(Box::new(e))
+        }
+    }
+
+    impl<T> ToolDyn for McpTool<T>
+    where
+        T: mcp_core::transport::Transport,
+    {
+        fn name(&self) -> String {
+            self.definition.name.clone()
+        }
+
+        fn definition(
+            &self,
+            _prompt: String,
+        ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + Sync + '_>> {
+            Box::pin(async move {
+                ToolDefinition {
+                    name: self.definition.name.clone(),
+                    description: match &self.definition.description {
+                        Some(desc) => desc.clone(),
+                        None => String::new(),
+                    },
+                    parameters: serde_json::to_value(&self.definition.input_schema)
+                        .unwrap_or_default(),
+                }
+            })
+        }
+
+        fn call(
+            &self,
+            args: String,
+        ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>> {
+            let name = self.definition.name.clone();
+            let args_clone = args.clone();
+            let args: serde_json::Value = serde_json::from_str(&args_clone).unwrap_or_default();
+            Box::pin(async move {
+                let result = self
+                    .client
+                    .call_tool(&name, Some(args))
+                    .await
+                    .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
+
+                if result.is_error.unwrap_or(false) {
+                    if let Some(error) = result.content.first() {
+                        match error {
+                            mcp_core::types::ToolResponseContent::Text(text_content) => {
+                                return Err(McpToolError(text_content.text.clone()).into());
+                            }
+                            _ => {
+                                return Err(
+                                    McpToolError("Unsuppported error type".to_string()).into()
+                                );
+                            }
                         }
-                        _ => return Err(McpToolError("Unsuppported error type".to_string()).into()),
-                    }
-                } else {
-                    return Err(McpToolError("No error message returned".to_string()).into());
-                }
-            }
-
-            Ok(result
-                .content
-                .into_iter()
-                .map(|c| match c {
-                    mcp_core::types::ToolResponseContent::Text(text_content) => text_content.text,
-                    mcp_core::types::ToolResponseContent::Image(image_content) => {
-                        format!(
-                            "data:{};base64,{}",
-                            image_content.mime_type, image_content.data
-                        )
-                    }
-                    mcp_core::types::ToolResponseContent::Audio(audio_content) => {
-                        format!(
-                            "data:{};base64,{}",
-                            audio_content.mime_type, audio_content.data
-                        )
-                    }
-
-                    mcp_core::types::ToolResponseContent::Resource(embedded_resource) => {
-                        format!(
-                            "{}{}",
-                            embedded_resource
-                                .resource
-                                .mime_type
-                                .map(|m| format!("data:{m};"))
-                                .unwrap_or_default(),
-                            embedded_resource.resource.uri
-                        )
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(""))
-        })
-    }
-}
-
-#[cfg(feature = "rmcp")]
-pub struct McpTool {
-    definition: rmcp::model::Tool,
-    client: rmcp::service::ServerSink,
-}
-
-#[cfg(feature = "rmcp")]
-impl McpTool {
-    pub fn from_mcp_server(
-        definition: rmcp::model::Tool,
-        client: rmcp::service::ServerSink,
-    ) -> Self {
-        Self { definition, client }
-    }
-}
-
-#[cfg(feature = "rmcp")]
-impl From<&rmcp::model::Tool> for ToolDefinition {
-    fn from(val: &rmcp::model::Tool) -> Self {
-        Self {
-            name: val.name.to_string(),
-            description: val.description.to_string(),
-            parameters: val.schema_as_json_value(),
-        }
-    }
-}
-
-#[cfg(feature = "rmcp")]
-impl From<rmcp::model::Tool> for ToolDefinition {
-    fn from(val: rmcp::model::Tool) -> Self {
-        Self {
-            name: val.name.to_string(),
-            description: val.description.to_string(),
-            parameters: val.schema_as_json_value(),
-        }
-    }
-}
-
-#[cfg(feature = "rmcp")]
-#[derive(Debug, thiserror::Error)]
-#[error("MCP tool error: {0}")]
-pub struct McpToolError(String);
-
-#[cfg(feature = "rmcp")]
-impl From<McpToolError> for ToolError {
-    fn from(e: McpToolError) -> Self {
-        ToolError::ToolCallError(Box::new(e))
-    }
-}
-
-#[cfg(feature = "rmcp")]
-impl ToolDyn for McpTool {
-    fn name(&self) -> String {
-        self.definition.name.to_string()
-    }
-
-    fn definition(
-        &self,
-        _prompt: String,
-    ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + Sync + '_>> {
-        Box::pin(async move {
-            ToolDefinition {
-                name: self.definition.name.to_string(),
-                description: self.definition.description.to_string(),
-                parameters: serde_json::to_value(&self.definition.input_schema).unwrap_or_default(),
-            }
-        })
-    }
-
-    fn call(
-        &self,
-        args: String,
-    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>> {
-        let name = self.definition.name.clone();
-        let arguments = serde_json::from_str(&args).unwrap_or_default();
-
-        Box::pin(async move {
-            let result = self
-                .client
-                .call_tool(rmcp::model::CallToolRequestParam { name, arguments })
-                .await
-                .map_err(|e| McpToolError(format!("Tool returned an error: {}", e)))?;
-
-            if result.is_error.unwrap_or(false) {
-                if let Some(error) = result.content.first() {
-                    if let Some(raw) = error.as_text() {
-                        return Err(McpToolError(raw.text.clone()).into());
                     } else {
-                        return Err(McpToolError("Unsuppported error type".to_string()).into());
+                        return Err(McpToolError("No error message returned".to_string()).into());
                     }
-                } else {
-                    return Err(McpToolError("No error message returned".to_string()).into());
                 }
-            };
 
-            Ok(result
-                .content
-                .into_iter()
-                .map(|c| match c.raw {
-                    rmcp::model::RawContent::Text(raw) => raw.text,
-                    rmcp::model::RawContent::Image(raw) => {
-                        format!("data:{};base64,{}", raw.mime_type, raw.data)
-                    }
-                    rmcp::model::RawContent::Resource(raw) => match raw.resource {
-                        rmcp::model::ResourceContents::TextResourceContents {
-                            uri,
-                            mime_type,
-                            text,
-                        } => {
+                Ok(result
+                    .content
+                    .into_iter()
+                    .map(|c| match c {
+                        mcp_core::types::ToolResponseContent::Text(text_content) => {
+                            text_content.text
+                        }
+                        mcp_core::types::ToolResponseContent::Image(image_content) => {
                             format!(
-                                "{}{}:{}",
-                                mime_type
-                                    .map(|m| format!("data:{};", m))
-                                    .unwrap_or_default(),
-                                uri,
-                                text
+                                "data:{};base64,{}",
+                                image_content.mime_type, image_content.data
                             )
                         }
-                        rmcp::model::ResourceContents::BlobResourceContents {
-                            uri,
-                            mime_type,
-                            blob,
-                        } => format!(
-                            "{}{}:{}",
-                            mime_type
-                                .map(|m| format!("data:{};", m))
-                                .unwrap_or_default(),
-                            uri,
-                            blob
-                        ),
-                    },
-                })
-                .collect::<Vec<_>>()
-                .join(""))
-        })
+                        mcp_core::types::ToolResponseContent::Audio(audio_content) => {
+                            format!(
+                                "data:{};base64,{}",
+                                audio_content.mime_type, audio_content.data
+                            )
+                        }
+
+                        mcp_core::types::ToolResponseContent::Resource(embedded_resource) => {
+                            format!(
+                                "{}{}",
+                                embedded_resource
+                                    .resource
+                                    .mime_type
+                                    .map(|m| format!("data:{m};"))
+                                    .unwrap_or_default(),
+                                embedded_resource.resource.uri
+                            )
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(""))
+            })
+        }
+    }
+}
+
+#[cfg(feature = "rmcp")]
+pub mod rmcp {
+    use crate::completion::ToolDefinition;
+    use crate::tool::ToolDyn;
+    use crate::tool::ToolError;
+    use rmcp::model::RawContent;
+    use std::borrow::Cow;
+    use std::pin::Pin;
+
+    pub struct McpTool {
+        definition: rmcp::model::Tool,
+        client: rmcp::service::ServerSink,
+    }
+
+    impl McpTool {
+        pub fn from_mcp_server(
+            definition: rmcp::model::Tool,
+            client: rmcp::service::ServerSink,
+        ) -> Self {
+            Self { definition, client }
+        }
+    }
+
+    impl From<&rmcp::model::Tool> for ToolDefinition {
+        fn from(val: &rmcp::model::Tool) -> Self {
+            Self {
+                name: val.name.to_string(),
+                description: val.description.clone().unwrap_or(Cow::from("")).to_string(),
+                parameters: val.schema_as_json_value(),
+            }
+        }
+    }
+
+    impl From<rmcp::model::Tool> for ToolDefinition {
+        fn from(val: rmcp::model::Tool) -> Self {
+            Self {
+                name: val.name.to_string(),
+                description: val.description.clone().unwrap_or(Cow::from("")).to_string(),
+                parameters: val.schema_as_json_value(),
+            }
+        }
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("MCP tool error: {0}")]
+    pub struct McpToolError(String);
+
+    impl From<McpToolError> for ToolError {
+        fn from(e: McpToolError) -> Self {
+            ToolError::ToolCallError(Box::new(e))
+        }
+    }
+
+    impl ToolDyn for McpTool {
+        fn name(&self) -> String {
+            self.definition.name.to_string()
+        }
+
+        fn definition(
+            &self,
+            _prompt: String,
+        ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + Sync + '_>> {
+            Box::pin(async move {
+                ToolDefinition {
+                    name: self.definition.name.to_string(),
+                    description: self
+                        .definition
+                        .description
+                        .clone()
+                        .unwrap_or(Cow::from(""))
+                        .to_string(),
+                    parameters: serde_json::to_value(&self.definition.input_schema)
+                        .unwrap_or_default(),
+                }
+            })
+        }
+
+        fn call(
+            &self,
+            args: String,
+        ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>> {
+            let name = self.definition.name.clone();
+            let arguments = serde_json::from_str(&args).unwrap_or_default();
+
+            Box::pin(async move {
+                let result = self
+                    .client
+                    .call_tool(rmcp::model::CallToolRequestParam { name, arguments })
+                    .await
+                    .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
+
+                if result.is_error.unwrap_or(false) {
+                    if let Some(error) = result.content.first() {
+                        if let Some(raw) = error.as_text() {
+                            return Err(McpToolError(raw.text.clone()).into());
+                        } else {
+                            return Err(McpToolError("Unsuppported error type".to_string()).into());
+                        }
+                    } else {
+                        return Err(McpToolError("No error message returned".to_string()).into());
+                    }
+                };
+
+                Ok(result
+                    .content
+                    .into_iter()
+                    .map(|c| match c.raw {
+                        rmcp::model::RawContent::Text(raw) => raw.text,
+                        rmcp::model::RawContent::Image(raw) => {
+                            format!("data:{};base64,{}", raw.mime_type, raw.data)
+                        }
+                        rmcp::model::RawContent::Resource(raw) => match raw.resource {
+                            rmcp::model::ResourceContents::TextResourceContents {
+                                uri,
+                                mime_type,
+                                text,
+                            } => {
+                                format!(
+                                    "{mime_type}{uri}:{text}",
+                                    mime_type = mime_type
+                                        .map(|m| format!("data:{m};"))
+                                        .unwrap_or_default(),
+                                )
+                            }
+                            rmcp::model::ResourceContents::BlobResourceContents {
+                                uri,
+                                mime_type,
+                                blob,
+                            } => format!(
+                                "{mime_type}{uri}:{blob}",
+                                mime_type = mime_type
+                                    .map(|m| format!("data:{m};"))
+                                    .unwrap_or_default(),
+                            ),
+                        },
+                        RawContent::Audio(_) => {
+                            unimplemented!("Support for audio results from an MCP tool is currently unimplemented. Come back later!")
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(""))
+            })
+        }
     }
 }
 
