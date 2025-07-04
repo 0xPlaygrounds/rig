@@ -10,7 +10,8 @@ use rig_derive::rig_tool;
     params(
         text = "The input text to process",
         operation = "The operation to perform (uppercase, lowercase, reverse)",
-    )
+    ),
+    required(text, operation)
 )]
 fn string_processor(text: String, operation: String) -> Result<String, rig::tool::ToolError> {
     let result = match operation.as_str() {
