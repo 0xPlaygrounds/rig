@@ -612,6 +612,9 @@ impl completion::CompletionModel for CompletionModel {
                             arguments: tc.function.arguments.clone(),
                         })
                     }
+                    AssistantContent::Reasoning(_) => {
+                        unimplemented!("Reasoning is currently unimplemented on Eternal AI. If you need this, please open a ticket!")
+                    }
                 }
             }
 
