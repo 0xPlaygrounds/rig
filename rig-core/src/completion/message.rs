@@ -28,6 +28,7 @@ pub enum Message {
 
     /// Assistant message containing one or more content types defined by `AssistantContent`.
     Assistant {
+        id: Option<String>,
         content: OneOrMany<AssistantContent>,
     },
 }
@@ -57,6 +58,8 @@ pub enum AssistantContent {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolResult {
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub call_id: Option<String>,
     pub content: OneOrMany<ToolResultContent>,
 }
 
@@ -71,6 +74,7 @@ pub enum ToolResultContent {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolCall {
     pub id: String,
+    pub call_id: Option<String>,
     pub function: ToolFunction,
 }
 
@@ -226,6 +230,15 @@ impl Message {
     /// Helper constructor to make creating assistant messages easier.
     pub fn assistant(text: impl Into<String>) -> Self {
         Message::Assistant {
+            id: None,
+            content: OneOrMany::one(AssistantContent::text(text)),
+        }
+    }
+
+    /// Helper constructor to make creating assistant messages easier.
+    pub fn assistant_with_id(id: String, text: impl Into<String>) -> Self {
+        Message::Assistant {
+            id: Some(id),
             content: OneOrMany::one(AssistantContent::text(text)),
         }
     }
@@ -235,6 +248,21 @@ impl Message {
         Message::User {
             content: OneOrMany::one(UserContent::ToolResult(ToolResult {
                 id: id.into(),
+                call_id: None,
+                content: OneOrMany::one(ToolResultContent::text(content)),
+            })),
+        }
+    }
+
+    pub fn tool_result_with_call_id(
+        id: impl Into<String>,
+        call_id: Option<String>,
+        content: impl Into<String>,
+    ) -> Self {
+        Message::User {
+            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+                id: id.into(),
+                call_id,
                 content: OneOrMany::one(ToolResultContent::text(content)),
             })),
         }
@@ -292,6 +320,20 @@ impl UserContent {
     pub fn tool_result(id: impl Into<String>, content: OneOrMany<ToolResultContent>) -> Self {
         UserContent::ToolResult(ToolResult {
             id: id.into(),
+            call_id: None,
+            content,
+        })
+    }
+
+    /// Helper constructor to make creating user tool result content easier.
+    pub fn tool_result_with_call_id(
+        id: impl Into<String>,
+        call_id: String,
+        content: OneOrMany<ToolResultContent>,
+    ) -> Self {
+        UserContent::ToolResult(ToolResult {
+            id: id.into(),
+            call_id: Some(call_id),
             content,
         })
     }
@@ -311,6 +353,23 @@ impl AssistantContent {
     ) -> Self {
         AssistantContent::ToolCall(ToolCall {
             id: id.into(),
+            call_id: None,
+            function: ToolFunction {
+                name: name.into(),
+                arguments,
+            },
+        })
+    }
+
+    pub fn tool_call_with_call_id(
+        id: impl Into<String>,
+        call_id: String,
+        name: impl Into<String>,
+        arguments: serde_json::Value,
+    ) -> Self {
+        AssistantContent::ToolCall(ToolCall {
+            id: id.into(),
+            call_id: Some(call_id),
             function: ToolFunction {
                 name: name.into(),
                 arguments,
@@ -574,6 +633,7 @@ impl From<String> for UserContent {
 impl From<AssistantContent> for Message {
     fn from(content: AssistantContent) -> Self {
         Message::Assistant {
+            id: None,
             content: OneOrMany::one(content),
         }
     }
@@ -589,7 +649,7 @@ impl From<UserContent> for Message {
 
 impl From<OneOrMany<AssistantContent>> for Message {
     fn from(content: OneOrMany<AssistantContent>) -> Self {
-        Message::Assistant { content }
+        Message::Assistant { id: None, content }
     }
 }
 
@@ -602,6 +662,7 @@ impl From<OneOrMany<UserContent>> for Message {
 impl From<ToolCall> for Message {
     fn from(tool_call: ToolCall) -> Self {
         Message::Assistant {
+            id: None,
             content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
         }
     }
@@ -620,6 +681,7 @@ impl From<ToolResultContent> for Message {
         Message::User {
             content: OneOrMany::one(UserContent::ToolResult(ToolResult {
                 id: String::new(),
+                call_id: None,
                 content: OneOrMany::one(tool_result_content),
             })),
         }

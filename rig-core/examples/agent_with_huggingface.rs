@@ -27,7 +27,6 @@ async fn main() -> Result<(), anyhow::Error> {
     context().await?;
 
     println!("\n\nAll agents ran successfully");
-
     Ok(())
 }
 
@@ -42,9 +41,7 @@ fn partial_agent() -> AgentBuilder<providers::huggingface::completion::Completio
     client.agent("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
 }
 
-/// Create an huggingface agent (deepseek R1) with a preamble
-/// Based upon the `agent` example
-///
+/// Create an huggingface agent (deepseek R1) with a preamble, based upon the `agent` example.
 /// This example creates a comedian agent with a preamble
 async fn basic() -> Result<(), anyhow::Error> {
     let comedian_agent = partial_agent()
@@ -60,9 +57,7 @@ async fn basic() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-/// Create an huggingface agent (deepseek R1) with tools
-/// Based upon the `tools` example
-///
+/// Create an huggingface agent (deepseek R1) with tools, based upon the `tools` example.
 /// This example creates a calculator agent with two tools: add and subtract
 async fn tools() -> Result<(), anyhow::Error> {
     // Create agent with a single context prompt and two tools
@@ -72,39 +67,32 @@ async fn tools() -> Result<(), anyhow::Error> {
         .tool(Adder)
         .tool(Subtract)
         .build();
-
     // Prompt the agent and print the response
     println!("Calculate 2 - 5");
     println!(
         "Calculator Agent: {}",
         calculator_agent.prompt("Calculate 2 - 5").await?
     );
-
     Ok(())
 }
 
-/// Create an huggingface agent (deepseek R1) with loaders
-/// Based upon the `loaders` example
-///
+/// Create an huggingface agent (deepseek R1) with loaders, based upon the `loaders` example
 /// This example loads in all the rust examples from the rig-core crate and uses them as
 /// context for the agent
 async fn loaders() -> Result<(), anyhow::Error> {
     let model = client().completion_model("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B");
-
     // Load in all the rust examples
     let examples = FileLoader::with_glob("rig-core/examples/*.rs")?
         .read_with_path()
         .ignore_errors()
         .into_iter()
         .step_by(2);
-
     // Create an agent with multiple context documents
     let agent = examples
         .fold(AgentBuilder::new(model), |builder, (path, content)| {
             builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
         })
         .build();
-
     // Prompt the agent and print the response
     let response = agent
         .prompt("Which rust example is best suited for the operation 1 + 2")
@@ -117,16 +105,15 @@ async fn loaders() -> Result<(), anyhow::Error> {
 
 async fn context() -> Result<(), anyhow::Error> {
     let model = client().completion_model("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B");
-
     // Create an agent with multiple context documents
     let agent = AgentBuilder::new(model)
         .context("Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
         .context("Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
         .context("Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.")
         .build();
-
     // Prompt the agent and print the response
     let response = agent.prompt("What does \"glarb-glarb\" mean?").await?;
+
     println!("{response}");
 
     Ok(())

@@ -294,6 +294,7 @@ impl TryFrom<Message> for message::Message {
                 ),
             }),
             "assistant" => Ok(Self::Assistant {
+                id: None,
                 content: OneOrMany::many(
                     tool_calls
                         .into_iter()
@@ -330,7 +331,7 @@ impl TryFrom<message::Message> for Message {
                 }),
                 tool_calls: vec![],
             }),
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let mut text_content: Option<String> = None;
                 let mut tool_calls = vec![];
 

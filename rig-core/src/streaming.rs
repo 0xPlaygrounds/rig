@@ -30,6 +30,7 @@ pub enum RawStreamingChoice<R: Clone> {
     /// A tool call response chunk
     ToolCall {
         id: String,
+        call_id: Option<String>,
         name: String,
         arguments: serde_json::Value,
     },
@@ -136,11 +137,13 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                     id,
                     name,
                     arguments,
+                    call_id,
                 } => {
                     // Keep track of each tool call to aggregate the final message later
                     // and pass it to the outer stream
                     stream.tool_calls.push(ToolCall {
                         id: id.clone(),
+                        call_id,
                         function: ToolFunction {
                             name: name.clone(),
                             arguments: arguments.clone(),
@@ -213,10 +216,12 @@ impl<R: Clone + Unpin> Stream for StreamingResultDyn<R> {
                     id,
                     name,
                     arguments,
+                    call_id,
                 } => Poll::Ready(Some(Ok(RawStreamingChoice::ToolCall {
                     id,
                     name,
                     arguments,
+                    call_id,
                 }))),
             },
         }
