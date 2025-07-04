@@ -251,6 +251,8 @@ mod tests {
     struct ClientConfig {
         name: &'static str,
         factory_env: Box<dyn Fn() -> Box<dyn ProviderClient>>,
+        // Not sure where we're going to be using this but I've added it for completeness
+        #[allow(dead_code)]
         factory_val: Box<dyn Fn(ProviderValue) -> Box<dyn ProviderClient>>,
         env_variable: &'static str,
         completion_model: Option<&'static str>,
@@ -283,10 +285,6 @@ mod tests {
 
         fn factory_env(&self) -> Box<dyn ProviderClient + '_> {
             self.factory_env.as_ref()()
-        }
-
-        fn factory_val(&self, val: ProviderValue) -> Box<dyn ProviderClient + '_> {
-            self.factory_val.as_ref()(val)
         }
     }
 
