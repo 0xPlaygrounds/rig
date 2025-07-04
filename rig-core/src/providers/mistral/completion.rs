@@ -118,6 +118,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                         match content {
                             message::AssistantContent::Text(text) => texts.push(text),
                             message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
+                            message::AssistantContent::Reasoning(_) => {
+                                unimplemented!("Reasoning content is not currently supported on Mistral via Rig");
+                            }
                         }
                         (texts, tools)
                     },
@@ -438,6 +441,9 @@ impl completion::CompletionModel for CompletionModel {
                             arguments: tc.function.arguments.clone(),
                              call_id: None
                         })
+                    }
+                    message::AssistantContent::Reasoning(_) => {
+                        unimplemented!("Reasoning is not supported on Mistral via Rig")
                     }
                 }
             }
