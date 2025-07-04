@@ -110,14 +110,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             .as_ref()
             .and_then(|usage| usage.tokens.as_ref())
             .map(|tokens| {
-            let input_tokens = tokens.input_tokens.unwrap_or(0.0);
-            let output_tokens = tokens.output_tokens.unwrap_or(0.0);
+                let input_tokens = tokens.input_tokens.unwrap_or(0.0);
+                let output_tokens = tokens.output_tokens.unwrap_or(0.0);
 
-            completion::Usage {
-                prompt_tokens: input_tokens as u64,
-                completion_tokens: output_tokens as u64,
-                total_tokens: (input_tokens + output_tokens) as u64,
-            }
+                completion::Usage {
+                    prompt_tokens: input_tokens as u64,
+                    completion_tokens: output_tokens as u64,
+                    total_tokens: (input_tokens + output_tokens) as u64,
+                }
             })
             .unwrap_or_default();
 
