@@ -1,7 +1,8 @@
+use async_trait::async_trait;
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
-    vector_store::{VectorStoreError, VectorStoreIndex},
+    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
 };
 use scylla::{
     client::{Compression, session::Session, session_builder::SessionBuilder},
@@ -167,8 +168,29 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
         Ok(None)
     }
 
-    /// Insert documents with their embeddings into the vector store
-    pub async fn insert_documents<Doc: Serialize + Embed + Send>(
+    /// Calculate cosine similarity between two vectors
+    fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
+        let dot_product: f32 = vec1.iter().zip(vec2.iter()).map(|(a, b)| a * b).sum();
+        let norm1: f32 = vec1.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let norm2: f32 = vec2.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+        if norm1 == 0.0 || norm2 == 0.0 {
+            0.0
+        } else {
+            dot_product / (norm1 * norm2)
+        }
+    }
+
+    /// Generate query vector from text
+    async fn generate_query_vector(&self, query: &str) -> Result<Vec<f32>, VectorStoreError> {
+        let embedding = self.model.embed_text(query).await?;
+        Ok(embedding.vec.iter().map(|&x| x as f32).collect())
+    }
+}
+
+#[async_trait]
+impl<M: EmbeddingModel + Send + Sync> InsertDocuments for ScyllaDbVectorStore<M> {
+    async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -193,123 +215,13 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
                 let id = Uuid::new_v4();
 
                 self.session
-                    .execute_unpaged(&self.insert_stmt, (id, vector, &metadata, now))
+                    .execute(&self.insert_stmt, (id, vector, &metadata, now))
                     .await
                     .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
             }
         }
 
         Ok(())
-    }
-
-    /// Calculate cosine similarity between two vectors
-    fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
-        let dot_product: f32 = vec1.iter().zip(vec2.iter()).map(|(a, b)| a * b).sum();
-        let norm1: f32 = vec1.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm2: f32 = vec2.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-        if norm1 == 0.0 || norm2 == 0.0 {
-            0.0
-        } else {
-            dot_product / (norm1 * norm2)
-        }
-    }
-
-    /// Generate query vector from text
-    async fn generate_query_vector(&self, query: &str) -> Result<Vec<f32>, VectorStoreError> {
-        let embedding = self.model.embed_text(query).await?;
-        Ok(embedding.vec.iter().map(|&x| x as f32).collect())
-    }
-}
-
-impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for ScyllaDbVectorStore<M> {
-    /// Search for the top `n` nearest neighbors to the given query.
-    /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
-    ///
-    /// Note: This implementation performs a brute-force search since ScyllaDB's native vector
-    /// search is still in development. Once available, this will be optimized to use native
-    /// vector search capabilities with ANN (Approximate Nearest Neighbor) algorithms.
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
-        &self,
-        query: &str,
-        n: usize,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let query_vector = self.generate_query_vector(query).await?;
-
-        // Fetch all vectors (this will be optimized once ScyllaDB vector search is available)
-        let results = self
-            .session
-            .execute_unpaged(&self.search_stmt, &[])
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let rows_result = results
-            .into_rows_result()
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let mut candidates = Vec::new();
-
-        for row_result in rows_result
-            .rows::<(Uuid, Vec<f32>, String, i64)>()
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?
-        {
-            let (id, vector, metadata, _) =
-                row_result.map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-            let similarity = Self::cosine_similarity(&query_vector, &vector);
-            let score = similarity as f64;
-
-            let payload: T = serde_json::from_str(&metadata)?;
-
-            candidates.push((score, id.to_string(), payload));
-        }
-
-        // Sort by similarity score (descending) and take top n
-        candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-        candidates.truncate(n);
-
-        Ok(candidates)
-    }
-
-    /// Search for the top `n` nearest neighbors to the given query.
-    /// Returns a vector of tuples containing the score and ID of the nearest neighbors.
-    async fn top_n_ids(
-        &self,
-        query: &str,
-        n: usize,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let query_vector = self.generate_query_vector(query).await?;
-
-        let results = self
-            .session
-            .execute_unpaged(&self.search_stmt, &[])
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let rows_result = results
-            .into_rows_result()
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let mut candidates = Vec::new();
-
-        for row_result in rows_result
-            .rows::<(Uuid, Vec<f32>, String, i64)>()
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?
-        {
-            let (id, vector, _, _) =
-                row_result.map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-            let similarity = Self::cosine_similarity(&query_vector, &vector);
-            let score = similarity as f64;
-
-            candidates.push((score, id.to_string()));
-        }
-
-        // Sort by similarity score (descending) and take top n
-        candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-        candidates.truncate(n);
-
-        Ok(candidates)
     }
 }
 

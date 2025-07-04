@@ -16,7 +16,6 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 chrono = { workspace = true, features = ["serde"] }
 futures = { workspace = true }
 tracing = { workspace = true }
-
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 anyhow = { workspace = true }
@@ -24,6 +23,7 @@ testcontainers = { workspace = true }
 tracing-subscriber = { workspace = true }
 httpmock = { workspace = true }
 serde_json = { workspace = true }
+async-trait = { workspace = true }
 
 [[example]]
 name = "scylladb_vector_search"
@@ -31,4 +31,4 @@ required-features = ["rig-core/derive"]
 
 [[test]]
 name = "integration_tests"
-required-features = ["rig-core/derive"] 
+required-features = ["rig-core/derive"]

@@ -1,5 +1,9 @@
 use rig::client::{EmbeddingsClient, ProviderClient};
-use rig::{Embed, embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex};
+use rig::{
+    Embed,
+    embeddings::EmbeddingsBuilder,
+    vector_store::{InsertDocuments, VectorStoreIndex},
+};
 use rig_surrealdb::{Mem, SurrealVectorStore};
 use serde::{Deserialize, Serialize};
 use surrealdb::Surreal;

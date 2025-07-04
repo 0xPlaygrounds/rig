@@ -13,9 +13,15 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 tracing = { workspace = true }
-sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "json"] }
+sqlx = { workspace = true, features = [
+    "runtime-tokio",
+    "postgres",
+    "uuid",
+    "json",
+] }
 pgvector = { workspace = true, features = ["sqlx"] }
 uuid = { workspace = true, features = ["v4", "serde"] }
+async-trait = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

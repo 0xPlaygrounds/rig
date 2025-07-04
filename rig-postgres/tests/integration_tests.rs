@@ -1,5 +1,9 @@
 use rig::client::EmbeddingsClient;
-use rig::{Embed, embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex};
+use rig::{
+    Embed,
+    embeddings::EmbeddingsBuilder,
+    vector_store::{InsertDocuments, VectorStoreIndex},
+};
 use rig_postgres::PostgresVectorStore;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

@@ -1,3 +1,4 @@
+use rig::vector_store::InsertDocuments;
 use rig::{
     Embed,
     client::{EmbeddingsClient, ProviderClient},

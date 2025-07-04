@@ -8,7 +8,7 @@ description = "Rig vector store index integration for LanceDB."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
-lancedb = { workspace = true }
+lancedb = { workspace = true, features = ["protoc"] }
 rig-core = { workspace = true }
 arrow-array = { workspace = true }
 serde_json = { workspace = true }

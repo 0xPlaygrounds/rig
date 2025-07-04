@@ -1,8 +1,9 @@
+use async_trait::async_trait;
 use reqwest::StatusCode;
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
-    vector_store::{VectorStoreError, VectorStoreIndex},
+    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
 };
 use serde::{Deserialize, Serialize};
 
@@ -132,9 +133,11 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
             output_fields: vec!["id", "distance"],
         }
     }
+}
 
-    /// Insert vectors (with metadata) into your Milvus instance.
-    pub async fn insert_documents<Doc: Serialize + Embed + Send>(
+#[async_trait]
+impl<M: EmbeddingModel + Send + Sync> InsertDocuments for MilvusVectorStore<M> {
+    async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
