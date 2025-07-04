@@ -3,7 +3,6 @@ use rig::completion::Prompt;
 use rig::providers;
 use rig::tool::Tool;
 use rig_derive::rig_tool;
-use tracing_subscriber;
 
 // Example with full attributes including parameter descriptions
 #[rig_tool(
@@ -11,7 +10,8 @@ use tracing_subscriber;
     params(
         text = "The input text to process",
         operation = "The operation to perform (uppercase, lowercase, reverse)",
-    )
+    ),
+    required(text, operation)
 )]
 fn string_processor(text: String, operation: String) -> Result<String, rig::tool::ToolError> {
     let result = match operation.as_str() {
@@ -20,8 +20,8 @@ fn string_processor(text: String, operation: String) -> Result<String, rig::tool
         "reverse" => text.chars().rev().collect(),
         _ => {
             return Err(rig::tool::ToolError::ToolCallError(
-                format!("Unknown operation: {}", operation).into(),
-            ))
+                format!("Unknown operation: {operation}").into(),
+            ));
         }
     };
 
@@ -53,7 +53,7 @@ async fn main() {
         "Convert 'hello world' to uppercase and repeat it 3 times",
         "Perform an invalid operation on 'hello world'",
     ] {
-        println!("User: {}", prompt);
+        println!("User: {prompt}");
         println!("Agent: {}", string_agent.prompt(prompt).await.unwrap());
     }
 }

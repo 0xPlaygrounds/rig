@@ -9,7 +9,7 @@ use rig::{
 use std::env;
 
 struct Debater {
-    gpt_4: Agent<openai::CompletionModel>,
+    gpt_4: Agent<openai::responses_api::ResponsesCompletionModel>,
     coral: Agent<cohere::CompletionModel>,
 }
 
@@ -47,14 +47,14 @@ impl Debater {
                 .prompt(prompt_a.as_str())
                 .with_history(&mut history_a)
                 .await?;
-            println!("GPT-4:\n{}", resp_a);
+            println!("GPT-4:\n{resp_a}");
             println!("================================================================");
             let resp_b = self
                 .coral
                 .prompt(resp_a.as_str())
                 .with_history(&mut history_b)
                 .await?;
-            println!("Coral:\n{}", resp_b);
+            println!("Coral:\n{resp_b}");
             println!("================================================================");
             last_resp_b = Some(resp_b)
         }

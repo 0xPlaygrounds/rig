@@ -11,12 +11,14 @@
 
 use crate::client::{CompletionClient, ProviderClient};
 use crate::json_utils::merge;
+use crate::message::Document;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionModel, CompletionRequest},
-    impl_conversion_traits, json_utils, message, OneOrMany,
+    impl_conversion_traits, json_utils, message,
 };
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
@@ -27,10 +29,21 @@ use serde_json::json;
 // ================================================================
 const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com";
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Client {
     pub base_url: String,
+    api_key: String,
     http_client: HttpClient,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
@@ -39,30 +52,29 @@ impl Client {
         Self::from_url(api_key, DEEPSEEK_API_BASE_URL)
     }
 
-    // Handy for advanced usage, e.g. letting user override base_url or set timeouts:
+    /// Set your own URL.
+    /// Useful if you need to access an alternative website that supports the DeepSeek API specification.
     pub fn from_url(api_key: &str, base_url: &str) -> Self {
-        // Possibly configure a custom HTTP client here if needed.
         Self {
             base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        "Authorization",
-                        format!("Bearer {api_key}")
-                            .parse()
-                            .expect("Bearer token should parse"),
-                    );
-                    headers
-                })
                 .build()
                 .expect("DeepSeek reqwest client should build"),
         }
     }
 
+    /// Use your own `reqwest::Client`.
+    /// The required headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
+    }
+
     fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url)
+        self.http_client.post(url).bearer_auth(&self.api_key)
     }
 }
 
@@ -226,6 +238,12 @@ impl TryFrom<message::Message> for Vec<Message> {
                             content: text.text,
                             name: None,
                         }),
+                        message::UserContent::Document(Document { data, .. }) => {
+                            Some(Message::User {
+                                content: data,
+                                name: None,
+                            })
+                        }
                         _ => None,
                     })
                     .collect::<Vec<_>>();
@@ -233,7 +251,7 @@ impl TryFrom<message::Message> for Vec<Message> {
 
                 Ok(messages)
             }
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let mut messages: Vec<Message> = vec![];
 
                 // extract tool calls
@@ -381,9 +399,11 @@ impl DeepSeekCompletionModel {
     ) -> Result<serde_json::Value, CompletionError> {
         // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];
+
         if let Some(docs) = completion_request.normalized_documents() {
             partial_history.push(docs);
         }
+
         partial_history.extend(completion_request.chat_history);
 
         // Initialize full history with preamble (or empty if non-existent)
@@ -441,6 +461,8 @@ impl CompletionModel for DeepSeekCompletionModel {
         crate::completion::CompletionError,
     > {
         let request = self.create_completion_request(completion_request)?;
+
+        tracing::debug!("DeepSeek completion request: {request:?}");
 
         let response = self
             .client

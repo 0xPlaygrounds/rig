@@ -1,12 +1,12 @@
 use std::future::IntoFuture;
 
-use futures::{future::BoxFuture, stream, FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, future::BoxFuture, stream};
 
 use crate::{
+    OneOrMany,
     completion::{Completion, CompletionError, CompletionModel, Message, PromptError},
     message::{AssistantContent, UserContent},
     tool::ToolSetError,
-    OneOrMany,
 };
 
 use super::Agent;
@@ -74,16 +74,25 @@ impl<'a, M: CompletionModel> IntoFuture for PromptRequest<'a, M> {
 impl<M: CompletionModel> PromptRequest<'_, M> {
     async fn send(self) -> Result<String, PromptError> {
         let agent = self.agent;
-        let mut prompt = self.prompt;
         let chat_history = if let Some(history) = self.chat_history {
+            history.push(self.prompt);
             history
         } else {
-            &mut Vec::new()
+            &mut vec![self.prompt]
         };
 
         let mut current_max_depth = 0;
         // We need to do atleast 2 loops for 1 roundtrip (user expects normal message)
-        while current_max_depth <= self.max_depth + 1 {
+        let last_prompt = loop {
+            let prompt = chat_history
+                .last()
+                .cloned()
+                .expect("there should always be at least one message in the chat history");
+
+            if current_max_depth > self.max_depth + 1 {
+                break prompt;
+            }
+
             current_max_depth += 1;
 
             if self.max_depth > 1 {
@@ -95,12 +104,10 @@ impl<M: CompletionModel> PromptRequest<'_, M> {
             }
 
             let resp = agent
-                .completion(prompt.clone(), chat_history.to_vec())
+                .completion(prompt, chat_history[..chat_history.len() - 1].to_vec())
                 .await?
                 .send()
                 .await?;
-
-            chat_history.push(prompt);
 
             let (tool_calls, texts): (Vec<_>, Vec<_>) = resp
                 .choice
@@ -108,6 +115,7 @@ impl<M: CompletionModel> PromptRequest<'_, M> {
                 .partition(|choice| matches!(choice, AssistantContent::ToolCall(_)));
 
             chat_history.push(Message::Assistant {
+                id: None,
                 content: resp.choice.clone(),
             });
 
@@ -142,10 +150,18 @@ impl<M: CompletionModel> PromptRequest<'_, M> {
                                 tool_call.function.arguments.to_string(),
                             )
                             .await?;
-                        Ok(UserContent::tool_result(
-                            tool_call.id.clone(),
-                            OneOrMany::one(output.into()),
-                        ))
+                        if let Some(call_id) = tool_call.call_id.clone() {
+                            Ok(UserContent::tool_result_with_call_id(
+                                tool_call.id.clone(),
+                                call_id,
+                                OneOrMany::one(output.into()),
+                            ))
+                        } else {
+                            Ok(UserContent::tool_result(
+                                tool_call.id.clone(),
+                                OneOrMany::one(output.into()),
+                            ))
+                        }
                     } else {
                         unreachable!(
                             "This should never happen as we already filtered for `ToolCall`"
@@ -158,16 +174,16 @@ impl<M: CompletionModel> PromptRequest<'_, M> {
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
 
-            prompt = Message::User {
+            chat_history.push(Message::User {
                 content: OneOrMany::many(tool_content).expect("There is atleast one tool call"),
-            };
-        }
+            });
+        };
 
         // If we reach here, we never resolved the final tool call. We need to do ... something.
         Err(PromptError::MaxDepthError {
             max_depth: self.max_depth,
             chat_history: chat_history.clone(),
-            prompt,
+            prompt: last_prompt,
         })
     }
 }

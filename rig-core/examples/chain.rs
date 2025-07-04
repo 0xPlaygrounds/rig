@@ -4,7 +4,7 @@ use std::env;
 use rig::{
     embeddings::EmbeddingsBuilder,
     parallel,
-    pipeline::{self, agent_ops::lookup, passthrough, Op},
+    pipeline::{self, Op, agent_ops::lookup, passthrough},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::in_memory_store::InMemoryVectorStore,
 };
@@ -41,7 +41,7 @@ async fn main() -> Result<(), anyhow::Error> {
         // while simultaneously applying a passthrough operation. The latter will allow
         // us to forward the initial prompt to the next operation in the chain.
         .chain(parallel!(
-            passthrough(),
+            passthrough::<&str>(),
             lookup::<_, _, String>(index, 1), // Required to specify document type
         ))
         // Chain a "map" operation to the current chain, which will combine the user
@@ -58,8 +58,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 prompt,
             ),
             Err(err) => {
-                println!("Error: {}! Prompting without additional context", err);
-                format!("{prompt}")
+                println!("Error: {err}! Prompting without additional context");
+                prompt.to_string()
             }
         })
         // Chain a "prompt" operation which will prompt out agent with the final prompt
@@ -67,6 +67,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Prompt the agent and print the response
     let response = chain.call("What does \"glarb-glarb\" mean?").await?;
-    println!("{:?}", response);
+    println!("{response}");
+
     Ok(())
 }

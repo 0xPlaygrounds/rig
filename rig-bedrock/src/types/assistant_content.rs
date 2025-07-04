@@ -2,9 +2,9 @@ use aws_sdk_bedrockruntime::operation::converse::ConverseOutput;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig::{
+    OneOrMany,
     completion::CompletionError,
     message::{AssistantContent, Text, ToolCall, ToolFunction},
-    OneOrMany,
 };
 
 use crate::types::message::RigMessage;
@@ -36,7 +36,7 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
             .try_into()?;
 
         let choice = match message.0 {
-            completion::Message::Assistant { content } => Ok(content),
+            completion::Message::Assistant { content, .. } => Ok(content),
             _ => Err(CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
             )),
@@ -49,6 +49,7 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
             return Ok(completion::CompletionResponse {
                 choice: OneOrMany::one(AssistantContent::ToolCall(ToolCall {
                     id: tool_use.id,
+                    call_id: None,
                     function: ToolFunction {
                         name: tool_use.function.name,
                         arguments: tool_use.function.arguments,
@@ -116,7 +117,7 @@ mod tests {
 
     use super::AwsConverseOutput;
     use aws_sdk_bedrockruntime::types as aws_bedrock;
-    use rig::{completion, message::AssistantContent, OneOrMany};
+    use rig::{OneOrMany, completion, message::AssistantContent};
 
     #[test]
     fn aws_converse_output_to_completion_response() {
@@ -134,7 +135,7 @@ mod tests {
                 .unwrap();
         let completion: Result<completion::CompletionResponse<AwsConverseOutput>, _> =
             AwsConverseOutput(converse_output).try_into();
-        assert_eq!(completion.is_ok(), true);
+        assert!(completion.is_ok());
         let completion = completion.unwrap();
         assert_eq!(
             completion.choice,
@@ -146,7 +147,7 @@ mod tests {
     fn aws_content_block_to_assistant_content() {
         let content_block = aws_bedrock::ContentBlock::Text("text".into());
         let rig_assistant_content: Result<RigAssistantContent, _> = content_block.try_into();
-        assert_eq!(rig_assistant_content.is_ok(), true);
+        assert!(rig_assistant_content.is_ok());
         assert_eq!(
             rig_assistant_content.unwrap().0,
             AssistantContent::Text("text".into())

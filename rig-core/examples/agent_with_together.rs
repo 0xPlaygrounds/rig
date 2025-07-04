@@ -32,7 +32,7 @@ async fn basic() -> Result<(), anyhow::Error> {
         .build();
     // Prompt the agent and print the response
     let response = agent.prompt("Entertain me!").await?;
-    println!("{}", response);
+    println!("{response}");
     Ok(())
 }
 
@@ -77,7 +77,7 @@ async fn context() -> Result<(), anyhow::Error> {
 
     // Prompt the agent and print the response
     let response = agent.prompt("What does \"glarb-glarb\" mean?").await?;
-    println!("{}", response);
+    println!("{response}");
     Ok(())
 }
 
@@ -121,7 +121,7 @@ impl Tool for Adder {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        println!("The args: {:?}", args);
+        println!("The args: {args:?}");
         let result = args.x + args.y;
         Ok(result)
     }

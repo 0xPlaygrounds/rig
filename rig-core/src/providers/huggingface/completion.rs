@@ -1,15 +1,15 @@
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{convert::Infallible, str::FromStr};
 
 use super::client::Client;
 use crate::providers::openai::StreamingCompletionResponse;
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
     message::{self},
     one_or_many::string_or_one_or_many,
-    OneOrMany,
 };
 
 #[derive(Debug, Deserialize)]
@@ -106,6 +106,7 @@ impl From<ToolCall> for message::ToolCall {
     fn from(value: ToolCall) -> Self {
         message::ToolCall {
             id: value.id,
+            call_id: None,
             function: value.function.into(),
         }
     }
@@ -272,6 +273,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::UserContent::ToolResult(message::ToolResult {
                                 id,
                                 content,
+                                ..
                             }) => Ok::<_, message::MessageError>(Message::ToolResult {
                                 name: id,
                                 arguments: None,
@@ -304,7 +306,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                     }])
                 }
             }
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let (text_content, tool_calls) = content.into_iter().fold(
                     (Vec::new(), Vec::new()),
                     |(mut texts, mut tools), content| {
@@ -361,6 +363,7 @@ impl TryFrom<Message> for message::Message {
                 );
 
                 message::Message::Assistant {
+                    id: None,
                     content: OneOrMany::many(content).map_err(|_| {
                         message::MessageError::ConversionError(
                             "Neither `content` nor `tool_calls` was provided to the Message"
@@ -788,6 +791,7 @@ mod tests {
         };
 
         let assistant_message = message::Message::Assistant {
+            id: None,
             content: OneOrMany::one(message::AssistantContent::text("Hi there!")),
         };
 
@@ -855,7 +859,7 @@ mod tests {
         }
 
         match converted_assistant_message.clone() {
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 assert_eq!(
                     content.first(),
                     message::AssistantContent::text("Hi there!")

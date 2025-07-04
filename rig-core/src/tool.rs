@@ -275,7 +275,7 @@ where
                 .client
                 .call_tool(&name, Some(args))
                 .await
-                .map_err(|e| McpToolError(format!("Tool returned an error: {}", e)))?;
+                .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
 
             if result.is_error.unwrap_or(false) {
                 if let Some(error) = result.content.first() {
@@ -314,7 +314,7 @@ where
                             embedded_resource
                                 .resource
                                 .mime_type
-                                .map(|m| format!("data:{};", m))
+                                .map(|m| format!("data:{m};"))
                                 .unwrap_or_default(),
                             embedded_resource.resource.uri
                         )
@@ -431,7 +431,7 @@ impl ToolSet {
         if let Some(tool) = self.tools.get(toolname) {
             tracing::info!(target: "rig",
                 "Calling tool {toolname} with args:\n{}",
-                serde_json::to_string_pretty(&args).unwrap_or_else(|_| args.clone())
+                serde_json::to_string_pretty(&args).unwrap()
             );
             Ok(tool.call(args).await?)
         } else {

@@ -13,14 +13,14 @@ use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     impl_conversion_traits,
     message::{self, AssistantContent, Message, UserContent},
-    OneOrMany,
 };
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::string::FromUtf8Error;
 use thiserror::Error;
 use tracing;
@@ -61,6 +61,7 @@ impl TryFrom<RawMessage> for message::Message {
                 content: OneOrMany::one(UserContent::Text(message::Text { text: raw.content })),
             }),
             "assistant" => Ok(message::Message::Assistant {
+                id: None,
                 content: OneOrMany::one(AssistantContent::Text(message::Text {
                     text: raw.content,
                 })),
@@ -107,12 +108,24 @@ struct ModelInfo {
     id: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 /// Client for interacting with the Mira API
 pub struct Client {
     base_url: String,
-    client: reqwest::Client,
+    http_client: reqwest::Client,
+    api_key: String,
     headers: HeaderMap,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("api_key", &"<REDACTED>")
+            .field("headers", &self.headers)
+            .finish()
+    }
 }
 
 impl Client {
@@ -120,11 +133,6 @@ impl Client {
     pub fn new(api_key: &str) -> Result<Self, MiraError> {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {api_key}"))
-                .map_err(|_| MiraError::InvalidApiKey)?,
-        );
         headers.insert(
             reqwest::header::ACCEPT,
             HeaderValue::from_static("application/json"),
@@ -136,7 +144,8 @@ impl Client {
 
         Ok(Self {
             base_url: MIRA_API_BASE_URL.to_string(),
-            client: reqwest::Client::builder()
+            api_key: api_key.to_string(),
+            http_client: reqwest::Client::builder()
                 .build()
                 .expect("Failed to build HTTP client"),
             headers,
@@ -153,13 +162,22 @@ impl Client {
         Ok(client)
     }
 
+    /// Use your own `reqwest::Client`.
+    /// The required headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
+    }
+
     /// List available models
     pub async fn list_models(&self) -> Result<Vec<String>, MiraError> {
         let url = format!("{}/v1/models", self.base_url);
 
         let response = self
-            .client
+            .http_client
             .get(&url)
+            .bearer_auth(&self.api_key)
             .headers(self.headers.clone())
             .send()
             .await?;
@@ -271,7 +289,7 @@ impl CompletionModel {
                         .join("\n");
                     ("user", text)
                 }
-                Message::Assistant { content } => {
+                Message::Assistant { content, .. } => {
                     let text = content
                         .iter()
                         .map(|c| match c {
@@ -321,8 +339,9 @@ impl completion::CompletionModel for CompletionModel {
 
         let response = self
             .client
-            .client
+            .http_client
             .post(format!("{}/v1/chat/completions", self.client.base_url))
+            .bearer_auth(&self.client.api_key)
             .headers(self.client.headers.clone())
             .json(&mira_request)
             .send()
@@ -356,7 +375,7 @@ impl completion::CompletionModel for CompletionModel {
 
         let builder = self
             .client
-            .client
+            .http_client
             .post(format!("{}/v1/chat/completions", self.client.base_url))
             .headers(self.client.headers.clone())
             .json(&request);
@@ -385,7 +404,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 let message = message::Message::try_from(choice.message.clone())?;
 
                 match message {
-                    Message::Assistant { content } => {
+                    Message::Assistant { content, .. } => {
                         if content.is_empty() {
                             return Err(CompletionError::ResponseError(
                                 "Response contained empty content".to_owned(),
@@ -469,7 +488,7 @@ impl From<Message> for serde_json::Value {
                     "content": text
                 })
             }
-            Message::Assistant { content } => {
+            Message::Assistant { content, .. } => {
                 let text = content
                     .iter()
                     .map(|c| match c {
@@ -511,13 +530,13 @@ impl TryFrom<serde_json::Value> for Message {
                 _ => {
                     return Err(CompletionError::ResponseError(
                         "Message content must be string or array".to_owned(),
-                    ))
+                    ));
                 }
             },
             None => {
                 return Err(CompletionError::ResponseError(
                     "Message missing content field".to_owned(),
-                ))
+                ));
             }
         };
 
@@ -526,6 +545,7 @@ impl TryFrom<serde_json::Value> for Message {
                 content: OneOrMany::one(UserContent::Text(message::Text { text: content })),
             }),
             "assistant" => Ok(Message::Assistant {
+                id: None,
                 content: OneOrMany::one(AssistantContent::Text(message::Text { text: content })),
             }),
             _ => Err(CompletionError::ResponseError(format!(
@@ -569,7 +589,7 @@ mod tests {
 
         // Test string content format
         match assistant_message {
-            Message::Assistant { content } => {
+            Message::Assistant { content, .. } => {
                 assert_eq!(
                     content.first(),
                     AssistantContent::Text(message::Text {
@@ -594,7 +614,7 @@ mod tests {
 
         // Test array content format
         match assistant_message_array {
-            Message::Assistant { content } => {
+            Message::Assistant { content, .. } => {
                 assert_eq!(
                     content.first(),
                     AssistantContent::Text(message::Text {
@@ -614,15 +634,12 @@ mod tests {
         };
 
         // Convert to Mira format
-        let mira_value: serde_json::Value = original_message.clone().try_into().unwrap();
+        let mira_value: serde_json::Value = original_message.clone().into();
 
         // Convert back to our Message type
         let converted_message: Message = mira_value.try_into().unwrap();
 
-        // Convert back to original format
-        let final_message: message::Message = converted_message.try_into().unwrap();
-
-        assert_eq!(original_message, final_message);
+        assert_eq!(original_message, converted_message);
     }
 
     #[test]

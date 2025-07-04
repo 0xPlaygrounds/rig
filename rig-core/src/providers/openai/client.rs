@@ -1,6 +1,5 @@
 #[cfg(feature = "audio")]
 use super::audio_generation::AudioGenerationModel;
-use super::completion::CompletionModel;
 use super::embedding::{
     EmbeddingModel, TEXT_EMBEDDING_3_LARGE, TEXT_EMBEDDING_3_SMALL, TEXT_EMBEDDING_ADA_002,
 };
@@ -22,10 +21,22 @@ use serde::Deserialize;
 // Main OpenAI Client
 // ================================================================
 const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
-#[derive(Clone, Debug)]
+
+#[derive(Clone)]
 pub struct Client {
     base_url: String,
+    api_key: String,
     http_client: reqwest::Client,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
@@ -38,25 +49,24 @@ impl Client {
     pub fn from_url(api_key: &str, base_url: &str) -> Self {
         Self {
             base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        "Authorization",
-                        format!("Bearer {api_key}")
-                            .parse()
-                            .expect("Bearer token should parse"),
-                    );
-                    headers
-                })
                 .build()
                 .expect("OpenAI reqwest client should build"),
         }
     }
 
+    /// Use your own `reqwest::Client`.
+    /// The required headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
+    }
+
     pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url)
+        self.http_client.post(url).bearer_auth(&self.api_key)
     }
 }
 
@@ -70,7 +80,7 @@ impl ProviderClient for Client {
 }
 
 impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
+    type CompletionModel = super::responses_api::ResponsesCompletionModel;
     /// Create a completion model with the given name.
     ///
     /// # Example
@@ -82,8 +92,8 @@ impl CompletionClient for Client {
     ///
     /// let gpt4 = openai.completion_model(openai::GPT_4);
     /// ```
-    fn completion_model(&self, model: &str) -> CompletionModel {
-        CompletionModel::new(self.clone(), model)
+    fn completion_model(&self, model: &str) -> super::responses_api::ResponsesCompletionModel {
+        super::responses_api::ResponsesCompletionModel::new(self.clone(), model)
     }
 }
 
@@ -159,22 +169,6 @@ impl AudioGenerationClient for Client {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
-pub struct Usage {
-    pub prompt_tokens: usize,
-    pub total_tokens: usize,
-}
-
-impl std::fmt::Display for Usage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Prompt tokens: {} Total tokens: {}",
-            self.prompt_tokens, self.total_tokens
-        )
-    }
-}
-
 #[derive(Debug, Deserialize)]
 pub struct ApiErrorResponse {
     pub(crate) message: String,
@@ -186,13 +180,14 @@ pub(crate) enum ApiResponse<T> {
     Ok(T),
     Err(ApiErrorResponse),
 }
+
 #[cfg(test)]
 mod tests {
     use crate::message::ImageDetail;
     use crate::providers::openai::{
         AssistantContent, Function, ImageUrl, Message, ToolCall, ToolType, UserContent,
     };
-    use crate::{message, OneOrMany};
+    use crate::{OneOrMany, message};
     use serde_path_to_error::deserialize;
 
     #[test]
@@ -392,6 +387,7 @@ mod tests {
         };
 
         let assistant_message = message::Message::Assistant {
+            id: None,
             content: OneOrMany::one(message::AssistantContent::text("Hi there!")),
         };
 
@@ -463,7 +459,7 @@ mod tests {
         }
 
         match converted_assistant_message.clone() {
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 assert_eq!(
                     content.first(),
                     message::AssistantContent::text("Hi there!")

@@ -1,12 +1,12 @@
 use anyhow::Result;
-use futures::{stream, StreamExt};
+use futures::{StreamExt, stream};
+use rig::OneOrMany;
 use rig::agent::Agent;
 use rig::completion::{CompletionError, CompletionModel};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
-use rig::streaming::{stream_to_stdout, StreamingChat};
+use rig::streaming::{StreamingChat, stream_to_stdout};
 use rig::tool::ToolSetError;
-use rig::OneOrMany;
 use rig::{
     completion::{Message, ToolDefinition},
     providers,
@@ -51,7 +51,7 @@ impl Tool for Adder {
                         "description": "The second number to add"
                     }
                 },
-                "required": ["x", "y"]
+                "required": ["x", "y"],
             }),
         }
     }
@@ -87,7 +87,7 @@ impl Tool for Subtract {
                         "description": "The number to subtract"
                     }
                 },
-                "required": ["x", "y"]
+                "required": ["x", "y"],
             }
         }))
         .expect("Tool Definition")
@@ -118,10 +118,18 @@ async fn tool_call_helper<M: CompletionModel>(
                         tool_call.function.arguments.to_string(),
                     )
                     .await?;
-                Ok(UserContent::tool_result(
-                    tool_call.id.clone(),
-                    OneOrMany::one(output.into()),
-                ))
+                if let Some(call_id) = tool_call.call_id.clone() {
+                    Ok(UserContent::tool_result_with_call_id(
+                        tool_call.id.clone(),
+                        call_id,
+                        OneOrMany::one(output.into()),
+                    ))
+                } else {
+                    Ok(UserContent::tool_result(
+                        tool_call.id.clone(),
+                        OneOrMany::one(output.into()),
+                    ))
+                }
             } else {
                 unreachable!("This should never happen as we already filtered for `ToolCall`")
             }

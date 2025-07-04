@@ -78,6 +78,7 @@ impl CompletionModel {
                                     let tool_input = serde_json::from_str(tool_call.input_json.as_str())?;
                                     yield Ok(RawStreamingChoice::ToolCall {
                                         name: tool_call.name,
+                                        call_id: None,
                                         id: tool_call.id,
                                         arguments: tool_input
                                     });

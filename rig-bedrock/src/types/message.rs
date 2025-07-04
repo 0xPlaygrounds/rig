@@ -1,9 +1,9 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig::{
+    OneOrMany,
     completion::CompletionError,
     message::{AssistantContent, Message, UserContent},
-    OneOrMany,
 };
 
 use super::{assistant_content::RigAssistantContent, user_content::RigUserContent};
@@ -29,7 +29,7 @@ impl TryFrom<RigMessage> for aws_bedrock::Message {
                     .build()
                     .map_err(|e| CompletionError::RequestError(Box::new(e)))?
             }
-            Message::Assistant { content } => aws_bedrock::Message::builder()
+            Message::Assistant { content, .. } => aws_bedrock::Message::builder()
                 .role(aws_bedrock::ConversationRole::Assistant)
                 .set_content(Some(
                     content
@@ -62,7 +62,7 @@ impl TryFrom<aws_bedrock::Message> for RigMessage {
                 let content = OneOrMany::many(assistant_content)
                     .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
 
-                Ok(RigMessage(Message::Assistant { content }))
+                Ok(RigMessage(Message::Assistant { content, id: None }))
             }
             aws_bedrock::ConversationRole::User => {
                 let user_content = message
@@ -90,8 +90,8 @@ mod tests {
     use crate::types::message::RigMessage;
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use rig::{
-        message::{Message, UserContent},
         OneOrMany,
+        message::{Message, UserContent},
     };
 
     #[test]
@@ -100,7 +100,7 @@ mod tests {
             content: OneOrMany::one(UserContent::Text("text".into())),
         };
         let aws_message: Result<aws_bedrock::Message, _> = RigMessage(message).try_into();
-        assert_eq!(aws_message.is_ok(), true);
+        assert!(aws_message.is_ok());
         let aws_message = aws_message.unwrap();
         assert_eq!(aws_message.role, aws_bedrock::ConversationRole::User);
         assert_eq!(

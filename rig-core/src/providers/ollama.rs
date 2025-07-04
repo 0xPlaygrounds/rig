@@ -43,17 +43,18 @@ use crate::json_utils::merge_inplace;
 use crate::message::MessageError;
 use crate::streaming::RawStreamingChoice;
 use crate::{
+    Embed, OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     impl_conversion_traits, json_utils, message,
     message::{ImageDetail, Text},
-    streaming, Embed, OneOrMany,
+    streaming,
 };
 use async_stream::stream;
 use futures::StreamExt;
 use reqwest;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::convert::Infallible;
 use std::{convert::TryFrom, str::FromStr};
 // ---------- Main Client ----------
@@ -84,6 +85,15 @@ impl Client {
                 .expect("Ollama reqwest client should build"),
         }
     }
+
+    /// Use your own `reqwest::Client`.
+    /// The required headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
+    }
+
     fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path);
         self.http_client.post(url)
@@ -95,7 +105,8 @@ impl ProviderClient for Client {
     where
         Self: Sized,
     {
-        Client::default()
+        let api_base = std::env::var("OLLAMA_API_BASE_URL").expect("OLLAMA_API_BASE_URL not set");
+        Self::from_url(&api_base)
     }
 }
 
@@ -376,11 +387,13 @@ impl CompletionModel {
             "stream": false,
         });
         if !completion_request.tools.is_empty() {
-            request_payload["tools"] = json!(completion_request
-                .tools
-                .into_iter()
-                .map(|tool| tool.into())
-                .collect::<Vec<ToolDefinition>>());
+            request_payload["tools"] = json!(
+                completion_request
+                    .tools
+                    .into_iter()
+                    .map(|tool| tool.into())
+                    .collect::<Vec<ToolDefinition>>()
+            );
         }
 
         tracing::debug!(target: "rig", "Chat mode payload: {}", request_payload);
@@ -502,7 +515,8 @@ impl completion::CompletionModel for CompletionModel {
                                 yield Ok(RawStreamingChoice::ToolCall {
                                     id: "".to_string(),
                                     name: function.name,
-                                    arguments: function.arguments
+                                    arguments: function.arguments,
+                                    call_id: None
                                 });
                             }
                         }
@@ -714,6 +728,7 @@ impl From<Message> for crate::completion::Message {
                     );
                 }
                 crate::completion::Message::Assistant {
+                    id: None,
                     content: OneOrMany::many(assistant_contents).unwrap(),
                 }
             }

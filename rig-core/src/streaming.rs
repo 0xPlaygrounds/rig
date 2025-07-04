@@ -8,12 +8,13 @@
 //! - [StreamingCompletion]: Defines a low-level streaming LLM completion interface
 //!
 
+use crate::OneOrMany;
 use crate::agent::Agent;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message,
 };
 use crate::message::{AssistantContent, ToolCall, ToolFunction};
-use crate::OneOrMany;
+use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use std::boxed::Box;
 use std::future::Future;
@@ -29,6 +30,7 @@ pub enum RawStreamingChoice<R: Clone> {
     /// A tool call response chunk
     ToolCall {
         id: String,
+        call_id: Option<String>,
         name: String,
         arguments: serde_json::Value,
     },
@@ -50,7 +52,8 @@ pub type StreamingResult<R> =
 /// message and response are populated at the end of the
 /// `inner` stream.
 pub struct StreamingCompletionResponse<R: Clone + Unpin> {
-    pub(crate) inner: StreamingResult<R>,
+    pub(crate) inner: Abortable<StreamingResult<R>>,
+    pub(crate) abort_handle: AbortHandle,
     text: String,
     tool_calls: Vec<ToolCall>,
     /// The final aggregated message from the stream
@@ -63,13 +66,20 @@ pub struct StreamingCompletionResponse<R: Clone + Unpin> {
 
 impl<R: Clone + Unpin> StreamingCompletionResponse<R> {
     pub fn stream(inner: StreamingResult<R>) -> StreamingCompletionResponse<R> {
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        let abortable_stream = Abortable::new(inner, abort_registration);
         Self {
-            inner,
+            inner: abortable_stream,
+            abort_handle,
             text: "".to_string(),
             tool_calls: vec![],
             choice: OneOrMany::one(AssistantContent::text("")),
             response: None,
         }
+    }
+
+    pub fn cancel(&self) {
+        self.abort_handle.abort();
     }
 }
 
@@ -88,7 +98,7 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();
 
-        match stream.inner.as_mut().poll_next(cx) {
+        match Pin::new(&mut stream.inner).poll_next(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(None) => {
                 // This is run at the end of the inner stream to collect all tokens into
@@ -109,7 +119,13 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
 
                 Poll::Ready(None)
             }
-            Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
+            Poll::Ready(Some(Err(err))) => {
+                if matches!(err, CompletionError::ProviderError(ref e) if e.to_string().contains("aborted"))
+                {
+                    return Poll::Ready(None); // Treat cancellation as stream termination
+                }
+                Poll::Ready(Some(Err(err)))
+            }
             Poll::Ready(Some(Ok(choice))) => match choice {
                 RawStreamingChoice::Message(text) => {
                     // Forward the streaming tokens to the outer stream
@@ -121,11 +137,13 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                     id,
                     name,
                     arguments,
+                    call_id,
                 } => {
                     // Keep track of each tool call to aggregate the final message later
                     // and pass it to the outer stream
                     stream.tool_calls.push(ToolCall {
                         id: id.clone(),
+                        call_id,
                         function: ToolFunction {
                             name: name.clone(),
                             arguments: arguments.clone(),
@@ -198,10 +216,12 @@ impl<R: Clone + Unpin> Stream for StreamingResultDyn<R> {
                     id,
                     name,
                     arguments,
+                    call_id,
                 } => Poll::Ready(Some(Ok(RawStreamingChoice::ToolCall {
                     id,
                     name,
                     arguments,
+                    call_id,
                 }))),
             },
         }
@@ -232,6 +252,10 @@ pub async fn stream_to_stdout<M: CompletionModel>(
                 println!("\nResult: {res}");
             }
             Err(e) => {
+                if e.to_string().contains("aborted") {
+                    println!("\nStream cancelled.");
+                    break;
+                }
                 eprintln!("Error: {e}");
                 break;
             }
@@ -241,4 +265,77 @@ pub async fn stream_to_stdout<M: CompletionModel>(
     println!(); // New line after streaming completes
 
     Ok(())
+}
+
+// Test module
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+    use async_stream::stream;
+    use tokio::time::sleep;
+
+    #[derive(Debug, Clone)]
+    pub struct MockResponse {
+        #[allow(dead_code)]
+        token_count: u32,
+    }
+
+    fn create_mock_stream() -> StreamingCompletionResponse<MockResponse> {
+        let stream = stream! {
+            yield Ok(RawStreamingChoice::Message("hello 1".to_string()));
+            sleep(Duration::from_millis(100)).await;
+            yield Ok(RawStreamingChoice::Message("hello 2".to_string()));
+            sleep(Duration::from_millis(100)).await;
+            yield Ok(RawStreamingChoice::Message("hello 3".to_string()));
+            sleep(Duration::from_millis(100)).await;
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 15 }));
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let pinned_stream: StreamingResult<MockResponse> = Box::pin(stream);
+        #[cfg(target_arch = "wasm32")]
+        let pinned_stream: StreamingResult<MockResponse> = Box::pin(stream);
+
+        StreamingCompletionResponse::stream(pinned_stream)
+    }
+
+    #[tokio::test]
+    async fn test_stream_cancellation() {
+        let mut stream = create_mock_stream();
+
+        println!("Response: ");
+        let mut chunk_count = 0;
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Ok(AssistantContent::Text(text)) => {
+                    print!("{}", text.text);
+                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
+                    chunk_count += 1;
+                }
+                Ok(AssistantContent::ToolCall(tc)) => {
+                    println!("\nTool Call: {tc:?}");
+                    chunk_count += 1;
+                }
+                Err(e) => {
+                    eprintln!("Error: {e:?}");
+                    break;
+                }
+            }
+
+            if chunk_count >= 2 {
+                println!("\nCancelling stream...");
+                stream.cancel();
+                println!("Stream cancelled.");
+                break;
+            }
+        }
+
+        let next_chunk = stream.next().await;
+        assert!(
+            next_chunk.is_none(),
+            "Expected no further chunks after cancellation, got {next_chunk:?}"
+        );
+    }
 }

@@ -1,9 +1,12 @@
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::{stream_to_stdout, StreamingPrompt};
+use rig::streaming::{StreamingPrompt, stream_to_stdout};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    // Uncomment tracing for debugging
+    tracing_subscriber::fmt().init();
+
     // Create streaming agent with a single context prompt
     let agent = openai::Client::from_env()
         .agent(openai::GPT_4O)

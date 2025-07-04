@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
     "rig-core",
     "rig-lancedb",
@@ -8,9 +8,78 @@ members = [
     "rig-postgres",
     "rig-qdrant",
     "rig-core/rig-core-derive",
+    "rig-scylladb",
     "rig-sqlite",
     "rig-surrealdb",
     "rig-eternalai",
     "rig-fastembed",
     "rig-bedrock", "rig-milvus",
 ]
+
+[workspace.package]
+edition = "2024"
+
+[workspace.dependencies]
+anyhow = "1.0.98"
+arrow-array = "55.2"
+as-any = "0.3.2"
+assert_fs = "1.1.3"
+async-stream = "0.3.6"
+aws-config = "1.8.0"
+aws-sdk-bedrockruntime = "1.93.0"
+aws-smithy-types = "1.3.2"
+base64 = "0.22.1"
+bytes = "1.10.1"
+chrono = "0.4"
+convert_case = "0.8.0"
+deluxe = "0.5.0"
+deranged = "=0.4.0"
+dotenvy = "0.15.7"
+epub = "2.1.4"
+ethers = "2.0.14"
+fastembed = "4.9.1"
+futures = "0.3.31"
+glob = "0.3.2"
+httpmock = "0.7.0"
+indoc = "2.0.6"
+lancedb = "0.21"
+log = "0.4.27"
+lopdf = "0.36.0"
+mcp-core = "0.1.50"
+mcp-core-macros = "0.1.30"
+mime_guess = "2.0.5"
+mongodb = "3.2.3"
+neo4rs = "0.8.0"
+ordered-float = "5.0.0"
+pgvector = "0.4"
+proc-macro2 = "1.0.95"
+qdrant-client = "1.14.0"
+quick-xml = "0.38.0"
+quote = "1.0.40"
+rayon = "1.10.0"
+reqwest = { version = "0.12.20", default-features = false }
+rig-derive = { version = "0.1.3", path = "rig-core/rig-core-derive" }
+rusqlite = "0.32"
+scylla = "1.2.0"
+# https://github.com/stevohuncho/mcp-core/issues/9
+schemars = "0.8.22"
+serde = "1.0.219"
+serde_json = "1.0.140"
+serde_path_to_error = "0.1.17"
+sqlite-vec = "0.1"
+sqlx = "0.8.6"
+surrealdb = "2.3.6"
+syn = "2.0.104"
+term_size = "0.3.2"
+testcontainers = "0.24.0"
+textwrap = "0.16.2"
+thiserror = "2.0.12"
+tokio = "1.45.1"
+tokio-rusqlite = { version = "0.6.0", default-features = false }
+tokio-test = "0.4.4"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"
+uuid = "1.17.0"
+worker = "0.6"
+zerocopy = "0.8.26"
+rig-core = { version = "0.13.0", path = "rig-core" }

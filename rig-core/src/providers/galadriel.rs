@@ -16,21 +16,35 @@ use crate::json_utils::merge;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
-    impl_conversion_traits, json_utils, message, OneOrMany,
+    impl_conversion_traits, json_utils, message,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // ================================================================
 // Main Galadriel Client
 // ================================================================
 const GALADRIEL_API_BASE_URL: &str = "https://api.galadriel.com/v1/verified";
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Client {
     base_url: String,
+    api_key: String,
+    fine_tune_api_key: Option<String>,
     http_client: reqwest::Client,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("api_key", &"<REDACTED>")
+            .field("fine_tune_api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
@@ -51,33 +65,31 @@ impl Client {
     ) -> Self {
         Self {
             base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
+            fine_tune_api_key: fine_tune_api_key.map(|x| x.to_string()),
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        "Authorization",
-                        format!("Bearer {api_key}")
-                            .parse()
-                            .expect("Bearer token should parse"),
-                    );
-                    if let Some(key) = fine_tune_api_key {
-                        headers.insert(
-                            "Fine-Tune-Authorization",
-                            format!("Bearer {key}")
-                                .parse()
-                                .expect("Bearer token should parse"),
-                        );
-                    }
-                    headers
-                })
                 .build()
                 .expect("Galadriel reqwest client should build"),
         }
     }
 
+    /// Use your own `reqwest::Client`.
+    /// The default headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
+    }
+
     fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url)
+        let mut client = self.http_client.post(url).bearer_auth(&self.api_key);
+
+        if let Some(fine_tune_key) = self.fine_tune_api_key.clone() {
+            client = client.header("Fine-Tune-Authorization", fine_tune_key);
+        }
+
+        client
     }
 }
 
@@ -282,6 +294,7 @@ impl TryFrom<Message> for message::Message {
                 ),
             }),
             "assistant" => Ok(Self::Assistant {
+                id: None,
                 content: OneOrMany::many(
                     tool_calls
                         .into_iter()
@@ -318,7 +331,7 @@ impl TryFrom<message::Message> for Message {
                 }),
                 tool_calls: vec![],
             }),
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let mut text_content: Option<String> = None;
                 let mut tool_calls = vec![];
 

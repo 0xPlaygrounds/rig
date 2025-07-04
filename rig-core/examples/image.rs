@@ -1,12 +1,12 @@
 use reqwest::Client;
 use rig::prelude::*;
 use rig::{
-    completion::{message::Image, Prompt},
+    completion::{Prompt, message::Image},
     message::{ContentFormat, ImageMediaType},
     providers::anthropic::{self, CLAUDE_3_5_SONNET},
 };
 
-use base64::{prelude::BASE64_STANDARD, Engine};
+use base64::{Engine, prelude::BASE64_STANDARD};
 
 const IMAGE_URL: &str =
     "https://upload.wikimedia.org/wikipedia/commons/a/a7/Camponotus_flavomarginatus_ant.jpg";
@@ -45,7 +45,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Prompt the agent and print the response
     let response = agent.prompt(image).await?;
 
-    println!("{}", response);
+    println!("{response}");
 
     Ok(())
 }

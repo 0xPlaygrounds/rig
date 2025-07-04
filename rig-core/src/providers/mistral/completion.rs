@@ -1,15 +1,15 @@
 use async_stream::stream;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{convert::Infallible, str::FromStr};
 
 use super::client::{Client, Usage};
 use crate::streaming::{RawStreamingChoice, StreamingCompletionResponse};
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     json_utils, message,
     providers::mistral::client::ApiResponse,
-    OneOrMany,
 };
 
 pub const CODESTRAL: &str = "codestral-latest";
@@ -111,7 +111,7 @@ impl TryFrom<message::Message> for Vec<Message> {
 
                 Ok(messages)
             }
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let (text_content, tool_calls) = content.into_iter().fold(
                     (Vec::new(), Vec::new()),
                     |(mut texts, mut tools), content| {
@@ -436,6 +436,7 @@ impl completion::CompletionModel for CompletionModel {
                             id: tc.id.clone(),
                             name: tc.function.name.clone(),
                             arguments: tc.function.arguments.clone(),
+                             call_id: None
                         })
                     }
                 }

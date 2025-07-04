@@ -56,8 +56,6 @@ Rig is a Rust library for building scalable, modular, and ergonomic **LLM-powere
 
 More information about this crate can be found in the [official](https://docs.rig.rs) & [crate](https://docs.rs/rig-core/latest/rig/) (API Reference) documentations.
 
-Help us improve Rig by contributing to our [Feedback form](https://bit.ly/Rig-Feeback-Form).
-
 ## High-level features
 - Full support for LLM completion and embedding workflows
 - Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, SQlite, in-memory)

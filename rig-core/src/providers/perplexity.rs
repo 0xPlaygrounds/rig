@@ -10,10 +10,11 @@
 //! ```
 
 use crate::{
+    OneOrMany,
     agent::AgentBuilder,
-    completion::{self, message, CompletionError, MessageError},
+    completion::{self, CompletionError, MessageError, message},
     extractor::ExtractorBuilder,
-    impl_conversion_traits, json_utils, OneOrMany,
+    impl_conversion_traits, json_utils,
 };
 
 use crate::client::{CompletionClient, ProviderClient};
@@ -24,17 +25,28 @@ use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // ================================================================
 // Main Cohere Client
 // ================================================================
 const PERPLEXITY_API_BASE_URL: &str = "https://api.perplexity.ai";
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Client {
     base_url: String,
+    api_key: String,
     http_client: reqwest::Client,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
@@ -45,25 +57,24 @@ impl Client {
     pub fn from_url(api_key: &str, base_url: &str) -> Self {
         Self {
             base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        "Authorization",
-                        format!("Bearer {api_key}")
-                            .parse()
-                            .expect("Bearer token should parse"),
-                    );
-                    headers
-                })
                 .build()
                 .expect("Perplexity reqwest client should build"),
         }
     }
 
+    /// Use your own `reqwest::Client`.
+    /// The required headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
+    }
+
     pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url)
+        self.http_client.post(url).bearer_auth(&self.api_key)
     }
 
     pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
@@ -285,7 +296,7 @@ impl TryFrom<message::Message> for Message {
                 }
             }
 
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let collapsed_content = content
                     .into_iter()
                     .map(|content| {

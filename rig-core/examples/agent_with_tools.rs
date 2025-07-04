@@ -41,7 +41,8 @@ impl Tool for Adder {
                         "type": "number",
                         "description": "The second number to add"
                     }
-                }
+                },
+                "required": ["x", "y"],
             }),
         }
     }
@@ -77,8 +78,9 @@ impl Tool for Subtract {
                         "type": "number",
                         "description": "The number to subtract"
                     }
-                }
-            }
+                },
+                "required": ["x", "y"],
+            },
         }))
         .expect("Tool Definition")
     }

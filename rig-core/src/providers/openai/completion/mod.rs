@@ -2,15 +2,19 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::{ApiErrorResponse, ApiResponse, Client, StreamingCompletionResponse, Usage};
+use super::{ApiErrorResponse, ApiResponse, Client, streaming::StreamingCompletionResponse};
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::message::{AudioMediaType, ImageDetail};
 use crate::one_or_many::string_or_one_or_many;
-use crate::{completion, json_utils, message, OneOrMany};
+use crate::{OneOrMany, completion, json_utils, message};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::convert::Infallible;
+use std::fmt;
+
 use std::str::FromStr;
+
+pub mod streaming;
 
 /// `o4-mini-2025-04-16` completion model
 pub const O4_MINI_2025_04_16: &str = "o4-mini-2025-04-16";
@@ -88,90 +92,10 @@ pub const GPT_35_TURBO_1106: &str = "gpt-3.5-turbo-1106";
 /// `gpt-3.5-turbo-instruct` completion model
 pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
 
-#[derive(Debug, Deserialize)]
-pub struct CompletionResponse {
-    pub id: String,
-    pub object: String,
-    pub created: u64,
-    pub model: String,
-    pub system_fingerprint: Option<String>,
-    pub choices: Vec<Choice>,
-    pub usage: Option<Usage>,
-}
-
 impl From<ApiErrorResponse> for CompletionError {
     fn from(err: ApiErrorResponse) -> Self {
         CompletionError::ProviderError(err.message)
     }
-}
-
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
-
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let choice = response.choices.first().ok_or_else(|| {
-            CompletionError::ResponseError("Response contained no choices".to_owned())
-        })?;
-
-        let content = match &choice.message {
-            Message::Assistant {
-                content,
-                tool_calls,
-                ..
-            } => {
-                let mut content = content
-                    .iter()
-                    .filter_map(|c| {
-                        let s = match c {
-                            AssistantContent::Text { text } => text,
-                            AssistantContent::Refusal { refusal } => refusal,
-                        };
-                        if s.is_empty() {
-                            None
-                        } else {
-                            Some(completion::AssistantContent::text(s))
-                        }
-                    })
-                    .collect::<Vec<_>>();
-
-                content.extend(
-                    tool_calls
-                        .iter()
-                        .map(|call| {
-                            completion::AssistantContent::tool_call(
-                                &call.id,
-                                &call.function.name,
-                                call.function.arguments.clone(),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                );
-                Ok(content)
-            }
-            _ => Err(CompletionError::ResponseError(
-                "Response did not contain a valid message or tool call".into(),
-            )),
-        }?;
-
-        let choice = OneOrMany::many(content).map_err(|_| {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
-
-        Ok(completion::CompletionResponse {
-            choice,
-            raw_response: response,
-        })
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Choice {
-    pub index: usize,
-    pub message: Message,
-    pub logprobs: Option<serde_json::Value>,
-    pub finish_reason: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -248,6 +172,15 @@ pub enum AssistantContent {
     Refusal { refusal: String },
 }
 
+impl From<AssistantContent> for completion::AssistantContent {
+    fn from(value: AssistantContent) -> Self {
+        match value {
+            AssistantContent::Text { text } => completion::AssistantContent::text(text),
+            AssistantContent::Refusal { refusal } => completion::AssistantContent::text(refusal),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum UserContent {
@@ -280,7 +213,7 @@ pub struct InputAudio {
 pub struct ToolResultContent {
     #[serde(default)]
     r#type: ToolResultContentType,
-    text: String,
+    pub text: String,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -363,6 +296,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::UserContent::ToolResult(message::ToolResult {
                                 id,
                                 content,
+                                ..
                             }) => Ok::<_, message::MessageError>(Message::ToolResult {
                                 tool_call_id: id,
                                 content: content.try_map(|content| match content {
@@ -417,7 +351,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                     }])
                 }
             }
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let (text_content, tool_calls) = content.into_iter().fold(
                     (Vec::new(), Vec::new()),
                     |(mut texts, mut tools), content| {
@@ -466,6 +400,7 @@ impl From<ToolCall> for message::ToolCall {
     fn from(tool_call: ToolCall) -> Self {
         Self {
             id: tool_call.id,
+            call_id: None,
             function: message::ToolFunction {
                 name: tool_call.function.name,
                 arguments: tool_call.function.arguments,
@@ -508,6 +443,7 @@ impl TryFrom<Message> for message::Message {
                 );
 
                 message::Message::Assistant {
+                    id: None,
                     content: OneOrMany::many(content).map_err(|_| {
                         message::MessageError::ConversionError(
                             "Neither `content` nor `tool_calls` was provided to the Message"
@@ -527,7 +463,7 @@ impl TryFrom<Message> for message::Message {
                 )),
             },
 
-            // System messages should get stripped out when converting message's, this is just a
+            // System messages should get stripped out when converting messages, this is just a
             // stop gap to avoid obnoxious error handling or panic occurring.
             Message::System { content, .. } => message::Message::User {
                 content: content.map(|content| message::UserContent::text(content.text)),
@@ -606,6 +542,105 @@ impl FromStr for SystemContent {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CompletionResponse {
+    pub id: String,
+    pub object: String,
+    pub created: u64,
+    pub model: String,
+    pub system_fingerprint: Option<String>,
+    pub choices: Vec<Choice>,
+    pub usage: Option<Usage>,
+}
+
+impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+    type Error = CompletionError;
+
+    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        let choice = response.choices.first().ok_or_else(|| {
+            CompletionError::ResponseError("Response contained no choices".to_owned())
+        })?;
+
+        let content = match &choice.message {
+            Message::Assistant {
+                content,
+                tool_calls,
+                ..
+            } => {
+                let mut content = content
+                    .iter()
+                    .filter_map(|c| {
+                        let s = match c {
+                            AssistantContent::Text { text } => text,
+                            AssistantContent::Refusal { refusal } => refusal,
+                        };
+                        if s.is_empty() {
+                            None
+                        } else {
+                            Some(completion::AssistantContent::text(s))
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                content.extend(
+                    tool_calls
+                        .iter()
+                        .map(|call| {
+                            completion::AssistantContent::tool_call(
+                                &call.id,
+                                &call.function.name,
+                                call.function.arguments.clone(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                );
+                Ok(content)
+            }
+            _ => Err(CompletionError::ResponseError(
+                "Response did not contain a valid message or tool call".into(),
+            )),
+        }?;
+
+        let choice = OneOrMany::many(content).map_err(|_| {
+            CompletionError::ResponseError(
+                "Response contained no message or tool call (empty)".to_owned(),
+            )
+        })?;
+
+        Ok(completion::CompletionResponse {
+            choice,
+            raw_response: response,
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Choice {
+    pub index: usize,
+    pub message: Message,
+    pub logprobs: Option<serde_json::Value>,
+    pub finish_reason: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Usage {
+    pub prompt_tokens: usize,
+    pub total_tokens: usize,
+}
+
+impl fmt::Display for Usage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Usage {
+            prompt_tokens,
+            total_tokens,
+        } = self;
+        write!(
+            f,
+            "Prompt tokens: {prompt_tokens} Total tokens: {total_tokens}"
+        )
+    }
+}
+
 #[derive(Clone)]
 pub struct CompletionModel {
     pub(crate) client: Client,
@@ -619,6 +654,10 @@ impl CompletionModel {
             client,
             model: model.to_string(),
         }
+    }
+
+    pub fn into_agent_builder(self) -> crate::agent::AgentBuilder<Self> {
+        crate::agent::AgentBuilder::new(self)
     }
 
     pub(crate) fn create_completion_request(
@@ -649,7 +688,7 @@ impl CompletionModel {
         );
 
         let request = if completion_request.tools.is_empty() {
-            json!({
+            serde_json::json!({
                 "model": self.model,
                 "messages": full_history,
 
@@ -712,7 +751,7 @@ impl completion::CompletionModel for CompletionModel {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "OpenAI completion token usage: {:?}",
-                        response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
+                        response.usage.clone().map(|usage| format!("{}", usage.total_tokens)).unwrap_or("N/A".to_string())
                     );
                     response.try_into()
                 }

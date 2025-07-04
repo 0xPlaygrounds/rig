@@ -30,8 +30,8 @@ pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 use self::gemini_api_types::Schema;
 use crate::providers::gemini::streaming::StreamingCompletionResponse;
 use crate::{
-    completion::{self, CompletionError, CompletionRequest},
     OneOrMany,
+    completion::{self, CompletionError, CompletionRequest},
 };
 use gemini_api_types::{
     Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
@@ -151,13 +151,7 @@ pub(crate) fn create_request_body(
             .collect::<Result<Vec<_>, _>>()?,
         generation_config: Some(generation_config),
         safety_settings: None,
-        tools: Some(
-            completion_request
-                .tools
-                .into_iter()
-                .map(Tool::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
-        ),
+        tools: Some(Tool::try_from(completion_request.tools)?),
         tool_config: None,
         system_instruction,
     };
@@ -176,11 +170,51 @@ impl TryFrom<completion::ToolDefinition> for Tool {
                 Some(tool.parameters.try_into()?)
             };
         Ok(Self {
-            function_declarations: FunctionDeclaration {
+            function_declarations: OneOrMany::one(FunctionDeclaration {
                 name: tool.name,
                 description: tool.description,
                 parameters,
-            },
+            }),
+            code_execution: None,
+        })
+    }
+}
+
+impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
+    type Error = CompletionError;
+
+    fn try_from(tools: Vec<completion::ToolDefinition>) -> Result<Self, Self::Error> {
+        let mut functions = Vec::new();
+
+        for tool in tools {
+            let parameters =
+                if tool.parameters == serde_json::json!({"type": "object", "properties": {}}) {
+                    None
+                } else {
+                    match tool.parameters.try_into() {
+                        Ok(schema) => Some(schema),
+                        Err(e) => {
+                            let emsg = format!(
+                                "Tool '{}' could not be converted to a schema: {:?}",
+                                tool.name, e,
+                            );
+                            return Err(CompletionError::ProviderError(emsg));
+                        }
+                    }
+                };
+
+            functions.push(FunctionDeclaration {
+                name: tool.name,
+                description: tool.description,
+                parameters,
+            });
+        }
+
+        let function_declarations: OneOrMany<FunctionDeclaration> = OneOrMany::many(functions)
+            .map_err(|x| CompletionError::ProviderError(x.to_string()))?;
+
+        Ok(Self {
+            function_declarations,
             code_execution: None,
         })
     }
@@ -209,7 +243,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                     _ => {
                         return Err(CompletionError::ResponseError(
                             "Response did not contain a message or tool call".into(),
-                        ))
+                        ));
                     }
                 })
             })
@@ -235,14 +269,14 @@ pub mod gemini_api_types {
     // Gemini API Types
     // =================================================================
     use serde::{Deserialize, Serialize};
-    use serde_json::Value;
+    use serde_json::{Value, json};
 
     use crate::{
+        OneOrMany,
         completion::CompletionError,
-        message::{self, MimeType as _},
+        message::{self, MessageError, MimeType as _},
         one_or_many::string_or_one_or_many,
         providers::gemini::gemini_api_types::{CodeExecutionResult, ExecutableCode},
-        OneOrMany,
     };
 
     /// Response from the model supporting multiple candidate responses.
@@ -308,7 +342,7 @@ pub mod gemini_api_types {
                     parts: content.try_map(|c| c.try_into())?,
                     role: Some(Role::User),
                 },
-                message::Message::Assistant { content } => Content {
+                message::Message::Assistant { content, .. } => Content {
                     role: Some(Role::Model),
                     parts: content.map(|content| content.into()),
                 },
@@ -355,19 +389,20 @@ pub mod gemini_api_types {
                                     _ => {
                                         return Err(message::MessageError::ConversionError(
                                             format!("Unsupported media type {mime_type:?}"),
-                                        ))
+                                        ));
                                     }
                                 }
                             }
                             _ => {
                                 return Err(message::MessageError::ConversionError(format!(
                                     "Unsupported gemini content part type: {part:?}"
-                                )))
+                                )));
                             }
                         })
                     })?,
                 }),
                 Some(Role::Model) => Ok(message::Message::Assistant {
+                    id: None,
                     content: content.parts.try_map(|part| {
                         Ok(match part {
                             Part::Text(text) => message::AssistantContent::text(text),
@@ -377,7 +412,7 @@ pub mod gemini_api_types {
                             _ => {
                                 return Err(message::MessageError::ConversionError(format!(
                                     "Unsupported part type: {part:?}"
-                                )))
+                                )));
                             }
                         })
                     })?,
@@ -434,22 +469,21 @@ pub mod gemini_api_types {
         fn try_from(content: message::UserContent) -> Result<Self, Self::Error> {
             match content {
                 message::UserContent::Text(message::Text { text }) => Ok(Self::Text(text)),
-                message::UserContent::ToolResult(message::ToolResult { id, content }) => {
+                message::UserContent::ToolResult(message::ToolResult { id, content, .. }) => {
                     let content = match content.first() {
                         message::ToolResultContent::Text(text) => text.text,
                         message::ToolResultContent::Image(_) => {
                             return Err(message::MessageError::ConversionError(
                                 "Tool result content must be text".to_string(),
-                            ))
+                            ));
                         }
                     };
+                    // Convert to JSON since this value may be a valid JSON value
+                    let result: serde_json::Value = serde_json::from_str(&content)
+                        .map_err(|x| MessageError::ConversionError(x.to_string()))?;
                     Ok(Part::FunctionResponse(FunctionResponse {
                         name: id,
-                        response: Some(serde_json::from_str(&content).map_err(|e| {
-                            message::MessageError::ConversionError(format!(
-                                "Failed to parse tool response: {e}"
-                            ))
-                        })?),
+                        response: Some(json!({ "result": result })),
                     }))
                 }
                 message::UserContent::Image(message::Image {
@@ -555,6 +589,7 @@ pub mod gemini_api_types {
         fn from(function_call: FunctionCall) -> Self {
             Self {
                 id: function_call.name.clone(),
+                call_id: None,
                 function: message::ToolFunction {
                     name: function_call.name,
                     arguments: function_call.args,
@@ -581,7 +616,7 @@ pub mod gemini_api_types {
         /// with a maximum length of 63.
         pub name: String,
         /// The function response in JSON object format.
-        pub response: Option<HashMap<String, serde_json::Value>>,
+        pub response: Option<serde_json::Value>,
     }
 
     /// URI based data.
@@ -841,7 +876,7 @@ pub mod gemini_api_types {
     /// The Schema object allows the definition of input and output data types. These types can be objects, but also
     /// primitives and arrays. Represents a select subset of an OpenAPI 3.0 schema object.
     /// From [Gemini API Reference](https://ai.google.dev/api/caching#Schema)
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize, Clone)]
     pub struct Schema {
         pub r#type: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -934,7 +969,7 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct GenerateContentRequest {
         pub contents: Vec<Content>,
-        pub tools: Option<Vec<Tool>>,
+        pub tools: Option<Tool>,
         pub tool_config: Option<ToolConfig>,
         /// Optional. Configuration options for model generation and outputs.
         pub generation_config: Option<GenerationConfig>,
@@ -961,11 +996,11 @@ pub mod gemini_api_types {
     #[derive(Debug, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct Tool {
-        pub function_declarations: FunctionDeclaration,
+        pub function_declarations: OneOrMany<FunctionDeclaration>,
         pub code_execution: Option<CodeExecution>,
     }
 
-    #[derive(Debug, Serialize)]
+    #[derive(Debug, Serialize, Clone)]
     #[serde(rename_all = "camelCase")]
     pub struct FunctionDeclaration {
         pub name: String,
@@ -1145,6 +1180,7 @@ mod tests {
     fn test_message_conversion_tool_call() {
         let tool_call = message::ToolCall {
             id: "test_tool".to_string(),
+            call_id: None,
             function: message::ToolFunction {
                 name: "test_function".to_string(),
                 arguments: json!({"arg1": "value1"}),
@@ -1152,6 +1188,7 @@ mod tests {
         };
 
         let msg = message::Message::Assistant {
+            id: None,
             content: OneOrMany::one(message::AssistantContent::ToolCall(tool_call)),
         };
 

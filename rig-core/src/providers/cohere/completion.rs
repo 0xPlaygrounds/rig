@@ -1,6 +1,7 @@
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError},
-    json_utils, message, OneOrMany,
+    json_utils, message,
 };
 use std::collections::HashMap;
 
@@ -8,7 +9,7 @@ use super::client::Client;
 use crate::completion::CompletionRequest;
 use crate::providers::cohere::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Deserialize)]
 pub struct CompletionResponse {
@@ -287,26 +288,25 @@ impl TryFrom<message::Message> for Vec<Message> {
                     message::UserContent::Text(message::Text { text }) => Ok(Message::User {
                         content: OneOrMany::one(UserContent::Text { text }),
                     }),
-                    message::UserContent::ToolResult(message::ToolResult { id, content }) => {
-                        Ok(Message::Tool {
-                            tool_call_id: id,
-                            content: content.try_map(|content| match content {
-                                message::ToolResultContent::Text(text) => {
-                                    Ok(ToolResultContent::Text { text: text.text })
-                                }
-                                _ => Err(message::MessageError::ConversionError(
-                                    "Only text tool result content is supported by Cohere"
-                                        .to_owned(),
-                                )),
-                            })?,
-                        })
-                    }
+                    message::UserContent::ToolResult(message::ToolResult {
+                        id, content, ..
+                    }) => Ok(Message::Tool {
+                        tool_call_id: id,
+                        content: content.try_map(|content| match content {
+                            message::ToolResultContent::Text(text) => {
+                                Ok(ToolResultContent::Text { text: text.text })
+                            }
+                            _ => Err(message::MessageError::ConversionError(
+                                "Only text tool result content is supported by Cohere".to_owned(),
+                            )),
+                        })?,
+                    }),
                     _ => Err(message::MessageError::ConversionError(
                         "Only text content is supported by Cohere".to_owned(),
                     )),
                 })
                 .collect::<Result<Vec<_>, _>>()?,
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let mut text_content = vec![];
                 let mut tool_calls = vec![];
                 content.into_iter().for_each(|content| match content {
@@ -315,7 +315,11 @@ impl TryFrom<message::Message> for Vec<Message> {
                     }
                     message::AssistantContent::ToolCall(message::ToolCall {
                         id,
-                        function: message::ToolFunction { name, arguments },
+                        function:
+                            message::ToolFunction {
+                                name, arguments, ..
+                            },
+                        ..
                     }) => {
                         tool_calls.push(ToolCall {
                             id: Some(id),
@@ -385,7 +389,7 @@ impl TryFrom<Message> for message::Message {
                     )
                 })?;
 
-                Ok(message::Message::Assistant { content })
+                Ok(message::Message::Assistant { id: None, content })
             }
             Message::Tool {
                 content,

@@ -2,7 +2,7 @@ use async_stream::stream;
 use futures::StreamExt;
 use serde::Deserialize;
 
-use super::completion::{create_request_body, gemini_api_types::ContentCandidate, CompletionModel};
+use super::completion::{CompletionModel, create_request_body, gemini_api_types::ContentCandidate};
 use crate::{
     completion::{CompletionError, CompletionRequest},
     streaming::{self},
@@ -91,7 +91,8 @@ impl CompletionModel {
                             => yield Ok(streaming::RawStreamingChoice::ToolCall {
                                     name: function_call.name,
                                     id: "".to_string(),
-                                    arguments: function_call.args
+                                    arguments: function_call.args,
+                                    call_id: None
                                 }),
                         _ => panic!("Unsupported response type with streaming.")
                     };

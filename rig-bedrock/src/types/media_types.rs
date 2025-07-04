@@ -35,8 +35,7 @@ impl TryFrom<DocumentFormat> for RigDocumentMediaType {
             DocumentFormat::Pdf => Ok(RigDocumentMediaType(DocumentMediaType::PDF)),
             DocumentFormat::Txt => Ok(RigDocumentMediaType(DocumentMediaType::TXT)),
             e => Err(CompletionError::ProviderError(format!(
-                "Unsupported media type {}",
-                e
+                "Unsupported media type {e}"
             ))),
         }
     }

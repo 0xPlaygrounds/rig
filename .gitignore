@@ -3,6 +3,7 @@ target/
 .idea/
 .vscode/
 .devcontainer/
+.fastembed_cache/
 
 # env
 .env

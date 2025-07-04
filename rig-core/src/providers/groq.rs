@@ -8,34 +8,45 @@
 //!
 //! let gpt4o = client.completion_model(groq::GPT_4O);
 //! ```
-use super::openai::{send_compatible_streaming_request, CompletionResponse, TranscriptionResponse};
+use super::openai::{CompletionResponse, TranscriptionResponse, send_compatible_streaming_request};
 use crate::client::{CompletionClient, TranscriptionClient};
 use crate::json_utils::merge;
 use crate::providers::openai;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
     message::{self, MessageError},
     providers::openai::ToolDefinition,
     transcription::{self, TranscriptionError},
-    OneOrMany,
 };
 use reqwest::multipart::Part;
 use rig::client::ProviderClient;
 use rig::impl_conversion_traits;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // ================================================================
 // Main Groq Client
 // ================================================================
 const GROQ_API_BASE_URL: &str = "https://api.groq.com/openai/v1";
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Client {
     base_url: String,
+    api_key: String,
     http_client: reqwest::Client,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
@@ -48,25 +59,24 @@ impl Client {
     pub fn from_url(api_key: &str, base_url: &str) -> Self {
         Self {
             base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
             http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        "Authorization",
-                        format!("Bearer {api_key}")
-                            .parse()
-                            .expect("Bearer token should parse"),
-                    );
-                    headers
-                })
                 .build()
                 .expect("Groq reqwest client should build"),
         }
     }
 
+    /// Use your own `reqwest::Client`.
+    /// The required headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
+    }
+
     fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url)
+        self.http_client.post(url).bearer_auth(&self.api_key)
     }
 }
 
@@ -157,6 +167,7 @@ impl TryFrom<Message> for message::Message {
                 ),
             }),
             "assistant" => Ok(Self::Assistant {
+                id: None,
                 content: OneOrMany::one(
                     message
                         .content
@@ -188,7 +199,7 @@ impl TryFrom<message::Message> for Message {
                     _ => None,
                 }),
             }),
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let mut text_content: Option<String> = None;
 
                 for c in content.iter() {
@@ -207,7 +218,7 @@ impl TryFrom<message::Message> for Message {
                         message::AssistantContent::ToolCall(_tool_call) => {
                             return Err(MessageError::ConversionError(
                                 "Tool calls do not exist on this message".into(),
-                            ))
+                            ));
                         }
                     }
                 }

@@ -8,7 +8,7 @@ use crate::{
 use async_stream::stream;
 use futures::StreamExt;
 use reqwest::RequestBuilder;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::completion::{CompletionError, CompletionRequest};
 use serde::{Deserialize, Serialize};
@@ -207,6 +207,7 @@ pub async fn send_streaming_request(
                             // Get or create tool call entry
                             let existing_tool_call = tool_calls.entry(index).or_insert_with(|| ToolCall {
                                 id: String::new(),
+                                call_id: None,
                                 function: ToolFunction {
                                     name: String::new(),
                                     arguments: serde_json::Value::Null,
@@ -276,8 +277,9 @@ pub async fn send_streaming_request(
                             };
                             let index = tool_call.index;
 
-                            tool_calls.insert(index, ToolCall{
+                            tool_calls.insert(index, ToolCall {
                                 id: id.unwrap_or_default(),
+                                call_id: None,
                                 function: ToolFunction {
                                     name: name.unwrap_or_default(),
                                     arguments,
@@ -298,7 +300,8 @@ pub async fn send_streaming_request(
             yield Ok(streaming::RawStreamingChoice::ToolCall{
                 name: tool_call.function.name,
                 id: tool_call.id,
-                arguments: tool_call.function.arguments
+                arguments: tool_call.function.arguments,
+                call_id: None
             });
         }
 

@@ -58,10 +58,9 @@ impl SubProvider {
     #[cfg(feature = "image")]
     pub fn image_generation_endpoint(&self, model: &str) -> Result<String, ImageGenerationError> {
         match self {
-            SubProvider::HFInference => Ok(format!("/{}", model)),
+            SubProvider::HFInference => Ok(format!("/{model}")),
             _ => Err(ImageGenerationError::ProviderError(format!(
-                "image generation endpoint is not supported yet for {}",
-                self
+                "image generation endpoint is not supported yet for {self}"
             ))),
         }
     }
@@ -137,11 +136,25 @@ impl ClientBuilder {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Client {
     base_url: String,
+    default_headers: reqwest::header::HeaderMap,
+    api_key: String,
     http_client: reqwest::Client,
     pub(crate) sub_provider: SubProvider,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("http_client", &self.http_client)
+            .field("default_headers", &self.default_headers)
+            .field("sub_provider", &self.sub_provider)
+            .field("api_key", &"<REDACTED>")
+            .finish()
+    }
 }
 
 impl Client {
@@ -154,36 +167,40 @@ impl Client {
 
     /// Create a new Client with the given API key and base API URL.
     pub fn from_url(api_key: &str, base_url: &str, sub_provider: SubProvider) -> Self {
+        let mut default_headers = reqwest::header::HeaderMap::new();
+        default_headers.insert(
+            "Content-Type",
+            "application/json"
+                .parse()
+                .expect("Failed to parse Content-Type"),
+        );
         let http_client = reqwest::Client::builder()
-            .default_headers({
-                let mut headers = reqwest::header::HeaderMap::new();
-                headers.insert(
-                    "Authorization",
-                    format!("Bearer {api_key}")
-                        .parse()
-                        .expect("Failed to parse API key"),
-                );
-                headers.insert(
-                    "Content-Type",
-                    "application/json"
-                        .parse()
-                        .expect("Failed to parse Content-Type"),
-                );
-                headers
-            })
             .build()
             .expect("Failed to build HTTP client");
 
         Self {
             base_url: base_url.to_owned(),
+            api_key: api_key.to_string(),
+            default_headers,
             http_client,
             sub_provider,
         }
     }
 
+    /// Use your own `reqwest::Client`.
+    /// The API key will be automatically attached upon trying to make a request, so you shouldn't need to add it as a default header.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
+    }
+
     pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url)
+        self.http_client
+            .post(url)
+            .bearer_auth(&self.api_key)
+            .headers(self.default_headers.clone())
     }
 }
 

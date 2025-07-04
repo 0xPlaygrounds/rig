@@ -4,13 +4,13 @@
 
 use std::{cmp::max, collections::HashMap};
 
-use futures::{stream, StreamExt};
+use futures::{StreamExt, stream};
 
 use crate::{
-    embeddings::{
-        embed::TextEmbedder, Embed, EmbedError, Embedding, EmbeddingError, EmbeddingModel,
-    },
     OneOrMany,
+    embeddings::{
+        Embed, EmbedError, Embedding, EmbeddingError, EmbeddingModel, embed::TextEmbedder,
+    },
 };
 
 /// Builder for creating embeddings from one or more documents of type `T`.
@@ -144,8 +144,8 @@ impl<M: EmbeddingModel, T: Embed + Send> EmbeddingsBuilder<M, T> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        embeddings::{embed::EmbedError, embed::TextEmbedder, Embedding, EmbeddingModel},
         Embed,
+        embeddings::{Embedding, EmbeddingModel, embed::EmbedError, embed::TextEmbedder},
     };
 
     use super::EmbeddingsBuilder;
@@ -366,7 +366,7 @@ mod tests {
             .unwrap();
 
         result.sort_by(|(fake_definition_1, _), (fake_definition_2, _)| {
-            fake_definition_1.cmp(&fake_definition_2)
+            fake_definition_1.cmp(fake_definition_2)
         });
 
         assert_eq!(result.len(), 2);

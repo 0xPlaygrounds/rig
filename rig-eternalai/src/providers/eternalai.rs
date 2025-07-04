@@ -12,6 +12,7 @@
 use crate::eternalai_system_prompt_manager_toolset;
 use crate::json_utils;
 use async_stream::stream;
+use rig::OneOrMany;
 use rig::agent::AgentBuilder;
 use rig::completion::{CompletionError, CompletionRequest};
 use rig::embeddings::{EmbeddingError, EmbeddingsBuilder};
@@ -20,11 +21,10 @@ use rig::message;
 use rig::message::AssistantContent;
 use rig::providers::openai::{self, Message};
 use rig::streaming::{RawStreamingChoice, StreamingCompletionResponse};
-use rig::OneOrMany;
-use rig::{completion, embeddings, Embed};
+use rig::{Embed, completion, embeddings};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::ffi::c_uint;
 use std::time::Duration;
 
@@ -54,7 +54,7 @@ impl Client {
                     let mut headers = reqwest::header::HeaderMap::new();
                     headers.insert(
                         "Authorization",
-                        format!("Bearer {}", api_key)
+                        format!("Bearer {api_key}")
                             .parse()
                             .expect("Bearer token should parse"),
                     );
@@ -607,6 +607,7 @@ impl completion::CompletionModel for CompletionModel {
                     AssistantContent::ToolCall(tc) => {
                         yield Ok(RawStreamingChoice::ToolCall {
                             id: tc.id.clone(),
+                            call_id: None,
                             name: tc.function.name.clone(),
                             arguments: tc.function.arguments.clone(),
                         })

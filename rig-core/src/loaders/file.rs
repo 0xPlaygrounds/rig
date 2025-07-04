@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, string::FromUtf8Error};
 
 use glob::glob;
 use thiserror::Error;
@@ -16,6 +16,9 @@ pub enum FileLoaderError {
 
     #[error("Glob error: {0}")]
     GlobError(#[from] glob::GlobError),
+
+    #[error("String conversion error: {0}")]
+    StringUtf8Error(#[from] FromUtf8Error),
 }
 
 // ================================================================
@@ -48,6 +51,19 @@ impl Readable for PathBuf {
         Ok((self, contents?))
     }
 }
+
+impl Readable for Vec<u8> {
+    fn read(self) -> Result<String, FileLoaderError> {
+        Ok(String::from_utf8(self)?)
+    }
+
+    fn read_with_path(self) -> Result<(PathBuf, String), FileLoaderError> {
+        let res = String::from_utf8(self)?;
+
+        Ok((PathBuf::from("<memory>"), res))
+    }
+}
+
 impl<T: Readable> Readable for Result<T, FileLoaderError> {
     fn read(self) -> Result<String, FileLoaderError> {
         self.map(|t| t.read())?
@@ -198,13 +214,39 @@ impl FileLoader<'_, Result<PathBuf, FileLoaderError>> {
         Ok(FileLoader {
             iterator: Box::new(fs::read_dir(directory)?.filter_map(|entry| {
                 let path = entry.ok()?.path();
-                if path.is_file() {
-                    Some(Ok(path))
-                } else {
-                    None
-                }
+                if path.is_file() { Some(Ok(path)) } else { None }
             })),
         })
+    }
+}
+
+impl<'a> FileLoader<'a, Vec<u8>> {
+    /// Ingest a  as a byte array.
+    pub fn from_bytes(bytes: Vec<u8>) -> FileLoader<'a, Vec<u8>> {
+        FileLoader {
+            iterator: Box::new(vec![bytes].into_iter()),
+        }
+    }
+
+    /// Ingest multiple byte arrays.
+    pub fn from_bytes_multi(bytes_vec: Vec<Vec<u8>>) -> FileLoader<'a, Vec<u8>> {
+        FileLoader {
+            iterator: Box::new(bytes_vec.into_iter()),
+        }
+    }
+
+    /// Use this once you've created the loader to load the document in.
+    pub fn read(self) -> FileLoader<'a, Result<String, FileLoaderError>> {
+        FileLoader {
+            iterator: Box::new(self.iterator.map(|res| res.read())),
+        }
+    }
+
+    /// Use this once you've created the reader to load the document in (and get the path).
+    pub fn read_with_path(self) -> FileLoader<'a, Result<(PathBuf, String), FileLoaderError>> {
+        FileLoader {
+            iterator: Box::new(self.iterator.map(|res| res.read_with_path())),
+        }
     }
 }
 
@@ -258,6 +300,36 @@ mod tests {
         let loader = FileLoader::with_glob(&glob).unwrap();
         let mut actual = loader
             .ignore_errors()
+            .read()
+            .ignore_errors()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let mut expected = vec!["foo".to_string(), "bar".to_string()];
+
+        actual.sort();
+        expected.sort();
+
+        assert!(!actual.is_empty());
+        assert!(expected == actual)
+    }
+
+    #[test]
+    fn test_file_loader_bytes() {
+        let temp = assert_fs::TempDir::new().expect("Failed to create temp dir");
+        let foo_file = temp.child("foo.txt");
+        let bar_file = temp.child("bar.txt");
+
+        foo_file.touch().expect("Failed to create foo.txt");
+        bar_file.touch().expect("Failed to create bar.txt");
+
+        foo_file.write_str("foo").expect("Failed to write to foo");
+        bar_file.write_str("bar").expect("Failed to write to bar");
+
+        let foo_bytes = std::fs::read(foo_file.path()).unwrap();
+        let bar_bytes = std::fs::read(bar_file.path()).unwrap();
+
+        let loader = FileLoader::from_bytes_multi(vec![foo_bytes, bar_bytes]);
+        let mut actual = loader
             .read()
             .ignore_errors()
             .into_iter()

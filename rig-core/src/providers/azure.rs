@@ -9,7 +9,7 @@
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
 
-use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
+use super::openai::{TranscriptionResponse, send_compatible_streaming_request};
 
 use crate::json_utils::merge;
 use crate::streaming::StreamingCompletionResponse;
@@ -20,6 +20,7 @@ use crate::{
     providers::openai,
     transcription::{self, TranscriptionError},
 };
+use reqwest::header::AUTHORIZATION;
 use reqwest::multipart::Part;
 use serde::Deserialize;
 use serde_json::json;
@@ -27,11 +28,23 @@ use serde_json::json;
 // Main Azure OpenAI Client
 // ================================================================
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Client {
     api_version: String,
     azure_endpoint: String,
+    auth: AzureOpenAIAuth,
     http_client: reqwest::Client,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("azure_endpoint", &self.azure_endpoint)
+            .field("http_client", &self.http_client)
+            .field("auth", &"<REDACTED>")
+            .field("api_version", &self.api_version)
+            .finish()
+    }
 }
 
 #[derive(Clone)]
@@ -40,9 +53,35 @@ pub enum AzureOpenAIAuth {
     Token(String),
 }
 
+impl std::fmt::Debug for AzureOpenAIAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ApiKey(_) => write!(f, "API key <REDACTED>"),
+            Self::Token(_) => write!(f, "Token <REDACTED>"),
+        }
+    }
+}
+
 impl From<String> for AzureOpenAIAuth {
     fn from(token: String) -> Self {
         AzureOpenAIAuth::Token(token)
+    }
+}
+
+impl AzureOpenAIAuth {
+    fn as_header(&self) -> (reqwest::header::HeaderName, reqwest::header::HeaderValue) {
+        match self {
+            AzureOpenAIAuth::ApiKey(api_key) => (
+                "api-key".parse().expect("Header value should parse"),
+                api_key.parse().expect("API key should parse"),
+            ),
+            AzureOpenAIAuth::Token(token) => (
+                AUTHORIZATION,
+                format!("Bearer {token}")
+                    .parse()
+                    .expect("Token should parse"),
+            ),
+        }
     }
 }
 
@@ -55,29 +94,22 @@ impl Client {
     /// * `api_version` - API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
     /// * `azure_endpoint` - Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
     pub fn new(auth: impl Into<AzureOpenAIAuth>, api_version: &str, azure_endpoint: &str) -> Self {
-        let mut headers = reqwest::header::HeaderMap::new();
-        match auth.into() {
-            AzureOpenAIAuth::ApiKey(api_key) => {
-                headers.insert("api-key", api_key.parse().expect("API key should parse"));
-            }
-            AzureOpenAIAuth::Token(token) => {
-                headers.insert(
-                    "Authorization",
-                    format!("Bearer {token}")
-                        .parse()
-                        .expect("Token should parse"),
-                );
-            }
-        }
-
         Self {
             api_version: api_version.to_string(),
+            auth: auth.into(),
             azure_endpoint: azure_endpoint.to_string(),
             http_client: reqwest::Client::builder()
-                .default_headers(headers)
                 .build()
                 .expect("Azure OpenAI reqwest client should build"),
         }
+    }
+
+    /// Use your own `reqwest::Client`.
+    /// The required headers will be automatically attached upon trying to make a request.
+    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = client;
+
+        self
     }
 
     /// Creates a new Azure OpenAI client from an API key.
@@ -116,7 +148,9 @@ impl Client {
             self.azure_endpoint, deployment_id, self.api_version
         )
         .replace("//", "/");
-        self.http_client.post(url)
+
+        let (key, value) = self.auth.as_header();
+        self.http_client.post(url).header(key, value)
     }
 
     fn post_chat_completion(&self, deployment_id: &str) -> reqwest::RequestBuilder {
@@ -125,7 +159,8 @@ impl Client {
             self.azure_endpoint, deployment_id, self.api_version
         )
         .replace("//", "/");
-        self.http_client.post(url)
+        let (key, value) = self.auth.as_header();
+        self.http_client.post(url).header(key, value)
     }
 
     fn post_transcription(&self, deployment_id: &str) -> reqwest::RequestBuilder {
@@ -134,7 +169,8 @@ impl Client {
             self.azure_endpoint, deployment_id, self.api_version
         )
         .replace("//", "/");
-        self.http_client.post(url)
+        let (key, value) = self.auth.as_header();
+        self.http_client.post(url).header(key, value)
     }
 
     #[cfg(feature = "image")]
@@ -144,7 +180,8 @@ impl Client {
             self.azure_endpoint, deployment_id, self.api_version
         )
         .replace("//", "/");
-        self.http_client.post(url)
+        let (key, value) = self.auth.as_header();
+        self.http_client.post(url).header(key, value)
     }
 
     #[cfg(feature = "audio")]
@@ -154,7 +191,8 @@ impl Client {
             self.azure_endpoint, deployment_id, self.api_version
         )
         .replace("//", "/");
-        self.http_client.post(url)
+        let (key, value) = self.auth.as_header();
+        self.http_client.post(url).header(key, value)
     }
 }
 
@@ -773,9 +811,9 @@ mod audio_generation {
 mod azure_tests {
     use super::*;
 
+    use crate::OneOrMany;
     use crate::completion::CompletionModel;
     use crate::embeddings::EmbeddingModel;
-    use crate::OneOrMany;
 
     #[tokio::test]
     #[ignore]

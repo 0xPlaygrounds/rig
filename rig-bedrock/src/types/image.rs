@@ -5,7 +5,7 @@ use rig::{
     message::{ContentFormat, Image, ImageMediaType, MimeType},
 };
 
-use base64::{prelude::BASE64_STANDARD, Engine};
+use base64::{Engine, prelude::BASE64_STANDARD};
 
 #[derive(Clone)]
 pub struct RigImage(pub Image);
@@ -55,8 +55,7 @@ impl TryFrom<aws_bedrock::ImageBlock> for RigImage {
             aws_bedrock::ImageFormat::Png => Ok(ImageMediaType::PNG),
             aws_bedrock::ImageFormat::Webp => Ok(ImageMediaType::WEBP),
             e => Err(CompletionError::ProviderError(format!(
-                "Unsupported format {}",
-                e
+                "Unsupported format {e}"
             ))),
         }?;
 
@@ -81,7 +80,7 @@ impl TryFrom<aws_bedrock::ImageBlock> for RigImage {
 #[cfg(test)]
 mod tests {
     use aws_sdk_bedrockruntime::types as aws_bedrock;
-    use base64::{prelude::BASE64_STANDARD, Engine};
+    use base64::{Engine, prelude::BASE64_STANDARD};
     use rig::{
         completion::CompletionError,
         message::{ContentFormat, Image, ImageMediaType},
@@ -98,7 +97,7 @@ mod tests {
             detail: None,
         });
         let aws_image: Result<aws_bedrock::ImageBlock, _> = rig_image.clone().try_into();
-        assert_eq!(aws_image.is_ok(), true);
+        assert!(aws_image.is_ok());
         let aws_image = aws_image.unwrap();
         assert_eq!(aws_image.format, aws_bedrock::ImageFormat::Jpeg);
         let img_data = BASE64_STANDARD.decode(rig_image.0.data).unwrap();
