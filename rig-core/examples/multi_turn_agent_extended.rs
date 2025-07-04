@@ -137,6 +137,7 @@ impl Tool for Subtract {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 struct Multiply;
 
 impl Tool for Multiply {
@@ -172,6 +173,7 @@ impl Tool for Multiply {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 struct Divide;
 
 impl Tool for Divide {
