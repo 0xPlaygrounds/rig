@@ -39,7 +39,7 @@ If you are unsure whether a side-crate should live in the main repo, you can spi
 
 ### Setup
 
-This should be similar to most rust projects.
+This should be similar to most Rust projects.
 
 ```bash
 git clone https://github.com/0xplaygrounds/rig
@@ -52,13 +52,11 @@ cargo test
 We enforce both `clippy` and `fmt` for all pull requests.
 
 ```bash
-cargo clippy -- -D warnings
+cargo clippy --all-features --all-targets
+cargo fmt -- --check
 ```
 
-```bash
-cargo fmt
-```
-
+If you have the `just` task runner installed, you can also run `just` (or `just ci`).
 
 ### Tests
 
