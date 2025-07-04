@@ -656,6 +656,10 @@ impl CompletionModel {
         }
     }
 
+    pub fn into_agent_builder(self) -> crate::agent::AgentBuilder<Self> {
+        crate::agent::AgentBuilder::new(self)
+    }
+
     pub(crate) fn create_completion_request(
         &self,
         completion_request: CompletionRequest,
