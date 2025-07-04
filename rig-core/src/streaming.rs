@@ -324,7 +324,7 @@ mod tests {
                 }
                 Ok(AssistantContent::Reasoning(Reasoning { reasoning })) => {
                     print!("{reasoning}");
-                    std::io::Write::flush(&mut std::io::stdout())?;
+                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
                 }
                 Err(e) => {
                     eprintln!("Error: {e:?}");
