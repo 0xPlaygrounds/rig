@@ -322,6 +322,10 @@ mod tests {
                     println!("\nTool Call: {tc:?}");
                     chunk_count += 1;
                 }
+                Ok(AssistantContent::Reasoning(Reasoning { reasoning })) => {
+                    print!("{reasoning}");
+                    std::io::Write::flush(&mut std::io::stdout())?;
+                }
                 Err(e) => {
                     eprintln!("Error: {e:?}");
                     break;
