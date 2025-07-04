@@ -149,6 +149,8 @@ enum ApiResponse<T> {
 pub struct Message {
     pub role: String,
     pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
 }
 
 impl TryFrom<Message> for message::Message {
@@ -198,9 +200,11 @@ impl TryFrom<message::Message> for Message {
                     message::UserContent::Text(text) => Some(text.text.clone()),
                     _ => None,
                 }),
+                thinking: None,
             }),
             message::Message::Assistant { content, .. } => {
                 let mut text_content: Option<String> = None;
+                let mut thinking: Option<String> = None;
 
                 for c in content.iter() {
                     match c {
@@ -220,12 +224,16 @@ impl TryFrom<message::Message> for Message {
                                 "Tool calls do not exist on this message".into(),
                             ));
                         }
+                        message::AssistantContent::Reasoning(message::Reasoning { reasoning }) => {
+                            thinking = Some(reasoning.to_owned());
+                        }
                     }
                 }
 
                 Ok(Self {
                     role: "assistant".to_string(),
                     content: text_content,
+                    thinking,
                 })
             }
         }
@@ -296,6 +304,7 @@ impl CompletionModel {
                     vec![Message {
                         role: "system".to_string(),
                         content: Some(preamble),
+                        thinking: None,
                     }]
                 });
 
@@ -320,6 +329,7 @@ impl CompletionModel {
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
                 "tool_choice": "auto",
+                "reasoning_format": "parsed"
             })
         };
 

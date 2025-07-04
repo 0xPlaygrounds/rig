@@ -52,6 +52,12 @@ pub enum UserContent {
 pub enum AssistantContent {
     Text(Text),
     ToolCall(ToolCall),
+    Reasoning(Reasoning),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Reasoning {
+    pub reasoning: String,
 }
 
 /// Tool result content containing information about a tool call and it's resulting content.

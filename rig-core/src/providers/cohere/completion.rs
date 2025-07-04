@@ -330,6 +330,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                             }),
                         });
                     }
+                    message::AssistantContent::Reasoning(_) => {
+                        unimplemented!("Reasoning is not natively supported on Cohere V2");
+                    }
                 });
 
                 vec![Message::Assistant {

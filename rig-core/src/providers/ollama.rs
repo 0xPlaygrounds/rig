@@ -280,6 +280,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             // Process only if an assistant message is present.
             Message::Assistant {
                 content,
+                thinking,
                 tool_calls,
                 ..
             } => {
@@ -313,6 +314,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     eval_duration: resp.eval_duration,
                     message: Message::Assistant {
                         content,
+                        thinking,
                         images: None,
                         name: None,
                         tool_calls,
@@ -603,6 +605,8 @@ pub enum Message {
         #[serde(default)]
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
+        thinking: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         images: Option<Vec<String>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
@@ -673,6 +677,7 @@ impl TryFrom<crate::message::Message> for Message {
             InternalMessage::Assistant { content, .. } => {
                 let mut texts = Vec::new();
                 let mut tool_calls = Vec::new();
+                let mut thinking: Option<String> = None;
                 for ac in content.into_iter() {
                     match ac {
                         crate::message::AssistantContent::Text(t) => texts.push(t.text),
@@ -685,11 +690,17 @@ impl TryFrom<crate::message::Message> for Message {
                                 },
                             });
                         }
+                        crate::message::AssistantContent::Reasoning(
+                            crate::message::Reasoning { reasoning },
+                        ) => {
+                            thinking = Some(reasoning);
+                        }
                     }
                 }
                 let content_str = texts.join(" ");
                 Ok(Message::Assistant {
                     content: content_str,
+                    thinking,
                     images: None,
                     name: None,
                     tool_calls,

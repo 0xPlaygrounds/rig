@@ -313,6 +313,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                         match content {
                             message::AssistantContent::Text(text) => texts.push(text),
                             message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
+                            message::AssistantContent::Reasoning(_) => {
+                                unimplemented!("Reasoning is not supported on HuggingFace via Rig");
+                            }
                         }
                         (texts, tools)
                     },

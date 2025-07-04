@@ -96,11 +96,31 @@ pub enum Role {
 /// The type of content used in an [`InputItem`]. Addtionally holds data for each type of input content.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum InputContent {
+pub enum InputContent {
     Message(Message),
     OutputMessage(Message),
+    Reasoning(OpenAIReasoning),
     FunctionCall(OutputFunctionCall),
     FunctionCallOutput(ToolResult),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct OpenAIReasoning {
+    pub summary: Vec<ReasoningSummary>,
+    pub encrypted_content: Option<String>,
+    pub status: ToolStatus,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ReasoningSummary {
+    SummaryText(String),
+}
+
+impl ReasoningSummary {
+    fn new(input: &str) -> Self {
+        Self::SummaryText(input.to_string())
+    }
 }
 
 /// A tool result.
@@ -234,6 +254,18 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                     call_id: call_id.expect("The tool call ID should exist!"),
                                     id: tool_id,
                                     name: function.name,
+                                    status: ToolStatus::Completed,
+                                }),
+                            });
+                        }
+                        crate::message::AssistantContent::Reasoning(
+                            crate::message::Reasoning { reasoning },
+                        ) => {
+                            items.push(InputItem {
+                                role: Some(Role::Assistant),
+                                input: InputContent::Reasoning(OpenAIReasoning {
+                                    summary: vec![ReasoningSummary::new(&reasoning)],
+                                    encrypted_content: None,
                                     status: ToolStatus::Completed,
                                 }),
                             });
@@ -950,6 +982,7 @@ impl From<AssistantContent> for completion::AssistantContent {
 pub enum AssistantContentType {
     Text(AssistantContent),
     ToolCall(OutputFunctionCall),
+    Reasoning(OpenAIReasoning),
 }
 
 /// Different types of user content.
@@ -1080,6 +1113,18 @@ impl TryFrom<message::Message> for Vec<Message> {
                         id: assistant_message_id.expect("The assistant message ID should exist!"),
                         name: None,
                         status: ToolStatus::Completed,
+                    }]),
+                    crate::message::AssistantContent::Reasoning(crate::message::Reasoning {
+                        reasoning,
+                    }) => Ok(vec![Message::Assistant {
+                        content: OneOrMany::one(AssistantContentType::Reasoning(OpenAIReasoning {
+                            summary: vec![ReasoningSummary::new(&reasoning)],
+                            encrypted_content: None,
+                            status: ToolStatus::Completed,
+                        })),
+                        id: assistant_message_id.expect("The assistant message ID should exist!"),
+                        name: None,
+                        status: (ToolStatus::Completed),
                     }]),
                 }
             }
