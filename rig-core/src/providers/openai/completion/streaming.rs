@@ -203,18 +203,18 @@ pub async fn send_compatible_streaming_request(
             }
         }
 
-        for (_, (id, name, arguments)) in calls {
-            let Ok(arguments) = serde_json::from_str(&arguments) else {
+        for (id, name, arguments) in calls.values() {
+            let Ok(arguments) = serde_json::from_str(arguments) else {
                 continue;
             };
 
-            yield Ok(RawStreamingChoice::ToolCall {id, name, arguments, call_id: None });
+            yield Ok(RawStreamingChoice::ToolCall {id: id.to_string(), name: name.to_string(), arguments, call_id: None });
         }
 
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
             usage: final_usage.clone()
         }))
-    });
+    }});
 
     Ok(streaming::StreamingCompletionResponse::stream(inner))
 }
