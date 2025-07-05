@@ -1,6 +1,6 @@
 [package]
 name = "rig-eternalai"
-version = "0.2.7"
+version = "0.2.8"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
