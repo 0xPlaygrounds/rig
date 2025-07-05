@@ -13,6 +13,8 @@ use super::Agent;
 
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
+/// If you're using tools, you will want to ensure you use `.multi_turn()` to add more turns as by default it is 0 (meaning no tool usage).
+/// Otherwise, attempting to await (which will send the prompt request) returns [`crate::completion::request::PromptError::MaxDepthError`].
 pub struct PromptRequest<'a, M: CompletionModel> {
     /// The prompt message to send to the model
     prompt: Message,
@@ -38,7 +40,8 @@ impl<'a, M: CompletionModel> PromptRequest<'a, M> {
 }
 
 impl<'a, M: CompletionModel> PromptRequest<'a, M> {
-    /// Set the maximum depth for multi-turn conversations
+    /// Set the maximum depth for multi-turn conversations (ie, the maximum number of turns an LLM can have calling tools before writing a text response).
+    /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxDepthError`].
     pub fn multi_turn(self, depth: usize) -> PromptRequest<'a, M> {
         PromptRequest {
             prompt: self.prompt,
@@ -48,7 +51,7 @@ impl<'a, M: CompletionModel> PromptRequest<'a, M> {
         }
     }
 
-    /// Add chat history to the prompt request
+    /// Add chat history to the prompt request.
     pub fn with_history(self, history: &'a mut Vec<Message>) -> PromptRequest<'a, M> {
         PromptRequest {
             prompt: self.prompt,

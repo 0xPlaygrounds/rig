@@ -102,14 +102,20 @@ pub enum CompletionError {
     ProviderError(String),
 }
 
+/// Prompt errors
 #[derive(Debug, Error)]
 pub enum PromptError {
+    /// Something went wrong with the completion
     #[error("CompletionError: {0}")]
     CompletionError(#[from] CompletionError),
 
+    /// There was an error while using a tool
     #[error("ToolCallError: {0}")]
     ToolError(#[from] ToolSetError),
 
+    /// The LLM tried to call too many tools during a multi-turn conversation.
+    /// To fix this, you may either need to lower the amount of tools your model has access to (and then create other agents to share the tool load)
+    /// or increase the amount of turns given in `.multi_turn()`.
     #[error("MaxDepthError: (reached limit: {max_depth})")]
     MaxDepthError {
         max_depth: usize,
