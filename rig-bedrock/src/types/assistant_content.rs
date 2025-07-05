@@ -36,7 +36,7 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
             .try_into()?;
 
         let choice = match message.0 {
-            completion::Message::Assistant { content } => Ok(content),
+            completion::Message::Assistant { content, .. } => Ok(content),
             _ => Err(CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
             )),
@@ -49,6 +49,7 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
             return Ok(completion::CompletionResponse {
                 choice: OneOrMany::one(AssistantContent::ToolCall(ToolCall {
                     id: tool_use.id,
+                    call_id: None,
                     function: ToolFunction {
                         name: tool_use.function.name,
                         arguments: tool_use.function.arguments,

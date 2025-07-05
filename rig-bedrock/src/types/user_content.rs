@@ -33,6 +33,7 @@ impl TryFrom<aws_bedrock::ContentBlock> for RigUserContent {
                 })?;
                 Ok(RigUserContent(UserContent::ToolResult(ToolResult {
                     id: tool_result.tool_use_id,
+                    call_id: None,
                     content: tool_results,
                 })))
             }

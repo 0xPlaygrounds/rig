@@ -167,6 +167,7 @@ impl TryFrom<Message> for message::Message {
                 ),
             }),
             "assistant" => Ok(Self::Assistant {
+                id: None,
                 content: OneOrMany::one(
                     message
                         .content
@@ -198,7 +199,7 @@ impl TryFrom<message::Message> for Message {
                     _ => None,
                 }),
             }),
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let mut text_content: Option<String> = None;
 
                 for c in content.iter() {

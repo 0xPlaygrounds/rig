@@ -9,7 +9,7 @@ use rig::{
 use std::env;
 
 struct Debater {
-    gpt_4: Agent<openai::CompletionModel>,
+    gpt_4: Agent<openai::responses_api::ResponsesCompletionModel>,
     coral: Agent<cohere::CompletionModel>,
 }
 

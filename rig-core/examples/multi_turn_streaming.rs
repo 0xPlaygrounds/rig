@@ -44,10 +44,10 @@ async fn main() -> anyhow::Result<()> {
         .agent(anthropic::CLAUDE_3_5_SONNET)
         .preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
-            Follow these instructions closely. 
+            Follow these instructions closely.
             1. Consider the user's request carefully and identify the core elements of the request.
-            2. Select which tool among those made available to you is appropriate given the context. 
-            3. This is very important: never perform the operation yourself. 
+            2. Select which tool among those made available to you is appropriate given the context.
+            3. This is very important: never perform the operation yourself.
             "
         )
         .tool(Add)
@@ -124,6 +124,7 @@ where
             // Add (parallel) tool calls to chat history
             if !tool_calls.is_empty() {
                 chat_history.push(Message::Assistant {
+                    id: None,
                     content: OneOrMany::many(tool_calls).expect("Impossible EmptyListError"),
                 });
             }

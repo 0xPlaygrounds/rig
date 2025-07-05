@@ -3,23 +3,23 @@ use rig::completion::Prompt;
 use rig::providers;
 use rig_derive::rig_tool;
 
-// Simple example with no attributes
-#[rig_tool]
+// Simple example with no attributes (`required` is still needed for OpenAI's strict function tool calling)
+#[rig_tool(required(a, b))]
 fn add(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
     Ok(a + b)
 }
 
-#[rig_tool]
+#[rig_tool(required(a, b))]
 fn subtract(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
     Ok(a - b)
 }
 
-#[rig_tool]
+#[rig_tool(required(a, b))]
 fn multiply(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
     Ok(a * b)
 }
 
-#[rig_tool]
+#[rig_tool(required(a, b))]
 fn divide(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
     if b == 0 {
         Err(rig::tool::ToolError::ToolCallError(

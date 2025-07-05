@@ -342,7 +342,7 @@ pub mod gemini_api_types {
                     parts: content.try_map(|c| c.try_into())?,
                     role: Some(Role::User),
                 },
-                message::Message::Assistant { content } => Content {
+                message::Message::Assistant { content, .. } => Content {
                     role: Some(Role::Model),
                     parts: content.map(|content| content.into()),
                 },
@@ -402,6 +402,7 @@ pub mod gemini_api_types {
                     })?,
                 }),
                 Some(Role::Model) => Ok(message::Message::Assistant {
+                    id: None,
                     content: content.parts.try_map(|part| {
                         Ok(match part {
                             Part::Text(text) => message::AssistantContent::text(text),
@@ -468,7 +469,7 @@ pub mod gemini_api_types {
         fn try_from(content: message::UserContent) -> Result<Self, Self::Error> {
             match content {
                 message::UserContent::Text(message::Text { text }) => Ok(Self::Text(text)),
-                message::UserContent::ToolResult(message::ToolResult { id, content }) => {
+                message::UserContent::ToolResult(message::ToolResult { id, content, .. }) => {
                     let content = match content.first() {
                         message::ToolResultContent::Text(text) => text.text,
                         message::ToolResultContent::Image(_) => {
@@ -588,6 +589,7 @@ pub mod gemini_api_types {
         fn from(function_call: FunctionCall) -> Self {
             Self {
                 id: function_call.name.clone(),
+                call_id: None,
                 function: message::ToolFunction {
                     name: function_call.name,
                     arguments: function_call.args,
@@ -1178,6 +1180,7 @@ mod tests {
     fn test_message_conversion_tool_call() {
         let tool_call = message::ToolCall {
             id: "test_tool".to_string(),
+            call_id: None,
             function: message::ToolFunction {
                 name: "test_function".to_string(),
                 arguments: json!({"arg1": "value1"}),
@@ -1185,6 +1188,7 @@ mod tests {
         };
 
         let msg = message::Message::Assistant {
+            id: None,
             content: OneOrMany::one(message::AssistantContent::ToolCall(tool_call)),
         };
 

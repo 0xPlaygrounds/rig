@@ -431,7 +431,7 @@ impl ToolSet {
         if let Some(tool) = self.tools.get(toolname) {
             tracing::info!(target: "rig",
                 "Calling tool {toolname} with args:\n{}",
-                serde_json::to_string_pretty(&args).unwrap_or_else(|_| args.clone())
+                serde_json::to_string_pretty(&args).unwrap()
             );
             Ok(tool.call(args).await?)
         } else {

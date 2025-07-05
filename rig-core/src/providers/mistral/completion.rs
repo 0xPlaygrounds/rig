@@ -111,7 +111,7 @@ impl TryFrom<message::Message> for Vec<Message> {
 
                 Ok(messages)
             }
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let (text_content, tool_calls) = content.into_iter().fold(
                     (Vec::new(), Vec::new()),
                     |(mut texts, mut tools), content| {
@@ -436,6 +436,7 @@ impl completion::CompletionModel for CompletionModel {
                             id: tc.id.clone(),
                             name: tc.function.name.clone(),
                             arguments: tc.function.arguments.clone(),
+                             call_id: None
                         })
                     }
                 }

@@ -515,7 +515,8 @@ impl completion::CompletionModel for CompletionModel {
                                 yield Ok(RawStreamingChoice::ToolCall {
                                     id: "".to_string(),
                                     name: function.name,
-                                    arguments: function.arguments
+                                    arguments: function.arguments,
+                                    call_id: None
                                 });
                             }
                         }
@@ -727,6 +728,7 @@ impl From<Message> for crate::completion::Message {
                     );
                 }
                 crate::completion::Message::Assistant {
+                    id: None,
                     content: OneOrMany::many(assistant_contents).unwrap(),
                 }
             }

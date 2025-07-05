@@ -1,4 +1,4 @@
-use super::{ApiErrorResponse, ApiResponse, Client, Usage};
+use super::{ApiErrorResponse, ApiResponse, Client, completion::Usage};
 use crate::embeddings;
 use crate::embeddings::EmbeddingError;
 use serde::Deserialize;
@@ -79,7 +79,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             match response.json::<ApiResponse<EmbeddingResponse>>().await? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
-                        "OpenAI embedding token usage: {}",
+                        "OpenAI embedding token usage: {:?}",
                         response.usage
                     );
 
