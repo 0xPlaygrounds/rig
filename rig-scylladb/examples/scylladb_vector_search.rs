@@ -3,7 +3,7 @@ use rig::{
     client::EmbeddingsClient,
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::{InsertDocuments, InsertDocuments, VectorStoreIndex},
+    vector_store::{InsertDocuments, VectorStoreIndex},
 };
 use rig_scylladb::{ScyllaDbVectorStore, create_session};
 use serde::{Deserialize, Serialize};

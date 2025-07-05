@@ -225,6 +225,97 @@ impl<M: EmbeddingModel + Send + Sync> InsertDocuments for ScyllaDbVectorStore<M>
     }
 }
 
+impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for ScyllaDbVectorStore<M> {
+    /// Search for the top `n` nearest neighbors to the given query.
+    /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
+    ///
+    /// Note: This implementation performs a brute-force search since ScyllaDB's native vector
+    /// search is still in development. Once available, this will be optimized to use native
+    /// vector search capabilities with ANN (Approximate Nearest Neighbor) algorithms.
+    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+        &self,
+        query: &str,
+        n: usize,
+    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+        let query_vector = self.generate_query_vector(query).await?;
+
+        // Fetch all vectors (this will be optimized once ScyllaDB vector search is available)
+        let results = self
+            .session
+            .execute_unpaged(&self.search_stmt, &[])
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+        let rows_result = results
+            .into_rows_result()
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+        let mut candidates = Vec::new();
+
+        for row_result in rows_result
+            .rows::<(Uuid, Vec<f32>, String, i64)>()
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?
+        {
+            let (id, vector, metadata, _) =
+                row_result.map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+            let similarity = Self::cosine_similarity(&query_vector, &vector);
+            let score = similarity as f64;
+
+            let payload: T = serde_json::from_str(&metadata)?;
+
+            candidates.push((score, id.to_string(), payload));
+        }
+
+        // Sort by similarity score (descending) and take top n
+        candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+        candidates.truncate(n);
+
+        Ok(candidates)
+    }
+
+    /// Search for the top `n` nearest neighbors to the given query.
+    /// Returns a vector of tuples containing the score and ID of the nearest neighbors.
+    async fn top_n_ids(
+        &self,
+        query: &str,
+        n: usize,
+    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+        let query_vector = self.generate_query_vector(query).await?;
+
+        let results = self
+            .session
+            .execute_unpaged(&self.search_stmt, &[])
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+        let rows_result = results
+            .into_rows_result()
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+        let mut candidates = Vec::new();
+
+        for row_result in rows_result
+            .rows::<(Uuid, Vec<f32>, String, i64)>()
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?
+        {
+            let (id, vector, _, _) =
+                row_result.map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+            let similarity = Self::cosine_similarity(&query_vector, &vector);
+            let score = similarity as f64;
+
+            candidates.push((score, id.to_string()));
+        }
+
+        // Sort by similarity score (descending) and take top n
+        candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+        candidates.truncate(n);
+
+        Ok(candidates)
+    }
+}
+
 /// Convenience function to create a ScyllaDB session
 pub async fn create_session(uri: &str) -> Result<Session, VectorStoreError> {
     SessionBuilder::new()
