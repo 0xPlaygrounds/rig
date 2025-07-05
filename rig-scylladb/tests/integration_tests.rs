@@ -1,5 +1,9 @@
 use rig::client::EmbeddingsClient;
-use rig::{Embed, embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex};
+use rig::{
+    Embed,
+    embeddings::EmbeddingsBuilder,
+    vector_store::{InsertDocuments, VectorStoreIndex},
+};
 use rig_scylladb::{ScyllaDbVectorStore, create_session};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -217,7 +221,7 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
                     "index": 0
                   },
                   {
-                    "object": "embedding", 
+                    "object": "embedding",
                     "embedding": create_embedding_vector(1),
                     "index": 1
                   },

@@ -20,7 +20,7 @@ pub struct ScyllaDbVectorStore<M: EmbeddingModel> {
     /// Model used to generate embeddings for the vector store
     model: M,
     /// Session instance for ScyllaDB communication
-    session: Arc<Session>,
+    pub session: Arc<Session>,
     /// Keyspace and table name for vector storage
     keyspace: String,
     table: String,
@@ -215,7 +215,7 @@ impl<M: EmbeddingModel + Send + Sync> InsertDocuments for ScyllaDbVectorStore<M>
                 let id = Uuid::new_v4();
 
                 self.session
-                    .execute(&self.insert_stmt, (id, vector, &metadata, now))
+                    .execute_unpaged(&self.insert_stmt, (id, vector, &metadata, now))
                     .await
                     .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
             }
