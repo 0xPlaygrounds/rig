@@ -79,38 +79,92 @@ impl<'a> DynClientBuilder {
             ClientFactory::new(
                 DefaultProviders::ANTHROPIC,
                 anthropic::Client::from_env_boxed,
+                anthropic::Client::from_val_boxed,
             ),
-            ClientFactory::new(DefaultProviders::COHERE, cohere::Client::from_env_boxed),
-            ClientFactory::new(DefaultProviders::GEMINI, gemini::Client::from_env_boxed),
+            ClientFactory::new(
+                DefaultProviders::COHERE,
+                cohere::Client::from_env_boxed,
+                cohere::Client::from_val_boxed,
+            ),
+            ClientFactory::new(
+                DefaultProviders::GEMINI,
+                gemini::Client::from_env_boxed,
+                gemini::Client::from_val_boxed,
+            ),
             ClientFactory::new(
                 DefaultProviders::HUGGINGFACE,
                 huggingface::Client::from_env_boxed,
+                huggingface::Client::from_val_boxed,
             ),
-            ClientFactory::new(DefaultProviders::OPENAI, openai::Client::from_env_boxed),
+            ClientFactory::new(
+                DefaultProviders::OPENAI,
+                openai::Client::from_env_boxed,
+                openai::Client::from_val_boxed,
+            ),
             ClientFactory::new(
                 DefaultProviders::OPENROUTER,
                 openrouter::Client::from_env_boxed,
+                openrouter::Client::from_val_boxed,
             ),
-            ClientFactory::new(DefaultProviders::TOGETHER, together::Client::from_env_boxed),
-            ClientFactory::new(DefaultProviders::XAI, xai::Client::from_env_boxed),
-            ClientFactory::new(DefaultProviders::AZURE, azure::Client::from_env_boxed),
-            ClientFactory::new(DefaultProviders::DEEPSEEK, deepseek::Client::from_env_boxed),
+            ClientFactory::new(
+                DefaultProviders::TOGETHER,
+                together::Client::from_env_boxed,
+                together::Client::from_val_boxed,
+            ),
+            ClientFactory::new(
+                DefaultProviders::XAI,
+                xai::Client::from_env_boxed,
+                xai::Client::from_val_boxed,
+            ),
+            ClientFactory::new(
+                DefaultProviders::AZURE,
+                azure::Client::from_env_boxed,
+                azure::Client::from_val_boxed,
+            ),
+            ClientFactory::new(
+                DefaultProviders::DEEPSEEK,
+                deepseek::Client::from_env_boxed,
+                deepseek::Client::from_val_boxed,
+            ),
             ClientFactory::new(
                 DefaultProviders::GALADRIEL,
                 galadriel::Client::from_env_boxed,
+                galadriel::Client::from_val_boxed,
             ),
-            ClientFactory::new(DefaultProviders::GROQ, groq::Client::from_env_boxed),
+            ClientFactory::new(
+                DefaultProviders::GROQ,
+                groq::Client::from_env_boxed,
+                groq::Client::from_val_boxed,
+            ),
             ClientFactory::new(
                 DefaultProviders::HYPERBOLIC,
                 hyperbolic::Client::from_env_boxed,
+                hyperbolic::Client::from_val_boxed,
             ),
-            ClientFactory::new(DefaultProviders::MOONSHOT, moonshot::Client::from_env_boxed),
-            ClientFactory::new(DefaultProviders::MIRA, mira::Client::from_env_boxed),
-            ClientFactory::new(DefaultProviders::MISTRAL, mistral::Client::from_env_boxed),
-            ClientFactory::new(DefaultProviders::OLLAMA, ollama::Client::from_env_boxed),
+            ClientFactory::new(
+                DefaultProviders::MOONSHOT,
+                moonshot::Client::from_env_boxed,
+                moonshot::Client::from_val_boxed,
+            ),
+            ClientFactory::new(
+                DefaultProviders::MIRA,
+                mira::Client::from_env_boxed,
+                mira::Client::from_val_boxed,
+            ),
+            ClientFactory::new(
+                DefaultProviders::MISTRAL,
+                mistral::Client::from_env_boxed,
+                mistral::Client::from_val_boxed,
+            ),
+            ClientFactory::new(
+                DefaultProviders::OLLAMA,
+                ollama::Client::from_env_boxed,
+                ollama::Client::from_val_boxed,
+            ),
             ClientFactory::new(
                 DefaultProviders::PERPLEXITY,
                 perplexity::Client::from_env_boxed,
+                perplexity::Client::from_val_boxed,
             ),
         ])
     }
@@ -142,6 +196,16 @@ impl<'a> DynClientBuilder {
     pub fn build(&self, provider: &str) -> Result<Box<dyn ProviderClient>, ClientBuildError> {
         let factory = self.get_factory(provider)?;
         factory.build()
+    }
+
+    /// Returns a (boxed) specific provider based on the given provider.
+    pub fn build_val(
+        &self,
+        provider: &str,
+        provider_value: ProviderValue,
+    ) -> Result<Box<dyn ProviderClient>, ClientBuildError> {
+        let factory = self.get_factory(provider)?;
+        factory.build_from_val(provider_value)
     }
 
     /// Parses a provider:model string to the provider and the model separately.
@@ -197,6 +261,28 @@ impl<'a> DynClientBuilder {
         Ok(client.agent(model))
     }
 
+    /// Get a boxed agent based on the provider and model, as well as an API key.
+    pub fn agent_with_api_key_val<P>(
+        &self,
+        provider: &str,
+        model: &str,
+        provider_value: P,
+    ) -> Result<BoxAgentBuilder<'a>, ClientBuildError>
+    where
+        P: Into<ProviderValue>,
+    {
+        let client = self.build_val(provider, provider_value.into())?;
+
+        let client = client
+            .as_completion()
+            .ok_or(ClientBuildError::UnsupportedFeature(
+                provider.to_string(),
+                "completion".to_string(),
+            ))?;
+
+        Ok(client.agent(model))
+    }
+
     /// Get a boxed embedding model based on the provider and model.
     pub fn embeddings(
         &self,
@@ -215,6 +301,28 @@ impl<'a> DynClientBuilder {
         Ok(embeddings.embedding_model(model))
     }
 
+    /// Get a boxed embedding model based on the provider and model.
+    pub fn embeddings_with_api_key_val<P>(
+        &self,
+        provider: &str,
+        model: &str,
+        provider_value: P,
+    ) -> Result<Box<dyn EmbeddingModelDyn + 'a>, ClientBuildError>
+    where
+        P: Into<ProviderValue>,
+    {
+        let client = self.build_val(provider, provider_value.into())?;
+
+        let embeddings = client
+            .as_embeddings()
+            .ok_or(ClientBuildError::UnsupportedFeature(
+                provider.to_string(),
+                "embeddings".to_owned(),
+            ))?;
+
+        Ok(embeddings.embedding_model(model))
+    }
+
     /// Get a boxed transcription model based on the provider and model.
     pub fn transcription(
         &self,
@@ -222,6 +330,28 @@ impl<'a> DynClientBuilder {
         model: &str,
     ) -> Result<Box<dyn TranscriptionModelDyn + 'a>, ClientBuildError> {
         let client = self.build(provider)?;
+        let transcription =
+            client
+                .as_transcription()
+                .ok_or(ClientBuildError::UnsupportedFeature(
+                    provider.to_string(),
+                    "transcription".to_owned(),
+                ))?;
+
+        Ok(transcription.transcription_model(model))
+    }
+
+    /// Get a boxed transcription model based on the provider and model.
+    pub fn transcription_with_api_key_val<P>(
+        &self,
+        provider: &str,
+        model: &str,
+        provider_value: P,
+    ) -> Result<Box<dyn TranscriptionModelDyn + 'a>, ClientBuildError>
+    where
+        P: Into<ProviderValue>,
+    {
+        let client = self.build_val(provider, provider_value.into())?;
         let transcription =
             client
                 .as_transcription()
@@ -348,24 +478,40 @@ use crate::client::completion::CompletionModelHandle;
 pub use audio::*;
 use rig::providers::mistral;
 
+use super::ProviderValue;
+
 pub struct ClientFactory {
     pub name: String,
-    pub factory: Box<dyn Fn() -> Box<dyn ProviderClient>>,
+    pub factory_env: Box<dyn Fn() -> Box<dyn ProviderClient>>,
+    pub factory_val: Box<dyn Fn(ProviderValue) -> Box<dyn ProviderClient>>,
 }
 
 impl UnwindSafe for ClientFactory {}
 impl RefUnwindSafe for ClientFactory {}
 
 impl ClientFactory {
-    pub fn new<F: 'static + Fn() -> Box<dyn ProviderClient>>(name: &str, func: F) -> Self {
+    pub fn new<F1, F2>(name: &str, func_env: F1, func_val: F2) -> Self
+    where
+        F1: 'static + Fn() -> Box<dyn ProviderClient>,
+        F2: 'static + Fn(ProviderValue) -> Box<dyn ProviderClient>,
+    {
         Self {
             name: name.to_string(),
-            factory: Box::new(func),
+            factory_env: Box::new(func_env),
+            factory_val: Box::new(func_val),
         }
     }
 
     pub fn build(&self) -> Result<Box<dyn ProviderClient>, ClientBuildError> {
-        std::panic::catch_unwind(|| (self.factory)())
+        std::panic::catch_unwind(|| (self.factory_env)())
+            .map_err(|e| ClientBuildError::FactoryError(format!("{e:?}")))
+    }
+
+    pub fn build_from_val(
+        &self,
+        val: ProviderValue,
+    ) -> Result<Box<dyn ProviderClient>, ClientBuildError> {
+        std::panic::catch_unwind(|| (self.factory_val)(val))
             .map_err(|e| ClientBuildError::FactoryError(format!("{e:?}")))
     }
 }

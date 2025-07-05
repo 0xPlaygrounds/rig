@@ -209,6 +209,13 @@ impl ProviderClient for Client {
         let api_key = std::env::var("MIRA_API_KEY").expect("MIRA_API_KEY not set");
         Self::new(&api_key).expect("Could not create Mira Client")
     }
+
+    fn from_val(input: crate::client::ProviderValue) -> Self {
+        let crate::client::ProviderValue::Simple(api_key) = input else {
+            panic!("Incorrect provider value type")
+        };
+        Self::new(&api_key).unwrap()
+    }
 }
 
 impl CompletionClient for Client {

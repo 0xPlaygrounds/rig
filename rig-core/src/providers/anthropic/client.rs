@@ -1,6 +1,6 @@
 //! Anthropic client api implementation
 use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
-use crate::client::{CompletionClient, ProviderClient, impl_conversion_traits};
+use crate::client::{CompletionClient, ProviderClient, ProviderValue, impl_conversion_traits};
 
 // ================================================================
 // Main Anthropic Client
@@ -146,6 +146,13 @@ impl ProviderClient for Client {
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
+        ClientBuilder::new(&api_key).build()
+    }
+
+    fn from_val(input: crate::client::ProviderValue) -> Self {
+        let ProviderValue::Simple(api_key) = input else {
+            panic!("Incorrect provider value type")
+        };
         ClientBuilder::new(&api_key).build()
     }
 }

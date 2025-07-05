@@ -1,6 +1,7 @@
 use crate::image::ImageGenerationModel;
 use crate::{completion::CompletionModel, embedding::EmbeddingModel};
 use aws_config::{BehaviorVersion, Region};
+use rig::client::ProviderValue;
 use rig::impl_conversion_traits;
 use rig::prelude::*;
 
@@ -65,6 +66,13 @@ impl ProviderClient for Client {
         Self: Sized,
     {
         panic!("You should not call from_env to build a Bedrock client");
+    }
+
+    fn from_val(_: ProviderValue) -> Self
+    where
+        Self: Sized,
+    {
+        panic!("Unimplemented due to lack of use. Please reach out if you need to use this!");
     }
 }
 
