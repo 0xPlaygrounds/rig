@@ -1,9 +1,12 @@
+use async_trait::async_trait;
 use futures::future::BoxFuture;
 use reqwest::StatusCode;
 use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 
 use crate::embeddings::EmbeddingError;
+use crate::{Embed, OneOrMany, embeddings::Embedding};
 
 pub mod in_memory_store;
 
@@ -27,6 +30,17 @@ pub enum VectorStoreError {
 
     #[error("External call to API returned an error. Error code: {0} Message: {1}")]
     ExternalAPIError(StatusCode, String),
+}
+
+/// Trait for inserting documents into a vector store.
+#[async_trait]
+pub trait InsertDocuments {
+    /// Insert documents into the vector store.
+    ///
+    async fn insert_documents<Doc: Serialize + Embed + Send>(
+        &self,
+        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError>;
 }
 
 /// Trait for vector store indexes

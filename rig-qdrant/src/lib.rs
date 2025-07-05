@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use qdrant_client::{
     Payload, Qdrant,
     qdrant::{
@@ -7,7 +8,7 @@ use qdrant_client::{
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
-    vector_store::{VectorStoreError, VectorStoreIndex},
+    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -55,8 +56,11 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
         params.limit = Some(limit as u64);
         params
     }
+}
 
-    pub async fn insert_documents<Doc: Serialize + Embed + Send>(
+#[async_trait]
+impl<M: EmbeddingModel + Send + Sync> InsertDocuments for QdrantVectorStore<M> {
+    async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
     ) -> Result<(), VectorStoreError> {

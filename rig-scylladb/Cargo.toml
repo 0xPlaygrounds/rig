@@ -16,7 +16,7 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 chrono = { workspace = true, features = ["serde"] }
 futures = { workspace = true }
 tracing = { workspace = true }
-
+async-trait = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 anyhow = { workspace = true }
@@ -31,4 +31,4 @@ required-features = ["rig-core/derive"]
 
 [[test]]
 name = "integration_tests"
-required-features = ["rig-core/derive"] 
+required-features = ["rig-core/derive"]
