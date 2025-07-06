@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use qdrant_client::{
     Payload, Qdrant,
     qdrant::{
@@ -58,8 +57,10 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
     }
 }
 
-#[async_trait]
-impl<M: EmbeddingModel + Send + Sync> InsertDocuments for QdrantVectorStore<M> {
+impl<Model> InsertDocuments for QdrantVectorStore<Model>
+where
+    Model: EmbeddingModel + Send + Sync,
+{
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,

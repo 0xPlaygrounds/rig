@@ -21,7 +21,6 @@ sqlx = { workspace = true, features = [
 ] }
 pgvector = { workspace = true, features = ["sqlx"] }
 uuid = { workspace = true, features = ["v4", "serde"] }
-async-trait = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

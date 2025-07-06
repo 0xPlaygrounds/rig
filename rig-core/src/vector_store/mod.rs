@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use futures::future::BoxFuture;
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -33,14 +32,13 @@ pub enum VectorStoreError {
 }
 
 /// Trait for inserting documents into a vector store.
-#[async_trait]
-pub trait InsertDocuments {
+pub trait InsertDocuments: Send + Sync {
     /// Insert documents into the vector store.
     ///
-    async fn insert_documents<Doc: Serialize + Embed + Send>(
+    fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
-    ) -> Result<(), VectorStoreError>;
+    ) -> impl std::future::Future<Output = Result<(), VectorStoreError>> + Send;
 }
 
 /// Trait for vector store indexes

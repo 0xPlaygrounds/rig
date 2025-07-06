@@ -1,6 +1,5 @@
 use std::fmt::Display;
 
-use async_trait::async_trait;
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
@@ -112,8 +111,10 @@ impl<Model: EmbeddingModel> PostgresVectorStore<Model> {
     }
 }
 
-#[async_trait]
-impl<Model: EmbeddingModel + Send + Sync> InsertDocuments for PostgresVectorStore<Model> {
+impl<Model> InsertDocuments for PostgresVectorStore<Model>
+where
+    Model: EmbeddingModel + Send + Sync,
+{
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,

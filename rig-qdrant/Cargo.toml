@@ -13,7 +13,6 @@ serde_json = { workspace = true }
 serde = { workspace = true }
 qdrant-client = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
-async-trait = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread"] }

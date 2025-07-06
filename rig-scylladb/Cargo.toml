@@ -16,7 +16,7 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 chrono = { workspace = true, features = ["serde"] }
 futures = { workspace = true }
 tracing = { workspace = true }
-async-trait = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 anyhow = { workspace = true }

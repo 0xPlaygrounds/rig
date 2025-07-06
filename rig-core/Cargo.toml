@@ -36,7 +36,6 @@ async-stream = { workspace = true }
 mime_guess = { workspace = true }
 base64 = { workspace = true }
 as-any = { workspace = true }
-async-trait = { workspace = true }
 
 
 [dev-dependencies]

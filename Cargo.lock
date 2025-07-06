@@ -9141,7 +9141,6 @@ dependencies = [
  "as-any",
  "assert_fs",
  "async-stream",
- "async-trait",
  "base64 0.22.1",
  "bytes",
  "epub",
@@ -9237,7 +9236,6 @@ name = "rig-milvus"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "reqwest 0.12.20",
  "rig-core",
  "serde",
@@ -9288,7 +9286,6 @@ name = "rig-postgres"
 version = "0.1.9"
 dependencies = [
  "anyhow",
- "async-trait",
  "dotenvy",
  "httpmock",
  "log",
@@ -9310,7 +9307,6 @@ name = "rig-qdrant"
 version = "0.1.14"
 dependencies = [
  "anyhow",
- "async-trait",
  "httpmock",
  "qdrant-client",
  "rig-core",
@@ -9326,7 +9322,6 @@ name = "rig-scylladb"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "chrono",
  "futures",
  "httpmock",
@@ -9365,7 +9360,6 @@ name = "rig-surrealdb"
 version = "0.1.6"
 dependencies = [
  "anyhow",
- "async-trait",
  "rig-core",
  "serde",
  "serde_json",

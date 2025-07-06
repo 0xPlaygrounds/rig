@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use reqwest::StatusCode;
 use rig::{
     Embed, OneOrMany,
@@ -135,8 +134,10 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
     }
 }
 
-#[async_trait]
-impl<M: EmbeddingModel + Send + Sync> InsertDocuments for MilvusVectorStore<M> {
+impl<Model> InsertDocuments for MilvusVectorStore<Model>
+where
+    Model: EmbeddingModel + Send + Sync,
+{
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,

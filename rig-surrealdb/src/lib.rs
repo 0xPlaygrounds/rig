@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use std::fmt::Display;
 
 use rig::{
@@ -69,9 +68,10 @@ impl SearchResult {
     }
 }
 
-#[async_trait]
-impl<Model: EmbeddingModel + Send + Sync, C: Connection + Send + Sync> InsertDocuments
-    for SurrealVectorStore<Model, C>
+impl<Model, C> InsertDocuments for SurrealVectorStore<Model, C>
+where
+    Model: EmbeddingModel + Send + Sync,
+    C: Connection + Send + Sync,
 {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,

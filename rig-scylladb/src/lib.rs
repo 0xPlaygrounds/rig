@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
@@ -188,8 +187,10 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
     }
 }
 
-#[async_trait]
-impl<M: EmbeddingModel + Send + Sync> InsertDocuments for ScyllaDbVectorStore<M> {
+impl<Model> InsertDocuments for ScyllaDbVectorStore<Model>
+where
+    Model: EmbeddingModel + Send + Sync,
+{
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
