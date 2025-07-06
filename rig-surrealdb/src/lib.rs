@@ -3,7 +3,7 @@ use std::fmt::Display;
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
-    vector_store::{VectorStoreError, VectorStoreIndex},
+    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use surrealdb::{Connection, Surreal, sql::Thing};
@@ -68,6 +68,41 @@ impl SearchResult {
     }
 }
 
+impl<Model, C> InsertDocuments for SurrealVectorStore<Model, C>
+where
+    Model: EmbeddingModel + Send + Sync,
+    C: Connection + Send + Sync,
+{
+    async fn insert_documents<Doc: Serialize + Embed + Send>(
+        &self,
+        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        for (document, embeddings) in documents {
+            let json_document: serde_json::Value = serde_json::to_value(&document).unwrap();
+            let json_document_as_string = serde_json::to_string(&json_document).unwrap();
+
+            for embedding in embeddings {
+                let embedded_text = embedding.document;
+                let embedding: Vec<f64> = embedding.vec;
+
+                let record = CreateRecord {
+                    document: json_document_as_string.clone(),
+                    embedded_text,
+                    embedding,
+                };
+
+                self.surreal
+                    .create::<Option<CreateRecord>>(self.documents_table.clone())
+                    .content(record)
+                    .await
+                    .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl<Model: EmbeddingModel, C: Connection> SurrealVectorStore<Model, C> {
     pub fn new(
         model: Model,
@@ -111,35 +146,6 @@ impl<Model: EmbeddingModel, C: Connection> SurrealVectorStore<Model, C> {
               from type::table($tablename) order by distance desc \
             LIMIT $limit",
         )
-    }
-
-    pub async fn insert_documents<Doc: Serialize + Embed + Send>(
-        &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
-    ) -> Result<(), VectorStoreError> {
-        for (document, embeddings) in documents {
-            let json_document: serde_json::Value = serde_json::to_value(&document).unwrap();
-            let json_document_as_string = serde_json::to_string(&json_document).unwrap();
-
-            for embedding in embeddings {
-                let embedded_text = embedding.document;
-                let embedding: Vec<f64> = embedding.vec;
-
-                let record = CreateRecord {
-                    document: json_document_as_string.clone(),
-                    embedded_text,
-                    embedding,
-                };
-
-                self.surreal
-                    .create::<Option<CreateRecord>>(self.documents_table.clone())
-                    .content(record)
-                    .await
-                    .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-            }
-        }
-
-        Ok(())
     }
 }
 

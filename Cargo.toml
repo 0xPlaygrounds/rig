@@ -13,7 +13,8 @@ members = [
     "rig-surrealdb",
     "rig-eternalai",
     "rig-fastembed",
-    "rig-bedrock", "rig-milvus",
+    "rig-bedrock",
+    "rig-milvus",
 ]
 
 [workspace.package]

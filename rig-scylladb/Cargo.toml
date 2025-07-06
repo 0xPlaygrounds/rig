@@ -31,4 +31,4 @@ required-features = ["rig-core/derive"]
 
 [[test]]
 name = "integration_tests"
-required-features = ["rig-core/derive"] 
+required-features = ["rig-core/derive"]
