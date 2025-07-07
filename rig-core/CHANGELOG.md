@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.13.0...rig-core-v0.14.0) - 2025-07-07
+
+### Added
+
+- support inserting documents as a trait ([#563](https://github.com/0xPlaygrounds/rig/pull/563))
+- Add max_tokens method to ExtractorBuilder ([#560](https://github.com/0xPlaygrounds/rig/pull/560))
+- *(rig-780)* integrate openAI responses API ([#508](https://github.com/0xPlaygrounds/rig/pull/508))
+- Stream cancellation using AbortHandle ([#525](https://github.com/0xPlaygrounds/rig/pull/525))
+- *(rig-779)* allow extractor to be turned into inner agent ([#502](https://github.com/0xPlaygrounds/rig/pull/502))
+- *(ollama)* add support for OLLAMA_API_BASE_URL environment var ([#541](https://github.com/0xPlaygrounds/rig/pull/541))
+- *(rig-766)* add support for Voyage AI ([#493](https://github.com/0xPlaygrounds/rig/pull/493))
+- *(rig-789)* add support for loading in pdfs/files as Vec<u8> ([#523](https://github.com/0xPlaygrounds/rig/pull/523))
+- multi turn streaming example ([#413](https://github.com/0xPlaygrounds/rig/pull/413))
+- *(rig-754)* support custom client configurations ([#511](https://github.com/0xPlaygrounds/rig/pull/511))
+
+### Fixed
+
+- Retain multi-turn tool call results in case of response error ([#526](https://github.com/0xPlaygrounds/rig/pull/526))
+- *(rig-794)* parse openAI SSE response error ([#545](https://github.com/0xPlaygrounds/rig/pull/545))
+- *(rig-796)* OpenRouter extractor fails ([#544](https://github.com/0xPlaygrounds/rig/pull/544))
+- *(rig-792)* inconsistent implementations of with_custom_client ([#530](https://github.com/0xPlaygrounds/rig/pull/530))
+- *(rig-783)* tool call example doesn't work with Gemini and OpenRouter ([#515](https://github.com/0xPlaygrounds/rig/pull/515))
+- *(rig-773)* xAI embeddings endpoint is wrong ([#492](https://github.com/0xPlaygrounds/rig/pull/492))
+
+### Other
+
+- *(rig-803)* improve documentation for multi-turn ([#562](https://github.com/0xPlaygrounds/rig/pull/562))
+- Migrate all crates to Rust 2024 ([#539](https://github.com/0xPlaygrounds/rig/pull/539))
+- update deps ([#543](https://github.com/0xPlaygrounds/rig/pull/543))
+- Declare shared dependencies in workspace ([#538](https://github.com/0xPlaygrounds/rig/pull/538))
+- error fixes for clarity
+- Make clippy happy on all targets ([#542](https://github.com/0xPlaygrounds/rig/pull/542))
+- *(rig-791)* documents not consistently added to DeepSeek prompts ([#528](https://github.com/0xPlaygrounds/rig/pull/528))
+- Fix `ToolResult` serialization in ollama provider ([#504](https://github.com/0xPlaygrounds/rig/pull/504))
+
 ## [0.13.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.12.0...rig-core-v0.13.0) - 2025-06-09
 
 ### Added
