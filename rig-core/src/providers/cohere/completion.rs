@@ -105,8 +105,25 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             })?
         };
 
+        let usage = response
+            .usage
+            .as_ref()
+            .and_then(|usage| usage.tokens.as_ref())
+            .map(|tokens| {
+                let input_tokens = tokens.input_tokens.unwrap_or(0.0);
+                let output_tokens = tokens.output_tokens.unwrap_or(0.0);
+
+                completion::Usage {
+                    input_tokens: input_tokens as u64,
+                    output_tokens: output_tokens as u64,
+                    total_tokens: (input_tokens + output_tokens) as u64,
+                }
+            })
+            .unwrap_or_default();
+
         Ok(completion::CompletionResponse {
             choice: OneOrMany::many(model_response).expect("There is atleast one content"),
+            usage,
             raw_response: response,
         })
     }

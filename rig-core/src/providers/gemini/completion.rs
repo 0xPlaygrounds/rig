@@ -255,8 +255,19 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             )
         })?;
 
+        let usage = response
+            .usage_metadata
+            .as_ref()
+            .map(|usage| completion::Usage {
+                input_tokens: usage.prompt_token_count as u64,
+                output_tokens: usage.candidates_token_count as u64,
+                total_tokens: usage.total_token_count as u64,
+            })
+            .unwrap_or_default();
+
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }

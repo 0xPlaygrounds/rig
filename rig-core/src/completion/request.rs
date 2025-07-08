@@ -75,6 +75,7 @@ use crate::{
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::ops::{Add, AddAssign};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -224,8 +225,56 @@ pub struct CompletionResponse<T> {
     /// The completion choice (represented by one or more assistant message content)
     /// returned by the completion model provider
     pub choice: OneOrMany<AssistantContent>,
+    /// Tokens used during prompting and responding
+    pub usage: Usage,
     /// The raw response returned by the completion model provider
     pub raw_response: T,
+}
+
+/// Struct representing the token usage for a completion request.
+/// If tokens used are `0`, then the provider failed to supply token usage metrics.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Usage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    // We store this separately as some providers may only report one number
+    pub total_tokens: u64,
+}
+
+impl Usage {
+    pub fn new() -> Self {
+        Self {
+            input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 0,
+        }
+    }
+}
+
+impl Default for Usage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Add for Usage {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        Self {
+            input_tokens: self.input_tokens + other.input_tokens,
+            output_tokens: self.output_tokens + other.output_tokens,
+            total_tokens: self.total_tokens + other.total_tokens,
+        }
+    }
+}
+
+impl AddAssign for Usage {
+    fn add_assign(&mut self, other: Self) {
+        self.input_tokens += other.input_tokens;
+        self.output_tokens += other.output_tokens;
+        self.total_tokens += other.total_tokens;
+    }
 }
 
 /// Trait defining a completion model that can be used to generate completion responses.
@@ -288,6 +337,7 @@ where
                 .await
                 .map(|resp| CompletionResponse {
                     choice: resp.choice,
+                    usage: resp.usage,
                     raw_response: (),
                 })
         })

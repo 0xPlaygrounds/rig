@@ -39,6 +39,7 @@
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
 use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient};
+use crate::completion::Usage;
 use crate::json_utils::merge_inplace;
 use crate::message::MessageError;
 use crate::streaming::RawStreamingChoice;
@@ -300,6 +301,9 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 let choice = OneOrMany::many(assistant_contents).map_err(|_| {
                     CompletionError::ResponseError("No content provided".to_owned())
                 })?;
+                let prompt_tokens = resp.prompt_eval_count.unwrap_or(0);
+                let completion_tokens = resp.eval_count.unwrap_or(0);
+
                 let raw_response = CompletionResponse {
                     model: resp.model,
                     created_at: resp.created_at,
@@ -318,8 +322,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         tool_calls,
                     },
                 };
+
                 Ok(completion::CompletionResponse {
                     choice,
+                    usage: Usage {
+                        input_tokens: prompt_tokens,
+                        output_tokens: completion_tokens,
+                        total_tokens: prompt_tokens + completion_tokens,
+                    },
                     raw_response,
                 })
             }

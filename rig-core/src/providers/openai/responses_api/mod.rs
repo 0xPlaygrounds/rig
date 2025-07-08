@@ -867,8 +867,19 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
+        let usage = response
+            .usage
+            .as_ref()
+            .map(|usage| completion::Usage {
+                input_tokens: usage.input_tokens,
+                output_tokens: usage.output_tokens,
+                total_tokens: usage.total_tokens,
+            })
+            .unwrap_or_default();
+
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }
