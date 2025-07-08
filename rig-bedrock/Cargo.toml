@@ -7,8 +7,8 @@ readme = "README.md"
 description = "AWS Bedrock model provider for Rig integration."
 
 [dependencies]
-rig-core = { workspace = true, features = ["image"] }
-rig-derive = { workspace = true }
+rig-core = { path = "../rig-core", features = ["image"] }
+rig-derive = { path = "../rig-core/rig-core-derive" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 schemars = { workspace = true }

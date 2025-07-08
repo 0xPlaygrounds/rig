@@ -19,7 +19,7 @@ syn = { workspace = true, features = ["full"] }
 proc-macro = true
 
 [dev-dependencies]
-rig-core = { workspace = true }
+rig-core = { path = "../../rig-core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

@@ -8,7 +8,7 @@ readme = "README.md"
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
-rig-core = { workspace = true, features = ["derive"] }
+rig-core = { path = "../rig-core", features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 

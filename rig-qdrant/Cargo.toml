@@ -8,7 +8,7 @@ description = "Rig vector store index integration for Qdrant. https://qdrant.tec
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
-rig-core = { workspace = true }
+rig-core = { path = "../rig-core" }
 serde_json = { workspace = true }
 serde = { workspace = true }
 qdrant-client = { workspace = true }
