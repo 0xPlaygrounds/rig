@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.1.6...rig-surrealdb-v0.1.7) - 2025-07-07
+
+### Added
+
+- support inserting documents as a trait ([#563](https://github.com/0xPlaygrounds/rig/pull/563))
+
+### Other
+
+- Migrate all crates to Rust 2024 ([#539](https://github.com/0xPlaygrounds/rig/pull/539))
+- Declare shared dependencies in workspace ([#538](https://github.com/0xPlaygrounds/rig/pull/538))
+- Make clippy happy on all targets ([#542](https://github.com/0xPlaygrounds/rig/pull/542))
+
 ## [0.1.6](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.1.5...rig-surrealdb-v0.1.6) - 2025-06-09
 
 ### Other

@@ -1,6 +1,6 @@
 [package]
 name = "rig-postgres"
-version = "0.1.9"
+version = "0.1.10"
 edition = { workspace = true }
 description = "PostgreSQL-based vector store implementation for the rig framework"
 license = "MIT"
