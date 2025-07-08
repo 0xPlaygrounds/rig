@@ -23,7 +23,7 @@ futures = { workspace = true }
 ordered-float = { workspace = true }
 schemars = { workspace = true }
 thiserror = { workspace = true }
-rig-derive = { path = "rig-core-derive", optional = true }
+rig-derive = { version = "0.1.4", path = "rig-core-derive", optional = true }
 glob = { workspace = true }
 lopdf = { workspace = true, optional = true }
 epub = { workspace = true, optional = true }

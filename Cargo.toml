@@ -83,3 +83,7 @@ tracing-subscriber = "0.3.19"
 uuid = "1.17.0"
 worker = "0.6"
 zerocopy = "0.8.26"
+
+[workspace.metadata.cargo-autoinherit]
+# Skip cargo-autoinherit for these packages
+exclude-members = ["rig-core", "rig-derive"]

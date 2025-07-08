@@ -7,7 +7,7 @@ license = "MIT"
 
 [dependencies]
 reqwest = { workspace = true, features = ["json"] }
-rig-core = { path = "../rig-core" }
+rig-core = { path = "../rig-core", version = "0.14.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
