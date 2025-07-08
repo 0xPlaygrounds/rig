@@ -7,3 +7,10 @@ clippy:
 
 fmt:
     cargo fmt -- --check
+
+build-wasm:
+    cargo build -p rig-wasm --release --target wasm32-unknown-unknown
+    wasm-bindgen \
+        --target nodejs \
+        --out-dir rig-wasm/pkg \
+        target/wasm32-unknown-unknown/release/rig.wasm
