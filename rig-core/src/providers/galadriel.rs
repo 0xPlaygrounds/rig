@@ -102,6 +102,14 @@ impl ProviderClient for Client {
         let fine_tune_api_key = std::env::var("GALADRIEL_FINE_TUNE_API_KEY").ok();
         Self::new(&api_key, fine_tune_api_key.as_deref())
     }
+
+    fn from_val(input: crate::client::ProviderValue) -> Self {
+        let crate::client::ProviderValue::ApiKeyWithOptionalKey(api_key, fine_tune_key) = input
+        else {
+            panic!("Incorrect provider value type")
+        };
+        Self::new(&api_key, fine_tune_key.as_deref())
+    }
 }
 
 impl CompletionClient for Client {

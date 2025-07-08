@@ -109,6 +109,14 @@ impl ProviderClient for Client {
         let api_base = std::env::var("OLLAMA_API_BASE_URL").expect("OLLAMA_API_BASE_URL not set");
         Self::from_url(&api_base)
     }
+
+    fn from_val(input: crate::client::ProviderValue) -> Self {
+        let crate::client::ProviderValue::Simple(_) = input else {
+            panic!("Incorrect provider value type")
+        };
+
+        Self::new()
+    }
 }
 
 impl CompletionClient for Client {
