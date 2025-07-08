@@ -8,7 +8,7 @@ description = "EternalAI model provider Rig integration."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
-rig-core = { workspace = true }
+rig-core = { path = "../rig-core" }
 ethers = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
