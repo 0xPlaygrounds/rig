@@ -66,7 +66,9 @@ impl rig::tool::Tool for JsTool {
 
             let res = match JsFuture::from(res).await {
                 Ok(res) => res,
-                Err(e) => panic!("Couldn't get a JsFuture from the promise!"),
+                Err(_) => panic!(
+                    "Couldn't get a JsFuture from the promise! This shouldn't normally panic."
+                ),
             };
 
             let value: serde_json::Value = serde_wasm_bindgen::from_value(res)
