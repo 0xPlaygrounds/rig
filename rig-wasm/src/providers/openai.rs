@@ -1,12 +1,16 @@
 use crate::completion::{AssistantContent, Document, Message, ToolDefinition};
+use crate::embedding::Embedding;
 use crate::tool::JsTool;
-use crate::{JsResult, JsToolObject};
+use crate::{JsResult, JsToolObject, StringIterable};
 use rig::OneOrMany;
 use rig::agent::{Agent, AgentBuilder};
 use rig::client::CompletionClient;
+use rig::client::embeddings::EmbeddingsClient;
 use rig::completion::{Chat, CompletionModel, Prompt};
+use rig::embeddings::EmbeddingModel;
 use serde_json::Map;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::js_sys;
 
 #[wasm_bindgen]
 #[derive(Clone)]
@@ -29,6 +33,10 @@ impl OpenAIClient {
 
     pub fn agent(&self, model_name: &str) -> OpenAIAgentBuilder {
         OpenAIAgentBuilder::new(self, model_name)
+    }
+
+    pub fn embedding_model(&self, model_name: &str) -> OpenAIEmbeddingModel {
+        OpenAIEmbeddingModel::new(self, model_name)
     }
 }
 
@@ -231,5 +239,46 @@ impl From<&OpenAICompletionRequest> for rig::completion::CompletionRequest {
             max_tokens: value.max_tokens,
             additional_params: value.additional_params.clone(),
         }
+    }
+}
+
+#[wasm_bindgen]
+pub struct OpenAIEmbeddingModel(rig::providers::openai::embedding::EmbeddingModel);
+
+#[wasm_bindgen]
+impl OpenAIEmbeddingModel {
+    #[wasm_bindgen(constructor)]
+    pub fn new(model: &OpenAIClient, model_name: &str) -> Self {
+        let model = model.0.embedding_model(model_name);
+        Self(model)
+    }
+
+    pub async fn embed_text(&self, text: String) -> JsResult<Embedding> {
+        let res = self
+            .0
+            .embed_text(&text)
+            .await
+            .map_err(|e| JsError::new(e.to_string().as_ref()))?;
+
+        Ok(Embedding::from(res))
+    }
+
+    pub async fn embed_texts(&self, iter: StringIterable) -> JsResult<Vec<Embedding>> {
+        let iterable: JsValue = iter.unchecked_into();
+        let arr = js_sys::Array::from(&iterable);
+
+        let val = arr
+            .into_iter()
+            .map(|x| x.as_string().ok_or_else(|| JsError::new("Expected string")))
+            .collect::<Result<Vec<String>, JsError>>()?;
+
+        Ok(self
+            .0
+            .embed_texts(val)
+            .await
+            .map_err(|x| JsError::new(x.to_string().as_ref()))?
+            .into_iter()
+            .map(crate::embedding::Embedding::from)
+            .collect())
     }
 }

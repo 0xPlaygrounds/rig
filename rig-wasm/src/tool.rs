@@ -4,10 +4,8 @@ use send_wrapper::SendWrapper;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::{JsFuture, js_sys, spawn_local};
 
-/// A tool that uses JavaScript.
-/// Unfortunately, JavaScript functions are *mut u8 at their core (when it comes to how they're typed in Rust).
-/// This means that we need to use `send_wrapper::SendWrapper` which automatically makes it Send.
-/// However, if it gets dropped from outside of the thread where it was created, it will panic.
+/// A tool that can take a JavaScript function.
+/// Generally speaking, any class that implements the `JsToolObject` TS interface will work when creating this.
 #[wasm_bindgen]
 pub struct JsTool {
     inner: SendWrapper<JsToolObject>,
