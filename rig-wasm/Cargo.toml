@@ -9,12 +9,13 @@ name = "rig"
 crate-type = ["cdylib"]
 
 [dependencies]
-wasm-bindgen = "0.2.100"
 rig-core = { workspace = true, features = ["worker"] }
-wasm-bindgen-futures = "0.4.50"
 serde_json.workspace = true
-serde-wasm-bindgen = "0.6.5"
-anyhow.workspace = true
-slab = "0.4.10"
-send_wrapper = "0.6.0"
+anyhow = { workspace = true }
+futures = { workspace = true }
+
 console_error_panic_hook = "0.1.7"
+send_wrapper = "0.6.0"
+serde-wasm-bindgen = "0.6.5"
+wasm-bindgen = "0.2.100"
+wasm-bindgen-futures = "0.4.50"

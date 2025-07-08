@@ -45,6 +45,12 @@ impl OpenAIAgentBuilder {
         Self { builder }
     }
 
+    #[wasm_bindgen(js_name = "setPreamble")]
+    pub fn preamble(mut self, preamble: &str) -> Self {
+        self.builder = self.builder.preamble(preamble);
+        self
+    }
+
     #[wasm_bindgen(js_name = "addTool")]
     pub fn add_tool(mut self, tool: JsToolObject) -> Self {
         let tool = JsTool::new(tool);
@@ -67,6 +73,14 @@ impl OpenAIAgent {
     pub async fn prompt(&self, prompt: &str) -> JsResult<String> {
         self.0
             .prompt(prompt)
+            .await
+            .map_err(|x| JsError::new(x.to_string().as_ref()))
+    }
+
+    pub async fn prompt_multi_turn(&self, prompt: &str, turns: u32) -> JsResult<String> {
+        self.0
+            .prompt(prompt)
+            .multi_turn(turns as usize)
             .await
             .map_err(|x| JsError::new(x.to_string().as_ref()))
     }

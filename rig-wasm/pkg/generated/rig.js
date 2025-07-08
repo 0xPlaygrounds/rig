@@ -202,11 +202,21 @@ function debugString(val) {
     return className;
 }
 
+function takeFromExternrefTable0(idx) {
+    const value = wasm.__wbindgen_export_4.get(idx);
+    wasm.__externref_table_dealloc(idx);
+    return value;
+}
+
 function _assertClass(instance, klass) {
     if (!(instance instanceof klass)) {
         throw new Error(`expected instance of ${klass.name}`);
     }
 }
+
+module.exports.initPanicHook = function() {
+    wasm.initPanicHook();
+};
 
 function passArrayJsValueToWasm0(array, malloc) {
     const ptr = malloc(array.length * 4, 4) >>> 0;
@@ -217,27 +227,16 @@ function passArrayJsValueToWasm0(array, malloc) {
     WASM_VECTOR_LEN = array.length;
     return ptr;
 }
-
-function takeFromExternrefTable0(idx) {
-    const value = wasm.__wbindgen_export_4.get(idx);
-    wasm.__externref_table_dealloc(idx);
-    return value;
-}
-
-module.exports.initPanicHook = function() {
-    wasm.initPanicHook();
-};
-
 function __wbg_adapter_54(arg0, arg1) {
     wasm._dyn_core__ops__function__FnMut_____Output___R_as_wasm_bindgen__closure__WasmClosure___describe__invoke__h5e2bc3d42a24471a(arg0, arg1);
 }
 
 function __wbg_adapter_57(arg0, arg1, arg2) {
-    wasm.closure374_externref_shim(arg0, arg1, arg2);
+    wasm.closure383_externref_shim(arg0, arg1, arg2);
 }
 
-function __wbg_adapter_238(arg0, arg1, arg2, arg3) {
-    wasm.closure396_externref_shim(arg0, arg1, arg2, arg3);
+function __wbg_adapter_242(arg0, arg1, arg2, arg3) {
+    wasm.closure405_externref_shim(arg0, arg1, arg2, arg3);
 }
 
 /**
@@ -689,6 +688,17 @@ class OpenAIAgent {
     }
     /**
      * @param {string} prompt
+     * @param {number} turns
+     * @returns {Promise<string>}
+     */
+    prompt_multi_turn(prompt, turns) {
+        const ptr0 = passStringToWasm0(prompt, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.openaiagent_prompt_multi_turn(this.__wbg_ptr, ptr0, len0, turns);
+        return ret;
+    }
+    /**
+     * @param {string} prompt
      * @param {Message[]} messages
      * @returns {Promise<string>}
      */
@@ -740,6 +750,17 @@ class OpenAIAgentBuilder {
         this.__wbg_ptr = ret >>> 0;
         OpenAIAgentBuilderFinalization.register(this, this.__wbg_ptr, this);
         return this;
+    }
+    /**
+     * @param {string} preamble
+     * @returns {OpenAIAgentBuilder}
+     */
+    setPreamble(preamble) {
+        const ptr = this.__destroy_into_raw();
+        const ptr0 = passStringToWasm0(preamble, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.openaiagentbuilder_setPreamble(ptr, ptr0, len0);
+        return OpenAIAgentBuilder.__wrap(ret);
     }
     /**
      * @param {any} tool
@@ -1320,6 +1341,17 @@ module.exports.__wbg_instanceof_Map_f3469ce2244d2430 = function(arg0) {
     return ret;
 };
 
+module.exports.__wbg_instanceof_Promise_935168b8f4b49db3 = function(arg0) {
+    let result;
+    try {
+        result = arg0 instanceof Promise;
+    } catch (_) {
+        result = false;
+    }
+    const ret = result;
+    return ret;
+};
+
 module.exports.__wbg_instanceof_Response_f2cc20d9f7dfd644 = function(arg0) {
     let result;
     try {
@@ -1392,7 +1424,7 @@ module.exports.__wbg_new_23a2665fac83c611 = function(arg0, arg1) {
             const a = state0.a;
             state0.a = 0;
             try {
-                return __wbg_adapter_238(a, state0.b, arg0, arg1);
+                return __wbg_adapter_242(a, state0.b, arg0, arg1);
             } finally {
                 state0.a = a;
             }
@@ -1670,13 +1702,13 @@ module.exports.__wbindgen_cb_drop = function(arg0) {
     return ret;
 };
 
-module.exports.__wbindgen_closure_wrapper1243 = function(arg0, arg1, arg2) {
-    const ret = makeMutClosure(arg0, arg1, 330, __wbg_adapter_54);
+module.exports.__wbindgen_closure_wrapper1262 = function(arg0, arg1, arg2) {
+    const ret = makeMutClosure(arg0, arg1, 339, __wbg_adapter_54);
     return ret;
 };
 
-module.exports.__wbindgen_closure_wrapper1349 = function(arg0, arg1, arg2) {
-    const ret = makeMutClosure(arg0, arg1, 375, __wbg_adapter_57);
+module.exports.__wbindgen_closure_wrapper1368 = function(arg0, arg1, arg2) {
+    const ret = makeMutClosure(arg0, arg1, 384, __wbg_adapter_57);
     return ret;
 };
 

@@ -9386,11 +9386,11 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
+ "futures",
  "rig-core",
  "send_wrapper 0.6.0",
  "serde-wasm-bindgen",
  "serde_json",
- "slab",
  "wasm-bindgen",
  "wasm-bindgen-futures",
 ]

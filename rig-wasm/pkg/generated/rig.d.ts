@@ -85,11 +85,13 @@ export class OpenAIAgent {
   private constructor();
   free(): void;
   prompt(prompt: string): Promise<string>;
+  prompt_multi_turn(prompt: string, turns: number): Promise<string>;
   chat(prompt: string, messages: Message[]): Promise<string>;
 }
 export class OpenAIAgentBuilder {
   free(): void;
   constructor(client: OpenAIClient, model_name: string);
+  setPreamble(preamble: string): OpenAIAgentBuilder;
   addTool(tool: any): OpenAIAgentBuilder;
   build(): OpenAIAgent;
 }
