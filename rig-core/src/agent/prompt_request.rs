@@ -20,10 +20,12 @@ impl PromptType for Extended {}
 
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
-/// 
-/// If you're using tools, you will want to ensure you use `.multi_turn()` to add more turns as by
-/// default it is 0 (meaning no tool usage). Otherwise, attempting to await (which will send the
-/// prompt request) returns [`crate::completion::request::PromptError::MaxDepthError`].
+///
+/// If you expect to continously call tools, you will want to ensure you use the `.multi_turn()`
+/// argument to add more turns as by default, it is 0 (meaning only 1 tool round-trip). Otherwise,
+/// attempting to await (which will send the prompt request) can potentially return
+/// [`crate::completion::request::PromptError::MaxDepthError`] if the agent decides to call tools
+/// back to back.
 pub struct PromptRequest<'a, S: PromptType, M: CompletionModel> {
     /// The prompt message to send to the model
     prompt: Message,
@@ -50,6 +52,11 @@ impl<'a, M: CompletionModel> PromptRequest<'a, Standard, M> {
         }
     }
 
+    /// Enable returning extended details for responses (includes aggregated token usage)
+    /// 
+    /// Note: This changes the type of the response from `.send` to return a `PromptResponse` struct
+    /// instead of a simple `String`. This is useful for tracking token usage across multiple turns
+    /// of conversation.
     pub fn extended_details(self) -> PromptRequest<'a, Extended, M> {
         PromptRequest {
             prompt: self.prompt,
@@ -61,16 +68,10 @@ impl<'a, M: CompletionModel> PromptRequest<'a, Standard, M> {
     }
 }
 
-<<<<<<< HEAD
-impl<'a, M: CompletionModel> PromptRequest<'a, M> {
+impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
     /// Set the maximum depth for multi-turn conversations (ie, the maximum number of turns an LLM can have calling tools before writing a text response).
     /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxDepthError`].
-    pub fn multi_turn(self, depth: usize) -> PromptRequest<'a, M> {
-=======
-impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
-    /// Set the maximum depth for multi-turn conversations
     pub fn multi_turn(self, depth: usize) -> PromptRequest<'a, S, M> {
->>>>>>> 5ef0bd2 (feat: add `.extended_details` to `PromptRequest`)
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
@@ -80,13 +81,8 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
         }
     }
 
-<<<<<<< HEAD
-    /// Add chat history to the prompt request.
-    pub fn with_history(self, history: &'a mut Vec<Message>) -> PromptRequest<'a, M> {
-=======
     /// Add chat history to the prompt request
     pub fn with_history(self, history: &'a mut Vec<Message>) -> PromptRequest<'a, S, M> {
->>>>>>> 5ef0bd2 (feat: add `.extended_details` to `PromptRequest`)
         PromptRequest {
             prompt: self.prompt,
             chat_history: Some(history),
