@@ -53,7 +53,7 @@ impl<'a, M: CompletionModel> PromptRequest<'a, Standard, M> {
     }
 
     /// Enable returning extended details for responses (includes aggregated token usage)
-    /// 
+    ///
     /// Note: This changes the type of the response from `.send` to return a `PromptResponse` struct
     /// instead of a simple `String`. This is useful for tracking token usage across multiple turns
     /// of conversation.
