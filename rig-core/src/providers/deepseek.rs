@@ -568,12 +568,21 @@ mod tests {
 
     #[test]
     fn test_deserialize_deepseek_response() {
-        let data = r#"{"choices":[{
-            "finish_reason": "stop",
-            "index": 0,
-            "logprobs": null,
-            "message":{"role":"assistant","content":"Hello, world!"}
-            }]}"#;
+        let data = r#"{
+            "choices":[{
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null,
+                "message":{"role":"assistant","content":"Hello, world!"}
+            }],
+            "usage": {
+                "completion_tokens": 0,
+                "prompt_tokens": 0,
+                "prompt_cache_hit_tokens": 0,
+                "prompt_cache_miss_tokens": 0,
+                "total_tokens": 0
+            }
+        }"#;
 
         let jd = &mut serde_json::Deserializer::from_str(data);
         let result: Result<CompletionResponse, _> = serde_path_to_error::deserialize(jd);

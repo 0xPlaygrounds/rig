@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
         .extended_details()
         .await?;
 
-    println!("\n\nOpenAI Calculator Agent: {:?}", result);
+    println!("\n\nOpenAI Calculator Agent: {result:?}");
 
     // Prompt the agent again and print the response
     let result = agent
@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
         .extended_details()
         .await?;
 
-    println!("\n\nOpenAI Calculator Agent: {:?}", result);
+    println!("\n\nOpenAI Calculator Agent: {result:?}");
 
     Ok(())
 }
