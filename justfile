@@ -13,4 +13,4 @@ build-wasm:
     wasm-bindgen \
         --target nodejs \
         --out-dir rig-wasm/pkg/generated \
-        target/wasm32-unknown-unknown/release/rig.wasm
+        target/wasm32-unknown-unknown/release/rig_wasm.wasm

@@ -5,7 +5,6 @@ publish = false
 version = "0.0.0"
 
 [lib]
-name = "rig"
 crate-type = ["cdylib"]
 
 [dependencies]
