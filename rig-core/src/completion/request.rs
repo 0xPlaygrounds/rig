@@ -235,8 +235,8 @@ pub struct CompletionResponse<T> {
 /// If tokens used are `0`, then the provider failed to supply token usage metrics.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Usage {
-    pub prompt_tokens: u64,
-    pub completion_tokens: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
     // We store this separately as some providers may only report one number
     pub total_tokens: u64,
 }
@@ -244,8 +244,8 @@ pub struct Usage {
 impl Usage {
     pub fn new() -> Self {
         Self {
-            prompt_tokens: 0,
-            completion_tokens: 0,
+            input_tokens: 0,
+            output_tokens: 0,
             total_tokens: 0,
         }
     }
@@ -262,8 +262,8 @@ impl Add for Usage {
 
     fn add(self, other: Self) -> Self::Output {
         Self {
-            prompt_tokens: self.prompt_tokens + other.prompt_tokens,
-            completion_tokens: self.completion_tokens + other.completion_tokens,
+            input_tokens: self.input_tokens + other.input_tokens,
+            output_tokens: self.output_tokens + other.output_tokens,
             total_tokens: self.total_tokens + other.total_tokens,
         }
     }
@@ -271,8 +271,8 @@ impl Add for Usage {
 
 impl AddAssign for Usage {
     fn add_assign(&mut self, other: Self) {
-        self.prompt_tokens += other.prompt_tokens;
-        self.completion_tokens += other.completion_tokens;
+        self.input_tokens += other.input_tokens;
+        self.output_tokens += other.output_tokens;
         self.total_tokens += other.total_tokens;
     }
 }

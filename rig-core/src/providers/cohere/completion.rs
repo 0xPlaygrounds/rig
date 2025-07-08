@@ -114,8 +114,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 let output_tokens = tokens.output_tokens.unwrap_or(0.0);
 
                 completion::Usage {
-                    prompt_tokens: input_tokens as u64,
-                    completion_tokens: output_tokens as u64,
+                    input_tokens: input_tokens as u64,
+                    output_tokens: output_tokens as u64,
                     total_tokens: (input_tokens + output_tokens) as u64,
                 }
             })

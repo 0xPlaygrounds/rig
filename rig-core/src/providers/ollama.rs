@@ -326,8 +326,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 Ok(completion::CompletionResponse {
                     choice,
                     usage: Usage {
-                        prompt_tokens,
-                        completion_tokens,
+                        input_tokens: prompt_tokens,
+                        output_tokens: completion_tokens,
                         total_tokens: prompt_tokens + completion_tokens,
                     },
                     raw_response,

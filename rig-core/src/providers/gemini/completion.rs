@@ -259,8 +259,8 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             .usage_metadata
             .as_ref()
             .map(|usage| completion::Usage {
-                prompt_tokens: usage.prompt_token_count as u64,
-                completion_tokens: usage.candidates_token_count as u64,
+                input_tokens: usage.prompt_token_count as u64,
+                output_tokens: usage.candidates_token_count as u64,
                 total_tokens: usage.total_token_count as u64,
             })
             .unwrap_or_default();

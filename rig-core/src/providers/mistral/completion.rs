@@ -380,8 +380,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             .usage
             .as_ref()
             .map(|usage| completion::Usage {
-                prompt_tokens: usage.prompt_tokens as u64,
-                completion_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
+                input_tokens: usage.prompt_tokens as u64,
+                output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
                 total_tokens: usage.total_tokens as u64,
             })
             .unwrap_or_default();

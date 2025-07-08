@@ -46,8 +46,8 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
             .0
             .usage()
             .map(|usage| completion::Usage {
-                prompt_tokens: usage.input_tokens as u64,
-                completion_tokens: usage.output_tokens as u64,
+                input_tokens: usage.input_tokens as u64,
+                output_tokens: usage.output_tokens as u64,
                 total_tokens: usage.total_tokens as u64,
             })
             .unwrap_or_default();

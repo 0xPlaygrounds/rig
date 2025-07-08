@@ -871,8 +871,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             .usage
             .as_ref()
             .map(|usage| completion::Usage {
-                prompt_tokens: usage.input_tokens,
-                completion_tokens: usage.output_tokens,
+                input_tokens: usage.input_tokens,
+                output_tokens: usage.output_tokens,
                 total_tokens: usage.total_tokens,
             })
             .unwrap_or_default();

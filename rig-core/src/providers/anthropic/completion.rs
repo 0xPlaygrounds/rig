@@ -120,8 +120,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         })?;
 
         let usage = completion::Usage {
-            prompt_tokens: response.usage.input_tokens,
-            completion_tokens: response.usage.output_tokens,
+            input_tokens: response.usage.input_tokens,
+            output_tokens: response.usage.output_tokens,
             total_tokens: response.usage.input_tokens + response.usage.output_tokens,
         };
 
