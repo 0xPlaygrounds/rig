@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "declaration": true,
+    "outDir": "./dist",
+    "rootDir": "./",
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "examples/**/*.ts",
+    "examples/*.ts",
+    "pkg/**/*.ts",
+    "pkg/**/*.d.ts",
+    "pkg/generated/**/*"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

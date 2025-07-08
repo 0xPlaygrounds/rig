@@ -1,5 +1,5 @@
-import { OpenAIClient, initPanicHook } from "../pkg/index.ts";
-import { counter } from "./tools/tools.ts";
+import { OpenAIClient, initPanicHook } from "../pkg/index";
+import { counter } from "./tools/tools";
 
 initPanicHook();
 
@@ -25,5 +25,7 @@ try {
   let res = await agent.prompt_multi_turn(prompt, 2);
   console.log(`GPT-4o: ${res}`);
 } catch (e) {
-  console.log(`Error while prompting: ${e.msg}`);
+  if (e instanceof Error) {
+    console.log(`Error while prompting: ${e.message}`);
+  }
 }

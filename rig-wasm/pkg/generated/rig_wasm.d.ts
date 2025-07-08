@@ -64,7 +64,7 @@ export class IntoUnderlyingSource {
 export class JsTool {
   private constructor();
   free(): void;
-  static new(tool: any): JsTool;
+  static new(tool: JsToolObject): JsTool;
 }
 export class Message {
   private constructor();
@@ -92,7 +92,7 @@ export class OpenAIAgentBuilder {
   free(): void;
   constructor(client: OpenAIClient, model_name: string);
   setPreamble(preamble: string): OpenAIAgentBuilder;
-  addTool(tool: any): OpenAIAgentBuilder;
+  addTool(tool: JsToolObject): OpenAIAgentBuilder;
   build(): OpenAIAgent;
 }
 export class OpenAIClient {

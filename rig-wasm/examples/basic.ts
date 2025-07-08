@@ -1,4 +1,4 @@
-import { OpenAIClient } from "../pkg/index.ts";
+import { OpenAIClient } from "../pkg/index";
 
 let key = process.env.OPENAI_API_KEY;
 if (key === undefined) {

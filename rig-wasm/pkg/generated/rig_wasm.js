@@ -552,7 +552,7 @@ class JsTool {
         wasm.__wbg_jstool_free(ptr, 0);
     }
     /**
-     * @param {any} tool
+     * @param {JsToolObject} tool
      * @returns {JsTool}
      */
     static new(tool) {
@@ -763,7 +763,7 @@ class OpenAIAgentBuilder {
         return OpenAIAgentBuilder.__wrap(ret);
     }
     /**
-     * @param {any} tool
+     * @param {JsToolObject} tool
      * @returns {OpenAIAgentBuilder}
      */
     addTool(tool) {
@@ -1702,12 +1702,12 @@ module.exports.__wbindgen_cb_drop = function(arg0) {
     return ret;
 };
 
-module.exports.__wbindgen_closure_wrapper1262 = function(arg0, arg1, arg2) {
+module.exports.__wbindgen_closure_wrapper1263 = function(arg0, arg1, arg2) {
     const ret = makeMutClosure(arg0, arg1, 339, __wbg_adapter_54);
     return ret;
 };
 
-module.exports.__wbindgen_closure_wrapper1368 = function(arg0, arg1, arg2) {
+module.exports.__wbindgen_closure_wrapper1369 = function(arg0, arg1, arg2) {
     const ret = makeMutClosure(arg0, arg1, 384, __wbg_adapter_57);
     return ret;
 };

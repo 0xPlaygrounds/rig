@@ -8,6 +8,7 @@ pub type JsResult<T> = Result<T, JsError>;
 
 #[wasm_bindgen]
 unsafe extern "C" {
+    #[wasm_bindgen(typescript_type = "JsToolObject")]
     pub type JsToolObject;
     #[wasm_bindgen(method)]
     fn name(this: &JsToolObject) -> String;
