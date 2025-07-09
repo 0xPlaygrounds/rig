@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.14.0...rig-core-v0.15.0) - 2025-07-09
+
+### Added
+
+- *(rig-801)* DynClientBuilder::from_values ([#556](https://github.com/0xPlaygrounds/rig/pull/556))
+- add `.extended_details` to `PromptRequest` ([#555](https://github.com/0xPlaygrounds/rig/pull/555))
+
+### Fixed
+
+- *(rig-809)* gemini function declarations should not be OneOrMany ([#576](https://github.com/0xPlaygrounds/rig/pull/576))
+
 ## [0.14.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.13.0...rig-core-v0.14.0) - 2025-07-07
 
 ### Added
