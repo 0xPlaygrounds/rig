@@ -685,6 +685,7 @@ mod image_generation {
     impl image_generation::ImageGenerationModel for ImageGenerationModel {
         type Response = ImageGenerationResponse;
 
+        #[cfg_attr(feature = "worker", worker::send)]
         async fn image_generation(
             &self,
             generation_request: ImageGenerationRequest,
@@ -760,6 +761,7 @@ mod audio_generation {
     impl audio_generation::AudioGenerationModel for AudioGenerationModel {
         type Response = Bytes;
 
+        #[cfg_attr(feature = "worker", worker::send)]
         async fn audio_generation(
             &self,
             request: AudioGenerationRequest,

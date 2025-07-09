@@ -1,17 +1,22 @@
 use crate::completion::{AssistantContent, Document, Message, ToolDefinition};
 use crate::embedding::Embedding;
+use crate::image_generation::ImageGenerationRequest;
 use crate::tool::JsTool;
+use crate::transcription::TranscriptionRequest;
 use crate::vector_store::JsVectorStore;
 use crate::{JsResult, JsToolObject, JsVectorStoreShim, StringIterable};
 use rig::OneOrMany;
 use rig::agent::{Agent, AgentBuilder};
-use rig::client::CompletionClient;
 use rig::client::embeddings::EmbeddingsClient;
+use rig::client::image_generation::ImageGenerationClient;
+use rig::client::{AudioGenerationClient, CompletionClient, TranscriptionClient};
 use rig::completion::{Chat, CompletionModel, Prompt};
 use rig::embeddings::EmbeddingModel;
+use rig::image_generation::ImageGenerationModel;
+use rig::transcription::{TranscriptionModelDyn, TranscriptionResponse};
 use serde_json::Map;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::js_sys;
+use wasm_bindgen_futures::js_sys::{self};
 
 #[wasm_bindgen]
 #[derive(Clone)]
@@ -288,5 +293,70 @@ impl OpenAIEmbeddingModel {
             .into_iter()
             .map(crate::embedding::Embedding::from)
             .collect())
+    }
+}
+
+#[wasm_bindgen]
+pub struct OpenAITranscriptionModel(rig::providers::openai::TranscriptionModel);
+
+#[wasm_bindgen]
+impl OpenAITranscriptionModel {
+    #[wasm_bindgen]
+    pub fn new(client: &OpenAIClient, model_name: &str) -> Self {
+        Self(client.0.transcription_model(model_name))
+    }
+
+    #[wasm_bindgen]
+    pub async fn transcription(
+        &self,
+        request: TranscriptionRequest,
+    ) -> JsResult<OpenAITranscriptionResponse> {
+        let res = self.0.transcription(request.into()).await.unwrap();
+
+        let thing = OpenAITranscriptionResponse(res);
+
+        Ok(thing)
+    }
+}
+
+#[wasm_bindgen]
+pub struct OpenAITranscriptionResponse(TranscriptionResponse<()>);
+
+#[wasm_bindgen]
+impl OpenAITranscriptionResponse {
+    pub fn text(&self) -> String {
+        self.0.text.clone()
+    }
+}
+
+#[wasm_bindgen]
+pub struct OpenAIImageGenerationModel(rig::providers::openai::ImageGenerationModel);
+
+#[wasm_bindgen]
+impl OpenAIImageGenerationModel {
+    #[wasm_bindgen(constructor)]
+    pub fn new(client: &OpenAIClient, model_name: &str) -> Self {
+        Self(client.0.image_generation_model(model_name))
+    }
+
+    pub async fn image_generation(
+        &self,
+        req: ImageGenerationRequest,
+    ) -> JsResult<OpenAIImageGenerationResponse> {
+        let res = self.0.image_generation(req.into()).await.unwrap();
+
+        Ok(OpenAIImageGenerationResponse(res))
+    }
+}
+
+#[wasm_bindgen]
+pub struct OpenAIImageGenerationResponse(
+    rig::image_generation::ImageGenerationResponse<rig::providers::openai::ImageGenerationResponse>,
+);
+
+#[wasm_bindgen]
+impl OpenAIImageGenerationResponse {
+    pub fn image_bytes(&self) -> wasm_bindgen_futures::js_sys::Uint8Array {
+        wasm_bindgen_futures::js_sys::Uint8Array::from(self.0.image.as_ref())
     }
 }

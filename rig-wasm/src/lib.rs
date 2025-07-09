@@ -2,8 +2,10 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::{JsError, JsValue};
 pub mod completion;
 pub mod embedding;
+pub mod image_generation;
 pub mod providers;
 pub mod tool;
+pub mod transcription;
 pub mod vector_store;
 
 pub type JsResult<T> = Result<T, JsError>;
@@ -30,6 +32,9 @@ unsafe extern "C" {
     fn top_n(this: &JsVectorStoreShim, query: &str, n: u32) -> JsValue;
     #[wasm_bindgen(method)]
     fn top_n_ids(this: &JsVectorStoreShim, query: &str, n: u32) -> JsValue;
+
+    #[wasm_bindgen(typescript_type = "JSONObject")]
+    pub type JsonObject;
 }
 
 #[wasm_bindgen(js_name = "initPanicHook")]

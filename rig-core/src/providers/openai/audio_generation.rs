@@ -26,6 +26,7 @@ impl AudioGenerationModel {
 impl audio_generation::AudioGenerationModel for AudioGenerationModel {
     type Response = Bytes;
 
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn audio_generation(
         &self,
         request: AudioGenerationRequest,
