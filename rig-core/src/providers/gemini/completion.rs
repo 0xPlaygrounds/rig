@@ -141,6 +141,12 @@ pub(crate) fn create_request_body(
         role: Some(Role::Model),
     });
 
+    let tools = if completion_request.tools.is_empty() {
+        None
+    } else {
+        Some(Tool::try_from(completion_request.tools)?)
+    };
+
     let request = GenerateContentRequest {
         contents: full_history
             .into_iter()
@@ -151,7 +157,7 @@ pub(crate) fn create_request_body(
             .collect::<Result<Vec<_>, _>>()?,
         generation_config: Some(generation_config),
         safety_settings: None,
-        tools: Some(Tool::try_from(completion_request.tools)?),
+        tools,
         tool_config: None,
         system_instruction,
     };
