@@ -169,12 +169,13 @@ impl TryFrom<completion::ToolDefinition> for Tool {
             } else {
                 Some(tool.parameters.try_into()?)
             };
+
         Ok(Self {
-            function_declarations: OneOrMany::one(FunctionDeclaration {
+            function_declarations: vec![FunctionDeclaration {
                 name: tool.name,
                 description: tool.description,
                 parameters,
-            }),
+            }],
             code_execution: None,
         })
     }
@@ -184,7 +185,7 @@ impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
     type Error = CompletionError;
 
     fn try_from(tools: Vec<completion::ToolDefinition>) -> Result<Self, Self::Error> {
-        let mut functions = Vec::new();
+        let mut function_declarations = Vec::new();
 
         for tool in tools {
             let parameters =
@@ -203,15 +204,12 @@ impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
                     }
                 };
 
-            functions.push(FunctionDeclaration {
+            function_declarations.push(FunctionDeclaration {
                 name: tool.name,
                 description: tool.description,
                 parameters,
             });
         }
-
-        let function_declarations: OneOrMany<FunctionDeclaration> = OneOrMany::many(functions)
-            .map_err(|x| CompletionError::ProviderError(x.to_string()))?;
 
         Ok(Self {
             function_declarations,
@@ -1007,7 +1005,7 @@ pub mod gemini_api_types {
     #[derive(Debug, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct Tool {
-        pub function_declarations: OneOrMany<FunctionDeclaration>,
+        pub function_declarations: Vec<FunctionDeclaration>,
         pub code_execution: Option<CodeExecution>,
     }
 
