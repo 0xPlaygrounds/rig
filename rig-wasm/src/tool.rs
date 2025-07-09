@@ -13,6 +13,7 @@ pub struct JsTool {
 
 #[wasm_bindgen]
 impl JsTool {
+    #[wasm_bindgen(constructor)]
     pub fn new(tool: JsToolObject) -> Self {
         let inner = SendWrapper::new(tool);
         Self { inner }

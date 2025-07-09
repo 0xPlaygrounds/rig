@@ -1,7 +1,8 @@
 use crate::completion::{AssistantContent, Document, Message, ToolDefinition};
 use crate::embedding::Embedding;
 use crate::tool::JsTool;
-use crate::{JsResult, JsToolObject, StringIterable};
+use crate::vector_store::JsVectorStore;
+use crate::{JsResult, JsToolObject, JsVectorStoreShim, StringIterable};
 use rig::OneOrMany;
 use rig::agent::{Agent, AgentBuilder};
 use rig::client::CompletionClient;
@@ -56,6 +57,13 @@ impl OpenAIAgentBuilder {
     #[wasm_bindgen(js_name = "setPreamble")]
     pub fn preamble(mut self, preamble: &str) -> Self {
         self.builder = self.builder.preamble(preamble);
+        self
+    }
+
+    #[wasm_bindgen(js_name = "setDynamicContext")]
+    pub fn dynamic_context(mut self, sample: u32, store: JsVectorStoreShim) -> Self {
+        let store = JsVectorStore::new(store);
+        self.builder = self.builder.dynamic_context(sample as usize, store);
         self
     }
 
