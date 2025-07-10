@@ -1,7 +1,7 @@
-import { OpenAIClient, initPanicHook } from "../pkg/index";
-import { counter } from "./tools/tools";
+// import { initPanicHook } from "rig-wasm";
+import { OpenAIAgent } from "rig-wasm/openai";
 
-initPanicHook();
+// initPanicHook();
 
 let key = process.env.OPENAI_API_KEY;
 if (key === undefined) {
@@ -13,13 +13,10 @@ if (key === undefined) {
 let prompt = `Please increment the counter by 1 and let me know what the result is.`;
 
 try {
-  const agent = new OpenAIClient(key)
-    .agent("gpt-4o")
-    .setPreamble(
-      "You are an AI agent equipped with a counter, which can only increment.",
-    )
-    .addTool(counter)
-    .build();
+  const agent = new OpenAIAgent({
+    apiKey: key,
+    model: "gpt-4o",
+  });
 
   console.log(`Prompt: ${prompt}`);
   let res = await agent.prompt_multi_turn(prompt, 2);

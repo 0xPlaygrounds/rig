@@ -11,4 +11,4 @@ export type TopNIdsResult = [CosineSimilarity, DocumentId];
 export type Metadata = JSONObject;
 export type CosineSimilarity = number;
 export type EmbeddedDocument = string;
-export type DocumentId = String;
+export type DocumentId = string;

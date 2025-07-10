@@ -1,5 +1,6 @@
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::{JsError, JsValue};
+
 pub mod completion;
 pub mod embedding;
 pub mod image_generation;
@@ -35,6 +36,9 @@ unsafe extern "C" {
 
     #[wasm_bindgen(typescript_type = "JSONObject")]
     pub type JsonObject;
+
+    #[wasm_bindgen(typescript_type = "AgentOpts")]
+    pub type JsAgentOpts;
 }
 
 #[wasm_bindgen(js_name = "initPanicHook")]

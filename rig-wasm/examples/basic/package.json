@@ -1,19 +1,19 @@
 {
-  "name": "rig-wasm",
+  "name": "basic",
   "version": "1.0.0",
-  "description": "WASM bindings to Rig.",
+  "description": "",
+  "type": "module",
   "main": "index.js",
-  "directories": {
-    "example": "examples"
-  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "dependencies": {
+    "rig-wasm": "file:../../pkg"
+  },
   "devDependencies": {
-    "@types/node": "^24.0.10"
+    "@types/node": "^24.0.12"
   }
 }

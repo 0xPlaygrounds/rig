@@ -29,3 +29,9 @@ Embedding:
   - `completion`: All items related to completions.
   - `lib`: The entrypoint file. All exported file definitions *must* come through here, so ensure there are no naming conflicts!
   - `tool`: All items related to tools.
+
+## How to use
+- Use `tsc` to copy the files into the relevant generated folder.
+- Use `cp -r generated out` to move the WASM files into the correct location.
+  - Note that the final goal should be that you will have `index.js` and other top-level files in the top level of the `out` folder then all WASM files in the `/generated` folder.
+- Run the examples! Or publish it. Or something.
