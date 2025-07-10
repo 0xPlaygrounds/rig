@@ -3,7 +3,6 @@
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "Node",
-    "outDir": "./out",
     "rootDir": ".",
     "allowJs": true,
     "esModuleInterop": true,
@@ -17,8 +16,8 @@
     "generated/*",
     "**/*",
     "**/*.d.ts",
-    "index.ts",
-    "openai.ts"
+    "src/*.ts",
+    "rollup.config.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "out/**/*"]
 }

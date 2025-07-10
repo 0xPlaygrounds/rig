@@ -5,7 +5,8 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "tsx index.ts"
   },
   "keywords": [],
   "author": "",
@@ -14,6 +15,7 @@
     "rig-wasm": "file:../../pkg"
   },
   "devDependencies": {
-    "@types/node": "^24.0.12"
+    "@types/node": "^24.0.12",
+    "tsx": "^4.0.0"
   }
 }

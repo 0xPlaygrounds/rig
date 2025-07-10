@@ -1,1 +1,1 @@
-export { OpenAIAgent } from "./generated/rig_wasm.js";
+export { OpenAIAgent as Agent } from "./generated/rig_wasm.js";

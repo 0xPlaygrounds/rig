@@ -11,6 +11,6 @@ fmt:
 build-wasm:
     cargo build -p rig-wasm --release --target wasm32-unknown-unknown
     wasm-bindgen \
-        --target nodejs \
+        --target experimental-nodejs-module \
         --out-dir rig-wasm/pkg/generated \
         target/wasm32-unknown-unknown/release/rig_wasm.wasm

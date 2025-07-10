@@ -4,7 +4,7 @@ export interface AgentOpts {
   preamble?: string;
   context?: string[];
   temperature?: number;
-  tools?: JsTool[];
+  tools?: JsToolObject[];
   dynamicContext?: DynamicContextOpts;
   dynamicTools?: DynamicToolsOpts;
 }
