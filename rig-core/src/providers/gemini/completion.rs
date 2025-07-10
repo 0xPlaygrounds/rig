@@ -450,6 +450,7 @@ pub mod gemini_api_types {
         FileData(FileData),
         ExecutableCode(ExecutableCode),
         CodeExecutionResult(CodeExecutionResult),
+        Thought { thoughts: Vec<String> },
     }
 
     impl From<String> for Part {
@@ -558,6 +559,11 @@ pub mod gemini_api_types {
             match content {
                 message::AssistantContent::Text(message::Text { text }) => text.into(),
                 message::AssistantContent::ToolCall(tool_call) => tool_call.into(),
+                message::AssistantContent::Reasoning(message::Reasoning { reasoning }) => {
+                    Part::Thought {
+                        thoughts: vec![reasoning],
+                    }
+                }
             }
         }
     }

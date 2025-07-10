@@ -4,7 +4,7 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError},
     json_utils,
-    message::{self, DocumentMediaType, MessageError},
+    message::{self, DocumentMediaType, MessageError, Reasoning},
     one_or_many::string_or_one_or_many,
 };
 use std::{convert::Infallible, str::FromStr};
@@ -171,6 +171,10 @@ pub enum Content {
     Document {
         source: DocumentSource,
     },
+    Thinking {
+        thinking: String,
+        signature: Option<String>,
+    },
 }
 
 impl FromStr for Content {
@@ -325,6 +329,10 @@ impl From<message::AssistantContent> for Content {
                     input: function.arguments,
                 }
             }
+            message::AssistantContent::Reasoning(Reasoning { reasoning }) => Content::Thinking {
+                thinking: reasoning,
+                signature: None,
+            },
         }
     }
 }

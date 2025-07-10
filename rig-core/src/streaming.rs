@@ -13,7 +13,7 @@ use crate::agent::Agent;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message, Usage,
 };
-use crate::message::{AssistantContent, ToolCall, ToolFunction};
+use crate::message::{AssistantContent, Reasoning, ToolCall, ToolFunction};
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use std::boxed::Box;
@@ -252,6 +252,10 @@ pub async fn stream_to_stdout<M: CompletionModel>(
                     .map_err(|e| std::io::Error::other(e.to_string()))?;
                 println!("\nResult: {res}");
             }
+            Ok(AssistantContent::Reasoning(Reasoning { reasoning })) => {
+                print!("{reasoning}");
+                std::io::Write::flush(&mut std::io::stdout())?;
+            }
             Err(e) => {
                 if e.to_string().contains("aborted") {
                     println!("\nStream cancelled.");
@@ -318,6 +322,10 @@ mod tests {
                 Ok(AssistantContent::ToolCall(tc)) => {
                     println!("\nTool Call: {tc:?}");
                     chunk_count += 1;
+                }
+                Ok(AssistantContent::Reasoning(Reasoning { reasoning })) => {
+                    print!("{reasoning}");
+                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
                 }
                 Err(e) => {
                     eprintln!("Error: {e:?}");
