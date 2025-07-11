@@ -12,12 +12,15 @@
     "typeRoots": ["./types/", "./generated/"]
   },
   "include": [
-    "types/*.d.ts",
-    "generated/*",
-    "**/*",
-    "**/*.d.ts",
-    "src/*.ts",
-    "rollup.config.ts"
+    "./types/**/*.d.ts",
+    "./types/**/*.ts",
+    "./src/**/*.ts",
+    "./generated/**/*.ts",
+    "rollup.config.ts",
+    "index.ts",
+    "openai.ts",
+    "qdrant.ts",
+    "types.ts"
   ],
   "exclude": ["node_modules", "out/**/*"]
 }

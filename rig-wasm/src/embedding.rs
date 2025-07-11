@@ -2,7 +2,10 @@ use rig::embeddings::Embedding as CoreEmbedding;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
-pub struct Embedding(CoreEmbedding);
+pub struct Embedding {
+    document: String,
+    vec: Vec<f64>,
+}
 
 #[wasm_bindgen]
 impl Embedding {
@@ -10,30 +13,43 @@ impl Embedding {
     /// Generally not recommended as these are typically generated automatically from sending embedding requests to model providers.
     #[wasm_bindgen(constructor)]
     pub fn new(document: String, embedding: Vec<f64>) -> Self {
-        let embedding = CoreEmbedding {
+        Self {
             document,
             vec: embedding,
-        };
-        Self(embedding)
+        }
     }
 
+    #[wasm_bindgen(getter)]
     pub fn document(&self) -> String {
-        self.0.document.clone()
+        self.document.clone()
     }
 
-    pub fn embedding(&self) -> Vec<f64> {
-        self.0.vec.clone()
+    #[wasm_bindgen(setter)]
+    pub fn set_document(&mut self, val: String) {
+        self.document = val;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn vec(&self) -> Vec<f64> {
+        self.vec.clone()
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_vec(&mut self, vec: Vec<f64>) {
+        self.vec = vec;
     }
 }
 
-impl From<Embedding> for rig::embeddings::Embedding {
+impl From<Embedding> for CoreEmbedding {
     fn from(value: Embedding) -> Self {
-        value.0
+        let Embedding { document, vec } = value;
+        CoreEmbedding { document, vec }
     }
 }
 
-impl From<rig::embeddings::Embedding> for Embedding {
-    fn from(value: rig::embeddings::Embedding) -> Self {
-        Self(value)
+impl From<CoreEmbedding> for Embedding {
+    fn from(value: CoreEmbedding) -> Self {
+        let CoreEmbedding { document, vec } = value;
+        Self { document, vec }
     }
 }

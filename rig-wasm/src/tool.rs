@@ -1,4 +1,4 @@
-use crate::JsToolObject;
+use crate::{JsResult, JsToolObject, ensure_type_implements_functions};
 use rig::tool::ToolError;
 use send_wrapper::SendWrapper;
 use wasm_bindgen::prelude::*;
@@ -8,15 +8,18 @@ use wasm_bindgen_futures::{JsFuture, js_sys, spawn_local};
 /// Generally speaking, any class that implements the `JsToolObject` TS interface will work when creating this.
 #[wasm_bindgen]
 pub struct JsTool {
-    inner: SendWrapper<JsToolObject>,
+    inner: SendWrapper<JsValue>,
 }
 
 #[wasm_bindgen]
 impl JsTool {
     #[wasm_bindgen(constructor)]
-    pub fn new(tool: JsToolObject) -> Self {
+    pub fn new(tool: JsValue) -> JsResult<Self> {
+        let required_fns = vec!["name", "definition", "call"];
+        ensure_type_implements_functions(&tool, required_fns)?;
         let inner = SendWrapper::new(tool);
-        Self { inner }
+
+        Ok(Self { inner })
     }
 }
 
@@ -36,7 +39,13 @@ impl rig::tool::Tool for JsTool {
         &self,
         prompt: String,
     ) -> impl Future<Output = rig::completion::ToolDefinition> + Send + Sync {
-        let res = self.inner.definition(prompt);
+        let func = js_sys::Reflect::get(&self.inner, &JsValue::from_str("definition"))
+            .expect("tool must have a definition method")
+            .unchecked_into::<js_sys::Function>();
+
+        let this = &self.inner;
+        let prompt = JsValue::from_str(&prompt);
+        let res = func.call1(this, &prompt).expect("definition call failed");
 
         let value: rig::completion::ToolDefinition = serde_wasm_bindgen::from_value(res)
             .inspect_err(|x| println!("Error: {x}"))
@@ -50,20 +59,25 @@ impl rig::tool::Tool for JsTool {
         args: Self::Args,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send + Sync {
         let (tx, rx) = futures::channel::oneshot::channel();
-        let value = serde_wasm_bindgen::to_value(&args)
-            .inspect_err(|x| println!("Error: {x}"))
-            .map_err(|x| ToolError::ToolCallError(x.to_string().into()))
-            .unwrap();
+        let js_args = serde_wasm_bindgen::to_value(&args).expect("This should be a JSON object!");
 
-        let func: JsToolObject = self.inner.clone().unchecked_into::<JsToolObject>();
+        let func = self.inner.clone();
 
         spawn_local(async move {
-            let res: js_sys::Promise = func
-                .call(value)
-                .dyn_into()
-                .expect("This method call should return a promise!");
+            let call_fn = js_sys::Reflect::get(&func, &JsValue::from_str("call"))
+                .map_err(|_| ToolError::ToolCallError("tool.call missing".into()))
+                .expect("Call function doesn't exist!")
+                .unchecked_into::<js_sys::Function>();
 
-            let res = match JsFuture::from(res).await {
+            let promise = call_fn
+                .call1(&func, &js_args)
+                .map_err(|_| ToolError::ToolCallError("tool.call failed".into()))
+                .expect("tool.call should succeed")
+                .dyn_into::<js_sys::Promise>()
+                .map_err(|_| ToolError::ToolCallError("tool.call did not return a Promise".into()))
+                .expect("This should return a promise");
+
+            let res = match JsFuture::from(promise).await {
                 Ok(res) => res,
                 Err(_) => panic!(
                     "Couldn't get a JsFuture from the promise! This shouldn't normally panic."

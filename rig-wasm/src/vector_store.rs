@@ -1,3 +1,4 @@
+use rig::vector_store::VectorStoreError;
 use send_wrapper::SendWrapper;
 use serde::Deserialize;
 
@@ -7,19 +8,21 @@ use wasm_bindgen_futures::{
     js_sys::{self, Array},
 };
 
-use crate::JsVectorStoreShim;
+use crate::{JsResult, ensure_type_implements_functions};
 
 #[wasm_bindgen]
 pub struct JsVectorStore {
-    inner: SendWrapper<JsVectorStoreShim>,
+    inner: SendWrapper<JsValue>,
 }
 
 #[wasm_bindgen]
 impl JsVectorStore {
     #[wasm_bindgen(constructor)]
-    pub fn new(shim: JsVectorStoreShim) -> Self {
+    pub fn new(shim: JsValue) -> JsResult<Self> {
+        let required_fns = vec!["top_n", "top_n_ids"];
+        ensure_type_implements_functions(&shim, required_fns)?;
         let inner = SendWrapper::new(shim);
-        Self { inner }
+        Ok(Self { inner })
     }
 }
 
@@ -33,12 +36,29 @@ impl rig::vector_store::VectorStoreIndex for JsVectorStore {
     > + Send {
         let (tx, rx) = futures::channel::oneshot::channel();
         let query = query.to_string();
-        let inner = self.inner.clone().unchecked_into::<JsVectorStoreShim>();
+        let inner = self.inner.clone();
 
         wasm_bindgen_futures::spawn_local(async move {
-            let promise = inner
-                .top_n(&query, n as u32)
-                .unchecked_into::<js_sys::Promise>();
+            let call_fn = js_sys::Reflect::get(&inner, &JsValue::from_str("top_n"))
+                .map_err(|_| VectorStoreError::DatastoreError("vector_store.top_n missing".into()))
+                .expect("Call function doesn't exist!")
+                .unchecked_into::<js_sys::Function>();
+
+            let promise = call_fn
+                .call2(
+                    &inner,
+                    &JsValue::from_str(&query),
+                    &JsValue::from_f64(n as f64),
+                )
+                .map_err(|_| VectorStoreError::DatastoreError("vector_store.top_n failed".into()))
+                .expect("tool.call should succeed")
+                .dyn_into::<js_sys::Promise>()
+                .map_err(|_| {
+                    VectorStoreError::DatastoreError(
+                        "vector_store.top_n did not return a Promise".into(),
+                    )
+                })
+                .expect("This should return a promise");
 
             let js_result = JsFuture::from(promise).await.unwrap();
 
@@ -85,12 +105,29 @@ impl rig::vector_store::VectorStoreIndex for JsVectorStore {
     > + Send {
         let (tx, rx) = futures::channel::oneshot::channel();
         let query = query.to_string();
-        let inner = self.inner.clone().unchecked_into::<JsVectorStoreShim>();
+        let inner = self.inner.clone();
 
         wasm_bindgen_futures::spawn_local(async move {
-            let promise = inner
-                .top_n(&query, n as u32)
-                .unchecked_into::<js_sys::Promise>();
+            let call_fn = js_sys::Reflect::get(&inner, &JsValue::from_str("top_n_ids"))
+                .map_err(|_| VectorStoreError::DatastoreError("vector_store.top_n missing".into()))
+                .expect("Call function doesn't exist!")
+                .unchecked_into::<js_sys::Function>();
+
+            let promise = call_fn
+                .call2(
+                    &inner,
+                    &JsValue::from_str(&query),
+                    &JsValue::from_f64(n as f64),
+                )
+                .map_err(|_| VectorStoreError::DatastoreError("vector_store.top_n failed".into()))
+                .expect("tool.call should succeed")
+                .dyn_into::<js_sys::Promise>()
+                .map_err(|_| {
+                    VectorStoreError::DatastoreError(
+                        "vector_store.top_n did not return a Promise".into(),
+                    )
+                })
+                .expect("This should return a promise");
 
             let js_result = JsFuture::from(promise).await.unwrap();
 

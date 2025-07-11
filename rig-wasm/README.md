@@ -10,8 +10,9 @@ Agents:
   - [x] Prompting
   - [x] Tool usage (and related TS definitions)
   - [x] Multi-turn
-  - [ ] Dynamic context
-  - [ ] Documents
+  - [x] Dynamic context
+  - [x] Documents
+  - [x] Options builder (for idiomatic DX)
 
 Embedding:
   - [ ] Embed
@@ -21,17 +22,12 @@ Embedding:
 ## Folder architecture
 - `examples`: A list of examples (entirely in TS) that use `rig-wasm`.
 - `pkg`: The JavaScript package.
-  - `generated`: The generated WASM files.
   - `types`: Typescript definitions. These are manually hand-written, so if there are any changes in the `rig-wasm` library (particularly if there are any changes to the unsafe extern C blocks) you must ensure that these are kept up to date. Additionally, some translated types require sub-definitions which will be contained here.
-  - `*`: The rest of the code. Generally, this will contain things that are unable to be replicated from the Rust side - such as code that is unable to be translated directly through WASM (ie traits, etc...).
+  - `src`: Some handwritten code. Primarily used for re-exporting and each file also serves as a module entrypoint for module hygiene.
 - `src`: The Rust code.
-  - `providers`: A folder of LLM providers (a WASM mirror of `rig-core/src/providers`).
-  - `completion`: All items related to completions.
-  - `lib`: The entrypoint file. All exported file definitions *must* come through here, so ensure there are no naming conflicts!
-  - `tool`: All items related to tools.
+- `build.rs`: A build script. Primarily used to regenerate all providers based on the contents of `rig-core/src/providers` as their `wasm-bindgen` counterparts.
 
-## How to use
-- Use `tsc` to copy the files into the relevant generated folder.
-- Use `cp -r generated out` to move the WASM files into the correct location.
-  - Note that the final goal should be that you will have `index.js` and other top-level files in the top level of the `out` folder then all WASM files in the `/generated` folder.
-- Run the examples! Or publish it. Or something.
+## Development
+- Use `just build-wasm` (which will activate the relevant command from the core justfile at the top level of the project).
+- Go into `rig-wasm/pkg` and use `npm run build` which will run the Rollup pipeline as well as copying some WASM files over.
+- Try some of the examples! Or do some development work.

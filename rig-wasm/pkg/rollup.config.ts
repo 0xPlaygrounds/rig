@@ -1,15 +1,24 @@
 // rollup.config.ts
 import type { RollupOptions } from "rollup";
 import typescript from "@rollup/plugin-typescript";
-import copy from "rollup-plugin-copy";
+import dts from "rollup-plugin-dts";
 import wasm from "@rollup/plugin-wasm";
 
 const config: RollupOptions[] = [
   // ESM build
   {
+    external: [
+      "@qdrant/js-client-rest",
+      "node:fs",
+      "node:path",
+      "node:process",
+      "util",
+    ],
     input: {
       index: "index.ts",
       openai: "openai.ts",
+      types: "types.ts",
+      qdrant: "qdrant.ts",
     },
     output: {
       dir: "out/esm",
@@ -18,15 +27,26 @@ const config: RollupOptions[] = [
     },
     plugins: [
       typescript({
-        // For ESM, generate declarations directly into 'out/esm' alongside the JS files
         declaration: true,
         declarationDir: "out/esm",
       }),
       wasm(),
     ],
+    onwarn(warning, warn) {
+      if (warning.code === "EMPTY_CHUNK") {
+        return;
+      }
+    },
   },
   // CJS build
   {
+    external: [
+      "@qdrant/js-client-rest",
+      "node:fs",
+      "node:path",
+      "node:process",
+      "util",
+    ],
     input: "index.ts",
     output: {
       file: "out/cjs/index.cjs",
@@ -41,19 +61,23 @@ const config: RollupOptions[] = [
         outDir: "out",
       }),
       wasm(),
-      copy({
-        targets: [
-          {
-            src: "generated/rig_wasm_bg.wasm",
-            dest: "out/esm/generated",
-          },
-          {
-            src: "generated/rig_wasm_bg.wasm.d.ts",
-            dest: "out/esm/generated",
-          },
-        ],
-      }),
     ],
+  },
+  {
+    input: "index.ts", // Use your main entry point for declarations
+    output: {
+      file: "out/esm/index.d.ts", // Output the bundled declarations to your ESM types location
+      format: "esm", // Format doesn't strictly matter for declarations, but esm is common
+    },
+    plugins: [
+      dts(), // Use the dts plugin to bundle all declarations
+    ],
+
+    onwarn(warning, warn) {
+      if (warning.code === "EMPTY_CHUNK") {
+        return;
+      }
+    },
   },
 ];
 

@@ -4,7 +4,9 @@ use crate::image_generation::ImageGenerationRequest;
 use crate::tool::JsTool;
 use crate::transcription::TranscriptionRequest;
 use crate::vector_store::JsVectorStore;
-use crate::{JsAgentOpts, JsResult, JsToolObject, JsVectorStoreShim, StringIterable};
+use crate::{
+    JsAgentOpts, JsModelOpts, JsResult, JsToolObject, JsVectorStoreShim, ModelOpts, StringIterable,
+};
 use rig::OneOrMany;
 use rig::agent::{Agent, AgentBuilder};
 use rig::client::embeddings::EmbeddingsClient;
@@ -24,16 +26,16 @@ pub struct OpenAIAgent(Agent<rig::providers::openai::responses_api::ResponsesCom
 #[wasm_bindgen]
 impl OpenAIAgent {
     #[wasm_bindgen(constructor)]
-    pub fn new(opts: JsAgentOpts) -> Self {
+    pub fn new(opts: JsAgentOpts) -> JsResult<Self> {
         let api_key = Reflect::get(&opts, &JsValue::from_str("apiKey"))
-            .unwrap()
+            .map_err(|_| JsError::new("failed to get apiKey"))?
             .as_string()
-            .expect("apiKey is required");
+            .ok_or(JsError::new("apiKey property of Agent is required"))?;
 
         let model = Reflect::get(&opts, &JsValue::from_str("model"))
-            .unwrap()
+            .map_err(|_| JsError::new("failed to get model"))?
             .as_string()
-            .expect("model is required");
+            .ok_or(JsError::new("model property of Agent is required"))?;
 
         let preamble = Reflect::get(&opts, &JsValue::from_str("preamble"))
             .ok()
@@ -58,25 +60,23 @@ impl OpenAIAgent {
             .ok()
             .and_then(|v| v.as_f64());
 
-        let tools = Reflect::get(&opts, &JsValue::from_str("tools"))
-            .ok()
-            .and_then(|v| {
-                if v.is_undefined() || v.is_null() {
-                    None
-                } else {
-                    let array = Array::from(&v);
-                    let converted = array
-                        .iter()
-                        .map(|item| {
-                            JsTool::new(
-                                item.dyn_into::<JsToolObject>()
-                                    .expect("Element in tools array is not a JsTool"),
-                            )
-                        })
-                        .collect::<Vec<JsTool>>();
-                    Some(converted)
+        let tools = match Reflect::get(&opts, &JsValue::from_str("tools")) {
+            Ok(v) if v.is_undefined() || v.is_null() => None,
+            Ok(v) => {
+                let array = Array::from(&v);
+                let mut converted = Vec::new();
+                for item in array.iter() {
+                    let tool = JsTool::new(item).unwrap();
+                    converted.push(tool);
                 }
-            });
+                Some(converted)
+            }
+            Err(e) => {
+                return Err(JsError::new(&format!(
+                    "Failed to get tools property: {e:?}"
+                )));
+            }
+        };
 
         let dynamic_context = Reflect::get(&opts, &JsValue::from_str("dynamicContext"))
             .ok()
@@ -90,11 +90,9 @@ impl OpenAIAgent {
                         .map(|v| v as usize)?;
 
                     let store = JsVectorStore::new(
-                        Reflect::get(&v, &JsValue::from_str("dynamicTools"))
-                            .ok()?
-                            .dyn_into::<JsVectorStoreShim>()
-                            .ok()?,
-                    );
+                        Reflect::get(&v, &JsValue::from_str("dynamicTools")).ok()?,
+                    )
+                    .expect("dynamicTools should exist!");
 
                     Some((sample, store))
                 }
@@ -112,10 +110,7 @@ impl OpenAIAgent {
                         .map(|v| v as usize)?;
 
                     let store = JsVectorStore::new(
-                        Reflect::get(&v, &JsValue::from_str("dynamicTools"))
-                            .ok()?
-                            .dyn_into::<JsVectorStoreShim>()
-                            .ok()?,
+                        Reflect::get(&v, &JsValue::from_str("dynamicTools")).ok()?,
                     );
 
                     Some((sample, store))
@@ -148,7 +143,7 @@ impl OpenAIAgent {
             agent = agent.dynamic_context(sample, ctx);
         }
 
-        Self(agent.build())
+        Ok(Self(agent.build()))
     }
 
     pub async fn prompt(&self, prompt: &str) -> JsResult<String> {
@@ -315,46 +310,49 @@ impl OpenAIAgent {
 //     }
 // }
 
-// #[wasm_bindgen]
-// pub struct OpenAIEmbeddingModel(rig::providers::openai::embedding::EmbeddingModel);
+#[wasm_bindgen]
+pub struct OpenAIEmbeddingModel(rig::providers::openai::embedding::EmbeddingModel);
 
-// #[wasm_bindgen]
-// impl OpenAIEmbeddingModel {
-//     #[wasm_bindgen(constructor)]
-//     pub fn new(model: &OpenAIClient, model_name: &str) -> Self {
-//         let model = model.0.embedding_model(model_name);
-//         Self(model)
-//     }
+#[wasm_bindgen]
+impl OpenAIEmbeddingModel {
+    #[wasm_bindgen(constructor)]
+    pub fn new(opts: JsModelOpts) -> JsResult<Self> {
+        let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
+            .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
+        let client = rig::providers::openai::Client::new(&model_opts.api_key);
+        let model = client.embedding_model(&model_opts.model_name);
+        Ok(Self(model))
+    }
 
-//     pub async fn embed_text(&self, text: String) -> JsResult<Embedding> {
-//         let res = self
-//             .0
-//             .embed_text(&text)
-//             .await
-//             .map_err(|e| JsError::new(e.to_string().as_ref()))?;
+    pub async fn embed_text(&self, text: String) -> JsResult<Embedding> {
+        let res = self
+            .0
+            .embed_text(&text)
+            .await
+            .map_err(|e| JsError::new(e.to_string().as_ref()))?;
 
-//         Ok(Embedding::from(res))
-//     }
+        Ok(Embedding::from(res))
+    }
 
-//     pub async fn embed_texts(&self, iter: StringIterable) -> JsResult<Vec<Embedding>> {
-//         let iterable: JsValue = iter.unchecked_into();
-//         let arr = js_sys::Array::from(&iterable);
+    pub async fn embed_texts(&self, iter: StringIterable) -> JsResult<Vec<Embedding>> {
+        let iterable: JsValue = iter.unchecked_into();
+        let arr = js_sys::Array::from(&iterable);
 
-//         let val = arr
-//             .into_iter()
-//             .map(|x| x.as_string().ok_or_else(|| JsError::new("Expected string")))
-//             .collect::<Result<Vec<String>, JsError>>()?;
+        let val = arr
+            .into_iter()
+            .map(|x| x.as_string().ok_or_else(|| JsError::new("Expected string")))
+            .collect::<Result<Vec<String>, JsError>>()?;
 
-//         Ok(self
-//             .0
-//             .embed_texts(val)
-//             .await
-//             .map_err(|x| JsError::new(x.to_string().as_ref()))?
-//             .into_iter()
-//             .map(crate::embedding::Embedding::from)
-//             .collect())
-//     }
-// }
+        Ok(self
+            .0
+            .embed_texts(val)
+            .await
+            .map_err(|x| JsError::new(x.to_string().as_ref()))?
+            .into_iter()
+            .map(crate::embedding::Embedding::from)
+            .collect())
+    }
+}
 
 // #[wasm_bindgen]
 // pub struct OpenAITranscriptionModel(rig::providers::openai::TranscriptionModel);

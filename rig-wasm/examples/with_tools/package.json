@@ -1,0 +1,21 @@
+{
+  "name": "with-tools",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "tsx index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "rig-wasm": "file:../../pkg"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.12",
+    "tsx": "^4.0.0"
+  }
+}
