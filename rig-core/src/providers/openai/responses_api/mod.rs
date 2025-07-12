@@ -98,7 +98,6 @@ pub enum Role {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum InputContent {
     Message(Message),
-    OutputMessage(Message),
     FunctionCall(OutputFunctionCall),
     FunctionCallOutput(ToolResult),
 }
@@ -212,7 +211,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             let id = id.as_ref().unwrap_or(&String::default()).clone();
                             items.push(InputItem {
                                 role: Some(Role::Assistant),
-                                input: InputContent::OutputMessage(Message::Assistant {
+                                input: InputContent::Message(Message::Assistant {
                                     content: OneOrMany::one(AssistantContentType::Text(
                                         AssistantContent::OutputText(Text { text }),
                                     )),
