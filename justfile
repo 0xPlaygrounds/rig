@@ -12,5 +12,9 @@ build-wasm:
     cargo build -p rig-wasm --release --target wasm32-unknown-unknown
     wasm-bindgen \
         --target experimental-nodejs-module \
-        --out-dir rig-wasm/pkg/generated \
+        --out-dir rig-wasm/pkg/src/generated \
         target/wasm32-unknown-unknown/release/rig_wasm.wasm
+
+# build-wasm-full
+bwf:
+    just build-wasm && npm run build --prefix ./rig-wasm/pkg

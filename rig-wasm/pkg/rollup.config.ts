@@ -15,10 +15,11 @@ const config: RollupOptions[] = [
       "util",
     ],
     input: {
-      index: "index.ts",
-      openai: "openai.ts",
-      types: "types.ts",
-      qdrant: "qdrant.ts",
+      index: "./src/index.ts",
+      openai: "./src/openai.ts",
+      types: "./src/types.ts",
+      qdrant: "./src/qdrant.ts",
+      utils: "./src/utils.ts",
     },
     output: {
       dir: "out/esm",
@@ -47,7 +48,7 @@ const config: RollupOptions[] = [
       "node:process",
       "util",
     ],
-    input: "index.ts",
+    input: "./src/index.ts",
     output: {
       file: "out/cjs/index.cjs",
       format: "cjs",
@@ -64,7 +65,7 @@ const config: RollupOptions[] = [
     ],
   },
   {
-    input: "index.ts", // Use your main entry point for declarations
+    input: "./src/index.ts", // Use your main entry point for declarations
     output: {
       file: "out/esm/index.d.ts", // Output the bundled declarations to your ESM types location
       format: "esm", // Format doesn't strictly matter for declarations, but esm is common

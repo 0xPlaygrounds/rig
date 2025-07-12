@@ -14,6 +14,10 @@ pub type JsResult<T> = Result<T, JsError>;
 
 #[wasm_bindgen]
 unsafe extern "C" {
+    /// `console.log()` from Rust.
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+
     /// A TS interface that implements all of the `rig::tool::Tool` trait functions.
     #[wasm_bindgen(typescript_type = "JsToolObject")]
     pub type JsToolObject;
@@ -43,6 +47,13 @@ unsafe extern "C" {
 
     #[wasm_bindgen(typescript_type = "ModelOpts")]
     pub type JsModelOpts;
+
+    #[wasm_bindgen(typescript_type = "CompletionOpts")]
+    pub type JsCompletionOpts;
+    #[wasm_bindgen(typescript_type = "TranscriptionOpts")]
+    pub type JsTranscriptionOpts;
+    #[wasm_bindgen(typescript_type = "ImageGenerationOpts")]
+    pub type JsImageGenerationOpts;
 }
 
 #[derive(serde::Deserialize)]

@@ -24,6 +24,10 @@ send_wrapper = "0.6.0"
 serde-wasm-bindgen = "0.6.5"
 wasm-bindgen = "0.2.100"
 wasm-bindgen-futures = "0.4.50"
+wasm-streams = "0.4.2"
 
 [build-dependencies]
 tera = "1.20.0"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.50"

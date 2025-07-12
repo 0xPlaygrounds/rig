@@ -10,7 +10,7 @@
     "out/"
   ],
   "scripts": {
-    "build": "rollup -c && cp generated/rig_wasm_bg.wasm out/esm/generated && cp generated/rig_wasm_bg.wasm.d.ts out/esm/generated",
+    "build": "rollup -c && cp src/generated/rig_wasm_bg.wasm out/esm/generated && cp src/generated/rig_wasm_bg.wasm.d.ts out/esm/generated",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -20,25 +20,6 @@
   ],
   "author": "Joshua Mo",
   "license": "ISC",
-  "exports": {
-    ".": {
-      "import": "./out/esm/index.js",
-      "require": "./out/cjs/index.cjs",
-      "types": "./out/esm/index.d.ts"
-    },
-    "./openai": {
-      "import": "./out/esm/openai.js",
-      "types": "./out/esm/openai.d.ts"
-    },
-    "./qdrant": {
-      "import": "./out/esm/qdrant.js",
-      "types": "./out/esm/qdrant.d.ts"
-    },
-    "./types": {
-      "import": "./out/esm/types.js",
-      "types": "./out/esm/types.d.ts"
-    }
-  },
   "devDependencies": {
     "@eslint/js": "^9.30.1",
     "@rollup/plugin-typescript": "^12.1.4",
@@ -55,7 +36,27 @@
     "tslib": "^2.8.1",
     "typescript": "^5.8.3"
   },
-  "optionalDependencies": {
-    "@qdrant/js-client-rest": "^1.9.0"
+  "exports": {
+    ".": {
+      "import": "./out/esm/index.js",
+      "require": "./out/cjs/index.cjs",
+      "types": "./out/esm/index.d.ts"
+    },
+    "./openai": {
+      "import": "./out/esm/openai.js",
+      "types": "./out/esm/src/openai.d.ts"
+    },
+    "./qdrant": {
+      "import": "./out/esm/qdrant.js",
+      "types": "./out/esm/src/qdrant.d.ts"
+    },
+    "./utils": {
+      "import": "./out/esm/utils.js",
+      "types": "./out/esm/src/utils.d.ts"
+    },
+    "./types": {
+      "import": "./out/esm/types.js",
+      "types": "./out/esm/types.d.ts"
+    }
   }
 }

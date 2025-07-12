@@ -69,5 +69,59 @@ export type Embedding = {
 export interface ModelOpts {
   apiKey: string;
   model: string;
-  [key: string]: string | boolean | number | object;
+  [key: string]: JSONValue;
+}
+
+export interface CompletionOpts {
+  preamble?: string;
+  messages: Message[];
+  documents: Document[];
+  tools: ToolDefinition[];
+  temperature?: number;
+  maxTokens?: number;
+  additionalParams?: {
+    [key: string]: JSONValue;
+  };
+}
+
+export interface Message {
+  role: Role;
+  content: UserContent[];
+}
+export type Role = "user" | "assistant" | "system" | "developer";
+export type ContentType = "text";
+
+export interface UserContent {
+  text: string;
+  type: string;
+}
+
+export interface Document {
+  id: string;
+  text: string;
+  [key: string]: string;
+}
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: JSONObject;
+}
+
+export interface TranscriptionOpts {
+  data: Uint8Array;
+  filename?: string;
+  language: string;
+  prompt?: string;
+  temperature?: number;
+  additionalParams: {
+    [key: string]: JSONValue;
+  };
+}
+
+export interface ImageGenerationOpts {
+  prompt: string;
+  height: number;
+  width: number;
+  [key: string]: JSONValue;
 }

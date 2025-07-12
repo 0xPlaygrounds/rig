@@ -1,12 +1,15 @@
-use crate::completion::{AssistantContent, Document, Message, ToolDefinition};
+use crate::completion::{AssistantContent, CompletionRequest, Document, Message, ToolDefinition};
 use crate::embedding::Embedding;
 use crate::image_generation::ImageGenerationRequest;
 use crate::tool::JsTool;
 use crate::transcription::TranscriptionRequest;
 use crate::vector_store::JsVectorStore;
 use crate::{
-    JsAgentOpts, JsModelOpts, JsResult, JsToolObject, JsVectorStoreShim, ModelOpts, StringIterable,
+    JsAgentOpts, JsCompletionOpts, JsImageGenerationOpts, JsModelOpts, JsResult, JsToolObject,
+    JsTranscriptionOpts, JsVectorStoreShim, ModelOpts, StringIterable, log,
 };
+use futures::StreamExt;
+use futures::TryStreamExt;
 use rig::OneOrMany;
 use rig::agent::{Agent, AgentBuilder};
 use rig::client::embeddings::EmbeddingsClient;
@@ -15,10 +18,12 @@ use rig::client::{AudioGenerationClient, CompletionClient, TranscriptionClient};
 use rig::completion::{Chat, CompletionModel, Prompt};
 use rig::embeddings::EmbeddingModel;
 use rig::image_generation::ImageGenerationModel;
+use rig::streaming::StreamingPrompt;
 use rig::transcription::{TranscriptionModelDyn, TranscriptionResponse};
 use serde_json::Map;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::js_sys::{self, Array, Reflect};
+use wasm_streams::ReadableStream;
 
 #[wasm_bindgen]
 pub struct OpenAIAgent(Agent<rig::providers::openai::responses_api::ResponsesCompletionModel>);
@@ -153,6 +158,20 @@ impl OpenAIAgent {
             .map_err(|x| JsError::new(x.to_string().as_ref()))
     }
 
+    pub async fn prompt_stream(&self, prompt: &str) -> JsResult<wasm_streams::ReadableStream> {
+        let res = self
+            .0
+            .stream_prompt(prompt)
+            .await
+            .map_err(|x| JsError::new(format!("Error while streaming response: {x}").as_ref()))?
+            .map(|x| {
+                serde_wasm_bindgen::to_value(&x)
+                    .map_err(|x| JsValue::from_str(format!("Failed streaming: {x}").as_ref()))
+            });
+
+        Ok(ReadableStream::from_stream(res))
+    }
+
     pub async fn prompt_multi_turn(&self, prompt: &str, turns: u32) -> JsResult<String> {
         self.0
             .prompt(prompt)
@@ -173,142 +192,79 @@ impl OpenAIAgent {
     }
 }
 
-// #[wasm_bindgen]
-// pub struct OpenAICompletionModel {
-//     model: rig::providers::openai::responses_api::ResponsesCompletionModel,
-// }
+/// The OpenAI Responses API, modelled as the Completions API.
+#[wasm_bindgen]
+pub struct OpenAIResponsesCompletionModel(
+    rig::providers::openai::responses_api::ResponsesCompletionModel,
+);
 
-// #[wasm_bindgen]
-// impl OpenAICompletionModel {
-//     #[wasm_bindgen(constructor)]
-//     pub fn new(client: &OpenAIClient, model_name: &str) -> Self {
-//         let model = client.0.completion_model(model_name);
-//         Self { model }
-//     }
-// }
+#[wasm_bindgen]
+impl OpenAIResponsesCompletionModel {
+    #[wasm_bindgen(constructor)]
+    pub fn new(opts: JsModelOpts) -> JsResult<Self> {
+        let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
+            .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
 
-// #[wasm_bindgen]
-// pub struct OpenAICompletionRequest {
-//     model: OpenAICompletionModel,
-//     prompt: Message,
-//     preamble: Option<String>,
-//     chat_history: Vec<Message>,
-//     documents: Vec<Document>,
-//     tools: Vec<ToolDefinition>,
-//     temperature: Option<f64>,
-//     max_tokens: Option<u64>,
-//     additional_params: Option<serde_json::Value>,
-// }
+        let client = rig::providers::openai::Client::new(&model_opts.api_key);
+        let model = client.completion_model(&model_opts.model_name);
+        Ok(Self(model))
+    }
 
-// #[wasm_bindgen]
-// impl OpenAICompletionRequest {
-//     #[wasm_bindgen(constructor)]
-//     pub fn new(model: OpenAICompletionModel, prompt: Message) -> Self {
-//         Self {
-//             model,
-//             prompt,
-//             preamble: None,
-//             chat_history: Vec::new(),
-//             documents: Vec::new(),
-//             tools: Vec::new(),
-//             temperature: None,
-//             max_tokens: None,
-//             additional_params: None,
-//         }
-//     }
+    pub async fn completion(&self, opts: JsCompletionOpts) -> JsResult<JsValue> {
+        let req: CompletionRequest = CompletionRequest::new(opts)?;
+        let req: rig::completion::CompletionRequest = rig::completion::CompletionRequest::from(req);
 
-//     #[wasm_bindgen(js_name = "setPreamble")]
-//     pub fn set_preamble(mut self, preamble: &str) -> Self {
-//         self.preamble = Some(preamble.to_string());
-//         self
-//     }
+        let res = self
+            .0
+            .completion(req)
+            .await
+            .map_err(|x| JsError::new(x.to_string().as_ref()))?;
 
-//     #[wasm_bindgen(js_name = "setChatHistory")]
-//     pub fn set_chat_history(mut self, chat_history: Vec<Message>) -> Self {
-//         self.chat_history = chat_history;
-//         self
-//     }
+        let res = crate::completion::CompletionResponse::from(res);
 
-//     #[wasm_bindgen(js_name = "setDocuments")]
-//     pub fn set_documents(mut self, documents: Vec<Document>) -> Self {
-//         self.documents = documents;
-//         self
-//     }
+        let js_val =
+            serde_wasm_bindgen::to_value(&res).map_err(|x| JsError::new(x.to_string().as_ref()))?;
 
-//     #[wasm_bindgen(js_name = "setTools")]
-//     pub fn set_tools(mut self, tools: Vec<ToolDefinition>) -> Self {
-//         self.tools = tools;
-//         self
-//     }
+        Ok(js_val)
+    }
+}
 
-//     #[wasm_bindgen(js_name = "setTemperature")]
-//     pub fn set_temperature(mut self, temperature: f64) -> Self {
-//         self.temperature = Some(temperature);
-//         self
-//     }
+/// The OpenAI completions chat API.
+#[wasm_bindgen]
+pub struct OpenAICompletionsCompletionModel(rig::providers::openai::completion::CompletionModel);
 
-//     #[wasm_bindgen(js_name = "setMaxTokens")]
-//     pub fn set_max_tokens(mut self, max_tokens: u64) -> Self {
-//         self.max_tokens = Some(max_tokens);
-//         self
-//     }
+#[wasm_bindgen]
+impl OpenAICompletionsCompletionModel {
+    #[wasm_bindgen(constructor)]
+    pub fn new(opts: JsModelOpts) -> JsResult<Self> {
+        let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
+            .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
 
-//     #[wasm_bindgen(js_name = "setAdditionalParams")]
-//     pub fn additional_params(mut self, obj: JsValue) -> JsResult<Self> {
-//         let value: Map<String, serde_json::Value> = serde_wasm_bindgen::from_value(obj)?;
-//         let value = serde_json::Value::Object(value);
-//         self.additional_params = Some(value);
-//         Ok(self)
-//     }
+        let client = rig::providers::openai::Client::new(&model_opts.api_key);
+        let model = client
+            .completion_model(&model_opts.model_name)
+            .completions_api();
+        Ok(Self(model))
+    }
 
-//     pub async fn send(self) -> JsResult<Vec<AssistantContent>> {
-//         let request = rig::completion::CompletionRequest::from(&self);
-//         let res = self
-//             .model
-//             .model
-//             .completion(request)
-//             .await
-//             .map_err(|x| JsError::new(format!("{x}").as_ref()))?
-//             .choice
-//             .into_iter()
-//             .map(AssistantContent::from)
-//             .collect();
+    pub async fn completion(&self, opts: JsCompletionOpts) -> JsResult<JsValue> {
+        let req: CompletionRequest = CompletionRequest::new(opts)?;
+        let req: rig::completion::CompletionRequest = rig::completion::CompletionRequest::from(req);
 
-//         Ok(res)
-//     }
-// }
+        let res = self
+            .0
+            .completion(req)
+            .await
+            .map_err(|x| JsError::new(x.to_string().as_ref()))?;
 
-// impl From<&OpenAICompletionRequest> for rig::completion::CompletionRequest {
-//     fn from(value: &OpenAICompletionRequest) -> Self {
-//         let mut chat_history: Vec<rig::message::Message> = value
-//             .chat_history
-//             .clone()
-//             .into_iter()
-//             .map(rig::message::Message::from)
-//             .collect();
-//         chat_history.push(rig::message::Message::from(value.prompt.clone()));
+        let res = crate::completion::CompletionResponse::from(res);
 
-//         rig::completion::CompletionRequest {
-//             preamble: value.preamble.clone(),
-//             chat_history: OneOrMany::many(chat_history).unwrap(),
-//             documents: value
-//                 .documents
-//                 .clone()
-//                 .into_iter()
-//                 .map(rig::completion::Document::from)
-//                 .collect(),
-//             tools: value
-//                 .tools
-//                 .clone()
-//                 .into_iter()
-//                 .map(rig::completion::ToolDefinition::from)
-//                 .collect(),
-//             temperature: value.temperature,
-//             max_tokens: value.max_tokens,
-//             additional_params: value.additional_params.clone(),
-//         }
-//     }
-// }
+        let js_val =
+            serde_wasm_bindgen::to_value(&res).map_err(|x| JsError::new(x.to_string().as_ref()))?;
+
+        Ok(js_val)
+    }
+}
 
 #[wasm_bindgen]
 pub struct OpenAIEmbeddingModel(rig::providers::openai::embedding::EmbeddingModel);
@@ -319,6 +275,7 @@ impl OpenAIEmbeddingModel {
     pub fn new(opts: JsModelOpts) -> JsResult<Self> {
         let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
             .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
+
         let client = rig::providers::openai::Client::new(&model_opts.api_key);
         let model = client.embedding_model(&model_opts.model_name);
         Ok(Self(model))
@@ -335,12 +292,14 @@ impl OpenAIEmbeddingModel {
     }
 
     pub async fn embed_texts(&self, iter: StringIterable) -> JsResult<Vec<Embedding>> {
-        let iterable: JsValue = iter.unchecked_into();
-        let arr = js_sys::Array::from(&iterable);
+        let arr = js_sys::Array::from(&iter.obj);
 
         let val = arr
             .into_iter()
-            .map(|x| x.as_string().ok_or_else(|| JsError::new("Expected string")))
+            .map(|x| {
+                x.as_string()
+                    .ok_or_else(|| JsError::new(format!("Expected string, got {x:?}").as_ref()))
+            })
             .collect::<Result<Vec<String>, JsError>>()?;
 
         Ok(self
@@ -354,67 +313,103 @@ impl OpenAIEmbeddingModel {
     }
 }
 
-// #[wasm_bindgen]
-// pub struct OpenAITranscriptionModel(rig::providers::openai::TranscriptionModel);
+#[wasm_bindgen]
+pub struct OpenAITranscriptionModel(rig::providers::openai::TranscriptionModel);
 
-// #[wasm_bindgen]
-// impl OpenAITranscriptionModel {
-//     #[wasm_bindgen]
-//     pub fn new(client: &OpenAIClient, model_name: &str) -> Self {
-//         Self(client.0.transcription_model(model_name))
-//     }
+#[wasm_bindgen]
+impl OpenAITranscriptionModel {
+    #[wasm_bindgen]
+    pub fn new(opts: JsModelOpts) -> JsResult<Self> {
+        let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
+            .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
 
-//     #[wasm_bindgen]
-//     pub async fn transcription(
-//         &self,
-//         request: TranscriptionRequest,
-//     ) -> JsResult<OpenAITranscriptionResponse> {
-//         let res = self.0.transcription(request.into()).await.unwrap();
+        let client = rig::providers::openai::Client::new(&model_opts.api_key);
+        let model = client.transcription_model(&model_opts.model_name);
+        Ok(Self(model))
+    }
 
-//         let thing = OpenAITranscriptionResponse(res);
+    #[wasm_bindgen]
+    pub async fn transcription(
+        &self,
+        opts: JsTranscriptionOpts,
+    ) -> JsResult<OpenAITranscriptionResponse> {
+        let req =
+            serde_wasm_bindgen::from_value::<crate::transcription::TranscriptionRequest>(opts.obj)
+                .map_err(|x| {
+                    JsError::new(
+                        format!("Error while creating transcription options: {x}").as_ref(),
+                    )
+                })?;
+        let req = rig::transcription::TranscriptionRequest::from(req);
 
-//         Ok(thing)
-//     }
-// }
+        let res = self
+            .0
+            .transcription(req)
+            .await
+            .map_err(|x| JsError::new(format!("Error while transcribing: {x}").as_ref()))?;
 
-// #[wasm_bindgen]
-// pub struct OpenAITranscriptionResponse(TranscriptionResponse<()>);
+        let transcription = OpenAITranscriptionResponse(res);
 
-// #[wasm_bindgen]
-// impl OpenAITranscriptionResponse {
-//     pub fn text(&self) -> String {
-//         self.0.text.clone()
-//     }
-// }
+        Ok(transcription)
+    }
+}
 
-// #[wasm_bindgen]
-// pub struct OpenAIImageGenerationModel(rig::providers::openai::ImageGenerationModel);
+#[wasm_bindgen]
+pub struct OpenAITranscriptionResponse(TranscriptionResponse<()>);
 
-// #[wasm_bindgen]
-// impl OpenAIImageGenerationModel {
-//     #[wasm_bindgen(constructor)]
-//     pub fn new(client: &OpenAIClient, model_name: &str) -> Self {
-//         Self(client.0.image_generation_model(model_name))
-//     }
+#[wasm_bindgen]
+impl OpenAITranscriptionResponse {
+    #[wasm_bindgen(getter)]
+    pub fn text(&self) -> String {
+        self.0.text.clone()
+    }
+}
 
-//     pub async fn image_generation(
-//         &self,
-//         req: ImageGenerationRequest,
-//     ) -> JsResult<OpenAIImageGenerationResponse> {
-//         let res = self.0.image_generation(req.into()).await.unwrap();
+#[wasm_bindgen]
+pub struct OpenAIImageGenerationModel(rig::providers::openai::ImageGenerationModel);
 
-//         Ok(OpenAIImageGenerationResponse(res))
-//     }
-// }
+#[wasm_bindgen]
+impl OpenAIImageGenerationModel {
+    #[wasm_bindgen(constructor)]
+    pub fn new(opts: JsModelOpts) -> JsResult<Self> {
+        let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
+            .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
 
-// #[wasm_bindgen]
-// pub struct OpenAIImageGenerationResponse(
-//     rig::image_generation::ImageGenerationResponse<rig::providers::openai::ImageGenerationResponse>,
-// );
+        let client = rig::providers::openai::Client::new(&model_opts.api_key);
+        let model = client.image_generation_model(&model_opts.model_name);
+        Ok(Self(model))
+    }
 
-// #[wasm_bindgen]
-// impl OpenAIImageGenerationResponse {
-//     pub fn image_bytes(&self) -> wasm_bindgen_futures::js_sys::Uint8Array {
-//         wasm_bindgen_futures::js_sys::Uint8Array::from(self.0.image.as_ref())
-//     }
-// }
+    pub async fn image_generation(
+        &self,
+        opts: JsImageGenerationOpts,
+    ) -> JsResult<OpenAIImageGenerationResponse> {
+        let req =
+            serde_wasm_bindgen::from_value::<crate::image_generation::ImageGenerationRequest>(
+                opts.obj,
+            )
+            .map_err(|x| {
+                JsError::new(format!("Error while creating transcription options: {x}").as_ref())
+            })?;
+        let req = rig::image_generation::ImageGenerationRequest::from(req);
+        let res = self
+            .0
+            .image_generation(req)
+            .await
+            .map_err(|x| JsError::new(format!("Error while creating image: {x}").as_ref()))?;
+
+        Ok(OpenAIImageGenerationResponse(res))
+    }
+}
+
+#[wasm_bindgen]
+pub struct OpenAIImageGenerationResponse(
+    rig::image_generation::ImageGenerationResponse<rig::providers::openai::ImageGenerationResponse>,
+);
+
+#[wasm_bindgen]
+impl OpenAIImageGenerationResponse {
+    pub fn image_bytes(&self) -> wasm_bindgen_futures::js_sys::Uint8Array {
+        wasm_bindgen_futures::js_sys::Uint8Array::from(self.0.image.as_ref())
+    }
+}

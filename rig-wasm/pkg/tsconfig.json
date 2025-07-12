@@ -3,24 +3,21 @@
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "Node",
-    "rootDir": ".",
+    "rootDir": "./src",
     "allowJs": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "typeRoots": ["./types/", "./generated/"]
+    "typeRoots": ["./types/", "src/generated"]
   },
   "include": [
     "./types/**/*.d.ts",
     "./types/**/*.ts",
     "./src/**/*.ts",
-    "./generated/**/*.ts",
+    "src/generated/**/*.ts",
     "rollup.config.ts",
-    "index.ts",
-    "openai.ts",
-    "qdrant.ts",
-    "types.ts"
+    "src/*.ts"
   ],
   "exclude": ["node_modules", "out/**/*"]
 }
