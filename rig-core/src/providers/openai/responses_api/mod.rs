@@ -903,6 +903,7 @@ pub enum Message {
     },
     Assistant {
         content: OneOrMany<AssistantContentType>,
+        #[serde(skip_serializing_if = "String::is_empty")]
         id: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
