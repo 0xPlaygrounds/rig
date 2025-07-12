@@ -123,7 +123,7 @@ impl From<Message> for InputItem {
             },
             Message::Assistant { .. } => Self {
                 role: Some(Role::Assistant),
-                input: InputContent::OutputMessage(value),
+                input: InputContent::Message(value),
             },
             Message::System { .. } => Self {
                 role: Some(Role::System),
