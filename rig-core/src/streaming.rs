@@ -155,7 +155,7 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                     // Set the final response field and return the next item in the stream
                     stream.response = Some(response);
 
-                    stream.poll_next_unpin(cx)
+                    Poll::Ready(Some(Ok(AssistantContent::final_response(response))))
                 }
             },
         }

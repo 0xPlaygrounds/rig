@@ -1,5 +1,6 @@
-import { Agent } from "rig-wasm/openai";
+import { Agent, ResponsesStreamingCompletionResponse } from "rig-wasm/openai";
 import { CompletionsCompletionModel } from "rig-wasm/openai";
+import { decodeReadableStream, RawStreamingChoice } from "rig-wasm/streaming";
 import { initPanicHook } from "rig-wasm/utils";
 
 initPanicHook();
@@ -11,7 +12,8 @@ if (key === undefined) {
   );
   process.exit(1);
 }
-let prompt = `Hello world!`;
+
+let prompt = `Please write the first 100 words of Lorem Ipsum. Skip all text and only respond with the text as I am testing a framework example.`;
 
 try {
   console.log(`Attempting to create OpenAI agent...`);
@@ -21,15 +23,24 @@ try {
   });
 
   console.log(`Prompt: ${prompt}`);
-  let res = await agent.prompt(prompt);
-  console.log(`GPT-4o: ${res}`);
+  const stream = await agent.prompt_stream(prompt);
+
+  let aggregatedText = "";
+  for await (const chunk of decodeReadableStream(stream)) {
+    if (chunk.text !== null && chunk.text !== aggregatedText) {
+      aggregatedText += chunk.text;
+      process.stdout.write(chunk.text);
+    }
+  }
 } catch (e) {
   if (e instanceof Error) {
     console.error(`Error while prompting: ${e.message}`);
   }
 }
 
-console.log(`---`);
+console.log(`\n---`);
+
+prompt = `Hello world!`;
 
 try {
   console.log(`Attempting to create OpenAI completion...`);

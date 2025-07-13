@@ -158,18 +158,27 @@ impl OpenAIAgent {
             .map_err(|x| JsError::new(x.to_string().as_ref()))
     }
 
-    pub async fn prompt_stream(&self, prompt: &str) -> JsResult<wasm_streams::ReadableStream> {
-        let res = self
-            .0
-            .stream_prompt(prompt)
-            .await
-            .map_err(|x| JsError::new(format!("Error while streaming response: {x}").as_ref()))?
-            .map(|x| {
+    pub async fn prompt_stream(
+        &self,
+        prompt: &str,
+    ) -> Result<wasm_streams::readable::sys::ReadableStream, JsValue> {
+        let stream =
+            self.0.stream_prompt(prompt).await.map_err(|x| {
+                JsError::new(format!("Error while streaming response: {x}").as_ref())
+            })?;
+
+        let js_stream = stream
+            .map_ok(|x| {
                 serde_wasm_bindgen::to_value(&x)
-                    .map_err(|x| JsValue::from_str(format!("Failed streaming: {x}").as_ref()))
+                    .map_err(|e| JsValue::from_str(&format!("Failed streaming: {e}")))
+            })
+            .map(|result| match result {
+                Ok(Ok(js)) => Ok(js),
+                Ok(Err(js_err)) => Err(js_err),
+                Err(e) => Err(JsValue::from_str(&format!("Stream error: {e}"))),
             });
 
-        Ok(ReadableStream::from_stream(res))
+        Ok(ReadableStream::from_stream(js_stream).into_raw())
     }
 
     pub async fn prompt_multi_turn(&self, prompt: &str, turns: u32) -> JsResult<String> {

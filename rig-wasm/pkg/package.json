@@ -50,6 +50,10 @@
       "import": "./out/esm/qdrant.js",
       "types": "./out/esm/src/qdrant.d.ts"
     },
+    "./streaming": {
+      "import": "./out/esm/streaming.js",
+      "types": "./out/esm/src/streaming.d.ts"
+    },
     "./utils": {
       "import": "./out/esm/utils.js",
       "types": "./out/esm/src/utils.d.ts"
