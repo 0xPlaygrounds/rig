@@ -654,19 +654,18 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
         use crate::message::Message as InternalMessage;
         match internal_msg {
             InternalMessage::User { content, .. } => {
-                let (tool_results, other_content): (Vec<_>, Vec<_>) = content
-                    .into_iter()
-                    .partition(|content| matches!(content, crate::message::UserContent::ToolResult(_)));
+                let (tool_results, other_content): (Vec<_>, Vec<_>) =
+                    content.into_iter().partition(|content| {
+                        matches!(content, crate::message::UserContent::ToolResult(_))
+                    });
 
                 if !tool_results.is_empty() {
                     tool_results
                         .into_iter()
                         .map(|content| match content {
-                            crate::message::UserContent::ToolResult(crate::message::ToolResult {
-                                id,
-                                content,
-                                ..
-                            }) => {
+                            crate::message::UserContent::ToolResult(
+                                crate::message::ToolResult { id, content, .. },
+                            ) => {
                                 // Ollama expects a single string for tool results, so we concatenate
                                 let content_string = content
                                     .into_iter()
@@ -691,21 +690,26 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                         (Vec::new(), Vec::new()),
                         |(mut texts, mut images), content| {
                             match content {
-                                crate::message::UserContent::Text(crate::message::Text { text }) => {
-                                    texts.push(text)
-                                }
-                                crate::message::UserContent::Image(crate::message::Image { data, .. }) => {
-                                    images.push(data)
-                                }
+                                crate::message::UserContent::Text(crate::message::Text {
+                                    text,
+                                }) => texts.push(text),
+                                crate::message::UserContent::Image(crate::message::Image {
+                                    data,
+                                    ..
+                                }) => images.push(data),
                                 _ => {} // Audio/Document not supported by Ollama
                             }
                             (texts, images)
                         },
                     );
-                    
+
                     Ok(vec![Message::User {
                         content: texts.join(" "),
-                        images: if images.is_empty() { None } else { Some(images) },
+                        images: if images.is_empty() {
+                            None
+                        } else {
+                            Some(images)
+                        },
                         name: None,
                     }])
                 }
@@ -716,7 +720,9 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                     |(mut texts, mut tools), content| {
                         match content {
                             crate::message::AssistantContent::Text(text) => texts.push(text.text),
-                            crate::message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
+                            crate::message::AssistantContent::ToolCall(tool_call) => {
+                                tools.push(tool_call)
+                            }
                         }
                         (texts, tools)
                     },
