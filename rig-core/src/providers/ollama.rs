@@ -635,7 +635,10 @@ pub enum Message {
         name: Option<String>,
     },
     #[serde(rename = "tool")]
-    ToolResult { name: String, content: String },
+    ToolResult {
+        name: String,
+        content: OneOrMany<ToolResultContent>,
+    },
 }
 
 /// -----------------------------
@@ -670,7 +673,7 @@ impl TryFrom<crate::message::Message> for Message {
 
                             return Ok(Message::ToolResult {
                                 name: result.id,
-                                content: content.first().text,
+                                content,
                             });
                         }
                         _ => {} // Audio variant removed since Ollama API does not support it.
