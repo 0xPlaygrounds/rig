@@ -1,13 +1,10 @@
 //! Types that replace the AWS Bedrock Runtime SDK's `ConverseOutput` type.
 //! This is required so that we can impl Serialize and Deserialize.
-use std::{
-    collections::{self, HashMap},
-    fmt,
-};
+use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
 
-use super::{errors::TypeConversionError, message::RigMessage};
+use super::errors::TypeConversionError;
 
 /// Our own implementation of the AWS Bedrock runtime "converse" operation output.
 /// The reason why we need to implement this is that we need to impl Deserialize/Serialize on top of this.
@@ -87,12 +84,6 @@ pub enum StopReason {
 /// This is not intended to be used directly.
 #[derive(Clone, Eq, Ord, PartialEq, PartialOrd, Debug, Hash, Serialize, Deserialize)]
 pub struct UnknownVariantValue(pub(crate) String);
-
-impl UnknownVariantValue {
-    pub(crate) fn as_str(&self) -> &str {
-        &self.0
-    }
-}
 
 impl fmt::Display for UnknownVariantValue {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -398,7 +389,7 @@ pub enum ConverseOutput {
 impl ConverseOutput {
     pub fn as_message(&self) -> Result<&Message, TypeConversionError> {
         match self {
-            Self::Message(message) => Ok(&message),
+            Self::Message(message) => Ok(message),
             invalid => Err(TypeConversionError::new(
                 format!("Tried to get ConverseOutput as message but is invalid: {invalid:?}")
                     .as_ref(),
@@ -733,8 +724,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::StopReason> for StopReason {
             aws_sdk_bedrockruntime::types::StopReason::StopSequence => Ok(StopReason::StopSequence),
             aws_sdk_bedrockruntime::types::StopReason::ToolUse => Ok(StopReason::ToolUse),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for StopReason: {:?}",
-                invalid
+                "Unknown variant for StopReason: {invalid:?}"
             ))),
         }
     }
@@ -824,13 +814,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailTraceAssessment> for Guardr
             .transpose()?;
 
         Ok(GuardrailTraceAssessment {
-            model_output: Some(
-                value
-                    .model_output()
-                    .into_iter()
-                    .map(|x| x.to_owned())
-                    .collect(),
-            ),
+            model_output: Some(value.model_output().iter().map(|x| x.to_owned()).collect()),
             input_assessment,
             output_assessments,
             action_reason: value.action_reason().map(Into::into),
@@ -868,13 +852,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailTraceAssessment>
             .transpose()?;
 
         Ok(GuardrailTraceAssessment {
-            model_output: Some(
-                value
-                    .model_output()
-                    .into_iter()
-                    .map(|x| x.to_owned())
-                    .collect(),
-            ),
+            model_output: Some(value.model_output().iter().map(|x| x.to_owned()).collect()),
             input_assessment,
             output_assessments,
             action_reason: value.action_reason().map(Into::into),
@@ -1164,8 +1142,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailTopicType> for GuardrailTop
         match value {
             aws_sdk_bedrockruntime::types::GuardrailTopicType::Deny => Ok(GuardrailTopicType::Deny),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailTopicType: {:?}",
-                invalid
+                "Unknown variant for GuardrailTopicType: {invalid:?}"
             ))),
         }
     }
@@ -1179,8 +1156,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailTopicType> for GuardrailTo
         match value {
             aws_sdk_bedrockruntime::types::GuardrailTopicType::Deny => Ok(GuardrailTopicType::Deny),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailTopicType: {:?}",
-                invalid
+                "Unknown variant for GuardrailTopicType: {invalid:?}"
             ))),
         }
     }
@@ -1201,8 +1177,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailTopicPolicyAction>
                 Ok(GuardrailTopicPolicyAction::None)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailTopicPolicyAction: {:?}",
-                invalid
+                "Unknown variant for GuardrailTopicPolicyAction: {invalid:?}"
             ))),
         }
     }
@@ -1223,8 +1198,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailTopicPolicyAction>
                 Ok(GuardrailTopicPolicyAction::None)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailTopicPolicyAction: {:?}",
-                invalid
+                "Unknown variant for GuardrailTopicPolicyAction: {invalid:?}"
             ))),
         }
     }
@@ -1281,8 +1255,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContentFilterConfidence>
                 Ok(GuardrailContentFilterConfidence::None)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContentFilterConfidence: {:?}",
-                invalid
+                "Unknown variant for GuardrailContentFilterConfidence: {invalid:?}"
             ))),
         }
     }
@@ -1309,8 +1282,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContentFilterConfidence>
                 Ok(GuardrailContentFilterConfidence::None)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContentFilterConfidence: {:?}",
-                invalid
+                "Unknown variant for GuardrailContentFilterConfidence: {invalid:?}"
             ))),
         }
     }
@@ -1337,8 +1309,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContentFilterStrength>
                 Ok(GuardrailContentFilterStrength::None)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContentFilterStrength: {:?}",
-                invalid
+                "Unknown variant for GuardrailContentFilterStrength: {invalid:?}"
             ))),
         }
     }
@@ -1365,8 +1336,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContentFilterStrength>
                 Ok(GuardrailContentFilterStrength::None)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContentFilterStrength: {:?}",
-                invalid
+                "Unknown variant for GuardrailContentFilterStrength: {invalid:?}"
             ))),
         }
     }
@@ -1387,8 +1357,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContentPolicyAction>
                 Ok(GuardrailContentPolicyAction::None)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContentPolicyAction: {:?}",
-                invalid
+                "Unknown variant for GuardrailContentPolicyAction: {invalid:?}"
             ))),
         }
     }
@@ -1409,8 +1378,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContentPolicyAction>
                 Ok(GuardrailContentPolicyAction::None)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContentPolicyAction: {:?}",
-                invalid
+                "Unknown variant for GuardrailContentPolicyAction: {invalid:?}"
             ))),
         }
     }
@@ -1443,8 +1411,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContentFilterType>
                 Ok(GuardrailContentFilterType::Violence)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContentFilterType: {:?}",
-                invalid
+                "Unknown variant for GuardrailContentFilterType: {invalid:?}"
             ))),
         }
     }
@@ -1478,8 +1445,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailWordPolicyAction>
                 Ok(GuardrailWordPolicyAction::None)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailWordPolicyAction: {:?}",
-                invalid
+                "Unknown variant for GuardrailWordPolicyAction: {invalid:?}"
             ))),
         }
     }
@@ -1500,8 +1466,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailWordPolicyAction>
                 Ok(GuardrailWordPolicyAction::None)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailWordPolicyAction: {:?}",
-                invalid
+                "Unknown variant for GuardrailWordPolicyAction: {invalid:?}"
             ))),
         }
     }
@@ -1531,8 +1496,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailManagedWordType> for Guardr
                 Ok(GuardrailManagedWordType::Profanity)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailManagedWordType: {:?}",
-                invalid
+                "Unknown variant for GuardrailManagedWordType: {invalid:?}"
             ))),
         }
     }
@@ -1550,8 +1514,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailManagedWordType>
                 Ok(GuardrailManagedWordType::Profanity)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailManagedWordType: {:?}",
-                invalid
+                "Unknown variant for GuardrailManagedWordType: {invalid:?}"
             ))),
         }
     }
@@ -1589,8 +1552,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyA
                 Ok(GuardrailSensitiveInformationPolicyAction::None)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailSensitiveInformationPolicyAction: {:?}",
-                invalid
+                "Unknown variant for GuardrailSensitiveInformationPolicyAction: {invalid:?}"
             ))),
         }
     }
@@ -1614,8 +1576,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicy
                 Ok(GuardrailSensitiveInformationPolicyAction::None)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailSensitiveInformationPolicyAction: {:?}",
-                invalid
+                "Unknown variant for GuardrailSensitiveInformationPolicyAction: {invalid:?}"
             ))),
         }
     }
@@ -1659,8 +1620,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailPiiEntityType> for Guardrai
             aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UsSocialSecurityNumber => Ok(GuardrailPiiEntityType::UsSocialSecurityNumber),
             aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::VehicleIdentificationNumber => Ok(GuardrailPiiEntityType::VehicleIdentificationNumber),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailPiiEntityType: {:?}",
-                invalid
+                "Unknown variant for GuardrailPiiEntityType: {invalid:?}"
             ))),
         }
     }
@@ -1704,8 +1664,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailPiiEntityType> for Guardra
             aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UsSocialSecurityNumber => Ok(GuardrailPiiEntityType::UsSocialSecurityNumber),
             aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::VehicleIdentificationNumber => Ok(GuardrailPiiEntityType::VehicleIdentificationNumber),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailPiiEntityType: {:?}",
-                invalid
+                "Unknown variant for GuardrailPiiEntityType: {invalid:?}"
             ))),
         }
     }
@@ -1790,8 +1749,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContextualGroundingFilterTy
                 Ok(GuardrailContextualGroundingFilterType::Relevance)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContextualGroundingFilterType: {:?}",
-                invalid
+                "Unknown variant for GuardrailContextualGroundingFilterType: {invalid:?}"
             ))),
         }
     }
@@ -1812,8 +1770,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContextualGroundingFilterT
                 Ok(GuardrailContextualGroundingFilterType::Relevance)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContextualGroundingFilterType: {:?}",
-                invalid
+                "Unknown variant for GuardrailContextualGroundingFilterType: {invalid:?}"
             ))),
         }
     }
@@ -1834,8 +1791,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyAc
                 Ok(GuardrailContextualGroundingPolicyAction::None)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContextualGroundingPolicyAction: {:?}",
-                invalid
+                "Unknown variant for GuardrailContextualGroundingPolicyAction: {invalid:?}"
             ))),
         }
     }
@@ -1856,8 +1812,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyA
                 Ok(GuardrailContextualGroundingPolicyAction::None)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContextualGroundingPolicyAction: {:?}",
-                invalid
+                "Unknown variant for GuardrailContextualGroundingPolicyAction: {invalid:?}"
             ))),
         }
     }
@@ -1997,8 +1952,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::PerformanceConfigLatency> for Perfor
                 Ok(PerformanceConfigLatency::Standard)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for PerformanceConfigLatency: {:?}",
-                invalid
+                "Unknown variant for PerformanceConfigLatency: {invalid:?}"
             ))),
         }
     }
@@ -2019,8 +1973,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::PerformanceConfigLatency>
                 Ok(PerformanceConfigLatency::Standard)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for PerformanceConfigLatency: {:?}",
-                invalid
+                "Unknown variant for PerformanceConfigLatency: {invalid:?}"
             ))),
         }
     }
@@ -2034,8 +1987,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::ConverseOutput> for ConverseOutput {
                 Ok(ConverseOutput::Message(message.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ConverseOutput: {:?}",
-                invalid
+                "Unknown variant for ConverseOutput: {invalid:?}"
             ))),
         }
     }
@@ -2087,8 +2039,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::ConversationRole> for ConversationRo
             }
             aws_sdk_bedrockruntime::types::ConversationRole::User => Ok(ConversationRole::User),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ConversationRole: {:?}",
-                invalid
+                "Unknown variant for ConversationRole: {invalid:?}"
             ))),
         }
     }
@@ -2105,8 +2056,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::ConversationRole> for ConversationR
             }
             aws_sdk_bedrockruntime::types::ConversationRole::User => Ok(ConversationRole::User),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ConversationRole: {:?}",
-                invalid
+                "Unknown variant for ConversationRole: {invalid:?}"
             ))),
         }
     }
@@ -2121,8 +2071,7 @@ impl TryFrom<ConversationRole> for aws_sdk_bedrockruntime::types::ConversationRo
             }
             ConversationRole::User => Ok(aws_sdk_bedrockruntime::types::ConversationRole::User),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ConversationRole: {:?}",
-                invalid
+                "Unknown variant for ConversationRole: {invalid:?}"
             ))),
         }
     }
@@ -2163,8 +2112,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::ContentBlock> for ContentBlock {
                 Ok(ContentBlock::Video(value.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ContentBlock: {:?}",
-                invalid
+                "Unknown variant for ContentBlock: {invalid:?}"
             ))),
         }
     }
@@ -2205,8 +2153,7 @@ impl TryFrom<ContentBlock> for aws_sdk_bedrockruntime::types::ContentBlock {
                 value.try_into()?,
             )),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ContentBlock: {:?}",
-                invalid
+                "Unknown variant for ContentBlock: {invalid:?}"
             ))),
         }
     }
@@ -2252,8 +2199,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::CachePointType> for CachePointType {
         match value {
             aws_sdk_bedrockruntime::types::CachePointType::Default => Ok(CachePointType::Default),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CachePointType: {:?}",
-                invalid
+                "Unknown variant for CachePointType: {invalid:?}"
             ))),
         }
     }
@@ -2265,8 +2211,7 @@ impl TryFrom<CachePointType> for aws_sdk_bedrockruntime::types::CachePointType {
         match value {
             CachePointType::Default => Ok(aws_sdk_bedrockruntime::types::CachePointType::Default),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CachePointType: {:?}",
-                invalid
+                "Unknown variant for CachePointType: {invalid:?}"
             ))),
         }
     }
@@ -2280,8 +2225,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::CachePointType> for CachePointType 
         match value {
             aws_sdk_bedrockruntime::types::CachePointType::Default => Ok(CachePointType::Default),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CachePointType: {:?}",
-                invalid
+                "Unknown variant for CachePointType: {invalid:?}"
             ))),
         }
     }
@@ -2296,7 +2240,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::CitationsContentBlock> for Citations
             content: Some(
                 value
                     .content()
-                    .into_iter()
+                    .iter()
                     .map(|x| x.clone().try_into())
                     .collect::<Result<_, Self::Error>>()?,
             ),
@@ -2304,7 +2248,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::CitationsContentBlock> for Citations
             citations: Some(
                 value
                     .citations()
-                    .into_iter()
+                    .iter()
                     .map(|x| x.clone().try_into())
                     .collect::<Result<_, Self::Error>>()?,
             ),
@@ -2341,8 +2285,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::CitationGeneratedContent> for Citati
                 Ok(CitationGeneratedContent::Text(value))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationGeneratedContent: {:?}",
-                invalid
+                "Unknown variant for CitationGeneratedContent: {invalid:?}"
             ))),
         }
     }
@@ -2356,8 +2299,7 @@ impl TryFrom<CitationGeneratedContent> for aws_sdk_bedrockruntime::types::Citati
                 Ok(aws_sdk_bedrockruntime::types::CitationGeneratedContent::Text(value))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationGeneratedContent: {:?}",
-                invalid
+                "Unknown variant for CitationGeneratedContent: {invalid:?}"
             ))),
         }
     }
@@ -2375,8 +2317,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::CitationGeneratedContent>
                 Ok(CitationGeneratedContent::Text(value.to_owned()))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationGeneratedContent: {:?}",
-                invalid
+                "Unknown variant for CitationGeneratedContent: {invalid:?}"
             ))),
         }
     }
@@ -2390,7 +2331,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::Citation> for Citation {
             source_content: Some(
                 value
                     .source_content()
-                    .into_iter()
+                    .iter()
                     .map(|x| x.try_into())
                     .collect::<Result<_, Self::Error>>()?,
             ),
@@ -2432,8 +2373,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::CitationSourceContent> for CitationS
                 Ok(CitationSourceContent::Text(value))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationSourceContent: {:?}",
-                invalid
+                "Unknown variant for CitationSourceContent: {invalid:?}"
             ))),
         }
     }
@@ -2449,8 +2389,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::CitationSourceContent> for Citation
                 Ok(CitationSourceContent::Text(value.to_owned()))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationSourceContent: {:?}",
-                invalid
+                "Unknown variant for CitationSourceContent: {invalid:?}"
             ))),
         }
     }
@@ -2464,8 +2403,7 @@ impl TryFrom<CitationSourceContent> for aws_sdk_bedrockruntime::types::CitationS
                 aws_sdk_bedrockruntime::types::CitationSourceContent::Text(value),
             ),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationSourceContent: {:?}",
-                invalid
+                "Unknown variant for CitationSourceContent: {invalid:?}"
             ))),
         }
     }
@@ -2486,8 +2424,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::CitationLocation> for CitationLocati
                 Ok(CitationLocation::DocumentPage(value.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationLocation: {:?}",
-                invalid
+                "Unknown variant for CitationLocation: {invalid:?}"
             ))),
         }
     }
@@ -2509,8 +2446,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::CitationLocation> for CitationLocat
                 Ok(CitationLocation::DocumentPage(value.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationLocation: {:?}",
-                invalid
+                "Unknown variant for CitationLocation: {invalid:?}"
             ))),
         }
     }
@@ -2530,8 +2466,7 @@ impl TryFrom<CitationLocation> for aws_sdk_bedrockruntime::types::CitationLocati
                 aws_sdk_bedrockruntime::types::CitationLocation::DocumentPage(value.try_into()?),
             ),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationLocation: {:?}",
-                invalid
+                "Unknown variant for CitationLocation: {invalid:?}"
             ))),
         }
     }
@@ -2674,7 +2609,7 @@ impl TryFrom<DocumentBlock> for aws_sdk_bedrockruntime::types::DocumentBlock {
         )?);
         let name = value.name.into();
         let source = value.source.map(|v| v.try_into()).transpose()?;
-        let context = value.context.map(Into::into);
+        let context = value.context;
         let citations = value.citations.map(|v| v.try_into()).transpose()?;
 
         let res = aws_sdk_bedrockruntime::types::DocumentBlock::builder()
@@ -2704,8 +2639,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::DocumentFormat> for DocumentFormat {
             aws_sdk_bedrockruntime::types::DocumentFormat::Xls => Ok(DocumentFormat::Xls),
             aws_sdk_bedrockruntime::types::DocumentFormat::Xlsx => Ok(DocumentFormat::Xlsx),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentFormat: {:?}",
-                invalid
+                "Unknown variant for DocumentFormat: {invalid:?}"
             ))),
         }
     }
@@ -2727,8 +2661,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::DocumentFormat> for DocumentFormat 
             aws_sdk_bedrockruntime::types::DocumentFormat::Xls => Ok(DocumentFormat::Xls),
             aws_sdk_bedrockruntime::types::DocumentFormat::Xlsx => Ok(DocumentFormat::Xlsx),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentFormat: {:?}",
-                invalid
+                "Unknown variant for DocumentFormat: {invalid:?}"
             ))),
         }
     }
@@ -2748,8 +2681,7 @@ impl TryFrom<DocumentFormat> for aws_sdk_bedrockruntime::types::DocumentFormat {
             DocumentFormat::Xls => Ok(aws_sdk_bedrockruntime::types::DocumentFormat::Xls),
             DocumentFormat::Xlsx => Ok(aws_sdk_bedrockruntime::types::DocumentFormat::Xlsx),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentFormat: {:?}",
-                invalid
+                "Unknown variant for DocumentFormat: {invalid:?}"
             ))),
         }
     }
@@ -2777,8 +2709,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::DocumentSource> for DocumentSource {
                 Ok(DocumentSource::Text(value))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentSource: {:?}",
-                invalid
+                "Unknown variant for DocumentSource: {invalid:?}"
             ))),
         }
     }
@@ -2808,8 +2739,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::DocumentSource> for DocumentSource 
                 Ok(DocumentSource::Text(value.to_string()))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentSource: {:?}",
-                invalid
+                "Unknown variant for DocumentSource: {invalid:?}"
             ))),
         }
     }
@@ -2837,8 +2767,7 @@ impl TryFrom<DocumentSource> for aws_sdk_bedrockruntime::types::DocumentSource {
                 Ok(aws_sdk_bedrockruntime::types::DocumentSource::Text(value))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentSource: {:?}",
-                invalid
+                "Unknown variant for DocumentSource: {invalid:?}"
             ))),
         }
     }
@@ -2854,8 +2783,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::DocumentContentBlock> for DocumentCo
                 Ok(DocumentContentBlock::Text(value))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentContentBlock: {:?}",
-                invalid
+                "Unknown variant for DocumentContentBlock: {invalid:?}"
             ))),
         }
     }
@@ -2869,8 +2797,7 @@ impl TryFrom<DocumentContentBlock> for aws_sdk_bedrockruntime::types::DocumentCo
                 aws_sdk_bedrockruntime::types::DocumentContentBlock::Text(value),
             ),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentContentBlock: {:?}",
-                invalid
+                "Unknown variant for DocumentContentBlock: {invalid:?}"
             ))),
         }
     }
@@ -2984,8 +2911,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailConverseContentBlock>
                 Ok(GuardrailConverseContentBlock::Text(value.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseContentBlock: {:?}",
-                invalid
+                "Unknown variant for GuardrailConverseContentBlock: {invalid:?}"
             ))),
         }
     }
@@ -3008,8 +2934,7 @@ impl TryFrom<GuardrailConverseContentBlock>
                 ),
             ),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseContentBlock: {:?}",
-                invalid
+                "Unknown variant for GuardrailConverseContentBlock: {invalid:?}"
             ))),
         }
     }
@@ -3060,8 +2985,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailConverseImageFormat>
                 Ok(GuardrailConverseImageFormat::Png)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseImageFormat: {:?}",
-                invalid
+                "Unknown variant for GuardrailConverseImageFormat: {invalid:?}"
             ))),
         }
     }
@@ -3080,8 +3004,7 @@ impl TryFrom<GuardrailConverseImageFormat>
                 Ok(aws_sdk_bedrockruntime::types::GuardrailConverseImageFormat::Png)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseImageFormat: {:?}",
-                invalid
+                "Unknown variant for GuardrailConverseImageFormat: {invalid:?}"
             ))),
         }
     }
@@ -3102,8 +3025,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailConverseImageFormat>
                 Ok(GuardrailConverseImageFormat::Png)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseImageFormat: {:?}",
-                invalid
+                "Unknown variant for GuardrailConverseImageFormat: {invalid:?}"
             ))),
         }
     }
@@ -3121,8 +3043,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailConverseImageSource>
                 Ok(GuardrailConverseImageSource::Bytes(value.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseImageSource: {:?}",
-                invalid
+                "Unknown variant for GuardrailConverseImageSource: {invalid:?}"
             ))),
         }
     }
@@ -3140,8 +3061,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailConverseImageSource>
                 Ok(GuardrailConverseImageSource::Bytes(value.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseImageSource: {:?}",
-                invalid
+                "Unknown variant for GuardrailConverseImageSource: {invalid:?}"
             ))),
         }
     }
@@ -3159,8 +3079,7 @@ impl TryFrom<GuardrailConverseImageSource>
                 ),
             ),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseImageSource: {:?}",
-                invalid
+                "Unknown variant for GuardrailConverseImageSource: {invalid:?}"
             ))),
         }
     }
@@ -3178,7 +3097,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailConverseTextBlock>
             qualifiers: Some(
                 value
                     .qualifiers()
-                    .into_iter()
+                    .iter()
                     .map(|v| v.try_into())
                     .collect::<Result<_, Self::Error>>()?,
             ),
@@ -3224,8 +3143,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier>
                 Ok(GuardrailConverseContentQualifier::Query)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseContentQualifier: {:?}",
-                invalid
+                "Unknown variant for GuardrailConverseContentQualifier: {invalid:?}"
             ))),
         }
     }
@@ -3249,8 +3167,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier>
                 Ok(GuardrailConverseContentQualifier::Query)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseContentQualifier: {:?}",
-                invalid
+                "Unknown variant for GuardrailConverseContentQualifier: {invalid:?}"
             ))),
         }
     }
@@ -3272,8 +3189,7 @@ impl TryFrom<GuardrailConverseContentQualifier>
                 Ok(aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier::Query)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseContentQualifier: {:?}",
-                invalid
+                "Unknown variant for GuardrailConverseContentQualifier: {invalid:?}"
             ))),
         }
     }
@@ -3312,8 +3228,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::ImageFormat> for ImageFormat {
             aws_sdk_bedrockruntime::types::ImageFormat::Png => Ok(ImageFormat::Png),
             aws_sdk_bedrockruntime::types::ImageFormat::Webp => Ok(ImageFormat::Webp),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ImageFormat: {:?}",
-                invalid
+                "Unknown variant for ImageFormat: {invalid:?}"
             ))),
         }
     }
@@ -3328,8 +3243,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::ImageFormat> for ImageFormat {
             aws_sdk_bedrockruntime::types::ImageFormat::Png => Ok(ImageFormat::Png),
             aws_sdk_bedrockruntime::types::ImageFormat::Webp => Ok(ImageFormat::Webp),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ImageFormat: {:?}",
-                invalid
+                "Unknown variant for ImageFormat: {invalid:?}"
             ))),
         }
     }
@@ -3344,8 +3258,7 @@ impl TryFrom<ImageFormat> for aws_sdk_bedrockruntime::types::ImageFormat {
             ImageFormat::Png => Ok(aws_sdk_bedrockruntime::types::ImageFormat::Png),
             ImageFormat::Webp => Ok(aws_sdk_bedrockruntime::types::ImageFormat::Webp),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ImageFormat: {:?}",
-                invalid
+                "Unknown variant for ImageFormat: {invalid:?}"
             ))),
         }
     }
@@ -3362,8 +3275,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::ImageSource> for ImageSource {
                 Ok(ImageSource::S3Location(value.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ImageSource: {:?}",
-                invalid
+                "Unknown variant for ImageSource: {invalid:?}"
             ))),
         }
     }
@@ -3380,8 +3292,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::ImageSource> for ImageSource {
                 Ok(ImageSource::S3Location(value.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ImageSource: {:?}",
-                invalid
+                "Unknown variant for ImageSource: {invalid:?}"
             ))),
         }
     }
@@ -3398,8 +3309,7 @@ impl TryFrom<ImageSource> for aws_sdk_bedrockruntime::types::ImageSource {
                 aws_sdk_bedrockruntime::types::ImageSource::S3Location(value.try_into()?),
             ),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ImageSource: {:?}",
-                invalid
+                "Unknown variant for ImageSource: {invalid:?}"
             ))),
         }
     }
@@ -3418,8 +3328,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::ReasoningContentBlock> for Reasoning
                 Ok(ReasoningContentBlock::RedactedContent(value.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ReasoningContentBlock: {:?}",
-                invalid
+                "Unknown variant for ReasoningContentBlock: {invalid:?}"
             ))),
         }
     }
@@ -3440,8 +3349,7 @@ impl TryFrom<ReasoningContentBlock> for aws_sdk_bedrockruntime::types::Reasoning
                 ),
             ),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ReasoningContentBlock: {:?}",
-                invalid
+                "Unknown variant for ReasoningContentBlock: {invalid:?}"
             ))),
         }
     }
@@ -3463,7 +3371,7 @@ impl TryFrom<ReasoningTextBlock> for aws_sdk_bedrockruntime::types::ReasoningTex
     type Error = TypeConversionError;
     fn try_from(value: ReasoningTextBlock) -> Result<Self, Self::Error> {
         let text = value.text.into();
-        let signature = value.signature.map(Into::into);
+        let signature = value.signature;
         let res = aws_sdk_bedrockruntime::types::ReasoningTextBlock::builder()
             .set_text(text)
             .set_signature(signature)
@@ -3535,8 +3443,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::ToolResultContentBlock> for ToolResu
                 Ok(ToolResultContentBlock::Video(value.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ToolResultContentBlock: {:?}",
-                invalid
+                "Unknown variant for ToolResultContentBlock: {invalid:?}"
             ))),
         }
     }
@@ -3562,8 +3469,7 @@ impl TryFrom<ToolResultContentBlock> for aws_sdk_bedrockruntime::types::ToolResu
                 Ok(aws_sdk_bedrockruntime::types::ToolResultContentBlock::Video(value.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ToolResultContentBlock: {:?}",
-                invalid
+                "Unknown variant for ToolResultContentBlock: {invalid:?}"
             ))),
         }
     }
@@ -3609,8 +3515,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::VideoFormat> for VideoFormat {
             aws_sdk_bedrockruntime::types::VideoFormat::Webm => Ok(VideoFormat::Webm),
             aws_sdk_bedrockruntime::types::VideoFormat::Wmv => Ok(VideoFormat::Wmv),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for VideoFormat: {:?}",
-                invalid
+                "Unknown variant for VideoFormat: {invalid:?}"
             ))),
         }
     }
@@ -3630,8 +3535,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::VideoFormat> for VideoFormat {
             aws_sdk_bedrockruntime::types::VideoFormat::Webm => Ok(VideoFormat::Webm),
             aws_sdk_bedrockruntime::types::VideoFormat::Wmv => Ok(VideoFormat::Wmv),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for VideoFormat: {:?}",
-                invalid
+                "Unknown variant for VideoFormat: {invalid:?}"
             ))),
         }
     }
@@ -3651,8 +3555,7 @@ impl TryFrom<VideoFormat> for aws_sdk_bedrockruntime::types::VideoFormat {
             VideoFormat::Webm => Ok(aws_sdk_bedrockruntime::types::VideoFormat::Webm),
             VideoFormat::Wmv => Ok(aws_sdk_bedrockruntime::types::VideoFormat::Wmv),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for VideoFormat: {:?}",
-                invalid
+                "Unknown variant for VideoFormat: {invalid:?}"
             ))),
         }
     }
@@ -3669,8 +3572,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::VideoSource> for VideoSource {
                 Ok(VideoSource::S3Location(value.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for VideoSource: {:?}",
-                invalid
+                "Unknown variant for VideoSource: {invalid:?}"
             ))),
         }
     }
@@ -3687,8 +3589,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::VideoSource> for VideoSource {
                 Ok(VideoSource::S3Location(value.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for VideoSource: {:?}",
-                invalid
+                "Unknown variant for VideoSource: {invalid:?}"
             ))),
         }
     }
@@ -3705,8 +3606,7 @@ impl TryFrom<VideoSource> for aws_sdk_bedrockruntime::types::VideoSource {
                 aws_sdk_bedrockruntime::types::VideoSource::S3Location(value.try_into()?),
             ),
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for VideoSource: {:?}",
-                invalid
+                "Unknown variant for VideoSource: {invalid:?}"
             ))),
         }
     }
@@ -3752,8 +3652,7 @@ impl TryFrom<aws_sdk_bedrockruntime::types::ToolResultStatus> for ToolResultStat
                 Ok(ToolResultStatus::Success)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ToolResultStatus: {:?}",
-                invalid
+                "Unknown variant for ToolResultStatus: {invalid:?}"
             ))),
         }
     }
@@ -3770,8 +3669,7 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::ToolResultStatus> for ToolResultSta
                 Ok(ToolResultStatus::Success)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ToolResultStatus: {:?}",
-                invalid
+                "Unknown variant for ToolResultStatus: {invalid:?}"
             ))),
         }
     }
@@ -3791,8 +3689,7 @@ impl TryFrom<ToolResultStatus> for aws_sdk_bedrockruntime::types::ToolResultStat
                 Ok(aws_sdk_bedrockruntime::types::ToolResultStatus::Success)
             }
             invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ToolResultStatus: {:?}",
-                invalid
+                "Unknown variant for ToolResultStatus: {invalid:?}"
             ))),
         }
     }
@@ -3828,13 +3725,13 @@ impl TryFrom<&aws_smithy_types::Document> for Document {
         match value {
             aws_smithy_types::Document::Object(value) => Ok(Document::Object(
                 value
-                    .into_iter()
+                    .iter()
                     .map(|(k, v)| Ok((k.to_owned(), v.try_into()?)))
                     .collect::<Result<_, Self::Error>>()?,
             )),
             aws_smithy_types::Document::Array(value) => Ok(Document::Array(
                 value
-                    .into_iter()
+                    .iter()
                     .map(TryInto::try_into)
                     .collect::<Result<_, Self::Error>>()?,
             )),

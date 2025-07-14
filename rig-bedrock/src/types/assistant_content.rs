@@ -1,4 +1,3 @@
-use aws_sdk_bedrockruntime::operation::converse::ConverseOutput;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig::{
