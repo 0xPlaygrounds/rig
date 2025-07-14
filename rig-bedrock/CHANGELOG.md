@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.2.1...rig-bedrock-v0.2.2) - 2025-07-14
+
+### Added
+
+- *(rig-801)* DynClientBuilder::from_values ([#556](https://github.com/0xPlaygrounds/rig/pull/556))
+- add `.extended_details` to `PromptRequest` ([#555](https://github.com/0xPlaygrounds/rig/pull/555))
+
 ## [0.2.1](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.2.0...rig-bedrock-v0.2.1) - 2025-07-07
 
 ### Added
