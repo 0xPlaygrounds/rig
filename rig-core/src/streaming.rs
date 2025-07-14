@@ -259,7 +259,7 @@ pub async fn stream_to_stdout<M: CompletionModel>(
             }
             Ok(StreamedAssistantContent::Final(res)) => {
                 let json_res = serde_json::to_string_pretty(&res).unwrap();
-                println!("\nFinal response: {json_res}");
+                tracing::info!("Final result: {json_res}");
             }
             Err(e) => {
                 if e.to_string().contains("aborted") {

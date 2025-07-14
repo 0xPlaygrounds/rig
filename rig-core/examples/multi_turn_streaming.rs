@@ -6,7 +6,7 @@ use rig::{
     completion::{self, CompletionError, CompletionModel, PromptError, ToolDefinition},
     message::{AssistantContent, Message, Text, ToolResultContent, UserContent},
     providers::anthropic,
-    streaming::StreamingCompletion,
+    streaming::{StreamedAssistantContent, StreamingCompletion},
     tool::{Tool, ToolSetError},
 };
 use serde::{Deserialize, Serialize};
@@ -98,11 +98,11 @@ where
 
             while let Some(content) = stream.next().await {
                 match content {
-                    Ok(AssistantContent::Text(text)) => {
+                    Ok(StreamedAssistantContent::Text(text)) => {
                         yield Ok(Text { text: text.text });
                         did_call_tool = false;
                     },
-                    Ok(AssistantContent::ToolCall(tool_call)) => {
+                    Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
                         let tool_result =
                             agent.tools.call(&tool_call.function.name, tool_call.function.arguments.to_string()).await?;
 
@@ -114,6 +114,9 @@ where
                         did_call_tool = true;
                         // break;
                     },
+                    Ok(_) => {
+                        // do nothing here as we don't need to accumulate token usage
+                    }
                     Err(e) => {
                         yield Err(e.into());
                         break 'outer;
