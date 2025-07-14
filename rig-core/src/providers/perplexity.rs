@@ -140,7 +140,7 @@ pub const SONAR_PRO: &str = "sonar-pro";
 /// `sonar` completion model
 pub const SONAR: &str = "sonar";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     pub id: String,
     pub model: String,
@@ -165,13 +165,13 @@ pub enum Role {
     Assistant,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 pub struct Delta {
     pub role: Role,
     pub content: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 pub struct Choice {
     pub index: usize,
     pub finish_reason: String,
@@ -179,7 +179,7 @@ pub struct Choice {
     pub delta: Delta,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,

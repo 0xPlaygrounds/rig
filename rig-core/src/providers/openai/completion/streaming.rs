@@ -49,7 +49,7 @@ struct StreamingCompletionChunk {
     usage: Option<Usage>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage: Usage,
 }

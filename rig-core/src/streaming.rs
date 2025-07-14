@@ -13,9 +13,10 @@ use crate::agent::Agent;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message, Usage,
 };
-use crate::message::{AssistantContent, ToolCall, ToolFunction};
+use crate::message::{AssistantContent, Text, ToolCall, ToolFunction};
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
+use serde::{Deserialize, Serialize};
 use std::boxed::Box;
 use std::future::Future;
 use std::pin::Pin;
@@ -94,7 +95,7 @@ impl<R: Clone + Unpin> From<StreamingCompletionResponse<R>> for CompletionRespon
 }
 
 impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
-    type Item = Result<AssistantContent, CompletionError>;
+    type Item = Result<StreamedAssistantContent<R>, CompletionError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();
@@ -132,7 +133,7 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                     // Forward the streaming tokens to the outer stream
                     // and concat the text together
                     stream.text = format!("{}{}", stream.text, text.clone());
-                    Poll::Ready(Some(Ok(AssistantContent::text(text))))
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
                 }
                 RawStreamingChoice::ToolCall {
                     id,
@@ -150,13 +151,17 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                             arguments: arguments.clone(),
                         },
                     });
-                    Poll::Ready(Some(Ok(AssistantContent::tool_call(id, name, arguments))))
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::tool_call(
+                        id, name, arguments,
+                    ))))
                 }
                 RawStreamingChoice::FinalResponse(response) => {
                     // Set the final response field and return the next item in the stream
-                    stream.response = Some(response);
+                    stream.response = Some(response.clone());
+                    let final_response = StreamedAssistantContent::final_response(response);
+                    Poll::Ready(Some(Ok(final_response)))
 
-                    stream.poll_next_unpin(cx)
+                    // stream.poll_next_unpin(cx)
                 }
             },
         }
@@ -237,11 +242,11 @@ pub async fn stream_to_stdout<M: CompletionModel>(
     print!("Response: ");
     while let Some(chunk) = stream.next().await {
         match chunk {
-            Ok(AssistantContent::Text(text)) => {
+            Ok(StreamedAssistantContent::Text(text)) => {
                 print!("{}", text.text);
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(AssistantContent::ToolCall(tool_call)) => {
+            Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
                 let res = agent
                     .tools
                     .call(
@@ -251,6 +256,10 @@ pub async fn stream_to_stdout<M: CompletionModel>(
                     .await
                     .map_err(|e| std::io::Error::other(e.to_string()))?;
                 println!("\nResult: {res}");
+            }
+            Ok(StreamedAssistantContent::Final(res)) => {
+                let json_res = serde_json::to_string_pretty(&res).unwrap();
+                println!("\nFinal response: {json_res}");
             }
             Err(e) => {
                 if e.to_string().contains("aborted") {
@@ -310,14 +319,17 @@ mod tests {
         let mut chunk_count = 0;
         while let Some(chunk) = stream.next().await {
             match chunk {
-                Ok(AssistantContent::Text(text)) => {
+                Ok(StreamedAssistantContent::Text(text)) => {
                     print!("{}", text.text);
                     std::io::Write::flush(&mut std::io::stdout()).unwrap();
                     chunk_count += 1;
                 }
-                Ok(AssistantContent::ToolCall(tc)) => {
+                Ok(StreamedAssistantContent::ToolCall(tc)) => {
                     println!("\nTool Call: {tc:?}");
                     chunk_count += 1;
+                }
+                Ok(StreamedAssistantContent::Final(res)) => {
+                    println!("\nFinal response: {res:?}");
                 }
                 Err(e) => {
                     eprintln!("Error: {e:?}");
@@ -338,5 +350,61 @@ mod tests {
             next_chunk.is_none(),
             "Expected no further chunks after cancellation, got {next_chunk:?}"
         );
+    }
+}
+
+/// Describes responses from a streamed provider response which is either text, a tool call or a final usage response.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(untagged)]
+pub enum StreamedAssistantContent<R> {
+    Text(Text),
+    ToolCall(ToolCall),
+    Final(R),
+}
+
+impl<R> StreamedAssistantContent<R>
+where
+    R: Clone + Unpin,
+{
+    pub fn text(text: &str) -> Self {
+        Self::Text(Text {
+            text: text.to_string(),
+        })
+    }
+
+    /// Helper constructor to make creating assistant tool call content easier.
+    pub fn tool_call(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        arguments: serde_json::Value,
+    ) -> Self {
+        Self::ToolCall(ToolCall {
+            id: id.into(),
+            call_id: None,
+            function: ToolFunction {
+                name: name.into(),
+                arguments,
+            },
+        })
+    }
+
+    pub fn tool_call_with_call_id(
+        id: impl Into<String>,
+        call_id: String,
+        name: impl Into<String>,
+        arguments: serde_json::Value,
+    ) -> Self {
+        Self::ToolCall(ToolCall {
+            id: id.into(),
+            call_id: Some(call_id),
+            function: ToolFunction {
+                name: name.into(),
+                arguments,
+            },
+        })
+    }
+
+    pub fn final_response(res: R) -> Self {
+        Self::Final(res)
     }
 }

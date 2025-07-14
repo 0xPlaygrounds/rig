@@ -423,7 +423,7 @@ impl CompletionModel {
 
 // ---------- CompletionModel Implementation ----------
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct StreamingCompletionResponse {
     pub done_reason: Option<String>,
     pub total_duration: Option<u64>,
