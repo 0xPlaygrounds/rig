@@ -141,6 +141,12 @@ pub(crate) fn create_request_body(
         role: Some(Role::Model),
     });
 
+    let tools = if completion_request.tools.is_empty() {
+        None
+    } else {
+        Some(Tool::try_from(completion_request.tools)?)
+    };
+
     let request = GenerateContentRequest {
         contents: full_history
             .into_iter()
@@ -151,7 +157,7 @@ pub(crate) fn create_request_body(
             .collect::<Result<Vec<_>, _>>()?,
         generation_config: Some(generation_config),
         safety_settings: None,
-        tools: Some(Tool::try_from(completion_request.tools)?),
+        tools,
         tool_config: None,
         system_instruction,
     };
@@ -978,6 +984,7 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct GenerateContentRequest {
         pub contents: Vec<Content>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub tools: Option<Tool>,
         pub tool_config: Option<ToolConfig>,
         /// Optional. Configuration options for model generation and outputs.
