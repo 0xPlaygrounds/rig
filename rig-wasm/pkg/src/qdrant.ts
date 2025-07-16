@@ -1,4 +1,3 @@
-import { QdrantClient } from "@qdrant/js-client-rest";
 import { CanEmbed, VectorSearchOpts } from "./types";
 
 // qdrant.ts
@@ -49,9 +48,7 @@ export class QdrantAdapter {
         };
         this.client = new mod.QdrantClient(this.params);
       } catch (err) {
-        throw new Error(
-          "`@qdrant/js-client-rest` is not installed. Please `npm install` it to use the Qdrant adapter.",
-        );
+        throw new Error("Failed to load Qdrant client: " + err);
       }
     }
   }
@@ -74,7 +71,7 @@ export class QdrantAdapter {
     }
   }
 
-  async upsertPoints(points: Point[]) {
+  async insertDocuments(points: Point[]) {
     await this.loadClient();
 
     await this.client.upsert(this.collectionName, {

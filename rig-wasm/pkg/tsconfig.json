@@ -9,7 +9,7 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "typeRoots": ["./types/", "src/generated"]
+    "typeRoots": ["src/generated"]
   },
   "include": [
     "./types/**/*.d.ts",

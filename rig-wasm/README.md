@@ -4,6 +4,7 @@ WASM bindings to Rig.
 ## Missing
 - Pipelines
 - Custom completion models/agents
+- Azure
 
 ## Implementation checklist
 Providers:
