@@ -2,12 +2,14 @@
 WASM bindings to Rig.
 
 ## Missing
-- No Gemini transcriptions
+- Pipelines
+- Custom completion models/agents
 
 ## Implementation checklist
 Providers:
   - [x] OpenAI
-  - [ ] Everyone else
+  - [x] Everyone else
+  - [ ] Azure
 
 Vector store integrations:
   - [x] Qdrant

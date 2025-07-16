@@ -1,13 +1,15 @@
 use crate::completion::{CompletionRequest, Message};
 use crate::embedding::Embedding;
 use crate::{JsAgentOpts, JsResult, ModelOpts, tool::JsTool, vector_store::JsVectorStore};
-use crate::{JsCompletionOpts, JsModelOpts, StringIterable};
+use crate::{JsCompletionOpts, JsModelOpts, JsTranscriptionOpts, StringIterable};
 use futures::{StreamExt, TryStreamExt};
 use rig::agent::Agent;
-use rig::client::{CompletionClient, EmbeddingsClient};
+use rig::client::{CompletionClient, EmbeddingsClient, TranscriptionClient};
 use rig::completion::{Chat, CompletionModel, Prompt};
 use rig::embeddings::EmbeddingModel;
+use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
 use rig::streaming::StreamingPrompt;
+use rig::transcription::{TranscriptionModel, TranscriptionResponse};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::js_sys::{self, Array, Reflect};
 
@@ -266,5 +268,57 @@ impl GeminiEmbeddingModel {
             .into_iter()
             .map(crate::embedding::Embedding::from)
             .collect())
+    }
+}
+
+#[wasm_bindgen]
+pub struct GeminiTranscriptionModel(rig::providers::gemini::transcription::TranscriptionModel);
+
+#[wasm_bindgen]
+impl GeminiTranscriptionModel {
+    #[wasm_bindgen]
+    pub fn new(opts: JsModelOpts) -> JsResult<Self> {
+        let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
+            .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
+
+        let client = rig::providers::gemini::Client::new(&model_opts.api_key);
+        let model = client.transcription_model(&model_opts.model_name);
+        Ok(Self(model))
+    }
+
+    #[wasm_bindgen]
+    pub async fn transcription(
+        &self,
+        opts: JsTranscriptionOpts,
+    ) -> JsResult<GeminiTranscriptionResponse> {
+        let req =
+            serde_wasm_bindgen::from_value::<crate::transcription::TranscriptionRequest>(opts.obj)
+                .map_err(|x| {
+                    JsError::new(
+                        format!("Error while creating transcription options: {x}").as_ref(),
+                    )
+                })?;
+        let req = rig::transcription::TranscriptionRequest::from(req);
+
+        let res = self
+            .0
+            .transcription(req)
+            .await
+            .map_err(|x| JsError::new(format!("Error while transcribing: {x}").as_ref()))?;
+
+        let transcription = GeminiTranscriptionResponse(res);
+
+        Ok(transcription)
+    }
+}
+
+#[wasm_bindgen]
+pub struct GeminiTranscriptionResponse(TranscriptionResponse<GenerateContentResponse>);
+
+#[wasm_bindgen]
+impl GeminiTranscriptionResponse {
+    #[wasm_bindgen(getter)]
+    pub fn text(&self) -> String {
+        self.0.text.clone()
     }
 }
