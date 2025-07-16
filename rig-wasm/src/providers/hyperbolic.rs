@@ -1,34 +1,26 @@
+use crate::{JsAudioGenerationOpts, JsResult, ModelOpts};
+use base64::{Engine, prelude::BASE64_STANDARD};
+use rig::audio_generation::{AudioGenerationModel, AudioGenerationResponse};
+use rig::providers::hyperbolic;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::js_sys::{Array, Reflect, Uint8Array};
+
 use crate::completion::{CompletionRequest, Message};
-use crate::embedding::Embedding;
-use crate::tool::JsTool;
 use crate::vector_store::JsVectorStore;
-use crate::{
-    JsAgentOpts, JsAudioGenerationOpts, JsCompletionOpts, JsImageGenerationOpts, JsModelOpts,
-    JsResult, JsTranscriptionOpts, ModelOpts, StringIterable,
-};
 use futures::StreamExt;
 use futures::TryStreamExt;
-use rig::agent::Agent;
-use rig::audio_generation::{AudioGenerationModel, AudioGenerationResponse};
-use rig::client::embeddings::EmbeddingsClient;
-use rig::client::image_generation::ImageGenerationClient;
-use rig::client::{AudioGenerationClient, CompletionClient, TranscriptionClient};
+use rig::client::CompletionClient;
 use rig::completion::{Chat, CompletionModel, Prompt};
-use rig::embeddings::EmbeddingModel;
-use rig::image_generation::ImageGenerationModel;
 use rig::streaming::StreamingPrompt;
-use rig::transcription::{TranscriptionModelDyn, TranscriptionResponse};
-use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::js_sys::{self, Array, Reflect, Uint8Array};
 use wasm_streams::ReadableStream;
 
 #[wasm_bindgen]
-pub struct OpenAIAgent(Agent<rig::providers::openai::responses_api::ResponsesCompletionModel>);
+pub struct HyperbolicAgent(rig::agent::Agent<rig::providers::hyperbolic::CompletionModel>);
 
 #[wasm_bindgen]
-impl OpenAIAgent {
+impl HyperbolicAgent {
     #[wasm_bindgen(constructor)]
-    pub fn new(opts: JsAgentOpts) -> JsResult<Self> {
+    pub fn new(opts: crate::JsAgentOpts) -> JsResult<Self> {
         let api_key = Reflect::get(&opts, &JsValue::from_str("apiKey"))
             .map_err(|_| JsError::new("failed to get apiKey"))?
             .as_string()
@@ -68,7 +60,7 @@ impl OpenAIAgent {
                 let array = Array::from(&v);
                 let mut converted = Vec::new();
                 for item in array.iter() {
-                    let tool = JsTool::new(item).unwrap();
+                    let tool = crate::tool::JsTool::new(item).unwrap();
                     converted.push(tool);
                 }
                 Some(converted)
@@ -119,7 +111,7 @@ impl OpenAIAgent {
                 }
             });
 
-        let mut agent = rig::providers::openai::Client::new(&api_key).agent(&model);
+        let mut agent = rig::providers::hyperbolic::Client::new(&api_key).agent(&model);
 
         if let Some(preamble) = preamble {
             agent = agent.preamble(&preamble);
@@ -198,25 +190,25 @@ impl OpenAIAgent {
     }
 }
 
-/// The OpenAI Responses API, modelled as the Completions API.
+/// The Hyperbolic completions chat API.
 #[wasm_bindgen]
-pub struct OpenAIResponsesCompletionModel(
-    rig::providers::openai::responses_api::ResponsesCompletionModel,
-);
+pub struct HyperbolicCompletionsCompletionModel(rig::providers::hyperbolic::CompletionModel);
 
 #[wasm_bindgen]
-impl OpenAIResponsesCompletionModel {
+impl HyperbolicCompletionsCompletionModel {
     #[wasm_bindgen(constructor)]
-    pub fn new(opts: JsModelOpts) -> JsResult<Self> {
+    pub fn new(opts: crate::JsModelOpts) -> JsResult<Self> {
         let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
             .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
 
-        let client = rig::providers::openai::Client::new(&model_opts.api_key);
+        let client = rig::providers::hyperbolic::Client::new(&model_opts.api_key);
+
         let model = client.completion_model(&model_opts.model_name);
+
         Ok(Self(model))
     }
 
-    pub async fn completion(&self, opts: JsCompletionOpts) -> JsResult<JsValue> {
+    pub async fn completion(&self, opts: crate::JsCompletionOpts) -> JsResult<JsValue> {
         let req: CompletionRequest = CompletionRequest::new(opts)?;
         let req: rig::completion::CompletionRequest = rig::completion::CompletionRequest::from(req);
 
@@ -235,161 +227,27 @@ impl OpenAIResponsesCompletionModel {
     }
 }
 
-/// The OpenAI completions chat API.
+use rig::client::image_generation::ImageGenerationClient;
+use rig::image_generation::ImageGenerationModel;
 #[wasm_bindgen]
-pub struct OpenAICompletionsCompletionModel(rig::providers::openai::completion::CompletionModel);
+pub struct HyperbolicImageGenerationModel(rig::providers::hyperbolic::ImageGenerationModel);
 
 #[wasm_bindgen]
-impl OpenAICompletionsCompletionModel {
+impl HyperbolicImageGenerationModel {
     #[wasm_bindgen(constructor)]
-    pub fn new(opts: JsModelOpts) -> JsResult<Self> {
+    pub fn new(opts: crate::JsModelOpts) -> JsResult<Self> {
         let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
             .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
 
-        let client = rig::providers::openai::Client::new(&model_opts.api_key);
-        let model = client
-            .completion_model(&model_opts.model_name)
-            .completions_api();
-        Ok(Self(model))
-    }
-
-    pub async fn completion(&self, opts: JsCompletionOpts) -> JsResult<JsValue> {
-        let req: CompletionRequest = CompletionRequest::new(opts)?;
-        let req: rig::completion::CompletionRequest = rig::completion::CompletionRequest::from(req);
-
-        let res = self
-            .0
-            .completion(req)
-            .await
-            .map_err(|x| JsError::new(x.to_string().as_ref()))?;
-
-        let res = crate::completion::CompletionResponse::from(res);
-
-        let js_val =
-            serde_wasm_bindgen::to_value(&res).map_err(|x| JsError::new(x.to_string().as_ref()))?;
-
-        Ok(js_val)
-    }
-}
-
-#[wasm_bindgen]
-pub struct OpenAIEmbeddingModel(rig::providers::openai::embedding::EmbeddingModel);
-
-#[wasm_bindgen]
-impl OpenAIEmbeddingModel {
-    #[wasm_bindgen(constructor)]
-    pub fn new(opts: JsModelOpts) -> JsResult<Self> {
-        let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
-            .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
-
-        let client = rig::providers::openai::Client::new(&model_opts.api_key);
-        let model = client.embedding_model(&model_opts.model_name);
-        Ok(Self(model))
-    }
-
-    pub async fn embed_text(&self, text: String) -> JsResult<Embedding> {
-        let res = self
-            .0
-            .embed_text(&text)
-            .await
-            .map_err(|e| JsError::new(e.to_string().as_ref()))?;
-
-        Ok(Embedding::from(res))
-    }
-
-    pub async fn embed_texts(&self, iter: StringIterable) -> JsResult<Vec<Embedding>> {
-        let arr = js_sys::Array::from(&iter.obj);
-
-        let val = arr
-            .into_iter()
-            .map(|x| {
-                x.as_string()
-                    .ok_or_else(|| JsError::new(format!("Expected string, got {x:?}").as_ref()))
-            })
-            .collect::<Result<Vec<String>, JsError>>()?;
-
-        Ok(self
-            .0
-            .embed_texts(val)
-            .await
-            .map_err(|x| JsError::new(x.to_string().as_ref()))?
-            .into_iter()
-            .map(crate::embedding::Embedding::from)
-            .collect())
-    }
-}
-
-#[wasm_bindgen]
-pub struct OpenAITranscriptionModel(rig::providers::openai::TranscriptionModel);
-
-#[wasm_bindgen]
-impl OpenAITranscriptionModel {
-    #[wasm_bindgen]
-    pub fn new(opts: JsModelOpts) -> JsResult<Self> {
-        let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
-            .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
-
-        let client = rig::providers::openai::Client::new(&model_opts.api_key);
-        let model = client.transcription_model(&model_opts.model_name);
-        Ok(Self(model))
-    }
-
-    #[wasm_bindgen]
-    pub async fn transcription(
-        &self,
-        opts: JsTranscriptionOpts,
-    ) -> JsResult<OpenAITranscriptionResponse> {
-        let req =
-            serde_wasm_bindgen::from_value::<crate::transcription::TranscriptionRequest>(opts.obj)
-                .map_err(|x| {
-                    JsError::new(
-                        format!("Error while creating transcription options: {x}").as_ref(),
-                    )
-                })?;
-        let req = rig::transcription::TranscriptionRequest::from(req);
-
-        let res = self
-            .0
-            .transcription(req)
-            .await
-            .map_err(|x| JsError::new(format!("Error while transcribing: {x}").as_ref()))?;
-
-        let transcription = OpenAITranscriptionResponse(res);
-
-        Ok(transcription)
-    }
-}
-
-#[wasm_bindgen]
-pub struct OpenAITranscriptionResponse(TranscriptionResponse<()>);
-
-#[wasm_bindgen]
-impl OpenAITranscriptionResponse {
-    #[wasm_bindgen(getter)]
-    pub fn text(&self) -> String {
-        self.0.text.clone()
-    }
-}
-
-#[wasm_bindgen]
-pub struct OpenAIImageGenerationModel(rig::providers::openai::ImageGenerationModel);
-
-#[wasm_bindgen]
-impl OpenAIImageGenerationModel {
-    #[wasm_bindgen(constructor)]
-    pub fn new(opts: JsModelOpts) -> JsResult<Self> {
-        let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
-            .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
-
-        let client = rig::providers::openai::Client::new(&model_opts.api_key);
+        let client = rig::providers::hyperbolic::Client::new(&model_opts.api_key);
         let model = client.image_generation_model(&model_opts.model_name);
         Ok(Self(model))
     }
 
     pub async fn image_generation(
         &self,
-        opts: JsImageGenerationOpts,
-    ) -> JsResult<OpenAIImageGenerationResponse> {
+        opts: crate::JsImageGenerationOpts,
+    ) -> JsResult<HyperbolicImageGenerationResponse> {
         let req =
             serde_wasm_bindgen::from_value::<crate::image_generation::ImageGenerationRequest>(
                 opts.obj,
@@ -404,35 +262,36 @@ impl OpenAIImageGenerationModel {
             .await
             .map_err(|x| JsError::new(format!("Error while creating image: {x}").as_ref()))?;
 
-        Ok(OpenAIImageGenerationResponse(res))
+        Ok(HyperbolicImageGenerationResponse(res))
     }
 }
 
 #[wasm_bindgen]
-pub struct OpenAIImageGenerationResponse(
-    rig::image_generation::ImageGenerationResponse<rig::providers::openai::ImageGenerationResponse>,
+pub struct HyperbolicImageGenerationResponse(
+    rig::image_generation::ImageGenerationResponse<
+        rig::providers::hyperbolic::ImageGenerationResponse,
+    >,
 );
 
 #[wasm_bindgen]
-impl OpenAIImageGenerationResponse {
+impl HyperbolicImageGenerationResponse {
     pub fn image_bytes(&self) -> wasm_bindgen_futures::js_sys::Uint8Array {
         wasm_bindgen_futures::js_sys::Uint8Array::from(self.0.image.as_ref())
     }
 }
 
+use rig::client::AudioGenerationClient;
 #[wasm_bindgen]
-pub struct OpenAIAudioGenerationModel(
-    rig::providers::openai::audio_generation::AudioGenerationModel,
-);
+pub struct HyperbolicAudioGenerationModel(rig::providers::hyperbolic::AudioGenerationModel);
 
 #[wasm_bindgen]
-impl OpenAIAudioGenerationModel {
+impl HyperbolicAudioGenerationModel {
     #[wasm_bindgen(constructor)]
-    pub fn new(opts: JsModelOpts) -> JsResult<Self> {
+    pub fn new(opts: crate::JsModelOpts) -> JsResult<Self> {
         let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
             .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
 
-        let client = rig::providers::openai::Client::new(&model_opts.api_key);
+        let client = rig::providers::hyperbolic::Client::new(&model_opts.api_key);
         let model = client.audio_generation_model(&model_opts.model_name);
         Ok(Self(model))
     }
@@ -440,7 +299,7 @@ impl OpenAIAudioGenerationModel {
     pub async fn audio_generation(
         &self,
         opts: JsAudioGenerationOpts,
-    ) -> JsResult<OpenAIAudioGenerationResponse> {
+    ) -> JsResult<HyperbolicAudioGenerationResponse> {
         let req =
             serde_wasm_bindgen::from_value::<crate::audio_generation::AudioGenerationRequest>(
                 opts.obj,
@@ -455,16 +314,23 @@ impl OpenAIAudioGenerationModel {
             .await
             .map_err(|x| JsError::new(format!("Error while creating audio: {x}").as_ref()))?;
 
-        Ok(OpenAIAudioGenerationResponse(res))
+        Ok(HyperbolicAudioGenerationResponse(res))
     }
 }
 
+/// Hyperbolic audio generation response.
+/// Note that the inner type is actually base64.
 #[wasm_bindgen]
-pub struct OpenAIAudioGenerationResponse(AudioGenerationResponse<bytes::Bytes>);
+pub struct HyperbolicAudioGenerationResponse(
+    AudioGenerationResponse<hyperbolic::AudioGenerationResponse>,
+);
 
 #[wasm_bindgen]
-impl OpenAIAudioGenerationResponse {
-    pub fn bytes(&self) -> Uint8Array {
-        Uint8Array::from(self.0.audio.as_ref())
+impl HyperbolicAudioGenerationResponse {
+    pub fn bytes(self) -> JsResult<Uint8Array> {
+        let audio = BASE64_STANDARD.decode(self.0.audio).map_err(|x| {
+            JsError::new(format!("Error while decoding hyperbolic audiogen response: {x}").as_ref())
+        })?;
+        Ok(Uint8Array::from(audio.as_ref()))
     }
 }

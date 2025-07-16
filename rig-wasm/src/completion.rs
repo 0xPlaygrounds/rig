@@ -2,7 +2,7 @@ use crate::{JsCompletionOpts, JsResult};
 use rig::{OneOrMany, message::ToolCall};
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::js_sys::{Object, Reflect};
+use wasm_bindgen_futures::js_sys::Reflect;
 
 #[wasm_bindgen]
 #[derive(Clone)]

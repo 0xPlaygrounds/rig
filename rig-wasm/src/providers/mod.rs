@@ -1,1 +1,19 @@
+pub mod deepseek;
+pub mod galadriel;
+pub mod groq;
+pub mod hyperbolic;
+pub mod mira;
+pub mod moonshot;
+pub mod ollama;
+pub mod perplexity;
+pub mod voyageai;
+
+pub mod anthropic;
+pub mod cohere;
+pub mod gemini;
+pub mod huggingface;
+pub mod mistral;
 pub mod openai;
+pub mod openrouter;
+pub mod together;
+pub mod xai;

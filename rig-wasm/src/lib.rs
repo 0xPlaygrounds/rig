@@ -2,6 +2,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::{JsError, JsValue};
 use wasm_bindgen_futures::js_sys::Reflect;
 
+pub mod audio_generation;
 pub mod completion;
 pub mod embedding;
 pub mod image_generation;
@@ -54,6 +55,15 @@ unsafe extern "C" {
     pub type JsTranscriptionOpts;
     #[wasm_bindgen(typescript_type = "ImageGenerationOpts")]
     pub type JsImageGenerationOpts;
+
+    #[wasm_bindgen(typescript_type = "InMemoryVectorStoreOpts")]
+    pub type JsInMemoryVectorStoreOpts;
+
+    #[wasm_bindgen(typescript_type = "CanEmbed")]
+    pub type ImplementsVectorStoreIndexTrait;
+
+    #[wasm_bindgen(typescript_type = "AudioGenerationOpts")]
+    pub type JsAudioGenerationOpts;
 }
 
 #[derive(serde::Deserialize)]
