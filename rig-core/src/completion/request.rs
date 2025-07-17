@@ -73,6 +73,7 @@ use crate::{
     tool::ToolSetError,
 };
 use futures::future::BoxFuture;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::{Add, AddAssign};
@@ -282,9 +283,9 @@ impl AddAssign for Usage {
 /// either from a third party provider (e.g.: OpenAI) or a local model.
 pub trait CompletionModel: Clone + Send + Sync {
     /// The raw response type returned by the underlying completion model.
-    type Response: Send + Sync;
+    type Response: Send + Sync + Serialize + DeserializeOwned;
     /// The raw response type returned by the underlying completion model when streaming.
-    type StreamingResponse: Clone + Unpin + Send + Sync;
+    type StreamingResponse: Clone + Unpin + Send + Sync + Serialize + DeserializeOwned;
 
     /// Generates a completion response for the given completion request.
     fn completion(

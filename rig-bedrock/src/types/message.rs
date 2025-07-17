@@ -85,6 +85,17 @@ impl TryFrom<aws_bedrock::Message> for RigMessage {
     }
 }
 
+impl TryFrom<super::converse_output::Message> for RigMessage {
+    type Error = CompletionError;
+
+    fn try_from(message: super::converse_output::Message) -> Result<Self, Self::Error> {
+        let message = aws_bedrock::Message::try_from(message)
+            .map_err(|x| CompletionError::ProviderError(format!("Type conversion error: {x}")))?;
+
+        Self::try_from(message)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::types::message::RigMessage;

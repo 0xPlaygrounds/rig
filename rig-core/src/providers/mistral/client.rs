@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::{
     CompletionModel,
@@ -123,7 +123,7 @@ impl EmbeddingsClient for Client {
 
 impl_conversion_traits!(AsTranscription, AsAudioGeneration, AsImageGeneration for Client);
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub completion_tokens: usize,
     pub prompt_tokens: usize,

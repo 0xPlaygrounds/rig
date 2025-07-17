@@ -1,5 +1,6 @@
 pub(crate) mod assistant_content;
 pub(crate) mod completion_request;
+pub(crate) mod converse_output;
 pub(crate) mod document;
 pub(crate) mod errors;
 pub(crate) mod image;

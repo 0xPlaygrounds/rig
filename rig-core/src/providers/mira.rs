@@ -19,7 +19,7 @@ use crate::{
     message::{self, AssistantContent, Message, UserContent},
 };
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::string::FromUtf8Error;
 use thiserror::Error;
@@ -44,7 +44,7 @@ struct ApiErrorResponse {
     message: String,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct RawMessage {
     pub role: String,
     pub content: String,
@@ -74,7 +74,7 @@ impl TryFrom<RawMessage> for message::Message {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum CompletionResponse {
     Structured {
@@ -89,7 +89,7 @@ pub enum CompletionResponse {
     Simple(String),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ChatChoice {
     pub message: RawMessage,
     #[serde(default)]
@@ -98,12 +98,12 @@ pub struct ChatChoice {
     pub index: Option<usize>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ModelsResponse {
     data: Vec<ModelInfo>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ModelInfo {
     id: String,
 }
@@ -475,7 +475,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
     pub total_tokens: usize,

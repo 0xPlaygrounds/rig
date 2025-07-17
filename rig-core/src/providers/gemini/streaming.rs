@@ -1,6 +1,6 @@
 use async_stream::stream;
 use futures::StreamExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::completion::{CompletionModel, create_request_body, gemini_api_types::ContentCandidate};
 use crate::{
@@ -8,7 +8,7 @@ use crate::{
     streaming::{self},
 };
 
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PartialUsage {
     pub total_token_count: i32,
@@ -23,7 +23,7 @@ pub struct StreamGenerateContentResponse {
     pub usage_metadata: Option<PartialUsage>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage_metadata: PartialUsage,
 }

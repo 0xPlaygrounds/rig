@@ -11,7 +11,7 @@ use crate::providers::cohere::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     pub id: String,
     pub finish_reason: FinishReason,
@@ -37,7 +37,7 @@ impl CompletionResponse {
     }
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Clone, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum FinishReason {
     MaxTokens,
@@ -47,7 +47,7 @@ pub enum FinishReason {
     ToolCall,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct Usage {
     #[serde(default)]
     pub billed_units: Option<BilledUnits>,
@@ -55,7 +55,7 @@ pub struct Usage {
     pub tokens: Option<Tokens>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct BilledUnits {
     #[serde(default)]
     pub output_tokens: Option<f64>,
@@ -67,7 +67,7 @@ pub struct BilledUnits {
     pub input_tokens: Option<f64>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct Tokens {
     #[serde(default)]
     pub input_tokens: Option<f64>,

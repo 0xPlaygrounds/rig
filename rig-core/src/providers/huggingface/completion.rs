@@ -391,7 +391,7 @@ impl TryFrom<Message> for message::Message {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Choice {
     pub finish_reason: String,
     pub index: usize,
@@ -400,14 +400,14 @@ pub struct Choice {
     pub message: Message,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct Usage {
     pub completion_tokens: i32,
     pub prompt_tokens: i32,
     pub total_tokens: i32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     pub created: i32,
     pub id: String,
