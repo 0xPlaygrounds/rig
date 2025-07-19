@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.2](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.15.1...rig-core-v0.15.2) - 2025-07-19
+
+### Added
+
+- make PromptResponse public ([#593](https://github.com/0xPlaygrounds/rig/pull/593))
+
 ## [0.15.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.15.0...rig-core-v0.15.1) - 2025-07-16
 
 ### Fixed

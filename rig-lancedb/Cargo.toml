@@ -1,6 +1,6 @@
 [package]
 name = "rig-lancedb"
-version = "0.2.14"
+version = "0.2.15"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -9,7 +9,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
 lancedb = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.15.1" }
+rig-core = { path = "../rig-core", version = "0.15.2" }
 arrow-array = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
