@@ -1,13 +1,13 @@
 [package]
 name = "rig-milvus"
-version = "0.1.3"
+version = "0.1.4"
 edition = { workspace = true }
 description = "Milvus vector store implementation for the rig framework"
 license = "MIT"
 
 [dependencies]
 reqwest = { workspace = true, features = ["json"] }
-rig-core = { path = "../rig-core", version = "0.15.1" }
+rig-core = { path = "../rig-core", version = "0.15.2" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
