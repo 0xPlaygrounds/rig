@@ -9344,6 +9344,7 @@ name = "rig-s3vectors"
 version = "0.1.9"
 dependencies = [
  "anyhow",
+ "aws-config",
  "aws-sdk-s3vectors",
  "aws-smithy-types",
  "rig-core",

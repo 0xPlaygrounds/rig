@@ -1,14 +1,11 @@
-use std::collections::{self, BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use aws_sdk_s3vectors::{
     Client,
-    error::BuildError,
-    operation::put_vectors::PutVectorsInput,
     types::{PutInputVector, VectorData},
 };
 use aws_smithy_types::Document;
 use rig::{
-    client::builder::ProviderModelId,
     embeddings::EmbeddingModel,
     vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
 };
@@ -35,13 +32,13 @@ where
 {
     pub fn new(
         embedding_model: M,
-        config: aws_sdk_s3vectors::Config,
+        client: aws_sdk_s3vectors::Client,
         bucket_name: &str,
         index_name: &str,
     ) -> Self {
         Self {
             embedding_model,
-            client: Client::from_conf(config),
+            client,
             bucket_name: bucket_name.to_string(),
             index_name: index_name.to_string(),
         }
@@ -210,6 +207,7 @@ where
             .client
             .query_vectors()
             .query_vector(VectorData::Float32(embedding))
+            .top_k(n as i32)
             .return_distance(true)
             .return_metadata(true)
             .vector_bucket_name(self.bucket_name())
@@ -253,6 +251,7 @@ where
             .client
             .query_vectors()
             .query_vector(VectorData::Float32(embedding))
+            .top_k(n as i32)
             .return_distance(true)
             .vector_bucket_name(self.bucket_name())
             .index_name(self.index_name())
