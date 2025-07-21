@@ -2,8 +2,9 @@ use futures::StreamExt;
 use mongodb::bson::{self, doc};
 
 use rig::{
+    Embed, OneOrMany,
     embeddings::embedding::{Embedding, EmbeddingModel},
-    vector_store::{VectorStoreError, VectorStoreIndex},
+    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
 };
 use serde::{Deserialize, Serialize};
 
@@ -61,7 +62,7 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 /// # Example
 /// ```rust
 /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
-/// use rig::{providers::openai, vector_store::VectorStoreIndex};
+/// use rig::{providers::openai, vector_store::VectorStoreIndex, client::{ProviderClient, EmbeddingsClient}};
 ///
 /// # tokio_test::block_on(async {
 /// #[derive(serde::Deserialize, serde::Serialize, Debug)]
@@ -309,5 +310,39 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
         );
 
         Ok(results)
+    }
+}
+
+impl<M: EmbeddingModel + Send + Sync, C: Send + Sync> InsertDocuments for MongoDbVectorIndex<M, C> {
+    async fn insert_documents<Doc: Serialize + Embed + Send>(
+        &self,
+        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        let mongo_documents = documents
+            .into_iter()
+            .map(|(document, embeddings)| -> Result<Vec<mongodb::bson::Document>, VectorStoreError> {
+                let json_doc = serde_json::to_value(&document)?;
+
+                embeddings.into_iter().map(|embedding| -> Result<mongodb::bson::Document, VectorStoreError> {
+                    Ok(doc! {
+                        "document": mongodb::bson::to_bson(&json_doc).map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?,
+                        "embedding": embedding.vec,
+                        "embedded_text": embedding.document,
+                    })
+                }).collect::<Result<Vec<_>, _>>()
+            })
+            .collect::<Result<Vec<Vec<_>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+        let collection = self.collection.clone_with_type::<mongodb::bson::Document>();
+
+        collection
+            .insert_many(mongo_documents)
+            .await
+            .map_err(mongodb_to_rig_error)?;
+
+        Ok(())
     }
 }
