@@ -103,6 +103,14 @@ impl ProviderClient for Client {
         let fine_tune_api_key = std::env::var("GALADRIEL_FINE_TUNE_API_KEY").ok();
         Self::new(&api_key, fine_tune_api_key.as_deref())
     }
+
+    fn from_val(input: crate::client::ProviderValue) -> Self {
+        let crate::client::ProviderValue::ApiKeyWithOptionalKey(api_key, fine_tune_key) = input
+        else {
+            panic!("Incorrect provider value type")
+        };
+        Self::new(&api_key, fine_tune_key.as_deref())
+    }
 }
 
 impl CompletionClient for Client {
@@ -249,9 +257,19 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 "Response contained no message or tool call (empty)".to_owned(),
             )
         })?;
+        let usage = response
+            .usage
+            .as_ref()
+            .map(|usage| completion::Usage {
+                input_tokens: usage.prompt_tokens as u64,
+                output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
+                total_tokens: usage.total_tokens as u64,
+            })
+            .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }

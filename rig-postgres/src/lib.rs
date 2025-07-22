@@ -3,7 +3,7 @@ use std::fmt::Display;
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
-    vector_store::{VectorStoreError, VectorStoreIndex},
+    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -109,8 +109,13 @@ impl<Model: EmbeddingModel> PostgresVectorStore<Model> {
             document, document, self.distance_function, self.documents_table
         )
     }
+}
 
-    pub async fn insert_documents<Doc: Serialize + Embed + Send>(
+impl<Model> InsertDocuments for PostgresVectorStore<Model>
+where
+    Model: EmbeddingModel + Send + Sync,
+{
+    async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
     ) -> Result<(), VectorStoreError> {

@@ -98,7 +98,6 @@ pub enum Role {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum InputContent {
     Message(Message),
-    OutputMessage(Message),
     Reasoning(OpenAIReasoning),
     FunctionCall(OutputFunctionCall),
     FunctionCallOutput(ToolResult),
@@ -143,7 +142,7 @@ impl From<Message> for InputItem {
             },
             Message::Assistant { .. } => Self {
                 role: Some(Role::Assistant),
-                input: InputContent::OutputMessage(value),
+                input: InputContent::Message(value),
             },
             Message::System { .. } => Self {
                 role: Some(Role::System),
@@ -232,7 +231,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             let id = id.as_ref().unwrap_or(&String::default()).clone();
                             items.push(InputItem {
                                 role: Some(Role::Assistant),
-                                input: InputContent::OutputMessage(Message::Assistant {
+                                input: InputContent::Message(Message::Assistant {
                                     content: OneOrMany::one(AssistantContentType::Text(
                                         AssistantContent::OutputText(Text { text }),
                                     )),
@@ -899,8 +898,19 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
+        let usage = response
+            .usage
+            .as_ref()
+            .map(|usage| completion::Usage {
+                input_tokens: usage.input_tokens,
+                output_tokens: usage.output_tokens,
+                total_tokens: usage.total_tokens,
+            })
+            .unwrap_or_default();
+
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }
@@ -925,6 +935,7 @@ pub enum Message {
     },
     Assistant {
         content: OneOrMany<AssistantContentType>,
+        #[serde(skip_serializing_if = "String::is_empty")]
         id: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,

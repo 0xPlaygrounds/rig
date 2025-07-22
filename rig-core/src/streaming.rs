@@ -11,7 +11,7 @@
 use crate::OneOrMany;
 use crate::agent::Agent;
 use crate::completion::{
-    CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message,
+    CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message, Usage,
 };
 use crate::message::{AssistantContent, Reasoning, ToolCall, ToolFunction};
 use futures::stream::{AbortHandle, Abortable};
@@ -87,6 +87,7 @@ impl<R: Clone + Unpin> From<StreamingCompletionResponse<R>> for CompletionRespon
     fn from(value: StreamingCompletionResponse<R>) -> CompletionResponse<Option<R>> {
         CompletionResponse {
             choice: value.choice,
+            usage: Usage::new(), // Usage is not tracked in streaming responses
             raw_response: value.response,
         }
     }

@@ -159,6 +159,12 @@ impl<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync, M: Compl
         self
     }
 
+    /// Set the maximum number of tokens for the completion
+    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
+        self.agent_builder = self.agent_builder.max_tokens(max_tokens);
+        self
+    }
+
     /// Build the Extractor
     pub fn build(self) -> Extractor<M, T> {
         Extractor {

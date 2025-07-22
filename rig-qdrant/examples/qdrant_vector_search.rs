@@ -18,7 +18,7 @@ use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::VectorStoreIndex,
+    vector_store::{InsertDocuments, VectorStoreIndex},
 };
 use rig_qdrant::QdrantVectorStore;
 
