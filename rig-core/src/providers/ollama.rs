@@ -719,6 +719,7 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                 }
             }
             InternalMessage::Assistant { content, .. } => {
+                let mut thinking: Option<String> = None;
                 let (text_content, tool_calls) = content.into_iter().fold(
                     (Vec::new(), Vec::new()),
                     |(mut texts, mut tools), content| {
@@ -726,12 +727,12 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                             crate::message::AssistantContent::Text(text) => texts.push(text.text),
                             crate::message::AssistantContent::ToolCall(tool_call) => {
                                 tools.push(tool_call)
-                            },
+                            }
                             crate::message::AssistantContent::Reasoning(
-                            crate::message::Reasoning { reasoning },
-                        ) => {
-                            thinking = Some(reasoning);
-                        }
+                                crate::message::Reasoning { reasoning },
+                            ) => {
+                                thinking = Some(reasoning);
+                            }
                         }
                         (texts, tools)
                     },
