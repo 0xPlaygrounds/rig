@@ -1,6 +1,6 @@
 [package]
 name = "rig-s3vectors"
-version = "0.1.9"
+version = "0.1.0"
 edition = { workspace = true }
 description = "AWS S3Vectors vector store implementation for the rig framework"
 license = "MIT"
