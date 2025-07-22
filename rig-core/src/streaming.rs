@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::boxed::Box;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::AtomicBool;
 use std::task::{Context, Poll};
 
 /// Enum representing a streaming chunk from the model
@@ -63,6 +64,7 @@ pub struct StreamingCompletionResponse<R: Clone + Unpin> {
     /// The final response from the stream, may be `None`
     /// if the provider didn't yield it during the stream
     pub response: Option<R>,
+    pub final_response_yielded: AtomicBool,
 }
 
 impl<R: Clone + Unpin> StreamingCompletionResponse<R> {
@@ -76,6 +78,7 @@ impl<R: Clone + Unpin> StreamingCompletionResponse<R> {
             tool_calls: vec![],
             choice: OneOrMany::one(AssistantContent::text("")),
             response: None,
+            final_response_yielded: AtomicBool::new(false),
         }
     }
 
@@ -156,12 +159,20 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                     ))))
                 }
                 RawStreamingChoice::FinalResponse(response) => {
-                    // Set the final response field and return the next item in the stream
-                    stream.response = Some(response.clone());
-                    let final_response = StreamedAssistantContent::final_response(response);
-                    Poll::Ready(Some(Ok(final_response)))
-
-                    // stream.poll_next_unpin(cx)
+                    if stream
+                        .final_response_yielded
+                        .load(std::sync::atomic::Ordering::SeqCst)
+                    {
+                        stream.poll_next_unpin(cx)
+                    } else {
+                        // Set the final response field and return the next item in the stream
+                        stream.response = Some(response.clone());
+                        stream
+                            .final_response_yielded
+                            .store(true, std::sync::atomic::Ordering::SeqCst);
+                        let final_response = StreamedAssistantContent::final_response(response);
+                        Poll::Ready(Some(Ok(final_response)))
+                    }
                 }
             },
         }
@@ -259,6 +270,7 @@ pub async fn stream_to_stdout<M: CompletionModel>(
             }
             Ok(StreamedAssistantContent::Final(res)) => {
                 let json_res = serde_json::to_string_pretty(&res).unwrap();
+                println!();
                 tracing::info!("Final result: {json_res}");
             }
             Err(e) => {
