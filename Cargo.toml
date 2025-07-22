@@ -15,6 +15,7 @@ members = [
     "rig-fastembed",
     "rig-bedrock",
     "rig-milvus",
+    "rig-s3vectors",
 ]
 
 [workspace.package]
