@@ -493,6 +493,7 @@ impl transcription::TranscriptionModel for TranscriptionModel {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(untagged)]
 pub enum StreamingDelta {
     Reasoning {
         reasoning: String,
