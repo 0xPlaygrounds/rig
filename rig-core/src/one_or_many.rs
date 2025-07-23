@@ -462,6 +462,29 @@ mod test {
     }
 
     #[test]
+    fn test_size_hint() {
+        let foo = "bar".to_string();
+        let one_or_many = OneOrMany::one(foo);
+        let size_hint = one_or_many.iter().size_hint();
+        assert_eq!(size_hint.0, 1);
+        assert_eq!(size_hint.1, Some(1));
+
+        let vec = vec!["foo".to_string(), "bar".to_string(), "baz".to_string()];
+        let mut one_or_many = OneOrMany::many(vec).expect("this should never fail");
+        let size_hint = one_or_many.iter().size_hint();
+        assert_eq!(size_hint.0, 1);
+        assert_eq!(size_hint.1, Some(3));
+
+        let size_hint = one_or_many.clone().into_iter().size_hint();
+        assert_eq!(size_hint.0, 1);
+        assert_eq!(size_hint.1, Some(3));
+
+        let size_hint = one_or_many.iter_mut().size_hint();
+        assert_eq!(size_hint.0, 1);
+        assert_eq!(size_hint.1, Some(3));
+    }
+
+    #[test]
     fn test_one_or_many_into_iter_single() {
         let one_or_many = OneOrMany::one("hello".to_string());
 
