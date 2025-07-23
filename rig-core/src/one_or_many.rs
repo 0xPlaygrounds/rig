@@ -167,6 +167,16 @@ impl<'a, T> Iterator for Iter<'a, T> {
             self.rest.next()
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let first = if self.first.is_some() { 1 } else { 0 };
+        let max = self.rest.size_hint().1.unwrap_or(0) + first;
+        if max > 0 {
+            (1, Some(max))
+        } else {
+            (0, Some(0))
+        }
+    }
 }
 
 /// Struct returned by call to `OneOrMany::into_iter()`.
@@ -200,6 +210,16 @@ impl<T: Clone> Iterator for IntoIter<T> {
             _ => self.rest.next(),
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let first = if self.first.is_some() { 1 } else { 0 };
+        let max = self.rest.size_hint().1.unwrap_or(0) + first;
+        if max > 0 {
+            (1, Some(max))
+        } else {
+            (0, Some(0))
+        }
+    }
 }
 
 /// Struct returned by call to `OneOrMany::iter_mut()`.
@@ -219,6 +239,16 @@ impl<'a, T> Iterator for IterMut<'a, T> {
             Some(first)
         } else {
             self.rest.next()
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let first = if self.first.is_some() { 1 } else { 0 };
+        let max = self.rest.size_hint().1.unwrap_or(0) + first;
+        if max > 0 {
+            (1, Some(max))
+        } else {
+            (0, Some(0))
         }
     }
 }
