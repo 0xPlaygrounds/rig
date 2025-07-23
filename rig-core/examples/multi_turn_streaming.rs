@@ -115,11 +115,11 @@ where
                         did_call_tool = true;
                         // break;
                     },
-                    Ok(AssistantContent::Reasoning(rig::message::Reasoning { reasoning })) => {
+                    Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning })) => {
                         yield Ok(Text { text: reasoning });
                         did_call_tool = false;
                     },
-                                      Ok(_) => {
+                    Ok(_) => {
                         // do nothing here as we don't need to accumulate token usage
                     }
                     Err(e) => {
