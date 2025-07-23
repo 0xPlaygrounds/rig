@@ -113,12 +113,14 @@ pub struct OpenAIReasoning {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ReasoningSummary {
-    SummaryText(String),
+    SummaryText { text: String },
 }
 
 impl ReasoningSummary {
     fn new(input: &str) -> Self {
-        Self::SummaryText(input.to_string())
+        Self::SummaryText {
+            text: input.to_string(),
+        }
     }
 }
 
@@ -610,7 +612,7 @@ pub struct AdditionalParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
     /// Any additional metadata you'd like to add. This will additionally be returned by the response.
-    #[serde(skip_serializing_if = "Map::is_empty")]
+    #[serde(skip_serializing_if = "Map::is_empty", default)]
     pub metadata: serde_json::Map<String, serde_json::Value>,
     /// Whether or not you want tool calls to run in parallel.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -627,6 +629,12 @@ pub struct AdditionalParameters {
     /// Whether or not to store the response for later retrieval by API.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub store: Option<bool>,
+}
+
+impl AdditionalParameters {
+    pub fn to_json(self) -> serde_json::Value {
+        serde_json::to_value(self).expect("this should never fail since a struct that impls Deserialize will always be valid JSON")
+    }
 }
 
 /// The truncation strategy.
@@ -772,6 +780,9 @@ pub enum Output {
     Message(OutputMessage),
     #[serde(alias = "function_call")]
     FunctionCall(OutputFunctionCall),
+    Reasoning {
+        summary: Vec<ReasoningSummary>,
+    },
 }
 
 impl From<Output> for Vec<completion::AssistantContent> {
@@ -790,10 +801,32 @@ impl From<Output> for Vec<completion::AssistantContent> {
             }) => vec![completion::AssistantContent::tool_call_with_call_id(
                 id, call_id, name, arguments,
             )],
+            Output::Reasoning { summary } => {
+                let text_joined = summary
+                    .into_iter()
+                    .map(|x| {
+                        let ReasoningSummary::SummaryText { text } = x;
+                        text
+                    })
+                    .collect::<Vec<String>>()
+                    .join("\n");
+                vec![completion::AssistantContent::Reasoning(
+                    crate::message::Reasoning {
+                        reasoning: text_joined,
+                    },
+                )]
+            }
         };
 
         res
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct OutputReasoning {
+    id: String,
+    summary: Vec<ReasoningSummary>,
+    status: ToolStatus,
 }
 
 /// An OpenAI Responses API tool call. A call ID will be returned that must be used when creating a tool result to send back to OpenAI as a message input, otherwise an error will be received.
@@ -848,13 +881,13 @@ impl completion::CompletionModel for ResponsesCompletionModel {
         let request = self.create_completion_request(completion_request)?;
         let request = serde_json::to_value(request)?;
 
-        tracing::debug!("Input: {}", serde_json::to_string_pretty(&request)?);
+        tracing::warn!("Input: {}", serde_json::to_string_pretty(&request)?);
 
         let response = self.client.post("/responses").json(&request).send().await?;
 
         if response.status().is_success() {
             let t = response.text().await?;
-            tracing::debug!(target: "rig", "OpenAI response: {}", t);
+            tracing::warn!(target: "rig", "OpenAI response: {}", t);
 
             let response = serde_json::from_str::<Self::Response>(&t)?;
             response.try_into()

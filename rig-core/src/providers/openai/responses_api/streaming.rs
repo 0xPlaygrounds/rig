@@ -3,7 +3,7 @@
 use crate::completion::CompletionError;
 use crate::message::Text;
 use crate::providers::openai::responses_api::{
-    AssistantContent, ResponsesCompletionModel, ResponsesUsage,
+    AssistantContent, ReasoningSummary, ResponsesCompletionModel, ResponsesUsage,
 };
 use crate::streaming;
 use crate::streaming::RawStreamingChoice;
@@ -270,6 +270,18 @@ pub async fn send_compatible_streaming_request(
                                 }
                                 StreamingItemDoneOutput {  item: Output::FunctionCall(func), .. } => {
                                     tool_calls.push(streaming::RawStreamingChoice::ToolCall { id: func.id.clone(), call_id: Some(func.call_id.clone()), name: func.name.clone(), arguments: func.arguments.clone() });
+                                }
+
+                                StreamingItemDoneOutput {  item: Output::Reasoning { summary }, .. } => {
+                                    let reasoning = summary
+                                        .iter()
+                                        .map(|x| {
+                                            let ReasoningSummary::SummaryText { text } = x;
+                                            text.to_owned()
+                                        })
+                                        .collect::<Vec<String>>()
+                                        .join("\n");
+                                    yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning })
                                 }
                             }
                         }
