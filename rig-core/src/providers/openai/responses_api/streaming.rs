@@ -3,7 +3,7 @@
 use crate::completion::CompletionError;
 use crate::message::Text;
 use crate::providers::openai::responses_api::{
-    AssistantContent, ResponsesCompletionModel, ResponsesUsage,
+    AssistantContent, ReasoningSummary, ResponsesCompletionModel, ResponsesUsage,
 };
 use crate::streaming;
 use crate::streaming::RawStreamingChoice;
@@ -178,6 +178,8 @@ impl ResponsesCompletionModel {
         let mut request = self.create_completion_request(completion_request)?;
         request.stream = Some(true);
 
+        tracing::debug!("Input: {}", serde_json::to_string_pretty(&request)?);
+
         let builder = self.client.post("/responses").json(&request);
         send_compatible_streaming_request(builder).await
     }
@@ -269,7 +271,20 @@ pub async fn send_compatible_streaming_request(
                                         yield Ok(streaming::RawStreamingChoice::Message(message.clone()))
                                 }
                                 StreamingItemDoneOutput {  item: Output::FunctionCall(func), .. } => {
+                                    tracing::warn!("Function call received: {func:?}");
                                     tool_calls.push(streaming::RawStreamingChoice::ToolCall { id: func.id.clone(), call_id: Some(func.call_id.clone()), name: func.name.clone(), arguments: func.arguments.clone() });
+                                }
+
+                                StreamingItemDoneOutput {  item: Output::Reasoning { summary }, .. } => {
+                                    let reasoning = summary
+                                        .iter()
+                                        .map(|x| {
+                                            let ReasoningSummary::SummaryText { text } = x;
+                                            text.to_owned()
+                                        })
+                                        .collect::<Vec<String>>()
+                                        .join("\n");
+                                    yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning })
                                 }
                             }
                         }

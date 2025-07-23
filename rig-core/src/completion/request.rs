@@ -379,8 +379,8 @@ where
 pub struct CompletionRequest {
     /// The preamble to be sent to the completion model provider
     pub preamble: Option<String>,
-    /// The chat history to be sent to the completion model provider
-    /// The very last message will always be the prompt (hense why there is *always* one)
+    /// The chat history to be sent to the completion model provider.
+    /// The very last message will always be the prompt (hence why there is *always* one)
     pub chat_history: OneOrMany<Message>,
     /// The documents to be sent to the completion model provider
     pub documents: Vec<Document>,

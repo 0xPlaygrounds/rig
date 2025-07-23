@@ -119,6 +119,11 @@ impl TryFrom<RigAssistantContent> for aws_bedrock::ContentBlock {
                         .map_err(|e| CompletionError::ProviderError(e.to_string()))?,
                 ))
             }
+            AssistantContent::Reasoning(_) => {
+                unimplemented!(
+                    "Reasoning is currently unimplemented on AWS Bedrock (as far as we know). If you need this, please open a ticket!"
+                )
+            }
         }
     }
 }

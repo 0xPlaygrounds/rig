@@ -287,6 +287,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             // Process only if an assistant message is present.
             Message::Assistant {
                 content,
+                thinking,
                 tool_calls,
                 ..
             } => {
@@ -323,6 +324,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     eval_duration: resp.eval_duration,
                     message: Message::Assistant {
                         content,
+                        thinking,
                         images: None,
                         name: None,
                         tool_calls,
@@ -622,6 +624,8 @@ pub enum Message {
         #[serde(default)]
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
+        thinking: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         images: Option<Vec<String>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
@@ -715,6 +719,7 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                 }
             }
             InternalMessage::Assistant { content, .. } => {
+                let mut thinking: Option<String> = None;
                 let (text_content, tool_calls) = content.into_iter().fold(
                     (Vec::new(), Vec::new()),
                     |(mut texts, mut tools), content| {
@@ -722,6 +727,11 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                             crate::message::AssistantContent::Text(text) => texts.push(text.text),
                             crate::message::AssistantContent::ToolCall(tool_call) => {
                                 tools.push(tool_call)
+                            }
+                            crate::message::AssistantContent::Reasoning(
+                                crate::message::Reasoning { reasoning },
+                            ) => {
+                                thinking = Some(reasoning);
                             }
                         }
                         (texts, tools)
@@ -732,6 +742,7 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                 //  so either `content` or `tool_calls` will have some content.
                 Ok(vec![Message::Assistant {
                     content: text_content.join(" "),
+                    thinking,
                     images: None,
                     name: None,
                     tool_calls: tool_calls
