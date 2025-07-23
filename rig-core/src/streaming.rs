@@ -256,7 +256,7 @@ pub async fn stream_to_stdout<M: CompletionModel>(
             Ok(AssistantContent::Text(text)) => {
                 if is_reasoning {
                     is_reasoning = false;
-                    println!();
+                    println!("\n---\n");
                 }
                 print!("{}", text.text);
                 std::io::Write::flush(&mut std::io::stdout())?;
