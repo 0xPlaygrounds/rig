@@ -157,7 +157,7 @@ pub struct Message {
     pub role: String,
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub thinking: Option<String>,
+    pub reasoning: Option<String>,
 }
 
 impl TryFrom<Message> for message::Message {
@@ -207,11 +207,11 @@ impl TryFrom<message::Message> for Message {
                     message::UserContent::Text(text) => Some(text.text.clone()),
                     _ => None,
                 }),
-                thinking: None,
+                reasoning: None,
             }),
             message::Message::Assistant { content, .. } => {
                 let mut text_content: Option<String> = None;
-                let mut thinking: Option<String> = None;
+                let mut groq_reasoning: Option<String> = None;
 
                 for c in content.iter() {
                     match c {
@@ -232,7 +232,7 @@ impl TryFrom<message::Message> for Message {
                             ));
                         }
                         message::AssistantContent::Reasoning(message::Reasoning { reasoning }) => {
-                            thinking = Some(reasoning.to_owned());
+                            groq_reasoning = Some(reasoning.to_owned());
                         }
                     }
                 }
@@ -240,7 +240,7 @@ impl TryFrom<message::Message> for Message {
                 Ok(Self {
                     role: "assistant".to_string(),
                     content: text_content,
-                    thinking,
+                    reasoning: groq_reasoning,
                 })
             }
         }
@@ -311,7 +311,7 @@ impl CompletionModel {
                     vec![Message {
                         role: "system".to_string(),
                         content: Some(preamble),
-                        thinking: None,
+                        reasoning: None,
                     }]
                 });
 
