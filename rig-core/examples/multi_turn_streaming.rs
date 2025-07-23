@@ -109,7 +109,7 @@ where
                         let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
 
                         tool_calls.push(tool_call_msg);
-                        tool_results.push((tool_call.id, tool_result));
+                        tool_results.push((tool_call.id, tool_call.call_id, tool_result));
 
                         did_call_tool = true;
                         // break;
@@ -130,13 +130,25 @@ where
             }
 
             // Add tool results to chat history
-            for (id, tool_result) in tool_results {
-                chat_history.push(Message::User {
-                    content: OneOrMany::one(UserContent::tool_result(
-                        id,
-                        OneOrMany::one(ToolResultContent::text(tool_result)),
-                    )),
-                });
+            for (id, call_id, tool_result) in tool_results {
+                if let Some(call_id) = call_id {
+                    chat_history.push(Message::User {
+                        content: OneOrMany::one(UserContent::tool_result_with_call_id(
+                            id,
+                            call_id,
+                            OneOrMany::one(ToolResultContent::text(tool_result)),
+                        )),
+                    });
+                } else {
+                    chat_history.push(Message::User {
+                        content: OneOrMany::one(UserContent::tool_result(
+                            id,
+                            OneOrMany::one(ToolResultContent::text(tool_result)),
+                        )),
+                    });
+
+                }
+
             }
 
             // Set the current prompt to the last message in the chat history
