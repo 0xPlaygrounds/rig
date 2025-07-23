@@ -34,65 +34,168 @@ impl rig::vector_store::VectorStoreIndex for JsVectorStore {
     ) -> impl std::future::Future<
         Output = Result<Vec<(f64, String, T)>, rig::vector_store::VectorStoreError>,
     > + Send {
-        let (tx, rx) = futures::channel::oneshot::channel();
+        let (result_tx, result_rx) = futures::channel::oneshot::channel();
+        let (error_tx, error_rx) = futures::channel::oneshot::channel();
         let query = query.to_string();
         let inner = self.inner.clone();
 
         wasm_bindgen_futures::spawn_local(async move {
-            let call_fn = js_sys::Reflect::get(&inner, &JsValue::from_str("top_n"))
+            let call_fn = match js_sys::Reflect::get(&inner, &JsValue::from_str("top_n"))
                 .map_err(|_| VectorStoreError::DatastoreError("vector_store.top_n missing".into()))
-                .expect("Call function doesn't exist!")
-                .unchecked_into::<js_sys::Function>();
+            {
+                Ok(res) => res,
+                Err(e) => {
+                    error_tx
+                        .send(e)
+                        .expect("sending a message to a oneshot channel shouldn't fail");
 
-            let promise = call_fn
+                    return;
+                }
+            };
+            let call_fn = call_fn.unchecked_into::<js_sys::Function>();
+
+            if !call_fn.is_function() {
+                error_tx
+                    .send(VectorStoreError::DatastoreError(
+                        "vector_store.top_n is not a function".into(),
+                    ))
+                    .expect("sending a message to a oneshot channel shouldn't fail");
+
+                return;
+            }
+
+            let promise = match call_fn
                 .call2(
                     &inner,
                     &JsValue::from_str(&query),
                     &JsValue::from_f64(n as f64),
                 )
                 .map_err(|_| VectorStoreError::DatastoreError("vector_store.top_n failed".into()))
-                .expect("tool.call should succeed")
-                .dyn_into::<js_sys::Promise>()
-                .map_err(|_| {
-                    VectorStoreError::DatastoreError(
-                        "vector_store.top_n did not return a Promise".into(),
-                    )
-                })
-                .expect("This should return a promise");
+            {
+                Ok(res) => res,
+                Err(e) => {
+                    error_tx
+                        .send(e)
+                        .expect("sending a message to a oneshot channel shouldn't fail");
 
-            let js_result = JsFuture::from(promise).await.unwrap();
+                    return;
+                }
+            };
+            let promise = match promise.dyn_into::<js_sys::Promise>().map_err(|_| {
+                VectorStoreError::DatastoreError(
+                    "vector_store.top_n did not return a Promise".into(),
+                )
+            }) {
+                Ok(res) => res,
+                Err(e) => {
+                    error_tx
+                        .send(e)
+                        .expect("sending a message to a oneshot channel shouldn't fail");
+
+                    return;
+                }
+            };
+
+            let js_result = match JsFuture::from(promise).await.map_err(|x| {
+                VectorStoreError::DatastoreError(
+                    format!("promise did not return a JS future: {x:?}").into(),
+                )
+            }) {
+                Ok(res) => res,
+                Err(e) => {
+                    error_tx
+                        .send(e)
+                        .expect("sending a message to a oneshot channel shouldn't fail");
+
+                    return;
+                }
+            };
 
             let mut out: Vec<(f64, String, serde_json::Value)> = Vec::new();
 
-            Array::from(&js_result).into_iter().for_each(|tuple| {
+            let arr = Array::from(&js_result).into_iter();
+            for tuple in arr {
                 let tuple = Array::from(&tuple);
 
                 if tuple.length() != 3 {
-                    panic!("expected [number, string, obj]");
+                    let err =
+                        VectorStoreError::DatastoreError("expected [number, string, obj]".into());
+                    error_tx
+                        .send(err)
+                        .expect("sending a message to a oneshot channel shouldn't fail");
+
+                    return;
                 }
 
-                let score = tuple.get(0).as_f64().unwrap();
-                let id = tuple.get(1).as_string().unwrap();
+                let score = match tuple.get(0).as_f64() {
+                    Some(res) => res,
+                    None => {
+                        let err = VectorStoreError::DatastoreError(
+                            "expected score to be a number".into(),
+                        );
+                        error_tx
+                            .send(err)
+                            .expect("sending a message to a oneshot channel shouldn't fail");
 
-                let obj: serde_json::Value = serde_wasm_bindgen::from_value(tuple.get(2)).unwrap();
+                        return;
+                    }
+                };
+                let id = match tuple.get(1).as_string() {
+                    Some(res) => res,
+                    None => {
+                        let err = VectorStoreError::DatastoreError(
+                            "expected document ID to be a string".into(),
+                        );
+                        error_tx
+                            .send(err)
+                            .expect("sending a message to a oneshot channel shouldn't fail");
+
+                        return;
+                    }
+                };
+
+                let obj: serde_json::Value = match serde_wasm_bindgen::from_value(tuple.get(2)) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        let err = VectorStoreError::DatastoreError(
+                            format!(
+                                "expected document to be a JSON compatible object or string: {e}"
+                            )
+                            .into(),
+                        );
+                        error_tx
+                            .send(err)
+                            .expect("sending a message to a oneshot channel shouldn't fail");
+
+                        return;
+                    }
+                };
 
                 out.push((score, id, obj));
-            });
+            }
 
-            let _ = tx.send(out);
+            let _ = result_tx.send(out);
         });
 
         async {
-            let js_result = rx.await.unwrap();
-
-            let res: Vec<(f64, String, T)> = js_result
-                .into_iter()
-                .map(|(score, id, payload)| {
-                    let payload: T = serde_json::from_value(payload).unwrap();
-                    (score, id, payload)
-                })
-                .collect();
-            Ok(res)
+            tokio::select! {
+                res = result_rx => {
+                    {
+                        let res = res.unwrap();
+                        let res: Vec<(f64, String, T)> = res
+                            .into_iter()
+                            .map(|(score, id, payload)| {
+                                let payload: T = serde_json::from_value(payload).unwrap();
+                                (score, id, payload)
+                            })
+                            .collect();
+                        Ok(res)
+                    }
+                },
+                err = error_rx => {
+                    Err(VectorStoreError::DatastoreError(err.inspect_err(|x| println!("Future was cancelled: {x}")).unwrap().to_string().into()))
+                }
+            }
         }
     }
 
@@ -103,56 +206,120 @@ impl rig::vector_store::VectorStoreIndex for JsVectorStore {
     ) -> impl std::future::Future<
         Output = Result<Vec<(f64, String)>, rig::vector_store::VectorStoreError>,
     > + Send {
-        let (tx, rx) = futures::channel::oneshot::channel();
+        let (result_tx, result_rx) = futures::channel::oneshot::channel();
+        let (error_tx, error_rx) = futures::channel::oneshot::channel();
         let query = query.to_string();
         let inner = self.inner.clone();
 
         wasm_bindgen_futures::spawn_local(async move {
             let call_fn = js_sys::Reflect::get(&inner, &JsValue::from_str("top_n_ids"))
-                .map_err(|_| VectorStoreError::DatastoreError("vector_store.top_n missing".into()))
+                .map_err(|_| {
+                    VectorStoreError::DatastoreError("vector_store.top_n_ids missing".into())
+                })
                 .expect("Call function doesn't exist!")
                 .unchecked_into::<js_sys::Function>();
 
-            let promise = call_fn
+            let promise = match call_fn
                 .call2(
                     &inner,
                     &JsValue::from_str(&query),
                     &JsValue::from_f64(n as f64),
                 )
-                .map_err(|_| VectorStoreError::DatastoreError("vector_store.top_n failed".into()))
-                .expect("tool.call should succeed")
-                .dyn_into::<js_sys::Promise>()
                 .map_err(|_| {
-                    VectorStoreError::DatastoreError(
-                        "vector_store.top_n did not return a Promise".into(),
-                    )
-                })
-                .expect("This should return a promise");
+                    VectorStoreError::DatastoreError("vector_store.top_n_ids failed".into())
+                }) {
+                Ok(res) => res,
+                Err(e) => {
+                    error_tx
+                        .send(e)
+                        .expect("sending a message to a oneshot channel shouldn't fail");
 
-            let js_result = JsFuture::from(promise).await.unwrap();
+                    return;
+                }
+            };
+            let promise = match promise.dyn_into::<js_sys::Promise>().map_err(|_| {
+                VectorStoreError::DatastoreError(
+                    "vector_store.top_n_ids did not return a Promise".into(),
+                )
+            }) {
+                Ok(res) => res,
+                Err(e) => {
+                    error_tx
+                        .send(e)
+                        .expect("sending a message to a oneshot channel shouldn't fail");
+
+                    return;
+                }
+            };
+
+            let js_result = match JsFuture::from(promise).await.map_err(|x| {
+                VectorStoreError::DatastoreError(
+                    format!("promise did not return a JS future: {x:?}").into(),
+                )
+            }) {
+                Ok(res) => res,
+                Err(e) => {
+                    error_tx
+                        .send(e)
+                        .expect("sending a message to a oneshot channel shouldn't fail");
+
+                    return;
+                }
+            };
 
             let mut out: Vec<(f64, String)> = Vec::new();
 
-            Array::from(&js_result).into_iter().for_each(|tuple| {
+            let arr = Array::from(&js_result).into_iter();
+            for tuple in arr {
                 let tuple = Array::from(&tuple);
 
-                if tuple.length() != 3 {
-                    panic!("expected [number, string, obj]");
+                if tuple.length() != 2 {
+                    panic!("expected [number, string]");
                 }
 
-                let score = tuple.get(0).as_f64().unwrap();
-                let id = tuple.get(1).as_string().unwrap();
+                let score = match tuple.get(0).as_f64() {
+                    Some(res) => res,
+                    None => {
+                        let err = VectorStoreError::DatastoreError(
+                            "expected score to be a number".into(),
+                        );
+                        error_tx
+                            .send(err)
+                            .expect("sending a message to a oneshot channel shouldn't fail");
+
+                        return;
+                    }
+                };
+                let id = match tuple.get(1).as_string() {
+                    Some(res) => res,
+                    None => {
+                        let err = VectorStoreError::DatastoreError(
+                            "expected document ID to be a string".into(),
+                        );
+                        error_tx
+                            .send(err)
+                            .expect("sending a message to a oneshot channel shouldn't fail");
+
+                        return;
+                    }
+                };
 
                 out.push((score, id));
-            });
+            }
 
-            let _ = tx.send(out);
+            let _ = result_tx.send(out);
         });
 
         async {
-            let js_result = rx.await.unwrap();
-
-            Ok(js_result)
+            tokio::select! {
+                res = result_rx => {
+                        let res = res.unwrap();
+                        Ok(res)
+                },
+                err = error_rx => {
+                    Err(VectorStoreError::DatastoreError(err.inspect_err(|x| println!("Future was cancelled: {x}")).unwrap().to_string().into()))
+                }
+            }
         }
     }
 }

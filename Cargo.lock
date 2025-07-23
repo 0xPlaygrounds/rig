@@ -9469,6 +9469,7 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_json",
  "tera",
+ "tokio",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",

@@ -27,6 +27,7 @@ wasm-bindgen-futures = "0.4.50"
 wasm-streams = "0.4.2"
 bytes.workspace = true
 base64.workspace = true
+tokio = { workspace = true, features = ["macros"] }
 
 [build-dependencies]
 tera = "1.20.0"
