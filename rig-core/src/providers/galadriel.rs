@@ -13,6 +13,7 @@
 use super::openai;
 use crate::client::{CompletionClient, ProviderClient};
 use crate::json_utils::merge;
+use crate::message::MessageError;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
@@ -368,6 +369,11 @@ impl TryFrom<message::Message> for Message {
                         }
                         message::AssistantContent::ToolCall(tool_call) => {
                             tool_calls.push(tool_call.clone().into());
+                        }
+                        message::AssistantContent::Reasoning(_) => {
+                            return Err(MessageError::ConversionError(
+                                "Galadriel currently doesn't support reasoning.".into(),
+                            ));
                         }
                     }
                 }

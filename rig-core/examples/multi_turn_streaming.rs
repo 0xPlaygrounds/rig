@@ -115,6 +115,10 @@ where
                         did_call_tool = true;
                         // break;
                     },
+                    Ok(AssistantContent::Reasoning(rig::message::Reasoning { reasoning })) => {
+                        yield Ok(Text { text: reasoning });
+                        did_call_tool = false;
+                    },
                     Err(e) => {
                         yield Err(e.into());
                         break 'outer;
