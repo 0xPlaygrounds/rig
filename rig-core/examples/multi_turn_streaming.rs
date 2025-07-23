@@ -9,8 +9,9 @@ use rig::{
     streaming::StreamingCompletion,
     tool::{Tool, ToolSetError},
 };
+use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+
 use std::pin::Pin;
 use thiserror::Error;
 
@@ -184,7 +185,7 @@ async fn custom_stream_to_stdout(stream: &mut StreamingResult) -> Result<(), std
     Ok(())
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct OperationArgs {
     x: i32,
     y: i32,
@@ -204,24 +205,12 @@ impl Tool for Add {
     type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "add",
-            "description": "Add x and y together",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The first number to add"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The second number to add"
-                    }
-                }
-            }
-        }))
-        .expect("Tool Definition")
+        ToolDefinition {
+            name: "add".to_string(),
+            description: "Add x and y together".to_string(),
+            parameters: serde_json::to_value(schema_for!(OperationArgs))
+                .expect("converting JSON schema to JSON value should never fail"),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -240,24 +229,12 @@ impl Tool for Subtract {
     type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "subtract",
-            "description": "Subtract y from x (i.e.: x - y)",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The number to subtract from"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The number to subtract"
-                    }
-                }
-            }
-        }))
-        .expect("Tool Definition")
+        ToolDefinition {
+            name: "subtract".to_string(),
+            description: "Subtract y from x (i.e.: x - y)".to_string(),
+            parameters: serde_json::to_value(schema_for!(OperationArgs))
+                .expect("converting JSON schema to JSON value should never fail"),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -275,24 +252,12 @@ impl Tool for Multiply {
     type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "multiply",
-            "description": "Compute the product of x and y (i.e.: x * y)",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The first factor in the product"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The second factor in the product"
-                    }
-                }
-            }
-        }))
-        .expect("Tool Definition")
+        ToolDefinition {
+            name: "multiply".to_string(),
+            description: "Compute the product of x and y (i.e.: x * y)".to_string(),
+            parameters: serde_json::to_value(schema_for!(OperationArgs))
+                .expect("converting JSON schema to JSON value should never fail"),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -310,24 +275,13 @@ impl Tool for Divide {
     type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "divide",
-            "description": "Compute the Quotient of x and y (i.e.: x / y). Useful for ratios.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The Dividend of the division. The number being divided"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The Divisor of the division. The number by which the dividend is being divided"
-                    }
-                }
-            }
-        }))
-        .expect("Tool Definition")
+        ToolDefinition {
+            name: "divide".to_string(),
+            description: "Compute the Quotient of x and y (i.e.: x / y). Useful for ratios."
+                .to_string(),
+            parameters: serde_json::to_value(schema_for!(OperationArgs))
+                .expect("converting JSON schema to JSON value should never fail"),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
