@@ -1,9 +1,6 @@
 use rig::prelude::*;
+use rig::providers::{self, groq::DEEPSEEK_R1_DISTILL_LLAMA_70B};
 use rig::streaming::{StreamingPrompt, stream_to_stdout};
-use rig::{
-    completion::Prompt,
-    providers::{self, groq::DEEPSEEK_R1_DISTILL_LLAMA_70B},
-};
 use std::env;
 
 #[tokio::main]
