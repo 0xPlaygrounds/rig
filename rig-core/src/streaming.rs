@@ -34,6 +34,8 @@ pub enum RawStreamingChoice<R: Clone> {
         name: String,
         arguments: serde_json::Value,
     },
+    /// A reasoning chunk
+    Reasoning { reasoning: String },
 
     /// The final response object, must be yielded if you want the
     /// `response` field to be populated on the `StreamingCompletionResponse`
@@ -55,6 +57,7 @@ pub struct StreamingCompletionResponse<R: Clone + Unpin> {
     pub(crate) inner: Abortable<StreamingResult<R>>,
     pub(crate) abort_handle: AbortHandle,
     text: String,
+    reasoning: String,
     tool_calls: Vec<ToolCall>,
     /// The final aggregated message from the stream
     /// contains all text and tool calls generated
@@ -71,6 +74,7 @@ impl<R: Clone + Unpin> StreamingCompletionResponse<R> {
         Self {
             inner: abortable_stream,
             abort_handle,
+            reasoning: String::new(),
             text: "".to_string(),
             tool_calls: vec![],
             choice: OneOrMany::one(AssistantContent::text("")),
@@ -133,6 +137,14 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                     // and concat the text together
                     stream.text = format!("{}{}", stream.text, text.clone());
                     Poll::Ready(Some(Ok(AssistantContent::text(text))))
+                }
+                RawStreamingChoice::Reasoning { reasoning } => {
+                    // Forward the streaming tokens to the outer stream
+                    // and concat the text together
+                    stream.reasoning = format!("{}{}", stream.reasoning, reasoning.clone());
+                    Poll::Ready(Some(Ok(AssistantContent::Reasoning(Reasoning {
+                        reasoning,
+                    }))))
                 }
                 RawStreamingChoice::ToolCall {
                     id,
@@ -213,6 +225,9 @@ impl<R: Clone + Unpin> Stream for StreamingResultDyn<R> {
                 RawStreamingChoice::Message(m) => {
                     Poll::Ready(Some(Ok(RawStreamingChoice::Message(m))))
                 }
+                RawStreamingChoice::Reasoning { reasoning } => {
+                    Poll::Ready(Some(Ok(RawStreamingChoice::Reasoning { reasoning })))
+                }
                 RawStreamingChoice::ToolCall {
                     id,
                     name,
@@ -234,10 +249,15 @@ pub async fn stream_to_stdout<M: CompletionModel>(
     agent: &Agent<M>,
     stream: &mut StreamingCompletionResponse<M::StreamingResponse>,
 ) -> Result<(), std::io::Error> {
+    let mut is_reasoning = false;
     print!("Response: ");
     while let Some(chunk) = stream.next().await {
         match chunk {
             Ok(AssistantContent::Text(text)) => {
+                if is_reasoning {
+                    is_reasoning = false;
+                    println!();
+                }
                 print!("{}", text.text);
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
@@ -253,6 +273,11 @@ pub async fn stream_to_stdout<M: CompletionModel>(
                 println!("\nResult: {res}");
             }
             Ok(AssistantContent::Reasoning(Reasoning { reasoning })) => {
+                if !is_reasoning {
+                    is_reasoning = true;
+                    println!();
+                    println!("Thinking: ");
+                }
                 print!("{reasoning}");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }

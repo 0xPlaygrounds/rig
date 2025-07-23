@@ -18,9 +18,9 @@ use tracing::debug;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingFunction {
     #[serde(default)]
-    name: Option<String>,
+    pub name: Option<String>,
     #[serde(default)]
-    arguments: String,
+    pub arguments: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
