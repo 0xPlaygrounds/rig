@@ -13,8 +13,7 @@ use crate::agent::Agent;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message, Usage,
 };
-use crate::message::{AssistantContent, Text, ToolCall, ToolFunction};
-use crate::message::{AssistantContent, Reasoning, ToolCall, ToolFunction};
+use crate::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction};
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -147,7 +146,7 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                     // Forward the streaming tokens to the outer stream
                     // and concat the text together
                     stream.reasoning = format!("{}{}", stream.reasoning, reasoning.clone());
-                    Poll::Ready(Some(Ok(AssistantContent::Reasoning(Reasoning {
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(Reasoning {
                         reasoning,
                     }))))
                 }
@@ -168,11 +167,13 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                         },
                     });
                     if let Some(call_id) = call_id {
-                        Poll::Ready(Some(Ok(AssistantContent::tool_call_with_call_id(
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::tool_call_with_call_id(
                             id, call_id, name, arguments,
                         ))))
                     } else {
-                        Poll::Ready(Some(Ok(AssistantContent::tool_call(id, name, arguments))))
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::tool_call(
+                            id, name, arguments,
+                        ))))
                     }
                 }
                 RawStreamingChoice::FinalResponse(response) => {
@@ -275,7 +276,7 @@ pub async fn stream_to_stdout<M: CompletionModel>(
     while let Some(chunk) = stream.next().await {
         match chunk {
             Ok(StreamedAssistantContent::Text(text)) => {
-                              if is_reasoning {
+                if is_reasoning {
                     is_reasoning = false;
                     println!("\n---\n");
                 }
@@ -297,8 +298,8 @@ pub async fn stream_to_stdout<M: CompletionModel>(
                 let json_res = serde_json::to_string_pretty(&res).unwrap();
                 println!();
                 tracing::info!("Final result: {json_res}");
-          }
-            Ok(AssistantContent::Reasoning(Reasoning { reasoning })) => {
+            }
+            Ok(StreamedAssistantContent::Reasoning(Reasoning { reasoning })) => {
                 if !is_reasoning {
                     is_reasoning = true;
                     println!();
@@ -376,8 +377,8 @@ mod tests {
                 }
                 Ok(StreamedAssistantContent::Final(res)) => {
                     println!("\nFinal response: {res:?}");
-              }
-                Ok(AssistantContent::Reasoning(Reasoning { reasoning })) => {
+                }
+                Ok(StreamedAssistantContent::Reasoning(Reasoning { reasoning })) => {
                     print!("{reasoning}");
                     std::io::Write::flush(&mut std::io::stdout()).unwrap();
                 }
@@ -409,6 +410,7 @@ mod tests {
 pub enum StreamedAssistantContent<R> {
     Text(Text),
     ToolCall(ToolCall),
+    Reasoning(Reasoning),
     Final(R),
 }
 
