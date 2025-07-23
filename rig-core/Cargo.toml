@@ -42,7 +42,7 @@ as-any = { workspace = true }
 anyhow = { workspace = true }
 assert_fs = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-tracing-subscriber = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }

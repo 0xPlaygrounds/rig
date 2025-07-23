@@ -144,13 +144,19 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                     // and pass it to the outer stream
                     stream.tool_calls.push(ToolCall {
                         id: id.clone(),
-                        call_id,
+                        call_id: call_id.clone(),
                         function: ToolFunction {
                             name: name.clone(),
                             arguments: arguments.clone(),
                         },
                     });
-                    Poll::Ready(Some(Ok(AssistantContent::tool_call(id, name, arguments))))
+                    if let Some(call_id) = call_id {
+                        Poll::Ready(Some(Ok(AssistantContent::tool_call_with_call_id(
+                            id, call_id, name, arguments,
+                        ))))
+                    } else {
+                        Poll::Ready(Some(Ok(AssistantContent::tool_call(id, name, arguments))))
+                    }
                 }
                 RawStreamingChoice::FinalResponse(response) => {
                     // Set the final response field and return the next item in the stream
