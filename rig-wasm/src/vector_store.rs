@@ -19,7 +19,7 @@ pub struct JsVectorStore {
 impl JsVectorStore {
     #[wasm_bindgen(constructor)]
     pub fn new(shim: JsValue) -> JsResult<Self> {
-        let required_fns = vec!["top_n", "top_n_ids"];
+        let required_fns = vec!["topN", "topNIds"];
         ensure_type_implements_functions(&shim, required_fns)?;
         let inner = SendWrapper::new(shim);
         Ok(Self { inner })
@@ -40,8 +40,8 @@ impl rig::vector_store::VectorStoreIndex for JsVectorStore {
         let inner = self.inner.clone();
 
         wasm_bindgen_futures::spawn_local(async move {
-            let call_fn = match js_sys::Reflect::get(&inner, &JsValue::from_str("top_n"))
-                .map_err(|_| VectorStoreError::DatastoreError("vector_store.top_n missing".into()))
+            let call_fn = match js_sys::Reflect::get(&inner, &JsValue::from_str("topN"))
+                .map_err(|_| VectorStoreError::DatastoreError("vector_store.topN missing".into()))
             {
                 Ok(res) => res,
                 Err(e) => {
@@ -57,7 +57,7 @@ impl rig::vector_store::VectorStoreIndex for JsVectorStore {
             if !call_fn.is_function() {
                 error_tx
                     .send(VectorStoreError::DatastoreError(
-                        "vector_store.top_n is not a function".into(),
+                        "vector_store.topN is not a function".into(),
                     ))
                     .expect("sending a message to a oneshot channel shouldn't fail");
 
@@ -70,7 +70,7 @@ impl rig::vector_store::VectorStoreIndex for JsVectorStore {
                     &JsValue::from_str(&query),
                     &JsValue::from_f64(n as f64),
                 )
-                .map_err(|_| VectorStoreError::DatastoreError("vector_store.top_n failed".into()))
+                .map_err(|_| VectorStoreError::DatastoreError("vector_store.topN failed".into()))
             {
                 Ok(res) => res,
                 Err(e) => {
@@ -212,9 +212,9 @@ impl rig::vector_store::VectorStoreIndex for JsVectorStore {
         let inner = self.inner.clone();
 
         wasm_bindgen_futures::spawn_local(async move {
-            let call_fn = js_sys::Reflect::get(&inner, &JsValue::from_str("top_n_ids"))
+            let call_fn = js_sys::Reflect::get(&inner, &JsValue::from_str("topNIds"))
                 .map_err(|_| {
-                    VectorStoreError::DatastoreError("vector_store.top_n_ids missing".into())
+                    VectorStoreError::DatastoreError("vector_store.topNIds missing".into())
                 })
                 .expect("Call function doesn't exist!")
                 .unchecked_into::<js_sys::Function>();
@@ -225,9 +225,8 @@ impl rig::vector_store::VectorStoreIndex for JsVectorStore {
                     &JsValue::from_str(&query),
                     &JsValue::from_f64(n as f64),
                 )
-                .map_err(|_| {
-                    VectorStoreError::DatastoreError("vector_store.top_n_ids failed".into())
-                }) {
+                .map_err(|_| VectorStoreError::DatastoreError("vector_store.topNIds failed".into()))
+            {
                 Ok(res) => res,
                 Err(e) => {
                     error_tx

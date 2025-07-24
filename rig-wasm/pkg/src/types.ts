@@ -39,8 +39,8 @@ export interface DynamicToolsOpts {
 }
 
 export interface VectorStore {
-  top_n: (query: string, n: number) => Promise<TopNResult[]>;
-  top_n_ids: (query: string, n: number) => Promise<TopNIdsResult>;
+  topN: (query: string, n: number) => Promise<TopNResult[]>;
+  topNIds: (query: string, n: number) => Promise<TopNIdsResult>;
 }
 
 export interface VectorSearchOpts {

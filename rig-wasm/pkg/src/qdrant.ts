@@ -89,7 +89,7 @@ export class QdrantAdapter {
     }
   }
 
-  async top_n(opts: VectorSearchOpts): Promise<SearchResult[]> {
+  async topN(opts: VectorSearchOpts): Promise<SearchResult[]> {
     await this.loadClient();
 
     const embedding = await this.embeddingModel.embed_text(opts.query);
@@ -106,7 +106,7 @@ export class QdrantAdapter {
     }));
   }
 
-  async top_n_ids(opts: VectorSearchOpts): Promise<SearchResult[]> {
+  async topNIds(opts: VectorSearchOpts): Promise<SearchResult[]> {
     await this.loadClient();
 
     const embedding = await this.embeddingModel.embed_text(opts.query);
