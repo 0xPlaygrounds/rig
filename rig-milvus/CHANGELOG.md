@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/0xPlaygrounds/rig/compare/rig-milvus-v0.1.2...rig-milvus-v0.1.3) - 2025-07-16
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.2](https://github.com/0xPlaygrounds/rig/compare/rig-milvus-v0.1.1...rig-milvus-v0.1.2) - 2025-07-14
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.1](https://github.com/0xPlaygrounds/rig/compare/rig-milvus-v0.1.0...rig-milvus-v0.1.1) - 2025-07-07
+
+### Added
+
+- support inserting documents as a trait ([#563](https://github.com/0xPlaygrounds/rig/pull/563))
+
+### Fixed
+
+- *(rig-787)* discrepancy in rust crate editions ([#519](https://github.com/0xPlaygrounds/rig/pull/519))
+
+### Other
+
+- Migrate all crates to Rust 2024 ([#539](https://github.com/0xPlaygrounds/rig/pull/539))
+- Declare shared dependencies in workspace ([#538](https://github.com/0xPlaygrounds/rig/pull/538))
+- Make clippy happy on all targets ([#542](https://github.com/0xPlaygrounds/rig/pull/542))
+
 ## [0.1.0](https://github.com/0xPlaygrounds/rig/releases/tag/rig-milvus-v0.1.0) - 2025-06-09
 
 ### Added

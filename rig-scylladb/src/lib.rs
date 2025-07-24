@@ -1,7 +1,7 @@
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
-    vector_store::{VectorStoreError, VectorStoreIndex},
+    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
 };
 use scylla::{
     client::{Compression, session::Session, session_builder::SessionBuilder},
@@ -19,7 +19,7 @@ pub struct ScyllaDbVectorStore<M: EmbeddingModel> {
     /// Model used to generate embeddings for the vector store
     model: M,
     /// Session instance for ScyllaDB communication
-    session: Arc<Session>,
+    pub session: Arc<Session>,
     /// Keyspace and table name for vector storage
     keyspace: String,
     table: String,
@@ -167,8 +167,31 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
         Ok(None)
     }
 
-    /// Insert documents with their embeddings into the vector store
-    pub async fn insert_documents<Doc: Serialize + Embed + Send>(
+    /// Calculate cosine similarity between two vectors
+    fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
+        let dot_product: f32 = vec1.iter().zip(vec2.iter()).map(|(a, b)| a * b).sum();
+        let norm1: f32 = vec1.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let norm2: f32 = vec2.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+        if norm1 == 0.0 || norm2 == 0.0 {
+            0.0
+        } else {
+            dot_product / (norm1 * norm2)
+        }
+    }
+
+    /// Generate query vector from text
+    async fn generate_query_vector(&self, query: &str) -> Result<Vec<f32>, VectorStoreError> {
+        let embedding = self.model.embed_text(query).await?;
+        Ok(embedding.vec.iter().map(|&x| x as f32).collect())
+    }
+}
+
+impl<Model> InsertDocuments for ScyllaDbVectorStore<Model>
+where
+    Model: EmbeddingModel + Send + Sync,
+{
+    async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -200,25 +223,6 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
         }
 
         Ok(())
-    }
-
-    /// Calculate cosine similarity between two vectors
-    fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
-        let dot_product: f32 = vec1.iter().zip(vec2.iter()).map(|(a, b)| a * b).sum();
-        let norm1: f32 = vec1.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm2: f32 = vec2.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-        if norm1 == 0.0 || norm2 == 0.0 {
-            0.0
-        } else {
-            dot_product / (norm1 * norm2)
-        }
-    }
-
-    /// Generate query vector from text
-    async fn generate_query_vector(&self, query: &str) -> Result<Vec<f32>, VectorStoreError> {
-        let embedding = self.model.embed_text(query).await?;
-        Ok(embedding.vec.iter().map(|&x| x as f32).collect())
     }
 }
 

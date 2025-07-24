@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.17](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.16...rig-qdrant-v0.1.17) - 2025-07-16
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.16](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.15...rig-qdrant-v0.1.16) - 2025-07-14
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.15](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.14...rig-qdrant-v0.1.15) - 2025-07-07
+
+### Added
+
+- support inserting documents as a trait ([#563](https://github.com/0xPlaygrounds/rig/pull/563))
+
+### Other
+
+- Migrate all crates to Rust 2024 ([#539](https://github.com/0xPlaygrounds/rig/pull/539))
+- Declare shared dependencies in workspace ([#538](https://github.com/0xPlaygrounds/rig/pull/538))
+- Make clippy happy on all targets ([#542](https://github.com/0xPlaygrounds/rig/pull/542))
+
 ## [0.1.14](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.13...rig-qdrant-v0.1.14) - 2025-06-09
 
 ### Other

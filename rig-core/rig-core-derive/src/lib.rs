@@ -5,7 +5,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use std::{collections::HashMap, ops::Deref};
 use syn::{
-    DeriveInput, Expr, ExprLit, Lit, Meta, PathArguments, ReturnType, Token, Type,
+    DeriveInput, Expr, ExprLit, Ident, Lit, Meta, PathArguments, ReturnType, Token, Type,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
@@ -38,18 +38,21 @@ pub fn derive_embedding_trait(item: TokenStream) -> TokenStream {
 struct MacroArgs {
     description: Option<String>,
     param_descriptions: HashMap<String, String>,
+    required: Vec<String>,
 }
 
 impl Parse for MacroArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let mut description = None;
         let mut param_descriptions = HashMap::new();
+        let mut required = Vec::new();
 
         // If the input is empty, return default values
         if input.is_empty() {
             return Ok(MacroArgs {
                 description,
                 param_descriptions,
+                required,
             });
         }
 
@@ -86,6 +89,14 @@ impl Parse for MacroArgs {
                         }
                     }
                 }
+                Meta::List(list) if list.path.is_ident("required") => {
+                    let required_variables: Punctuated<Ident, Token![,]> =
+                        list.parse_args_with(Punctuated::parse_terminated)?;
+
+                    required_variables.into_iter().for_each(|x| {
+                        required.push(x.to_string());
+                    });
+                }
                 _ => {}
             }
         }
@@ -93,6 +104,7 @@ impl Parse for MacroArgs {
         Ok(MacroArgs {
             description,
             param_descriptions,
+            required,
         })
     }
 }
@@ -255,6 +267,8 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut param_descriptions = Vec::new();
     let mut json_types = Vec::new();
 
+    let required_args = args.required;
+
     for arg in input_fn.sig.inputs.iter() {
         if let syn::FnArg::Typed(pat_type) = arg {
             if let syn::Pat::Ident(param_ident) = &*pat_type.pat {
@@ -326,7 +340,8 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                                 "description": #param_descriptions
                             }
                         ),*
-                    }
+                    },
+                    "required": [#(#required_args),*]
                 });
 
                 rig::completion::ToolDefinition {

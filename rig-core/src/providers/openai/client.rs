@@ -1,6 +1,5 @@
 #[cfg(feature = "audio")]
 use super::audio_generation::AudioGenerationModel;
-use super::completion::CompletionModel;
 use super::embedding::{
     EmbeddingModel, TEXT_EMBEDDING_3_LARGE, TEXT_EMBEDDING_3_SMALL, TEXT_EMBEDDING_ADA_002,
 };
@@ -78,10 +77,17 @@ impl ProviderClient for Client {
         let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
         Self::new(&api_key)
     }
+
+    fn from_val(input: crate::client::ProviderValue) -> Self {
+        let crate::client::ProviderValue::Simple(api_key) = input else {
+            panic!("Incorrect provider value type")
+        };
+        Self::new(&api_key)
+    }
 }
 
 impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
+    type CompletionModel = super::responses_api::ResponsesCompletionModel;
     /// Create a completion model with the given name.
     ///
     /// # Example
@@ -93,8 +99,8 @@ impl CompletionClient for Client {
     ///
     /// let gpt4 = openai.completion_model(openai::GPT_4);
     /// ```
-    fn completion_model(&self, model: &str) -> CompletionModel {
-        CompletionModel::new(self.clone(), model)
+    fn completion_model(&self, model: &str) -> super::responses_api::ResponsesCompletionModel {
+        super::responses_api::ResponsesCompletionModel::new(self.clone(), model)
     }
 }
 
@@ -167,22 +173,6 @@ impl AudioGenerationClient for Client {
     /// ```
     fn audio_generation_model(&self, model: &str) -> Self::AudioGenerationModel {
         AudioGenerationModel::new(self.clone(), model)
-    }
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct Usage {
-    pub prompt_tokens: usize,
-    pub total_tokens: usize,
-}
-
-impl std::fmt::Display for Usage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Prompt tokens: {} Total tokens: {}",
-            self.prompt_tokens, self.total_tokens
-        )
     }
 }
 
@@ -404,6 +394,7 @@ mod tests {
         };
 
         let assistant_message = message::Message::Assistant {
+            id: None,
             content: OneOrMany::one(message::AssistantContent::text("Hi there!")),
         };
 
@@ -475,7 +466,7 @@ mod tests {
         }
 
         match converted_assistant_message.clone() {
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 assert_eq!(
                     content.first(),
                     message::AssistantContent::text("Hi there!")

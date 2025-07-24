@@ -96,6 +96,13 @@ impl ProviderClient for Client {
         let api_key = std::env::var("PERPLEXITY_API_KEY").expect("PERPLEXITY_API_KEY not set");
         Self::new(&api_key)
     }
+
+    fn from_val(input: crate::client::ProviderValue) -> Self {
+        let crate::client::ProviderValue::Simple(api_key) = input else {
+            panic!("Incorrect provider value type")
+        };
+        Self::new(&api_key)
+    }
 }
 
 impl CompletionClient for Client {
@@ -203,6 +210,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 content,
             } => Ok(completion::CompletionResponse {
                 choice: OneOrMany::one(content.clone().into()),
+                usage: completion::Usage {
+                    input_tokens: response.usage.prompt_tokens as u64,
+                    output_tokens: response.usage.completion_tokens as u64,
+                    total_tokens: response.usage.total_tokens as u64,
+                },
                 raw_response: response,
             }),
             _ => Err(CompletionError::ResponseError(
@@ -296,7 +308,7 @@ impl TryFrom<message::Message> for Message {
                 }
             }
 
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let collapsed_content = content
                     .into_iter()
                     .map(|content| {

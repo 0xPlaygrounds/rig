@@ -68,5 +68,6 @@ async fn main() -> Result<(), anyhow::Error> {
     // Prompt the agent and print the response
     let response = chain.call("What does \"glarb-glarb\" mean?").await?;
     println!("{response}");
+
     Ok(())
 }

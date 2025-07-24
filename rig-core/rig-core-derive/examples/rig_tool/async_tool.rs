@@ -11,7 +11,8 @@ use std::time::Duration;
     params(
         input = "Input value to process",
         delay_ms = "Delay in milliseconds before returning result"
-    )
+    ),
+    required(input, delay_ms)
 )]
 async fn async_operation(input: String, delay_ms: u64) -> Result<String, rig::tool::ToolError> {
     tokio::time::sleep(Duration::from_millis(delay_ms)).await;

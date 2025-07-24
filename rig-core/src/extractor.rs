@@ -68,6 +68,22 @@ where
     pub async fn extract(&self, text: impl Into<Message> + Send) -> Result<T, ExtractionError> {
         let response = self.agent.completion(text, vec![]).await?.send().await?;
 
+        if !response.choice.iter().any(|x| {
+            let AssistantContent::ToolCall(ToolCall {
+                function: ToolFunction { name, .. },
+                ..
+            }) = x
+            else {
+                return false;
+            };
+
+            name == SUBMIT_TOOL_NAME
+        }) {
+            tracing::warn!(
+                "The submit tool was not called. If this happens more than once, please ensure the model you are using is powerful enough to reliably call tools."
+            );
+        }
+
         let arguments = response
             .choice
             .into_iter()
@@ -156,6 +172,12 @@ impl<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync, M: Compl
 
     pub fn additional_params(mut self, params: serde_json::Value) -> Self {
         self.agent_builder = self.agent_builder.additional_params(params);
+        self
+    }
+
+    /// Set the maximum number of tokens for the completion
+    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
+        self.agent_builder = self.agent_builder.max_tokens(max_tokens);
         self
     }
 

@@ -1,6 +1,6 @@
 [package]
 name = "rig-derive"
-version = "0.1.3"
+version = "0.1.4"
 edition = { workspace = true }
 license = "MIT"
 description = "Internal crate that implements Rig derive macros."
@@ -19,7 +19,7 @@ syn = { workspace = true, features = ["full"] }
 proc-macro = true
 
 [dev-dependencies]
-rig-core = { workspace = true }
+rig-core = { path = "../../rig-core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

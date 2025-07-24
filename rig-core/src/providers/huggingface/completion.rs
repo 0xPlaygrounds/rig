@@ -106,6 +106,7 @@ impl From<ToolCall> for message::ToolCall {
     fn from(value: ToolCall) -> Self {
         message::ToolCall {
             id: value.id,
+            call_id: None,
             function: value.function.into(),
         }
     }
@@ -272,6 +273,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::UserContent::ToolResult(message::ToolResult {
                                 id,
                                 content,
+                                ..
                             }) => Ok::<_, message::MessageError>(Message::ToolResult {
                                 name: id,
                                 arguments: None,
@@ -304,13 +306,16 @@ impl TryFrom<message::Message> for Vec<Message> {
                     }])
                 }
             }
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 let (text_content, tool_calls) = content.into_iter().fold(
                     (Vec::new(), Vec::new()),
                     |(mut texts, mut tools), content| {
                         match content {
                             message::AssistantContent::Text(text) => texts.push(text),
                             message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
+                            message::AssistantContent::Reasoning(_) => {
+                                unimplemented!("Reasoning is not supported on HuggingFace via Rig");
+                            }
                         }
                         (texts, tools)
                     },
@@ -361,6 +366,7 @@ impl TryFrom<Message> for message::Message {
                 );
 
                 message::Message::Assistant {
+                    id: None,
                     content: OneOrMany::many(content).map_err(|_| {
                         message::MessageError::ConversionError(
                             "Neither `content` nor `tool_calls` was provided to the Message"
@@ -471,8 +477,15 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
+        let usage = completion::Usage {
+            input_tokens: response.usage.prompt_tokens as u64,
+            output_tokens: response.usage.completion_tokens as u64,
+            total_tokens: response.usage.total_tokens as u64,
+        };
+
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }
@@ -788,6 +801,7 @@ mod tests {
         };
 
         let assistant_message = message::Message::Assistant {
+            id: None,
             content: OneOrMany::one(message::AssistantContent::text("Hi there!")),
         };
 
@@ -855,7 +869,7 @@ mod tests {
         }
 
         match converted_assistant_message.clone() {
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 assert_eq!(
                     content.first(),
                     message::AssistantContent::text("Hi there!")

@@ -141,6 +141,12 @@ pub(crate) fn create_request_body(
         role: Some(Role::Model),
     });
 
+    let tools = if completion_request.tools.is_empty() {
+        None
+    } else {
+        Some(Tool::try_from(completion_request.tools)?)
+    };
+
     let request = GenerateContentRequest {
         contents: full_history
             .into_iter()
@@ -151,7 +157,7 @@ pub(crate) fn create_request_body(
             .collect::<Result<Vec<_>, _>>()?,
         generation_config: Some(generation_config),
         safety_settings: None,
-        tools: Some(Tool::try_from(completion_request.tools)?),
+        tools,
         tool_config: None,
         system_instruction,
     };
@@ -169,12 +175,13 @@ impl TryFrom<completion::ToolDefinition> for Tool {
             } else {
                 Some(tool.parameters.try_into()?)
             };
+
         Ok(Self {
-            function_declarations: OneOrMany::one(FunctionDeclaration {
+            function_declarations: vec![FunctionDeclaration {
                 name: tool.name,
                 description: tool.description,
                 parameters,
-            }),
+            }],
             code_execution: None,
         })
     }
@@ -184,7 +191,7 @@ impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
     type Error = CompletionError;
 
     fn try_from(tools: Vec<completion::ToolDefinition>) -> Result<Self, Self::Error> {
-        let mut functions = Vec::new();
+        let mut function_declarations = Vec::new();
 
         for tool in tools {
             let parameters =
@@ -203,15 +210,12 @@ impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
                     }
                 };
 
-            functions.push(FunctionDeclaration {
+            function_declarations.push(FunctionDeclaration {
                 name: tool.name,
                 description: tool.description,
                 parameters,
             });
         }
-
-        let function_declarations: OneOrMany<FunctionDeclaration> = OneOrMany::many(functions)
-            .map_err(|x| CompletionError::ProviderError(x.to_string()))?;
 
         Ok(Self {
             function_declarations,
@@ -255,8 +259,19 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             )
         })?;
 
+        let usage = response
+            .usage_metadata
+            .as_ref()
+            .map(|usage| completion::Usage {
+                input_tokens: usage.prompt_token_count as u64,
+                output_tokens: usage.candidates_token_count as u64,
+                total_tokens: usage.total_token_count as u64,
+            })
+            .unwrap_or_default();
+
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }
@@ -342,7 +357,7 @@ pub mod gemini_api_types {
                     parts: content.try_map(|c| c.try_into())?,
                     role: Some(Role::User),
                 },
-                message::Message::Assistant { content } => Content {
+                message::Message::Assistant { content, .. } => Content {
                     role: Some(Role::Model),
                     parts: content.map(|content| content.into()),
                 },
@@ -402,6 +417,7 @@ pub mod gemini_api_types {
                     })?,
                 }),
                 Some(Role::Model) => Ok(message::Message::Assistant {
+                    id: None,
                     content: content.parts.try_map(|part| {
                         Ok(match part {
                             Part::Text(text) => message::AssistantContent::text(text),
@@ -440,6 +456,7 @@ pub mod gemini_api_types {
         FileData(FileData),
         ExecutableCode(ExecutableCode),
         CodeExecutionResult(CodeExecutionResult),
+        Thought { thoughts: Vec<String> },
     }
 
     impl From<String> for Part {
@@ -468,7 +485,7 @@ pub mod gemini_api_types {
         fn try_from(content: message::UserContent) -> Result<Self, Self::Error> {
             match content {
                 message::UserContent::Text(message::Text { text }) => Ok(Self::Text(text)),
-                message::UserContent::ToolResult(message::ToolResult { id, content }) => {
+                message::UserContent::ToolResult(message::ToolResult { id, content, .. }) => {
                     let content = match content.first() {
                         message::ToolResultContent::Text(text) => text.text,
                         message::ToolResultContent::Image(_) => {
@@ -548,6 +565,11 @@ pub mod gemini_api_types {
             match content {
                 message::AssistantContent::Text(message::Text { text }) => text.into(),
                 message::AssistantContent::ToolCall(tool_call) => tool_call.into(),
+                message::AssistantContent::Reasoning(message::Reasoning { reasoning }) => {
+                    Part::Thought {
+                        thoughts: vec![reasoning],
+                    }
+                }
             }
         }
     }
@@ -588,6 +610,7 @@ pub mod gemini_api_types {
         fn from(function_call: FunctionCall) -> Self {
             Self {
                 id: function_call.name.clone(),
+                call_id: None,
                 function: message::ToolFunction {
                     name: function_call.name,
                     arguments: function_call.args,
@@ -967,6 +990,7 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct GenerateContentRequest {
         pub contents: Vec<Content>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub tools: Option<Tool>,
         pub tool_config: Option<ToolConfig>,
         /// Optional. Configuration options for model generation and outputs.
@@ -994,7 +1018,7 @@ pub mod gemini_api_types {
     #[derive(Debug, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct Tool {
-        pub function_declarations: OneOrMany<FunctionDeclaration>,
+        pub function_declarations: Vec<FunctionDeclaration>,
         pub code_execution: Option<CodeExecution>,
     }
 
@@ -1178,6 +1202,7 @@ mod tests {
     fn test_message_conversion_tool_call() {
         let tool_call = message::ToolCall {
             id: "test_tool".to_string(),
+            call_id: None,
             function: message::ToolFunction {
                 name: "test_function".to_string(),
                 arguments: json!({"arg1": "value1"}),
@@ -1185,6 +1210,7 @@ mod tests {
         };
 
         let msg = message::Message::Assistant {
+            id: None,
             content: OneOrMany::one(message::AssistantContent::ToolCall(tool_call)),
         };
 

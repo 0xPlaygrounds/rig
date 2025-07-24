@@ -170,7 +170,8 @@ impl CompletionModel {
                             yield Ok(RawStreamingChoice::ToolCall {
                                 id: tc.0,
                                 name: tc.1,
-                                arguments: args
+                                arguments: args,
+                                call_id: None
                             });
 
                             current_tool_call = None;

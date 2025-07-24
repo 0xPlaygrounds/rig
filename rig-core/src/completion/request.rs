@@ -75,6 +75,7 @@ use crate::{
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::ops::{Add, AddAssign};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -102,14 +103,20 @@ pub enum CompletionError {
     ProviderError(String),
 }
 
+/// Prompt errors
 #[derive(Debug, Error)]
 pub enum PromptError {
+    /// Something went wrong with the completion
     #[error("CompletionError: {0}")]
     CompletionError(#[from] CompletionError),
 
+    /// There was an error while using a tool
     #[error("ToolCallError: {0}")]
     ToolError(#[from] ToolSetError),
 
+    /// The LLM tried to call too many tools during a multi-turn conversation.
+    /// To fix this, you may either need to lower the amount of tools your model has access to (and then create other agents to share the tool load)
+    /// or increase the amount of turns given in `.multi_turn()`.
     #[error("MaxDepthError: (reached limit: {max_depth})")]
     MaxDepthError {
         max_depth: usize,
@@ -218,8 +225,56 @@ pub struct CompletionResponse<T> {
     /// The completion choice (represented by one or more assistant message content)
     /// returned by the completion model provider
     pub choice: OneOrMany<AssistantContent>,
+    /// Tokens used during prompting and responding
+    pub usage: Usage,
     /// The raw response returned by the completion model provider
     pub raw_response: T,
+}
+
+/// Struct representing the token usage for a completion request.
+/// If tokens used are `0`, then the provider failed to supply token usage metrics.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Usage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    // We store this separately as some providers may only report one number
+    pub total_tokens: u64,
+}
+
+impl Usage {
+    pub fn new() -> Self {
+        Self {
+            input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 0,
+        }
+    }
+}
+
+impl Default for Usage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Add for Usage {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        Self {
+            input_tokens: self.input_tokens + other.input_tokens,
+            output_tokens: self.output_tokens + other.output_tokens,
+            total_tokens: self.total_tokens + other.total_tokens,
+        }
+    }
+}
+
+impl AddAssign for Usage {
+    fn add_assign(&mut self, other: Self) {
+        self.input_tokens += other.input_tokens;
+        self.output_tokens += other.output_tokens;
+        self.total_tokens += other.total_tokens;
+    }
 }
 
 /// Trait defining a completion model that can be used to generate completion responses.
@@ -282,6 +337,7 @@ where
                 .await
                 .map(|resp| CompletionResponse {
                     choice: resp.choice,
+                    usage: resp.usage,
                     raw_response: (),
                 })
         })
@@ -322,8 +378,8 @@ where
 pub struct CompletionRequest {
     /// The preamble to be sent to the completion model provider
     pub preamble: Option<String>,
-    /// The chat history to be sent to the completion model provider
-    /// The very last message will always be the prompt (hense why there is *always* one)
+    /// The chat history to be sent to the completion model provider.
+    /// The very last message will always be the prompt (hence why there is *always* one)
     pub chat_history: OneOrMany<Message>,
     /// The documents to be sent to the completion model provider
     pub documents: Vec<Document>,

@@ -4,7 +4,7 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError},
     json_utils,
-    message::{self, DocumentMediaType, MessageError},
+    message::{self, DocumentMediaType, MessageError, Reasoning},
     one_or_many::string_or_one_or_many,
 };
 use std::{convert::Infallible, str::FromStr};
@@ -119,8 +119,15 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
+        let usage = completion::Usage {
+            input_tokens: response.usage.input_tokens,
+            output_tokens: response.usage.output_tokens,
+            total_tokens: response.usage.input_tokens + response.usage.output_tokens,
+        };
+
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }
@@ -163,6 +170,10 @@ pub enum Content {
     },
     Document {
         source: DocumentSource,
+    },
+    Thinking {
+        thinking: String,
+        signature: Option<String>,
     },
 }
 
@@ -311,13 +322,17 @@ impl From<message::AssistantContent> for Content {
     fn from(text: message::AssistantContent) -> Self {
         match text {
             message::AssistantContent::Text(message::Text { text }) => Content::Text { text },
-            message::AssistantContent::ToolCall(message::ToolCall { id, function }) => {
+            message::AssistantContent::ToolCall(message::ToolCall { id, function, .. }) => {
                 Content::ToolUse {
                     id,
                     name: function.name,
                     input: function.arguments,
                 }
             }
+            message::AssistantContent::Reasoning(Reasoning { reasoning }) => Content::Thinking {
+                thinking: reasoning,
+                signature: None,
+            },
         }
     }
 }
@@ -333,32 +348,31 @@ impl TryFrom<message::Message> for Message {
                     message::UserContent::Text(message::Text { text }) => {
                         Ok(Content::Text { text })
                     }
-                    message::UserContent::ToolResult(message::ToolResult { id, content }) => {
-                        Ok(Content::ToolResult {
-                            tool_use_id: id,
-                            content: content.try_map(|content| match content {
-                                message::ToolResultContent::Text(message::Text { text }) => {
-                                    Ok(ToolResultContent::Text { text })
-                                }
-                                message::ToolResultContent::Image(image) => {
-                                    let media_type =
-                                        image.media_type.ok_or(MessageError::ConversionError(
-                                            "Image media type is required".to_owned(),
-                                        ))?;
-                                    let format =
-                                        image.format.ok_or(MessageError::ConversionError(
-                                            "Image format is required".to_owned(),
-                                        ))?;
-                                    Ok(ToolResultContent::Image(ImageSource {
-                                        data: image.data,
-                                        media_type: media_type.try_into()?,
-                                        r#type: format.try_into()?,
-                                    }))
-                                }
-                            })?,
-                            is_error: None,
-                        })
-                    }
+                    message::UserContent::ToolResult(message::ToolResult {
+                        id, content, ..
+                    }) => Ok(Content::ToolResult {
+                        tool_use_id: id,
+                        content: content.try_map(|content| match content {
+                            message::ToolResultContent::Text(message::Text { text }) => {
+                                Ok(ToolResultContent::Text { text })
+                            }
+                            message::ToolResultContent::Image(image) => {
+                                let media_type =
+                                    image.media_type.ok_or(MessageError::ConversionError(
+                                        "Image media type is required".to_owned(),
+                                    ))?;
+                                let format = image.format.ok_or(MessageError::ConversionError(
+                                    "Image format is required".to_owned(),
+                                ))?;
+                                Ok(ToolResultContent::Image(ImageSource {
+                                    data: image.data,
+                                    media_type: media_type.try_into()?,
+                                    r#type: format.try_into()?,
+                                }))
+                            }
+                        })?,
+                        is_error: None,
+                    }),
                     message::UserContent::Image(message::Image {
                         data,
                         format,
@@ -409,7 +423,7 @@ impl TryFrom<message::Message> for Message {
                 })?,
             },
 
-            message::Message::Assistant { content } => Message {
+            message::Message::Assistant { content, .. } => Message {
                 content: content.map(|content| content.into()),
                 role: Role::Assistant,
             },
@@ -491,6 +505,7 @@ impl TryFrom<Message> for message::Message {
             },
             Role::Assistant => match message.content.first() {
                 Content::Text { .. } | Content::ToolUse { .. } => message::Message::Assistant {
+                    id: None,
                     content: message.content.try_map(|content| content.try_into())?,
                 },
 
@@ -956,11 +971,13 @@ mod tests {
         }
 
         match converted_assistant_message.clone() {
-            message::Message::Assistant { content } => {
+            message::Message::Assistant { content, .. } => {
                 assert_eq!(content.len(), 1);
 
                 match content.first() {
-                    message::AssistantContent::ToolCall(message::ToolCall { id, function }) => {
+                    message::AssistantContent::ToolCall(message::ToolCall {
+                        id, function, ..
+                    }) => {
                         assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
                         assert_eq!(function.name, "get_weather");
                         assert_eq!(function.arguments, json!({"location": "San Francisco, CA"}));

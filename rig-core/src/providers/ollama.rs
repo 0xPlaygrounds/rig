@@ -39,8 +39,8 @@
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
 use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient};
+use crate::completion::Usage;
 use crate::json_utils::merge_inplace;
-use crate::message::MessageError;
 use crate::streaming::RawStreamingChoice;
 use crate::{
     Embed, OneOrMany,
@@ -55,7 +55,6 @@ use futures::StreamExt;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::convert::Infallible;
 use std::{convert::TryFrom, str::FromStr};
 // ---------- Main Client ----------
 
@@ -107,6 +106,14 @@ impl ProviderClient for Client {
     {
         let api_base = std::env::var("OLLAMA_API_BASE_URL").expect("OLLAMA_API_BASE_URL not set");
         Self::from_url(&api_base)
+    }
+
+    fn from_val(input: crate::client::ProviderValue) -> Self {
+        let crate::client::ProviderValue::Simple(_) = input else {
+            panic!("Incorrect provider value type")
+        };
+
+        Self::new()
     }
 }
 
@@ -280,6 +287,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             // Process only if an assistant message is present.
             Message::Assistant {
                 content,
+                thinking,
                 tool_calls,
                 ..
             } => {
@@ -300,6 +308,9 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 let choice = OneOrMany::many(assistant_contents).map_err(|_| {
                     CompletionError::ResponseError("No content provided".to_owned())
                 })?;
+                let prompt_tokens = resp.prompt_eval_count.unwrap_or(0);
+                let completion_tokens = resp.eval_count.unwrap_or(0);
+
                 let raw_response = CompletionResponse {
                     model: resp.model,
                     created_at: resp.created_at,
@@ -313,13 +324,20 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     eval_duration: resp.eval_duration,
                     message: Message::Assistant {
                         content,
+                        thinking,
                         images: None,
                         name: None,
                         tool_calls,
                     },
                 };
+
                 Ok(completion::CompletionResponse {
                     choice,
+                    usage: Usage {
+                        input_tokens: prompt_tokens,
+                        output_tokens: completion_tokens,
+                        total_tokens: prompt_tokens + completion_tokens,
+                    },
                     raw_response,
                 })
             }
@@ -367,7 +385,10 @@ impl CompletionModel {
             partial_history
                 .into_iter()
                 .map(|msg| msg.try_into())
-                .collect::<Result<Vec<Message>, _>>()?,
+                .collect::<Result<Vec<Vec<Message>>, _>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<Message>>(),
         );
 
         // Convert internal prompt into a provider Message
@@ -515,7 +536,8 @@ impl completion::CompletionModel for CompletionModel {
                                 yield Ok(RawStreamingChoice::ToolCall {
                                     id: "".to_string(),
                                     name: function.name,
-                                    arguments: function.arguments
+                                    arguments: function.arguments,
+                                    call_id: None
                                 });
                             }
                         }
@@ -602,6 +624,8 @@ pub enum Message {
         #[serde(default)]
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
+        thinking: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         images: Option<Vec<String>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
@@ -616,7 +640,11 @@ pub enum Message {
         name: Option<String>,
     },
     #[serde(rename = "tool")]
-    ToolResult { name: String, content: String },
+    ToolResult {
+        #[serde(rename = "tool_name")]
+        name: String,
+        content: String,
+    },
 }
 
 /// -----------------------------
@@ -624,75 +652,104 @@ pub enum Message {
 /// -----------------------------
 /// Conversion from an internal Rig message (crate::message::Message) to a provider Message.
 /// (Only User and Assistant variants are supported.)
-impl TryFrom<crate::message::Message> for Message {
+impl TryFrom<crate::message::Message> for Vec<Message> {
     type Error = crate::message::MessageError;
     fn try_from(internal_msg: crate::message::Message) -> Result<Self, Self::Error> {
         use crate::message::Message as InternalMessage;
         match internal_msg {
             InternalMessage::User { content, .. } => {
-                let mut texts = Vec::new();
-                let mut images = Vec::new();
-                for uc in content.into_iter() {
-                    match uc {
-                        crate::message::UserContent::Text(t) => texts.push(t.text),
-                        crate::message::UserContent::Image(img) => images.push(img.data),
-                        crate::message::UserContent::ToolResult(result) => {
-                            let content = result
-                                .content
-                                .into_iter()
-                                .map(ToolResultContent::try_from)
-                                .collect::<Result<Vec<ToolResultContent>, MessageError>>()?;
+                let (tool_results, other_content): (Vec<_>, Vec<_>) =
+                    content.into_iter().partition(|content| {
+                        matches!(content, crate::message::UserContent::ToolResult(_))
+                    });
 
-                            let content = OneOrMany::many(content).map_err(|x| {
-                                MessageError::ConversionError(format!(
-                                    "Couldn't make a OneOrMany from a list of tool results: {x}"
-                                ))
-                            })?;
+                if !tool_results.is_empty() {
+                    tool_results
+                        .into_iter()
+                        .map(|content| match content {
+                            crate::message::UserContent::ToolResult(
+                                crate::message::ToolResult { id, content, .. },
+                            ) => {
+                                // Ollama expects a single string for tool results, so we concatenate
+                                let content_string = content
+                                    .into_iter()
+                                    .map(|content| match content {
+                                        crate::message::ToolResultContent::Text(text) => text.text,
+                                        _ => "[Non-text content]".to_string(),
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("\n");
 
-                            return Ok(Message::ToolResult {
-                                name: result.id,
-                                content: content.first().text,
-                            });
-                        }
-                        _ => {} // Audio variant removed since Ollama API does not support it.
-                    }
-                }
-                let content_str = texts.join(" ");
-                let images_opt = if images.is_empty() {
-                    None
+                                Ok::<_, crate::message::MessageError>(Message::ToolResult {
+                                    name: id,
+                                    content: content_string,
+                                })
+                            }
+                            _ => unreachable!(),
+                        })
+                        .collect::<Result<Vec<_>, _>>()
                 } else {
-                    Some(images)
-                };
-                Ok(Message::User {
-                    content: content_str,
-                    images: images_opt,
-                    name: None,
-                })
+                    // Ollama requires separate text content and images array
+                    let (texts, images) = other_content.into_iter().fold(
+                        (Vec::new(), Vec::new()),
+                        |(mut texts, mut images), content| {
+                            match content {
+                                crate::message::UserContent::Text(crate::message::Text {
+                                    text,
+                                }) => texts.push(text),
+                                crate::message::UserContent::Image(crate::message::Image {
+                                    data,
+                                    ..
+                                }) => images.push(data),
+                                _ => {} // Audio/Document not supported by Ollama
+                            }
+                            (texts, images)
+                        },
+                    );
+
+                    Ok(vec![Message::User {
+                        content: texts.join(" "),
+                        images: if images.is_empty() {
+                            None
+                        } else {
+                            Some(images)
+                        },
+                        name: None,
+                    }])
+                }
             }
             InternalMessage::Assistant { content, .. } => {
-                let mut texts = Vec::new();
-                let mut tool_calls = Vec::new();
-                for ac in content.into_iter() {
-                    match ac {
-                        crate::message::AssistantContent::Text(t) => texts.push(t.text),
-                        crate::message::AssistantContent::ToolCall(tc) => {
-                            tool_calls.push(ToolCall {
-                                r#type: ToolType::Function, // Assuming internal tool call provides these fields
-                                function: Function {
-                                    name: tc.function.name,
-                                    arguments: tc.function.arguments,
-                                },
-                            });
+                let mut thinking: Option<String> = None;
+                let (text_content, tool_calls) = content.into_iter().fold(
+                    (Vec::new(), Vec::new()),
+                    |(mut texts, mut tools), content| {
+                        match content {
+                            crate::message::AssistantContent::Text(text) => texts.push(text.text),
+                            crate::message::AssistantContent::ToolCall(tool_call) => {
+                                tools.push(tool_call)
+                            }
+                            crate::message::AssistantContent::Reasoning(
+                                crate::message::Reasoning { reasoning },
+                            ) => {
+                                thinking = Some(reasoning);
+                            }
                         }
-                    }
-                }
-                let content_str = texts.join(" ");
-                Ok(Message::Assistant {
-                    content: content_str,
+                        (texts, tools)
+                    },
+                );
+
+                // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
+                //  so either `content` or `tool_calls` will have some content.
+                Ok(vec![Message::Assistant {
+                    content: text_content.join(" "),
+                    thinking,
                     images: None,
                     name: None,
-                    tool_calls,
-                })
+                    tool_calls: tool_calls
+                        .into_iter()
+                        .map(|tool_call| tool_call.into())
+                        .collect::<Vec<_>>(),
+                }])
             }
         }
     }
@@ -727,6 +784,7 @@ impl From<Message> for crate::completion::Message {
                     );
                 }
                 crate::completion::Message::Assistant {
+                    id: None,
                     content: OneOrMany::many(assistant_contents).unwrap(),
                 }
             }
@@ -739,7 +797,7 @@ impl From<Message> for crate::completion::Message {
             Message::ToolResult { name, content } => crate::completion::Message::User {
                 content: OneOrMany::one(message::UserContent::tool_result(
                     name,
-                    OneOrMany::one(message::ToolResultContent::Text(Text { text: content })),
+                    OneOrMany::one(message::ToolResultContent::text(content)),
                 )),
             },
         }
@@ -759,35 +817,15 @@ impl Message {
 
 // ---------- Additional Message Types ----------
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct ToolResultContent {
-    text: String,
-}
-
-impl TryFrom<crate::message::ToolResultContent> for ToolResultContent {
-    type Error = MessageError;
-    fn try_from(value: crate::message::ToolResultContent) -> Result<Self, Self::Error> {
-        let crate::message::ToolResultContent::Text(Text { text }) = value else {
-            return Err(MessageError::ConversionError(
-                "Non-text tool results not supported".into(),
-            ));
-        };
-
-        Ok(Self { text })
-    }
-}
-
-impl FromStr for ToolResultContent {
-    type Err = Infallible;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(s.to_owned().into())
-    }
-}
-
-impl From<String> for ToolResultContent {
-    fn from(s: String) -> Self {
-        ToolResultContent { text: s }
+impl From<crate::message::ToolCall> for ToolCall {
+    fn from(tool_call: crate::message::ToolCall) -> Self {
+        Self {
+            r#type: ToolType::Function,
+            function: Function {
+                name: tool_call.function.name,
+                arguments: tool_call.function.arguments,
+            },
+        }
     }
 }
 

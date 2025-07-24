@@ -61,6 +61,7 @@ impl TryFrom<RawMessage> for message::Message {
                 content: OneOrMany::one(UserContent::Text(message::Text { text: raw.content })),
             }),
             "assistant" => Ok(message::Message::Assistant {
+                id: None,
                 content: OneOrMany::one(AssistantContent::Text(message::Text {
                     text: raw.content,
                 })),
@@ -208,6 +209,13 @@ impl ProviderClient for Client {
         let api_key = std::env::var("MIRA_API_KEY").expect("MIRA_API_KEY not set");
         Self::new(&api_key).expect("Could not create Mira Client")
     }
+
+    fn from_val(input: crate::client::ProviderValue) -> Self {
+        let crate::client::ProviderValue::Simple(api_key) = input else {
+            panic!("Incorrect provider value type")
+        };
+        Self::new(&api_key).unwrap()
+    }
 }
 
 impl CompletionClient for Client {
@@ -288,7 +296,7 @@ impl CompletionModel {
                         .join("\n");
                     ("user", text)
                 }
-                Message::Assistant { content } => {
+                Message::Assistant { content, .. } => {
                     let text = content
                         .iter()
                         .map(|c| match c {
@@ -393,17 +401,26 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let content = match &response {
-            CompletionResponse::Structured { choices, .. } => {
+        let (content, usage) = match &response {
+            CompletionResponse::Structured { choices, usage, .. } => {
                 let choice = choices.first().ok_or_else(|| {
                     CompletionError::ResponseError("Response contained no choices".to_owned())
                 })?;
 
+                let usage = usage
+                    .as_ref()
+                    .map(|usage| completion::Usage {
+                        input_tokens: usage.prompt_tokens as u64,
+                        output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
+                        total_tokens: usage.total_tokens as u64,
+                    })
+                    .unwrap_or_default();
+
                 // Convert RawMessage to message::Message
                 let message = message::Message::try_from(choice.message.clone())?;
 
-                match message {
-                    Message::Assistant { content } => {
+                let content = match message {
+                    Message::Assistant { content, .. } => {
                         if content.is_empty() {
                             return Err(CompletionError::ResponseError(
                                 "Response contained empty content".to_owned(),
@@ -434,11 +451,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                             "Received user message in response where assistant message was expected".to_owned()
                         ));
                     }
-                }
+                };
+
+                (content, usage)
             }
-            CompletionResponse::Simple(text) => {
-                vec![completion::AssistantContent::text(text)]
-            }
+            CompletionResponse::Simple(text) => (
+                vec![completion::AssistantContent::text(text)],
+                completion::Usage::new(),
+            ),
         };
 
         let choice = OneOrMany::many(content).map_err(|_| {
@@ -449,6 +469,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }
@@ -487,7 +508,7 @@ impl From<Message> for serde_json::Value {
                     "content": text
                 })
             }
-            Message::Assistant { content } => {
+            Message::Assistant { content, .. } => {
                 let text = content
                     .iter()
                     .map(|c| match c {
@@ -544,6 +565,7 @@ impl TryFrom<serde_json::Value> for Message {
                 content: OneOrMany::one(UserContent::Text(message::Text { text: content })),
             }),
             "assistant" => Ok(Message::Assistant {
+                id: None,
                 content: OneOrMany::one(AssistantContent::Text(message::Text { text: content })),
             }),
             _ => Err(CompletionError::ResponseError(format!(
@@ -587,7 +609,7 @@ mod tests {
 
         // Test string content format
         match assistant_message {
-            Message::Assistant { content } => {
+            Message::Assistant { content, .. } => {
                 assert_eq!(
                     content.first(),
                     AssistantContent::Text(message::Text {
@@ -612,7 +634,7 @@ mod tests {
 
         // Test array content format
         match assistant_message_array {
-            Message::Assistant { content } => {
+            Message::Assistant { content, .. } => {
                 assert_eq!(
                     content.first(),
                     AssistantContent::Text(message::Text {
