@@ -38,6 +38,7 @@ try {
   ];
 
   await adapter.insertDocuments(points);
+  console.log(`Document successfully inserted`);
 } catch (e) {
   if (e instanceof Error) {
     console.log(`Error while embedding: ${e}`);

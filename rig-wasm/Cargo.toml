@@ -13,7 +13,11 @@ lto = true
 codegen-units = 1
 
 [dependencies]
-rig-core = { workspace = true, features = ["worker", "audio", "image"] }
+rig-core = { path = "../rig-core", version = "0.15.1", features = [
+    "worker",
+    "audio",
+    "image",
+] }
 serde_json.workspace = true
 anyhow = { workspace = true }
 futures = { workspace = true }

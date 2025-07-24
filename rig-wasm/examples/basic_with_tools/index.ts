@@ -31,7 +31,7 @@ if (key === undefined) {
   );
   process.exit(1);
 }
-let prompt = `Please increment the counter by 1 and let me know what the resulting number is.`;
+let prompt = `Please increment the counter by 1 and let me know what the resulting number is, as well as the original number.`;
 
 try {
   const agent = new Agent({
