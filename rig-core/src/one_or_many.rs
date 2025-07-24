@@ -167,6 +167,16 @@ impl<'a, T> Iterator for Iter<'a, T> {
             self.rest.next()
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let first = if self.first.is_some() { 1 } else { 0 };
+        let max = self.rest.size_hint().1.unwrap_or(0) + first;
+        if max > 0 {
+            (1, Some(max))
+        } else {
+            (0, Some(0))
+        }
+    }
 }
 
 /// Struct returned by call to `OneOrMany::into_iter()`.
@@ -200,6 +210,16 @@ impl<T: Clone> Iterator for IntoIter<T> {
             _ => self.rest.next(),
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let first = if self.first.is_some() { 1 } else { 0 };
+        let max = self.rest.size_hint().1.unwrap_or(0) + first;
+        if max > 0 {
+            (1, Some(max))
+        } else {
+            (0, Some(0))
+        }
+    }
 }
 
 /// Struct returned by call to `OneOrMany::iter_mut()`.
@@ -219,6 +239,16 @@ impl<'a, T> Iterator for IterMut<'a, T> {
             Some(first)
         } else {
             self.rest.next()
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let first = if self.first.is_some() { 1 } else { 0 };
+        let max = self.rest.size_hint().1.unwrap_or(0) + first;
+        if max > 0 {
+            (1, Some(max))
+        } else {
+            (0, Some(0))
         }
     }
 }
@@ -429,6 +459,29 @@ mod test {
                 assert_eq!(item, "word");
             }
         });
+    }
+
+    #[test]
+    fn test_size_hint() {
+        let foo = "bar".to_string();
+        let one_or_many = OneOrMany::one(foo);
+        let size_hint = one_or_many.iter().size_hint();
+        assert_eq!(size_hint.0, 1);
+        assert_eq!(size_hint.1, Some(1));
+
+        let vec = vec!["foo".to_string(), "bar".to_string(), "baz".to_string()];
+        let mut one_or_many = OneOrMany::many(vec).expect("this should never fail");
+        let size_hint = one_or_many.iter().size_hint();
+        assert_eq!(size_hint.0, 1);
+        assert_eq!(size_hint.1, Some(3));
+
+        let size_hint = one_or_many.clone().into_iter().size_hint();
+        assert_eq!(size_hint.0, 1);
+        assert_eq!(size_hint.1, Some(3));
+
+        let size_hint = one_or_many.iter_mut().size_hint();
+        assert_eq!(size_hint.0, 1);
+        assert_eq!(size_hint.1, Some(3));
     }
 
     #[test]
