@@ -1,4 +1,5 @@
 import { CanEmbed, VectorSearchOpts } from "./types";
+import { QdrantClient } from "@qdrant/js-client-rest";
 
 // qdrant.ts
 export interface Point {
@@ -25,7 +26,7 @@ export type QdrantClientParams = {
 };
 
 export class QdrantAdapter {
-  private client: any;
+  private client: QdrantClient;
   private collectionName: string;
   private params: QdrantClientParams;
   private embeddingModel: CanEmbed;
@@ -43,10 +44,7 @@ export class QdrantAdapter {
   async loadClient() {
     if (!this.client) {
       try {
-        const mod = (await import("@qdrant/js-client-rest")) as {
-          QdrantClient: new (params: QdrantClientParams) => any;
-        };
-        this.client = new mod.QdrantClient(this.params);
+        this.client = new QdrantClient(this.params);
       } catch (err) {
         throw new Error("Failed to load Qdrant client: " + err);
       }
@@ -73,14 +71,22 @@ export class QdrantAdapter {
 
   async insertDocuments(points: Point[]) {
     await this.loadClient();
+    const pointsMapped = points.map((pt) => ({
+      id: pt.id,
+      vector: Array.from(pt.vector),
+      payload: pt.payload ?? {},
+    }));
 
-    await this.client.upsert(this.collectionName, {
-      points: points.map((pt) => ({
-        id: pt.id,
-        vector: pt.vector,
-        payload: pt.payload ?? {},
-      })),
-    });
+    console.log(pointsMapped);
+
+    try {
+      await this.client.upsert(this.collectionName, {
+        wait: true,
+        points: points,
+      });
+    } catch (e) {
+      console.log(`Error: ${e.data.status.error}`);
+    }
   }
 
   async top_n(opts: VectorSearchOpts): Promise<SearchResult[]> {

@@ -31,6 +31,9 @@ const config: RollupOptions[] = [
       typescript({
         declaration: true,
         declarationDir: "out/esm",
+        moduleResolution: "node",
+        // Skip lib checking for external deps
+        skipLibCheck: true,
       }),
       wasm(),
     ],
@@ -61,6 +64,9 @@ const config: RollupOptions[] = [
         // which can be used by both ESM and CJS consumers.
         // The 'outDir' is overridden to ensure compiled JS goes to 'out' before Rollup moves it.
         outDir: "out",
+        moduleResolution: "node",
+        // Skip lib checking for external deps
+        skipLibCheck: true,
       }),
       wasm(),
     ],

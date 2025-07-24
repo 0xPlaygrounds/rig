@@ -12,7 +12,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@qdrant/js-client-rest": "^1.14.1",
     "rig-wasm": "file:../../pkg"
   },
   "devDependencies": {
