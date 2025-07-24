@@ -1,4 +1,4 @@
-import { CanEmbed, VectorSearchOpts } from "./types";
+import { CanEmbed, VectorSearchOpts } from "../types";
 import { QdrantClient } from "@qdrant/js-client-rest";
 
 // qdrant.ts
@@ -82,7 +82,7 @@ export class QdrantAdapter {
     try {
       await this.client.upsert(this.collectionName, {
         wait: true,
-        points: points,
+        points: pointsMapped,
       });
     } catch (e) {
       console.log(`Error: ${e.data.status.error}`);

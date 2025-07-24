@@ -48,19 +48,23 @@
     },
     "./openai": {
       "import": "./out/esm/openai.js",
-      "types": "./out/esm/src/openai.d.ts"
+      "types": "./out/esm/providers/openai.d.ts"
     },
     "./qdrant": {
       "import": "./out/esm/qdrant.js",
-      "types": "./out/esm/src/qdrant.d.ts"
+      "types": "./out/esm/vector_stores/qdrant.d.ts"
+    },
+    "./vector_store": {
+      "import": "./out/esm/vector_store.js",
+      "types": "./out/esm/vector_stores/vector_store.d.ts"
     },
     "./streaming": {
       "import": "./out/esm/streaming.js",
-      "types": "./out/esm/src/streaming.d.ts"
+      "types": "./out/esm/streaming.d.ts"
     },
     "./utils": {
       "import": "./out/esm/utils.js",
-      "types": "./out/esm/src/utils.d.ts"
+      "types": "./out/esm/utils.d.ts"
     },
     "./types": {
       "import": "./out/esm/types.js",

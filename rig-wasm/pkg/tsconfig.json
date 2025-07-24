@@ -11,13 +11,9 @@
     "skipLibCheck": true,
     "typeRoots": ["src/generated"]
   },
-  "include": [
-    "./types/**/*.d.ts",
-    "./types/**/*.ts",
-    "./src/**/*.ts",
-    "src/generated/**/*.ts",
-    "rollup.config.ts",
-    "src/*.ts"
-  ],
+  "paths": {
+    "@types": ["./types.ts"]
+  },
+  "include": ["./**/*.ts", "generated/**/*.ts", "rollup.config.ts"],
   "exclude": ["node_modules", "out/**/*"]
 }

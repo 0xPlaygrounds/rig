@@ -40,7 +40,7 @@ export interface DynamicToolsOpts {
 
 export interface VectorStore {
   topN: (query: string, n: number) => Promise<TopNResult[]>;
-  topNIds: (query: string, n: number) => Promise<TopNIdsResult>;
+  topNIds: (query: string, n: number) => Promise<TopNIdsResult[]>;
 }
 
 export interface VectorSearchOpts {

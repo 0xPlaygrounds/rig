@@ -5,7 +5,7 @@ export {
   OpenAICompletionsCompletionModel as CompletionsCompletionModel,
   OpenAITranscriptionModel as TranscriptionModel,
   OpenAIImageGenerationModel as ImageGenerationModel,
-} from "./generated/rig_wasm.js";
+} from "../generated/rig_wasm.js";
 
 /**
  * The OpenAI Responses API final response (adapted from the original Rig return type).
