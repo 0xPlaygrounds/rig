@@ -93,7 +93,7 @@ pub enum Role {
     System,
 }
 
-/// The type of content used in an [`InputItem`]. Addtionally holds data for each type of input content.
+/// The type of content used in an [`InputItem`]. Additionally holds data for each type of input content.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum InputContent {

@@ -21,7 +21,7 @@ impl PromptType for Extended {}
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
 ///
-/// If you expect to continously call tools, you will want to ensure you use the `.multi_turn()`
+/// If you expect to continuously call tools, you will want to ensure you use the `.multi_turn()`
 /// argument to add more turns as by default, it is 0 (meaning only 1 tool round-trip). Otherwise,
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxDepthError`] if the agent decides to call tools
