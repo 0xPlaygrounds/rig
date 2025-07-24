@@ -36,7 +36,7 @@ async-stream = { workspace = true }
 mime_guess = { workspace = true }
 base64 = { workspace = true }
 as-any = { workspace = true }
-
+rmcp = { version = "0.3", optional = true, features = ["client"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -48,6 +48,18 @@ serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
 mcp-core = { workspace = true, features = ["sse"] }
 mcp-core-macros = { workspace = true }
+
+# Required for `rmcp` example
+hyper-util = { version = "0.1.14", features = ["service", "server"] }
+rmcp = { version = "0.3", features = [
+    "client",
+    "reqwest",                                  # required for some strange reason
+    "transport-streamable-http-client",
+    "transport-streamable-http-server-session",
+    "transport-streamable-http-server",
+    "transport-worker",
+] }
+axum = "0.8.4"
 
 
 [features]
@@ -61,6 +73,7 @@ epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 worker = ["dep:worker"]
 mcp = ["dep:mcp-core"]
+rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
 # Replace "default-tls" with "rustls-tls" in "reqwest/default"
 reqwest-rustls = [
@@ -129,3 +142,7 @@ required-features = ["derive"]
 [[example]]
 name = "voyageai_embeddings"
 required-features = ["derive"]
+
+[[example]]
+name = "rmcp"
+required-features = ["rmcp"]
