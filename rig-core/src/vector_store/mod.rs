@@ -8,6 +8,7 @@ use crate::embeddings::EmbeddingError;
 use crate::{Embed, OneOrMany, embeddings::Embedding};
 
 pub mod in_memory_store;
+pub mod request;
 
 #[derive(Debug, thiserror::Error)]
 pub enum VectorStoreError {
@@ -29,6 +30,9 @@ pub enum VectorStoreError {
 
     #[error("External call to API returned an error. Error code: {0} Message: {1}")]
     ExternalAPIError(StatusCode, String),
+
+    #[error("Error while building VectorSearchRequest: {0}")]
+    BuilderError(String),
 }
 
 /// Trait for inserting documents into a vector store.
