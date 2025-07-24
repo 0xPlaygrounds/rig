@@ -17,6 +17,8 @@ const config: RollupOptions[] = [
     input: {
       index: "./src/index.ts",
       openai: "./src/providers/openai.ts",
+      gemini: "./src/providers/gemini.ts",
+      anthropic: "./src/providers/anthropic.ts",
       types: "./src/types.ts",
       qdrant: "./src/vector_stores/qdrant.ts",
       vector_store: "./src/vector_stores/vector_store.ts",

@@ -25,6 +25,9 @@ export type QdrantClientParams = {
   checkCompatibility?: boolean;
 };
 
+/**
+ * An adapter for the Qdrant client to be able to interface with Rig.
+ */
 export class QdrantAdapter {
   private client: QdrantClient;
   private collectionName: string;

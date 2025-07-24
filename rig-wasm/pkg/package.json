@@ -46,6 +46,18 @@
       "require": "./out/cjs/index.cjs",
       "types": "./out/esm/index.d.ts"
     },
+    "./anthropic": {
+      "import": "./out/esm/anthropic.js",
+      "types": "./out/esm/providers/anthropic.d.ts"
+    },
+    "./gemini": {
+      "import": "./out/esm/gemini.js",
+      "types": "./out/esm/providers/gemini.d.ts"
+    },
+    "./groq": {
+      "import": "./out/esm/groq.js",
+      "types": "./out/esm/providers/groq.d.ts"
+    },
     "./openai": {
       "import": "./out/esm/openai.js",
       "types": "./out/esm/providers/openai.d.ts"
