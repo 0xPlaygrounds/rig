@@ -42,6 +42,16 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
             )),
         }?;
 
+        let usage = value
+            .0
+            .usage()
+            .map(|usage| completion::Usage {
+                input_tokens: usage.input_tokens as u64,
+                output_tokens: usage.output_tokens as u64,
+                total_tokens: usage.total_tokens as u64,
+            })
+            .unwrap_or_default();
+
         if let Some(tool_use) = choice.iter().find_map(|content| match content {
             AssistantContent::ToolCall(tool_call) => Some(tool_call.to_owned()),
             _ => None,
@@ -55,12 +65,14 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
                         arguments: tool_use.function.arguments,
                     },
                 })),
+                usage,
                 raw_response: value,
             });
         }
 
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: value,
         })
     }
@@ -106,6 +118,11 @@ impl TryFrom<RigAssistantContent> for aws_bedrock::ContentBlock {
                         .build()
                         .map_err(|e| CompletionError::ProviderError(e.to_string()))?,
                 ))
+            }
+            AssistantContent::Reasoning(_) => {
+                unimplemented!(
+                    "Reasoning is currently unimplemented on AWS Bedrock (as far as we know). If you need this, please open a ticket!"
+                )
             }
         }
     }

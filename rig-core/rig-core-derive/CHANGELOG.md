@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.3...rig-derive-v0.1.4) - 2025-07-07
+
+### Added
+
+- *(rig-780)* integrate openAI responses API ([#508](https://github.com/0xPlaygrounds/rig/pull/508))
+
+### Other
+
+- Migrate all crates to Rust 2024 ([#539](https://github.com/0xPlaygrounds/rig/pull/539))
+- Declare shared dependencies in workspace ([#538](https://github.com/0xPlaygrounds/rig/pull/538))
+- Make clippy happy on all targets ([#542](https://github.com/0xPlaygrounds/rig/pull/542))
+
 ## [0.1.3](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.2...rig-derive-v0.1.3) - 2025-06-09
 
 ### Other

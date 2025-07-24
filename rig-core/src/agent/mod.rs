@@ -113,4 +113,4 @@ mod prompt_request;
 
 pub use builder::AgentBuilder;
 pub use completion::Agent;
-pub use prompt_request::PromptRequest;
+pub use prompt_request::{PromptRequest, PromptResponse};

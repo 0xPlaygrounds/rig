@@ -212,6 +212,16 @@ impl ProviderClient for Client {
 
         Self::new(auth, &api_version, &azure_endpoint)
     }
+
+    fn from_val(input: crate::client::ProviderValue) -> Self {
+        let crate::client::ProviderValue::ApiKeyWithVersionAndHeader(api_key, version, header) =
+            input
+        else {
+            panic!("Incorrect provider value type")
+        };
+        let auth = AzureOpenAIAuth::ApiKey(api_key.to_string());
+        Self::new(auth, &version, &header)
+    }
 }
 
 impl CompletionClient for Client {

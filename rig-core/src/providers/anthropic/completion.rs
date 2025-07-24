@@ -4,7 +4,7 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError},
     json_utils,
-    message::{self, DocumentMediaType, MessageError},
+    message::{self, DocumentMediaType, MessageError, Reasoning},
     one_or_many::string_or_one_or_many,
 };
 use std::{convert::Infallible, str::FromStr};
@@ -119,8 +119,15 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
+        let usage = completion::Usage {
+            input_tokens: response.usage.input_tokens,
+            output_tokens: response.usage.output_tokens,
+            total_tokens: response.usage.input_tokens + response.usage.output_tokens,
+        };
+
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }
@@ -163,6 +170,10 @@ pub enum Content {
     },
     Document {
         source: DocumentSource,
+    },
+    Thinking {
+        thinking: String,
+        signature: Option<String>,
     },
 }
 
@@ -318,6 +329,10 @@ impl From<message::AssistantContent> for Content {
                     input: function.arguments,
                 }
             }
+            message::AssistantContent::Reasoning(Reasoning { reasoning }) => Content::Thinking {
+                thinking: reasoning,
+                signature: None,
+            },
         }
     }
 }

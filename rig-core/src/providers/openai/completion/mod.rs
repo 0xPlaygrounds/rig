@@ -358,6 +358,11 @@ impl TryFrom<message::Message> for Vec<Message> {
                         match content {
                             message::AssistantContent::Text(text) => texts.push(text),
                             message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
+                            message::AssistantContent::Reasoning(_) => {
+                                unimplemented!(
+                                    "The OpenAI Completions API doesn't support reasoning!"
+                                );
+                            }
                         }
                         (texts, tools)
                     },
@@ -607,8 +612,19 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
+        let usage = response
+            .usage
+            .as_ref()
+            .map(|usage| completion::Usage {
+                input_tokens: usage.prompt_tokens as u64,
+                output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
+                total_tokens: usage.total_tokens as u64,
+            })
+            .unwrap_or_default();
+
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }

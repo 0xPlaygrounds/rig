@@ -38,17 +38,19 @@ async fn main() -> anyhow::Result<()> {
     let result = agent
         .prompt("Calculate 5 - 2 = ?. Describe the result to me.")
         .multi_turn(20)
+        .extended_details()
         .await?;
 
-    println!("\n\nOpenAI Calculator Agent: {result}");
+    println!("\n\nOpenAI Calculator Agent: {result:?}");
 
     // Prompt the agent again and print the response
     let result = agent
         .prompt("Calculate (3 + 5) / 9  = ?. Describe the result to me.")
         .multi_turn(20)
+        .extended_details()
         .await?;
 
-    println!("\n\nOpenAI Calculator Agent: {result}");
+    println!("\n\nOpenAI Calculator Agent: {result:?}");
 
     Ok(())
 }

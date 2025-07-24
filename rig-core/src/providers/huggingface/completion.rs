@@ -313,6 +313,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                         match content {
                             message::AssistantContent::Text(text) => texts.push(text),
                             message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
+                            message::AssistantContent::Reasoning(_) => {
+                                unimplemented!("Reasoning is not supported on HuggingFace via Rig");
+                            }
                         }
                         (texts, tools)
                     },
@@ -474,8 +477,15 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
+        let usage = completion::Usage {
+            input_tokens: response.usage.prompt_tokens as u64,
+            output_tokens: response.usage.completion_tokens as u64,
+            total_tokens: response.usage.total_tokens as u64,
+        };
+
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }

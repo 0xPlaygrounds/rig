@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.10](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.2.9...rig-eternalai-v0.2.10) - 2025-07-16
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.9](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.2.8...rig-eternalai-v0.2.9) - 2025-07-14
+
+### Added
+
+- add `.extended_details` to `PromptRequest` ([#555](https://github.com/0xPlaygrounds/rig/pull/555))
+
+## [0.2.8](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.2.7...rig-eternalai-v0.2.8) - 2025-07-07
+
+### Added
+
+- *(rig-780)* integrate openAI responses API ([#508](https://github.com/0xPlaygrounds/rig/pull/508))
+
+### Other
+
+- Migrate all crates to Rust 2024 ([#539](https://github.com/0xPlaygrounds/rig/pull/539))
+- Declare shared dependencies in workspace ([#538](https://github.com/0xPlaygrounds/rig/pull/538))
+- Make clippy happy on all targets ([#542](https://github.com/0xPlaygrounds/rig/pull/542))
+
 ## [0.2.7](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.2.6...rig-eternalai-v0.2.7) - 2025-06-09
 
 ### Other

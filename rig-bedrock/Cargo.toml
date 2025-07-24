@@ -1,14 +1,14 @@
 [package]
 name = "rig-bedrock"
-version = "0.2.0"
+version = "0.2.3"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "AWS Bedrock model provider for Rig integration."
 
 [dependencies]
-rig-core = { workspace = true, features = ["image"] }
-rig-derive = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.15.1", features = ["image"] }
+rig-derive = { path = "../rig-core/rig-core-derive", version = "0.1.4" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 schemars = { workspace = true }

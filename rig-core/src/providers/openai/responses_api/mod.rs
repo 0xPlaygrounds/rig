@@ -96,11 +96,32 @@ pub enum Role {
 /// The type of content used in an [`InputItem`]. Addtionally holds data for each type of input content.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum InputContent {
+pub enum InputContent {
     Message(Message),
-    OutputMessage(Message),
+    Reasoning(OpenAIReasoning),
     FunctionCall(OutputFunctionCall),
     FunctionCallOutput(ToolResult),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct OpenAIReasoning {
+    pub summary: Vec<ReasoningSummary>,
+    pub encrypted_content: Option<String>,
+    pub status: ToolStatus,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ReasoningSummary {
+    SummaryText { text: String },
+}
+
+impl ReasoningSummary {
+    fn new(input: &str) -> Self {
+        Self::SummaryText {
+            text: input.to_string(),
+        }
+    }
 }
 
 /// A tool result.
@@ -123,7 +144,7 @@ impl From<Message> for InputItem {
             },
             Message::Assistant { .. } => Self {
                 role: Some(Role::Assistant),
-                input: InputContent::OutputMessage(value),
+                input: InputContent::Message(value),
             },
             Message::System { .. } => Self {
                 role: Some(Role::System),
@@ -212,7 +233,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             let id = id.as_ref().unwrap_or(&String::default()).clone();
                             items.push(InputItem {
                                 role: Some(Role::Assistant),
-                                input: InputContent::OutputMessage(Message::Assistant {
+                                input: InputContent::Message(Message::Assistant {
                                     content: OneOrMany::one(AssistantContentType::Text(
                                         AssistantContent::OutputText(Text { text }),
                                     )),
@@ -234,6 +255,18 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                     call_id: call_id.expect("The tool call ID should exist!"),
                                     id: tool_id,
                                     name: function.name,
+                                    status: ToolStatus::Completed,
+                                }),
+                            });
+                        }
+                        crate::message::AssistantContent::Reasoning(
+                            crate::message::Reasoning { reasoning },
+                        ) => {
+                            items.push(InputItem {
+                                role: Some(Role::Assistant),
+                                input: InputContent::Reasoning(OpenAIReasoning {
+                                    summary: vec![ReasoningSummary::new(&reasoning)],
+                                    encrypted_content: None,
                                     status: ToolStatus::Completed,
                                 }),
                             });
@@ -579,7 +612,7 @@ pub struct AdditionalParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
     /// Any additional metadata you'd like to add. This will additionally be returned by the response.
-    #[serde(skip_serializing_if = "Map::is_empty")]
+    #[serde(skip_serializing_if = "Map::is_empty", default)]
     pub metadata: serde_json::Map<String, serde_json::Value>,
     /// Whether or not you want tool calls to run in parallel.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -596,6 +629,12 @@ pub struct AdditionalParameters {
     /// Whether or not to store the response for later retrieval by API.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub store: Option<bool>,
+}
+
+impl AdditionalParameters {
+    pub fn to_json(self) -> serde_json::Value {
+        serde_json::to_value(self).expect("this should never fail since a struct that impls Deserialize will always be valid JSON")
+    }
 }
 
 /// The truncation strategy.
@@ -741,6 +780,9 @@ pub enum Output {
     Message(OutputMessage),
     #[serde(alias = "function_call")]
     FunctionCall(OutputFunctionCall),
+    Reasoning {
+        summary: Vec<ReasoningSummary>,
+    },
 }
 
 impl From<Output> for Vec<completion::AssistantContent> {
@@ -759,10 +801,32 @@ impl From<Output> for Vec<completion::AssistantContent> {
             }) => vec![completion::AssistantContent::tool_call_with_call_id(
                 id, call_id, name, arguments,
             )],
+            Output::Reasoning { summary } => {
+                let text_joined = summary
+                    .into_iter()
+                    .map(|x| {
+                        let ReasoningSummary::SummaryText { text } = x;
+                        text
+                    })
+                    .collect::<Vec<String>>()
+                    .join("\n");
+                vec![completion::AssistantContent::Reasoning(
+                    crate::message::Reasoning {
+                        reasoning: text_joined,
+                    },
+                )]
+            }
         };
 
         res
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct OutputReasoning {
+    id: String,
+    summary: Vec<ReasoningSummary>,
+    status: ToolStatus,
 }
 
 /// An OpenAI Responses API tool call. A call ID will be returned that must be used when creating a tool result to send back to OpenAI as a message input, otherwise an error will be received.
@@ -817,13 +881,13 @@ impl completion::CompletionModel for ResponsesCompletionModel {
         let request = self.create_completion_request(completion_request)?;
         let request = serde_json::to_value(request)?;
 
-        tracing::debug!("Input: {}", serde_json::to_string_pretty(&request)?);
+        tracing::warn!("Input: {}", serde_json::to_string_pretty(&request)?);
 
         let response = self.client.post("/responses").json(&request).send().await?;
 
         if response.status().is_success() {
             let t = response.text().await?;
-            tracing::debug!(target: "rig", "OpenAI response: {}", t);
+            tracing::warn!(target: "rig", "OpenAI response: {}", t);
 
             let response = serde_json::from_str::<Self::Response>(&t)?;
             response.try_into()
@@ -867,8 +931,19 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
+        let usage = response
+            .usage
+            .as_ref()
+            .map(|usage| completion::Usage {
+                input_tokens: usage.input_tokens,
+                output_tokens: usage.output_tokens,
+                total_tokens: usage.total_tokens,
+            })
+            .unwrap_or_default();
+
         Ok(completion::CompletionResponse {
             choice,
+            usage,
             raw_response: response,
         })
     }
@@ -893,6 +968,7 @@ pub enum Message {
     },
     Assistant {
         content: OneOrMany<AssistantContentType>,
+        #[serde(skip_serializing_if = "String::is_empty")]
         id: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
@@ -950,6 +1026,7 @@ impl From<AssistantContent> for completion::AssistantContent {
 pub enum AssistantContentType {
     Text(AssistantContent),
     ToolCall(OutputFunctionCall),
+    Reasoning(OpenAIReasoning),
 }
 
 /// Different types of user content.
@@ -1080,6 +1157,18 @@ impl TryFrom<message::Message> for Vec<Message> {
                         id: assistant_message_id.expect("The assistant message ID should exist!"),
                         name: None,
                         status: ToolStatus::Completed,
+                    }]),
+                    crate::message::AssistantContent::Reasoning(crate::message::Reasoning {
+                        reasoning,
+                    }) => Ok(vec![Message::Assistant {
+                        content: OneOrMany::one(AssistantContentType::Reasoning(OpenAIReasoning {
+                            summary: vec![ReasoningSummary::new(&reasoning)],
+                            encrypted_content: None,
+                            status: ToolStatus::Completed,
+                        })),
+                        id: assistant_message_id.expect("The assistant message ID should exist!"),
+                        name: None,
+                        status: (ToolStatus::Completed),
                     }]),
                 }
             }
