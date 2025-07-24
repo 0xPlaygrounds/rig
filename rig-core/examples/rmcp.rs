@@ -9,7 +9,7 @@ use rig::{
     providers::openai,
 };
 use rmcp::{
-    Error as McpError, RoleServer, ServerHandler,
+    RoleServer, ServerHandler,
     handler::server::{router::tool::ToolRouter, tool::Parameters},
     model::*,
     schemars,
@@ -61,7 +61,7 @@ impl Counter {
     }
 
     // #[tool(description = "Increment the counter by 1")]
-    // async fn increment(&self) -> Result<CallToolResult, McpError> {
+    // async fn increment(&self) -> Result<CallToolResult, ErrorData> {
     //     let mut counter = self.counter.lock().await;
     //     *counter += 1;
     //     Ok(CallToolResult::success(vec![Content::text(
@@ -70,7 +70,7 @@ impl Counter {
     // }
 
     // #[tool(description = "Decrement the counter by 1")]
-    // async fn decrement(&self) -> Result<CallToolResult, McpError> {
+    // async fn decrement(&self) -> Result<CallToolResult, ErrorData> {
     //     let mut counter = self.counter.lock().await;
     //     *counter -= 1;
     //     Ok(CallToolResult::success(vec![Content::text(
@@ -79,7 +79,7 @@ impl Counter {
     // }
 
     // #[tool(description = "Get the current counter value")]
-    // async fn get_value(&self) -> Result<CallToolResult, McpError> {
+    // async fn get_value(&self) -> Result<CallToolResult, ErrorData> {
     //     let counter = self.counter.lock().await;
     //     Ok(CallToolResult::success(vec![Content::text(
     //         counter.to_string(),
@@ -87,12 +87,12 @@ impl Counter {
     // }
 
     // #[tool(description = "Say hello to the client")]
-    // fn say_hello(&self) -> Result<CallToolResult, McpError> {
+    // fn say_hello(&self) -> Result<CallToolResult, ErrorData> {
     //     Ok(CallToolResult::success(vec![Content::text("hello")]))
     // }
 
     // #[tool(description = "Repeat what you say")]
-    // fn echo(&self, Parameters(object): Parameters<JsonObject>) -> Result<CallToolResult, McpError> {
+    // fn echo(&self, Parameters(object): Parameters<JsonObject>) -> Result<CallToolResult, ErrorData> {
     //     Ok(CallToolResult::success(vec![Content::text(
     //         serde_json::Value::Object(object).to_string(),
     //     )]))
@@ -102,7 +102,7 @@ impl Counter {
     fn sum(
         &self,
         Parameters(StructRequest { a, b }): Parameters<StructRequest>,
-    ) -> Result<CallToolResult, McpError> {
+    ) -> Result<CallToolResult, ErrorData> {
         Ok(CallToolResult::success(vec![Content::text(
             (a + b).to_string(),
         )]))
@@ -126,7 +126,7 @@ impl ServerHandler for Counter {
         &self,
         _request: Option<PaginatedRequestParam>,
         _: RequestContext<RoleServer>,
-    ) -> Result<ListResourcesResult, McpError> {
+    ) -> Result<ListResourcesResult, ErrorData> {
         Ok(ListResourcesResult {
             resources: vec![
                 self._create_resource_text("str:////Users/to/some/path/", "cwd"),
@@ -140,7 +140,7 @@ impl ServerHandler for Counter {
         &self,
         ReadResourceRequestParam { uri }: ReadResourceRequestParam,
         _: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, McpError> {
+    ) -> Result<ReadResourceResult, ErrorData> {
         match uri.as_str() {
             "str:////Users/to/some/path/" => {
                 let cwd = "/Users/to/some/path/";
@@ -154,7 +154,7 @@ impl ServerHandler for Counter {
                     contents: vec![ResourceContents::text(memo, uri)],
                 })
             }
-            _ => Err(McpError::resource_not_found(
+            _ => Err(ErrorData::resource_not_found(
                 "resource_not_found",
                 Some(json!({
                     "uri": uri
@@ -167,7 +167,7 @@ impl ServerHandler for Counter {
         &self,
         _request: Option<PaginatedRequestParam>,
         _: RequestContext<RoleServer>,
-    ) -> Result<ListResourceTemplatesResult, McpError> {
+    ) -> Result<ListResourceTemplatesResult, ErrorData> {
         Ok(ListResourceTemplatesResult {
             next_cursor: None,
             resource_templates: Vec::new(),
@@ -178,7 +178,7 @@ impl ServerHandler for Counter {
         &self,
         _request: InitializeRequestParam,
         context: RequestContext<RoleServer>,
-    ) -> Result<InitializeResult, McpError> {
+    ) -> Result<InitializeResult, ErrorData> {
         if let Some(http_request_part) = context.extensions.get::<axum::http::request::Parts>() {
             let initialize_headers = &http_request_part.headers;
             let initialize_uri = &http_request_part.uri;
