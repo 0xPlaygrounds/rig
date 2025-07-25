@@ -4,7 +4,7 @@ use crate::{
     client::Client,
     types::{
         assistant_content::AwsConverseOutput, completion_request::AwsCompletionRequest,
-        errors::AwsSdkConverseError,
+        converse_output::InternalConverseOutput, errors::AwsSdkConverseError,
     },
 };
 
@@ -135,6 +135,10 @@ impl completion::CompletionModel for CompletionModel {
             .send()
             .await
             .map_err(|sdk_error| Into::<CompletionError>::into(AwsSdkConverseError(sdk_error)))?;
+
+        let response: InternalConverseOutput = response
+            .try_into()
+            .map_err(|x| CompletionError::ProviderError(format!("Type conversion error: {x}")))?;
 
         AwsConverseOutput(response).try_into()
     }

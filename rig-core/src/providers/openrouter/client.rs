@@ -2,7 +2,7 @@ use crate::{
     client::{CompletionClient, ProviderClient},
     impl_conversion_traits,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::completion::CompletionModel;
 
@@ -113,7 +113,7 @@ pub(crate) enum ApiResponse<T> {
     Err(ApiErrorResponse),
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
     pub completion_tokens: usize,

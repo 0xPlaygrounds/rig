@@ -547,7 +547,7 @@ impl FromStr for SystemContent {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     pub id: String,
     pub object: String,
@@ -638,7 +638,7 @@ pub struct Choice {
     pub finish_reason: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
     pub total_tokens: usize,

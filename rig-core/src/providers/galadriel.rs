@@ -151,7 +151,7 @@ enum ApiResponse<T> {
     Err(ApiErrorResponse),
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
     pub total_tokens: usize,
@@ -213,7 +213,7 @@ pub const GPT_35_TURBO_1106: &str = "gpt-3.5-turbo-1106";
 /// `gpt-3.5-turbo-instruct` completion model
 pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     pub id: String,
     pub object: String,
@@ -275,7 +275,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Choice {
     pub index: usize,
     pub message: Message,

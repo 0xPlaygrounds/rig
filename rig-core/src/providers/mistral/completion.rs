@@ -324,7 +324,7 @@ impl CompletionModel {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct CompletionResponse {
     pub id: String,
     pub object: String,
