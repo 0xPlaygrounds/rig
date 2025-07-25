@@ -24,6 +24,7 @@ pub const GROK_3_FAST: &str = "grok-3-fast";
 pub const GROK_3_MINI: &str = "grok-3-mini";
 pub const GROK_3_MINI_FAST: &str = "grok-3-mini-fast";
 pub const GROK_2_IMAGE_1212: &str = "grok-2-image-1212";
+pub const GROK_4: &str = "grok-4-0709";
 
 // =================================================================
 // Rig Implementation Types
