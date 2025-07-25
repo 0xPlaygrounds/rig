@@ -9,6 +9,8 @@
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
 
+use std::error::Error;
+
 use super::openai::{TranscriptionResponse, send_compatible_streaming_request};
 
 use crate::json_utils::merge;
@@ -27,6 +29,62 @@ use serde_json::json;
 // ================================================================
 // Main Azure OpenAI Client
 // ================================================================
+
+const DEFAULT_API_VERSION: &str = "2024-10-21";
+
+pub struct ClientBuilder<'a> {
+    auth: AzureOpenAIAuth,
+    api_version: Option<&'a str>,
+    azure_endpoint: &'a str,
+    http_client: Option<reqwest::Client>,
+}
+
+impl<'a> ClientBuilder<'a> {
+    pub fn new(auth: impl Into<AzureOpenAIAuth>, endpoint: &'a str) -> Self {
+        Self {
+            auth: auth.into(),
+            api_version: None,
+            azure_endpoint: endpoint,
+            http_client: None,
+        }
+    }
+
+    /// API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
+    pub fn api_version(mut self, api_version: &'a str) -> Self {
+        self.api_version = Some(api_version);
+        self
+    }
+
+    /// Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
+    pub fn azure_endpoint(mut self, azure_endpoint: &'a str) -> Self {
+        self.azure_endpoint = azure_endpoint;
+        self
+    }
+
+    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = Some(client);
+        self
+    }
+
+    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+        let http_client = if let Some(http_client) = self.http_client {
+            http_client
+        } else {
+            reqwest::Client::builder()
+                .build()
+                .expect("Azure OpenAI reqwest client should build")
+        };
+
+        let api_version = self.api_version.unwrap_or(DEFAULT_API_VERSION);
+
+        Ok(Client {
+            api_version: api_version.to_string(),
+            azure_endpoint: self.azure_endpoint.to_string(),
+            auth: self.auth,
+            http_client,
+        })
+    }
+}
 
 #[derive(Clone)]
 pub struct Client {
@@ -86,60 +144,28 @@ impl AzureOpenAIAuth {
 }
 
 impl Client {
-    /// Creates a new Azure OpenAI client.
+    /// Create a new Azure OpenAI client builder.
     ///
-    /// # Arguments
+    /// # Example
+    /// ```
+    /// use rig::providers::azure::{ClientBuilder, self};
     ///
-    /// * `auth` - Azure OpenAI API key or token required for authentication
-    /// * `api_version` - API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
-    /// * `azure_endpoint` - Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
-    pub fn new(auth: impl Into<AzureOpenAIAuth>, api_version: &str, azure_endpoint: &str) -> Self {
-        Self {
-            api_version: api_version.to_string(),
-            auth: auth.into(),
-            azure_endpoint: azure_endpoint.to_string(),
-            http_client: reqwest::Client::builder()
-                .build()
-                .expect("Azure OpenAI reqwest client should build"),
-        }
+    /// // Initialize the Azure OpenAI client
+    /// let azure = Client::builder("your-azure-api-key", "https://{your-resource-name}.openai.azure.com")
+    ///    .build()
+    /// ```
+    pub fn builder(auth: impl Into<AzureOpenAIAuth>, endpoint: &str) -> ClientBuilder<'_> {
+        ClientBuilder::new(auth, endpoint)
     }
 
-    /// Use your own `reqwest::Client`.
-    /// The required headers will be automatically attached upon trying to make a request.
-    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = client;
-
-        self
-    }
-
-    /// Creates a new Azure OpenAI client from an API key.
+    /// Creates a new Azure OpenAI client. For more control, use the `builder` method.
     ///
-    /// # Arguments
-    ///
-    /// * `api_key` - Azure OpenAI API key required for authentication
-    /// * `api_version` - API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
-    /// * `azure_endpoint` - Azure OpenAI endpoint URL
-    pub fn from_api_key(api_key: &str, api_version: &str, azure_endpoint: &str) -> Self {
-        Self::new(
-            AzureOpenAIAuth::ApiKey(api_key.to_string()),
-            api_version,
-            azure_endpoint,
-        )
-    }
-
-    /// Creates a new Azure OpenAI client from a token.
-    ///
-    /// # Arguments
-    ///
-    /// * `token` - Azure OpenAI token required for authentication
-    /// * `api_version` - API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
-    /// * `azure_endpoint` - Azure OpenAI endpoint URL
-    pub fn from_token(token: &str, api_version: &str, azure_endpoint: &str) -> Self {
-        Self::new(
-            AzureOpenAIAuth::Token(token.to_string()),
-            api_version,
-            azure_endpoint,
-        )
+    /// # Panics
+    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
+    pub fn new(auth: impl Into<AzureOpenAIAuth>, endpoint: &str) -> Self {
+        Self::builder(auth, endpoint)
+            .build()
+            .expect("Azure OpenAI client should build")
     }
 
     fn post_embedding(&self, deployment_id: &str) -> reqwest::RequestBuilder {
@@ -210,7 +236,10 @@ impl ProviderClient for Client {
         let api_version = std::env::var("AZURE_API_VERSION").expect("AZURE_API_VERSION not set");
         let azure_endpoint = std::env::var("AZURE_ENDPOINT").expect("AZURE_ENDPOINT not set");
 
-        Self::new(auth, &api_version, &azure_endpoint)
+        Self::builder(auth, &azure_endpoint)
+            .api_version(&api_version)
+            .build()
+            .expect("Azure OpenAI client should build")
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
@@ -220,7 +249,10 @@ impl ProviderClient for Client {
             panic!("Incorrect provider value type")
         };
         let auth = AzureOpenAIAuth::ApiKey(api_key.to_string());
-        Self::new(auth, &version, &header)
+        Self::builder(auth, &header)
+            .api_version(&version)
+            .build()
+            .expect("Azure OpenAI client should build")
     }
 }
 

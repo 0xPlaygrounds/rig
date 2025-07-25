@@ -55,10 +55,49 @@ use futures::StreamExt;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::error::Error;
 use std::{convert::TryFrom, str::FromStr};
 // ---------- Main Client ----------
 
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
+
+pub struct ClientBuilder<'a> {
+    base_url: &'a str,
+    http_client: Option<reqwest::Client>,
+}
+
+impl<'a> ClientBuilder<'a> {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self {
+            base_url: OLLAMA_API_BASE_URL,
+            http_client: None,
+        }
+    }
+
+    pub fn base_url(mut self, base_url: &'a str) -> Self {
+        self.base_url = base_url;
+        self
+    }
+
+    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = Some(client);
+        self
+    }
+
+    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+        let http_client = if let Some(http_client) = self.http_client {
+            http_client
+        } else {
+            reqwest::Client::builder().build()?
+        };
+
+        Ok(Client {
+            base_url: self.base_url.to_string(),
+            http_client,
+        })
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Client {
@@ -73,27 +112,29 @@ impl Default for Client {
 }
 
 impl Client {
+    /// Create a new Ollama client builder.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::ollama::{ClientBuilder, self};
+    ///
+    /// // Initialize the Ollama client
+    /// let client = Client::builder()
+    ///    .build()
+    /// ```
+    pub fn builder() -> ClientBuilder<'static> {
+        ClientBuilder::new()
+    }
+
+    /// Create a new Ollama client. For more control, use the `builder` method.
+    ///
+    /// # Panics
+    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new() -> Self {
-        Self::from_url(OLLAMA_API_BASE_URL)
-    }
-    pub fn from_url(base_url: &str) -> Self {
-        Self {
-            base_url: base_url.to_owned(),
-            http_client: reqwest::Client::builder()
-                .build()
-                .expect("Ollama reqwest client should build"),
-        }
+        Self::builder().build().expect("Ollama client should build")
     }
 
-    /// Use your own `reqwest::Client`.
-    /// The required headers will be automatically attached upon trying to make a request.
-    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = client;
-
-        self
-    }
-
-    fn post(&self, path: &str) -> reqwest::RequestBuilder {
+    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path);
         self.http_client.post(url)
     }
@@ -105,7 +146,7 @@ impl ProviderClient for Client {
         Self: Sized,
     {
         let api_base = std::env::var("OLLAMA_API_BASE_URL").expect("OLLAMA_API_BASE_URL not set");
-        Self::from_url(&api_base)
+        Self::builder().base_url(&api_base).build().unwrap()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {

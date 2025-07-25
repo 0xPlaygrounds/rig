@@ -9,6 +9,7 @@ use crate::providers::huggingface::image_generation::ImageGenerationModel;
 use crate::providers::huggingface::transcription::TranscriptionModel;
 use crate::transcription::TranscriptionError;
 use rig::client::impl_conversion_traits;
+use std::error::Error;
 use std::fmt::Display;
 
 // ================================================================
@@ -106,6 +107,7 @@ pub struct ClientBuilder {
     api_key: String,
     base_url: String,
     sub_provider: SubProvider,
+    http_client: Option<reqwest::Client>,
 }
 
 impl ClientBuilder {
@@ -114,6 +116,7 @@ impl ClientBuilder {
             api_key: api_key.to_string(),
             base_url: HUGGINGFACE_API_BASE_URL.to_string(),
             sub_provider: SubProvider::default(),
+            http_client: None,
         }
     }
 
@@ -127,12 +130,35 @@ impl ClientBuilder {
         self
     }
 
-    pub fn build(self) -> Client {
-        let route = self.sub_provider.to_string();
+    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = Some(client);
+        self
+    }
 
+    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+        let route = self.sub_provider.to_string();
         let base_url = format!("{}/{}", self.base_url, route).replace("//", "/");
 
-        Client::from_url(self.api_key.as_str(), base_url.as_str(), self.sub_provider)
+        let mut default_headers = reqwest::header::HeaderMap::new();
+        default_headers.insert(
+            "Content-Type",
+            "application/json"
+                .parse()
+                .expect("Failed to parse Content-Type"),
+        );
+        let http_client = if let Some(http_client) = self.http_client {
+            http_client
+        } else {
+            reqwest::Client::builder().build()?
+        };
+
+        Ok(Client {
+            base_url,
+            default_headers,
+            api_key: self.api_key,
+            http_client,
+            sub_provider: self.sub_provider,
+        })
     }
 }
 
@@ -158,41 +184,28 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
-    /// Create a new Huggingface client with the given API key.
+    /// Create a new Huggingface client builder.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::huggingface::{ClientBuilder, self};
+    ///
+    /// // Initialize the Huggingface client
+    /// let client = Client::builder("your-huggingface-api-key")
+    ///    .build()
+    /// ```
+    pub fn builder(api_key: &str) -> ClientBuilder {
+        ClientBuilder::new(api_key)
+    }
+
+    /// Create a new Huggingface client. For more control, use the `builder` method.
+    ///
+    /// # Panics
+    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
-        let base_url =
-            format!("{}/{}", HUGGINGFACE_API_BASE_URL, SubProvider::HFInference).replace("//", "/");
-        Self::from_url(api_key, &base_url, SubProvider::HFInference)
-    }
-
-    /// Create a new Client with the given API key and base API URL.
-    pub fn from_url(api_key: &str, base_url: &str, sub_provider: SubProvider) -> Self {
-        let mut default_headers = reqwest::header::HeaderMap::new();
-        default_headers.insert(
-            "Content-Type",
-            "application/json"
-                .parse()
-                .expect("Failed to parse Content-Type"),
-        );
-        let http_client = reqwest::Client::builder()
+        Self::builder(api_key)
             .build()
-            .expect("Failed to build HTTP client");
-
-        Self {
-            base_url: base_url.to_owned(),
-            api_key: api_key.to_string(),
-            default_headers,
-            http_client,
-            sub_provider,
-        }
-    }
-
-    /// Use your own `reqwest::Client`.
-    /// The API key will be automatically attached upon trying to make a request, so you shouldn't need to add it as a default header.
-    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = client;
-
-        self
+            .expect("Huggingface client should build")
     }
 
     pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
