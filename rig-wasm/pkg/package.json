@@ -1,0 +1,86 @@
+{
+  "name": "rig-wasm",
+  "version": "0.0.0",
+  "description": "A WebAssembly-based port of the Rust AI agentic framework Rig.",
+  "type": "module",
+  "main": "out/cjs/index.cjs",
+  "module": "out/esm/index.js",
+  "types": "out/esm/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "out/"
+  ],
+  "scripts": {
+    "build": "rollup -c && cp src/generated/rig_wasm_bg.wasm out/esm/generated && cp src/generated/rig_wasm_bg.wasm.d.ts out/esm/generated",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "wasm",
+    "rig",
+    "typescript"
+  ],
+  "author": "Joshua Mo",
+  "license": "ISC",
+  "devDependencies": {
+    "@eslint/js": "^9.30.1",
+    "@rollup/plugin-typescript": "^12.1.4",
+    "@rollup/plugin-wasm": "^6.2.2",
+    "@types/node": "^24.0.12",
+    "eslint": "^9.30.1",
+    "globals": "^16.3.0",
+    "rollup": "^4.44.2",
+    "rollup-plugin-copy": "^3.5.0",
+    "rollup-plugin-dts": "^6.2.1",
+    "typescript-eslint": "^8.36.0"
+  },
+  "optionalDependencies": {
+    "@qdrant/js-client-rest": "^1.15"
+  },
+  "dependencies": {
+    "tslib": "^2.8.1",
+    "typescript": "^5.8.3"
+  },
+  "exports": {
+    ".": {
+      "import": "./out/esm/index.js",
+      "require": "./out/cjs/index.cjs",
+      "types": "./out/esm/index.d.ts"
+    },
+    "./anthropic": {
+      "import": "./out/esm/anthropic.js",
+      "types": "./out/esm/providers/anthropic.d.ts"
+    },
+    "./gemini": {
+      "import": "./out/esm/gemini.js",
+      "types": "./out/esm/providers/gemini.d.ts"
+    },
+    "./groq": {
+      "import": "./out/esm/groq.js",
+      "types": "./out/esm/providers/groq.d.ts"
+    },
+    "./openai": {
+      "import": "./out/esm/openai.js",
+      "types": "./out/esm/providers/openai.d.ts"
+    },
+    "./qdrant": {
+      "import": "./out/esm/qdrant.js",
+      "types": "./out/esm/vector_stores/qdrant.d.ts"
+    },
+    "./vector_store": {
+      "import": "./out/esm/vector_store.js",
+      "types": "./out/esm/vector_stores/vector_store.d.ts"
+    },
+    "./streaming": {
+      "import": "./out/esm/streaming.js",
+      "types": "./out/esm/streaming.d.ts"
+    },
+    "./utils": {
+      "import": "./out/esm/utils.js",
+      "types": "./out/esm/utils.d.ts"
+    },
+    "./types": {
+      "import": "./out/esm/types.js",
+      "types": "./out/esm/types.d.ts"
+    }
+  }
+}
