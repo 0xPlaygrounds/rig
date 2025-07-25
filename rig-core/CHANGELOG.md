@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.15.1...rig-core-v0.16.0) - 2025-07-25
+
+### Added
+
+- *(rig-812)* yield final response with total usage metrics from streaming completion response in stream impl ([#584](https://github.com/0xPlaygrounds/rig/pull/584))
+- *(rig-799)* add support for official rust sdk for mcp ([#553](https://github.com/0xPlaygrounds/rig/pull/553))
+- *(rig-823)* impl size hint for OneOrMany types ([#606](https://github.com/0xPlaygrounds/rig/pull/606))
+- *(rig-784)* thinking/reasoning ([#557](https://github.com/0xPlaygrounds/rig/pull/557))
+- *(rig-821)* add tracing when submit tool is never called in extractor ([#603](https://github.com/0xPlaygrounds/rig/pull/603))
+- make PromptResponse public ([#593](https://github.com/0xPlaygrounds/rig/pull/593))
+
+### Fixed
+
+- *(rig-820)* ensure call ID is properly propagated ([#601](https://github.com/0xPlaygrounds/rig/pull/601))
+
+### Other
+
+- fix spelling issue  ([#607](https://github.com/0xPlaygrounds/rig/pull/607))
+
 ## [0.15.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.15.0...rig-core-v0.15.1) - 2025-07-16
 
 ### Fixed
