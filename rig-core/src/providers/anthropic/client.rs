@@ -1,4 +1,6 @@
 //! Anthropic client api implementation
+use std::error::Error;
+
 use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
 use crate::client::{CompletionClient, ProviderClient, ProviderValue, impl_conversion_traits};
 
@@ -7,12 +9,12 @@ use crate::client::{CompletionClient, ProviderClient, ProviderValue, impl_conver
 // ================================================================
 const ANTHROPIC_API_BASE_URL: &str = "https://api.anthropic.com";
 
-#[derive(Clone, Debug)]
 pub struct ClientBuilder<'a> {
     api_key: &'a str,
     base_url: &'a str,
     anthropic_version: &'a str,
     anthropic_betas: Option<Vec<&'a str>>,
+    http_client: Option<reqwest::Client>,
 }
 
 /// Create a new anthropic client using the builder
@@ -34,6 +36,7 @@ impl<'a> ClientBuilder<'a> {
             base_url: ANTHROPIC_API_BASE_URL,
             anthropic_version: ANTHROPIC_VERSION_LATEST,
             anthropic_betas: None,
+            http_client: None,
         }
     }
 
@@ -57,13 +60,30 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Client {
-        Client::new(
-            self.api_key,
-            self.base_url,
-            self.anthropic_betas,
-            self.anthropic_version,
-        )
+    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = Some(client);
+        self
+    }
+
+    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+        let mut default_headers = reqwest::header::HeaderMap::new();
+        default_headers.insert("anthropic-version", self.anthropic_version.parse()?);
+        if let Some(betas) = self.anthropic_betas {
+            default_headers.insert("anthropic-beta", betas.join(",").parse()?);
+        };
+
+        let http_client = if let Some(http_client) = self.http_client {
+            http_client
+        } else {
+            reqwest::Client::builder().build()?
+        };
+
+        Ok(Client {
+            base_url: self.base_url.to_string(),
+            api_key: self.api_key.to_string(),
+            default_headers,
+            http_client,
+        })
     }
 }
 
@@ -91,48 +111,34 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
-    /// Create a new Anthropic client with the given API key, base URL, betas, and version.
-    /// Note, you probably want to use the `ClientBuilder` instead.
+    /// Create a new Anthropic client builder.
     ///
-    /// Panics:
+    /// # Example
+    /// ```
+    /// use rig::providers::anthropic::{ClientBuilder, self};
+    ///
+    /// // Initialize the Anthropic client
+    /// let anthropic_client = Client::builder("your-claude-api-key")
+    ///    .anthropic_version(ANTHROPIC_VERSION_LATEST)
+    ///    .anthropic_beta("prompt-caching-2024-07-31")
+    ///    .build()
+    /// ```
+    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
+        ClientBuilder::new(api_key)
+    }
+
+    /// Create a new Anthropic client. For more control, use the `builder` method.
+    ///
+    /// # Panics
     /// - If the API key or version cannot be parsed as a Json value from a String.
-    ///   - This should really never happen.
     /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str, base_url: &str, betas: Option<Vec<&str>>, version: &str) -> Self {
-        let mut default_headers = reqwest::header::HeaderMap::new();
-        default_headers.insert(
-            "anthropic-version",
-            version.parse().expect("Anthropic version should parse"),
-        );
-        if let Some(betas) = betas {
-            default_headers.insert(
-                "anthropic-beta",
-                betas
-                    .join(",")
-                    .parse()
-                    .expect("Anthropic betas should parse"),
-            );
-        };
-
-        Self {
-            base_url: base_url.to_string(),
-            api_key: api_key.to_string(),
-            default_headers,
-            http_client: reqwest::Client::builder()
-                .build()
-                .expect("Anthropic reqwest client should build"),
-        }
+    pub fn new(api_key: &str) -> Self {
+        Self::builder(api_key)
+            .build()
+            .expect("Anthropic client should build")
     }
 
-    /// Use your own `reqwest::Client`.
-    /// The default headers will be automatically attached upon trying to make a request.
-    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = client;
-
-        self
-    }
-
-    pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
+    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client
             .post(url)
@@ -146,14 +152,14 @@ impl ProviderClient for Client {
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
-        ClientBuilder::new(&api_key).build()
+        Client::new(&api_key)
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        ClientBuilder::new(&api_key).build()
+        Client::new(&api_key)
     }
 }
 
