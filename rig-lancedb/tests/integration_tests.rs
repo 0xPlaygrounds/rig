@@ -7,7 +7,7 @@ use rig::{
     client::EmbeddingsClient,
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai,
-    vector_store::VectorStoreIndex,
+    vector_store::{VectorStoreIndex, request::VectorSearchRequest},
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 use std::sync::Arc;
@@ -156,9 +156,16 @@ async fn vector_search_test() {
         .await
         .unwrap();
 
+    let query = "My boss says I zindle too much, what does that mean?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()
+        .expect("VectorSearchRequest should not fail to build here");
+
     // Query the index
     let results = vector_store_index
-        .top_n::<serde_json::Value>("My boss says I zindle too much, what does that mean?", 1)
+        .top_n::<serde_json::Value>(req)
         .await
         .unwrap();
 

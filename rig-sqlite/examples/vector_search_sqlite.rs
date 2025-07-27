@@ -1,4 +1,5 @@
 use rig::client::EmbeddingsClient;
+use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -79,7 +80,7 @@ async fn main() -> Result<(), anyhow::Error> {
             content: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
         },
         Document {
-            id: "doc1".to_string(), 
+            id: "doc1".to_string(),
             content: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         },
         Document {
@@ -102,20 +103,23 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create a vector index on our vector store
     let index = vector_store.index(model);
 
+    let query = "What is a linglingdong?";
+    let samples = 1;
+    let req = VectorSearchRequest::builder()
+        .samples(samples)
+        .query(query)
+        .build()?;
+
     // Query the index
     let results = index
-        .top_n::<Document>("What is a linglingdong?", 1)
+        .top_n::<Document>(req.clone())
         .await?
         .into_iter()
         .collect::<Vec<_>>();
 
     println!("Results: {results:?}");
 
-    let id_results = index
-        .top_n_ids("What is a linglingdong?", 1)
-        .await?
-        .into_iter()
-        .collect::<Vec<_>>();
+    let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
 
     println!("ID results: {id_results:?}");
 

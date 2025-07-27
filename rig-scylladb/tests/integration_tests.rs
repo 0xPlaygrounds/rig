@@ -1,4 +1,5 @@
 use rig::client::EmbeddingsClient;
+use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -117,10 +118,16 @@ async fn vector_search_test() {
         .expect("Failed to insert documents");
 
     println!("Documents inserted successfully");
+    let query = "What is a glarb?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()
+        .expect("VectorSearchRequest should not fail to build here");
 
     // Test vector search
     let results = vector_store
-        .top_n::<Word>("What is a glarb?", 1)
+        .top_n::<Word>(req.clone())
         .await
         .expect("Failed to search for document");
 
@@ -139,7 +146,7 @@ async fn vector_search_test() {
 
     // Test top_n_ids
     let id_results = vector_store
-        .top_n_ids("What is a glarb?", 1)
+        .top_n_ids(req)
         .await
         .expect("Failed to search for document ids");
 
@@ -155,9 +162,16 @@ async fn vector_search_test() {
 
     assert_eq!(result_id, id);
 
+    let query = "What is a linglingdong?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()
+        .expect("VectorSearchRequest should not fail to build here");
+
     // Test with different query
     let results2 = vector_store
-        .top_n::<Word>("What is a linglingdong?", 1)
+        .top_n::<Word>(req)
         .await
         .expect("Failed to search for linglingdong");
 

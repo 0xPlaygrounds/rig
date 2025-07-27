@@ -4,6 +4,7 @@ use arrow_array::RecordBatchIterator;
 use fixture::{Word, as_record_batch, schema, words};
 use lancedb::{DistanceType, index::vector::IvfPqIndexBuilder};
 use rig::client::{EmbeddingsClient, ProviderClient};
+use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
@@ -84,11 +85,15 @@ async fn main() -> Result<(), anyhow::Error> {
     let search_params = SearchParams::default().distance_type(DistanceType::Cosine);
 
     let vector_store = LanceDbVectorIndex::new(table, model, "id", search_params).await?;
+    let query = "I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?";
+
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()?;
 
     // Query the index
-    let results = vector_store
-        .top_n::<Word>("I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?", 1)
-        .await?;
+    let results = vector_store.top_n::<Word>(req).await?;
 
     println!("Results: {results:?}");
 

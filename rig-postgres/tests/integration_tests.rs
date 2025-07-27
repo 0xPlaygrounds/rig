@@ -1,4 +1,5 @@
 use rig::client::EmbeddingsClient;
+use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -94,9 +95,16 @@ async fn vector_search_test() {
 
     assert_eq!(documents_count, 3);
 
+    let query = "What does \"glarb-glarb\" mean?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()
+        .expect("VectorSearchRequest should build");
+
     // search for a document
     let results = vector_store
-        .top_n::<Word>("What does \"glarb-glarb\" mean?", 1)
+        .top_n::<Word>(req.clone())
         .await
         .expect("Failed to search for document");
 
@@ -114,7 +122,7 @@ async fn vector_search_test() {
 
     // search only ids
     let results = vector_store
-        .top_n_ids("What does \"glarb-glarb\" mean?", 1)
+        .top_n_ids(req)
         .await
         .expect("Failed to search for document ids");
 

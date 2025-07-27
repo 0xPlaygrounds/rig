@@ -7,7 +7,9 @@ use qdrant_client::{
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
-    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
+    vector_store::{
+        InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
+    },
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -110,15 +112,16 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for QdrantVe
     /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let query = match self.query_params.query {
             Some(ref q) => Some(q.clone()),
-            None => Some(Query::new_nearest(self.generate_query_vector(query).await?)),
+            None => Some(Query::new_nearest(
+                self.generate_query_vector(req.query()).await?,
+            )),
         };
 
-        let params = self.prepare_query_params(query, n);
+        let params = self.prepare_query_params(query, req.samples() as usize);
         let result = self
             .client
             .query(params)
@@ -144,15 +147,16 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for QdrantVe
     /// Returns a vector of tuples containing the score and ID of the nearest neighbors.
     async fn top_n_ids(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         let query = match self.query_params.query {
             Some(ref q) => Some(q.clone()),
-            None => Some(Query::new_nearest(self.generate_query_vector(query).await?)),
+            None => Some(Query::new_nearest(
+                self.generate_query_vector(req.query()).await?,
+            )),
         };
 
-        let params = self.prepare_query_params(query, n);
+        let params = self.prepare_query_params(query, req.samples() as usize);
         let points = self
             .client
             .query(params)

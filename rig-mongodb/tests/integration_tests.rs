@@ -4,13 +4,13 @@ use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
 };
-use rig::client::EmbeddingsClient;
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
     providers::openai,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
+use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
 use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 use serde_json::json;
 use testcontainers::{
@@ -153,11 +153,14 @@ async fn vector_search_test() {
     .await
     .unwrap();
 
-    // Query the index
-    let results = index
-        .top_n::<serde_json::Value>("What is a linglingdong?", 1)
-        .await
-        .unwrap();
+    let query = "What is a linglingdong?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()
+        .expect("VectorSearchRequest should not fail to build here");
+
+    let results = index.top_n::<serde_json::Value>(req).await.unwrap();
 
     let (score, _, value) = &results.first().unwrap();
 

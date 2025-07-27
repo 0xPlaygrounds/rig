@@ -6,6 +6,7 @@ use rig::client::EmbeddingsClient;
 use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::openai::Client as OpenAIClient;
 use rig::providers::openai::TEXT_EMBEDDING_ADA_002;
+use rig::vector_store::request::VectorSearchRequest;
 use rig::vector_store::{InsertDocuments, VectorStoreIndex};
 use std::env;
 
@@ -69,8 +70,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
     store.insert_documents(documents).await?;
     let query = "What is a linglingdong?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(2)
+        .build()?;
 
-    let results = store.top_n::<Word>(query, 2).await?;
+    let results = store.top_n::<Word>(req).await?;
 
     println!("#{} results for query: {}", results.len(), query);
     for (distance, _id, doc) in results.iter() {

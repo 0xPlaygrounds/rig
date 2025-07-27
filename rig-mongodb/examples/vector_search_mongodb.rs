@@ -3,7 +3,7 @@ use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
 };
-use rig::providers::openai::TEXT_EMBEDDING_ADA_002;
+use rig::{providers::openai::TEXT_EMBEDDING_ADA_002, vector_store::request::VectorSearchRequest};
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::env;
@@ -112,16 +112,19 @@ async fn main() -> Result<(), anyhow::Error> {
     let index =
         MongoDbVectorIndex::new(collection, model, "vector_index", SearchParams::new()).await?;
 
+    let query = "What is a linglingdong?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()
+        .expect("VectorSearchRequest should not fail to build here");
+
     // Query the index
-    let results = index.top_n::<Word>("What is a linglingdong?", 1).await?;
+    let results = index.top_n::<Word>(req.clone()).await?;
 
     println!("Results: {results:?}");
 
-    let id_results = index
-        .top_n_ids("What is a linglingdong?", 1)
-        .await?
-        .into_iter()
-        .collect::<Vec<_>>();
+    let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
 
     println!("ID results: {id_results:?}");
 

@@ -3,7 +3,9 @@ use std::fmt::Display;
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
-    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
+    vector_store::{
+        InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
+    },
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use surrealdb::{Connection, Surreal, sql::Thing};
@@ -154,17 +156,16 @@ impl<Model: EmbeddingModel, C: Connection> VectorStoreIndex for SurrealVectorSto
     /// The result is a list of tuples of the form (score, id, document)
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let embedded_query: Vec<f64> = self.model.embed_text(query).await?.vec;
+        let embedded_query: Vec<f64> = self.model.embed_text(req.query()).await?.vec;
 
         let mut response = self
             .surreal
             .query(self.search_query_full().as_str())
             .bind(("vec", embedded_query))
             .bind(("tablename", self.documents_table.clone()))
-            .bind(("limit", n))
+            .bind(("limit", req.samples() as usize))
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
@@ -183,12 +184,11 @@ impl<Model: EmbeddingModel, C: Connection> VectorStoreIndex for SurrealVectorSto
     /// Same as `top_n` but returns the document ids only.
     async fn top_n_ids(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         let embedded_query: Vec<f32> = self
             .model
-            .embed_text(query)
+            .embed_text(req.query())
             .await?
             .vec
             .iter()
@@ -200,7 +200,7 @@ impl<Model: EmbeddingModel, C: Connection> VectorStoreIndex for SurrealVectorSto
             .query(self.search_query_only_ids().as_str())
             .bind(("vec", embedded_query))
             .bind(("tablename", self.documents_table.clone()))
-            .bind(("limit", n))
+            .bind(("limit", req.samples() as usize))
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 

@@ -2,7 +2,9 @@ use reqwest::StatusCode;
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
-    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
+    vector_store::{
+        InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
+    },
 };
 use serde::{Deserialize, Serialize};
 
@@ -200,16 +202,15 @@ impl<M: EmbeddingModel> VectorStoreIndex for MilvusVectorStore<M> {
     /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let embedding = self.model.embed_text(query).await?;
+        let embedding = self.model.embed_text(req.query()).await?;
         let url = format!(
             "{base_url}/v2/vectordb/entities/search",
             base_url = self.base_url
         );
 
-        let body = self.create_search_request(embedding.vec, n);
+        let body = self.create_search_request(embedding.vec, req.samples() as usize);
 
         let mut client = self.client.post(url);
         if let Some(ref token) = self.token {
@@ -242,16 +243,15 @@ impl<M: EmbeddingModel> VectorStoreIndex for MilvusVectorStore<M> {
     /// Returns a vector of tuples containing the score and ID of the nearest neighbors.
     async fn top_n_ids(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let embedding = self.model.embed_text(query).await?;
+        let embedding = self.model.embed_text(req.query()).await?;
         let url = format!(
             "{base_url}/v2/vectordb/entities/search",
             base_url = self.base_url
         );
 
-        let body = self.create_search_request_id_only(embedding.vec, n);
+        let body = self.create_search_request_id_only(embedding.vec, req.samples() as usize);
 
         let mut client = self.client.post(url);
         if let Some(ref token) = self.token {

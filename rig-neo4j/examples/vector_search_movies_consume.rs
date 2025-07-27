@@ -14,6 +14,7 @@
 //! [examples/vector_search_movies_add_embeddings.rs](examples/vector_search_movies_add_embeddings.rs) provides an example of
 //! how to add embeddings to an existing `recommendations` database.
 use neo4rs::ConfigBuilder;
+use rig::vector_store::request::VectorSearchRequest;
 use rig_neo4j::{Neo4jClient, vector_index::SearchParams};
 
 use std::env;
@@ -76,9 +77,15 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .await?;
 
+    let query = "a historical movie on quebec";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(5)
+        .build()?;
+
     // Query the index
     let results = index
-        .top_n::<Movie>("a historical movie on quebec", 5)
+        .top_n::<Movie>(req)
         .await?
         .into_iter()
         .map(|(score, id, doc)| display::SearchResult {
@@ -91,11 +98,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("{:#}", display::SearchResults(&results));
 
-    let id_results = index
-        .top_n_ids("A movie where the bad guy wins", 1)
-        .await?
-        .into_iter()
-        .collect::<Vec<_>>();
+    let query = "A movie where the bad guy wins";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()?;
+
+    let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
 
     println!("ID results: {id_results:?}");
 
