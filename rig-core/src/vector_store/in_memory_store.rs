@@ -228,12 +228,10 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
         let docs = self
             .store
             .vector_search(prompt_embedding, req.samples() as usize);
-        let threshold = req.threshold().unwrap_or(0.);
 
         // Return n best
         docs.into_iter()
             // The distance should always be between 0 and 1, so distance should be fine to use as an absolute value
-            .filter(|Reverse(RankingItem(distance, _, _, _))| distance.abs() >= threshold)
             .map(|Reverse(RankingItem(distance, id, doc, _))| {
                 Ok((
                     distance.0,
@@ -258,18 +256,7 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
             .vector_search(prompt_embedding, req.samples() as usize);
 
         docs.into_iter()
-            .filter_map(|Reverse(RankingItem(distance, id, _, _))| {
-                if let Some(threshold) = req.threshold() {
-                    // The distance should always be between 0 and 1, so distance should be fine to use as an absolute value
-                    if distance.abs() < threshold {
-                        Some(Ok((distance.0, id.clone())))
-                    } else {
-                        None
-                    }
-                } else {
-                    Some(Ok((distance.0, id.clone())))
-                }
-            })
+            .map(|Reverse(RankingItem(distance, id, _, _))| Ok((distance.0, id.clone())))
             .collect::<Result<Vec<_>, _>>()
     }
 }
