@@ -49,7 +49,10 @@ async fn vector_search_test() {
 
     // init fake openai service
     let openai_mock = create_openai_mock_service().await;
-    let openai_client = rig::providers::openai::Client::from_url("TEST", &openai_mock.base_url());
+    let openai_client = rig::providers::openai::Client::builder("TEST")
+        .base_url(&openai_mock.base_url())
+        .build()
+        .unwrap();
 
     let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
 

@@ -72,7 +72,10 @@ async fn vector_search_test() {
 
     // Init fake openai service
     let openai_mock = create_openai_mock_service().await;
-    let openai_client = rig::providers::openai::Client::from_url("TEST", &openai_mock.base_url());
+    let openai_client = rig::providers::openai::Client::builder("TEST")
+        .base_url(&openai_mock.base_url())
+        .build()
+        .unwrap();
 
     let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
 
@@ -329,7 +332,10 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
 async fn test_mock_server_setup() {
     // Test that our mock server setup works without requiring ScyllaDB
     let server = create_openai_mock_service().await;
-    let openai_client = rig::providers::openai::Client::from_url("TEST", &server.base_url());
+    let openai_client = rig::providers::openai::Client::builder("TEST")
+        .base_url(&server.base_url())
+        .build()
+        .unwrap();
     let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
 
     // Test that we can create embeddings with the mock
