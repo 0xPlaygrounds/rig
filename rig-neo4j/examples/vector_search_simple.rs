@@ -10,6 +10,7 @@ use std::env;
 
 use futures::{StreamExt, TryStreamExt};
 use rig::client::EmbeddingsClient;
+use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -126,9 +127,17 @@ async fn main() -> Result<(), anyhow::Error> {
         document: String,
     }
 
+    let query1 = "What is a glarb?";
+    let query2 = "What is a linglingdong?";
+
+    let req = VectorSearchRequest::builder()
+        .query(query1)
+        .samples(1)
+        .build()?;
+
     // Query the index
     let results = index
-        .top_n::<Document>("What is a glarb?", 1)
+        .top_n::<Document>(req)
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.document))
@@ -136,11 +145,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("Results: {results:?}");
 
-    let id_results = index
-        .top_n_ids("What is a linglingdong?", 1)
-        .await?
-        .into_iter()
-        .collect::<Vec<_>>();
+    let req = VectorSearchRequest::builder()
+        .query(query2)
+        .samples(1)
+        .build()?;
+
+    let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
 
     println!("ID results: {id_results:?}");
 
