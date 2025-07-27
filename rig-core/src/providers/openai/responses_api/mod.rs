@@ -11,7 +11,7 @@ use super::{Client, responses_api::streaming::StreamingCompletionResponse};
 use super::{ImageUrl, InputAudio, SystemContent};
 use crate::completion::CompletionError;
 use crate::json_utils;
-use crate::message::{AudioMediaType, MessageError, Text};
+use crate::message::{AudioMediaType, Document, MessageError, Text};
 use crate::one_or_many::string_or_one_or_many;
 
 use crate::{OneOrMany, completion, message};
@@ -212,6 +212,16 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                     }),
                                 });
                             }
+                        }
+                        // todo: should we ensure this takes into account file size?
+                        crate::message::UserContent::Document(Document { data, .. }) => {
+                            items.push(InputItem {
+                                role: Some(Role::User),
+                                input: InputContent::Message(Message::User {
+                                    content: OneOrMany::one(UserContent::InputText { text: data }),
+                                    name: None,
+                                }),
+                            })
                         }
                         _ => {
                             return Err(CompletionError::ProviderError(
