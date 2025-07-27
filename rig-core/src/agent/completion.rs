@@ -6,7 +6,7 @@ use crate::{
     },
     streaming::{StreamingChat, StreamingCompletion, StreamingCompletionResponse, StreamingPrompt},
     tool::ToolSet,
-    vector_store::VectorStoreError,
+    vector_store::{VectorStoreError, request::VectorSearchRequest},
 };
 use futures::{StreamExt, TryStreamExt, stream};
 use std::collections::HashMap;
@@ -86,9 +86,10 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
             Some(text) => {
                 let dynamic_context = stream::iter(self.dynamic_context.iter())
                     .then(|(num_sample, index)| async {
+                        let req = VectorSearchRequest::builder().query(text).samples(*num_sample as u64).build().expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
                         Ok::<_, VectorStoreError>(
                             index
-                                .top_n(text, *num_sample)
+                                .top_n(req)
                                 .await?
                                 .into_iter()
                                 .map(|(_, id, doc)| {
@@ -114,9 +115,10 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 
                 let dynamic_tools = stream::iter(self.dynamic_tools.iter())
                     .then(|(num_sample, index)| async {
+                        let req = VectorSearchRequest::builder().query(text).samples(*num_sample as u64).build().expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
                         Ok::<_, VectorStoreError>(
                             index
-                                .top_n_ids(text, *num_sample)
+                                .top_n_ids(req)
                                 .await?
                                 .into_iter()
                                 .map(|(_, id)| id)

@@ -2,37 +2,56 @@ use serde::{Deserialize, Serialize};
 
 use super::VectorStoreError;
 
+/// A vector search request - used in the [`super::VectorSearchIndex`] trait.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct VectorSearchRequest {
+    /// The query to be embedded and used in similarity search.
     query: String,
+    /// The maximum number of samples that may be returned. If adding a similarity search threshold, you may receive less than the inputted number if there aren't enough results that satisfy the threshold.
     samples: u64,
+    /// The similarity search threshold.
+    threshold: Option<f64>,
     additional_params: Option<serde_json::Value>,
 }
 
 impl VectorSearchRequest {
+    /// Creates a [`VectorSearchRequestBuilder`] which you can use to instantiate this struct.
     pub fn builder() -> VectorSearchRequestBuilder {
         VectorSearchRequestBuilder::default()
     }
 
+    /// The query to be embedded and used in similarity search.
     pub fn query(&self) -> &str {
         &self.query
     }
 
-    pub fn samples(&self) -> &u64 {
-        &self.samples
+    /// The maximum number of samples that may be returned. If adding a similarity search threshold, you may receive less than the inputted number if there aren't enough results that satisfy the threshold.
+    pub fn samples(&self) -> u64 {
+        self.samples
+    }
+
+    /// The similarity search threshold.
+    pub fn threshold(&self) -> Option<f64> {
+        self.threshold
     }
 }
 
+/// The builder struct to instantiate [`VectorSearchRequest`].
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub struct VectorSearchRequestBuilder {
     query: Option<String>,
     samples: Option<u64>,
+    threshold: Option<f64>,
     additional_params: Option<serde_json::Value>,
 }
 
 impl VectorSearchRequestBuilder {
-    pub fn query(mut self, query: &str) -> Self {
-        self.query = Some(query.to_string());
+    /// Set the query (that will then be embedded )
+    pub fn query<T>(mut self, query: T) -> Self
+    where
+        T: Into<String>,
+    {
+        self.query = Some(query.into());
         self
     }
 
@@ -76,6 +95,7 @@ impl VectorSearchRequestBuilder {
         Ok(VectorSearchRequest {
             query,
             samples,
+            threshold: self.threshold,
             additional_params,
         })
     }

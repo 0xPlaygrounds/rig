@@ -1,4 +1,5 @@
 use futures::future::BoxFuture;
+use request::VectorSearchRequest;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde::Serialize;
@@ -51,39 +52,35 @@ pub trait VectorStoreIndex: Send + Sync {
     /// The result is a list of tuples of the form (score, id, document)
     fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, String, T)>, VectorStoreError>> + Send;
 
     /// Same as `top_n` but returns the document ids only.
     fn top_n_ids(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + Send;
 }
 
 pub type TopNResults = Result<Vec<(f64, String, Value)>, VectorStoreError>;
 
 pub trait VectorStoreIndexDyn: Send + Sync {
-    fn top_n<'a>(&'a self, query: &'a str, n: usize) -> BoxFuture<'a, TopNResults>;
+    fn top_n<'a>(&'a self, req: VectorSearchRequest) -> BoxFuture<'a, TopNResults>;
 
     fn top_n_ids<'a>(
         &'a self,
-        query: &'a str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>>;
 }
 
 impl<I: VectorStoreIndex> VectorStoreIndexDyn for I {
     fn top_n<'a>(
         &'a self,
-        query: &'a str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> BoxFuture<'a, Result<Vec<(f64, String, Value)>, VectorStoreError>> {
         Box::pin(async move {
             Ok(self
-                .top_n::<serde_json::Value>(query, n)
+                .top_n::<serde_json::Value>(req)
                 .await?
                 .into_iter()
                 .map(|(score, id, doc)| (score, id, prune_document(doc).unwrap_or_default()))
@@ -93,10 +90,9 @@ impl<I: VectorStoreIndex> VectorStoreIndexDyn for I {
 
     fn top_n_ids<'a>(
         &'a self,
-        query: &'a str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        Box::pin(self.top_n_ids(query, n))
+        Box::pin(self.top_n_ids(req))
     }
 }
 
