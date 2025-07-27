@@ -271,7 +271,7 @@ pub async fn send_compatible_streaming_request(
                                         yield Ok(streaming::RawStreamingChoice::Message(message.clone()))
                                 }
                                 StreamingItemDoneOutput {  item: Output::FunctionCall(func), .. } => {
-                                    tracing::warn!("Function call received: {func:?}");
+                                    tracing::debug!("Function call received: {func:?}");
                                     tool_calls.push(streaming::RawStreamingChoice::ToolCall { id: func.id.clone(), call_id: Some(func.call_id.clone()), name: func.name.clone(), arguments: func.arguments.clone() });
                                 }
 

@@ -881,13 +881,13 @@ impl completion::CompletionModel for ResponsesCompletionModel {
         let request = self.create_completion_request(completion_request)?;
         let request = serde_json::to_value(request)?;
 
-        tracing::warn!("Input: {}", serde_json::to_string_pretty(&request)?);
+        tracing::info!("Input: {}", serde_json::to_string_pretty(&request)?);
 
         let response = self.client.post("/responses").json(&request).send().await?;
 
         if response.status().is_success() {
             let t = response.text().await?;
-            tracing::warn!(target: "rig", "OpenAI response: {}", t);
+            tracing::info!(target: "rig", "OpenAI response: {}", t);
 
             let response = serde_json::from_str::<Self::Response>(&t)?;
             response.try_into()
