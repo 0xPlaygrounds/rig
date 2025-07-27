@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::VectorStoreError;
 
-/// A vector search request - used in the [`super::VectorSearchIndex`] trait.
+/// A vector search request - used in the [`super::VectorStoreIndex`] trait.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct VectorSearchRequest {
     /// The query to be embedded and used in similarity search.
