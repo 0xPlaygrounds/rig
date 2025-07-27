@@ -1,5 +1,5 @@
 use futures::future::BoxFuture;
-use request::VectorSearchRequest;
+pub use request::VectorSearchRequest;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde::Serialize;

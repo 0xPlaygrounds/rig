@@ -2,7 +2,9 @@ use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
     providers::cohere::{Client, EMBED_ENGLISH_V3},
-    vector_store::{VectorStoreIndex, in_memory_store::InMemoryVectorStore},
+    vector_store::{
+        VectorStoreIndex, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -58,13 +60,16 @@ async fn main() -> Result<(), anyhow::Error> {
     let vector_store =
         InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
 
+    let query = "Which instrument is found in the Nebulon Mountain Ranges?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()?;
+
     // Create vector store index
     let index = vector_store.index(search_model);
     let results = index
-        .top_n::<WordDefinition>(
-            "Which instrument is found in the Nebulon Mountain Ranges?",
-            1,
-        )
+        .top_n::<WordDefinition>(req)
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.word))
