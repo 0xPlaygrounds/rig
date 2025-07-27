@@ -1,9 +1,8 @@
 //! The streaming module for the OpenAI Responses API.
 //! Please see the `openai_streaming` or `openai_streaming_with_tools` example for more practical usage.
 use crate::completion::CompletionError;
-use crate::message::Text;
 use crate::providers::openai::responses_api::{
-    AssistantContent, ReasoningSummary, ResponsesCompletionModel, ResponsesUsage,
+    ReasoningSummary, ResponsesCompletionModel, ResponsesUsage,
 };
 use crate::streaming;
 use crate::streaming::RawStreamingChoice;
@@ -91,17 +90,17 @@ pub enum ItemChunkKind {
     #[serde(rename = "response.content_part.done")]
     ContentPartDone(ContentPartChunk),
     #[serde(rename = "response.output_text.delta")]
-    OutputTextDelta(OutputTextChunk),
+    OutputTextDelta(DeltaTextChunk),
     #[serde(rename = "response.output_text.done")]
     OutputTextDone(OutputTextChunk),
     #[serde(rename = "response.refusal.delta")]
-    RefusalDelta(OutputTextChunk),
+    RefusalDelta(DeltaTextChunk),
     #[serde(rename = "response.refusal.done")]
-    RefusalDone(OutputTextChunk),
+    RefusalDone(RefusalTextChunk),
     #[serde(rename = "response.function_call_arguments.delta")]
-    FunctionCallArgsDelta(OutputTextChunk),
+    FunctionCallArgsDelta(DeltaTextChunk),
     #[serde(rename = "response.function_call_arguments.done")]
-    FunctionCallArgsDone(OutputTextChunk),
+    FunctionCallArgsDone(ArgsTextChunk),
     #[serde(rename = "response.reasoning_summary_part.added")]
     ReasoningSummaryPartAdded(SummaryPartChunk),
     #[serde(rename = "response.reasoning_summary_part.done")]
@@ -133,20 +132,31 @@ pub enum ContentPartChunkPart {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct OutputTextChunk {
+pub struct DeltaTextChunk {
     pub content_index: u64,
     pub sequence_number: u64,
-    #[serde(flatten)]
-    pub data: OutputTextChunkData,
+    pub delta: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(untagged)]
-pub enum OutputTextChunkData {
-    Delta { delta: String },
-    Text { text: String },
-    Refusal { refusal: String },
-    Arguments { arguments: serde_json::Value },
+pub struct OutputTextChunk {
+    pub content_index: u64,
+    pub sequence_number: u64,
+    pub text: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RefusalTextChunk {
+    pub content_index: u64,
+    pub sequence_number: u64,
+    pub refusal: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ArgsTextChunk {
+    pub content_index: u64,
+    pub sequence_number: u64,
+    pub arguments: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -160,7 +170,7 @@ pub struct SummaryPartChunk {
 pub struct SummaryTextChunk {
     pub summary_index: u64,
     pub sequence_number: u64,
-    pub part: OutputTextChunkData,
+    pub delta: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -262,14 +272,6 @@ pub async fn send_compatible_streaming_request(
                     match &chunk.data {
                         ItemChunkKind::OutputItemDone(message) => {
                             match message {
-                                StreamingItemDoneOutput {  item: Output::Message(message), .. } => {
-                                        let message = match message.content.first().unwrap() {
-                                            AssistantContent::OutputText(Text { text}) => text,
-                                            AssistantContent::Refusal { refusal } => refusal
-                                        };
-
-                                        yield Ok(streaming::RawStreamingChoice::Message(message.clone()))
-                                }
                                 StreamingItemDoneOutput {  item: Output::FunctionCall(func), .. } => {
                                     tracing::debug!("Function call received: {func:?}");
                                     tool_calls.push(streaming::RawStreamingChoice::ToolCall { id: func.id.clone(), call_id: Some(func.call_id.clone()), name: func.name.clone(), arguments: func.arguments.clone() });
@@ -286,14 +288,14 @@ pub async fn send_compatible_streaming_request(
                                         .join("\n");
                                     yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning })
                                 }
+                                _ => continue
                             }
                         }
                         ItemChunkKind::OutputTextDelta(delta) => {
-                            let OutputTextChunkData::Delta { ref delta } = delta.data else {
-                                panic!("Placeholder error!");
-                            };
-
-                            yield Ok(streaming::RawStreamingChoice::Message(delta.clone()))
+                            yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
+                        }
+                        ItemChunkKind::RefusalDelta(delta) => {
+                            yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
                         }
 
                         _ => { continue }
