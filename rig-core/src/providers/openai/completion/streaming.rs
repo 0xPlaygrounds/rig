@@ -130,6 +130,10 @@ pub async fn send_compatible_streaming_request(
 
                     let data = data.trim_start();
 
+                    if data == "[DONE]" {
+                        break
+                    }
+
                     // Partial data, split somewhere in the middle
                     if !line.ends_with("}") {
                         partial_data = Some(data.to_string());
