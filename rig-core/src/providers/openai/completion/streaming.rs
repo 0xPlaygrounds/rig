@@ -49,7 +49,7 @@ struct StreamingCompletionChunk {
     usage: Option<Usage>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage: Usage,
 }
@@ -129,6 +129,10 @@ pub async fn send_compatible_streaming_request(
                     };
 
                     let data = data.trim_start();
+
+                    if data == "[DONE]" {
+                        break
+                    }
 
                     // Partial data, split somewhere in the middle
                     if !line.ends_with("}") {

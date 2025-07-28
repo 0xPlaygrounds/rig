@@ -5,7 +5,7 @@ use crate::streaming::RawStreamingChoice;
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 #[derive(Debug, Deserialize)]
@@ -55,7 +55,7 @@ struct MessageEndDelta {
     usage: Option<Usage>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage: Option<Usage>,
 }

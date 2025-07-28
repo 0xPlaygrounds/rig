@@ -11,7 +11,7 @@ use super::{Client, responses_api::streaming::StreamingCompletionResponse};
 use super::{ImageUrl, InputAudio, SystemContent};
 use crate::completion::CompletionError;
 use crate::json_utils;
-use crate::message::{AudioMediaType, MessageError, Text};
+use crate::message::{AudioMediaType, Document, MessageError, Text};
 use crate::one_or_many::string_or_one_or_many;
 
 use crate::{OneOrMany, completion, message};
@@ -93,7 +93,7 @@ pub enum Role {
     System,
 }
 
-/// The type of content used in an [`InputItem`]. Addtionally holds data for each type of input content.
+/// The type of content used in an [`InputItem`]. Additionally holds data for each type of input content.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum InputContent {
@@ -212,6 +212,16 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                     }),
                                 });
                             }
+                        }
+                        // todo: should we ensure this takes into account file size?
+                        crate::message::UserContent::Document(Document { data, .. }) => {
+                            items.push(InputItem {
+                                role: Some(Role::User),
+                                input: InputContent::Message(Message::User {
+                                    content: OneOrMany::one(UserContent::InputText { text: data }),
+                                    name: None,
+                                }),
+                            })
                         }
                         _ => {
                             return Err(CompletionError::ProviderError(
@@ -881,13 +891,13 @@ impl completion::CompletionModel for ResponsesCompletionModel {
         let request = self.create_completion_request(completion_request)?;
         let request = serde_json::to_value(request)?;
 
-        tracing::warn!("Input: {}", serde_json::to_string_pretty(&request)?);
+        tracing::debug!("OpenAI input: {}", serde_json::to_string_pretty(&request)?);
 
         let response = self.client.post("/responses").json(&request).send().await?;
 
         if response.status().is_success() {
             let t = response.text().await?;
-            tracing::warn!(target: "rig", "OpenAI response: {}", t);
+            tracing::debug!(target: "rig", "OpenAI response: {}", t);
 
             let response = serde_json::from_str::<Self::Response>(&t)?;
             response.try_into()

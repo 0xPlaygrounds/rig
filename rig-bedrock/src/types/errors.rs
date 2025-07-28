@@ -1,3 +1,5 @@
+use std::fmt;
+
 use aws_sdk_bedrockruntime::config::http::HttpResponse;
 use aws_sdk_bedrockruntime::error::SdkError;
 use aws_sdk_bedrockruntime::operation::converse::ConverseError;
@@ -79,3 +81,21 @@ impl From<AwsSdkConverseStreamError> for CompletionError {
         CompletionError::ProviderError(error)
     }
 }
+
+#[derive(Debug)]
+pub struct TypeConversionError(String);
+
+impl TypeConversionError {
+    pub fn new(input: &str) -> Self {
+        Self(input.to_string())
+    }
+}
+
+impl fmt::Display for TypeConversionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = self.0.clone();
+        write!(f, "{message}")
+    }
+}
+
+impl std::error::Error for TypeConversionError {}

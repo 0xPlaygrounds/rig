@@ -1,4 +1,3 @@
-use aws_sdk_bedrockruntime::operation::converse::ConverseOutput;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig::{
@@ -6,14 +5,15 @@ use rig::{
     completion::CompletionError,
     message::{AssistantContent, Text, ToolCall, ToolFunction},
 };
+use serde::{Deserialize, Serialize};
 
 use crate::types::message::RigMessage;
 
-use super::json::AwsDocument;
+use super::{converse_output::InternalConverseOutput, json::AwsDocument};
 use rig::completion;
 
-#[derive(Clone)]
-pub struct AwsConverseOutput(pub ConverseOutput);
+#[derive(Clone, Deserialize, Serialize)]
+pub struct AwsConverseOutput(pub InternalConverseOutput);
 
 impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOutput> {
     type Error = CompletionError;
@@ -130,7 +130,10 @@ impl TryFrom<RigAssistantContent> for aws_bedrock::ContentBlock {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::assistant_content::RigAssistantContent;
+    use crate::types::{
+        assistant_content::RigAssistantContent, converse_output::InternalConverseOutput,
+        errors::TypeConversionError,
+    };
 
     use super::AwsConverseOutput;
     use aws_sdk_bedrockruntime::types as aws_bedrock;
@@ -150,6 +153,10 @@ mod tests {
                 .stop_reason(aws_bedrock::StopReason::EndTurn)
                 .build()
                 .unwrap();
+        let converse_output: Result<InternalConverseOutput, TypeConversionError> =
+            converse_output.try_into();
+        assert!(converse_output.is_ok());
+        let converse_output = converse_output.unwrap();
         let completion: Result<completion::CompletionResponse<AwsConverseOutput>, _> =
             AwsConverseOutput(converse_output).try_into();
         assert!(completion.is_ok());

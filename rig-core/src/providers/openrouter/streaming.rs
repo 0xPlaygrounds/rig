@@ -93,7 +93,7 @@ pub struct DeltaResponse {
     pub native_finish_reason: Option<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct FinalCompletionResponse {
     pub usage: ResponseUsage,
 }

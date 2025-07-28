@@ -98,12 +98,12 @@ pub struct ChatChoice {
     pub index: Option<usize>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ModelsResponse {
     data: Vec<ModelInfo>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ModelInfo {
     id: String,
 }
