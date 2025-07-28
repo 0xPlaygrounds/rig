@@ -38,6 +38,7 @@ base64 = { workspace = true }
 as-any = { workspace = true }
 rmcp = { version = "0.3", optional = true, features = ["client"] }
 url = { workspace = true }
+async-trait = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -147,3 +148,6 @@ required-features = ["derive"]
 [[example]]
 name = "rmcp"
 required-features = ["rmcp"]
+
+[[example]]
+name = "request_hook"
