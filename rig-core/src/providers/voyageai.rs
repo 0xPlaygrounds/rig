@@ -1,6 +1,4 @@
-use std::error::Error;
-
-use crate::client::{EmbeddingsClient, ProviderClient};
+use crate::client::{ClientBuilderError, EmbeddingsClient, ProviderClient};
 use crate::embeddings::EmbeddingError;
 use crate::{embeddings, impl_conversion_traits};
 use serde::Deserialize;
@@ -36,7 +34,7 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let http_client = if let Some(http_client) = self.http_client {
             http_client
         } else {

@@ -9,13 +9,12 @@
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
 
-use std::error::Error;
-
 use super::openai::{TranscriptionResponse, send_compatible_streaming_request};
 
 use crate::json_utils::merge;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
+    client::ClientBuilderError,
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
     json_utils,
@@ -66,13 +65,11 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let http_client = if let Some(http_client) = self.http_client {
             http_client
         } else {
-            reqwest::Client::builder()
-                .build()
-                .expect("Azure OpenAI reqwest client should build")
+            reqwest::Client::builder().build()?
         };
 
         let api_version = self.api_version.unwrap_or(DEFAULT_API_VERSION);

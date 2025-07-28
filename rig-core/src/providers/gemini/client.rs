@@ -1,10 +1,9 @@
-use std::error::Error;
-
 use super::{
     completion::CompletionModel, embedding::EmbeddingModel, transcription::TranscriptionModel,
 };
 use crate::client::{
-    CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient, impl_conversion_traits,
+    ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient,
+    impl_conversion_traits,
 };
 use crate::{
     Embed,
@@ -45,7 +44,7 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let mut default_headers = reqwest::header::HeaderMap::new();
         default_headers.insert(
             reqwest::header::CONTENT_TYPE,

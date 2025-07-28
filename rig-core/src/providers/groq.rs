@@ -9,10 +9,9 @@
 //! let gpt4o = client.completion_model(groq::GPT_4O);
 //! ```
 use std::collections::HashMap;
-use std::error::Error;
 
 use super::openai::{CompletionResponse, StreamingToolCall, TranscriptionResponse, Usage};
-use crate::client::{CompletionClient, TranscriptionClient};
+use crate::client::{ClientBuilderError, CompletionClient, TranscriptionClient};
 use crate::json_utils::merge;
 use futures::StreamExt;
 
@@ -62,7 +61,7 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let http_client = if let Some(http_client) = self.http_client {
             http_client
         } else {

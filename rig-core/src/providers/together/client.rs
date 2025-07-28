@@ -1,7 +1,5 @@
-use std::error::Error;
-
 use super::{M2_BERT_80M_8K_RETRIEVAL, completion::CompletionModel, embedding::EmbeddingModel};
-use crate::client::{EmbeddingsClient, ProviderClient, impl_conversion_traits};
+use crate::client::{ClientBuilderError, EmbeddingsClient, ProviderClient, impl_conversion_traits};
 use rig::client::CompletionClient;
 
 // ================================================================
@@ -34,7 +32,7 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let mut default_headers = reqwest::header::HeaderMap::new();
         default_headers.insert(
             reqwest::header::CONTENT_TYPE,

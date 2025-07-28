@@ -38,7 +38,7 @@
 //! let agent = client.agent("llama3.2");
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
-use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient};
+use crate::client::{ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient};
 use crate::completion::Usage;
 use crate::json_utils::merge_inplace;
 use crate::streaming::RawStreamingChoice;
@@ -55,7 +55,6 @@ use futures::StreamExt;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::error::Error;
 use std::{convert::TryFrom, str::FromStr};
 // ---------- Main Client ----------
 
@@ -85,7 +84,7 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let http_client = if let Some(http_client) = self.http_client {
             http_client
         } else {

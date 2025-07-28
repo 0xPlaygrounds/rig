@@ -1,7 +1,5 @@
-use std::error::Error;
-
 use crate::{
-    client::{CompletionClient, ProviderClient},
+    client::{ClientBuilderError, CompletionClient, ProviderClient},
     impl_conversion_traits,
 };
 use serde::{Deserialize, Serialize};
@@ -38,7 +36,7 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let http_client = if let Some(http_client) = self.http_client {
             http_client
         } else {

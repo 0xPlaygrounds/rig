@@ -8,9 +8,6 @@
 //!
 //! let llama_3_1_sonar_small_online = client.completion_model(perplexity::LLAMA_3_1_SONAR_SMALL_ONLINE);
 //! ```
-
-use std::error::Error;
-
 use crate::{
     OneOrMany,
     agent::AgentBuilder,
@@ -19,7 +16,7 @@ use crate::{
     impl_conversion_traits, json_utils,
 };
 
-use crate::client::{CompletionClient, ProviderClient};
+use crate::client::{ClientBuilderError, CompletionClient, ProviderClient};
 use crate::completion::CompletionRequest;
 use crate::json_utils::merge;
 use crate::providers::openai;
@@ -59,13 +56,11 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let http_client = if let Some(http_client) = self.http_client {
             http_client
         } else {
-            reqwest::Client::builder()
-                .build()
-                .expect("Perplexity reqwest client should build")
+            reqwest::Client::builder().build()?
         };
 
         Ok(Client {

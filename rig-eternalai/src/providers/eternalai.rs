@@ -14,6 +14,7 @@ use crate::json_utils;
 use async_stream::stream;
 use rig::OneOrMany;
 use rig::agent::AgentBuilder;
+use rig::client::ClientBuilderError;
 use rig::completion::{CompletionError, CompletionRequest};
 use rig::embeddings::{EmbeddingError, EmbeddingsBuilder};
 use rig::extractor::ExtractorBuilder;
@@ -25,7 +26,6 @@ use rig::{Embed, completion, embeddings};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::error::Error;
 use std::ffi::c_uint;
 use std::time::Duration;
 
@@ -59,7 +59,7 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let http_client = if let Some(http_client) = self.http_client {
             http_client
         } else {

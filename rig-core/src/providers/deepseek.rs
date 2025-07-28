@@ -11,9 +11,8 @@
 
 use futures::StreamExt;
 use std::collections::HashMap;
-use std::error::Error;
 
-use crate::client::{CompletionClient, ProviderClient};
+use crate::client::{ClientBuilderError, CompletionClient, ProviderClient};
 use crate::json_utils::merge;
 use crate::message::Document;
 use crate::{
@@ -57,13 +56,11 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let http_client = if let Some(http_client) = self.http_client {
             http_client
         } else {
-            reqwest::Client::builder()
-                .build()
-                .expect("DeepSeek reqwest client should build")
+            reqwest::Client::builder().build()?
         };
 
         Ok(Client {

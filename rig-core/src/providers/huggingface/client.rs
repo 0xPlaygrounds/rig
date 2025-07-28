@@ -1,7 +1,7 @@
 use super::completion::CompletionModel;
 #[cfg(feature = "image")]
 use crate::client::ImageGenerationClient;
-use crate::client::{CompletionClient, ProviderClient, TranscriptionClient};
+use crate::client::{ClientBuilderError, CompletionClient, ProviderClient, TranscriptionClient};
 #[cfg(feature = "image")]
 use crate::image_generation::ImageGenerationError;
 #[cfg(feature = "image")]
@@ -9,7 +9,6 @@ use crate::providers::huggingface::image_generation::ImageGenerationModel;
 use crate::providers::huggingface::transcription::TranscriptionModel;
 use crate::transcription::TranscriptionError;
 use rig::client::impl_conversion_traits;
-use std::error::Error;
 use std::fmt::Display;
 
 // ================================================================
@@ -135,7 +134,7 @@ impl ClientBuilder {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let route = self.sub_provider.to_string();
         let base_url = format!("{}/{}", self.base_url, route).replace("//", "/");
 

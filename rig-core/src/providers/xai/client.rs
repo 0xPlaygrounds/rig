@@ -1,7 +1,5 @@
-use std::error::Error;
-
 use super::completion::CompletionModel;
-use crate::client::{CompletionClient, ProviderClient, impl_conversion_traits};
+use crate::client::{ClientBuilderError, CompletionClient, ProviderClient, impl_conversion_traits};
 
 // ================================================================
 // xAI Client
@@ -33,7 +31,7 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let mut default_headers = reqwest::header::HeaderMap::new();
         default_headers.insert(
             reqwest::header::CONTENT_TYPE,

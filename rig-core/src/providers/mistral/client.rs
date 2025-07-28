@@ -1,12 +1,10 @@
-use std::error::Error;
-
 use serde::{Deserialize, Serialize};
 
 use super::{
     CompletionModel,
     embedding::{EmbeddingModel, MISTRAL_EMBED},
 };
-use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient};
+use crate::client::{ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient};
 use crate::impl_conversion_traits;
 
 const MISTRAL_API_BASE_URL: &str = "https://api.mistral.ai";
@@ -36,7 +34,7 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let http_client = if let Some(http_client) = self.http_client {
             http_client
         } else {

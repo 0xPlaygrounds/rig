@@ -1,5 +1,3 @@
-use std::error::Error;
-
 #[cfg(feature = "audio")]
 use super::audio_generation::AudioGenerationModel;
 use super::embedding::{
@@ -10,7 +8,9 @@ use super::embedding::{
 use super::image_generation::ImageGenerationModel;
 use super::transcription::TranscriptionModel;
 
-use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient};
+use crate::client::{
+    ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient,
+};
 
 #[cfg(feature = "audio")]
 use crate::client::AudioGenerationClient;
@@ -49,7 +49,7 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let http_client = if let Some(http_client) = self.http_client {
             http_client
         } else {

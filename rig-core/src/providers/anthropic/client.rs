@@ -1,8 +1,8 @@
 //! Anthropic client api implementation
-use std::error::Error;
-
 use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
-use crate::client::{CompletionClient, ProviderClient, ProviderValue, impl_conversion_traits};
+use crate::client::{
+    ClientBuilderError, CompletionClient, ProviderClient, ProviderValue, impl_conversion_traits,
+};
 
 // ================================================================
 // Main Anthropic Client
@@ -65,11 +65,22 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Client, Box<dyn Error + Send + Sync>> {
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
         let mut default_headers = reqwest::header::HeaderMap::new();
-        default_headers.insert("anthropic-version", self.anthropic_version.parse()?);
+        default_headers.insert(
+            "anthropic-version",
+            self.anthropic_version
+                .parse()
+                .map_err(|_| ClientBuilderError::InvalidProperty("anthropic-version"))?,
+        );
         if let Some(betas) = self.anthropic_betas {
-            default_headers.insert("anthropic-beta", betas.join(",").parse()?);
+            default_headers.insert(
+                "anthropic-beta",
+                betas
+                    .join(",")
+                    .parse()
+                    .map_err(|_| ClientBuilderError::InvalidProperty("anthropic-beta"))?,
+            );
         };
 
         let http_client = if let Some(http_client) = self.http_client {
