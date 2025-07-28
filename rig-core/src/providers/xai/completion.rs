@@ -231,7 +231,7 @@ pub mod xai_api_types {
         pub arguments: String,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Serialize)]
     pub struct CompletionResponse {
         pub id: String,
         pub model: String,
@@ -242,14 +242,14 @@ pub mod xai_api_types {
         pub usage: Usage,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Serialize)]
     pub struct Choice {
         pub finish_reason: String,
         pub index: i32,
         pub message: Message,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Serialize)]
     pub struct Usage {
         pub completion_tokens: i32,
         pub prompt_tokens: i32,

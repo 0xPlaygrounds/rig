@@ -7,11 +7,6 @@ version = "0.0.0"
 [lib]
 crate-type = ["cdylib"]
 
-[profile.release]
-opt-level = "z"
-lto = true
-codegen-units = 1
-
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.15.1", features = [
     "worker",

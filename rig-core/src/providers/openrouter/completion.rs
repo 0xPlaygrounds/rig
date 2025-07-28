@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::client::{ApiErrorResponse, ApiResponse, Client, Usage};
 
@@ -29,7 +29,7 @@ pub const GEMINI_FLASH_2_0: &str = "google/gemini-2.0-flash-001";
 /// A openrouter completion object.
 ///
 /// For more information, see this link: <https://docs.openrouter.xyz/reference/create_chat_completion_v1_chat_completions_post>
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     pub id: String,
     pub object: String,
@@ -113,7 +113,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Choice {
     pub index: usize,
     pub native_finish_reason: Option<String>,

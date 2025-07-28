@@ -16,8 +16,6 @@ build-wasm:
         --target experimental-nodejs-module \
         --out-dir rig-wasm/pkg/src/generated \
         target/wasm32-unknown-unknown/release/rig_wasm.wasm
-    wasm-opt -Oz -o rig-wasm/pkg/src/generated/rig_wasm_bg.wasm rig-wasm/pkg/src/generated/rig_wasm_bg.wasm
-    wasm-strip rig-wasm/pkg/src/generated/rig_wasm_bg.wasm
 
 # build-wasm-full
 bwf:
