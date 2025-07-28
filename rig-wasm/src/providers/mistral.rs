@@ -2,15 +2,12 @@ use crate::completion::{CompletionRequest, Message};
 use crate::embedding::Embedding;
 use crate::tool::JsTool;
 use crate::vector_store::JsVectorStore;
-use crate::{
-    JsAgentOpts, JsModelOpts,
-    JsResult, ModelOpts, StringIterable,
-};
+use crate::{JsAgentOpts, JsModelOpts, JsResult, ModelOpts, StringIterable};
 use futures::StreamExt;
 use futures::TryStreamExt;
 use rig::agent::Agent;
-use rig::client::embeddings::EmbeddingsClient;
 use rig::client::CompletionClient;
+use rig::client::embeddings::EmbeddingsClient;
 use rig::completion::{Chat, CompletionModel, Prompt};
 use rig::embeddings::EmbeddingModel;
 use rig::streaming::StreamingPrompt;

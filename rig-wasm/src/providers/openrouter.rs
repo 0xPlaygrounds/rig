@@ -1,10 +1,7 @@
 use crate::completion::{CompletionRequest, Message};
 use crate::tool::JsTool;
 use crate::vector_store::JsVectorStore;
-use crate::{
-    JsAgentOpts, JsCompletionOpts, JsModelOpts,
-    JsResult, ModelOpts,
-};
+use crate::{JsAgentOpts, JsCompletionOpts, JsModelOpts, JsResult, ModelOpts};
 use futures::StreamExt;
 use futures::TryStreamExt;
 use rig::agent::Agent;
