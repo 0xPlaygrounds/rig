@@ -118,10 +118,14 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
 #[async_trait]
 pub trait PromptHook<M: CompletionModel>: Send + Sync {
     /// Called before the prompt is sent to the model
-    async fn on_completion_call(&self, message: &Message);
+    async fn on_completion_call(&self, prompt: &Message, history: &[Message]);
 
     /// Called after the prompt is sent to the model and a response is received
-    async fn on_completion_response(&self, response: &CompletionResponse<M::Response>);
+    async fn on_completion_response(
+        &self,
+        prompt: &Message,
+        response: &CompletionResponse<M::Response>,
+    );
 
     /// Called before a tool is invoked
     async fn on_tool_call(&self, tool_name: &str, args: &str);
@@ -209,11 +213,15 @@ impl<M: CompletionModel> PromptRequest<'_, Extended, M> {
             }
 
             if let Some(hook) = hook.as_ref() {
-                hook.on_completion_call(&prompt).await;
+                hook.on_completion_call(&prompt, &chat_history[..chat_history.len() - 1])
+                    .await;
             }
 
             let resp = agent
-                .completion(prompt, chat_history[..chat_history.len() - 1].to_vec())
+                .completion(
+                    prompt.clone(),
+                    chat_history[..chat_history.len() - 1].to_vec(),
+                )
                 .await?
                 .send()
                 .await?;
@@ -221,7 +229,7 @@ impl<M: CompletionModel> PromptRequest<'_, Extended, M> {
             usage += resp.usage;
 
             if let Some(hook) = hook.as_ref() {
-                hook.on_completion_response(&resp).await;
+                hook.on_completion_response(&prompt, &resp).await;
             }
 
             let (tool_calls, texts): (Vec<_>, Vec<_>) = resp

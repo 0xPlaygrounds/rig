@@ -25,11 +25,11 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
         );
     }
 
-    async fn on_completion_call(&self, message: &Message) {
+    async fn on_completion_call(&self, prompt: &Message, _history: &[Message]) {
         println!(
             "[Session {}] Sending prompt: {}",
             self.session_id,
-            match message {
+            match prompt {
                 Message::User { content } => content
                     .iter()
                     .filter_map(|c| {
@@ -54,7 +54,11 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
         );
     }
 
-    async fn on_completion_response(&self, response: &CompletionResponse<M::Response>) {
+    async fn on_completion_response(
+        &self,
+        _prompt: &Message,
+        response: &CompletionResponse<M::Response>,
+    ) {
         if let Ok(resp) = serde_json::to_string(&response.raw_response) {
             println!("[Session {}] Received response: {}", self.session_id, resp);
         } else {
