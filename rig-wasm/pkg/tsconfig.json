@@ -9,7 +9,8 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "typeRoots": ["src/generated"]
+    "typeRoots": ["src/generated", "node_modules/@types"],
+    "types": ["node"]
   },
   "paths": {
     "@types": ["./types.ts"]

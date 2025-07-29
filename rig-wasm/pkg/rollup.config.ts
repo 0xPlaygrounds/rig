@@ -3,6 +3,34 @@ import type { RollupOptions } from "rollup";
 import typescript from "@rollup/plugin-typescript";
 import dts from "rollup-plugin-dts";
 import wasm from "@rollup/plugin-wasm";
+import fs from "fs";
+import path from "path";
+
+const providersDir = "src/providers";
+const vectorStoresDir = "src/vector_stores";
+const coreDir = "src";
+
+const readDir = (inputDir: string): string[] => {
+  const files = fs
+    .readdirSync(inputDir)
+    .filter((file: string) => file.endsWith(".ts")) // or any other filter you need
+    .map((file: string) => path.join(inputDir, file));
+
+  return files;
+};
+
+const input: Record<string, string> = {};
+
+const dirs = [providersDir, vectorStoresDir, coreDir];
+
+for (const dir of dirs) {
+  for (const file of readDir(dir)) {
+    const name = path.basename(file, ".ts");
+    input[name] = file;
+  }
+}
+
+console.log(input);
 
 const config: RollupOptions[] = [
   // ESM build
@@ -14,17 +42,7 @@ const config: RollupOptions[] = [
       "node:process",
       "util",
     ],
-    input: {
-      index: "./src/index.ts",
-      openai: "./src/providers/openai.ts",
-      gemini: "./src/providers/gemini.ts",
-      anthropic: "./src/providers/anthropic.ts",
-      types: "./src/types.ts",
-      qdrant: "./src/vector_stores/qdrant.ts",
-      vector_store: "./src/vector_stores/vector_store.ts",
-      streaming: "./src/streaming.ts",
-      utils: "./src/utils.ts",
-    },
+    input: input,
     output: {
       dir: "out/esm",
       format: "esm",
