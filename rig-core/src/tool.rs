@@ -185,6 +185,13 @@ impl<T: Tool> ToolDyn for T {
     }
 }
 
+#[deprecated(
+    since = "0.16.0",
+    note = "Since the official Rust MCP SDK (`rmcp`) has been added, the original Rig MCP integration with `mcp-core` has now been deprecated.
+Please migrate over to the new integration - you can use the `rmcp` feature flag to do so.
+This integration will be fully removed (and replaced with the `rmcp` one) by 0.18.0 at the earliest.
+A guide can be found at `http://docs.rig.rs`, Rig's official docsite."
+)]
 #[cfg(feature = "mcp")]
 pub mod mcp {
     use crate::completion::ToolDefinition;
