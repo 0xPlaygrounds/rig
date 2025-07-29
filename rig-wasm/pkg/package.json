@@ -11,7 +11,7 @@
     "out/"
   ],
   "scripts": {
-    "build": "rollup -c && cp src/generated/rig_wasm_bg.wasm out/esm/generated && cp src/generated/rig_wasm_bg.wasm.d.ts out/esm/generated",
+    "build": "./scripts/build.sh",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -46,21 +46,21 @@
       "require": "./out/cjs/index.cjs",
       "types": "./out/esm/index.d.ts"
     },
-    "./anthropic": {
-      "import": "./out/esm/anthropic.js",
-      "types": "./out/esm/providers/anthropic.d.ts"
+    "./index": {
+      "import": "./out/esm/index.js",
+      "types": "./out/esm/index.d.ts"
     },
-    "./gemini": {
-      "import": "./out/esm/gemini.js",
-      "types": "./out/esm/providers/gemini.d.ts"
+    "./streaming": {
+      "import": "./out/esm/streaming.js",
+      "types": "./out/esm/streaming.d.ts"
     },
-    "./groq": {
-      "import": "./out/esm/groq.js",
-      "types": "./out/esm/providers/groq.d.ts"
+    "./types": {
+      "import": "./out/esm/types.js",
+      "types": "./out/esm/types.d.ts"
     },
-    "./openai": {
-      "import": "./out/esm/openai.js",
-      "types": "./out/esm/providers/openai.d.ts"
+    "./utils": {
+      "import": "./out/esm/utils.js",
+      "types": "./out/esm/utils.d.ts"
     },
     "./qdrant": {
       "import": "./out/esm/qdrant.js",
@@ -70,17 +70,77 @@
       "import": "./out/esm/vector_store.js",
       "types": "./out/esm/vector_stores/vector_store.d.ts"
     },
-    "./streaming": {
-      "import": "./out/esm/streaming.js",
-      "types": "./out/esm/streaming.d.ts"
+    "./anthropic": {
+      "import": "./out/esm/anthropic.js",
+      "types": "./out/esm/providers/anthropic.d.ts"
     },
-    "./utils": {
-      "import": "./out/esm/utils.js",
-      "types": "./out/esm/utils.d.ts"
+    "./cohere": {
+      "import": "./out/esm/cohere.js",
+      "types": "./out/esm/providers/cohere.d.ts"
     },
-    "./types": {
-      "import": "./out/esm/types.js",
-      "types": "./out/esm/types.d.ts"
+    "./deepseek": {
+      "import": "./out/esm/deepseek.js",
+      "types": "./out/esm/providers/deepseek.d.ts"
+    },
+    "./galadriel": {
+      "import": "./out/esm/galadriel.js",
+      "types": "./out/esm/providers/galadriel.d.ts"
+    },
+    "./gemini": {
+      "import": "./out/esm/gemini.js",
+      "types": "./out/esm/providers/gemini.d.ts"
+    },
+    "./groq": {
+      "import": "./out/esm/groq.js",
+      "types": "./out/esm/providers/groq.d.ts"
+    },
+    "./huggingface": {
+      "import": "./out/esm/huggingface.js",
+      "types": "./out/esm/providers/huggingface.d.ts"
+    },
+    "./hyperbolic": {
+      "import": "./out/esm/hyperbolic.js",
+      "types": "./out/esm/providers/hyperbolic.d.ts"
+    },
+    "./mira": {
+      "import": "./out/esm/mira.js",
+      "types": "./out/esm/providers/mira.d.ts"
+    },
+    "./mistral": {
+      "import": "./out/esm/mistral.js",
+      "types": "./out/esm/providers/mistral.d.ts"
+    },
+    "./moonshot": {
+      "import": "./out/esm/moonshot.js",
+      "types": "./out/esm/providers/moonshot.d.ts"
+    },
+    "./ollama": {
+      "import": "./out/esm/ollama.js",
+      "types": "./out/esm/providers/ollama.d.ts"
+    },
+    "./openai": {
+      "import": "./out/esm/openai.js",
+      "types": "./out/esm/providers/openai.d.ts"
+    },
+    "./openrouter": {
+      "import": "./out/esm/openrouter.js",
+      "types": "./out/esm/providers/openrouter.d.ts"
+    },
+    "./perplexity": {
+      "import": "./out/esm/perplexity.js",
+      "types": "./out/esm/providers/perplexity.d.ts"
+    },
+    "./together": {
+      "import": "./out/esm/together.js",
+      "types": "./out/esm/providers/together.d.ts"
+    },
+    "./voyageai": {
+      "import": "./out/esm/voyageai.js",
+      "types": "./out/esm/providers/voyageai.d.ts"
+    },
+    "./xai": {
+      "import": "./out/esm/xai.js",
+      "types": "./out/esm/providers/xai.d.ts"
     }
   }
 }
