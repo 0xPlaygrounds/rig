@@ -18,6 +18,13 @@ use serde_json::json;
 // ================================================================
 // Anthropic Completion API
 // ================================================================
+
+/// `claude-opus-4-0` completion model
+pub const CLAUDE_4_OPUS: &str = "claude-opus-4-0";
+
+/// `claude-sonnet-4-0` completion model
+pub const CLAUDE_4_SONNET: &str = "claude-sonnet-4-0";
+
 /// `claude-3-7-sonnet-latest` completion model
 pub const CLAUDE_3_7_SONNET: &str = "claude-3-7-sonnet-latest";
 
@@ -542,7 +549,11 @@ impl CompletionModel {
 ///
 /// Dev Note: This is really bad design, I'm not sure why they did it like this..
 fn calculate_max_tokens(model: &str) -> Option<u64> {
-    if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
+    if model.starts_with("claude-opus-4") {
+        Some(32000)
+    } else if model.starts_with("claude-sonnet-4") || model.starts_with("claude-3-7-sonnet") {
+        Some(64000)
+    } else if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
         Some(8192)
     } else if model.starts_with("claude-3-opus")
         || model.starts_with("claude-3-sonnet")
