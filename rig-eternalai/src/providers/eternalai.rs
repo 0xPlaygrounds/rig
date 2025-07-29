@@ -14,6 +14,7 @@ use crate::json_utils;
 use async_stream::stream;
 use rig::OneOrMany;
 use rig::agent::AgentBuilder;
+use rig::client::ClientBuilderError;
 use rig::completion::{CompletionError, CompletionRequest};
 use rig::embeddings::{EmbeddingError, EmbeddingsBuilder};
 use rig::extractor::ExtractorBuilder;
@@ -33,37 +34,79 @@ use std::time::Duration;
 // ================================================================
 const ETERNALAI_API_BASE_URL: &str = "https://api.eternalai.org/v1";
 
+pub struct ClientBuilder<'a> {
+    api_key: &'a str,
+    base_url: &'a str,
+    http_client: Option<reqwest::Client>,
+}
+
+impl<'a> ClientBuilder<'a> {
+    pub fn new(api_key: &'a str) -> Self {
+        Self {
+            api_key,
+            base_url: ETERNALAI_API_BASE_URL,
+            http_client: None,
+        }
+    }
+
+    pub fn base_url(mut self, base_url: &'a str) -> Self {
+        self.base_url = base_url;
+        self
+    }
+
+    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = Some(client);
+        self
+    }
+
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
+        let http_client = if let Some(http_client) = self.http_client {
+            http_client
+        } else {
+            reqwest::Client::builder()
+                .timeout(Duration::from_secs(120))
+                .build()?
+        };
+
+        Ok(Client {
+            api_key: self.api_key.to_string(),
+            base_url: self.base_url.to_string(),
+            http_client,
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct Client {
+    api_key: String,
     base_url: String,
     http_client: reqwest::Client,
 }
 
 impl Client {
-    /// Create a new EternalAI client with the given API key.
-    pub fn new(api_key: &str) -> Self {
-        Self::from_url(api_key, ETERNALAI_API_BASE_URL)
+    /// Create a new EternalAI client builder.
+    ///
+    /// # Example
+    /// ```
+    /// use rig_eternalai::providers::eternalai::{ClientBuilder, self};
+    ///
+    /// // Initialize the EternalAI client
+    /// let eternalai = Client::builder("your-eternalai-api-key")
+    ///    .build()
+    /// ```
+    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
+        ClientBuilder::new(api_key)
     }
 
-    /// Create a new EternalAI client with the given API key and base API URL.
-    pub fn from_url(api_key: &str, base_url: &str) -> Self {
-        Self {
-            base_url: base_url.to_string(),
-            http_client: reqwest::Client::builder()
-                .default_headers({
-                    let mut headers = reqwest::header::HeaderMap::new();
-                    headers.insert(
-                        "Authorization",
-                        format!("Bearer {api_key}")
-                            .parse()
-                            .expect("Bearer token should parse"),
-                    );
-                    headers
-                })
-                .timeout(Duration::from_secs(120))
-                .build()
-                .expect("EternalAI reqwest client should build"),
-        }
+    /// Create a new EternalAI client. For more control, use the `builder` method.
+    ///
+    /// # Panics
+    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
+    pub fn new(api_key: &str) -> Self {
+        Self::builder(api_key)
+            .base_url(ETERNALAI_API_BASE_URL)
+            .build()
+            .expect("EternalAI client should build")
     }
 
     /// Create a new EternalAI client from the `ETERNALAI_API_KEY` environment variable.
@@ -73,9 +116,9 @@ impl Client {
         Self::new(&api_key)
     }
 
-    fn post(&self, path: &str) -> reqwest::RequestBuilder {
+    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url)
+        self.http_client.post(url).bearer_auth(&self.api_key)
     }
 
     /// Create an embedding model with the given name.
