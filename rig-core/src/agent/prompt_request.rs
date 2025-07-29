@@ -136,6 +136,7 @@ impl PromptResponse {
 }
 
 impl<M: CompletionModel> PromptRequest<'_, Extended, M> {
+    #[tracing::instrument(skip(self), fields(agent_name = self.agent.name()))]
     async fn send(self) -> Result<PromptResponse, PromptError> {
         let agent = self.agent;
         let chat_history = if let Some(history) = self.chat_history {
