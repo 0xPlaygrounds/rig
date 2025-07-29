@@ -189,10 +189,10 @@ impl DeepSeekAgent {
 
 /// The DeepSeek completions chat API.
 #[wasm_bindgen]
-pub struct DeepSeekCompletionsCompletionModel(rig::providers::deepseek::CompletionModel);
+pub struct DeepSeekCompletionsModel(rig::providers::deepseek::CompletionModel);
 
 #[wasm_bindgen]
-impl DeepSeekCompletionsCompletionModel {
+impl DeepSeekCompletionsModel {
     #[wasm_bindgen(constructor)]
     pub fn new(opts: crate::JsModelOpts) -> JsResult<Self> {
         let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)

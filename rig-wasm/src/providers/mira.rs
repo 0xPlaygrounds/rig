@@ -191,10 +191,10 @@ impl MiraAgent {
 
 /// The Mira completions chat API.
 #[wasm_bindgen]
-pub struct MiraCompletionsCompletionModel(rig::providers::mira::CompletionModel);
+pub struct MiraCompletionsModel(rig::providers::mira::CompletionModel);
 
 #[wasm_bindgen]
-impl MiraCompletionsCompletionModel {
+impl MiraCompletionsModel {
     #[wasm_bindgen(constructor)]
     pub fn new(opts: crate::JsModelOpts) -> JsResult<Self> {
         let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)

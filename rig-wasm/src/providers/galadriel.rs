@@ -194,10 +194,10 @@ impl GaladrielAgent {
 
 /// The Galadriel completions chat API.
 #[wasm_bindgen]
-pub struct GaladrielCompletionsCompletionModel(rig::providers::galadriel::CompletionModel);
+pub struct GaladrielCompletionsModel(rig::providers::galadriel::CompletionModel);
 
 #[wasm_bindgen]
-impl GaladrielCompletionsCompletionModel {
+impl GaladrielCompletionsModel {
     #[wasm_bindgen(constructor)]
     pub fn new(opts: crate::JsModelOpts) -> JsResult<Self> {
         let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)

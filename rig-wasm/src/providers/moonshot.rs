@@ -189,10 +189,10 @@ impl MoonshotAgent {
 
 /// The Moonshot completions chat API.
 #[wasm_bindgen]
-pub struct MoonshotCompletionsCompletionModel(rig::providers::moonshot::CompletionModel);
+pub struct MoonshotCompletionsModel(rig::providers::moonshot::CompletionModel);
 
 #[wasm_bindgen]
-impl MoonshotCompletionsCompletionModel {
+impl MoonshotCompletionsModel {
     #[wasm_bindgen(constructor)]
     pub fn new(opts: crate::JsModelOpts) -> JsResult<Self> {
         let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)

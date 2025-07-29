@@ -184,10 +184,10 @@ impl OllamaAgent {
 
 /// The Ollama completions chat API.
 #[wasm_bindgen]
-pub struct OllamaCompletionsCompletionModel(rig::providers::ollama::CompletionModel);
+pub struct OllamaCompletionsModel(rig::providers::ollama::CompletionModel);
 
 #[wasm_bindgen]
-impl OllamaCompletionsCompletionModel {
+impl OllamaCompletionsModel {
     #[wasm_bindgen(constructor)]
     pub fn new(opts: crate::JsModelOpts) -> JsResult<Self> {
         let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)

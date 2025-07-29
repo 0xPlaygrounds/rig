@@ -192,10 +192,10 @@ impl HyperbolicAgent {
 
 /// The Hyperbolic completions chat API.
 #[wasm_bindgen]
-pub struct HyperbolicCompletionsCompletionModel(rig::providers::hyperbolic::CompletionModel);
+pub struct HyperbolicCompletionsModel(rig::providers::hyperbolic::CompletionModel);
 
 #[wasm_bindgen]
-impl HyperbolicCompletionsCompletionModel {
+impl HyperbolicCompletionsModel {
     #[wasm_bindgen(constructor)]
     pub fn new(opts: crate::JsModelOpts) -> JsResult<Self> {
         let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)

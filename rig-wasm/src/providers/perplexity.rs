@@ -189,10 +189,10 @@ impl PerplexityAgent {
 
 /// The Perplexity completions chat API.
 #[wasm_bindgen]
-pub struct PerplexityCompletionsCompletionModel(rig::providers::perplexity::CompletionModel);
+pub struct PerplexityCompletionsModel(rig::providers::perplexity::CompletionModel);
 
 #[wasm_bindgen]
-impl PerplexityCompletionsCompletionModel {
+impl PerplexityCompletionsModel {
     #[wasm_bindgen(constructor)]
     pub fn new(opts: crate::JsModelOpts) -> JsResult<Self> {
         let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)

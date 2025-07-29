@@ -1,7 +1,7 @@
 {
   "name": "rig-wasm",
-  "version": "0.0.0",
-  "description": "A WebAssembly-based port of the Rust AI agentic framework Rig.",
+  "version": "0.1.0",
+  "description": "A TS and WebAssembly-based port of the Rust agentic AI framework Rig.",
   "type": "module",
   "main": "out/cjs/index.cjs",
   "module": "out/esm/index.js",
