@@ -16,7 +16,7 @@ try {
     modelName: "text-embedding-3-small",
   });
 
-  let embedding = await model.embed_text("hello world!");
+  let embedding = await model.embedText("hello world!");
   console.log(`Resulting embedding length: ${embedding.vec.length}`);
   console.log(`Embedded text: ${embedding.document}`);
   console.log(util.inspect(embedding.vec));

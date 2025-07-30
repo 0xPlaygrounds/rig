@@ -46,7 +46,7 @@ export class InMemoryVectorStore implements VectorStore {
   }
 
   async topN(req: VectorSearchOpts): Promise<TopNResult[]> {
-    const queryEmbedding = await this.model.embed_text(req.query);
+    const queryEmbedding = await this.model.embedText(req.query);
     return this.store
       .map((entry) => {
         const sim = cosineSim(queryEmbedding.vec, entry.embedding.vec);
@@ -57,7 +57,7 @@ export class InMemoryVectorStore implements VectorStore {
   }
 
   async topNIds(req: VectorSearchOpts): Promise<TopNIdsResult[]> {
-    const queryEmbedding = await this.model.embed_text(req.query);
+    const queryEmbedding = await this.model.embedText(req.query);
     return this.store
       .map((entry) => {
         const sim = cosineSim(queryEmbedding.vec, entry.embedding.vec);

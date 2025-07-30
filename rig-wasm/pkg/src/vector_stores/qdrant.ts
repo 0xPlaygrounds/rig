@@ -95,7 +95,7 @@ export class QdrantAdapter {
   async topN(opts: VectorSearchOpts): Promise<SearchResult[]> {
     await this.loadClient();
 
-    const embedding = await this.embeddingModel.embed_text(opts.query);
+    const embedding = await this.embeddingModel.embedText(opts.query);
 
     const result = await this.client.search(this.collectionName, {
       vector: embedding.vec,
@@ -112,7 +112,7 @@ export class QdrantAdapter {
   async topNIds(opts: VectorSearchOpts): Promise<SearchResult[]> {
     await this.loadClient();
 
-    const embedding = await this.embeddingModel.embed_text(opts.query);
+    const embedding = await this.embeddingModel.embedText(opts.query);
 
     const result = await this.client.search(this.collectionName, {
       vector: embedding.vec,

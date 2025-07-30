@@ -20,6 +20,7 @@ impl VoyageAIEmbeddingModel {
         Ok(Self(model))
     }
 
+    #[wasm_bindgen(js_name = "embedText")]
     pub async fn embed_text(&self, text: String) -> JsResult<Embedding> {
         let res = self
             .0
@@ -30,6 +31,7 @@ impl VoyageAIEmbeddingModel {
         Ok(Embedding::from(res))
     }
 
+    #[wasm_bindgen(js_name = "embedTexts")]
     pub async fn embed_texts(&self, iter: StringIterable) -> JsResult<Vec<Embedding>> {
         let arr = js_sys::Array::from(&iter.obj);
 

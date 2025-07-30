@@ -58,8 +58,8 @@ export type EmbeddedDocument = string;
 export type DocumentId = string;
 
 export interface CanEmbed {
-  embed_text: (query: string) => Promise<Embedding>;
-  embed_texts: (texts: Iterable<string>) => Promise<Embedding[]>;
+  embedText: (query: string) => Promise<Embedding>;
+  embedTexts: (texts: Iterable<string>) => Promise<Embedding[]>;
 }
 
 export type Embedding = {
