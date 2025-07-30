@@ -2,7 +2,7 @@
 edition = "2024"
 name = "rig-wasm"
 publish = false
-version = "0.0.0"
+version = "0.1.0"
 
 [lib]
 crate-type = ["cdylib"]

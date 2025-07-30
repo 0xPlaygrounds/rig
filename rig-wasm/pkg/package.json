@@ -15,9 +15,10 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
-    "wasm",
+    "llm",
     "rig",
-    "typescript"
+    "agentic",
+    "ai"
   ],
   "author": "Joshua Mo",
   "license": "ISC",
