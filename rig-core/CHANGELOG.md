@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.15.1...rig-core-v0.16.0) - 2025-07-30
+
+### Added
+
+- *(rig-819)* vector store index request struct ([#623](https://github.com/0xPlaygrounds/rig/pull/623))
+- *(rig-830)* map documents to text for OpenAI Response API ([#622](https://github.com/0xPlaygrounds/rig/pull/622))
+- Add GROK_4 model constant to xAI provider ([#614](https://github.com/0xPlaygrounds/rig/pull/614))
+- *(rig-812)* yield final response with total usage metrics from streaming completion response in stream impl ([#584](https://github.com/0xPlaygrounds/rig/pull/584))
+- *(rig-799)* add support for official rust sdk for mcp ([#553](https://github.com/0xPlaygrounds/rig/pull/553))
+- *(rig-823)* impl size hint for OneOrMany types ([#606](https://github.com/0xPlaygrounds/rig/pull/606))
+- *(rig-784)* thinking/reasoning ([#557](https://github.com/0xPlaygrounds/rig/pull/557))
+- *(rig-821)* add tracing when submit tool is never called in extractor ([#603](https://github.com/0xPlaygrounds/rig/pull/603))
+- make PromptResponse public ([#593](https://github.com/0xPlaygrounds/rig/pull/593))
+
+### Fixed
+
+- *(rig-824)* ToolResultContent should be serde-tagged ([#621](https://github.com/0xPlaygrounds/rig/pull/621))
+- *(rig-828)* support done message on openai streaming completions api ([#619](https://github.com/0xPlaygrounds/rig/pull/619))
+- *(rig-827)* openai responses streaming api placeholder panic ([#620](https://github.com/0xPlaygrounds/rig/pull/620))
+- *(rig-834)* erroeneous tracing log level ([#626](https://github.com/0xPlaygrounds/rig/pull/626))
+- *(rig-820)* ensure call ID is properly propagated ([#601](https://github.com/0xPlaygrounds/rig/pull/601))
+
+### Other
+
+- Add new claude models and default max tokens ([#634](https://github.com/0xPlaygrounds/rig/pull/634))
+- *(rig-836)* deprecate mcp-core integration ([#631](https://github.com/0xPlaygrounds/rig/pull/631))
+- Refactor clients with builder pattern ([#615](https://github.com/0xPlaygrounds/rig/pull/615))
+- change log level to debug for input/output ([#627](https://github.com/0xPlaygrounds/rig/pull/627))
+- fix spelling issue  ([#607](https://github.com/0xPlaygrounds/rig/pull/607))
+
 ## [0.15.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.15.0...rig-core-v0.15.1) - 2025-07-16
 
 ### Fixed
