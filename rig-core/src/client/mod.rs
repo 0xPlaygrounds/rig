@@ -12,6 +12,20 @@ pub mod transcription;
 #[cfg(feature = "derive")]
 pub use rig_derive::ProviderClient;
 use std::fmt::Debug;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum ClientBuilderError {
+    #[error("reqwest error: {0}")]
+    HttpError(
+        #[from]
+        #[source]
+        reqwest::Error,
+    ),
+    #[error("invalid property: {0}")]
+    InvalidProperty(&'static str),
+}
 
 /// The base ProviderClient trait, facilitates conversion between client types
 /// and creating a client from the environment.

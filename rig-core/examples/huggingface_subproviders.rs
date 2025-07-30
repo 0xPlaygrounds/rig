@@ -30,6 +30,7 @@ fn client(sub_provider: SubProvider) -> providers::huggingface::Client {
     providers::huggingface::ClientBuilder::new(api_key)
         .sub_provider(sub_provider)
         .build()
+        .expect("Failed to build client")
 }
 
 /// Create a partial huggingface agent (deepseek R1)

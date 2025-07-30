@@ -7,7 +7,7 @@
 use neo4rs::{Graph, Query};
 use rig::{
     embeddings::{Embedding, EmbeddingModel},
-    vector_store::{VectorStoreError, VectorStoreIndex},
+    vector_store::{VectorStoreError, VectorStoreIndex, request::VectorSearchRequest},
 };
 use serde::{Deserialize, Serialize, de::Error};
 
@@ -222,11 +222,10 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for Neo4jVec
     ///
     async fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = self.embedding_model.embed_text(query).await?;
-        let query = self.build_vector_search_query(prompt_embedding, true, n);
+        let prompt_embedding = self.embedding_model.embed_text(req.query()).await?;
+        let query = self.build_vector_search_query(prompt_embedding, true, req.samples() as usize);
 
         let rows = Neo4jClient::execute_and_collect::<RowResultNode<T>>(&self.graph, query).await?;
 
@@ -242,12 +241,11 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for Neo4jVec
     /// the full nodes and embeddings to the client.
     async fn top_n_ids(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = self.embedding_model.embed_text(query).await?;
+        let prompt_embedding = self.embedding_model.embed_text(req.query()).await?;
 
-        let query = self.build_vector_search_query(prompt_embedding, false, n);
+        let query = self.build_vector_search_query(prompt_embedding, false, req.samples() as usize);
 
         let rows = Neo4jClient::execute_and_collect::<RowResult>(&self.graph, query).await?;
 

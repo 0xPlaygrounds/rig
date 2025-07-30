@@ -3,7 +3,9 @@ use std::fmt::Display;
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
-    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
+    vector_store::{
+        InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
+    },
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -153,12 +155,21 @@ impl<Model: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<Model> {
     /// The result is a list of tuples of the form (score, id, document)
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+        if req.samples() > i64::MAX as u64 {
+            return Err(VectorStoreError::DatastoreError(
+                format!(
+                    "The maximum amount of samples to return with the `rig` Postgres integration cannot be larger than {}",
+                    i64::MAX
+                )
+                .into(),
+            ));
+        }
+
         let embedded_query: pgvector::Vector = self
             .model
-            .embed_text(query)
+            .embed_text(req.query())
             .await?
             .vec
             .iter()
@@ -168,7 +179,7 @@ impl<Model: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<Model> {
 
         let rows: Vec<SearchResult> = sqlx::query_as(self.search_query_full().as_str())
             .bind(embedded_query)
-            .bind(n as i64)
+            .bind(req.samples() as i64)
             .fetch_all(&self.pg_pool)
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
@@ -184,12 +195,20 @@ impl<Model: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<Model> {
     /// Same as `top_n` but returns the document ids only.
     async fn top_n_ids(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+        if req.samples() > i64::MAX as u64 {
+            return Err(VectorStoreError::DatastoreError(
+                format!(
+                    "The maximum amount of samples to return with the `rig` Postgres integration cannot be larger than {}",
+                    i64::MAX
+                )
+                .into(),
+            ));
+        }
         let embedded_query: pgvector::Vector = self
             .model
-            .embed_text(query)
+            .embed_text(req.query())
             .await?
             .vec
             .iter()
@@ -199,7 +218,7 @@ impl<Model: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<Model> {
 
         let rows: Vec<SearchResultOnlyId> = sqlx::query_as(self.search_query_only_ids().as_str())
             .bind(embedded_query)
-            .bind(n as i64)
+            .bind(req.samples() as i64)
             .fetch_all(&self.pg_pool)
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;

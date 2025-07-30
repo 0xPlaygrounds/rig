@@ -13,13 +13,13 @@ use qdrant_client::{
     Qdrant,
     qdrant::{CreateCollectionBuilder, Distance, QueryPointsBuilder, VectorParamsBuilder},
 };
-use rig::client::EmbeddingsClient;
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
+use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
 use rig_qdrant::QdrantVectorStore;
 
 #[derive(Embed, serde::Deserialize, serde::Serialize, Debug)]
@@ -78,9 +78,13 @@ async fn main() -> Result<(), anyhow::Error> {
         .await
         .map_err(|err| anyhow!("Couldn't insert documents: {err}"))?;
 
-    let results = vector_store
-        .top_n::<Word>("What is a linglingdong?", 1)
-        .await?;
+    let query = "What is a linglingdong?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()?;
+
+    let results = vector_store.top_n::<Word>(req).await?;
 
     println!("Results: {results:?}");
 

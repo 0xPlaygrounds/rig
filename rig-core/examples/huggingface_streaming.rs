@@ -21,8 +21,7 @@ async fn main() -> Result<(), anyhow::Error> {
 }
 
 async fn hf_inference(api_key: &str) -> Result<(), anyhow::Error> {
-    let agent = huggingface::ClientBuilder::new(api_key)
-        .build()
+    let agent = huggingface::Client::new(api_key)
         .agent("meta-llama/Llama-3.1-8B-Instruct")
         .preamble("Be precise and concise.")
         .temperature(0.5)
@@ -41,7 +40,7 @@ async fn hf_inference(api_key: &str) -> Result<(), anyhow::Error> {
 async fn together(api_key: &str) -> Result<(), anyhow::Error> {
     let agent = huggingface::ClientBuilder::new(api_key)
         .sub_provider(huggingface::SubProvider::Together)
-        .build()
+        .build()?
         .agent("deepseek-ai/DeepSeek-R1")
         .preamble("Be precise and concise.")
         .temperature(0.5)

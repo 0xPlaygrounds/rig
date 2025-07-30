@@ -8,8 +8,7 @@
 //!
 //! let moonshot_model = client.completion_model(moonshot::MOONSHOT_CHAT);
 //! ```
-
-use crate::client::{CompletionClient, ProviderClient};
+use crate::client::{ClientBuilderError, CompletionClient, ProviderClient};
 use crate::json_utils::merge;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
@@ -26,6 +25,46 @@ use serde_json::{Value, json};
 // Main Moonshot Client
 // ================================================================
 const MOONSHOT_API_BASE_URL: &str = "https://api.moonshot.cn/v1";
+
+pub struct ClientBuilder<'a> {
+    api_key: &'a str,
+    base_url: &'a str,
+    http_client: Option<reqwest::Client>,
+}
+
+impl<'a> ClientBuilder<'a> {
+    pub fn new(api_key: &'a str) -> Self {
+        Self {
+            api_key,
+            base_url: MOONSHOT_API_BASE_URL,
+            http_client: None,
+        }
+    }
+
+    pub fn base_url(mut self, base_url: &'a str) -> Self {
+        self.base_url = base_url;
+        self
+    }
+
+    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = Some(client);
+        self
+    }
+
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
+        let http_client = if let Some(http_client) = self.http_client {
+            http_client
+        } else {
+            reqwest::Client::builder().build()?
+        };
+
+        Ok(Client {
+            base_url: self.base_url.to_string(),
+            api_key: self.api_key.to_string(),
+            http_client,
+        })
+    }
+}
 
 #[derive(Clone)]
 pub struct Client {
@@ -45,31 +84,31 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
-    /// Create a new Moonshot client with the given API key.
+    /// Create a new Moonshot client builder.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::moonshot::{ClientBuilder, self};
+    ///
+    /// // Initialize the Moonshot client
+    /// let moonshot = Client::builder("your-moonshot-api-key")
+    ///    .build()
+    /// ```
+    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
+        ClientBuilder::new(api_key)
+    }
+
+    /// Create a new Moonshot client. For more control, use the `builder` method.
+    ///
+    /// # Panics
+    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
-        Self::from_url(api_key, MOONSHOT_API_BASE_URL)
+        Self::builder(api_key)
+            .build()
+            .expect("Moonshot client should build")
     }
 
-    /// Create a new Moonshot client with the given API key and base API URL.
-    pub fn from_url(api_key: &str, base_url: &str) -> Self {
-        Self {
-            base_url: base_url.to_string(),
-            api_key: api_key.to_string(),
-            http_client: reqwest::Client::builder()
-                .build()
-                .expect("Moonshot reqwest client should build"),
-        }
-    }
-
-    /// Use your own `reqwest::Client`.
-    /// The required headers will be automatically attached upon trying to make a request.
-    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = client;
-
-        self
-    }
-
-    fn post(&self, path: &str) -> reqwest::RequestBuilder {
+    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.post(url).bearer_auth(&self.api_key)
     }

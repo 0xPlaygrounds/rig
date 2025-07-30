@@ -6,13 +6,13 @@ use testcontainers::{
 };
 
 use futures::{StreamExt, TryStreamExt};
-use rig::client::EmbeddingsClient;
 use rig::vector_store::VectorStoreIndex;
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
 };
+use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
 use rig_neo4j::{Neo4jClient, ToBoltType, vector_index::SearchParams};
 
 const BOLT_PORT: u16 = 7687;
@@ -121,7 +121,10 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::Client::from_url("TEST", &server.base_url());
+    let openai_client = openai::Client::builder("TEST")
+        .base_url(&server.base_url())
+        .build()
+        .unwrap();
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
@@ -190,11 +193,15 @@ async fn vector_search_test() {
         .await
         .expect("");
 
+    let query = "What is a glarb?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()
+        .expect("VectorSearchRequest should not fail to build here");
+
     // Query the index
-    let results = index
-        .top_n::<serde_json::Value>("What is a glarb?", 1)
-        .await
-        .expect("");
+    let results = index.top_n::<serde_json::Value>(req).await.expect("");
 
     let (_, _, value) = &results.first().expect("");
 

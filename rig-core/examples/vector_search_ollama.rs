@@ -1,4 +1,5 @@
 use rig::prelude::*;
+use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -21,7 +22,9 @@ struct WordDefinition {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create ollama client
-    let client = providers::ollama::Client::from_url("http://localhost:11434");
+    let client = providers::ollama::Client::builder()
+        .base_url("http://localhost:11434")
+        .build()?;
     let embedding_model = client.embedding_model("nomic-embed-text");
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -61,8 +64,15 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create vector store index
     let index = vector_store.index(embedding_model);
 
+    let query =
+        "I need to buy something in a fictional universe. What type of money can I use for this?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()?;
+
     let results = index
-        .top_n::<WordDefinition>("I need to buy something in a fictional universe. What type of money can I use for this?", 1)
+        .top_n::<WordDefinition>(req.clone())
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.word))
@@ -70,11 +80,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("Results: {results:?}");
 
-    let id_results = index
-        .top_n_ids("I need to buy something in a fictional universe. What type of money can I use for this?", 1)
-        .await?
-        .into_iter()
-        .collect::<Vec<_>>();
+    let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
 
     println!("ID results: {id_results:?}");
 

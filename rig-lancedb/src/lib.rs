@@ -4,7 +4,7 @@ use lancedb::{
 };
 use rig::{
     embeddings::embedding::EmbeddingModel,
-    vector_store::{VectorStoreError, VectorStoreIndex},
+    vector_store::{VectorStoreError, VectorStoreIndex, request::VectorSearchRequest},
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -196,16 +196,15 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
     /// ```
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_text(query).await?;
+        let prompt_embedding = self.model.embed_text(req.query()).await?;
 
         let query = self
             .table
             .vector_search(prompt_embedding.vec.clone())
             .map_err(lancedb_to_rig_error)?
-            .limit(n)
+            .limit(req.samples() as usize)
             .select(lancedb::query::Select::Columns(
                 self.table
                     .schema()
@@ -254,10 +253,9 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
     /// ```
     async fn top_n_ids(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_text(query).await?;
+        let prompt_embedding = self.model.embed_text(req.query()).await?;
 
         let query = self
             .table
@@ -265,7 +263,7 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
             .select(lancedb::query::Select::Columns(vec![self.id_field.clone()]))
             .nearest_to(prompt_embedding.vec.clone())
             .map_err(lancedb_to_rig_error)?
-            .limit(n);
+            .limit(req.samples() as usize);
 
         self.build_query(query)
             .execute_query()

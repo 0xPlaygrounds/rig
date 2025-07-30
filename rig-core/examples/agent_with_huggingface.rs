@@ -32,7 +32,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
 fn client() -> providers::huggingface::Client {
     let api_key = &env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY not set");
-    providers::huggingface::ClientBuilder::new(api_key).build()
+    providers::huggingface::Client::new(api_key)
 }
 
 /// Create a partial huggingface agent (deepseek R1)

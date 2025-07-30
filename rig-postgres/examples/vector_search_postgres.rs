@@ -1,4 +1,5 @@
 use rig::client::{EmbeddingsClient, ProviderClient};
+use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -90,8 +91,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // query vector
     let query = "What does \"glarb-glarb\" mean?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(2)
+        .build()
+        .expect("VectorSearchRequest should not fail to build here");
 
-    let results = vector_store.top_n::<WordDefinition>(query, 2).await?;
+    let results = vector_store.top_n::<WordDefinition>(req).await?;
 
     println!("#{} results for query: {}", results.len(), query);
     for (distance, _id, doc) in results.iter() {

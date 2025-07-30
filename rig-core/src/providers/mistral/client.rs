@@ -4,10 +4,50 @@ use super::{
     CompletionModel,
     embedding::{EmbeddingModel, MISTRAL_EMBED},
 };
-use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient};
+use crate::client::{ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient};
 use crate::impl_conversion_traits;
 
 const MISTRAL_API_BASE_URL: &str = "https://api.mistral.ai";
+
+pub struct ClientBuilder<'a> {
+    api_key: &'a str,
+    base_url: &'a str,
+    http_client: Option<reqwest::Client>,
+}
+
+impl<'a> ClientBuilder<'a> {
+    pub fn new(api_key: &'a str) -> Self {
+        Self {
+            api_key,
+            base_url: MISTRAL_API_BASE_URL,
+            http_client: None,
+        }
+    }
+
+    pub fn base_url(mut self, base_url: &'a str) -> Self {
+        self.base_url = base_url;
+        self
+    }
+
+    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = Some(client);
+        self
+    }
+
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
+        let http_client = if let Some(http_client) = self.http_client {
+            http_client
+        } else {
+            reqwest::Client::builder().build()?
+        };
+
+        Ok(Client {
+            base_url: self.base_url.to_string(),
+            api_key: self.api_key.to_string(),
+            http_client,
+        })
+    }
+}
 
 #[derive(Clone)]
 pub struct Client {
@@ -27,26 +67,28 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
+    /// Create a new Mistral client builder.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::mistral::{ClientBuilder, self};
+    ///
+    /// // Initialize the Mistral client
+    /// let mistral = Client::builder("your-mistral-api-key")
+    ///    .build()
+    /// ```
+    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
+        ClientBuilder::new(api_key)
+    }
+
+    /// Create a new Mistral client. For more control, use the `builder` method.
+    ///
+    /// # Panics
+    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
-        Self::from_url(api_key, MISTRAL_API_BASE_URL)
-    }
-
-    pub fn from_url(api_key: &str, base_url: &str) -> Self {
-        Self {
-            base_url: base_url.to_string(),
-            api_key: api_key.to_string(),
-            http_client: reqwest::Client::builder()
-                .build()
-                .expect("Mistral reqwest client should build"),
-        }
-    }
-
-    /// Use your own `reqwest::Client`.
-    /// The required headers will be automatically attached upon trying to make a request.
-    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = client;
-
-        self
+        Self::builder(api_key)
+            .build()
+            .expect("Mistral client should build")
     }
 
     pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {

@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 
 use super::openai::{CompletionResponse, StreamingToolCall, TranscriptionResponse, Usage};
-use crate::client::{CompletionClient, TranscriptionClient};
+use crate::client::{ClientBuilderError, CompletionClient, TranscriptionClient};
 use crate::json_utils::merge;
 use futures::StreamExt;
 
@@ -36,6 +36,46 @@ use serde_json::{Value, json};
 // ================================================================
 const GROQ_API_BASE_URL: &str = "https://api.groq.com/openai/v1";
 
+pub struct ClientBuilder<'a> {
+    api_key: &'a str,
+    base_url: &'a str,
+    http_client: Option<reqwest::Client>,
+}
+
+impl<'a> ClientBuilder<'a> {
+    pub fn new(api_key: &'a str) -> Self {
+        Self {
+            api_key,
+            base_url: GROQ_API_BASE_URL,
+            http_client: None,
+        }
+    }
+
+    pub fn base_url(mut self, base_url: &'a str) -> Self {
+        self.base_url = base_url;
+        self
+    }
+
+    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = Some(client);
+        self
+    }
+
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
+        let http_client = if let Some(http_client) = self.http_client {
+            http_client
+        } else {
+            reqwest::Client::builder().build()?
+        };
+
+        Ok(Client {
+            base_url: self.base_url.to_string(),
+            api_key: self.api_key.to_string(),
+            http_client,
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct Client {
     base_url: String,
@@ -54,31 +94,31 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
+    /// Create a new Groq client builder.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::groq::{ClientBuilder, self};
+    ///
+    /// // Initialize the Groq client
+    /// let groq = Client::builder("your-groq-api-key")
+    ///    .build()
+    /// ```
+    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
+        ClientBuilder::new(api_key)
+    }
+
     /// Create a new Groq client with the given API key.
+    ///
+    /// # Panics
+    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
-        Self::from_url(api_key, GROQ_API_BASE_URL)
+        Self::builder(api_key)
+            .build()
+            .expect("Groq client should build")
     }
 
-    /// Create a new Groq client with the given API key and base API URL.
-    pub fn from_url(api_key: &str, base_url: &str) -> Self {
-        Self {
-            base_url: base_url.to_string(),
-            api_key: api_key.to_string(),
-            http_client: reqwest::Client::builder()
-                .build()
-                .expect("Groq reqwest client should build"),
-        }
-    }
-
-    /// Use your own `reqwest::Client`.
-    /// The required headers will be automatically attached upon trying to make a request.
-    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = client;
-
-        self
-    }
-
-    fn post(&self, path: &str) -> reqwest::RequestBuilder {
+    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.post(url).bearer_auth(&self.api_key)
     }

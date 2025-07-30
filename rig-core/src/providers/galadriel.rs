@@ -11,7 +11,7 @@
 //! let gpt4o = client.completion_model(galadriel::GPT_4O);
 //! ```
 use super::openai;
-use crate::client::{CompletionClient, ProviderClient};
+use crate::client::{ClientBuilderError, CompletionClient, ProviderClient};
 use crate::json_utils::merge;
 use crate::message::MessageError;
 use crate::providers::openai::send_compatible_streaming_request;
@@ -29,6 +29,53 @@ use serde_json::{Value, json};
 // ================================================================
 const GALADRIEL_API_BASE_URL: &str = "https://api.galadriel.com/v1/verified";
 
+pub struct ClientBuilder<'a> {
+    api_key: &'a str,
+    fine_tune_api_key: Option<&'a str>,
+    base_url: &'a str,
+    http_client: Option<reqwest::Client>,
+}
+
+impl<'a> ClientBuilder<'a> {
+    pub fn new(api_key: &'a str) -> Self {
+        Self {
+            api_key,
+            fine_tune_api_key: None,
+            base_url: GALADRIEL_API_BASE_URL,
+            http_client: None,
+        }
+    }
+
+    pub fn fine_tune_api_key(mut self, fine_tune_api_key: &'a str) -> Self {
+        self.fine_tune_api_key = Some(fine_tune_api_key);
+        self
+    }
+
+    pub fn base_url(mut self, base_url: &'a str) -> Self {
+        self.base_url = base_url;
+        self
+    }
+
+    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = Some(client);
+        self
+    }
+
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
+        let http_client = if let Some(http_client) = self.http_client {
+            http_client
+        } else {
+            reqwest::Client::builder().build()?
+        };
+
+        Ok(Client {
+            base_url: self.base_url.to_string(),
+            api_key: self.api_key.to_string(),
+            fine_tune_api_key: self.fine_tune_api_key.map(|x| x.to_string()),
+            http_client,
+        })
+    }
+}
 #[derive(Clone)]
 pub struct Client {
     base_url: String,
@@ -49,40 +96,31 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
-    /// Create a new Galadriel client with the given API key and optional fine-tune API key.
-    pub fn new(api_key: &str, fine_tune_api_key: Option<&str>) -> Self {
-        Self::from_url_with_optional_key(api_key, GALADRIEL_API_BASE_URL, fine_tune_api_key)
+    /// Create a new Galadriel client builder.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::galadriel::{ClientBuilder, self};
+    ///
+    /// // Initialize the Galadriel client
+    /// let galadriel = Client::builder("your-galadriel-api-key")
+    ///    .build()
+    /// ```
+    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
+        ClientBuilder::new(api_key)
     }
 
-    /// Create a new Galadriel client with the given API key, base API URL, and optional fine-tune API key.
-    pub fn from_url(api_key: &str, base_url: &str, fine_tune_api_key: Option<&str>) -> Self {
-        Self::from_url_with_optional_key(api_key, base_url, fine_tune_api_key)
+    /// Create a new Galadriel client. For more control, use the `builder` method.
+    ///
+    /// # Panics
+    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
+    pub fn new(api_key: &str) -> Self {
+        Self::builder(api_key)
+            .build()
+            .expect("Galadriel client should build")
     }
 
-    pub fn from_url_with_optional_key(
-        api_key: &str,
-        base_url: &str,
-        fine_tune_api_key: Option<&str>,
-    ) -> Self {
-        Self {
-            base_url: base_url.to_string(),
-            api_key: api_key.to_string(),
-            fine_tune_api_key: fine_tune_api_key.map(|x| x.to_string()),
-            http_client: reqwest::Client::builder()
-                .build()
-                .expect("Galadriel reqwest client should build"),
-        }
-    }
-
-    /// Use your own `reqwest::Client`.
-    /// The default headers will be automatically attached upon trying to make a request.
-    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = client;
-
-        self
-    }
-
-    fn post(&self, path: &str) -> reqwest::RequestBuilder {
+    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         let mut client = self.http_client.post(url).bearer_auth(&self.api_key);
 
@@ -101,7 +139,11 @@ impl ProviderClient for Client {
     fn from_env() -> Self {
         let api_key = std::env::var("GALADRIEL_API_KEY").expect("GALADRIEL_API_KEY not set");
         let fine_tune_api_key = std::env::var("GALADRIEL_FINE_TUNE_API_KEY").ok();
-        Self::new(&api_key, fine_tune_api_key.as_deref())
+        let mut builder = Self::builder(&api_key);
+        if let Some(fine_tune_api_key) = fine_tune_api_key.as_deref() {
+            builder = builder.fine_tune_api_key(fine_tune_api_key);
+        }
+        builder.build().expect("Galadriel client should build")
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
@@ -109,7 +151,11 @@ impl ProviderClient for Client {
         else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key, fine_tune_key.as_deref())
+        let mut builder = Self::builder(&api_key);
+        if let Some(fine_tune_key) = fine_tune_key.as_deref() {
+            builder = builder.fine_tune_api_key(fine_tune_key);
+        }
+        builder.build().expect("Galadriel client should build")
     }
 }
 

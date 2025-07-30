@@ -2,7 +2,8 @@ use super::{
     completion::CompletionModel, embedding::EmbeddingModel, transcription::TranscriptionModel,
 };
 use crate::client::{
-    CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient, impl_conversion_traits,
+    ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient,
+    impl_conversion_traits,
 };
 use crate::{
     Embed,
@@ -18,6 +19,51 @@ use serde::{Deserialize, Serialize};
 // ================================================================
 const GEMINI_API_BASE_URL: &str = "https://generativelanguage.googleapis.com";
 
+pub struct ClientBuilder<'a> {
+    api_key: &'a str,
+    base_url: &'a str,
+    http_client: Option<reqwest::Client>,
+}
+
+impl<'a> ClientBuilder<'a> {
+    pub fn new(api_key: &'a str) -> Self {
+        Self {
+            api_key,
+            base_url: GEMINI_API_BASE_URL,
+            http_client: None,
+        }
+    }
+
+    pub fn base_url(mut self, base_url: &'a str) -> Self {
+        self.base_url = base_url;
+        self
+    }
+
+    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = Some(client);
+        self
+    }
+
+    pub fn build(self) -> Result<Client, ClientBuilderError> {
+        let mut default_headers = reqwest::header::HeaderMap::new();
+        default_headers.insert(
+            reqwest::header::CONTENT_TYPE,
+            "application/json".parse().unwrap(),
+        );
+        let http_client = if let Some(http_client) = self.http_client {
+            http_client
+        } else {
+            reqwest::Client::builder().build()?
+        };
+
+        Ok(Client {
+            base_url: self.base_url.to_string(),
+            api_key: self.api_key.to_string(),
+            default_headers,
+            http_client,
+        })
+    }
+}
 #[derive(Clone)]
 pub struct Client {
     base_url: String,
@@ -38,26 +84,31 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
-    pub fn new(api_key: &str) -> Self {
-        Self::from_url(api_key, GEMINI_API_BASE_URL)
-    }
-    pub fn from_url(api_key: &str, base_url: &str) -> Self {
-        let mut default_headers = reqwest::header::HeaderMap::new();
-        default_headers.insert(
-            reqwest::header::CONTENT_TYPE,
-            "application/json".parse().unwrap(),
-        );
-        Self {
-            base_url: base_url.to_string(),
-            api_key: api_key.to_string(),
-            default_headers,
-            http_client: reqwest::Client::builder()
-                .build()
-                .expect("Gemini reqwest client should build"),
-        }
+    /// Create a new Google Gemini client builder.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::gemini::{ClientBuilder, self};
+    ///
+    /// // Initialize the Google Gemini client
+    /// let gemini_client = Client::builder("your-google-gemini-api-key")
+    ///    .build()
+    /// ```
+    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
+        ClientBuilder::new(api_key)
     }
 
-    pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
+    /// Create a new Google Gemini client. For more control, use the `builder` method.
+    ///
+    /// # Panics
+    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
+    pub fn new(api_key: &str) -> Self {
+        Self::builder(api_key)
+            .build()
+            .expect("Gemini client should build")
+    }
+
+    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
         // API key gets inserted as query param - no need to add bearer auth or headers
         let url = format!("{}/{}?key={}", self.base_url, path, self.api_key).replace("//", "/");
 
@@ -67,15 +118,7 @@ impl Client {
             .headers(self.default_headers.clone())
     }
 
-    /// Use your own `reqwest::Client`.
-    /// The default headers will be automatically attached upon trying to make a request.
-    pub fn with_custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = client;
-
-        self
-    }
-
-    pub fn post_sse(&self, path: &str) -> reqwest::RequestBuilder {
+    pub(crate) fn post_sse(&self, path: &str) -> reqwest::RequestBuilder {
         let url =
             format!("{}/{}?alt=sse&key={}", self.base_url, path, self.api_key).replace("//", "/");
 

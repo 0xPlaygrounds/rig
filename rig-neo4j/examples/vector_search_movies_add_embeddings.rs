@@ -9,7 +9,7 @@ use std::env;
 
 use rig::{
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::VectorStoreIndex,
+    vector_store::{VectorStoreIndex, request::VectorSearchRequest},
 };
 
 use neo4rs::*;
@@ -117,9 +117,15 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .await?;
 
+    let query = "a historical movie on quebec";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(5)
+        .build()?;
+
     // Query the index
     let results = index
-        .top_n::<Movie>("a historical movie on quebec", 5)
+        .top_n::<Movie>(req)
         .await?
         .into_iter()
         .map(|(score, id, doc)| display::SearchResult {
@@ -132,11 +138,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("{:#}", display::SearchResults(&results));
 
-    let id_results = index
-        .top_n_ids("What is a linglingdong?", 1)
-        .await?
-        .into_iter()
-        .collect::<Vec<_>>();
+    let query = "What is a linglingdong?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()?;
+
+    let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
 
     println!("ID results: {id_results:?}");
 

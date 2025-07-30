@@ -1,3 +1,4 @@
+use rig::vector_store::request::VectorSearchRequest;
 use serde_json::json;
 
 use rig::client::EmbeddingsClient;
@@ -136,7 +137,10 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::Client::from_url("TEST", &server.base_url());
+    let openai_client = openai::Client::builder("TEST")
+        .base_url(&server.base_url())
+        .build()
+        .unwrap();
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
@@ -156,12 +160,16 @@ async fn vector_search_test() {
 
     // Create a vector index on our vector store
     let index = vector_store.index(model);
+    let query = "What is a glarb?";
+    let samples = 1;
+    let req = VectorSearchRequest::builder()
+        .samples(samples)
+        .query(query)
+        .build()
+        .expect("VectorSearchRequest should not fail to build here");
 
     // Query the index
-    let results = index
-        .top_n::<serde_json::Value>("What is a glarb?", 1)
-        .await
-        .expect("");
+    let results = index.top_n::<serde_json::Value>(req).await.expect("");
 
     let (_, _, value) = &results.first().expect("");
 

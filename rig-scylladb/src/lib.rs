@@ -1,7 +1,9 @@
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
-    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
+    vector_store::{
+        InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
+    },
 };
 use scylla::{
     client::{Compression, session::Session, session_builder::SessionBuilder},
@@ -235,10 +237,9 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for ScyllaDb
     /// vector search capabilities with ANN (Approximate Nearest Neighbor) algorithms.
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let query_vector = self.generate_query_vector(query).await?;
+        let query_vector = self.generate_query_vector(req.query()).await?;
 
         // Fetch all vectors (this will be optimized once ScyllaDB vector search is available)
         let results = self
@@ -270,7 +271,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for ScyllaDb
 
         // Sort by similarity score (descending) and take top n
         candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-        candidates.truncate(n);
+        candidates.truncate(req.samples() as usize);
 
         Ok(candidates)
     }
@@ -279,10 +280,9 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for ScyllaDb
     /// Returns a vector of tuples containing the score and ID of the nearest neighbors.
     async fn top_n_ids(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let query_vector = self.generate_query_vector(query).await?;
+        let query_vector = self.generate_query_vector(req.query()).await?;
 
         let results = self
             .session
@@ -311,7 +311,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for ScyllaDb
 
         // Sort by similarity score (descending) and take top n
         candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-        candidates.truncate(n);
+        candidates.truncate(req.samples() as usize);
 
         Ok(candidates)
     }

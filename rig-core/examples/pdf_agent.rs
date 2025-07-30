@@ -52,7 +52,9 @@ fn load_pdf(path: PathBuf) -> Result<Vec<String>> {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize Ollama client
-    let client = openai::Client::from_url("ollama", "http://localhost:11434/v1");
+    let client = openai::Client::builder("ollama")
+        .base_url("http://localhost:11434/v1")
+        .build()?;
 
     // Load PDFs using Rig's built-in PDF loader
     let documents_dir = std::env::current_dir()?.join("rig-core/examples/documents");
