@@ -71,6 +71,7 @@ pub struct ToolResult {
 
 /// Describes the content of a tool result, which can be text or an image.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "lowercase")]
 pub enum ToolResultContent {
     Text(Text),
     Image(Image),
