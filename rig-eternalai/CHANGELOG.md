@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Refactor clients with builder pattern ([#615](https://github.com/0xPlaygrounds/rig/pull/615))
 
+### Migration
+
+- If you are using `Client::from_url()` to add in your own base URL, you will now need to use the `Client::builder()` method and add in the base URL.
+
 ## [0.2.10](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.2.9...rig-eternalai-v0.2.10) - 2025-07-16
 
 ### Other
