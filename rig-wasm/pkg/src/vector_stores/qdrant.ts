@@ -99,7 +99,7 @@ export class QdrantAdapter {
 
     const result = await this.client.search(this.collectionName, {
       vector: embedding.vec,
-      limit: opts.n,
+      limit: opts.samples,
     });
 
     return result.map((res: any) => ({
@@ -116,7 +116,7 @@ export class QdrantAdapter {
 
     const result = await this.client.search(this.collectionName, {
       vector: embedding.vec,
-      limit: opts.n,
+      limit: opts.samples,
     });
 
     return result.map((res: any) => ({

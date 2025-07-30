@@ -30,8 +30,6 @@ for (const dir of dirs) {
   }
 }
 
-console.log(input);
-
 const config: RollupOptions[] = [
   // ESM build
   {
@@ -44,14 +42,14 @@ const config: RollupOptions[] = [
     ],
     input: input,
     output: {
-      dir: "out/esm",
+      dir: "dist/esm",
       format: "esm",
       preserveModules: true, // Preserve module structure for ESM
     },
     plugins: [
       typescript({
         declaration: true,
-        declarationDir: "out/esm",
+        declarationDir: "dist/esm",
         moduleResolution: "node",
         // Skip lib checking for external deps
         skipLibCheck: true,
@@ -75,7 +73,7 @@ const config: RollupOptions[] = [
     ],
     input: "./src/index.ts",
     output: {
-      file: "out/cjs/index.cjs",
+      file: "dist/cjs/index.cjs",
       format: "cjs",
     },
     plugins: [
@@ -84,7 +82,7 @@ const config: RollupOptions[] = [
         // The ESM build already handles declaration generation into 'out/esm',
         // which can be used by both ESM and CJS consumers.
         // The 'outDir' is overridden to ensure compiled JS goes to 'out' before Rollup moves it.
-        outDir: "out",
+        outDir: "dist",
         moduleResolution: "node",
         // Skip lib checking for external deps
         skipLibCheck: true,
@@ -95,7 +93,7 @@ const config: RollupOptions[] = [
   {
     input: "./src/index.ts", // Use your main entry point for declarations
     output: {
-      file: "out/esm/index.d.ts", // Output the bundled declarations to your ESM types location
+      file: "dist/esm/index.d.ts", // Output the bundled declarations to your ESM types location
       format: "esm", // Format doesn't strictly matter for declarations, but esm is common
     },
     plugins: [

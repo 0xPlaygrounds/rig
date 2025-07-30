@@ -6,6 +6,7 @@ import {
   Metadata,
   TopNIdsResult,
   TopNResult,
+  VectorSearchOpts,
   VectorStore,
 } from "../types";
 
@@ -44,25 +45,25 @@ export class InMemoryVectorStore implements VectorStore {
     this.store.push({ id, embedding, metadata });
   }
 
-  async topN(query: string, n: number): Promise<TopNResult[]> {
-    const queryEmbedding = await this.model.embed_text(query);
+  async topN(req: VectorSearchOpts): Promise<TopNResult[]> {
+    const queryEmbedding = await this.model.embed_text(req.query);
     return this.store
       .map((entry) => {
         const sim = cosineSim(queryEmbedding.vec, entry.embedding.vec);
         return [sim, entry.id, entry.metadata] as TopNResult;
       })
       .sort((a, b) => b[0] - a[0])
-      .slice(0, n);
+      .slice(0, req.samples);
   }
 
-  async topNIds(query: string, n: number): Promise<TopNIdsResult[]> {
-    const queryEmbedding = await this.model.embed_text(query);
+  async topNIds(req: VectorSearchOpts): Promise<TopNIdsResult[]> {
+    const queryEmbedding = await this.model.embed_text(req.query);
     return this.store
       .map((entry) => {
         const sim = cosineSim(queryEmbedding.vec, entry.embedding.vec);
         return [sim, entry.id] as TopNIdsResult;
       })
       .sort((a, b) => b[0] - a[0])
-      .slice(0, n);
+      .slice(0, req.samples);
   }
 }

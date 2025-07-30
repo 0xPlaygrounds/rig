@@ -2,7 +2,7 @@
 # Automates the build pipeline for `rig-wasm`.
 set -euo pipefail
 
-OUT_DIR="out/esm"
+OUT_DIR="dist/esm"
 CORE_MODULE="src"
 VECTOR_STORES_MODULE="src/vector_stores"
 PROVIDERS_MODULE="src/providers"
@@ -12,9 +12,9 @@ echo '{' > "$EXPORTS_FILE"
 
 # Add the root export manually
 echo '  ".": {' >> "$EXPORTS_FILE"
-echo '    "import": "./out/esm/index.js",' >> "$EXPORTS_FILE"
-echo '    "require": "./out/cjs/index.cjs",' >> "$EXPORTS_FILE"
-echo '    "types": "./out/esm/index.d.ts"' >> "$EXPORTS_FILE"
+echo '    "import": "./dist/esm/index.js",' >> "$EXPORTS_FILE"
+echo '    "require": "./dist/cjs/index.cjs",' >> "$EXPORTS_FILE"
+echo '    "types": "./dist/esm/index.d.ts"' >> "$EXPORTS_FILE"
 echo '  },' >> "$EXPORTS_FILE"
 
 # Gather all .js files (excluding index.js)

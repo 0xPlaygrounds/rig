@@ -109,6 +109,7 @@ impl AnthropicAgent {
 
         let mut agent = rig::providers::anthropic::ClientBuilder::new(&api_key)
             .build()
+            .map_err(|x| JsError::new(x.to_string().as_ref()))?
             .agent(&model);
 
         if let Some(preamble) = preamble {
@@ -203,7 +204,9 @@ impl AnthropicCompletionModel {
         let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
             .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
 
-        let client = rig::providers::anthropic::ClientBuilder::new(&model_opts.api_key).build();
+        let client = rig::providers::anthropic::ClientBuilder::new(&model_opts.api_key)
+            .build()
+            .map_err(|x| JsError::new(x.to_string().as_ref()))?;
 
         let model = client.completion_model(&model_opts.model_name);
 

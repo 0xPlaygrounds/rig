@@ -16,5 +16,5 @@
     "@types": ["./types.ts"]
   },
   "include": ["./**/*.ts", "generated/**/*.ts", "rollup.config.ts"],
-  "exclude": ["node_modules", "out/**/*"]
+  "exclude": ["node_modules", "dist/**/*"]
 }

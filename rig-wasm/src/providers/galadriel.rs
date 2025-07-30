@@ -112,8 +112,15 @@ impl GaladrielAgent {
             .ok()
             .and_then(|v| v.as_string());
 
-        let mut agent = rig::providers::galadriel::Client::new(&api_key, fine_tune_key.as_deref())
-            .agent(&model);
+        let mut agent = if let Some(key) = fine_tune_key {
+            rig::providers::galadriel::Client::builder(&api_key)
+                .fine_tune_api_key(&key)
+                .build()
+                .map_err(|x| JsError::new(x.to_string().as_ref()))?
+        } else {
+            rig::providers::galadriel::Client::new(&api_key)
+        }
+        .agent(&model);
 
         if let Some(preamble) = preamble {
             agent = agent.preamble(&preamble);
@@ -208,7 +215,14 @@ impl GaladrielCompletionsModel {
                 .expect("Fine tuning keys for the Galadriel API are expected to be strings")
         });
 
-        let client = rig::providers::galadriel::Client::new(&model_opts.api_key, fine_tune_key);
+        let client = if let Some(key) = fine_tune_key {
+            rig::providers::galadriel::Client::builder(&model_opts.api_key)
+                .fine_tune_api_key(key)
+                .build()
+                .map_err(|x| JsError::new(x.to_string().as_ref()))?
+        } else {
+            rig::providers::galadriel::Client::new(&model_opts.api_key)
+        };
 
         let model = client.completion_model(&model_opts.model_name);
 

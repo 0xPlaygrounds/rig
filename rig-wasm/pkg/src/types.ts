@@ -39,13 +39,14 @@ export interface DynamicToolsOpts {
 }
 
 export interface VectorStore {
-  topN: (query: string, n: number) => Promise<TopNResult[]>;
-  topNIds: (query: string, n: number) => Promise<TopNIdsResult[]>;
+  topN: (req: VectorSearchOpts) => Promise<TopNResult[]>;
+  topNIds: (req: VectorSearchOpts) => Promise<TopNIdsResult[]>;
 }
 
 export interface VectorSearchOpts {
   query: string;
-  n: number;
+  samples: number;
+  additionalParams: Map<string, JSONObject>;
 }
 
 export type TopNResult = [CosineSimilarity, EmbeddedDocument, Metadata];

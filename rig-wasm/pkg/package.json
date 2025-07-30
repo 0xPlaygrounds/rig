@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "description": "A TS and WebAssembly-based port of the Rust agentic AI framework Rig.",
   "type": "module",
-  "main": "out/cjs/index.cjs",
-  "module": "out/esm/index.js",
-  "types": "out/esm/index.d.ts",
+  "main": "dist/cjs/index.cjs",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
   "sideEffects": false,
   "files": [
-    "out/"
+    "dist/"
   ],
   "scripts": {
     "build": "./scripts/build.sh",
@@ -42,105 +42,105 @@
   },
   "exports": {
     ".": {
-      "import": "./out/esm/index.js",
-      "require": "./out/cjs/index.cjs",
-      "types": "./out/esm/index.d.ts"
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.cjs",
+      "types": "./dist/esm/index.d.ts"
     },
     "./index": {
-      "import": "./out/esm/index.js",
-      "types": "./out/esm/index.d.ts"
+      "import": "./dist/esm/index.js",
+      "types": "./dist/esm/index.d.ts"
     },
     "./streaming": {
-      "import": "./out/esm/streaming.js",
-      "types": "./out/esm/streaming.d.ts"
+      "import": "./dist/esm/streaming.js",
+      "types": "./dist/esm/streaming.d.ts"
     },
     "./types": {
-      "import": "./out/esm/types.js",
-      "types": "./out/esm/types.d.ts"
+      "import": "./dist/esm/types.js",
+      "types": "./dist/esm/types.d.ts"
     },
     "./utils": {
-      "import": "./out/esm/utils.js",
-      "types": "./out/esm/utils.d.ts"
+      "import": "./dist/esm/utils.js",
+      "types": "./dist/esm/utils.d.ts"
     },
     "./qdrant": {
-      "import": "./out/esm/qdrant.js",
-      "types": "./out/esm/vector_stores/qdrant.d.ts"
+      "import": "./dist/esm/qdrant.js",
+      "types": "./dist/esm/vector_stores/qdrant.d.ts"
     },
     "./vector_store": {
-      "import": "./out/esm/vector_store.js",
-      "types": "./out/esm/vector_stores/vector_store.d.ts"
+      "import": "./dist/esm/vector_store.js",
+      "types": "./dist/esm/vector_stores/vector_store.d.ts"
     },
     "./anthropic": {
-      "import": "./out/esm/anthropic.js",
-      "types": "./out/esm/providers/anthropic.d.ts"
+      "import": "./dist/esm/anthropic.js",
+      "types": "./dist/esm/providers/anthropic.d.ts"
     },
     "./cohere": {
-      "import": "./out/esm/cohere.js",
-      "types": "./out/esm/providers/cohere.d.ts"
+      "import": "./dist/esm/cohere.js",
+      "types": "./dist/esm/providers/cohere.d.ts"
     },
     "./deepseek": {
-      "import": "./out/esm/deepseek.js",
-      "types": "./out/esm/providers/deepseek.d.ts"
+      "import": "./dist/esm/deepseek.js",
+      "types": "./dist/esm/providers/deepseek.d.ts"
     },
     "./galadriel": {
-      "import": "./out/esm/galadriel.js",
-      "types": "./out/esm/providers/galadriel.d.ts"
+      "import": "./dist/esm/galadriel.js",
+      "types": "./dist/esm/providers/galadriel.d.ts"
     },
     "./gemini": {
-      "import": "./out/esm/gemini.js",
-      "types": "./out/esm/providers/gemini.d.ts"
+      "import": "./dist/esm/gemini.js",
+      "types": "./dist/esm/providers/gemini.d.ts"
     },
     "./groq": {
-      "import": "./out/esm/groq.js",
-      "types": "./out/esm/providers/groq.d.ts"
+      "import": "./dist/esm/groq.js",
+      "types": "./dist/esm/providers/groq.d.ts"
     },
     "./huggingface": {
-      "import": "./out/esm/huggingface.js",
-      "types": "./out/esm/providers/huggingface.d.ts"
+      "import": "./dist/esm/huggingface.js",
+      "types": "./dist/esm/providers/huggingface.d.ts"
     },
     "./hyperbolic": {
-      "import": "./out/esm/hyperbolic.js",
-      "types": "./out/esm/providers/hyperbolic.d.ts"
+      "import": "./dist/esm/hyperbolic.js",
+      "types": "./dist/esm/providers/hyperbolic.d.ts"
     },
     "./mira": {
-      "import": "./out/esm/mira.js",
-      "types": "./out/esm/providers/mira.d.ts"
+      "import": "./dist/esm/mira.js",
+      "types": "./dist/esm/providers/mira.d.ts"
     },
     "./mistral": {
-      "import": "./out/esm/mistral.js",
-      "types": "./out/esm/providers/mistral.d.ts"
+      "import": "./dist/esm/mistral.js",
+      "types": "./dist/esm/providers/mistral.d.ts"
     },
     "./moonshot": {
-      "import": "./out/esm/moonshot.js",
-      "types": "./out/esm/providers/moonshot.d.ts"
+      "import": "./dist/esm/moonshot.js",
+      "types": "./dist/esm/providers/moonshot.d.ts"
     },
     "./ollama": {
-      "import": "./out/esm/ollama.js",
-      "types": "./out/esm/providers/ollama.d.ts"
+      "import": "./dist/esm/ollama.js",
+      "types": "./dist/esm/providers/ollama.d.ts"
     },
     "./openai": {
-      "import": "./out/esm/openai.js",
-      "types": "./out/esm/providers/openai.d.ts"
+      "import": "./dist/esm/openai.js",
+      "types": "./dist/esm/providers/openai.d.ts"
     },
     "./openrouter": {
-      "import": "./out/esm/openrouter.js",
-      "types": "./out/esm/providers/openrouter.d.ts"
+      "import": "./dist/esm/openrouter.js",
+      "types": "./dist/esm/providers/openrouter.d.ts"
     },
     "./perplexity": {
-      "import": "./out/esm/perplexity.js",
-      "types": "./out/esm/providers/perplexity.d.ts"
+      "import": "./dist/esm/perplexity.js",
+      "types": "./dist/esm/providers/perplexity.d.ts"
     },
     "./together": {
-      "import": "./out/esm/together.js",
-      "types": "./out/esm/providers/together.d.ts"
+      "import": "./dist/esm/together.js",
+      "types": "./dist/esm/providers/together.d.ts"
     },
     "./voyageai": {
-      "import": "./out/esm/voyageai.js",
-      "types": "./out/esm/providers/voyageai.d.ts"
+      "import": "./dist/esm/voyageai.js",
+      "types": "./dist/esm/providers/voyageai.d.ts"
     },
     "./xai": {
-      "import": "./out/esm/xai.js",
-      "types": "./out/esm/providers/xai.d.ts"
+      "import": "./dist/esm/xai.js",
+      "types": "./dist/esm/providers/xai.d.ts"
     }
   }
 }

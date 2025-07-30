@@ -59,6 +59,9 @@ unsafe extern "C" {
     #[wasm_bindgen(typescript_type = "InMemoryVectorStoreOpts")]
     pub type JsInMemoryVectorStoreOpts;
 
+    #[wasm_bindgen(typescript_type = "VectorSearchRequestOpts")]
+    pub type JsVectorSearchRequestOpts;
+
     #[wasm_bindgen(typescript_type = "CanEmbed")]
     pub type ImplementsVectorStoreIndexTrait;
 

@@ -108,9 +108,7 @@ impl MiraAgent {
                 }
             });
 
-        let mut agent = rig::providers::mira::Client::new(&api_key)
-            .map_err(|x| JsError::new(format!("Error creating client: {x}").as_ref()))?
-            .agent(&model);
+        let mut agent = rig::providers::mira::Client::new(&api_key).agent(&model);
 
         if let Some(preamble) = preamble {
             agent = agent.preamble(&preamble);
@@ -200,10 +198,8 @@ impl MiraCompletionsModel {
         let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
             .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
 
-        let client = rig::providers::mira::Client::new(&model_opts.api_key)
-            .map_err(|x| JsError::new(format!("Error creating client: {x}").as_ref()))?;
-
-        let model = client.completion_model(&model_opts.model_name);
+        let model = rig::providers::mira::Client::new(&model_opts.api_key)
+            .completion_model(&model_opts.model_name);
 
         Ok(Self(model))
     }

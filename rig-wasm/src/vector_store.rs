@@ -1,4 +1,4 @@
-use rig::vector_store::VectorStoreError;
+use rig::vector_store::{VectorSearchRequest, VectorStoreError};
 use send_wrapper::SendWrapper;
 use serde::Deserialize;
 
@@ -29,17 +29,27 @@ impl JsVectorStore {
 impl rig::vector_store::VectorStoreIndex for JsVectorStore {
     fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> impl std::future::Future<
         Output = Result<Vec<(f64, String, T)>, rig::vector_store::VectorStoreError>,
     > + Send {
         let (result_tx, result_rx) = futures::channel::oneshot::channel();
         let (error_tx, error_rx) = futures::channel::oneshot::channel();
-        let query = query.to_string();
         let inner = self.inner.clone();
 
         wasm_bindgen_futures::spawn_local(async move {
+            let req = match serde_wasm_bindgen::to_value(&req)
+                .map_err(|x| VectorStoreError::DatastoreError(x.to_string().into()))
+            {
+                Ok(req) => req,
+                Err(e) => {
+                    error_tx
+                        .send(e)
+                        .expect("sending a message to a oneshot channel shouldn't fail");
+
+                    return;
+                }
+            };
             let call_fn = match js_sys::Reflect::get(&inner, &JsValue::from_str("topN"))
                 .map_err(|_| VectorStoreError::DatastoreError("vector_store.topN missing".into()))
             {
@@ -65,11 +75,7 @@ impl rig::vector_store::VectorStoreIndex for JsVectorStore {
             }
 
             let promise = match call_fn
-                .call2(
-                    &inner,
-                    &JsValue::from_str(&query),
-                    &JsValue::from_f64(n as f64),
-                )
+                .call1(&inner, &req)
                 .map_err(|_| VectorStoreError::DatastoreError("vector_store.topN failed".into()))
             {
                 Ok(res) => res,
@@ -201,17 +207,27 @@ impl rig::vector_store::VectorStoreIndex for JsVectorStore {
 
     fn top_n_ids(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> impl std::future::Future<
         Output = Result<Vec<(f64, String)>, rig::vector_store::VectorStoreError>,
     > + Send {
         let (result_tx, result_rx) = futures::channel::oneshot::channel();
         let (error_tx, error_rx) = futures::channel::oneshot::channel();
-        let query = query.to_string();
         let inner = self.inner.clone();
 
         wasm_bindgen_futures::spawn_local(async move {
+            let req = match serde_wasm_bindgen::to_value(&req)
+                .map_err(|x| VectorStoreError::DatastoreError(x.to_string().into()))
+            {
+                Ok(req) => req,
+                Err(e) => {
+                    error_tx
+                        .send(e)
+                        .expect("sending a message to a oneshot channel shouldn't fail");
+
+                    return;
+                }
+            };
             let call_fn = js_sys::Reflect::get(&inner, &JsValue::from_str("topNIds"))
                 .map_err(|_| {
                     VectorStoreError::DatastoreError("vector_store.topNIds missing".into())
@@ -220,11 +236,7 @@ impl rig::vector_store::VectorStoreIndex for JsVectorStore {
                 .unchecked_into::<js_sys::Function>();
 
             let promise = match call_fn
-                .call2(
-                    &inner,
-                    &JsValue::from_str(&query),
-                    &JsValue::from_f64(n as f64),
-                )
+                .call1(&inner, &req)
                 .map_err(|_| VectorStoreError::DatastoreError("vector_store.topNIds failed".into()))
             {
                 Ok(res) => res,
