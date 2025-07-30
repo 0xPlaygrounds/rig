@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.2.3...rig-bedrock-v0.2.4) - 2025-07-30
+
+### Added
+
+- *(rig-812)* yield final response with total usage metrics from streaming completion response in stream impl ([#584](https://github.com/0xPlaygrounds/rig/pull/584))
+- *(rig-784)* thinking/reasoning ([#557](https://github.com/0xPlaygrounds/rig/pull/557))
+
 ## [0.2.3](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.2.2...rig-bedrock-v0.2.3) - 2025-07-16
 
 ### Other

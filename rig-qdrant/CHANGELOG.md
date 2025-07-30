@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.18](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.17...rig-qdrant-v0.1.18) - 2025-07-30
+
+### Added
+
+- *(rig-819)* vector store index request struct ([#623](https://github.com/0xPlaygrounds/rig/pull/623))
+
+### Other
+
+- Refactor clients with builder pattern ([#615](https://github.com/0xPlaygrounds/rig/pull/615))
+
 ## [0.1.17](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.16...rig-qdrant-v0.1.17) - 2025-07-16
 
 ### Other

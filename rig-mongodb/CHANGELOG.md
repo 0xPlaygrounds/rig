@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.15](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.2.14...rig-mongodb-v0.2.15) - 2025-07-30
+
+### Added
+
+- *(rig-819)* vector store index request struct ([#623](https://github.com/0xPlaygrounds/rig/pull/623))
+- *(rig-mongodb)* implement InsertDocuments trait ([#596](https://github.com/0xPlaygrounds/rig/pull/596))
+
+### Other
+
+- Refactor clients with builder pattern ([#615](https://github.com/0xPlaygrounds/rig/pull/615))
+
 ## [0.2.14](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.2.13...rig-mongodb-v0.2.14) - 2025-07-16
 
 ### Other
