@@ -43,6 +43,7 @@ impl ImageGenerationModel {
 impl image_generation::ImageGenerationModel for ImageGenerationModel {
     type Response = ImageGenerationResponse;
 
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn image_generation(
         &self,
         request: ImageGenerationRequest,

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- *(rig-798)* `rig-wasm` ([#611](https://github.com/0xPlaygrounds/rig/pull/611))
 - *(rig-819)* vector store index request struct ([#623](https://github.com/0xPlaygrounds/rig/pull/623))
 - *(rig-830)* map documents to text for OpenAI Response API ([#622](https://github.com/0xPlaygrounds/rig/pull/622))
 - Add GROK_4 model constant to xAI provider ([#614](https://github.com/0xPlaygrounds/rig/pull/614))
