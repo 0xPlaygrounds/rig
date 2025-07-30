@@ -3,7 +3,7 @@ use rig::{
     client::EmbeddingsClient,
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::{InsertDocuments, VectorStoreIndex},
+    vector_store::{InsertDocuments, VectorStoreIndex, request::VectorSearchRequest},
 };
 use rig_scylladb::{ScyllaDbVectorStore, create_session};
 use serde::{Deserialize, Serialize};
@@ -95,10 +95,14 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Test similarity search
     let query = "What is Rust programming language?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(3)
+        .build()?;
     tracing::info!("Searching for: '{}'", query);
 
     let results = vector_store
-        .top_n::<Word>(query, 3)
+        .top_n::<Word>(req.clone())
         .await
         .expect("Failed to search vectors");
 
@@ -116,7 +120,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Test ID-only search
     tracing::info!("Searching for IDs only...");
     let id_results = vector_store
-        .top_n_ids(query, 2)
+        .top_n_ids(req)
         .await
         .expect("Failed to search vector IDs");
 
@@ -128,9 +132,13 @@ async fn main() -> Result<(), anyhow::Error> {
     // Test with different query
     let database_query = "distributed database system";
     tracing::info!("Searching for: '{}'", database_query);
+    let req = VectorSearchRequest::builder()
+        .query(database_query)
+        .samples(2)
+        .build()?;
 
     let db_results = vector_store
-        .top_n::<Word>(database_query, 2)
+        .top_n::<Word>(req)
         .await
         .expect("Failed to search vectors");
 

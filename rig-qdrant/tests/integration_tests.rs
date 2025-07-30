@@ -12,10 +12,10 @@ use qdrant_client::{
         VectorParamsBuilder,
     },
 };
-use rig::client::EmbeddingsClient;
 use rig::{
     Embed, embeddings::EmbeddingsBuilder, providers::openai, vector_store::VectorStoreIndex,
 };
+use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
 use rig_qdrant::QdrantVectorStore;
 
 const QDRANT_PORT: u16 = 6333;
@@ -158,10 +158,14 @@ async fn vector_search_test() {
     let query_params = QueryPointsBuilder::new(COLLECTION_NAME).with_payload(true);
     let vector_store = QdrantVectorStore::new(client, model, query_params.build());
 
-    let results = vector_store
-        .top_n::<serde_json::Value>("What is a linglingdong?", 1)
-        .await
-        .unwrap();
+    let query = "What is a linglingdong?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()
+        .expect("VectorSearchRequest should not fail to build here");
+
+    let results = vector_store.top_n::<serde_json::Value>(req).await.unwrap();
 
     let (_, _, value) = &results.first().unwrap();
 

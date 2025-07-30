@@ -4,6 +4,7 @@ use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::mistral;
 use rig::vector_store::VectorStoreIndex;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;
+use rig::vector_store::request::VectorSearchRequest;
 use serde::{Deserialize, Serialize};
 
 #[derive(Embed, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -34,7 +35,12 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create vector store index
     let index = vector_store.index(embedding_model);
 
-    let results = index.top_n::<Greetings>("Hello, World", 1).await?;
+    let req = VectorSearchRequest::builder()
+        .query("Hello world")
+        .samples(1)
+        .build()?;
+
+    let results = index.top_n::<Greetings>(req).await?;
 
     println!("{results:?}");
 

@@ -4,6 +4,7 @@ use arrow_array::RecordBatchIterator;
 use fixture::{Word, as_record_batch, schema, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::client::{EmbeddingsClient, ProviderClient};
+use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
@@ -73,10 +74,14 @@ async fn main() -> Result<(), anyhow::Error> {
     let search_params = SearchParams::default();
     let vector_store_index = LanceDbVectorIndex::new(table, model, "id", search_params).await?;
 
+    let query = "My boss says I zindle too much, what does that mean?";
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()?;
+
     // Query the index
-    let results = vector_store_index
-        .top_n::<Word>("My boss says I zindle too much, what does that mean?", 1)
-        .await?;
+    let results = vector_store_index.top_n::<Word>(req).await?;
 
     println!("Results: {results:?}");
 

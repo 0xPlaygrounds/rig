@@ -4,7 +4,9 @@ use mongodb::bson::{self, doc};
 use rig::{
     Embed, OneOrMany,
     embeddings::embedding::{Embedding, EmbeddingModel},
-    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
+    vector_store::{
+        InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
+    },
 };
 use serde::{Deserialize, Serialize};
 
@@ -227,15 +229,14 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     /// Implement the `top_n` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_text(query).await?;
+        let prompt_embedding = self.model.embed_text(req.query()).await?;
 
         let mut cursor = self
             .collection
             .aggregate([
-                self.pipeline_search_stage(&prompt_embedding, n),
+                self.pipeline_search_stage(&prompt_embedding, req.samples() as usize),
                 self.pipeline_score_stage(),
                 {
                     doc! {
@@ -272,15 +273,14 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
     async fn top_n_ids(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_text(query).await?;
+        let prompt_embedding = self.model.embed_text(req.query()).await?;
 
         let mut cursor = self
             .collection
             .aggregate([
-                self.pipeline_search_stage(&prompt_embedding, n),
+                self.pipeline_search_stage(&prompt_embedding, req.samples() as usize),
                 self.pipeline_score_stage(),
                 doc! {
                     "$project": {

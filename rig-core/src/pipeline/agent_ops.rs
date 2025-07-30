@@ -4,7 +4,7 @@ use crate::{
     completion::{self, CompletionModel},
     extractor::{ExtractionError, Extractor},
     message::Message,
-    vector_store,
+    vector_store::{self, request::VectorSearchRequest},
 };
 
 use super::Op;
@@ -42,12 +42,12 @@ where
     async fn call(&self, input: Self::Input) -> Self::Output {
         let query: String = input.into();
 
-        let docs = self
-            .index
-            .top_n::<T>(&query, self.n)
-            .await?
-            .into_iter()
-            .collect();
+        let req = VectorSearchRequest::builder()
+            .query(query)
+            .samples(self.n as u64)
+            .build()?;
+
+        let docs = self.index.top_n::<T>(req).await?.into_iter().collect();
 
         Ok(docs)
     }
@@ -181,8 +181,7 @@ pub mod tests {
     impl VectorStoreIndex for MockIndex {
         async fn top_n<T: for<'a> serde::Deserialize<'a> + std::marker::Send>(
             &self,
-            _query: &str,
-            _n: usize,
+            _req: VectorSearchRequest,
         ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
             let doc = serde_json::from_value(serde_json::json!({
                 "foo": "bar",
@@ -194,8 +193,7 @@ pub mod tests {
 
         async fn top_n_ids(
             &self,
-            _query: &str,
-            _n: usize,
+            _req: VectorSearchRequest,
         ) -> Result<Vec<(f64, String)>, VectorStoreError> {
             Ok(vec![(1.0, "doc1".to_string())])
         }

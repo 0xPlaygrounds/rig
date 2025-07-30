@@ -7,7 +7,7 @@ use std::{
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 
-use super::{VectorStoreError, VectorStoreIndex};
+use super::{VectorStoreError, VectorStoreIndex, request::VectorSearchRequest};
 use crate::{
     OneOrMany,
     embeddings::{Embedding, EmbeddingModel, distance::VectorDistance},
@@ -221,15 +221,17 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
 {
     async fn top_n<T: for<'a> Deserialize<'a>>(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = &self.model.embed_text(query).await?;
+        let prompt_embedding = &self.model.embed_text(req.query()).await?;
 
-        let docs = self.store.vector_search(prompt_embedding, n);
+        let docs = self
+            .store
+            .vector_search(prompt_embedding, req.samples() as usize);
 
         // Return n best
         docs.into_iter()
+            // The distance should always be between 0 and 1, so distance should be fine to use as an absolute value
             .map(|Reverse(RankingItem(distance, id, doc, _))| {
                 Ok((
                     distance.0,
@@ -245,14 +247,14 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
 
     async fn top_n_ids(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = &self.model.embed_text(query).await?;
+        let prompt_embedding = &self.model.embed_text(req.query()).await?;
 
-        let docs = self.store.vector_search(prompt_embedding, n);
+        let docs = self
+            .store
+            .vector_search(prompt_embedding, req.samples() as usize);
 
-        // Return n best
         docs.into_iter()
             .map(|Reverse(RankingItem(distance, id, _, _))| Ok((distance.0, id.clone())))
             .collect::<Result<Vec<_>, _>>()

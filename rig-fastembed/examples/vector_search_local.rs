@@ -5,7 +5,9 @@ use fastembed::{
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
-    vector_store::{VectorStoreIndex, in_memory_store::InMemoryVectorStore},
+    vector_store::{
+        VectorStoreIndex, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
+    },
 };
 use rig_fastembed::EmbeddingModel;
 use serde::{Deserialize, Serialize};
@@ -92,8 +94,16 @@ async fn main() -> Result<(), anyhow::Error> {
         InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
     let index = vector_store.index(embedding_model);
 
+    let query =
+        "I need to buy something in a fictional universe. What type of money can I use for this?";
+
+    let req = VectorSearchRequest::builder()
+        .query(query)
+        .samples(1)
+        .build()?;
+
     let results = index
-        .top_n::<WordDefinition>("I need to buy something in a fictional universe. What type of money can I use for this?", 1)
+        .top_n::<WordDefinition>(req)
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.word))

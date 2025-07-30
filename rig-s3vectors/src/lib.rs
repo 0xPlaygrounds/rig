@@ -7,7 +7,9 @@ use aws_sdk_s3vectors::{
 use aws_smithy_types::Document;
 use rig::{
     embeddings::EmbeddingModel,
-    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
+    vector_store::{
+        InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
+    },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -191,12 +193,15 @@ where
 {
     async fn top_n<T: for<'a> serde::Deserialize<'a> + Send>(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+        if req.samples() > i32::MAX as u64 {
+            return Err(VectorStoreError::DatastoreError(format!("The number of samples to return with the `rig` AWS S3Vectors integration cannot be higher than {}", i32::MAX).into()));
+        }
+
         let embedding = self
             .embedding_model
-            .embed_text(query)
+            .embed_text(req.query())
             .await?
             .vec
             .into_iter()
@@ -207,7 +212,7 @@ where
             .client
             .query_vectors()
             .query_vector(VectorData::Float32(embedding))
-            .top_k(n as i32)
+            .top_k(req.samples() as i32)
             .return_distance(true)
             .return_metadata(true)
             .vector_bucket_name(self.bucket_name())
@@ -235,12 +240,15 @@ where
     }
     async fn top_n_ids(
         &self,
-        query: &str,
-        n: usize,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+        if req.samples() > i32::MAX as u64 {
+            return Err(VectorStoreError::DatastoreError(format!("The number of samples to return with the `rig` AWS S3Vectors integration cannot be higher than {}", i32::MAX).into()));
+        }
+
         let embedding = self
             .embedding_model
-            .embed_text(query)
+            .embed_text(req.query())
             .await?
             .vec
             .into_iter()
@@ -251,7 +259,7 @@ where
             .client
             .query_vectors()
             .query_vector(VectorData::Float32(embedding))
-            .top_k(n as i32)
+            .top_k(req.samples() as i32)
             .return_distance(true)
             .vector_bucket_name(self.bucket_name())
             .index_name(self.index_name())
