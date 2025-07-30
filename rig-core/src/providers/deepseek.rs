@@ -17,7 +17,7 @@ use crate::json_utils::merge;
 use crate::message::Document;
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, CompletionModel, CompletionRequest},
+    completion::{self, CompletionError, CompletionRequest},
     impl_conversion_traits, json_utils, message,
 };
 use reqwest::Client as HttpClient;
@@ -135,11 +135,11 @@ impl ProviderClient for Client {
 }
 
 impl CompletionClient for Client {
-    type CompletionModel = DeepSeekCompletionModel;
+    type CompletionModel = CompletionModel;
 
     /// Creates a DeepSeek completion model with the given `model_name`.
-    fn completion_model(&self, model_name: &str) -> DeepSeekCompletionModel {
-        DeepSeekCompletionModel {
+    fn completion_model(&self, model_name: &str) -> CompletionModel {
+        CompletionModel {
             client: self.clone(),
             model: model_name.to_string(),
         }
@@ -482,12 +482,12 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 
 /// The struct implementing the `CompletionModel` trait
 #[derive(Clone)]
-pub struct DeepSeekCompletionModel {
+pub struct CompletionModel {
     pub client: Client,
     pub model: String,
 }
 
-impl DeepSeekCompletionModel {
+impl CompletionModel {
     fn create_completion_request(
         &self,
         completion_request: CompletionRequest,
@@ -543,7 +543,7 @@ impl DeepSeekCompletionModel {
     }
 }
 
-impl CompletionModel for DeepSeekCompletionModel {
+impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 

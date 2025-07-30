@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "rootDir": "./src",
+    "allowJs": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "typeRoots": ["src/generated", "node_modules/@types"],
+    "types": ["node"]
+  },
+  "paths": {
+    "@types": ["./types.ts"]
+  },
+  "include": ["./**/*.ts", "generated/**/*.ts", "rollup.config.ts"],
+  "exclude": ["node_modules", "dist/**/*"]
+}

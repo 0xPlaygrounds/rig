@@ -15,8 +15,14 @@ members = [
     "rig-fastembed",
     "rig-bedrock",
     "rig-milvus",
+    "rig-wasm",
     "rig-s3vectors",
 ]
+
+[profile.release]
+lto = true
+opt-level = "s"
+
 
 [workspace.package]
 edition = "2024"
