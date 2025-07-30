@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.2.3...rig-fastembed-v0.2.4) - 2025-07-30
+
+### Added
+
+- *(rig-819)* vector store index request struct ([#623](https://github.com/0xPlaygrounds/rig/pull/623))
+
 ## [0.2.3](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.2.2...rig-fastembed-v0.2.3) - 2025-07-16
 
 ### Other

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.1.3...rig-scylladb-v0.1.4) - 2025-07-30
+
+### Added
+
+- *(rig-819)* vector store index request struct ([#623](https://github.com/0xPlaygrounds/rig/pull/623))
+
+### Other
+
+- Refactor clients with builder pattern ([#615](https://github.com/0xPlaygrounds/rig/pull/615))
+
 ## [0.1.3](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.1.2...rig-scylladb-v0.1.3) - 2025-07-16
 
 ### Other

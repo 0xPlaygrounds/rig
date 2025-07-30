@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.1.9...rig-surrealdb-v0.1.10) - 2025-07-30
+
+### Added
+
+- *(rig-819)* vector store index request struct ([#623](https://github.com/0xPlaygrounds/rig/pull/623))
+
 ## [0.1.9](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.1.8...rig-surrealdb-v0.1.9) - 2025-07-16
 
 ### Other
