@@ -37,6 +37,8 @@ use super::Agent;
 ///     .build();
 /// ```
 pub struct AgentBuilder<M: CompletionModel> {
+    /// Name of the agent used for logging and debugging
+    name: Option<String>,
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     model: M,
     /// System prompt
@@ -62,6 +64,7 @@ pub struct AgentBuilder<M: CompletionModel> {
 impl<M: CompletionModel> AgentBuilder<M> {
     pub fn new(model: M) -> Self {
         Self {
+            name: None,
             model,
             preamble: None,
             static_context: vec![],
@@ -73,6 +76,12 @@ impl<M: CompletionModel> AgentBuilder<M> {
             dynamic_tools: vec![],
             tools: ToolSet::default(),
         }
+    }
+
+    /// Set the name of the agent
+    pub fn name(mut self, name: &str) -> Self {
+        self.name = Some(name.into());
+        self
     }
 
     /// Set the system prompt
@@ -178,6 +187,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
     /// Build the agent
     pub fn build(self) -> Agent<M> {
         Agent {
+            name: self.name,
             model: self.model,
             preamble: self.preamble.unwrap_or_default(),
             static_context: self.static_context,

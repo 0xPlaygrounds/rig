@@ -11,6 +11,8 @@ use crate::{
 use futures::{StreamExt, TryStreamExt, stream};
 use std::collections::HashMap;
 
+const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
+
 /// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
 /// (i.e.: system prompt) and a static set of context documents and tools.
 /// All context documents and tools are always provided to the agent when prompted.
@@ -32,6 +34,8 @@ use std::collections::HashMap;
 ///     .expect("Failed to prompt the agent");
 /// ```
 pub struct Agent<M: CompletionModel> {
+    /// Name of the agent used for logging and debugging
+    pub name: Option<String>,
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     pub model: M,
     /// System prompt
@@ -55,6 +59,7 @@ pub struct Agent<M: CompletionModel> {
 }
 
 impl<M: CompletionModel> Completion<M> for Agent<M> {
+    #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
     async fn completion(
         &self,
         prompt: impl Into<Message> + Send,
@@ -191,6 +196,7 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 
 #[allow(refining_impl_trait)]
 impl<M: CompletionModel> Prompt for Agent<M> {
+    #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
     fn prompt(
         &self,
         prompt: impl Into<Message> + Send,
@@ -201,6 +207,7 @@ impl<M: CompletionModel> Prompt for Agent<M> {
 
 #[allow(refining_impl_trait)]
 impl<M: CompletionModel> Prompt for &Agent<M> {
+    #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
     fn prompt(
         &self,
         prompt: impl Into<Message> + Send,
@@ -211,6 +218,7 @@ impl<M: CompletionModel> Prompt for &Agent<M> {
 
 #[allow(refining_impl_trait)]
 impl<M: CompletionModel> Chat for Agent<M> {
+    #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
     async fn chat(
         &self,
         prompt: impl Into<Message> + Send,
@@ -224,6 +232,7 @@ impl<M: CompletionModel> Chat for Agent<M> {
 }
 
 impl<M: CompletionModel> StreamingCompletion<M> for Agent<M> {
+    #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
     async fn stream_completion(
         &self,
         prompt: impl Into<Message> + Send,
@@ -236,6 +245,7 @@ impl<M: CompletionModel> StreamingCompletion<M> for Agent<M> {
 }
 
 impl<M: CompletionModel> StreamingPrompt<M::StreamingResponse> for Agent<M> {
+    #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
     async fn stream_prompt(
         &self,
         prompt: impl Into<Message> + Send,
@@ -245,6 +255,7 @@ impl<M: CompletionModel> StreamingPrompt<M::StreamingResponse> for Agent<M> {
 }
 
 impl<M: CompletionModel> StreamingChat<M::StreamingResponse> for Agent<M> {
+    #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
     async fn stream_chat(
         &self,
         prompt: impl Into<Message> + Send,
@@ -254,5 +265,11 @@ impl<M: CompletionModel> StreamingChat<M::StreamingResponse> for Agent<M> {
             .await?
             .stream()
             .await
+    }
+}
+
+impl<M: CompletionModel> Agent<M> {
+    pub(crate) fn name(&self) -> &str {
+        self.name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
     }
 }
