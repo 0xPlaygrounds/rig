@@ -1,22 +1,32 @@
 # rig-wasm: Rig, but it's WASM!
 WASM bindings to Rig.
 
-## Missing
+To install, run the following command:
+
+```bash
+npm i rig-wasm
+```
+
+Examples can be found in the `examples` folder.
+
+Please note that this package is extremely experimental at the moment and as such, you may find that there are DX papercuts here and there differing in severity. Opening a ticket for any issues you find would be hugely helpful.
+
+Like the original `rig` crates, there will also likely be breaking changes between minor versions. Migration paths will be provided between each version if required.
+
+## Missing for feature parity
 - Pipelines
 - Custom completion models/agents
 - Azure
 
 ## Implementation checklist
 Providers:
-  - [x] OpenAI
-  - [x] Everyone else
+  - [x] Nearly every model provider from the original `rig-core` package
   - [ ] Azure
 
 Vector store integrations:
   - [x] Qdrant
+  - [x] In-memory vector store (for testing/small datasets)
   - [ ] Everyone else
-
-We need to write JS/TS implementations for vector store integrations, so this might be a bit tricky.
 
 Agents:
   - [x] Prompting
@@ -34,8 +44,10 @@ Embedding:
 ## Folder architecture
 - `examples`: A list of examples (entirely in TS) that use `rig-wasm`.
 - `pkg`: The JavaScript package.
-  - `types`: Typescript definitions. These are manually hand-written, so if there are any changes in the `rig-wasm` library (particularly if there are any changes to the unsafe extern C blocks) you must ensure that these are kept up to date. Additionally, some translated types require sub-definitions which will be contained here.
   - `src`: Some handwritten code. Primarily used for re-exporting and each file also serves as a module entrypoint for module hygiene.
+  - `src/providers`: Generally imports from the generated `rig_wasm` module. Split into modules to avoid issues with everything being in one module and to potentially allow for better code splitting/tree shaking.
+  - `src/vector_stores`: Hand-written implementations for vector stores (because the original Rust vector stores don't compile to WASM).
+  - `src/*`: Generally, interfaces and utility functions that you may find quite useful.
 - `src`: The Rust code.
 - `build.rs`: A build script. Primarily used to regenerate all providers based on the contents of `rig-core/src/providers` as their `wasm-bindgen` counterparts.
 
