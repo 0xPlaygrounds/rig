@@ -2,11 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{
-    Embed, OneOrMany,
-    client::{ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient},
-    completion::{self, CompletionError, CompletionRequest, Usage},
-    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
-    impl_conversion_traits,
+    client::{ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient}, completion::{self, CompletionError, CompletionRequest, ToolDefinition, Usage}, embeddings::{self, EmbeddingError, EmbeddingsBuilder}, impl_conversion_traits, json_utils, Embed, OneOrMany
 };
 
 const FOUNDRY_API_BASE_URL: &str = "http://localhost:8080";
@@ -333,5 +329,48 @@ impl CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<Value, CompletionError> {
+        let mut partial_history = vec![];
+        if let Some(docs) = completion_request.normalized_documents(){
+            partial_history.push(docs);
+        }
+        partial_history.extend(completion_request.chat_history);
+
+        let mut full_history = completion_request.preamble.map_or_else(Vec::new, |preamble| vec![CompletionMessage::from(&preamble)]);
+
+        // convert and extend the rest of the history
+        full_history.extend(
+            partial_history
+                .into_iter()
+                .map(|msg| msg.try_into())
+                .collect::<Result<Vec<Vec<CompletionMessage>>,_>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<CompletionMessage>>();
+        );
+
+        let mut requeest_payload = json!({
+            "model": self.model,
+            "messages": full_history,
+            "temparature": completion_request.temperature,
+            "stream": false,
+        });
+
+        if !completion_request.tools.is_empty(){
+            // Foundry's functions have same structure as completion::ToolDefination
+            requeest_payload["functions"] = json!(
+                completion_request
+                    .tools
+                    .into_iter()
+                    .map(|tool| tool.into())
+                    .collect::<Vec<ToolDefinition>>()
+            );
+        }
+
+        tracing::debug!(target: "rig", "Chat mode payload: {}", requeest_payload);
+
+        Ok(requeest_payload)
     }
 }
+
+// ---------- CompletionModel Implementation ----------
+//
