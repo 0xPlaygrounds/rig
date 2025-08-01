@@ -396,7 +396,7 @@ impl CompletionModel {
                 completion_request
                     .tools
                     .into_iter()
-                    .map(|tool| tool.into())
+                    .map(|tool| tool)
                     .collect::<Vec<ToolDefinition>>()
             );
         }
@@ -508,9 +508,9 @@ impl completion::CompletionModel for CompletionModel {
                         continue;
                     }
 
-                    let data_line = if line.starts_with("data: ") {
-                        &line[6..]
-                    } else {
+                    let data_line = if let Some(data) = line.strip_prefix("data: "){
+                        data
+                    }else{
                         line
                     };
 
