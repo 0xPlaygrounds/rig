@@ -1,11 +1,20 @@
+use async_stream::stream;
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::{convert::TryFrom, str::FromStr};
 
 use crate::{
-    client::{ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient}, completion::{self, CompletionError, CompletionRequest, ToolDefinition, Usage}, embeddings::{self, EmbeddingError, EmbeddingsBuilder}, impl_conversion_traits, json_utils, Embed, OneOrMany
+    Embed, OneOrMany,
+    client::{ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient},
+    completion::{self, CompletionError, CompletionRequest, ToolDefinition},
+    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
+    impl_conversion_traits, json_utils,
+    message::Text,
+    streaming::{self, RawStreamingChoice},
 };
 
-const FOUNDRY_API_BASE_URL: &str = "http://localhost:8080";
+const FOUNDRY_API_BASE_URL: &str = "http://localhost:42069";
 
 pub struct ClientBuilder<'a> {
     base_url: &'a str,
@@ -58,13 +67,13 @@ impl Default for Client {
 }
 
 impl Client {
-    /// Create a new Ollama client builder.
+    /// Create a new Foundry client builder.
     ///
     /// # Example
     /// ```
-    /// use rig::providers::ollama::{ClientBuilder, self};
+    /// use rig::providers::foundry::{ClientBuilder, self};
     ///
-    /// // Initialize the Ollama client
+    /// // Initialize the Foundry client
     /// let client = Client::builder()
     ///    .build()
     /// ```
@@ -72,7 +81,7 @@ impl Client {
         ClientBuilder::new()
     }
 
-    /// Create a new Ollama client. For more control, use the `builder` method.
+    /// Create a new Foundry client. For more control, use the `builder` method.
     ///
     /// # Panics
     /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
@@ -145,10 +154,12 @@ enum ApiResponse<T> {
     Err(ApiErrorResponse),
 }
 
+pub const COHERE_EMBED_V4_0: &str = "embed-v-4-0";
+pub const COHERE_EMBED_V3_ENGLISH: &str = "Cohere-embed-v3-english";
+pub const COHERE_EMBED_V3_MULTILINGUAL: &str = "Cohere-embed-v3-multilingual";
+pub const OPENAI_TEXT_EMBEDDING_3_LARGE: &str = "text-embedding-3-large";
+
 // ---------- Embedding API ----------
-
-/// TODO: mention the commpletion models here
-
 #[derive(Debug, Serialize, Deserialize)]
 struct EmbeddingData {
     object: String,
@@ -186,7 +197,6 @@ impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, Embeddin
 }
 
 // ----------- Embedding Model --------------
-
 #[derive(Clone)]
 pub struct EmbeddingModel {
     client: Client,
@@ -242,7 +252,10 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 .data
                 .into_iter()
                 .zip(docs.into_iter())
-                .map(|(vec, document)| embeddings::Embedding { document, vec })
+                .map(|(embedding_data, document)| embeddings::Embedding {
+                    document,
+                    vec: embedding_data.embedding,
+                })
                 .collect())
         } else {
             Err(EmbeddingError::ProviderError(response.text().await?))
@@ -250,30 +263,50 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     }
 }
 
+// these i took from gemini ( review needed josh)
+pub const COHERE_COMMAND_A: &str = "Cohere-command-a";
+pub const COHERE_COMMAND_R_PLUS: &str = "Cohere-command-r-plus-08-2024";
+pub const COHERE_COMMAND_R: &str = "Cohere-command-r-08-2024";
+pub const MISTRAL_CODESTRAL: &str = "Codestral-2501";
+pub const MISTRAL_MINISTRAL_3B: &str = "Ministral-3B";
+pub const MISTRAL_NEMO: &str = "Mistral-Nemo";
+pub const MISTRAL_SMALL: &str = "Mistral-small-2503";
+pub const MISTRAL_MEDIUM: &str = "Mistral-medium-2505";
+pub const MICROSOFT_PHI_4_MINI_INSTRUCT: &str = "Phi-4-mini-instruct";
+pub const MICROSOFT_PHI_4_MULTIMODAL_INSTRUCT: &str = "Phi-4-multimodal-instruct";
+pub const MICROSOFT_PHI_4: &str = "Phi-4";
+pub const MICROSOFT_PHI_4_REASONING: &str = "Phi-4-reasoning";
+pub const MICROSOFT_PHI_4_MINI_REASONING: &str = "Phi-4-mini-reasoning";
+pub const OPENAI_GPT_4O: &str = "gpt-4o";
+pub const OPENAI_GPT_4O_MINI: &str = "gpt-4o-mini";
+pub const OPENAI_GPT_3_5_TURBO: &str = "gpt-35-turbo";
+pub const MICROSOFT_PHI_3_MINI_4K_INSTRUCT: &str = "Phi-3-mini-4k-instruct";
+pub const MICROSOFT_PHI_3_MINI_128K_INSTRUCT: &str = "Phi-3-mini-128k-instruct";
+pub const MICROSOFT_PHI_3_SMALL_8K_INSTRUCT: &str = "Phi-3-small-8k-instruct";
+pub const MICROSOFT_PHI_3_SMALL_128K_INSTRUCT: &str = "Phi-3-small-128k-instruct";
+
 // ----------- Completions API -------------
-
-// TODO: add models here
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct CompletionsUsage {
+pub struct CompletionsUsage {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub total_tokens: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct Choice {
+pub struct Choice {
     pub index: u64,
     pub message: CompletionMessage,
     pub finish_reason: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct CompletionMessage {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CompletionMessage {
     pub role: String,
     pub content: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CompletionResponse {
     pub id: String,
     pub object: String,
@@ -330,22 +363,24 @@ impl CompletionModel {
         completion_request: CompletionRequest,
     ) -> Result<Value, CompletionError> {
         let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents(){
+        if let Some(docs) = completion_request.normalized_documents() {
             partial_history.push(docs);
         }
         partial_history.extend(completion_request.chat_history);
 
-        let mut full_history = completion_request.preamble.map_or_else(Vec::new, |preamble| vec![CompletionMessage::from(&preamble)]);
+        let mut full_history = completion_request
+            .preamble
+            .map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
 
         // convert and extend the rest of the history
         full_history.extend(
             partial_history
                 .into_iter()
                 .map(|msg| msg.try_into())
-                .collect::<Result<Vec<Vec<CompletionMessage>>,_>>()?
+                .collect::<Result<Vec<Vec<Message>>, _>>()?
                 .into_iter()
                 .flatten()
-                .collect::<Vec<CompletionMessage>>();
+                .collect::<Vec<Message>>(),
         );
 
         let mut requeest_payload = json!({
@@ -355,7 +390,7 @@ impl CompletionModel {
             "stream": false,
         });
 
-        if !completion_request.tools.is_empty(){
+        if !completion_request.tools.is_empty() {
             // Foundry's functions have same structure as completion::ToolDefination
             requeest_payload["functions"] = json!(
                 completion_request
@@ -372,5 +407,389 @@ impl CompletionModel {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StreamingCompletionResponse {
+    pub id: String,
+    pub object: String,
+    pub created: String,
+    pub model: String,
+    pub usage: CompletionsUsage,
+}
+
 // ---------- CompletionModel Implementation ----------
-//
+impl completion::CompletionModel for CompletionModel {
+    type Response = CompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+        let request_payload = self.create_completion_request(completion_request)?;
+
+        let response = self
+            .client
+            .post("/v1/chat/completions")
+            .json(&request_payload)
+            .send()
+            .await
+            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+
+        if response.status().is_success() {
+            let text = response
+                .text()
+                .await
+                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            tracing::debug!(target: "rig", "Foundry chat response: {}", text);
+            let chat_resp: CompletionResponse = serde_json::from_str(&text)
+                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            let conv: completion::CompletionResponse<CompletionResponse> = chat_resp.try_into()?;
+            Ok(conv)
+        } else {
+            let err_text = response
+                .text()
+                .await
+                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            Err(CompletionError::ProviderError(err_text))
+        }
+    }
+
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<
+        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+        CompletionError,
+    > {
+        let mut request_payload = self.create_completion_request(request)?;
+        json_utils::merge_inplace(&mut request_payload, json!({"stream": true}));
+
+        let response = self
+            .client
+            .post("/v1/chat/completions")
+            .json(&request_payload)
+            .send()
+            .await
+            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let err_text = response
+                .text()
+                .await
+                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            return Err(CompletionError::ProviderError(err_text));
+        }
+
+        let stream = Box::pin(stream! {
+            let mut stream = response.bytes_stream();
+            while let Some(chunk_result) = stream.next().await {
+                let chunk = match chunk_result {
+                    Ok(c) => c,
+                    Err(e) => {
+                        yield Err(CompletionError::from(e));
+                        break;
+                    }
+                };
+
+                let text = match String::from_utf8(chunk.to_vec()) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        yield Err(CompletionError::ResponseError(e.to_string()));
+                        break;
+                    }
+                };
+
+                for line in text.lines() {
+                    let line = line.trim();
+
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    let data_line = if line.starts_with("data: ") {
+                        &line[6..]
+                    } else {
+                        line
+                    };
+
+                    // stream termination like openai
+                    if data_line == "[DONE]" {
+                        break;
+                    }
+
+                    let Ok(response) = serde_json::from_str::<CompletionResponse>(data_line) else {
+                        continue;
+                    };
+
+                    for choice in response.choices.iter() {
+                        if !choice.message.content.is_empty() {
+                            yield Ok(RawStreamingChoice::Message(choice.message.content.clone()));
+                        }
+                    }
+                    if response.choices.iter().any(|choice| choice.finish_reason == "stop") {
+                        yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                            id: response.id.clone(),
+                            object: response.object.clone(),
+                            created: response.created.clone(),
+                            model: response.model.clone(),
+                            usage: response.usage.clone(),
+                        }));
+                    }
+                }
+            }
+        });
+
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Role {
+    #[serde(rename = "user")]
+    User,
+    #[serde(rename = "system")]
+    System,
+    #[serde(rename = "assistant")]
+    Assistant,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Message {
+    role: Role,
+    content: String,
+}
+
+impl TryFrom<crate::message::Message> for Vec<Message> {
+    type Error = crate::message::MessageError;
+    fn try_from(internal_msg: crate::message::Message) -> Result<Self, Self::Error> {
+        use crate::message::Message as InternalMessage;
+        match internal_msg {
+            InternalMessage::User { content, .. } => {
+                // Foundry doesn't support tool results in messages, so we skip them
+                let non_tool_content: Vec<_> = content
+                    .into_iter()
+                    .filter(|content| {
+                        !matches!(content, crate::message::UserContent::ToolResult(_))
+                    })
+                    .collect();
+
+                let text_contents: Vec<String> = non_tool_content
+                    .into_iter()
+                    .filter_map(|content| match content {
+                        crate::message::UserContent::Text(crate::message::Text { text }) => {
+                            Some(text)
+                        }
+                        _ => None,
+                    })
+                    .collect();
+
+                Ok(vec![Message {
+                    role: Role::User,
+                    content: text_contents.join(" "),
+                }])
+            }
+            InternalMessage::Assistant { content, .. } => {
+                let text_contents: Vec<String> = content
+                    .into_iter()
+                    .filter_map(|content| match content {
+                        crate::message::AssistantContent::Text(text) => Some(text.text),
+                        _ => None,
+                    })
+                    .collect();
+
+                Ok(vec![Message {
+                    role: Role::Assistant,
+                    content: text_contents.join(" "),
+                }])
+            }
+        }
+    }
+}
+
+impl From<Message> for crate::completion::Message {
+    fn from(msg: Message) -> Self {
+        match msg.role {
+            Role::User => crate::completion::Message::User {
+                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
+                    text: msg.content,
+                })),
+            },
+            Role::Assistant => crate::completion::Message::Assistant {
+                id: None,
+                content: OneOrMany::one(crate::completion::message::AssistantContent::Text({
+                    Text { text: msg.content }
+                })),
+            },
+            Role::System => crate::completion::Message::User {
+                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
+                    text: msg.content,
+                })),
+            },
+        }
+    }
+}
+
+impl Message {
+    pub fn system(content: &str) -> Self {
+        Self {
+            role: Role::System,
+            content: content.to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct SystemContent {
+    #[serde(default)]
+    r#type: SystemContentType,
+    text: String,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum SystemContentType {
+    #[default]
+    Text,
+}
+
+impl From<String> for SystemContent {
+    fn from(s: String) -> Self {
+        SystemContent {
+            r#type: SystemContentType::default(),
+            text: s,
+        }
+    }
+}
+
+impl FromStr for SystemContent {
+    type Err = std::convert::Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(SystemContent {
+            r#type: SystemContentType::default(),
+            text: s.to_string(),
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct AssistantContent {
+    pub text: String,
+}
+
+impl FromStr for AssistantContent {
+    type Err = std::convert::Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(AssistantContent { text: s.to_owned() })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum UserContent {
+    Text { text: String },
+}
+
+impl FromStr for UserContent {
+    type Err = std::convert::Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(UserContent::Text { text: s.to_owned() })
+    }
+}
+
+// =================================================================
+// Tests
+// =================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_chat_completion() {
+        let sample_chat_response = json!({
+            "id": "chatcmpl-1234567890",
+            "object": "chat.completion",
+            "created": "1677851234",
+            "model": "Phi-4-mini-instruct-generic-cpu",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "The sky is blue because of Rayleigh scattering."
+                    },
+                    "finish_reason": "stop"
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 20,
+                "total_tokens": 30
+            }
+        });
+        let sample_text = sample_chat_response.to_string();
+
+        let chat_resp: CompletionResponse =
+            serde_json::from_str(&sample_text).expect("Invalid JSON structure");
+        let conv: completion::CompletionResponse<CompletionResponse> =
+            chat_resp.try_into().unwrap();
+        assert!(
+            !conv.choice.is_empty(),
+            "Expected non-empty choice in chat response"
+        );
+    }
+
+    #[test]
+    fn test_message_conversion() {
+        let provider_msg = Message {
+            role: Role::User,
+            content: "Test message".to_owned(),
+        };
+        let comp_msg: crate::completion::Message = provider_msg.into();
+        match comp_msg {
+            crate::completion::Message::User { content } => {
+                let first_content = content.first();
+                match first_content {
+                    crate::completion::message::UserContent::Text(text_struct) => {
+                        assert_eq!(text_struct.text, "Test message");
+                    }
+                    _ => panic!("Expected text content in conversion"),
+                }
+            }
+            _ => panic!("Conversion from provider Message to completion Message failed"),
+        }
+    }
+
+    #[test]
+    fn test_system_content_from_string() {
+        let content = SystemContent::from("Test system message".to_string());
+        assert_eq!(content.text, "Test system message");
+        assert!(matches!(content.r#type, SystemContentType::Text));
+    }
+
+    #[test]
+    fn test_system_content_from_str() {
+        let content: SystemContent = "Test system message".parse().unwrap();
+        assert_eq!(content.text, "Test system message");
+        assert!(matches!(content.r#type, SystemContentType::Text));
+    }
+
+    #[test]
+    fn test_assistant_content_from_str() {
+        let content: AssistantContent = "Test assistant message".parse().unwrap();
+        assert_eq!(content.text, "Test assistant message");
+    }
+
+    #[test]
+    fn test_user_content_from_str() {
+        let content: UserContent = "Test user message".parse().unwrap();
+        match content {
+            UserContent::Text { text } => {
+                assert_eq!(text, "Test user message");
+            }
+        }
+    }
+}
