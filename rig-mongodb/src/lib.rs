@@ -227,6 +227,8 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     for MongoDbVectorIndex<M, C>
 {
     /// Implement the `top_n` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
+    ///
+    /// `VectorSearchRequest` similarity search threshold filter gets ignored here because it is already present and can already be added in the MongoDB vector store struct.
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
         req: VectorSearchRequest,

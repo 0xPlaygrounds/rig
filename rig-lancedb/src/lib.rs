@@ -205,6 +205,7 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
             .vector_search(prompt_embedding.vec.clone())
             .map_err(lancedb_to_rig_error)?
             .limit(req.samples() as usize)
+            .distance_range(None, req.threshold().map(|x| x as f32))
             .select(lancedb::query::Select::Columns(
                 self.table
                     .schema()
@@ -263,6 +264,7 @@ impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M>
             .select(lancedb::query::Select::Columns(vec![self.id_field.clone()]))
             .nearest_to(prompt_embedding.vec.clone())
             .map_err(lancedb_to_rig_error)?
+            .distance_range(None, req.threshold().map(|x| x as f32))
             .limit(req.samples() as usize);
 
         self.build_query(query)

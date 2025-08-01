@@ -9,6 +9,8 @@ pub struct VectorSearchRequest {
     query: String,
     /// The maximum number of samples that may be returned. If adding a similarity search threshold, you may receive less than the inputted number if there aren't enough results that satisfy the threshold.
     samples: u64,
+    /// Similarity search threshold. If present, any result with a distance less than this may be omitted from the final result.
+    threshold: Option<f64>,
     /// Any additional parameters that are required by the vector store.
     additional_params: Option<serde_json::Value>,
 }
@@ -28,6 +30,10 @@ impl VectorSearchRequest {
     pub fn samples(&self) -> u64 {
         self.samples
     }
+
+    pub fn threshold(&self) -> Option<f64> {
+        self.threshold
+    }
 }
 
 /// The builder struct to instantiate [`VectorSearchRequest`].
@@ -35,6 +41,7 @@ impl VectorSearchRequest {
 pub struct VectorSearchRequestBuilder {
     query: Option<String>,
     samples: Option<u64>,
+    threshold: Option<f64>,
     additional_params: Option<serde_json::Value>,
 }
 
@@ -50,6 +57,11 @@ impl VectorSearchRequestBuilder {
 
     pub fn samples(mut self, samples: u64) -> Self {
         self.samples = Some(samples);
+        self
+    }
+
+    pub fn threshold(mut self, threshold: f64) -> Self {
+        self.threshold = Some(threshold);
         self
     }
 
@@ -88,6 +100,7 @@ impl VectorSearchRequestBuilder {
         Ok(VectorSearchRequest {
             query,
             samples,
+            threshold: self.threshold,
             additional_params,
         })
     }
