@@ -396,7 +396,6 @@ impl CompletionModel {
                 completion_request
                     .tools
                     .into_iter()
-                    .map(|tool| tool)
                     .collect::<Vec<ToolDefinition>>()
             );
         }
