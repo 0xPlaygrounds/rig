@@ -94,6 +94,9 @@ impl CompletionModel {
                                     arguments: function_call.args,
                                     call_id: None
                                 }),
+                            super::completion::gemini_api_types::Part::Thought  {thoughts} => {
+                                yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: thoughts.join("\n") })
+                            }
                         _ => panic!("Unsupported response type with streaming.")
                     };
 
