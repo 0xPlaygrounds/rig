@@ -91,6 +91,10 @@ pub enum CompletionError {
     #[error("JsonError: {0}")]
     JsonError(#[from] serde_json::Error),
 
+    /// Url error (e.g.: invalid URL)
+    #[error("UrlError: {0}")]
+    UrlError(#[from] url::ParseError),
+
     /// Error building the completion request
     #[error("RequestError: {0}")]
     RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),

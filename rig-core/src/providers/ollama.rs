@@ -56,6 +56,7 @@ use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{convert::TryFrom, str::FromStr};
+use url::Url;
 // ---------- Main Client ----------
 
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
@@ -92,7 +93,8 @@ impl<'a> ClientBuilder<'a> {
         };
 
         Ok(Client {
-            base_url: self.base_url.to_string(),
+            base_url: Url::parse(self.base_url)
+                .map_err(|_| ClientBuilderError::InvalidProperty("base_url"))?,
             http_client,
         })
     }
@@ -100,7 +102,7 @@ impl<'a> ClientBuilder<'a> {
 
 #[derive(Clone, Debug)]
 pub struct Client {
-    base_url: String,
+    base_url: Url,
     http_client: reqwest::Client,
 }
 
@@ -133,9 +135,9 @@ impl Client {
         Self::builder().build().expect("Ollama client should build")
     }
 
-    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path);
-        self.http_client.post(url)
+    pub fn post(&self, path: &str) -> Result<reqwest::RequestBuilder, url::ParseError> {
+        let url = self.base_url.join(path)?;
+        Ok(self.http_client.post(url))
     }
 }
 
@@ -266,7 +268,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         });
         let response = self
             .client
-            .post("api/embed")
+            .post("api/embed")?
             .json(&payload)
             .send()
             .await
@@ -488,7 +490,7 @@ impl completion::CompletionModel for CompletionModel {
 
         let response = self
             .client
-            .post("api/chat")
+            .post("api/chat")?
             .json(&request_payload)
             .send()
             .await
@@ -523,7 +525,7 @@ impl completion::CompletionModel for CompletionModel {
 
         let response = self
             .client
-            .post("api/chat")
+            .post("api/chat")?
             .json(&request_payload)
             .send()
             .await
