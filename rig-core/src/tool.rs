@@ -591,6 +591,15 @@ impl ToolSet {
         self.tools.get(toolname)
     }
 
+    pub async fn get_tool_definitions(&self) -> Result<Vec<ToolDefinition>, ToolSetError> {
+        let mut defs = Vec::new();
+        for tool in self.tools.values() {
+            let def = tool.definition(String::new()).await;
+            defs.push(def);
+        }
+        Ok(defs)
+    }
+
     /// Call a tool with the given name and arguments
     pub async fn call(&self, toolname: &str, args: String) -> Result<String, ToolSetError> {
         if let Some(tool) = self.tools.get(toolname) {
