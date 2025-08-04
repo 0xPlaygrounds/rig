@@ -1,5 +1,4 @@
 use rig::prelude::*;
-use std::env;
 
 use rig::completion::Prompt;
 
@@ -27,8 +26,7 @@ All operations should be O(1).
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = Client::new(&openai_api_key);
+    let openai_client = Client::from_env();
 
     let generator_agent = openai_client
         .agent("gpt-4")

@@ -1,13 +1,11 @@
 use rig::pipeline::{self, Op, TryOp};
 use rig::prelude::*;
 use rig::providers::openai::client::Client;
-use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = Client::new(&openai_api_key);
+    let openai_client = Client::from_env();
 
     // Note that you can also create your own semantic router for this
     // that uses a vector store under the hood

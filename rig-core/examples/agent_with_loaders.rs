@@ -5,12 +5,10 @@ use rig::{
     loaders::FileLoader,
     providers::openai::{self, GPT_4O},
 };
-use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let openai_client =
-        openai::Client::new(&env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"));
+    let openai_client = openai::Client::from_env();
     let model = openai_client.completion_model(GPT_4O);
 
     // Load in all the rust examples

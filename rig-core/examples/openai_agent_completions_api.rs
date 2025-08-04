@@ -3,21 +3,18 @@
 
 use rig::completion::Prompt;
 use rig::prelude::*;
-use std::env;
 
 use rig::providers;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let agent = providers::openai::Client::new(
-        &env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"),
-    )
-    .completion_model("gpt-4o")
-    .completions_api()
-    .into_agent_builder()
-    .preamble("You are a helpful assistant")
-    .build();
+    let agent = providers::openai::Client::from_env()
+        .completion_model("gpt-4o")
+        .completions_api()
+        .into_agent_builder()
+        .preamble("You are a helpful assistant")
+        .build();
 
     let res = agent.prompt("Hello world!").await.unwrap();
 

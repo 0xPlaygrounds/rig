@@ -116,8 +116,13 @@ impl ProviderClient for Client {
     /// Create a new OpenAI client from the `OPENAI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
+        let base_url: Option<String> = std::env::var("OPENAI_BASE_URL").ok();
         let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-        Self::new(&api_key)
+
+        match base_url {
+            Some(url) => Self::builder(&api_key).base_url(&url).build().unwrap(),
+            None => Self::new(&api_key),
+        }
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
