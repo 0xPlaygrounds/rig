@@ -47,22 +47,26 @@ export class InMemoryVectorStore implements VectorStore {
 
   async topN(req: VectorSearchOpts): Promise<TopNResult[]> {
     const queryEmbedding = await this.model.embedText(req.query);
+    const threshold = req.threshold ?? 0;
     return this.store
       .map((entry) => {
         const sim = cosineSim(queryEmbedding.vec, entry.embedding.vec);
         return [sim, entry.id, entry.metadata] as TopNResult;
       })
+      .filter((x) => x[0] < threshold)
       .sort((a, b) => b[0] - a[0])
       .slice(0, req.samples);
   }
 
   async topNIds(req: VectorSearchOpts): Promise<TopNIdsResult[]> {
     const queryEmbedding = await this.model.embedText(req.query);
+    const threshold = req.threshold ?? 0;
     return this.store
       .map((entry) => {
         const sim = cosineSim(queryEmbedding.vec, entry.embedding.vec);
         return [sim, entry.id] as TopNIdsResult;
       })
+      .filter((x) => x[0] < threshold)
       .sort((a, b) => b[0] - a[0])
       .slice(0, req.samples);
   }

@@ -99,6 +99,7 @@ export class QdrantAdapter {
 
     const result = await this.client.search(this.collectionName, {
       vector: embedding.vec,
+      score_threshold: opts.threshold ?? 0,
       limit: opts.samples,
     });
 

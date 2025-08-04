@@ -224,6 +224,14 @@ where
         let res: Vec<(f64, String, T)> = query
             .vectors
             .into_iter()
+            .filter(|vector| {
+                req.threshold().is_none_or(|threshold| {
+                    (vector
+                        .distance()
+                        .expect("vector distance should always exist") as f64)
+                        >= threshold
+                })
+            })
             .map(|x| {
                 let distance = x.distance.expect("vector distance should always exist") as f64;
                 let val =
@@ -270,6 +278,14 @@ where
         let res: Vec<(f64, String)> = query
             .vectors
             .into_iter()
+            .filter(|vector| {
+                req.threshold().is_none_or(|threshold| {
+                    (vector
+                        .distance()
+                        .expect("vector distance should always exist") as f64)
+                        >= threshold
+                })
+            })
             .map(|x| {
                 let distance = x.distance.expect("vector distance should always exist") as f64;
 

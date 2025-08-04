@@ -264,6 +264,10 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for ScyllaDb
             let similarity = Self::cosine_similarity(&query_vector, &vector);
             let score = similarity as f64;
 
+            if req.threshold().is_some_and(|threshold| score < threshold) {
+                continue;
+            }
+
             let payload: T = serde_json::from_str(&metadata)?;
 
             candidates.push((score, id.to_string(), payload));
@@ -305,6 +309,10 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for ScyllaDb
 
             let similarity = Self::cosine_similarity(&query_vector, &vector);
             let score = similarity as f64;
+
+            if req.threshold().is_some_and(|threshold| score < threshold) {
+                continue;
+            }
 
             candidates.push((score, id.to_string()));
         }
