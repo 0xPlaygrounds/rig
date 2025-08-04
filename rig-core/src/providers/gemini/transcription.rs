@@ -7,7 +7,7 @@ use serde_json::{Map, Value};
 use crate::{
     OneOrMany,
     providers::gemini::completion::gemini_api_types::{
-        Blob, Content, GenerateContentRequest, GenerationConfig, Part, Role,
+        Blob, Content, GenerateContentRequest, GenerationConfig, Part, PartKind, Role,
     },
     transcription::{self, TranscriptionError},
 };
@@ -73,10 +73,14 @@ impl transcription::TranscriptionModel for TranscriptionModel {
 
         let request = GenerateContentRequest {
             contents: vec![Content {
-                parts: OneOrMany::one(Part::InlineData(Blob {
-                    mime_type,
-                    data: BASE64_STANDARD.encode(request.data),
-                })),
+                parts: OneOrMany::one(Part {
+                    thought: Some(false),
+                    thought_signature: None,
+                    part: PartKind::InlineData(Blob {
+                        mime_type,
+                        data: BASE64_STANDARD.encode(request.data),
+                    }),
+                }),
                 role: Some(Role::User),
             }],
             generation_config: Some(generation_config),
@@ -132,7 +136,10 @@ impl TryFrom<GenerateContentResponse>
         let part = candidate.content.parts.first();
 
         let text = match part {
-            Part::Text(text) => text,
+            Part {
+                part: PartKind::Text(text),
+                ..
+            } => text,
             _ => {
                 return Err(TranscriptionError::ResponseError(
                     "Response content was not text".to_string(),

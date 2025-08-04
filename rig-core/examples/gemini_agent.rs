@@ -16,7 +16,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let agent = client
-        .agent(gemini::completion::GEMINI_1_5_PRO)
+        .agent("gemini-2.5-pro")
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)
         // The `GenerationConfig` utility struct helps construct a typesafe `additional_params`

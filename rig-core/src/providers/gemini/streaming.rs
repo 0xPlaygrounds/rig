@@ -2,7 +2,10 @@ use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 
-use super::completion::{CompletionModel, create_request_body, gemini_api_types::ContentCandidate};
+use super::completion::{
+    CompletionModel, create_request_body,
+    gemini_api_types::{ContentCandidate, PartKind},
+};
 use crate::{
     completion::{CompletionError, CompletionRequest},
     streaming::{self},
@@ -35,6 +38,11 @@ impl CompletionModel {
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let request = create_request_body(completion_request)?;
+
+        tracing::warn!(
+            "Sending completion request to Gemini API {}",
+            serde_json::to_string_pretty(&request)?
+        );
 
         let response = self
             .client
@@ -74,7 +82,6 @@ impl CompletionModel {
                     }
                 };
 
-
                 for line in text.lines() {
                     let Some(line) = line.strip_prefix("data: ") else { continue; };
 
@@ -85,18 +92,20 @@ impl CompletionModel {
                     let choice = data.candidates.first().expect("Should have at least one choice");
 
                     match choice.content.parts.first() {
-                        super::completion::gemini_api_types::Part::Text(text)
-                            => yield Ok(streaming::RawStreamingChoice::Message(text)),
-                        super::completion::gemini_api_types::Part::FunctionCall(function_call)
+                        super::completion::gemini_api_types::Part { part: PartKind::Text(text), thought, ..} => {
+                            if let Some(thought) = thought && thought {
+                                yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: text })
+                            } else {
+                                yield Ok(streaming::RawStreamingChoice::Message(text))
+                            }
+                        },
+                        super::completion::gemini_api_types::Part { part: PartKind::FunctionCall(function_call), ..}
                             => yield Ok(streaming::RawStreamingChoice::ToolCall {
                                     name: function_call.name,
                                     id: "".to_string(),
                                     arguments: function_call.args,
                                     call_id: None
                                 }),
-                            super::completion::gemini_api_types::Part::Thought  {thoughts} => {
-                                yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: thoughts.join("\n") })
-                            }
                         _ => panic!("Unsupported response type with streaming.")
                     };
 
