@@ -1,12 +1,10 @@
 use rig::pipeline::{self, Op};
 use rig::prelude::*;
 use rig::providers::openai::client::Client;
-use std::env;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = Client::new(&openai_api_key);
+    let openai_client = Client::from_env();
 
     let rng_agent = openai_client.agent("gpt-4")
         .preamble("

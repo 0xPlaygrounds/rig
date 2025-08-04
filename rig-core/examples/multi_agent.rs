@@ -6,7 +6,6 @@ use rig::{
     message::Message,
     providers::openai::Client as OpenAIClient,
 };
-use std::env;
 
 /// Represents a multi agent application that consists of two components:
 /// an agent specialized in translating prompt into english and a simple GPT-4 model.
@@ -57,8 +56,7 @@ impl<M: CompletionModel> Chat for EnglishTranslator<M> {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = OpenAIClient::new(&openai_api_key);
+    let openai_client = OpenAIClient::from_env();
     let model = openai_client.completion_model("gpt-4");
 
     // Create model

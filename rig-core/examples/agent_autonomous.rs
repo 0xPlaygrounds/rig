@@ -3,8 +3,6 @@ use rig::providers::openai::client::Client;
 
 use schemars::JsonSchema;
 
-use std::env;
-
 #[derive(Debug, serde::Deserialize, JsonSchema, serde::Serialize)]
 struct Counter {
     /// The score of the document
@@ -14,8 +12,7 @@ struct Counter {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = Client::new(&openai_api_key);
+    let openai_client = Client::from_env();
     let agent = openai_client.extractor::<Counter>("gpt-4")
         .preamble("
             Your role is to add a random number between 1 and 64 (using only integers) to the previous number.

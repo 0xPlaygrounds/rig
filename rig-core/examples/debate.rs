@@ -19,8 +19,7 @@ impl Debater {
             .with_max_level(tracing::Level::INFO)
             .with_target(false)
             .init();
-        let openai_client =
-            openai::Client::new(&env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"));
+        let openai_client = openai::Client::from_env();
         let cohere_client =
             cohere::Client::new(&env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set"));
         Self {

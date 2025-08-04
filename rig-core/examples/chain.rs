@@ -1,5 +1,4 @@
 use rig::prelude::*;
-use std::env;
 
 use rig::{
     embeddings::EmbeddingsBuilder,
@@ -13,8 +12,7 @@ use rig::{
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     // Create OpenAI client
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = Client::new(&openai_api_key);
+    let openai_client = Client::from_env();
     let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 
     // Create embeddings for our documents
