@@ -788,7 +788,7 @@ mod tests {
 
         toolset.delete_tool("add");
 
-        assert_eq!(toolset.contains("add"), false);
+        assert!(!toolset.contains("add"));
         assert_eq!(toolset.tools.len(), 1);
     }
 }
