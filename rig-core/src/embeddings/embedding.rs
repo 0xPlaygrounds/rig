@@ -19,6 +19,9 @@ pub enum EmbeddingError {
     #[error("JsonError: {0}")]
     JsonError(#[from] serde_json::Error),
 
+    #[error("UrlError: {0}")]
+    UrlError(#[from] url::ParseError),
+
     /// Error processing the document for embedding
     #[error("DocumentError: {0}")]
     DocumentError(Box<dyn std::error::Error + Send + Sync + 'static>),
