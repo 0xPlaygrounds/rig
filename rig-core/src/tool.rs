@@ -578,6 +578,10 @@ impl ToolSet {
             .insert(tool.name(), ToolType::Simple(Box::new(tool)));
     }
 
+    pub fn delete_tool(&mut self, tool_name: String) {
+        let _ = self.tools.remove(&tool_name);
+    }
+
     /// Merge another toolset into this one
     pub fn add_tools(&mut self, toolset: ToolSet) {
         self.tools.extend(toolset.tools);
