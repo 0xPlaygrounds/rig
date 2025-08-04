@@ -741,7 +741,10 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                                     data,
                                     ..
                                 }) => images.push(data),
-                                _ => {} // Audio/Document not supported by Ollama
+                                crate::message::UserContent::Document(
+                                    crate::message::Document { data, .. },
+                                ) => texts.push(data),
+                                _ => {} // Audio not supported by Ollama
                             }
                             (texts, images)
                         },
