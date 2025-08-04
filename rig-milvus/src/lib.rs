@@ -40,6 +40,8 @@ struct SearchRequest<'a> {
     collection_name: &'a str,
     db_name: &'a str,
     data: Vec<f64>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    filter: String,
     anns_field: &'a str,
     limit: usize,
     output_fields: Vec<&'a str>,
@@ -112,11 +114,22 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
     }
 
     /// Creates a Milvus semantic search request.
-    fn create_search_request(&self, data: Vec<f64>, limit: usize) -> SearchRequest {
+    fn create_search_request(
+        &self,
+        data: Vec<f64>,
+        limit: usize,
+        threshold: Option<f64>,
+    ) -> SearchRequest {
+        let filter = if let Some(threshold) = threshold {
+            format!("distance >= {threshold}")
+        } else {
+            String::new()
+        };
         SearchRequest {
             collection_name: &self.collection_name,
             db_name: &self.database_name,
             data,
+            filter,
             anns_field: "embedding",
             limit,
             output_fields: vec!["id", "distance", "document", "embeddedText"],
@@ -124,11 +137,22 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
     }
 
     /// Creates a semantic search request, but only for IDs.
-    fn create_search_request_id_only(&self, data: Vec<f64>, limit: usize) -> SearchRequest {
+    fn create_search_request_id_only(
+        &self,
+        data: Vec<f64>,
+        limit: usize,
+        threshold: Option<f64>,
+    ) -> SearchRequest {
+        let filter = if let Some(threshold) = threshold {
+            format!("distance >= {threshold}")
+        } else {
+            String::new()
+        };
         SearchRequest {
             collection_name: &self.collection_name,
             db_name: &self.database_name,
             data,
+            filter,
             anns_field: "embedding",
             limit,
             output_fields: vec!["id", "distance"],
@@ -210,7 +234,8 @@ impl<M: EmbeddingModel> VectorStoreIndex for MilvusVectorStore<M> {
             base_url = self.base_url
         );
 
-        let body = self.create_search_request(embedding.vec, req.samples() as usize);
+        let body =
+            self.create_search_request(embedding.vec, req.samples() as usize, req.threshold());
 
         let mut client = self.client.post(url);
         if let Some(ref token) = self.token {
@@ -251,7 +276,11 @@ impl<M: EmbeddingModel> VectorStoreIndex for MilvusVectorStore<M> {
             base_url = self.base_url
         );
 
-        let body = self.create_search_request_id_only(embedding.vec, req.samples() as usize);
+        let body = self.create_search_request_id_only(
+            embedding.vec,
+            req.samples() as usize,
+            req.threshold(),
+        );
 
         let mut client = self.client.post(url);
         if let Some(ref token) = self.token {

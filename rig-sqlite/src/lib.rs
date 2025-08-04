@@ -353,13 +353,17 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                     "SELECT d.{select_cols}, e.distance
                     FROM {table_name}_embeddings e
                     JOIN {table_name} d ON e.rowid = d.rowid
-                    WHERE e.embedding MATCH ?1 AND k = ?2
+                    WHERE e.embedding MATCH ?1 AND k = ?2 AND e.distance >= ?3
                     ORDER BY e.distance"
                 ))?;
 
                 let rows = stmt
                     .query_map(
-                        rusqlite::params![query_vec.as_bytes().to_vec(), req.samples() as usize],
+                        rusqlite::params![
+                            query_vec.as_bytes().to_vec(),
+                            req.samples() as usize,
+                            req.threshold().unwrap_or(0.)
+                        ],
                         |row| {
                             // Create a map of column names to values
                             let mut map = serde_json::Map::new();
@@ -417,7 +421,7 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                     "SELECT d.id, e.distance
                      FROM {table_name}_embeddings e
                      JOIN {table_name} d ON e.rowid = d.rowid
-                     WHERE e.embedding MATCH ?1 AND k = ?2
+                     WHERE e.embedding MATCH ?1 AND k = ?2 AND e.distance >= ?3
                      ORDER BY e.distance"
                 ))?;
 
@@ -428,7 +432,8 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                                 .iter()
                                 .flat_map(|x| x.to_le_bytes())
                                 .collect::<Vec<u8>>(),
-                            req.samples() as usize
+                            req.samples() as usize,
+                            req.threshold().unwrap_or(0.)
                         ],
                         |row| Ok((row.get::<_, f64>(1)?, row.get::<_, String>(0)?)),
                     )?

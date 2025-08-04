@@ -90,25 +90,34 @@ impl<Model: EmbeddingModel> PostgresVectorStore<Model> {
         Self::new(model, pg_pool, None, PgVectorDistanceFunction::Cosine)
     }
 
-    fn search_query_full(&self) -> String {
-        self.search_query(true)
+    fn search_query_full(&self, threshold: Option<f64>) -> String {
+        self.search_query(true, threshold)
     }
-    fn search_query_only_ids(&self) -> String {
-        self.search_query(false)
+    fn search_query_only_ids(&self, threshold: Option<f64>) -> String {
+        self.search_query(false, threshold)
     }
 
-    fn search_query(&self, with_document: bool) -> String {
+    fn search_query(&self, with_document: bool, threshold: Option<f64>) -> String {
         let document = if with_document { ", document" } else { "" };
         format!(
             "
             SELECT id{}, distance FROM ( \
               SELECT DISTINCT ON (id) id{}, embedding {} $1 as distance \
               FROM {} \
+              {where_clause}
               ORDER BY id, distance \
             ) as d \
             ORDER BY distance \
             LIMIT $2",
-            document, document, self.distance_function, self.documents_table
+            document,
+            document,
+            self.distance_function,
+            self.documents_table,
+            where_clause = if let Some(threshold) = threshold {
+                format!("where distance > {threshold}")
+            } else {
+                String::new()
+            }
         )
     }
 }
@@ -177,12 +186,13 @@ impl<Model: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<Model> {
             .collect::<Vec<f32>>()
             .into();
 
-        let rows: Vec<SearchResult> = sqlx::query_as(self.search_query_full().as_str())
-            .bind(embedded_query)
-            .bind(req.samples() as i64)
-            .fetch_all(&self.pg_pool)
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        let rows: Vec<SearchResult> =
+            sqlx::query_as(self.search_query_full(req.threshold()).as_str())
+                .bind(embedded_query)
+                .bind(req.samples() as i64)
+                .fetch_all(&self.pg_pool)
+                .await
+                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
         let rows: Vec<(f64, String, T)> = rows
             .into_iter()
@@ -216,12 +226,13 @@ impl<Model: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<Model> {
             .collect::<Vec<f32>>()
             .into();
 
-        let rows: Vec<SearchResultOnlyId> = sqlx::query_as(self.search_query_only_ids().as_str())
-            .bind(embedded_query)
-            .bind(req.samples() as i64)
-            .fetch_all(&self.pg_pool)
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        let rows: Vec<SearchResultOnlyId> =
+            sqlx::query_as(self.search_query_only_ids(req.threshold()).as_str())
+                .bind(embedded_query)
+                .bind(req.samples() as i64)
+                .fetch_all(&self.pg_pool)
+                .await
+                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
         let rows: Vec<(f64, String)> = rows
             .into_iter()

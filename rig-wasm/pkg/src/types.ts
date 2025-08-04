@@ -46,6 +46,7 @@ export interface VectorStore {
 export interface VectorSearchOpts {
   query: string;
   samples: number;
+  threshold?: number;
   additionalParams: Map<string, JSONObject>;
 }
 

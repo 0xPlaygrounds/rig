@@ -139,13 +139,14 @@ impl<Model: EmbeddingModel, C: Connection> SurrealVectorStore<Model, C> {
     fn search_query(&self, with_document: bool) -> String {
         let document = if with_document { ", document" } else { "" };
         let embedded_text = if with_document { ", embedded_text" } else { "" };
+
         let Self {
             distance_function, ..
         } = self;
         format!(
             "
                SELECT id {document} {embedded_text}, {distance_function}($vec, embedding) as distance \
-              from type::table($tablename) order by distance desc \
+              from type::table($tablename) where distance >= $threshold order by distance desc \
             LIMIT $limit",
         )
     }
@@ -165,6 +166,7 @@ impl<Model: EmbeddingModel, C: Connection> VectorStoreIndex for SurrealVectorSto
             .query(self.search_query_full().as_str())
             .bind(("vec", embedded_query))
             .bind(("tablename", self.documents_table.clone()))
+            .bind(("threshold", req.threshold().unwrap_or(0.)))
             .bind(("limit", req.samples() as usize))
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
@@ -200,6 +202,7 @@ impl<Model: EmbeddingModel, C: Connection> VectorStoreIndex for SurrealVectorSto
             .query(self.search_query_only_ids().as_str())
             .bind(("vec", embedded_query))
             .bind(("tablename", self.documents_table.clone()))
+            .bind(("threshold", req.threshold().unwrap_or(0.)))
             .bind(("limit", req.samples() as usize))
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;

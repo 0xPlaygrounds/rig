@@ -51,10 +51,16 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
     }
 
     /// Fill in query parameters with the given query and limit.
-    fn prepare_query_params(&self, query: Option<Query>, limit: usize) -> QueryPoints {
+    fn prepare_query_params(
+        &self,
+        query: Option<Query>,
+        limit: usize,
+        threshold: Option<f64>,
+    ) -> QueryPoints {
         let mut params = self.query_params.clone();
         params.query = query;
         params.limit = Some(limit as u64);
+        params.score_threshold = threshold.map(|x| x as f32);
         params
     }
 }
@@ -121,7 +127,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for QdrantVe
             )),
         };
 
-        let params = self.prepare_query_params(query, req.samples() as usize);
+        let params = self.prepare_query_params(query, req.samples() as usize, req.threshold());
         let result = self
             .client
             .query(params)
@@ -156,7 +162,7 @@ impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for QdrantVe
             )),
         };
 
-        let params = self.prepare_query_params(query, req.samples() as usize);
+        let params = self.prepare_query_params(query, req.samples() as usize, req.threshold());
         let points = self
             .client
             .query(params)
