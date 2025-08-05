@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.17.0...rig-core-v0.17.1) - 2025-08-05
+
+### Other
+
+- remove unnecessary warning traces ([#672](https://github.com/0xPlaygrounds/rig/pull/672))
+- *(rig-851)* update provider integrations list ([#651](https://github.com/0xPlaygrounds/rig/pull/651))
+
 ## [0.17.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.16.0...rig-core-v0.17.0) - 2025-08-05
 
 ### Added
