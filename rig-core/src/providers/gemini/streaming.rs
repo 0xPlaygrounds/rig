@@ -39,7 +39,7 @@ impl CompletionModel {
     {
         let request = create_request_body(completion_request)?;
 
-        tracing::warn!(
+        tracing::debug!(
             "Sending completion request to Gemini API {}",
             serde_json::to_string_pretty(&request)?
         );
