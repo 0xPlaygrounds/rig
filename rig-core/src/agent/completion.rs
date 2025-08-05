@@ -33,6 +33,7 @@ const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 ///     .await
 ///     .expect("Failed to prompt the agent");
 /// ```
+#[non_exhaustive]
 pub struct Agent<M: CompletionModel> {
     /// Name of the agent used for logging and debugging
     pub name: Option<String>,
