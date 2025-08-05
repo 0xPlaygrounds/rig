@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.16.0...rig-core-v0.17.0) - 2025-08-05
+
+### Added
+
+- *(rig-845)* cosine similarity for vector search ([#664](https://github.com/0xPlaygrounds/rig/pull/664))
+- add `delete_tool` method to `Toolset` ([#663](https://github.com/0xPlaygrounds/rig/pull/663))
+- Read the OPENAI_BASE_URL env variable when constructing an OpenAI client from_env ([#659](https://github.com/0xPlaygrounds/rig/pull/659))
+- add agent name ([#633](https://github.com/0xPlaygrounds/rig/pull/633))
+
+### Fixed
+
+- *(rig-853)* gemini streaming impl ignores reasoning chunks ([#654](https://github.com/0xPlaygrounds/rig/pull/654))
+- Ollama provider handling of canonical URLs ([#656](https://github.com/0xPlaygrounds/rig/pull/656))
+- *(rig-852)* dynamic context does not work correctly with ollama ([#660](https://github.com/0xPlaygrounds/rig/pull/660))
+
+### Other
+
+- *(rig-861)* make Agent<M> non-exhaustive ([#670](https://github.com/0xPlaygrounds/rig/pull/670))
+
 ## [0.16.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.15.1...rig-core-v0.16.0) - 2025-07-30
 
 ### Added

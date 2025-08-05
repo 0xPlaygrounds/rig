@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.1...rig-s3vectors-v0.1.2) - 2025-08-05
+
+### Added
+
+- *(rig-845)* cosine similarity for vector search ([#664](https://github.com/0xPlaygrounds/rig/pull/664))
+
 ## [0.1.1](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.0...rig-s3vectors-v0.1.1) - 2025-07-30
 
 ### Added

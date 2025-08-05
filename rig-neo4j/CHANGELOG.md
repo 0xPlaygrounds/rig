@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.2.15...rig-neo4j-v0.3.0) - 2025-08-05
+
+### Added
+
+- *(rig-845)* cosine similarity for vector search ([#664](https://github.com/0xPlaygrounds/rig/pull/664))
+
 ## [0.2.15](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.2.14...rig-neo4j-v0.2.15) - 2025-07-30
 
 ### Added
