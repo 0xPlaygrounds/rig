@@ -9314,7 +9314,7 @@ checksum = "57397d16646700483b67d2dd6511d79318f9d057fdbd21a4066aeac8b41d310a"
 
 [[package]]
 name = "rig-bedrock"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -9336,7 +9336,7 @@ dependencies = [
 
 [[package]]
 name = "rig-core"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "as-any",
@@ -9391,7 +9391,7 @@ dependencies = [
 
 [[package]]
 name = "rig-eternalai"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -9408,7 +9408,7 @@ dependencies = [
 
 [[package]]
 name = "rig-fastembed"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "fastembed",
@@ -9422,7 +9422,7 @@ dependencies = [
 
 [[package]]
 name = "rig-lancedb"
-version = "0.2.15"
+version = "0.2.16"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -9438,7 +9438,7 @@ dependencies = [
 
 [[package]]
 name = "rig-milvus"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "reqwest 0.12.20",
@@ -9452,7 +9452,7 @@ dependencies = [
 
 [[package]]
 name = "rig-mongodb"
-version = "0.2.15"
+version = "0.2.16"
 dependencies = [
  "anyhow",
  "futures",
@@ -9469,7 +9469,7 @@ dependencies = [
 
 [[package]]
 name = "rig-neo4j"
-version = "0.2.15"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -9488,7 +9488,7 @@ dependencies = [
 
 [[package]]
 name = "rig-postgres"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "anyhow",
  "dotenvy",
@@ -9509,7 +9509,7 @@ dependencies = [
 
 [[package]]
 name = "rig-qdrant"
-version = "0.1.18"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "httpmock",
@@ -9524,7 +9524,7 @@ dependencies = [
 
 [[package]]
 name = "rig-s3vectors"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "aws-config",
@@ -9541,7 +9541,7 @@ dependencies = [
 
 [[package]]
 name = "rig-scylladb"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "chrono",
@@ -9560,7 +9560,7 @@ dependencies = [
 
 [[package]]
 name = "rig-sqlite"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "chrono",
@@ -9579,7 +9579,7 @@ dependencies = [
 
 [[package]]
 name = "rig-surrealdb"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "anyhow",
  "rig-core",

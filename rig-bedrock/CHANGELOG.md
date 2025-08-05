@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.2.4...rig-bedrock-v0.2.5) - 2025-08-05
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.2.4](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.2.3...rig-bedrock-v0.2.4) - 2025-07-30
 
 ### Added
