@@ -9,7 +9,7 @@ use crate::{
     Embed,
     embeddings::{self},
 };
-use serde::{Deserialize};
+use serde::Deserialize;
 
 // ================================================================
 // Google Gemini Client
