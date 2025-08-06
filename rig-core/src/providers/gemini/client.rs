@@ -7,12 +7,9 @@ use crate::client::{
 };
 use crate::{
     Embed,
-    agent::AgentBuilder,
     embeddings::{self},
-    extractor::ExtractorBuilder,
 };
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 // ================================================================
 // Google Gemini Client
@@ -126,33 +123,6 @@ impl Client {
         self.http_client
             .post(url)
             .headers(self.default_headers.clone())
-    }
-
-    /// Create an agent builder with the given completion model.
-    /// Gemini-specific parameters can be set using the [GenerationConfig](crate::providers::gemini::completion::gemini_api_types::GenerationConfig) struct.
-    /// [Gemini API Reference](https://ai.google.dev/api/generate-content#generationconfig)
-    /// # Example
-    /// ```
-    /// use rig::providers::gemini::{Client, self};
-    ///
-    /// // Initialize the Google Gemini client
-    /// let gemini = Client::new("your-google-gemini-api-key");
-    ///
-    /// let agent = gemini.agent(gemini::completion::GEMINI_1_5_PRO)
-    ///    .preamble("You are comedian AI with a mission to make people laugh.")
-    ///    .temperature(0.0)
-    ///    .build();
-    /// ```
-    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    /// Create an extractor builder with the given completion model.
-    pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
-        &self,
-        model: &str,
-    ) -> ExtractorBuilder<T, CompletionModel> {
-        ExtractorBuilder::new(self.completion_model(model))
     }
 }
 
