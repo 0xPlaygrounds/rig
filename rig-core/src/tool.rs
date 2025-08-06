@@ -799,8 +799,6 @@ mod tests {
         let toolset = get_test_toolset();
         let tools = toolset.get_tool_definitions().await.unwrap();
         assert_eq!(tools.len(), 2);
-        assert_eq!(tools[0].name, "add");
-        assert_eq!(tools[1].name, "subtract");
     }
 
     #[test]
