@@ -1,4 +1,4 @@
-use rig::client::ProviderClient;
+use rig::client::{CompletionClient, ProviderClient};
 use rig::providers::gemini;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
