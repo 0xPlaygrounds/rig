@@ -703,8 +703,7 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_tool_deletion() {
+    fn get_test_toolset() -> ToolSet {
         let mut toolset = ToolSet::default();
 
         #[derive(Deserialize)]
@@ -792,11 +791,23 @@ mod tests {
 
         toolset.add_tool(Adder);
         toolset.add_tool(Subtract);
+        toolset
+    }
 
+    #[tokio::test]
+    async fn test_get_tool_definitions() {
+        let toolset = get_test_toolset();
+        let tools = toolset.get_tool_definitions().await.unwrap();
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0].name, "add");
+        assert_eq!(tools[1].name, "subtract");
+    }
+
+    #[test]
+    fn test_tool_deletion() {
+        let mut toolset = get_test_toolset();
         assert_eq!(toolset.tools.len(), 2);
-
         toolset.delete_tool("add");
-
         assert!(!toolset.contains("add"));
         assert_eq!(toolset.tools.len(), 1);
     }
