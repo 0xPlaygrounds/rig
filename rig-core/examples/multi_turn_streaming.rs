@@ -115,8 +115,9 @@ where
                         did_call_tool = true;
                         // break;
                     },
-                    Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning })) => {
-                        yield Ok(Text { text: reasoning });
+                    Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, .. })) => {
+                        let text = reasoning.into_iter().collect::<Vec<String>>().join("");
+                        yield Ok(Text { text });
                         did_call_tool = false;
                     },
                     Ok(_) => {

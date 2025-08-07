@@ -275,8 +275,12 @@ impl TryFrom<message::Message> for Message {
                                 "Tool calls do not exist on this message".into(),
                             ));
                         }
-                        message::AssistantContent::Reasoning(message::Reasoning { reasoning }) => {
-                            groq_reasoning = Some(reasoning.to_owned());
+                        message::AssistantContent::Reasoning(message::Reasoning {
+                            reasoning,
+                            ..
+                        }) => {
+                            groq_reasoning =
+                                Some(reasoning.first().cloned().unwrap_or(String::new()));
                         }
                     }
                 }
@@ -646,7 +650,7 @@ pub async fn send_compatible_streaming_request(
 
                     match delta {
                         StreamingDelta::Reasoning { reasoning } => {
-                            yield Ok(crate::streaming::RawStreamingChoice::Reasoning { reasoning: reasoning.to_string() })
+                            yield Ok(crate::streaming::RawStreamingChoice::Reasoning { id: None, reasoning: reasoning.to_string() })
                         },
                         StreamingDelta::MessageContent { content, tool_calls } => {
                             if !tool_calls.is_empty() {

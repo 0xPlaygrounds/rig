@@ -94,7 +94,7 @@ impl CompletionModel {
                     match choice.content.parts.first() {
                         super::completion::gemini_api_types::Part { part: PartKind::Text(text), thought, ..} => {
                             if let Some(thought) = thought && thought {
-                                yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: text })
+                                yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: text, id: None })
                             } else {
                                 yield Ok(streaming::RawStreamingChoice::Message(text))
                             }

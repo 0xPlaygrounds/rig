@@ -336,10 +336,12 @@ impl From<message::AssistantContent> for Content {
                     input: function.arguments,
                 }
             }
-            message::AssistantContent::Reasoning(Reasoning { reasoning }) => Content::Thinking {
-                thinking: reasoning,
-                signature: None,
-            },
+            message::AssistantContent::Reasoning(Reasoning { reasoning, id }) => {
+                Content::Thinking {
+                    thinking: reasoning.first().cloned().unwrap_or(String::new()),
+                    signature: id,
+                }
+            }
         }
     }
 }
@@ -447,6 +449,12 @@ impl TryFrom<Content> for message::AssistantContent {
             Content::ToolUse { id, name, input } => {
                 message::AssistantContent::tool_call(id, name, input)
             }
+            Content::Thinking {
+                thinking,
+                signature,
+            } => message::AssistantContent::Reasoning(
+                Reasoning::new(&thinking).optional_id(signature),
+            ),
             _ => {
                 return Err(MessageError::ConversionError(
                     format!("Unsupported content type for Assistant role: {content:?}").to_owned(),
@@ -511,10 +519,12 @@ impl TryFrom<Message> for message::Message {
                 })?,
             },
             Role::Assistant => match message.content.first() {
-                Content::Text { .. } | Content::ToolUse { .. } => message::Message::Assistant {
-                    id: None,
-                    content: message.content.try_map(|content| content.try_into())?,
-                },
+                Content::Text { .. } | Content::ToolUse { .. } | Content::Thinking { .. } => {
+                    message::Message::Assistant {
+                        id: None,
+                        content: message.content.try_map(|content| content.try_into())?,
+                    }
+                }
 
                 _ => {
                     return Err(MessageError::ConversionError(

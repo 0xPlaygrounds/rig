@@ -105,9 +105,11 @@ pub enum InputContent {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct OpenAIReasoning {
+    id: String,
     pub summary: Vec<ReasoningSummary>,
     pub encrypted_content: Option<String>,
-    pub status: ToolStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<ToolStatus>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -121,6 +123,11 @@ impl ReasoningSummary {
         Self::SummaryText {
             text: input.to_string(),
         }
+    }
+
+    pub fn text(&self) -> String {
+        let ReasoningSummary::SummaryText { text } = self;
+        text.clone()
     }
 }
 
@@ -142,10 +149,21 @@ impl From<Message> for InputItem {
                 role: Some(Role::User),
                 input: InputContent::Message(value),
             },
-            Message::Assistant { .. } => Self {
-                role: Some(Role::Assistant),
-                input: InputContent::Message(value),
-            },
+            Message::Assistant { ref content, .. } => {
+                let role = if content
+                    .clone()
+                    .iter()
+                    .any(|x| matches!(x, AssistantContentType::Reasoning(_)))
+                {
+                    None
+                } else {
+                    Some(Role::Assistant)
+                };
+                Self {
+                    role,
+                    input: InputContent::Message(value),
+                }
+            }
             Message::System { .. } => Self {
                 role: Some(Role::System),
                 input: InputContent::Message(value),
@@ -270,14 +288,16 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             });
                         }
                         crate::message::AssistantContent::Reasoning(
-                            crate::message::Reasoning { reasoning },
+                            crate::message::Reasoning { id, reasoning },
                         ) => {
                             items.push(InputItem {
-                                role: Some(Role::Assistant),
+                                role: None,
                                 input: InputContent::Reasoning(OpenAIReasoning {
-                                    summary: vec![ReasoningSummary::new(&reasoning)],
+                                    id: id
+                                        .expect("An OpenAI-generated ID is required when using OpenAI reasoning items"),
+                                    summary: reasoning.into_iter().map(|x| ReasoningSummary::new(&x)).collect(),
                                     encrypted_content: None,
-                                    status: ToolStatus::Completed,
+                                    status: None,
                                 }),
                             });
                         }
@@ -287,6 +307,12 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                 Ok(items)
             }
         }
+    }
+}
+
+impl From<OneOrMany<String>> for Vec<ReasoningSummary> {
+    fn from(value: OneOrMany<String>) -> Self {
+        value.iter().map(|x| ReasoningSummary::new(x)).collect()
     }
 }
 
@@ -791,6 +817,7 @@ pub enum Output {
     #[serde(alias = "function_call")]
     FunctionCall(OutputFunctionCall),
     Reasoning {
+        id: String,
         summary: Vec<ReasoningSummary>,
     },
 }
@@ -811,19 +838,11 @@ impl From<Output> for Vec<completion::AssistantContent> {
             }) => vec![completion::AssistantContent::tool_call_with_call_id(
                 id, call_id, name, arguments,
             )],
-            Output::Reasoning { summary } => {
-                let text_joined = summary
-                    .into_iter()
-                    .map(|x| {
-                        let ReasoningSummary::SummaryText { text } = x;
-                        text
-                    })
-                    .collect::<Vec<String>>()
-                    .join("\n");
+            Output::Reasoning { id, summary } => {
+                let summary: Vec<String> = summary.into_iter().map(|x| x.text()).collect();
+
                 vec![completion::AssistantContent::Reasoning(
-                    crate::message::Reasoning {
-                        reasoning: text_joined,
-                    },
+                    message::Reasoning::multi(summary).with_id(id),
                 )]
             }
         };
@@ -1169,12 +1188,14 @@ impl TryFrom<message::Message> for Vec<Message> {
                         status: ToolStatus::Completed,
                     }]),
                     crate::message::AssistantContent::Reasoning(crate::message::Reasoning {
+                        id,
                         reasoning,
                     }) => Ok(vec![Message::Assistant {
                         content: OneOrMany::one(AssistantContentType::Reasoning(OpenAIReasoning {
-                            summary: vec![ReasoningSummary::new(&reasoning)],
+                            id: id.expect("An OpenAI-generated ID is required when using OpenAI reasoning items"),
+                            summary: reasoning.into_iter().map(|x| ReasoningSummary::SummaryText { text: x }).collect(),
                             encrypted_content: None,
-                            status: ToolStatus::Completed,
+                            status: Some(ToolStatus::Completed),
                         })),
                         id: assistant_message_id.expect("The assistant message ID should exist!"),
                         name: None,
