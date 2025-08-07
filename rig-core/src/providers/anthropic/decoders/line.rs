@@ -43,24 +43,24 @@ impl LineDecoder {
             }
 
             // We got double \r or \rtext\n
-            if let Some(cr_index) = self.carriage_return_index {
-                if pattern_index.index != cr_index + 1 || pattern_index.carriage {
-                    if cr_index > 0 {
-                        let line = decode_text(&self.buffer[0..cr_index - 1]);
-                        lines.push(line);
-                    } else {
-                        // Handle edge case for carriage return at beginning
-                        lines.push(String::new());
-                    }
-
-                    if cr_index < self.buffer.len() {
-                        self.buffer = self.buffer[cr_index..].to_vec();
-                    } else {
-                        self.buffer.clear();
-                    }
-                    self.carriage_return_index = None;
-                    continue;
+            if let Some(cr_index) = self.carriage_return_index
+                && (pattern_index.index != cr_index + 1 || pattern_index.carriage)
+            {
+                if cr_index > 0 {
+                    let line = decode_text(&self.buffer[0..cr_index - 1]);
+                    lines.push(line);
+                } else {
+                    // Handle edge case for carriage return at beginning
+                    lines.push(String::new());
                 }
+
+                if cr_index < self.buffer.len() {
+                    self.buffer = self.buffer[cr_index..].to_vec();
+                } else {
+                    self.buffer.clear();
+                }
+                self.carriage_return_index = None;
+                continue;
             }
 
             let end_index = if self.carriage_return_index.is_some() {

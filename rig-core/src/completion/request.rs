@@ -320,7 +320,7 @@ pub trait CompletionModelDyn: Send + Sync {
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> BoxFuture<Result<StreamingCompletionResponse<()>, CompletionError>>;
+    ) -> BoxFuture<'_, Result<StreamingCompletionResponse<()>, CompletionError>>;
 
     fn completion_request(
         &self,
@@ -351,7 +351,7 @@ where
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> BoxFuture<Result<StreamingCompletionResponse<()>, CompletionError>> {
+    ) -> BoxFuture<'_, Result<StreamingCompletionResponse<()>, CompletionError>> {
         Box::pin(async move {
             let resp = self.stream(request).await?;
             let inner = resp.inner;

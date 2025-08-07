@@ -126,7 +126,7 @@ impl<T: Clone> OneOrMany<T> {
         })
     }
 
-    pub fn iter(&self) -> Iter<T> {
+    pub fn iter(&self) -> Iter<'_, T> {
         Iter {
             first: Some(&self.first),
             rest: self.rest.iter(),

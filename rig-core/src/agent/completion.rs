@@ -201,7 +201,7 @@ impl<M: CompletionModel> Prompt for Agent<M> {
     fn prompt(
         &self,
         prompt: impl Into<Message> + Send,
-    ) -> PromptRequest<prompt_request::Standard, M> {
+    ) -> PromptRequest<'_, prompt_request::Standard, M> {
         PromptRequest::new(self, prompt)
     }
 }
@@ -212,7 +212,7 @@ impl<M: CompletionModel> Prompt for &Agent<M> {
     fn prompt(
         &self,
         prompt: impl Into<Message> + Send,
-    ) -> PromptRequest<prompt_request::Standard, M> {
+    ) -> PromptRequest<'_, prompt_request::Standard, M> {
         PromptRequest::new(*self, prompt)
     }
 }

@@ -156,11 +156,10 @@ where
         }
 
         // Force final event if we have pending data
-        if !sse_decoder.data.is_empty() || sse_decoder.event.is_some() {
-            if let Some(sse) = sse_decoder.decode("") {
+        if (!sse_decoder.data.is_empty() || sse_decoder.event.is_some())
+            && let Some(sse) = sse_decoder.decode("") {
                 yield Ok(sse);
             }
-        }
     }
 }
 
