@@ -1,6 +1,6 @@
 [package]
 name = "rig-derive"
-version = "0.1.4"
+version = "0.1.5"
 edition = { workspace = true }
 license = "MIT"
 description = "Internal crate that implements Rig derive macros."
