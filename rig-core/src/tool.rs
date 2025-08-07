@@ -110,7 +110,7 @@ pub trait Tool: Sized + Send + Sync {
     fn call(
         &self,
         args: Self::Args,
-    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send + Sync;
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send;
 }
 
 /// Trait that represents an LLM tool that can be stored in a vector store and RAGged
@@ -152,7 +152,7 @@ pub trait ToolDyn: Send + Sync {
     fn call(
         &self,
         args: String,
-    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>>;
 }
 
 impl<T: Tool> ToolDyn for T {
@@ -170,7 +170,7 @@ impl<T: Tool> ToolDyn for T {
     fn call(
         &self,
         args: String,
-    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
         Box::pin(async move {
             match serde_json::from_str(&args) {
                 Ok(args) => <Self as Tool>::call(self, args)
@@ -274,7 +274,7 @@ pub mod mcp {
         fn call(
             &self,
             args: String,
-        ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>> {
+        ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
             let name = self.definition.name.clone();
             let args_clone = args.clone();
             let args: serde_json::Value = serde_json::from_str(&args_clone).unwrap_or_default();
@@ -421,7 +421,7 @@ pub mod rmcp {
         fn call(
             &self,
             args: String,
-        ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>> {
+        ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
             let name = self.definition.name.clone();
             let arguments = serde_json::from_str(&args).unwrap_or_default();
 

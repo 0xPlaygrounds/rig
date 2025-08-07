@@ -69,17 +69,18 @@ pub trait ImageGenerationModelDyn: Send + Sync {
     fn image_generation(
         &self,
         request: ImageGenerationRequest,
-    ) -> BoxFuture<Result<ImageGenerationResponse<()>, ImageGenerationError>>;
+    ) -> BoxFuture<'_, Result<ImageGenerationResponse<()>, ImageGenerationError>>;
 
-    fn image_generation_request(&self)
-    -> ImageGenerationRequestBuilder<ImageGenerationModelHandle>;
+    fn image_generation_request(
+        &self,
+    ) -> ImageGenerationRequestBuilder<ImageGenerationModelHandle<'_>>;
 }
 
 impl<T: ImageGenerationModel> ImageGenerationModelDyn for T {
     fn image_generation(
         &self,
         request: ImageGenerationRequest,
-    ) -> BoxFuture<Result<ImageGenerationResponse<()>, ImageGenerationError>> {
+    ) -> BoxFuture<'_, Result<ImageGenerationResponse<()>, ImageGenerationError>> {
         Box::pin(async {
             let resp = self.image_generation(request).await;
             resp.map(|r| ImageGenerationResponse {
@@ -91,7 +92,7 @@ impl<T: ImageGenerationModel> ImageGenerationModelDyn for T {
 
     fn image_generation_request(
         &self,
-    ) -> ImageGenerationRequestBuilder<ImageGenerationModelHandle> {
+    ) -> ImageGenerationRequestBuilder<ImageGenerationModelHandle<'_>> {
         ImageGenerationRequestBuilder::new(ImageGenerationModelHandle {
             inner: Arc::new(self.clone()),
         })

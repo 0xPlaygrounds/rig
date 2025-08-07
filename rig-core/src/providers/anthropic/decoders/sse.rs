@@ -156,6 +156,8 @@ where
         }
 
         // Force final event if we have pending data
+        // TODO: Collapse if statement (when `||` operator is supported in if-let chains)
+        #[allow(clippy::collapsible_if)]
         if !sse_decoder.data.is_empty() || sse_decoder.event.is_some() {
             if let Some(sse) = sse_decoder.decode("") {
                 yield Ok(sse);

@@ -302,10 +302,8 @@ pub async fn send_compatible_streaming_request(
                     }
                 }
 
-                    if let StreamingCompletionChunk::Response(chunk) = data {
-                        if let Some(usage) = chunk.response.usage {
+                    if let StreamingCompletionChunk::Response(chunk) = data && let Some(usage) = chunk.response.usage {
                         final_usage = usage;
-                        }
                     }
             }
         }

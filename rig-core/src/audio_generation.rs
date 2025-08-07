@@ -68,17 +68,18 @@ pub trait AudioGenerationModelDyn: Send + Sync {
     fn audio_generation(
         &self,
         request: AudioGenerationRequest,
-    ) -> BoxFuture<Result<AudioGenerationResponse<()>, AudioGenerationError>>;
+    ) -> BoxFuture<'_, Result<AudioGenerationResponse<()>, AudioGenerationError>>;
 
-    fn audio_generation_request(&self)
-    -> AudioGenerationRequestBuilder<AudioGenerationModelHandle>;
+    fn audio_generation_request(
+        &self,
+    ) -> AudioGenerationRequestBuilder<AudioGenerationModelHandle<'_>>;
 }
 
 impl<T: AudioGenerationModel> AudioGenerationModelDyn for T {
     fn audio_generation(
         &self,
         request: AudioGenerationRequest,
-    ) -> BoxFuture<Result<AudioGenerationResponse<()>, AudioGenerationError>> {
+    ) -> BoxFuture<'_, Result<AudioGenerationResponse<()>, AudioGenerationError>> {
         Box::pin(async move {
             let resp = self.audio_generation(request).await;
 
@@ -91,7 +92,7 @@ impl<T: AudioGenerationModel> AudioGenerationModelDyn for T {
 
     fn audio_generation_request(
         &self,
-    ) -> AudioGenerationRequestBuilder<AudioGenerationModelHandle> {
+    ) -> AudioGenerationRequestBuilder<AudioGenerationModelHandle<'_>> {
         AudioGenerationRequestBuilder::new(AudioGenerationModelHandle {
             inner: Arc::new(self.clone()),
         })

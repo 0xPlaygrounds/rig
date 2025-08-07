@@ -66,10 +66,9 @@ impl Parse for MacroArgs {
                         lit: Lit::Str(lit_str),
                         ..
                     }) = nv.value
+                        && ident.as_str() == "description"
                     {
-                        if ident.as_str() == "description" {
-                            description = Some(lit_str.value());
-                        }
+                        description = Some(lit_str.value());
                     }
                 }
                 Meta::List(list) if list.path.is_ident("params") => {
@@ -77,15 +76,14 @@ impl Parse for MacroArgs {
                         list.parse_args_with(Punctuated::parse_terminated)?;
 
                     for meta in nested {
-                        if let Meta::NameValue(nv) = meta {
-                            if let Expr::Lit(ExprLit {
+                        if let Meta::NameValue(nv) = meta
+                            && let Expr::Lit(ExprLit {
                                 lit: Lit::Str(lit_str),
                                 ..
                             }) = nv.value
-                            {
-                                let param_name = nv.path.get_ident().unwrap().to_string();
-                                param_descriptions.insert(param_name, lit_str.value());
-                            }
+                        {
+                            let param_name = nv.path.get_ident().unwrap().to_string();
+                            param_descriptions.insert(param_name, lit_str.value());
                         }
                     }
                 }
@@ -117,14 +115,14 @@ fn get_json_type(ty: &Type) -> proc_macro2::TokenStream {
 
             // Handle Vec types
             if type_name == "Vec" {
-                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
-                    if let syn::GenericArgument::Type(inner_type) = &args.args[0] {
-                        let inner_json_type = get_json_type(inner_type);
-                        return quote! {
-                            "type": "array",
-                            "items": { #inner_json_type }
-                        };
-                    }
+                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments
+                    && let syn::GenericArgument::Type(inner_type) = &args.args[0]
+                {
+                    let inner_json_type = get_json_type(inner_type);
+                    return quote! {
+                        "type": "array",
+                        "items": { #inner_json_type }
+                    };
                 }
                 return quote! { "type": "array" };
             }
@@ -270,23 +268,23 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let required_args = args.required;
 
     for arg in input_fn.sig.inputs.iter() {
-        if let syn::FnArg::Typed(pat_type) = arg {
-            if let syn::Pat::Ident(param_ident) = &*pat_type.pat {
-                let param_name = &param_ident.ident;
-                let param_name_str = param_name.to_string();
-                let ty = &pat_type.ty;
-                let default_parameter_description = format!("Parameter {param_name_str}");
-                let description = args
-                    .param_descriptions
-                    .get(&param_name_str)
-                    .map(|s| s.to_owned())
-                    .unwrap_or(default_parameter_description);
+        if let syn::FnArg::Typed(pat_type) = arg
+            && let syn::Pat::Ident(param_ident) = &*pat_type.pat
+        {
+            let param_name = &param_ident.ident;
+            let param_name_str = param_name.to_string();
+            let ty = &pat_type.ty;
+            let default_parameter_description = format!("Parameter {param_name_str}");
+            let description = args
+                .param_descriptions
+                .get(&param_name_str)
+                .map(|s| s.to_owned())
+                .unwrap_or(default_parameter_description);
 
-                param_names.push(param_name);
-                param_types.push(ty);
-                param_descriptions.push(description);
-                json_types.push(get_json_type(ty));
-            }
+            param_names.push(param_name);
+            param_types.push(ty);
+            param_descriptions.push(description);
+            json_types.push(get_json_type(ty));
         }
     }
 
