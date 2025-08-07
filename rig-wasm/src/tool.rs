@@ -57,7 +57,7 @@ impl rig::tool::Tool for JsTool {
     fn call(
         &self,
         args: Self::Args,
-    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send + Sync {
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send {
         let (result_tx, result_rx) = futures::channel::oneshot::channel();
         let (error_tx, error_rx) = futures::channel::oneshot::channel();
         let js_args = serde_wasm_bindgen::to_value(&args).expect("This should be a JSON object!");
