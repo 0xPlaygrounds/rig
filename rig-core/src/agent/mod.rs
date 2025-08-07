@@ -113,4 +113,6 @@ mod prompt_request;
 
 pub use builder::AgentBuilder;
 pub use completion::Agent;
-pub use prompt_request::{PromptHook, PromptRequest, PromptResponse};
+#[cfg(feature = "hooks")]
+pub use prompt_request::PromptHook;
+pub use prompt_request::{PromptRequest, PromptResponse};

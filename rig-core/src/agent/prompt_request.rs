@@ -1,14 +1,10 @@
 use std::{future::IntoFuture, marker::PhantomData};
 
-use async_trait::async_trait;
 use futures::{FutureExt, StreamExt, future::BoxFuture, stream};
 
 use crate::{
     OneOrMany,
-    completion::{
-        Completion, CompletionError, CompletionModel, CompletionResponse, Message, PromptError,
-        Usage,
-    },
+    completion::{Completion, CompletionError, CompletionModel, Message, PromptError, Usage},
     message::{AssistantContent, UserContent},
     tool::ToolSetError,
 };
@@ -42,6 +38,7 @@ pub struct PromptRequest<'a, S: PromptType, M: CompletionModel> {
     agent: &'a Agent<M>,
     /// Phantom data to track the type of the request
     state: PhantomData<S>,
+    #[cfg(feature = "hooks")]
     /// Optional per-request hook for events
     hook: Option<&'a dyn PromptHook<M>>,
 }
@@ -55,6 +52,7 @@ impl<'a, M: CompletionModel> PromptRequest<'a, Standard, M> {
             max_depth: 0,
             agent,
             state: PhantomData,
+            #[cfg(feature = "hooks")]
             hook: None,
         }
     }
@@ -71,6 +69,7 @@ impl<'a, M: CompletionModel> PromptRequest<'a, Standard, M> {
             max_depth: self.max_depth,
             agent: self.agent,
             state: PhantomData,
+            #[cfg(feature = "hooks")]
             hook: self.hook,
         }
     }
@@ -86,6 +85,7 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
             max_depth: depth,
             agent: self.agent,
             state: PhantomData,
+            #[cfg(feature = "hooks")]
             hook: self.hook,
         }
     }
@@ -98,10 +98,12 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
             max_depth: self.max_depth,
             agent: self.agent,
             state: PhantomData,
+            #[cfg(feature = "hooks")]
             hook: self.hook,
         }
     }
 
+    #[cfg(feature = "hooks")]
     /// Attach a per-request hook for tool call events
     pub fn with_hook(self, hook: &'a dyn PromptHook<M>) -> PromptRequest<'a, S, M> {
         PromptRequest {
@@ -110,12 +112,14 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
             max_depth: self.max_depth,
             agent: self.agent,
             state: PhantomData,
+            #[cfg(feature = "hooks")]
             hook: Some(hook),
         }
     }
 }
+#[cfg(feature = "hooks")]
 /// Trait for per-request hooks to observe tool call events
-#[async_trait]
+#[async_trait::async_trait]
 pub trait PromptHook<M: CompletionModel>: Send + Sync {
     /// Called before the prompt is sent to the model
     async fn on_completion_call(&self, prompt: &Message, history: &[Message]);
@@ -124,7 +128,7 @@ pub trait PromptHook<M: CompletionModel>: Send + Sync {
     async fn on_completion_response(
         &self,
         prompt: &Message,
-        response: &CompletionResponse<M::Response>,
+        response: &crate::completion::CompletionResponse<M::Response>,
     );
 
     /// Called before a tool is invoked
@@ -189,7 +193,6 @@ impl<M: CompletionModel> PromptRequest<'_, Extended, M> {
 
         let mut current_max_depth = 0;
         let mut usage = Usage::new();
-        let hook = self.hook;
 
         // We need to do at least 2 loops for 1 roundtrip (user expects normal message)
         let last_prompt = loop {
@@ -212,7 +215,8 @@ impl<M: CompletionModel> PromptRequest<'_, Extended, M> {
                 );
             }
 
-            if let Some(hook) = hook.as_ref() {
+            #[cfg(feature = "hooks")]
+            if let Some(hook) = self.hook.as_ref() {
                 hook.on_completion_call(&prompt, &chat_history[..chat_history.len() - 1])
                     .await;
             }
@@ -228,7 +232,8 @@ impl<M: CompletionModel> PromptRequest<'_, Extended, M> {
 
             usage += resp.usage;
 
-            if let Some(hook) = hook.as_ref() {
+            #[cfg(feature = "hooks")]
+            if let Some(hook) = self.hook.as_ref() {
                 hook.on_completion_response(&prompt, &resp).await;
             }
 
@@ -268,11 +273,13 @@ impl<M: CompletionModel> PromptRequest<'_, Extended, M> {
                     if let AssistantContent::ToolCall(tool_call) = choice {
                         let tool_name = &tool_call.function.name;
                         let args = tool_call.function.arguments.to_string();
-                        if let Some(hook) = hook.as_ref() {
+                        #[cfg(feature = "hooks")]
+                        if let Some(hook) = self.hook.as_ref() {
                             hook.on_tool_call(tool_name, &args).await;
                         }
                         let output = agent.tools.call(tool_name, args.clone()).await?;
-                        if let Some(hook) = hook.as_ref() {
+                        #[cfg(feature = "hooks")]
+                        if let Some(hook) = self.hook.as_ref() {
                             hook.on_tool_result(tool_name, &args, &output.to_string())
                                 .await;
                         }

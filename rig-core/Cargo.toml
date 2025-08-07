@@ -15,30 +15,30 @@ doctest = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
-tracing = { workspace = true }
+as-any = { workspace = true }
+async-stream = { workspace = true }
+async-trait = { workspace = true, optional = true }
+base64 = { workspace = true }
+bytes = { workspace = true }
+epub = { workspace = true, optional = true }
 futures = { workspace = true }
-ordered-float = { workspace = true }
-schemars = { workspace = true }
-thiserror = { workspace = true }
-rig-derive = { version = "0.1.4", path = "rig-core-derive", optional = true }
 glob = { workspace = true }
 lopdf = { workspace = true, optional = true }
-epub = { workspace = true, optional = true }
+mcp-core = { workspace = true, optional = true }
+mime_guess = { workspace = true }
+ordered-float = { workspace = true }
 quick-xml = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
-worker = { workspace = true, optional = true }
-mcp-core = { workspace = true, optional = true }
-bytes = { workspace = true }
-async-stream = { workspace = true }
-mime_guess = { workspace = true }
-base64 = { workspace = true }
-as-any = { workspace = true }
+reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
+rig-derive = { version = "0.1.4", path = "rig-core-derive", optional = true }
 rmcp = { version = "0.3", optional = true, features = ["client"] }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
 url = { workspace = true }
-async-trait = { workspace = true }
+worker = { workspace = true, optional = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -76,6 +76,7 @@ rayon = ["dep:rayon"]
 worker = ["dep:worker"]
 mcp = ["dep:mcp-core"]
 rmcp = ["dep:rmcp"]
+hooks = ["dep:async-trait"]
 socks = ["reqwest/socks"]
 # Replace "default-tls" with "rustls-tls" in "reqwest/default"
 reqwest-rustls = [
@@ -151,3 +152,4 @@ required-features = ["rmcp"]
 
 [[example]]
 name = "request_hook"
+required-features = ["hooks"]
