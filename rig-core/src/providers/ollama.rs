@@ -774,9 +774,10 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                                 tools.push(tool_call)
                             }
                             crate::message::AssistantContent::Reasoning(
-                                crate::message::Reasoning { reasoning },
+                                crate::message::Reasoning { reasoning, .. },
                             ) => {
-                                thinking = Some(reasoning);
+                                thinking =
+                                    Some(reasoning.first().cloned().unwrap_or(String::new()));
                             }
                         }
                         (texts, tools)
