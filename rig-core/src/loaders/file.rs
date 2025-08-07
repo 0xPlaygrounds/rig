@@ -189,7 +189,7 @@ impl FileLoader<'_, Result<PathBuf, FileLoaderError>> {
     /// ```
     pub fn with_glob(
         pattern: &str,
-    ) -> Result<FileLoader<Result<PathBuf, FileLoaderError>>, FileLoaderError> {
+    ) -> Result<FileLoader<'_, Result<PathBuf, FileLoaderError>>, FileLoaderError> {
         let paths = glob(pattern)?;
         Ok(FileLoader {
             iterator: Box::new(
@@ -210,7 +210,7 @@ impl FileLoader<'_, Result<PathBuf, FileLoaderError>> {
     /// ```
     pub fn with_dir(
         directory: &str,
-    ) -> Result<FileLoader<Result<PathBuf, FileLoaderError>>, FileLoaderError> {
+    ) -> Result<FileLoader<'_, Result<PathBuf, FileLoaderError>>, FileLoaderError> {
         Ok(FileLoader {
             iterator: Box::new(fs::read_dir(directory)?.filter_map(|entry| {
                 let path = entry.ok()?.path();

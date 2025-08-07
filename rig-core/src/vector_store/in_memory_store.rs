@@ -67,7 +67,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
 
     /// Implement vector search on [InMemoryVectorStore].
     /// To be used by implementations of [VectorStoreIndex::top_n] and [VectorStoreIndex::top_n_ids] methods.
-    fn vector_search(&self, prompt_embedding: &Embedding, n: usize) -> EmbeddingRanking<D> {
+    fn vector_search(&self, prompt_embedding: &Embedding, n: usize) -> EmbeddingRanking<'_, D> {
         // Sort documents by best embedding distance
         let mut docs = BinaryHeap::new();
 

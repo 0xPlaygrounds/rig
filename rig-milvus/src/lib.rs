@@ -105,7 +105,7 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
     }
 
     /// Creates a Milvus insertion request.
-    fn create_insert_request(&self, data: Vec<CreateRecord>) -> InsertRequest {
+    fn create_insert_request(&self, data: Vec<CreateRecord>) -> InsertRequest<'_> {
         InsertRequest {
             data,
             collection_name: &self.collection_name,
@@ -119,7 +119,7 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
         data: Vec<f64>,
         limit: usize,
         threshold: Option<f64>,
-    ) -> SearchRequest {
+    ) -> SearchRequest<'_> {
         let filter = if let Some(threshold) = threshold {
             format!("distance >= {threshold}")
         } else {
@@ -142,7 +142,7 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
         data: Vec<f64>,
         limit: usize,
         threshold: Option<f64>,
-    ) -> SearchRequest {
+    ) -> SearchRequest<'_> {
         let filter = if let Some(threshold) = threshold {
             format!("distance >= {threshold}")
         } else {

@@ -43,6 +43,8 @@ impl LineDecoder {
             }
 
             // We got double \r or \rtext\n
+            // TODO: Collapse this if statement (whenever `||` operator is supported in if-let chains).
+            #[allow(clippy::collapsible_if)]
             if let Some(cr_index) = self.carriage_return_index {
                 if pattern_index.index != cr_index + 1 || pattern_index.carriage {
                     if cr_index > 0 {

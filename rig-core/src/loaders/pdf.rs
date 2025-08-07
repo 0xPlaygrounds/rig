@@ -358,7 +358,7 @@ impl PdfFileLoader<'_, Result<PathBuf, FileLoaderError>> {
     /// ```
     pub fn with_glob(
         pattern: &str,
-    ) -> Result<PdfFileLoader<Result<PathBuf, PdfLoaderError>>, PdfLoaderError> {
+    ) -> Result<PdfFileLoader<'_, Result<PathBuf, PdfLoaderError>>, PdfLoaderError> {
         let paths = glob(pattern).map_err(FileLoaderError::PatternError)?;
         Ok(PdfFileLoader {
             iterator: Box::new(paths.into_iter().map(|path| {
@@ -378,7 +378,7 @@ impl PdfFileLoader<'_, Result<PathBuf, FileLoaderError>> {
     /// ```
     pub fn with_dir(
         directory: &str,
-    ) -> Result<PdfFileLoader<Result<PathBuf, PdfLoaderError>>, PdfLoaderError> {
+    ) -> Result<PdfFileLoader<'_, Result<PathBuf, PdfLoaderError>>, PdfLoaderError> {
         Ok(PdfFileLoader {
             iterator: Box::new(
                 fs::read_dir(directory)

@@ -274,7 +274,7 @@ pub mod mcp {
         fn call(
             &self,
             args: String,
-        ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>> {
+        ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
             let name = self.definition.name.clone();
             let args_clone = args.clone();
             let args: serde_json::Value = serde_json::from_str(&args_clone).unwrap_or_default();
@@ -421,7 +421,7 @@ pub mod rmcp {
         fn call(
             &self,
             args: String,
-        ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + Sync + '_>> {
+        ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
             let name = self.definition.name.clone();
             let arguments = serde_json::from_str(&args).unwrap_or_default();
 

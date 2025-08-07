@@ -215,16 +215,14 @@ pub async fn send_streaming_request(
                             });
 
                             // Update fields if present
-                            if let Some(id) = &tool_call.id {
-                                if !id.is_empty() {
+                            if let Some(id) = &tool_call.id && !id.is_empty() {
                                     existing_tool_call.id = id.clone();
-                                }
                             }
-                            if let Some(name) = &tool_call.function.name {
-                                if !name.is_empty() {
+
+                            if let Some(name) = &tool_call.function.name && !name.is_empty() {
                                     existing_tool_call.function.name = name.clone();
-                                }
                             }
+
                             if let Some(chunk) = &tool_call.function.arguments {
                                 // Convert current arguments to string if needed
                                 let current_args = match &existing_tool_call.function.arguments {
@@ -249,10 +247,8 @@ pub async fn send_streaming_request(
                         }
                     }
 
-                    if let Some(content) = &delta.content {
-                        if !content.is_empty() {
+                    if let Some(content) = &delta.content &&!content.is_empty() {
                             yield Ok(streaming::RawStreamingChoice::Message(content.clone()))
-                        }
                     }
 
                     if let Some(usage) = data.usage {

@@ -344,7 +344,7 @@ impl<P> EpubFileLoader<'_, Result<PathBuf, FileLoaderError>, P> {
     /// ```
     pub fn with_glob(
         pattern: &str,
-    ) -> Result<EpubFileLoader<Result<PathBuf, EpubLoaderError>, P>, EpubLoaderError> {
+    ) -> Result<EpubFileLoader<'_, Result<PathBuf, EpubLoaderError>, P>, EpubLoaderError> {
         let paths = glob::glob(pattern).map_err(FileLoaderError::PatternError)?;
 
         Ok(EpubFileLoader {
@@ -366,7 +366,7 @@ impl<P> EpubFileLoader<'_, Result<PathBuf, FileLoaderError>, P> {
     /// ```
     pub fn with_dir(
         directory: &str,
-    ) -> Result<EpubFileLoader<Result<PathBuf, EpubLoaderError>, P>, EpubLoaderError> {
+    ) -> Result<EpubFileLoader<'_, Result<PathBuf, EpubLoaderError>, P>, EpubLoaderError> {
         let paths = std::fs::read_dir(directory).map_err(FileLoaderError::IoError)?;
 
         Ok(EpubFileLoader {
