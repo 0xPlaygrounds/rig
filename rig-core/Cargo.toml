@@ -36,7 +36,7 @@ async-stream = { workspace = true }
 mime_guess = { workspace = true }
 base64 = { workspace = true }
 as-any = { workspace = true }
-rmcp = { version = "0.3", optional = true, features = ["client"] }
+rmcp = { version = "0.5", optional = true, features = ["client"] }
 url = { workspace = true }
 
 [dev-dependencies]
@@ -52,7 +52,7 @@ mcp-core-macros = { workspace = true }
 
 # Required for `rmcp` example
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
-rmcp = { version = "0.3", features = [
+rmcp = { version = "0.5", features = [
     "client",
     "reqwest",                                  # required for some strange reason
     "transport-streamable-http-client",
