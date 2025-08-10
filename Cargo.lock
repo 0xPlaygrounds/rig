@@ -9357,6 +9357,7 @@ dependencies = [
  "quick-xml 0.38.0",
  "rayon",
  "reqwest 0.12.20",
+ "reqwest-eventsource",
  "rig-derive",
  "rmcp",
  "schemars 0.8.22",
