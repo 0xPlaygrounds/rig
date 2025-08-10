@@ -744,7 +744,7 @@ pub async fn send_compatible_streaming_request(
                             }
 
                             if let Some(content) = &delta.reasoning_content {
-                                yield Ok(crate::streaming::RawStreamingChoice::Reasoning { reasoning: content.to_string()})
+                                yield Ok(crate::streaming::RawStreamingChoice::Reasoning { reasoning: content.to_string(), id: None})
                             }
 
                             if let Some(content) = &delta.content {
