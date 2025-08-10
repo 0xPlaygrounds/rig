@@ -85,7 +85,7 @@ impl CompletionModel {
                                     thought: Some(true),
                                     ..
                                 } => {
-                                    yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: text.clone() });
+                                    yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: text.clone(), id: None });
                                 },
                                 super::completion::gemini_api_types::Part {
                                     part: PartKind::Text(text),
