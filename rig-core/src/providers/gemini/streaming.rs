@@ -125,7 +125,6 @@ impl CompletionModel {
                                         total_token_count: usage,
                                     }
                                 }));
-
                                 // Close the event source after final response
                                 event_source.close();
                                 break;
