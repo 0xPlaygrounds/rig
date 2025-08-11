@@ -80,6 +80,7 @@ impl transcription::TranscriptionModel for TranscriptionModel {
                         mime_type,
                         data: BASE64_STANDARD.encode(request.data),
                     }),
+                    additional_params: None,
                 }),
                 role: Some(Role::User),
             }],

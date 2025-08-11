@@ -113,6 +113,8 @@ pub struct Image {
     pub media_type: Option<ImageMediaType>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<ImageDetail>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
 }
 
 /// Audio content containing audio data and metadata about it.
@@ -123,6 +125,8 @@ pub struct Audio {
     pub format: Option<ContentFormat>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<AudioMediaType>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
 }
 
 /// Video content containing video data and metadata about it.
@@ -133,6 +137,8 @@ pub struct Video {
     pub format: Option<ContentFormat>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<VideoMediaType>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
 }
 
 /// Document content containing document data and metadata about it.
@@ -143,6 +149,8 @@ pub struct Document {
     pub format: Option<ContentFormat>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<DocumentMediaType>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
 }
 
 /// Describes the format of the content, which can be base64 or string.
@@ -316,6 +324,7 @@ impl UserContent {
             format,
             media_type,
             detail,
+            additional_params: None,
         })
     }
 
@@ -329,6 +338,7 @@ impl UserContent {
             data: data.into(),
             format,
             media_type,
+            additional_params: None,
         })
     }
 
@@ -342,6 +352,7 @@ impl UserContent {
             data: data.into(),
             format,
             media_type,
+            additional_params: None,
         })
     }
 
@@ -425,6 +436,7 @@ impl ToolResultContent {
             format,
             media_type,
             detail,
+            additional_params: None,
         })
     }
 }

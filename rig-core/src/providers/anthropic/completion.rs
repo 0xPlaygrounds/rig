@@ -407,6 +407,7 @@ impl TryFrom<message::Message> for Message {
                         data,
                         format,
                         media_type,
+                        ..
                     }) => {
                         let Some(media_type) = media_type else {
                             return Err(MessageError::ConversionError(
@@ -499,6 +500,7 @@ impl TryFrom<Message> for message::Message {
                             format: Some(message::ContentFormat::Base64),
                             media_type: Some(source.media_type.into()),
                             detail: None,
+                            additional_params: None,
                         }),
                         Content::Document { source } => message::UserContent::document(
                             source.data,
@@ -954,6 +956,7 @@ mod tests {
                         data,
                         format,
                         media_type,
+                        ..
                     }) => {
                         assert_eq!(data, "base64_encoded_pdf_data");
                         assert_eq!(format.unwrap(), message::ContentFormat::Base64);

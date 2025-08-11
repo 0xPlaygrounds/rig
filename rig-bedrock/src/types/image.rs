@@ -73,6 +73,7 @@ impl TryFrom<aws_bedrock::ImageBlock> for RigImage {
             format: Some(ContentFormat::Base64),
             media_type: Some(media_type),
             detail: None,
+            additional_params: None,
         }))
     }
 }
@@ -95,6 +96,7 @@ mod tests {
             format: Some(ContentFormat::Base64),
             media_type: Some(ImageMediaType::JPEG),
             detail: None,
+            additional_params: None,
         });
         let aws_image: Result<aws_bedrock::ImageBlock, _> = rig_image.clone().try_into();
         assert!(aws_image.is_ok());
@@ -118,6 +120,7 @@ mod tests {
             format: Some(ContentFormat::Base64),
             media_type: Some(ImageMediaType::HEIC),
             detail: None,
+            additional_params: None,
         });
         let aws_image: Result<aws_bedrock::ImageBlock, _> = rig_image.clone().try_into();
         assert_eq!(

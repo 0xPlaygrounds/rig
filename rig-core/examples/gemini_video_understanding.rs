@@ -5,6 +5,7 @@ use rig::{
     completion::Prompt,
     providers::gemini::{self, completion::gemini_api_types::GenerationConfig},
 };
+use serde_json::json;
 
 #[tracing::instrument(ret)]
 #[tokio::main]
@@ -41,6 +42,11 @@ async fn main() -> Result<(), anyhow::Error> {
                     data: "https://www.youtube.com/watch?v=emtHJIxLwEc".to_string(),
                     format: Some(ContentFormat::String),
                     media_type: None,
+                    additional_params: Some(json!({
+                        "video_metadata": {
+                            "fps": 0.2
+                        }
+                    })),
                 }),
             ])?,
         })
