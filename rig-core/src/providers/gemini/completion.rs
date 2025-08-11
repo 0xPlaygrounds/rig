@@ -243,9 +243,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                         if let Some(thought) = thought
                             && *thought
                         {
-                            completion::AssistantContent::Reasoning(Reasoning {
-                                reasoning: text.to_string(),
-                            })
+                            completion::AssistantContent::Reasoning(Reasoning::new(text))
                         } else {
                             completion::AssistantContent::text(text)
                         }
@@ -438,9 +436,7 @@ pub mod gemini_api_types {
                                 if let Some(thought) = thought
                                     && thought
                                 {
-                                    message::AssistantContent::Reasoning(Reasoning {
-                                        reasoning: text,
-                                    })
+                                    message::AssistantContent::Reasoning(Reasoning::new(&text))
                                 } else {
                                     message::AssistantContent::Text(Text { text })
                                 }
@@ -664,10 +660,10 @@ pub mod gemini_api_types {
             match content {
                 message::AssistantContent::Text(message::Text { text }) => text.into(),
                 message::AssistantContent::ToolCall(tool_call) => tool_call.into(),
-                message::AssistantContent::Reasoning(message::Reasoning { reasoning }) => Part {
+                message::AssistantContent::Reasoning(message::Reasoning { reasoning, .. }) => Part {
                     thought: Some(true),
                     thought_signature: None,
-                    part: PartKind::Text(reasoning),
+                    part: PartKind::Text(reasoning.first().cloned().unwrap_or(String::new())),
                     additional_params: None,
                 },
             }

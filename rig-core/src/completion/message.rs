@@ -58,7 +58,35 @@ pub enum AssistantContent {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Reasoning {
-    pub reasoning: String,
+    pub id: Option<String>,
+    pub reasoning: Vec<String>,
+}
+
+impl Reasoning {
+    /// Create a new reasoning item from a single item
+    pub fn new(input: &str) -> Self {
+        Self {
+            id: None,
+            reasoning: vec![input.to_string()],
+        }
+    }
+
+    pub fn multi(input: Vec<String>) -> Self {
+        Self {
+            id: None,
+            reasoning: input,
+        }
+    }
+
+    pub fn optional_id(mut self, id: Option<String>) -> Self {
+        self.id = id;
+        self
+    }
+
+    pub fn with_id(mut self, id: String) -> Self {
+        self.id = Some(id);
+        self
+    }
 }
 
 /// Tool result content containing information about a tool call and it's resulting content.
