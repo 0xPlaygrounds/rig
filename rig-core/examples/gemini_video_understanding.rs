@@ -1,6 +1,5 @@
 use rig::message::{ContentFormat, Message, UserContent, Video};
 use rig::prelude::*;
-use rig::providers::mistral::Message::User;
 use rig::{
     OneOrMany,
     completion::Prompt,
