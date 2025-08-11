@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::completion::{
     CompletionModel, create_request_body,
-    gemini_api_types::{ContentCandidate, PartKind},
+    gemini_api_types::{ContentCandidate, Part, PartKind},
 };
 use crate::{
     completion::{CompletionError, CompletionRequest},
@@ -72,61 +72,60 @@ impl CompletionModel {
                         let data = match serde_json::from_str::<StreamGenerateContentResponse>(&message.data) {
                             Ok(d) => d,
                             Err(error) => {
-                                tracing::warn!(?error, message = message.data, "Failed to parse SSE message");
+                                tracing::error!(?error, message = message.data, "Failed to parse SSE message");
                                 continue;
                             }
                         };
 
                         // Process the response data
-                        if let Some(choice) = data.candidates.first() {
-                            match choice.content.parts.first() {
-                                super::completion::gemini_api_types::Part {
-                                    part: PartKind::Text(text),
-                                    thought: Some(true),
-                                    ..
-                                } => {
-                                    yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: text.clone(), id: None });
-                                },
-                                super::completion::gemini_api_types::Part {
-                                    part: PartKind::Text(text),
-                                    thought,
-                                    ..
-                                } => {
-                                    if thought != Some(true) {
-                                        yield Ok(streaming::RawStreamingChoice::Message(text.clone()));
-                                    }
-                                },
-                                super::completion::gemini_api_types::Part {
-                                    part: PartKind::FunctionCall(function_call),
-                                    ..
-                                } => {
-                                    yield Ok(streaming::RawStreamingChoice::ToolCall {
-                                        name: function_call.name.clone(),
-                                        id: function_call.name.clone(),
-                                        arguments: function_call.args.clone(),
-                                        call_id: None
-                                    });
-                                },
-                                part => {
-                                    tracing::warn!(?part, "Unsupported response type with streaming");
-                                    continue;
+                        let Some(choice) = data.candidates.first() else {
+                            tracing::debug!("There is no content candidate");
+                            continue;
+                        };
+
+                        match choice.content.parts.first() {
+                            Some(Part {
+                                part: PartKind::Text(text),
+                                thought: Some(true),
+                                ..
+                            }) => {
+                                yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: text.clone(), id: None });
+                            },
+                            Some(Part {
+                                part: PartKind::Text(text),
+                                ..
+                            }) => {
+                                yield Ok(streaming::RawStreamingChoice::Message(text.clone()));
+                            },
+                            Some(Part {
+                                part: PartKind::FunctionCall(function_call),
+                                ..
+                            }) => {
+                                yield Ok(streaming::RawStreamingChoice::ToolCall {
+                                    name: function_call.name.clone(),
+                                    id: function_call.name.clone(),
+                                    arguments: function_call.args.clone(),
+                                    call_id: None
+                                });
+                            },
+                            Some(part) => {
+                                tracing::warn!(?part, "Unsupported response type with streaming");
+                            }
+                            None => tracing::trace!(reason = ?choice.finish_reason, "There is no part in the streaming content"),
+                        }
+
+                        // Check if this is the final response
+                        if choice.finish_reason.is_some() {
+                            let usage = data.usage_metadata
+                                            .map(|u| u.total_token_count)
+                                            .unwrap_or(0);
+
+                            yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                                usage_metadata: PartialUsage {
+                                    total_token_count: usage,
                                 }
-                            }
-
-
-                            // Check if this is the final response
-                            if choice.finish_reason.is_some() {
-                                let usage = data.usage_metadata
-                                                .map(|u| u.total_token_count)
-                                                .unwrap_or(0);
-
-                                yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                                    usage_metadata: PartialUsage {
-                                        total_token_count: usage,
-                                    }
-                                }));
-                                break;
-                            }
+                            }));
+                            break;
                         }
                     }
                     Err(reqwest_eventsource::Error::StreamEnded) => {

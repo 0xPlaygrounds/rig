@@ -138,7 +138,7 @@ pub(crate) fn create_request_body(
     }
 
     let system_instruction = completion_request.preamble.clone().map(|preamble| Content {
-        parts: OneOrMany::one(preamble.into()),
+        parts: vec![preamble.into()],
         role: Some(Role::Model),
     });
 
@@ -301,7 +301,6 @@ pub mod gemini_api_types {
         OneOrMany,
         completion::CompletionError,
         message::{self, MessageError, MimeType as _, Reasoning, Text},
-        one_or_many::string_or_one_or_many,
         providers::gemini::gemini_api_types::{CodeExecutionResult, ExecutableCode},
     };
 
@@ -349,11 +348,12 @@ pub mod gemini_api_types {
         /// Output only. Index of the candidate in the list of response candidates.
         pub index: Option<i32>,
     }
+
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Content {
         /// Ordered Parts that constitute a single message. Parts may have different MIME types.
-        #[serde(deserialize_with = "string_or_one_or_many")]
-        pub parts: OneOrMany<Part>,
+        #[serde(default)]
+        pub parts: Vec<Part>,
         /// The producer of the content. Must be either 'user' or 'model'.
         /// Useful to set for multi-turn conversations, otherwise can be left blank or unset.
         pub role: Option<Role>,
@@ -365,12 +365,15 @@ pub mod gemini_api_types {
         fn try_from(msg: message::Message) -> Result<Self, Self::Error> {
             Ok(match msg {
                 message::Message::User { content } => Content {
-                    parts: content.try_map(|c| c.try_into())?,
+                    parts: content
+                        .into_iter()
+                        .map(|c| c.try_into())
+                        .collect::<Result<Vec<_>, _>>()?,
                     role: Some(Role::User),
                 },
                 message::Message::Assistant { content, .. } => Content {
                     role: Some(Role::Model),
-                    parts: content.map(|content| content.into()),
+                    parts: content.into_iter().map(|content| content.into()).collect(),
                 },
             })
         }
@@ -381,76 +384,95 @@ pub mod gemini_api_types {
 
         fn try_from(content: Content) -> Result<Self, Self::Error> {
             match content.role {
-                Some(Role::User) | None => Ok(message::Message::User {
-                    content: content.parts.try_map(|Part { part, .. }| {
-                        Ok(match part {
-                            PartKind::Text(text) => message::UserContent::text(text),
-                            PartKind::InlineData(inline_data) => {
-                                let mime_type =
-                                    message::MediaType::from_mime_type(&inline_data.mime_type);
+                Some(Role::User) | None => {
+                    Ok(message::Message::User {
+                        content: {
+                            let user_content: Result<Vec<_>, _> = content.parts.into_iter()
+                            .map(|Part { part, .. }| {
+                                Ok(match part {
+                                    PartKind::Text(text) => message::UserContent::text(text),
+                                    PartKind::InlineData(inline_data) => {
+                                        let mime_type =
+                                            message::MediaType::from_mime_type(&inline_data.mime_type);
 
-                                match mime_type {
-                                    Some(message::MediaType::Image(media_type)) => {
-                                        message::UserContent::image(
-                                            inline_data.data,
-                                            Some(message::ContentFormat::default()),
-                                            Some(media_type),
-                                            Some(message::ImageDetail::default()),
-                                        )
+                                        match mime_type {
+                                            Some(message::MediaType::Image(media_type)) => {
+                                                message::UserContent::image(
+                                                    inline_data.data,
+                                                    Some(message::ContentFormat::default()),
+                                                    Some(media_type),
+                                                    Some(message::ImageDetail::default()),
+                                                )
+                                            }
+                                            Some(message::MediaType::Document(media_type)) => {
+                                                message::UserContent::document(
+                                                    inline_data.data,
+                                                    Some(message::ContentFormat::default()),
+                                                    Some(media_type),
+                                                )
+                                            }
+                                            Some(message::MediaType::Audio(media_type)) => {
+                                                message::UserContent::audio(
+                                                    inline_data.data,
+                                                    Some(message::ContentFormat::default()),
+                                                    Some(media_type),
+                                                )
+                                            }
+                                            _ => {
+                                                return Err(message::MessageError::ConversionError(
+                                                    format!("Unsupported media type {mime_type:?}"),
+                                                ));
+                                            }
+                                        }
                                     }
-                                    Some(message::MediaType::Document(media_type)) => {
-                                        message::UserContent::document(
-                                            inline_data.data,
-                                            Some(message::ContentFormat::default()),
-                                            Some(media_type),
-                                        )
+                                    _ => {
+                                        return Err(message::MessageError::ConversionError(format!(
+                                            "Unsupported gemini content part type: {part:?}"
+                                        )));
                                     }
-                                    Some(message::MediaType::Audio(media_type)) => {
-                                        message::UserContent::audio(
-                                            inline_data.data,
-                                            Some(message::ContentFormat::default()),
-                                            Some(media_type),
-                                        )
+                                })
+                            })
+                            .collect();
+                            OneOrMany::many(user_content?).map_err(|_| {
+                                message::MessageError::ConversionError(
+                                    "Failed to create OneOrMany from user content".to_string(),
+                                )
+                            })?
+                        },
+                    })
+                }
+                Some(Role::Model) => Ok(message::Message::Assistant {
+                    id: None,
+                    content: {
+                        let assistant_content: Result<Vec<_>, _> = content
+                            .parts
+                            .into_iter()
+                            .map(|Part { thought, part, .. }| {
+                                Ok(match part {
+                                    PartKind::Text(text) => match thought {
+                                        Some(true) => message::AssistantContent::Reasoning(
+                                            Reasoning::new(&text),
+                                        ),
+                                        _ => message::AssistantContent::Text(Text { text }),
+                                    },
+
+                                    PartKind::FunctionCall(function_call) => {
+                                        message::AssistantContent::ToolCall(function_call.into())
                                     }
                                     _ => {
                                         return Err(message::MessageError::ConversionError(
-                                            format!("Unsupported media type {mime_type:?}"),
+                                            format!("Unsupported part type: {part:?}"),
                                         ));
                                     }
-                                }
-                            }
-                            _ => {
-                                return Err(message::MessageError::ConversionError(format!(
-                                    "Unsupported gemini content part type: {part:?}"
-                                )));
-                            }
-                        })
-                    })?,
-                }),
-                Some(Role::Model) => Ok(message::Message::Assistant {
-                    id: None,
-                    content: content.parts.try_map(|Part { thought, part, .. }| {
-                        Ok(match part {
-                            PartKind::Text(text) => {
-                                if let Some(thought) = thought
-                                    && thought
-                                {
-                                    message::AssistantContent::Reasoning(Reasoning::new(&text))
-                                } else {
-                                    message::AssistantContent::Text(Text { text })
-                                }
-                            }
-
-                            PartKind::FunctionCall(function_call) => {
-                                message::AssistantContent::ToolCall(function_call.into())
-                            }
-                            _ => {
-                                return Err(message::MessageError::ConversionError(format!(
-                                    "Unsupported part type: {part:?}"
-                                )));
-                            }
-                        })
-                    })?,
+                                })
+                            })
+                            .collect();
+                        OneOrMany::many(assistant_content?).map_err(|_| {
+                            message::MessageError::ConversionError(
+                                "Failed to create OneOrMany from assistant content".to_string(),
+                            )
+                        })?
+                    },
                 }),
             }
         }
@@ -567,7 +589,7 @@ pub mod gemini_api_types {
                         ))),
                     },
                     None => Err(message::MessageError::ConversionError(
-                        "Media type for image is required for Anthropic".to_string(),
+                        "Media type for image is required for Gemini".to_string(), // Fixed error message
                     )),
                 },
                 message::UserContent::Document(message::Document {
@@ -594,7 +616,7 @@ pub mod gemini_api_types {
                         ))),
                     },
                     None => Err(message::MessageError::ConversionError(
-                        "Media type for document is required for Anthropic".to_string(),
+                        "Media type for document is required for Gemini".to_string(), // Fixed error message
                     )),
                 },
                 message::UserContent::Audio(message::Audio {
@@ -609,7 +631,7 @@ pub mod gemini_api_types {
                         }),
                     }),
                     None => Err(message::MessageError::ConversionError(
-                        "Media type for audio is required for Anthropic".to_string(),
+                        "Media type for audio is required for Gemini".to_string(), // Fixed error message
                     )),
                 },
             }
@@ -625,7 +647,9 @@ pub mod gemini_api_types {
                     Part {
                         thought: Some(true),
                         thought_signature: None,
-                        part: PartKind::Text(reasoning.first().cloned().unwrap_or(String::new())),
+                        part: PartKind::Text(
+                            reasoning.first().cloned().unwrap_or_else(|| "".to_string()),
+                        ),
                     }
                 }
             }
@@ -1265,10 +1289,10 @@ mod tests {
         let content: Content = serde_json::from_value(json_data).unwrap();
         assert_eq!(content.role, Some(Role::Model));
         assert_eq!(content.parts.len(), 1);
-        if let Part {
+        if let Some(Part {
             part: PartKind::Text(text),
             ..
-        } = &content.parts.first()
+        }) = content.parts.first()
         {
             assert_eq!(text, "Hello, user!");
         } else {
@@ -1282,10 +1306,10 @@ mod tests {
         let content: Content = msg.try_into().unwrap();
         assert_eq!(content.role, Some(Role::User));
         assert_eq!(content.parts.len(), 1);
-        if let Part {
+        if let Some(Part {
             part: PartKind::Text(text),
             ..
-        } = &content.parts.first()
+        }) = &content.parts.first()
         {
             assert_eq!(text, "Hello, world!");
         } else {
@@ -1300,10 +1324,10 @@ mod tests {
         let content: Content = msg.try_into().unwrap();
         assert_eq!(content.role, Some(Role::Model));
         assert_eq!(content.parts.len(), 1);
-        if let Part {
+        if let Some(Part {
             part: PartKind::Text(text),
             ..
-        } = &content.parts.first()
+        }) = &content.parts.first()
         {
             assert_eq!(text, "Hello, user!");
         } else {
@@ -1330,10 +1354,10 @@ mod tests {
         let content: Content = msg.try_into().unwrap();
         assert_eq!(content.role, Some(Role::Model));
         assert_eq!(content.parts.len(), 1);
-        if let Part {
+        if let Some(Part {
             part: PartKind::FunctionCall(function_call),
             ..
-        } = &content.parts.first()
+        }) = content.parts.first()
         {
             assert_eq!(function_call.name, "test_function");
             assert_eq!(

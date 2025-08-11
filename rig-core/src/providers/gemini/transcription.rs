@@ -5,7 +5,6 @@ use mime_guess;
 use serde_json::{Map, Value};
 
 use crate::{
-    OneOrMany,
     providers::gemini::completion::gemini_api_types::{
         Blob, Content, GenerateContentRequest, GenerationConfig, Part, PartKind, Role,
     },
@@ -60,7 +59,7 @@ impl transcription::TranscriptionModel for TranscriptionModel {
         }
 
         let system_instruction = Some(Content {
-            parts: OneOrMany::one(TRANSCRIPTION_PREAMBLE.into()),
+            parts: vec![TRANSCRIPTION_PREAMBLE.into()],
             role: Some(Role::Model),
         });
 
@@ -73,14 +72,14 @@ impl transcription::TranscriptionModel for TranscriptionModel {
 
         let request = GenerateContentRequest {
             contents: vec![Content {
-                parts: OneOrMany::one(Part {
+                parts: vec![Part {
                     thought: Some(false),
                     thought_signature: None,
                     part: PartKind::InlineData(Blob {
                         mime_type,
                         data: BASE64_STANDARD.encode(request.data),
                     }),
-                }),
+                }],
                 role: Some(Role::User),
             }],
             generation_config: Some(generation_config),
@@ -136,10 +135,15 @@ impl TryFrom<GenerateContentResponse>
         let part = candidate.content.parts.first();
 
         let text = match part {
-            Part {
+            Some(Part {
                 part: PartKind::Text(text),
                 ..
-            } => text,
+            }) => text,
+            None => {
+                return Err(TranscriptionError::ResponseError(
+                    "Response content contains no text".to_string(),
+                ));
+            }
             _ => {
                 return Err(TranscriptionError::ResponseError(
                     "Response content was not text".to_string(),
@@ -147,6 +151,9 @@ impl TryFrom<GenerateContentResponse>
             }
         };
 
-        Ok(transcription::TranscriptionResponse { text, response })
+        Ok(transcription::TranscriptionResponse {
+            text: text.to_string(),
+            response,
+        })
     }
 }
