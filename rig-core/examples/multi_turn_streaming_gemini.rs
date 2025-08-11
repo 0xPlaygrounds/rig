@@ -108,8 +108,10 @@ where
                         did_call_tool = true;
                         // break;
                     },
-                    Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning })) => {
-                        yield Ok(Text { text: reasoning });
+                    Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, .. })) => {
+                        if !reasoning.is_empty() {
+                            yield Ok(Text { text: reasoning.first().unwrap().to_owned() });
+                        }
                         did_call_tool = false;
                     },
                     Ok(_) => {
