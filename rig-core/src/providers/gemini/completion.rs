@@ -660,12 +660,14 @@ pub mod gemini_api_types {
             match content {
                 message::AssistantContent::Text(message::Text { text }) => text.into(),
                 message::AssistantContent::ToolCall(tool_call) => tool_call.into(),
-                message::AssistantContent::Reasoning(message::Reasoning { reasoning, .. }) => Part {
-                    thought: Some(true),
-                    thought_signature: None,
-                    part: PartKind::Text(reasoning.first().cloned().unwrap_or(String::new())),
-                    additional_params: None,
-                },
+                message::AssistantContent::Reasoning(message::Reasoning { reasoning, .. }) => {
+                    Part {
+                        thought: Some(true),
+                        thought_signature: None,
+                        part: PartKind::Text(reasoning.first().cloned().unwrap_or(String::new())),
+                        additional_params: None,
+                    }
+                }
             }
         }
     }
