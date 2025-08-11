@@ -1,5 +1,6 @@
 use async_stream::stream;
 use futures::StreamExt;
+use reqwest_eventsource::{Event, RequestBuilderExt};
 use serde::{Deserialize, Serialize};
 
 use super::completion::{
@@ -44,80 +45,103 @@ impl CompletionModel {
             serde_json::to_string_pretty(&request)?
         );
 
-        let response = self
+        // Build the request with proper headers for SSE
+        let mut event_source = self
             .client
             .post_sse(&format!(
                 "/v1beta/models/{}:streamGenerateContent",
                 self.model
             ))
             .json(&request)
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            return Err(CompletionError::ProviderError(format!(
-                "{}: {}",
-                response.status(),
-                response.text().await?
-            )));
-        }
+            .eventsource()
+            .expect("Cloning request must always succeed");
 
         let stream = Box::pin(stream! {
-            let mut stream = response.bytes_stream();
-
-            while let Some(chunk_result) = stream.next().await {
-                let chunk = match chunk_result {
-                    Ok(c) => c,
-                    Err(e) => {
-                        yield Err(CompletionError::from(e));
-                        break;
-                    }
-                };
-
-                let text = match String::from_utf8(chunk.to_vec()) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        yield Err(CompletionError::ResponseError(e.to_string()));
-                        break;
-                    }
-                };
-
-                for line in text.lines() {
-                    let Some(line) = line.strip_prefix("data: ") else { continue; };
-
-                    let Ok(data) = serde_json::from_str::<StreamGenerateContentResponse>(line) else {
+            while let Some(event_result) = event_source.next().await {
+                match event_result {
+                    Ok(Event::Open) => {
+                        tracing::trace!("SSE connection opened");
                         continue;
-                    };
+                    }
+                    Ok(Event::Message(message)) => {
+                        // Skip heartbeat messages or empty data
+                        if message.data.trim().is_empty() {
+                            continue;
+                        }
 
-                    let choice = data.candidates.first().expect("Should have at least one choice");
-
-                    match choice.content.parts.first() {
-                        super::completion::gemini_api_types::Part { part: PartKind::Text(text), thought, ..} => {
-                            if let Some(thought) = thought && thought {
-                                yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: text, id: None })
-                            } else {
-                                yield Ok(streaming::RawStreamingChoice::Message(text))
+                        let data = match serde_json::from_str::<StreamGenerateContentResponse>(&message.data) {
+                            Ok(d) => d,
+                            Err(error) => {
+                                tracing::warn!(?error, message = message.data, "Failed to parse SSE message");
+                                continue;
                             }
-                        },
-                        super::completion::gemini_api_types::Part { part: PartKind::FunctionCall(function_call), ..}
-                            => yield Ok(streaming::RawStreamingChoice::ToolCall {
-                                    name: function_call.name,
-                                    id: "".to_string(),
-                                    arguments: function_call.args,
-                                    call_id: None
-                                }),
-                        _ => panic!("Unsupported response type with streaming.")
-                    };
+                        };
 
-                    if choice.finish_reason.is_some() {
-                        yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                            usage_metadata: PartialUsage {
-                                total_token_count: data.usage_metadata.unwrap().total_token_count,
+                        // Process the response data
+                        if let Some(choice) = data.candidates.first() {
+                            match choice.content.parts.first() {
+                                super::completion::gemini_api_types::Part {
+                                    part: PartKind::Text(text),
+                                    thought: Some(true),
+                                    ..
+                                } => {
+                                    yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: text.clone(), id: None });
+                                },
+                                super::completion::gemini_api_types::Part {
+                                    part: PartKind::Text(text),
+                                    thought,
+                                    ..
+                                } => {
+                                    if thought != Some(true) {
+                                        yield Ok(streaming::RawStreamingChoice::Message(text.clone()));
+                                    }
+                                },
+                                super::completion::gemini_api_types::Part {
+                                    part: PartKind::FunctionCall(function_call),
+                                    ..
+                                } => {
+                                    yield Ok(streaming::RawStreamingChoice::ToolCall {
+                                        name: function_call.name.clone(),
+                                        id: function_call.name.clone(),
+                                        arguments: function_call.args.clone(),
+                                        call_id: None
+                                    });
+                                },
+                                part => {
+                                    tracing::warn!(?part, "Unsupported response type with streaming");
+                                    continue;
+                                }
                             }
-                        }))
+
+
+                            // Check if this is the final response
+                            if choice.finish_reason.is_some() {
+                                let usage = data.usage_metadata
+                                                .map(|u| u.total_token_count)
+                                                .unwrap_or(0);
+
+                                yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                                    usage_metadata: PartialUsage {
+                                        total_token_count: usage,
+                                    }
+                                }));
+                                break;
+                            }
+                        }
+                    }
+                    Err(reqwest_eventsource::Error::StreamEnded) => {
+                        break;
+                    }
+                    Err(error) => {
+                        tracing::error!(?error, "SSE error");
+                        yield Err(CompletionError::ResponseError(error.to_string()));
+                        break;
                     }
                 }
             }
+
+            // Ensure event source is closed when stream ends
+            event_source.close();
         });
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))
