@@ -90,7 +90,7 @@ impl TryFrom<RigUserContent> for Vec<aws_bedrock::ContentBlock> {
             )),
             UserContent::Video(_) => Err(CompletionError::ProviderError(
                 "Video is not supported".into(),
-            ))
+            )),
         }
     }
 }
