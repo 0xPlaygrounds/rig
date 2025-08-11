@@ -43,6 +43,7 @@ pub enum UserContent {
     ToolResult(ToolResult),
     Image(Image),
     Audio(Audio),
+    Video(Video),
     Document(Document),
 }
 
@@ -124,6 +125,16 @@ pub struct Audio {
     pub media_type: Option<AudioMediaType>,
 }
 
+/// Video content containing video data and metadata about it.
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Video {
+    pub data: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<ContentFormat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<VideoMediaType>,
+}
+
 /// Document content containing document data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Document {
@@ -149,6 +160,7 @@ pub enum MediaType {
     Image(ImageMediaType),
     Audio(AudioMediaType),
     Document(DocumentMediaType),
+    Video(VideoMediaType),
 }
 
 /// Describes the image media type of the content. Not every provider supports every media type.
@@ -194,6 +206,16 @@ pub enum AudioMediaType {
     AAC,
     OGG,
     FLAC,
+}
+
+/// Describes the video media type of the content. Not every provider supports every media type.
+/// Convertible to and from MIME type strings.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum VideoMediaType {
+    AVI,
+    MP4,
+    MPEG,
 }
 
 /// Describes the detail of the image content, which can be low, high, or auto (open-ai specific).
@@ -431,6 +453,7 @@ impl MimeType for MediaType {
             MediaType::Image(media_type) => media_type.to_mime_type(),
             MediaType::Audio(media_type) => media_type.to_mime_type(),
             MediaType::Document(media_type) => media_type.to_mime_type(),
+            MediaType::Video(media_type) => media_type.to_mime_type(),
         }
     }
 }
@@ -516,6 +539,28 @@ impl MimeType for AudioMediaType {
             AudioMediaType::AAC => "audio/aac",
             AudioMediaType::OGG => "audio/ogg",
             AudioMediaType::FLAC => "audio/flac",
+        }
+    }
+}
+
+impl MimeType for VideoMediaType {
+    fn from_mime_type(mime_type: &str) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        match mime_type {
+            "video/avi" => Some(VideoMediaType::AVI),
+            "video/mp4" => Some(VideoMediaType::MP4),
+            "video/mpeg" => Some(VideoMediaType::MPEG),
+            &_ => None,
+        }
+    }
+
+    fn to_mime_type(&self) -> &'static str {
+        match self {
+            VideoMediaType::AVI => "video/avi",
+            VideoMediaType::MP4 => "video/mp4",
+            VideoMediaType::MPEG => "video/mpeg",
         }
     }
 }

@@ -299,6 +299,7 @@ pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
+    use crate::message::ContentFormat;
     use crate::{
         OneOrMany,
         completion::CompletionError,
@@ -613,9 +614,37 @@ pub mod gemini_api_types {
                         }),
                     }),
                     None => Err(message::MessageError::ConversionError(
-                        "Media type for audio is required for Anthropic".to_string(),
+                        "Media type for audio is required for Gemini".to_string(),
                     )),
                 },
+                message::UserContent::Video(message::Video {
+                    data,
+                    media_type,
+                    format,
+                }) => {
+                    let mime_type = media_type.map(|m| m.to_mime_type().to_owned());
+
+                    let data = match format {
+                        Some(ContentFormat::String) => PartKind::FileData(FileData {
+                            mime_type,
+                            file_uri: data,
+                        }),
+                        _ => match mime_type {
+                            Some(mime_type) => PartKind::InlineData(Blob { mime_type, data }),
+                            None => {
+                                return Err(message::MessageError::ConversionError(
+                                    "Media type for video is required for Gemini".to_string(),
+                                ));
+                            }
+                        },
+                    };
+
+                    Ok(Part {
+                        thought: Some(false),
+                        thought_signature: None,
+                        part: data,
+                    })
+                }
             }
         }
     }

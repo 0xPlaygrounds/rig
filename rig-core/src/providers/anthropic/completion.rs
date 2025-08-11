@@ -427,6 +427,9 @@ impl TryFrom<message::Message> for Message {
                     message::UserContent::Audio { .. } => Err(MessageError::ConversionError(
                         "Audio is not supported in Anthropic".to_owned(),
                     )),
+                    message::UserContent::Video { .. } => Err(MessageError::ConversionError(
+                        "Audio is not supported in Anthropic".to_owned(),
+                    )),
                 })?,
             },
 
