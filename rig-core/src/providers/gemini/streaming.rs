@@ -72,7 +72,7 @@ impl CompletionModel {
                         let data = match serde_json::from_str::<StreamGenerateContentResponse>(&message.data) {
                             Ok(d) => d,
                             Err(error) => {
-                                tracing::warn!(?error, "Failed to parse SSE message, data: {}", message.data);
+                                tracing::warn!(?error, message = message.data, "Failed to parse SSE message");
                                 continue;
                             }
                         };
@@ -125,11 +125,12 @@ impl CompletionModel {
                                         total_token_count: usage,
                                     }
                                 }));
-                                // Close the event source after final response
-                                event_source.close();
                                 break;
                             }
                         }
+                    }
+                    Err(reqwest_eventsource::Error::StreamEnded) => {
+                        break;
                     }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
