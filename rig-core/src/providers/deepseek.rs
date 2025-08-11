@@ -594,7 +594,7 @@ impl completion::CompletionModel for CompletionModel {
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
 
-        let builder = self.client.post("/v1/chat/completions").json(&request);
+        let builder = self.client.post("/chat/completions").json(&request);
         send_compatible_streaming_request(builder).await
     }
 }
