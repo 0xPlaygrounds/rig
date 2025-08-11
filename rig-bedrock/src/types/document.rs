@@ -69,6 +69,7 @@ impl TryFrom<aws_bedrock::DocumentBlock> for RigDocument {
             data,
             format: Some(ContentFormat::Base64),
             media_type: Some(media_type),
+            additional_params: None,
         }))
     }
 }
@@ -90,6 +91,7 @@ mod tests {
             data: "data".into(),
             format: Some(ContentFormat::String),
             media_type: Some(DocumentMediaType::PDF),
+            additional_params: None,
         });
         let aws_document: Result<aws_bedrock::DocumentBlock, _> = rig_document.clone().try_into();
         assert!(aws_document.is_ok());
@@ -115,6 +117,7 @@ mod tests {
             data: "data".into(),
             format: Some(ContentFormat::Base64),
             media_type: Some(DocumentMediaType::PDF),
+            additional_params: None,
         });
         let aws_document: aws_bedrock::DocumentBlock = rig_document.clone().try_into().unwrap();
         let document_data = BASE64_STANDARD.decode(rig_document.0.data).unwrap();
@@ -134,6 +137,7 @@ mod tests {
             data: "data".into(),
             format: Some(ContentFormat::String),
             media_type: Some(DocumentMediaType::Javascript),
+            additional_params: None,
         });
         let aws_document: Result<aws_bedrock::DocumentBlock, _> = rig_document.clone().try_into();
         assert_eq!(

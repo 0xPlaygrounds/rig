@@ -42,6 +42,7 @@ async fn main() -> Result<(), anyhow::Error> {
         data: bytes_base64,
         format: Some(ContentFormat::Base64),
         media_type: Some(DocumentMediaType::PDF),
+        additional_params: None,
     };
 
     let response = agent.prompt(document).await?;

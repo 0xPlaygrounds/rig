@@ -297,6 +297,7 @@ pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
+    use crate::message::ContentFormat;
     use crate::{
         OneOrMany,
         completion::CompletionError,
@@ -474,6 +475,8 @@ pub mod gemini_api_types {
         pub thought_signature: Option<String>,
         #[serde(flatten)]
         pub part: PartKind,
+        #[serde(flatten, skip_serializing_if = "Option::is_none")]
+        pub additional_params: Option<Value>,
     }
 
     /// A datatype containing media that is part of a multi-part [Content] message.
@@ -497,6 +500,7 @@ pub mod gemini_api_types {
                 thought: Some(false),
                 thought_signature: None,
                 part: PartKind::Text(text),
+                additional_params: None,
             }
         }
     }
@@ -524,6 +528,7 @@ pub mod gemini_api_types {
                     thought: Some(false),
                     thought_signature: None,
                     part: PartKind::Text(text),
+                    additional_params: None,
                 }),
                 message::UserContent::ToolResult(message::ToolResult { id, content, .. }) => {
                     let content = match content.first() {
@@ -544,6 +549,7 @@ pub mod gemini_api_types {
                             name: id,
                             response: Some(json!({ "result": result })),
                         }),
+                        additional_params: None,
                     })
                 }
                 message::UserContent::Image(message::Image {
@@ -561,6 +567,7 @@ pub mod gemini_api_types {
                                 mime_type: media_type.to_mime_type().to_owned(),
                                 data,
                             }),
+                            additional_params: None,
                         }),
                         _ => Err(message::MessageError::ConversionError(format!(
                             "Unsupported image media type {media_type:?}"
@@ -588,6 +595,7 @@ pub mod gemini_api_types {
                                 mime_type: media_type.to_mime_type().to_owned(),
                                 data,
                             }),
+                            additional_params: None,
                         }),
                         _ => Err(message::MessageError::ConversionError(format!(
                             "Unsupported document media type {media_type:?}"
@@ -607,11 +615,42 @@ pub mod gemini_api_types {
                             mime_type: media_type.to_mime_type().to_owned(),
                             data,
                         }),
+                        additional_params: None,
                     }),
                     None => Err(message::MessageError::ConversionError(
-                        "Media type for audio is required for Anthropic".to_string(),
+                        "Media type for audio is required for Gemini".to_string(),
                     )),
                 },
+                message::UserContent::Video(message::Video {
+                    data,
+                    media_type,
+                    format,
+                    additional_params,
+                }) => {
+                    let mime_type = media_type.map(|m| m.to_mime_type().to_owned());
+
+                    let data = match format {
+                        Some(ContentFormat::String) => PartKind::FileData(FileData {
+                            mime_type,
+                            file_uri: data,
+                        }),
+                        _ => match mime_type {
+                            Some(mime_type) => PartKind::InlineData(Blob { mime_type, data }),
+                            None => {
+                                return Err(message::MessageError::ConversionError(
+                                    "Media type for video is required for Gemini".to_string(),
+                                ));
+                            }
+                        },
+                    };
+
+                    Ok(Part {
+                        thought: Some(false),
+                        thought_signature: None,
+                        part: data,
+                        additional_params,
+                    })
+                }
             }
         }
     }
@@ -626,6 +665,7 @@ pub mod gemini_api_types {
                         thought: Some(true),
                         thought_signature: None,
                         part: PartKind::Text(reasoning.first().cloned().unwrap_or(String::new())),
+                        additional_params: None,
                     }
                 }
             }
@@ -641,6 +681,7 @@ pub mod gemini_api_types {
                     name: tool_call.function.name,
                     args: tool_call.function.arguments,
                 }),
+                additional_params: None,
             }
         }
     }
