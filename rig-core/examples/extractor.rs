@@ -7,10 +7,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Person {
     /// The person's first name, if provided (null otherwise)
+    #[schemars(required)]
     pub first_name: Option<String>,
     /// The person's last name, if provided (null otherwise)
+    #[schemars(required)]
     pub last_name: Option<String>,
     /// The person's job, if provided (null otherwise)
+    #[schemars(required)]
     pub job: Option<String>,
 }
 
