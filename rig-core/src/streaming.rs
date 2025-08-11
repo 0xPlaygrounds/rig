@@ -37,7 +37,10 @@ pub enum RawStreamingChoice<R: Clone> {
         arguments: serde_json::Value,
     },
     /// A reasoning chunk
-    Reasoning { reasoning: String },
+    Reasoning {
+        id: Option<String>,
+        reasoning: String,
+    },
 
     /// The final response object, must be yielded if you want the
     /// `response` field to be populated on the `StreamingCompletionResponse`
@@ -142,12 +145,13 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
                     stream.text = format!("{}{}", stream.text, text.clone());
                     Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
                 }
-                RawStreamingChoice::Reasoning { reasoning } => {
+                RawStreamingChoice::Reasoning { id, reasoning } => {
                     // Forward the streaming tokens to the outer stream
                     // and concat the text together
                     stream.reasoning = format!("{}{}", stream.reasoning, reasoning.clone());
                     Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(Reasoning {
-                        reasoning,
+                        id,
+                        reasoning: vec![stream.reasoning.clone()],
                     }))))
                 }
                 RawStreamingChoice::ToolCall {
@@ -247,8 +251,8 @@ impl<R: Clone + Unpin> Stream for StreamingResultDyn<R> {
                 RawStreamingChoice::Message(m) => {
                     Poll::Ready(Some(Ok(RawStreamingChoice::Message(m))))
                 }
-                RawStreamingChoice::Reasoning { reasoning } => {
-                    Poll::Ready(Some(Ok(RawStreamingChoice::Reasoning { reasoning })))
+                RawStreamingChoice::Reasoning { id, reasoning } => {
+                    Poll::Ready(Some(Ok(RawStreamingChoice::Reasoning { id, reasoning })))
                 }
                 RawStreamingChoice::ToolCall {
                     id,
@@ -299,12 +303,14 @@ pub async fn stream_to_stdout<M: CompletionModel>(
                 println!();
                 tracing::info!("Final result: {json_res}");
             }
-            Ok(StreamedAssistantContent::Reasoning(Reasoning { reasoning })) => {
+            Ok(StreamedAssistantContent::Reasoning(Reasoning { reasoning, .. })) => {
                 if !is_reasoning {
                     is_reasoning = true;
                     println!();
                     println!("Thinking: ");
                 }
+                let reasoning = reasoning.into_iter().collect::<Vec<String>>().join("");
+
                 print!("{reasoning}");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
@@ -378,7 +384,8 @@ mod tests {
                 Ok(StreamedAssistantContent::Final(res)) => {
                     println!("\nFinal response: {res:?}");
                 }
-                Ok(StreamedAssistantContent::Reasoning(Reasoning { reasoning })) => {
+                Ok(StreamedAssistantContent::Reasoning(Reasoning { reasoning, .. })) => {
+                    let reasoning = reasoning.into_iter().collect::<Vec<String>>().join("");
                     print!("{reasoning}");
                     std::io::Write::flush(&mut std::io::stdout()).unwrap();
                 }

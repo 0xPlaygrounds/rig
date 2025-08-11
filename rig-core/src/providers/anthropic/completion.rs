@@ -336,10 +336,12 @@ impl From<message::AssistantContent> for Content {
                     input: function.arguments,
                 }
             }
-            message::AssistantContent::Reasoning(Reasoning { reasoning }) => Content::Thinking {
-                thinking: reasoning,
-                signature: None,
-            },
+            message::AssistantContent::Reasoning(Reasoning { reasoning, id }) => {
+                Content::Thinking {
+                    thinking: reasoning.first().cloned().unwrap_or(String::new()),
+                    signature: id,
+                }
+            }
         }
     }
 }
@@ -407,6 +409,7 @@ impl TryFrom<message::Message> for Message {
                         data,
                         format,
                         media_type,
+                        ..
                     }) => {
                         let Some(media_type) = media_type else {
                             return Err(MessageError::ConversionError(
@@ -425,6 +428,9 @@ impl TryFrom<message::Message> for Message {
                         Ok(Content::Document { source })
                     }
                     message::UserContent::Audio { .. } => Err(MessageError::ConversionError(
+                        "Audio is not supported in Anthropic".to_owned(),
+                    )),
+                    message::UserContent::Video { .. } => Err(MessageError::ConversionError(
                         "Audio is not supported in Anthropic".to_owned(),
                     )),
                 })?,
@@ -447,6 +453,12 @@ impl TryFrom<Content> for message::AssistantContent {
             Content::ToolUse { id, name, input } => {
                 message::AssistantContent::tool_call(id, name, input)
             }
+            Content::Thinking {
+                thinking,
+                signature,
+            } => message::AssistantContent::Reasoning(
+                Reasoning::new(&thinking).optional_id(signature),
+            ),
             _ => {
                 return Err(MessageError::ConversionError(
                     format!("Unsupported content type for Assistant role: {content:?}").to_owned(),
@@ -496,6 +508,7 @@ impl TryFrom<Message> for message::Message {
                             format: Some(message::ContentFormat::Base64),
                             media_type: Some(source.media_type.into()),
                             detail: None,
+                            additional_params: None,
                         }),
                         Content::Document { source } => message::UserContent::document(
                             source.data,
@@ -511,10 +524,12 @@ impl TryFrom<Message> for message::Message {
                 })?,
             },
             Role::Assistant => match message.content.first() {
-                Content::Text { .. } | Content::ToolUse { .. } => message::Message::Assistant {
-                    id: None,
-                    content: message.content.try_map(|content| content.try_into())?,
-                },
+                Content::Text { .. } | Content::ToolUse { .. } | Content::Thinking { .. } => {
+                    message::Message::Assistant {
+                        id: None,
+                        content: message.content.try_map(|content| content.try_into())?,
+                    }
+                }
 
                 _ => {
                     return Err(MessageError::ConversionError(
@@ -951,6 +966,7 @@ mod tests {
                         data,
                         format,
                         media_type,
+                        ..
                     }) => {
                         assert_eq!(data, "base64_encoded_pdf_data");
                         assert_eq!(format.unwrap(), message::ContentFormat::Base64);

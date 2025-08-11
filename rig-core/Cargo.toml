@@ -31,7 +31,6 @@ quick-xml = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
 rig-derive = { version = "0.1.4", path = "rig-core-derive", optional = true }
-rmcp = { version = "0.3", optional = true, features = ["client"] }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -39,6 +38,8 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 worker = { workspace = true, optional = true }
+rmcp = { version = "0.5", optional = true, features = ["client"] }
+reqwest-eventsource = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -53,7 +54,7 @@ mcp-core-macros = { workspace = true }
 
 # Required for `rmcp` example
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
-rmcp = { version = "0.3", features = [
+rmcp = { version = "0.5", features = [
     "client",
     "reqwest",                                  # required for some strange reason
     "transport-streamable-http-client",

@@ -1,11 +1,11 @@
 use futures::{Stream, StreamExt};
+use rig::providers::gemini;
 use rig::{
     OneOrMany,
     agent::Agent,
     client::{CompletionClient, ProviderClient},
     completion::{self, CompletionError, CompletionModel, PromptError, ToolDefinition},
     message::{AssistantContent, Message, Text, ToolResultContent, UserContent},
-    providers::anthropic,
     streaming::{StreamedAssistantContent, StreamingCompletion},
     tool::{Tool, ToolSetError},
 };
@@ -32,25 +32,18 @@ async fn main() -> anyhow::Result<()> {
     // tracing_subscriber::registry()
     //     .with(
     //         tracing_subscriber::EnvFilter::try_from_default_env()
-    //             .unwrap_or_else(|_| "stdout=info".into()),
+    //             .unwrap_or_else(|_| "info".into()),
     //     )
     //     .with(tracing_subscriber::fmt::layer())
     //     .init();
 
-    // Create Anthropic client
-    let anthropic_client = anthropic::Client::from_env();
+    // Create gemini client
+    let llm_client = gemini::Client::from_env();
 
     // Create agent with a single context prompt and a calculator tools
-    let calculator_agent = anthropic_client
-        .agent(anthropic::CLAUDE_3_5_SONNET)
-        .preamble(
-            "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
-            Follow these instructions closely.
-            1. Consider the user's request carefully and identify the core elements of the request.
-            2. Select which tool among those made available to you is appropriate given the context.
-            3. This is very important: never perform the operation yourself.
-            "
-        )
+    let calculator_agent = llm_client
+        .agent("gemini-2.5-flash")
+        .preamble("You are an calculator. You must use tools to get the user result")
         .tool(Add)
         .tool(Subtract)
         .tool(Multiply)
@@ -116,8 +109,9 @@ where
                         // break;
                     },
                     Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, .. })) => {
-                        let text = reasoning.into_iter().collect::<Vec<String>>().join("");
-                        yield Ok(Text { text });
+                        if !reasoning.is_empty() {
+                            yield Ok(Text { text: reasoning.first().unwrap().to_owned() });
+                        }
                         did_call_tool = false;
                     },
                     Ok(_) => {
@@ -184,7 +178,7 @@ async fn custom_stream_to_stdout(stream: &mut StreamingResult) -> Result<(), std
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
             Err(err) => {
-                eprintln!("Error: {err}");
+                eprintln!("Error: {err:#?}");
             }
         }
     }
