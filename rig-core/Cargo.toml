@@ -24,7 +24,6 @@ epub = { workspace = true, optional = true }
 futures = { workspace = true }
 glob = { workspace = true }
 lopdf = { workspace = true, optional = true }
-mcp-core = { workspace = true, optional = true }
 mime_guess = { workspace = true }
 ordered-float = { workspace = true }
 quick-xml = { workspace = true, optional = true }
@@ -49,8 +48,6 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
-mcp-core = { workspace = true, features = ["sse"] }
-mcp-core-macros = { workspace = true }
 
 # Required for `rmcp` example
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
@@ -75,7 +72,6 @@ pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 worker = ["dep:worker"]
-mcp = ["dep:mcp-core"]
 rmcp = ["dep:rmcp"]
 hooks = ["dep:async-trait"]
 socks = ["reqwest/socks"]
@@ -126,10 +122,6 @@ required-features = ["derive"]
 [[example]]
 name = "together_embeddings"
 required-features = ["derive"]
-
-[[example]]
-name = "mcp_tool"
-required-features = ["mcp"]
 
 [[example]]
 name = "openai_audio_generation"
