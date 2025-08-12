@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.2](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.17.1...rig-core-v0.17.2) - 2025-08-12
+
+### Added
+
+- Add capability to add custom logic while running prompts ([#632](https://github.com/0xPlaygrounds/rig/pull/632))
+- *(rig-863)* add retries to extractor tool ([#685](https://github.com/0xPlaygrounds/rig/pull/685))
+- *(gemini)* Accept plain-text tool result ([#686](https://github.com/0xPlaygrounds/rig/pull/686))
+- video input for gemini ([#690](https://github.com/0xPlaygrounds/rig/pull/690))
+- added get_tool_definitions ([#666](https://github.com/0xPlaygrounds/rig/pull/666))
+
+### Fixed
+
+- deepseek streaming endpoint ([#687](https://github.com/0xPlaygrounds/rig/pull/687))
+- *(rig-864)* missing id from OpenAI Responses API for reasoning items ([#681](https://github.com/0xPlaygrounds/rig/pull/681))
+
+### Other
+
+- *(gemini)* Refactor parts to Vec instead of OneOrMany in Gemini ([#691](https://github.com/0xPlaygrounds/rig/pull/691))
+- consistent visibility modifiers in openai ([#694](https://github.com/0xPlaygrounds/rig/pull/694))
+- Update rmcp to version 0.5 ([#682](https://github.com/0xPlaygrounds/rig/pull/682))
+- Fix SSE parsing in Gemini provider ([#683](https://github.com/0xPlaygrounds/rig/pull/683))
+- *(rig-862)* remove sync bound from fn call() in tool trait ([#678](https://github.com/0xPlaygrounds/rig/pull/678))
+- 删除gemini providers中重复的方法 ([#675](https://github.com/0xPlaygrounds/rig/pull/675))
+
 ## [0.17.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.17.0...rig-core-v0.17.1) - 2025-08-05
 
 ### Other
