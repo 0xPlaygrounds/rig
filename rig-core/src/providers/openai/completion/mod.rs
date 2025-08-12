@@ -148,14 +148,14 @@ impl Message {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct AudioAssistant {
-    id: String,
+    pub id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct SystemContent {
     #[serde(default)]
-    r#type: SystemContentType,
-    text: String,
+    pub r#type: SystemContentType,
+    pub text: String,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
