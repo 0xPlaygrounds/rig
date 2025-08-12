@@ -80,6 +80,7 @@ mod tests {
             format: Some(ContentFormat::Base64),
             media_type: Some(ImageMediaType::JPEG),
             detail: None,
+            additional_params: None,
         };
         let tool = RigToolResultContent(ToolResultContent::Image(image));
         let aws_tool: Result<aws_bedrock::ToolResultContentBlock, _> = tool.try_into();

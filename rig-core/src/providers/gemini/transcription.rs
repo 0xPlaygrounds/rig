@@ -80,6 +80,8 @@ impl transcription::TranscriptionModel for TranscriptionModel {
                         data: BASE64_STANDARD.encode(request.data),
                     }),
                 }],
+                    additional_params: None,
+                }),
                 role: Some(Role::User),
             }],
             generation_config: Some(generation_config),

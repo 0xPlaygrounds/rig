@@ -432,21 +432,21 @@ pub mod rmcp {
                     .await
                     .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
 
-                if result.is_error.unwrap_or(false) {
-                    if let Some(error) = result.content.first() {
-                        if let Some(raw) = error.as_text() {
-                            return Err(McpToolError(raw.text.clone()).into());
-                        } else {
-                            return Err(McpToolError("Unsuppported error type".to_string()).into());
-                        }
-                    } else {
-                        return Err(McpToolError("No error message returned".to_string()).into());
-                    }
+                if let Some(true) = result.is_error {
+                    let error_msg = result
+                        .content
+                        .as_deref()
+                        .and_then(|errors| errors.first())
+                        .and_then(|error| error.as_text())
+                        .map(|raw| raw.text.as_str())
+                        .unwrap_or("No error message returned");
+                    return Err(McpToolError(error_msg.to_string()).into());
                 };
 
                 Ok(result
                     .content
                     .into_iter()
+                    .flatten()
                     .map(|c| match c.raw {
                         rmcp::model::RawContent::Text(raw) => raw.text,
                         rmcp::model::RawContent::Image(raw) => {
@@ -480,8 +480,7 @@ pub mod rmcp {
                             unimplemented!("Support for audio results from an MCP tool is currently unimplemented. Come back later!")
                         }
                     })
-                    .collect::<Vec<_>>()
-                    .join(""))
+                    .collect::<String>())
             })
         }
     }
