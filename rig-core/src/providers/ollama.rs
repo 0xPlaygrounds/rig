@@ -488,6 +488,8 @@ impl completion::CompletionModel for CompletionModel {
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
         let request_payload = self.create_completion_request(completion_request)?;
 
+        tracing::debug!(target: "rig", "Ollama chat input: {}", serde_json::to_string_pretty(&request_payload)?);
+
         let response = self
             .client
             .post("api/chat")?
