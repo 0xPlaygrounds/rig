@@ -1016,7 +1016,10 @@ pub mod gemini_api_types {
     }
 
     impl GenerationConfig {
-        fn additional_params(mut self, val: serde_json::Value) -> Result<Self, CompletionError> {
+        pub fn additional_params(
+            mut self,
+            val: serde_json::Value,
+        ) -> Result<Self, CompletionError> {
             let serde_json::Value::Object(map) = val else {
                 return Err(CompletionError::ProviderError(
                     "Additional parameters for the Gemini Completion API must be a JSON object"
