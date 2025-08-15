@@ -1010,6 +1010,9 @@ pub mod gemini_api_types {
         /// Configuration for thinking/reasoning.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thinking_config: Option<ThinkingConfig>,
+        /// Additional parameters.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub additional_params: Option<serde_json::Map<String, serde_json::Value>>,
     }
 
     impl Default for GenerationConfig {
@@ -1028,6 +1031,7 @@ pub mod gemini_api_types {
                 response_logprobs: None,
                 logprobs: None,
                 thinking_config: None,
+                additional_params: None,
             }
         }
     }
