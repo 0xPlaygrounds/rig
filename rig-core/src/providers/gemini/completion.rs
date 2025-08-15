@@ -1010,6 +1010,26 @@ pub mod gemini_api_types {
         /// Configuration for thinking/reasoning.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thinking_config: Option<ThinkingConfig>,
+        /// Additional parameters.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub additional_params: Option<serde_json::Map<String, serde_json::Value>>,
+    }
+
+    impl GenerationConfig {
+        pub fn additional_params(
+            mut self,
+            val: serde_json::Value,
+        ) -> Result<Self, CompletionError> {
+            let serde_json::Value::Object(map) = val else {
+                return Err(CompletionError::ProviderError(
+                    "Additional parameters for the Gemini Completion API must be a JSON object"
+                        .into(),
+                ));
+            };
+
+            self.additional_params = Some(map);
+            Ok(self)
+        }
     }
 
     impl Default for GenerationConfig {
@@ -1028,6 +1048,7 @@ pub mod gemini_api_types {
                 response_logprobs: None,
                 logprobs: None,
                 thinking_config: None,
+                additional_params: None,
             }
         }
     }
