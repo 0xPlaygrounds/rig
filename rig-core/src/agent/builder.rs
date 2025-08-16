@@ -114,6 +114,15 @@ impl<M: CompletionModel> AgentBuilder<M> {
         self
     }
 
+    /// Add multi static tools to the agent
+    pub fn tools(mut self, tools: ToolSet) -> Self {
+        for toolname in tools.tools.keys() {
+            self.static_tools.push(toolname.to_owned());
+        }
+        self.tools.add_tools(tools);
+        self
+    }
+
     // Add an MCP tool (from `rmcp`) to the agent
     #[cfg(feature = "rmcp")]
     pub fn rmcp_tool(mut self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
