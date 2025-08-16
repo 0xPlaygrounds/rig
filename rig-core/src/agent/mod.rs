@@ -110,6 +110,7 @@
 mod builder;
 mod completion;
 mod prompt_request;
+mod tool;
 
 pub use builder::AgentBuilder;
 pub use completion::Agent;
