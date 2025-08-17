@@ -775,7 +775,6 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
     }
 }
 
-
 impl From<Message> for crate::completion::Message {
     fn from(msg: Message) -> Self {
         match msg {
@@ -791,7 +790,9 @@ impl From<Message> for crate::completion::Message {
                 tool_calls,
             } => {
                 let mut assistant_contents = Vec::new();
-                if let Some(text) = content && !text.is_empty() {
+                if let Some(text) = content
+                    && !text.is_empty()
+                {
                     assistant_contents.push(message::AssistantContent::Text(Text { text }));
                 }
 
@@ -809,9 +810,8 @@ impl From<Message> for crate::completion::Message {
 
                 crate::completion::Message::Assistant {
                     id: None,
-                    content: OneOrMany::many(assistant_contents).unwrap_or_else(|_| {
-                        OneOrMany::one(message::AssistantContent::text(""))
-                    }),
+                    content: OneOrMany::many(assistant_contents)
+                        .unwrap_or_else(|_| OneOrMany::one(message::AssistantContent::text(""))),
                 }
             }
             Message::Tool {
