@@ -2,15 +2,15 @@ use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{convert::TryFrom, str::FromStr};
+use std::{collections::HashMap, convert::TryFrom, str::FromStr};
 
 use crate::{
     Embed, OneOrMany,
     client::{ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient},
-    completion::{self, CompletionError, CompletionRequest, ToolDefinition},
+    completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError, EmbeddingsBuilder},
     impl_conversion_traits, json_utils,
-    message::Text,
+    message::{self, Text},
     streaming::{self, RawStreamingChoice},
 };
 
@@ -67,7 +67,7 @@ impl Default for Client {
 }
 
 impl Client {
-    /// Create a new Foundry client builder.
+    /// Create a new Foundry-Local client builder.
     ///
     /// # Example
     /// ```
@@ -75,18 +75,20 @@ impl Client {
     ///
     /// // Initialize the Foundry client
     /// let client = Client::builder()
-    ///    .build()
+    ///     .build()
     /// ```
     pub fn builder() -> ClientBuilder<'static> {
         ClientBuilder::new()
     }
 
-    /// Create a new Foundry client. For more control, use the `builder` method.
+    /// Create a new Foundry-Local client. For more control, use the `builder` method.
     ///
     /// # Panics
     /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new() -> Self {
-        Self::builder().build().expect("Ollama client should build")
+        Self::builder()
+            .build()
+            .expect("Foundry-local client should build")
     }
 
     pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
@@ -100,7 +102,8 @@ impl ProviderClient for Client {
     where
         Self: Sized,
     {
-        let api_base = std::env::var("OLLAMA_API_BASE_URL").expect("OLLAMA_API_BASE_URL not set");
+        let api_base = std::env::var("FOUNDRY_LOCAL_API_BASE_URL")
+            .expect("FOUNDRY_LOCAL_API_BASE_URL not set");
         Self::builder().base_url(&api_base).build().unwrap()
     }
 
@@ -263,7 +266,6 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     }
 }
 
-// these i took from gemini ( review needed josh)
 pub const COHERE_COMMAND_A: &str = "Cohere-command-a";
 pub const COHERE_COMMAND_R_PLUS: &str = "Cohere-command-r-plus-08-2024";
 pub const COHERE_COMMAND_R: &str = "Cohere-command-r-08-2024";
@@ -286,6 +288,37 @@ pub const MICROSOFT_PHI_3_SMALL_8K_INSTRUCT: &str = "Phi-3-small-8k-instruct";
 pub const MICROSOFT_PHI_3_SMALL_128K_INSTRUCT: &str = "Phi-3-small-128k-instruct";
 
 // ----------- Completions API -------------
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ToolDefinition {
+    #[serde(rename = "type")]
+    pub type_field: String,
+    pub function: crate::completion::ToolDefinition,
+}
+
+impl From<crate::completion::ToolDefinition> for ToolDefinition {
+    fn from(tool: crate::completion::ToolDefinition) -> Self {
+        ToolDefinition {
+            type_field: "function".to_owned(),
+            function: tool,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ToolCall {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub r#type: String,
+    pub function: FunctionCall,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CompletionsUsage {
     pub prompt_tokens: u64,
@@ -297,20 +330,24 @@ pub struct CompletionsUsage {
 pub struct Choice {
     pub index: u64,
     pub message: CompletionMessage,
-    pub finish_reason: String,
+    pub finish_reason: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct CompletionMessage {
     pub role: String,
-    pub content: String,
+    // Content can be null when tool_calls are present
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CompletionResponse {
     pub id: String,
     pub object: String,
-    pub created: String,
+    pub created: u64,
     pub model: String,
     pub choices: Vec<Choice>,
     pub usage: CompletionsUsage,
@@ -319,20 +356,38 @@ pub struct CompletionResponse {
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
     fn try_from(resp: CompletionResponse) -> Result<Self, Self::Error> {
-        let mut assitant_contents = Vec::new();
+        let choice = resp
+            .choices
+            .first()
+            .ok_or_else(|| CompletionError::ResponseError("No choices in response".to_owned()))?;
 
-        // foundry only responds with an array of choices which have
-        // role and content (role is always "assistant" for responses)
-        for choice in resp.choices.clone() {
-            assitant_contents.push(completion::AssistantContent::text(&choice.message.content));
-        }
+        let assistant_contents = if let Some(tool_calls) = &choice.message.tool_calls {
+            tool_calls
+                .iter()
+                .map(|tc| {
+                    let arguments: Value = serde_json::from_str(&tc.function.arguments)
+                        .map_err(|e| CompletionError::ResponseError(e.to_string()))?;
+                    Ok(completion::AssistantContent::tool_call(
+                        tc.id.clone(),
+                        tc.function.name.clone(),
+                        arguments,
+                    ))
+                })
+                .collect::<Result<Vec<_>, CompletionError>>()?
+        } else if let Some(content) = &choice.message.content {
+            vec![completion::AssistantContent::text(content)]
+        } else {
+            return Err(CompletionError::ResponseError(
+                "Response has neither content nor tool calls".to_owned(),
+            ));
+        };
 
-        let choice = OneOrMany::many(assitant_contents)
+        let choice = OneOrMany::many(assistant_contents)
             .map_err(|_| CompletionError::ResponseError("No content provided".to_owned()))?;
 
         Ok(completion::CompletionResponse {
             choice,
-            usage: rig::completion::request::Usage {
+            usage: rig::completion::Usage {
                 input_tokens: resp.usage.prompt_tokens,
                 output_tokens: resp.usage.completion_tokens,
                 total_tokens: resp.usage.total_tokens,
@@ -383,42 +438,86 @@ impl CompletionModel {
                 .collect::<Vec<Message>>(),
         );
 
-        let mut requeest_payload = json!({
+        let mut request_payload = json!({
             "model": self.model,
             "messages": full_history,
-            "temparature": completion_request.temperature,
+            "temperature": completion_request.temperature,
             "stream": false,
         });
 
         if !completion_request.tools.is_empty() {
-            // Foundry's functions have same structure as completion::ToolDefination
-            requeest_payload["functions"] = json!(
+            request_payload["tools"] = json!(
                 completion_request
                     .tools
                     .into_iter()
+                    .map(|tool| tool.into())
                     .collect::<Vec<ToolDefinition>>()
             );
         }
 
-        tracing::debug!(target: "rig", "Chat mode payload: {}", requeest_payload);
+        tracing::debug!(target: "rig", "Chat mode payload: {}", request_payload);
 
-        Ok(requeest_payload)
+        Ok(request_payload)
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StreamingCompletionResponse {
+// Changed StreamingCompletionResponse to handle SSE deltas
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StreamingCompletionResponseChunk {
     pub id: String,
     pub object: String,
-    pub created: String,
+    pub created: u64,
     pub model: String,
-    pub usage: CompletionsUsage,
+    pub choices: Vec<StreamingChoice>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StreamingChoice {
+    pub index: u64,
+    pub delta: DeltaMessage,
+    pub finish_reason: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct DeltaMessage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<StreamingToolCall>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StreamingToolCall {
+    pub index: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function: Option<StreamingFunctionCall>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct StreamingFunctionCall {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<String>,
+}
+
+// Final response for streaming mode
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct StreamingFinalResponse {
+    pub id: String,
+    pub model: String,
 }
 
 // ---------- CompletionModel Implementation ----------
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
+    type StreamingResponse = StreamingFinalResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -440,9 +539,9 @@ impl completion::CompletionModel for CompletionModel {
                 .text()
                 .await
                 .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-            tracing::debug!(target: "rig", "Foundry chat response: {}", text);
+            tracing::debug!(target: "rig", "Foundry-Local chat response: {}", text);
             let chat_resp: CompletionResponse = serde_json::from_str(&text)
-                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+                .map_err(|e| CompletionError::ResponseError(e.to_string()))?;
             let conv: completion::CompletionResponse<CompletionResponse> = chat_resp.try_into()?;
             Ok(conv)
         } else {
@@ -483,6 +582,11 @@ impl completion::CompletionModel for CompletionModel {
 
         let stream = Box::pin(stream! {
             let mut stream = response.bytes_stream();
+            let mut tool_calls: HashMap<u64, (Option<String>, StreamingFunctionCall)> = HashMap::new();
+            let mut final_response_id = "".to_string();
+            let mut final_response_model = "".to_string();
+
+
             while let Some(chunk_result) = stream.next().await {
                 let chunk = match chunk_result {
                     Ok(c) => c,
@@ -501,63 +605,92 @@ impl completion::CompletionModel for CompletionModel {
                 };
 
                 for line in text.lines() {
-                    let line = line.trim();
-
-                    if line.is_empty() {
-                        continue;
-                    }
-
-                    let data_line = if let Some(data) = line.strip_prefix("data: "){
-                        data
-                    }else{
-                        line
-                    };
-
-                    // stream termination like openai
-                    if data_line == "[DONE]" {
-                        break;
-                    }
-
-                    let Ok(response) = serde_json::from_str::<CompletionResponse>(data_line) else {
-                        continue;
-                    };
-
-                    for choice in response.choices.iter() {
-                        if !choice.message.content.is_empty() {
-                            yield Ok(RawStreamingChoice::Message(choice.message.content.clone()));
+                    if line.starts_with("data: ") {
+                        let data = &line[6..];
+                        if data == "[DONE]" {
+                            break;
                         }
-                    }
-                    if response.choices.iter().any(|choice| choice.finish_reason == "stop") {
-                        yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                            id: response.id.clone(),
-                            object: response.object.clone(),
-                            created: response.created.clone(),
-                            model: response.model.clone(),
-                            usage: response.usage.clone(),
-                        }));
+
+                        let Ok(chunk) = serde_json::from_str::<StreamingCompletionResponseChunk>(data) else {
+                            continue;
+                        };
+
+                        final_response_id = chunk.id;
+                        final_response_model = chunk.model;
+
+
+                        for choice in chunk.choices {
+                            if let Some(content) = choice.delta.content {
+                                yield Ok(RawStreamingChoice::Message(content));
+                            }
+
+                            if let Some(delta_tool_calls) = choice.delta.tool_calls {
+                                for stc in delta_tool_calls {
+                                    let entry = tool_calls.entry(stc.index).or_default();
+                                    if let Some(id) = stc.id {
+                                        entry.0 = Some(id);
+                                    }
+                                    if let Some(function) = stc.function {
+                                        if let Some(name) = function.name {
+                                            entry.1.name.get_or_insert_with(String::new).push_str(&name);
+                                        }
+                                        if let Some(args) = function.arguments {
+                                            entry.1.arguments.get_or_insert_with(String::new).push_str(&args);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
+
+            // yield any completed tool calls
+            for (_, (id, function)) in tool_calls {
+                if let (Some(id), Some(name), Some(arguments)) = (id, function.name, function.arguments) {
+                     let Ok(args_json) = serde_json::from_str(&arguments) else {
+                        yield Err(CompletionError::ResponseError(format!("Failed to parse tool call arguments: {}", arguments)));
+                        continue;
+                    };
+                    yield Ok(RawStreamingChoice::ToolCall {
+                        id: id.clone(),
+                        name: name.clone(),
+                        arguments: args_json,
+                        call_id: None,
+                    });
+                }
+            }
+
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingFinalResponse {
+                id: final_response_id,
+                model: final_response_model,
+            }));
         });
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum Role {
-    #[serde(rename = "user")]
-    User,
-    #[serde(rename = "system")]
-    System,
-    #[serde(rename = "assistant")]
-    Assistant,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Message {
-    role: Role,
-    content: String,
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum Message {
+    System {
+        content: String,
+    },
+    User {
+        content: String,
+    },
+    Assistant {
+        // content can be null when tool_calls are present
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tool_calls: Option<Vec<ToolCall>>,
+    },
+    Tool {
+        tool_call_id: String,
+        content: String,
+    },
 }
 
 impl TryFrom<crate::message::Message> for Vec<Message> {
@@ -566,41 +699,75 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
         use crate::message::Message as InternalMessage;
         match internal_msg {
             InternalMessage::User { content, .. } => {
-                // Foundry doesn't support tool results in messages, so we skip them
-                let non_tool_content: Vec<_> = content
-                    .into_iter()
-                    .filter(|content| {
-                        !matches!(content, crate::message::UserContent::ToolResult(_))
-                    })
-                    .collect();
+                let mut messages = Vec::new();
+                let mut text_parts = Vec::new();
 
-                let text_contents: Vec<String> = non_tool_content
-                    .into_iter()
-                    .filter_map(|content| match content {
-                        crate::message::UserContent::Text(crate::message::Text { text }) => {
-                            Some(text)
+                for part in content {
+                    match part {
+                        message::UserContent::Text(text) => text_parts.push(text.text),
+                        message::UserContent::ToolResult(result) => {
+                            let content_string = result
+                                .content
+                                .into_iter()
+                                .map(|c| match c {
+                                    message::ToolResultContent::Text(t) => t.text,
+                                    _ => "[unsupported content]".to_string(),
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n");
+
+                            messages.push(Message::Tool {
+                                tool_call_id: result.id,
+                                content: content_string,
+                            });
                         }
-                        _ => None,
-                    })
-                    .collect();
+                        _ => {}
+                    }
+                }
 
-                Ok(vec![Message {
-                    role: Role::User,
-                    content: text_contents.join(" "),
-                }])
+                if !text_parts.is_empty() {
+                    messages.insert(
+                        0,
+                        Message::User {
+                            content: text_parts.join("\n"),
+                        },
+                    );
+                }
+
+                Ok(messages)
             }
             InternalMessage::Assistant { content, .. } => {
-                let text_contents: Vec<String> = content
-                    .into_iter()
-                    .filter_map(|content| match content {
-                        crate::message::AssistantContent::Text(text) => Some(text.text),
-                        _ => None,
-                    })
-                    .collect();
+                let mut text_content = None;
+                let mut tool_calls = Vec::new();
 
-                Ok(vec![Message {
-                    role: Role::Assistant,
-                    content: text_contents.join(" "),
+                for part in content {
+                    match part {
+                        message::AssistantContent::Text(text) => {
+                            text_content
+                                .get_or_insert_with(String::new)
+                                .push_str(&text.text);
+                        }
+                        message::AssistantContent::ToolCall(tc) => {
+                            tool_calls.push(ToolCall {
+                                id: tc.id,
+                                r#type: "function".to_string(),
+                                function: FunctionCall {
+                                    name: tc.function.name,
+                                    arguments: tc.function.arguments.to_string(),
+                                },
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                Ok(vec![Message::Assistant {
+                    content: text_content,
+                    tool_calls: if tool_calls.is_empty() {
+                        None
+                    } else {
+                        Some(tool_calls)
+                    },
                 }])
             }
         }
@@ -609,22 +776,50 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
 
 impl From<Message> for crate::completion::Message {
     fn from(msg: Message) -> Self {
-        match msg.role {
-            Role::User => crate::completion::Message::User {
-                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
-                    text: msg.content,
-                })),
-            },
-            Role::Assistant => crate::completion::Message::Assistant {
-                id: None,
-                content: OneOrMany::one(crate::completion::message::AssistantContent::Text({
-                    Text { text: msg.content }
-                })),
-            },
-            Role::System => crate::completion::Message::User {
-                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
-                    text: msg.content,
-                })),
+        match msg {
+            Message::User { content } | Message::System { content } => {
+                crate::completion::Message::User {
+                    content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
+                        text: content,
+                    })),
+                }
+            }
+            Message::Assistant {
+                content,
+                tool_calls,
+            } => {
+                let mut assistant_contents = Vec::new();
+                if let Some(text) = content {
+                    if !text.is_empty() {
+                        assistant_contents.push(message::AssistantContent::Text(Text { text }));
+                    }
+                }
+                if let Some(tcs) = tool_calls {
+                    for tc in tcs {
+                        let arguments: Value = serde_json::from_str(&tc.function.arguments)
+                            .unwrap_or_else(|_| json!(tc.function.arguments));
+                        assistant_contents.push(message::AssistantContent::tool_call(
+                            tc.id,
+                            tc.function.name,
+                            arguments,
+                        ));
+                    }
+                }
+
+                crate::completion::Message::Assistant {
+                    id: None,
+                    content: OneOrMany::many(assistant_contents)
+                        .unwrap_or_else(|_| OneOrMany::one(message::AssistantContent::text(""))),
+                }
+            }
+            Message::Tool {
+                tool_call_id,
+                content,
+            } => crate::completion::Message::User {
+                content: OneOrMany::one(message::UserContent::tool_result(
+                    tool_call_id,
+                    OneOrMany::one(message::ToolResultContent::text(content)),
+                )),
             },
         }
     }
@@ -632,8 +827,7 @@ impl From<Message> for crate::completion::Message {
 
 impl Message {
     pub fn system(content: &str) -> Self {
-        Self {
-            role: Role::System,
+        Self::System {
             content: content.to_owned(),
         }
     }
@@ -711,7 +905,7 @@ mod tests {
         let sample_chat_response = json!({
             "id": "chatcmpl-1234567890",
             "object": "chat.completion",
-            "created": "1677851234",
+            "created": 1677851234,
             "model": "Phi-4-mini-instruct-generic-cpu",
             "choices": [
                 {
@@ -742,9 +936,60 @@ mod tests {
     }
 
     #[test]
+    fn test_tool_call_deserialization_and_conversion() {
+        let tool_call_response = json!({
+            "id": "chatcmpl-9pFN3aGu2dM1ALf1IixE23qG1Wp7u",
+            "object": "chat.completion",
+            "created": 1720235377,
+            "model": "gpt-4o-mini-2024-07-18",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [
+                            {
+                                "id": "call_stools_get_flight_info_1720235377043",
+                                "type": "function",
+                                "function": {
+                                    "name": "get_flight_info",
+                                    "arguments": "{\"origin_city\":\"Miami\",\"destination_city\":\"Seattle\"}"
+                                }
+                            }
+                        ]
+                    },
+                    "finish_reason": "tool_calls"
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 83,
+                "completion_tokens": 21,
+                "total_tokens": 104
+            }
+        });
+
+        let chat_resp: CompletionResponse = serde_json::from_value(tool_call_response).unwrap();
+        let conv_resp: completion::CompletionResponse<CompletionResponse> =
+            chat_resp.try_into().unwrap();
+
+        assert_eq!(conv_resp.choice.len(), 1);
+        match conv_resp.choice.first() {
+            completion::AssistantContent::ToolCall(tc) => {
+                assert_eq!(tc.id, "call_stools_get_flight_info_1720235377043");
+                assert_eq!(tc.function.name, "get_flight_info");
+                assert_eq!(
+                    tc.function.arguments,
+                    json!({"origin_city": "Miami", "destination_city": "Seattle"})
+                );
+            }
+            _ => panic!("Expected a tool call"),
+        }
+    }
+
+    #[test]
     fn test_message_conversion() {
-        let provider_msg = Message {
-            role: Role::User,
+        let provider_msg = Message::User {
             content: "Test message".to_owned(),
         };
         let comp_msg: crate::completion::Message = provider_msg.into();
@@ -763,32 +1008,25 @@ mod tests {
     }
 
     #[test]
-    fn test_system_content_from_string() {
-        let content = SystemContent::from("Test system message".to_string());
-        assert_eq!(content.text, "Test system message");
-        assert!(matches!(content.r#type, SystemContentType::Text));
-    }
+    fn test_tool_result_message_conversion() {
+        let rig_message = crate::message::Message::User {
+            content: OneOrMany::one(crate::message::UserContent::tool_result(
+                "call_123",
+                OneOrMany::one(crate::message::ToolResultContent::text("Flight found")),
+            )),
+        };
 
-    #[test]
-    fn test_system_content_from_str() {
-        let content: SystemContent = "Test system message".parse().unwrap();
-        assert_eq!(content.text, "Test system message");
-        assert!(matches!(content.r#type, SystemContentType::Text));
-    }
-
-    #[test]
-    fn test_assistant_content_from_str() {
-        let content: AssistantContent = "Test assistant message".parse().unwrap();
-        assert_eq!(content.text, "Test assistant message");
-    }
-
-    #[test]
-    fn test_user_content_from_str() {
-        let content: UserContent = "Test user message".parse().unwrap();
-        match content {
-            UserContent::Text { text } => {
-                assert_eq!(text, "Test user message");
+        let provider_messages: Vec<Message> = rig_message.try_into().unwrap();
+        assert_eq!(provider_messages.len(), 1);
+        match &provider_messages[0] {
+            Message::Tool {
+                tool_call_id,
+                content,
+            } => {
+                assert_eq!(tool_call_id, "call_123");
+                assert_eq!(content, "Flight found");
             }
+            _ => panic!("Expected a Tool message"),
         }
     }
 }
