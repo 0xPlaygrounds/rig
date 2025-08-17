@@ -605,43 +605,44 @@ impl completion::CompletionModel for CompletionModel {
                 };
 
                 for line in text.lines() {
-                    if line.starts_with("data: ") {
-                        let data = &line[6..];
-                        if data == "[DONE]" {
-                            break;
-                        }
-
-                        let Ok(chunk) = serde_json::from_str::<StreamingCompletionResponseChunk>(data) else {
-                            continue;
-                        };
-
-                        final_response_id = chunk.id;
-                        final_response_model = chunk.model;
-
-
-                        for choice in chunk.choices {
-                            if let Some(content) = choice.delta.content {
-                                yield Ok(RawStreamingChoice::Message(content));
+                    if line.starts_with("data: ")
+                        && let Some(data) = line.strip_prefix("data: "){
+                            if data == "[DONE]" {
+                                break;
                             }
 
-                            if let Some(delta_tool_calls) = choice.delta.tool_calls {
-                                for stc in delta_tool_calls {
-                                    let entry = tool_calls.entry(stc.index).or_default();
-                                    if let Some(id) = stc.id {
-                                        entry.0 = Some(id);
-                                    }
-                                    if let Some(function) = stc.function {
-                                        if let Some(name) = function.name {
-                                            entry.1.name.get_or_insert_with(String::new).push_str(&name);
+                            let Ok(chunk) = serde_json::from_str::<StreamingCompletionResponseChunk>(data) else {
+                                continue;
+                            };
+
+                            final_response_id = chunk.id;
+                            final_response_model = chunk.model;
+
+
+                            for choice in chunk.choices {
+                                if let Some(content) = choice.delta.content {
+                                    yield Ok(RawStreamingChoice::Message(content));
+                                }
+
+                                if let Some(delta_tool_calls) = choice.delta.tool_calls {
+                                    for stc in delta_tool_calls {
+                                        let entry = tool_calls.entry(stc.index).or_default();
+                                        if let Some(id) = stc.id {
+                                            entry.0 = Some(id);
                                         }
-                                        if let Some(args) = function.arguments {
-                                            entry.1.arguments.get_or_insert_with(String::new).push_str(&args);
+                                        if let Some(function) = stc.function {
+                                            if let Some(name) = function.name {
+                                                entry.1.name.get_or_insert_with(String::new).push_str(&name);
+                                            }
+                                            if let Some(args) = function.arguments {
+                                                entry.1.arguments.get_or_insert_with(String::new).push_str(&args);
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
+
                 }
             }
 
@@ -774,6 +775,7 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
     }
 }
 
+
 impl From<Message> for crate::completion::Message {
     fn from(msg: Message) -> Self {
         match msg {
@@ -789,11 +791,10 @@ impl From<Message> for crate::completion::Message {
                 tool_calls,
             } => {
                 let mut assistant_contents = Vec::new();
-                if let Some(text) = content {
-                    if !text.is_empty() {
-                        assistant_contents.push(message::AssistantContent::Text(Text { text }));
-                    }
+                if let Some(text) = content && !text.is_empty() {
+                    assistant_contents.push(message::AssistantContent::Text(Text { text }));
                 }
+
                 if let Some(tcs) = tool_calls {
                     for tc in tcs {
                         let arguments: Value = serde_json::from_str(&tc.function.arguments)
@@ -808,8 +809,9 @@ impl From<Message> for crate::completion::Message {
 
                 crate::completion::Message::Assistant {
                     id: None,
-                    content: OneOrMany::many(assistant_contents)
-                        .unwrap_or_else(|_| OneOrMany::one(message::AssistantContent::text(""))),
+                    content: OneOrMany::many(assistant_contents).unwrap_or_else(|_| {
+                        OneOrMany::one(message::AssistantContent::text(""))
+                    }),
                 }
             }
             Message::Tool {
