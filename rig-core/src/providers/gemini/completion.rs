@@ -1011,7 +1011,7 @@ pub mod gemini_api_types {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thinking_config: Option<ThinkingConfig>,
         /// Additional parameters.
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(flatten, skip_serializing_if = "Option::is_none")]
         pub additional_params: Option<serde_json::Map<String, serde_json::Value>>,
     }
 
