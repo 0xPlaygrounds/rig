@@ -238,7 +238,7 @@ pub struct CompletionResponse<T> {
 
 /// Struct representing the token usage for a completion request.
 /// If tokens used are `0`, then the provider failed to supply token usage metrics.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub struct Usage {
     pub input_tokens: u64,
     pub output_tokens: u64,

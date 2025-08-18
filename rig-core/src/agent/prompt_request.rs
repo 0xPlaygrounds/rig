@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::{future::IntoFuture, marker::PhantomData};
 
 use futures::{FutureExt, StreamExt, future::BoxFuture, stream};
@@ -165,7 +166,7 @@ impl<M: CompletionModel> PromptRequest<'_, Standard, M> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptResponse {
     pub output: String,
     pub total_usage: Usage,
