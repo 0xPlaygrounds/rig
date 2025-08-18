@@ -311,6 +311,7 @@ pub mod gemini_api_types {
     };
 
     #[derive(Debug, Deserialize, Serialize, Default)]
+    #[serde(rename_all = "camelCase")]
     pub struct AdditionalParameters {
         /// Change your Gemini request configuration.
         pub generation_config: GenerationConfig,
