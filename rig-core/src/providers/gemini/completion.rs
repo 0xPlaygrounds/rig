@@ -29,14 +29,15 @@ pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 
 use self::gemini_api_types::Schema;
 use crate::message::Reasoning;
+use crate::providers::gemini::completion::gemini_api_types::AdditionalParameters;
 use crate::providers::gemini::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
 };
 use gemini_api_types::{
-    Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
-    GenerationConfig, Part, PartKind, Role, Tool,
+    Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse, Part, PartKind,
+    Role, Tool,
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
@@ -127,7 +128,10 @@ pub(crate) fn create_request_body(
         .additional_params
         .unwrap_or_else(|| Value::Object(Map::new()));
 
-    let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?;
+    let AdditionalParameters {
+        mut generation_config,
+        additional_params,
+    } = serde_json::from_value::<AdditionalParameters>(additional_params)?;
 
     if let Some(temp) = completion_request.temperature {
         generation_config.temperature = Some(temp);
@@ -161,6 +165,7 @@ pub(crate) fn create_request_body(
         tools,
         tool_config: None,
         system_instruction,
+        additional_params,
     };
 
     Ok(request)
@@ -304,6 +309,28 @@ pub mod gemini_api_types {
         message::{self, MimeType as _, Reasoning, Text},
         providers::gemini::gemini_api_types::{CodeExecutionResult, ExecutableCode},
     };
+
+    #[derive(Debug, Deserialize, Serialize, Default)]
+    #[serde(rename_all = "camelCase")]
+    pub struct AdditionalParameters {
+        /// Change your Gemini request configuration.
+        pub generation_config: GenerationConfig,
+        /// Any additional parameters that you want.
+        #[serde(flatten, skip_serializing_if = "Option::is_none")]
+        pub additional_params: Option<serde_json::Value>,
+    }
+
+    impl AdditionalParameters {
+        pub fn with_config(mut self, cfg: GenerationConfig) -> Self {
+            self.generation_config = cfg;
+            self
+        }
+
+        pub fn with_params(mut self, params: serde_json::Value) -> Self {
+            self.additional_params = Some(params);
+            self
+        }
+    }
 
     /// Response from the model supporting multiple candidate responses.
     /// Safety ratings and content filtering are reported for both prompt in GenerateContentResponse.prompt_feedback
@@ -1157,6 +1184,9 @@ pub mod gemini_api_types {
         /// From [Gemini API Reference](https://ai.google.dev/gemini-api/docs/system-instructions?lang=rest)
         pub system_instruction: Option<Content>,
         // cachedContent: Optional<String>
+        /// Additional parameters.
+        #[serde(flatten, skip_serializing_if = "Option::is_none")]
+        pub additional_params: Option<serde_json::Value>,
     }
 
     #[derive(Debug, Serialize)]
