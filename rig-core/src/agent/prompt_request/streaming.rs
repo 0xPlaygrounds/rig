@@ -83,7 +83,7 @@ where
         self
     }
 
-    #[cfg(feature = "hooks")]
+    #[cfg(any(doc, feature = "hooks"))]
     /// Attach a per-request hook for tool call events
     pub fn with_hook(
         mut self,
@@ -93,7 +93,8 @@ where
         self
     }
 
-    fn send(self) -> StreamingResult<'a> {
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn send(self) -> StreamingResult<'a> {
         let agent_name = self.agent.name_owned();
 
         #[tracing::instrument(skip_all, fields(agent_name = agent_name))]
@@ -267,7 +268,7 @@ where
 
     fn into_future(self) -> Self::IntoFuture {
         // Wrap send() in a future, because send() returns a stream immediately
-        Box::pin(async move { self.send() })
+        Box::pin(async move { self.send().await })
     }
 }
 

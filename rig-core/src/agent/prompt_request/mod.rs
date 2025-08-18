@@ -105,7 +105,7 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
         }
     }
 
-    #[cfg(feature = "hooks")]
+    #[cfg(any(doc, feature = "hooks"))]
     /// Attach a per-request hook for tool call events
     pub fn with_hook(self, hook: &'a dyn crate::agent::PromptHook<M>) -> PromptRequest<'a, S, M> {
         PromptRequest {
@@ -119,7 +119,8 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
         }
     }
 }
-#[cfg(feature = "hooks")]
+
+#[cfg(any(doc, feature = "hooks"))]
 /// Trait for per-request hooks to observe tool call events
 #[async_trait::async_trait]
 pub trait PromptHook<M: CompletionModel>: Send + Sync {
@@ -127,7 +128,7 @@ pub trait PromptHook<M: CompletionModel>: Send + Sync {
     async fn on_completion_call(&self, prompt: &Message, history: &[Message]);
 
     /// Called after the prompt is sent to the model and a response is received
-    /// NOTE: This currently does not work with streaming multi-turn.
+    /// NOTE: This function currently is not used with streaming multi-turn due to type constraints.
     async fn on_completion_response(
         &self,
         prompt: &Message,
