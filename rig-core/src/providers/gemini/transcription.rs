@@ -88,6 +88,7 @@ impl transcription::TranscriptionModel for TranscriptionModel {
             tools: None,
             tool_config: None,
             system_instruction,
+            additional_params: None,
         };
 
         tracing::debug!(

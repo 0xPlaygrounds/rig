@@ -161,6 +161,7 @@ pub(crate) fn create_request_body(
         tools,
         tool_config: None,
         system_instruction,
+        additional_params: None,
     };
 
     Ok(request)
@@ -1012,23 +1013,6 @@ pub mod gemini_api_types {
         pub thinking_config: Option<ThinkingConfig>,
     }
 
-    impl GenerationConfig {
-        pub fn additional_params(
-            mut self,
-            val: serde_json::Value,
-        ) -> Result<Self, CompletionError> {
-            let serde_json::Value::Object(map) = val else {
-                return Err(CompletionError::ProviderError(
-                    "Additional parameters for the Gemini Completion API must be a JSON object"
-                        .into(),
-                ));
-            };
-
-            self.additional_params = Some(map);
-            Ok(self)
-        }
-    }
-
     impl Default for GenerationConfig {
         fn default() -> Self {
             Self {
@@ -1045,7 +1029,6 @@ pub mod gemini_api_types {
                 response_logprobs: None,
                 logprobs: None,
                 thinking_config: None,
-                additional_params: None,
             }
         }
     }
