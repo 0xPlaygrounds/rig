@@ -42,7 +42,7 @@ pub struct PromptRequest<'a, S: PromptType, M: CompletionModel> {
     state: PhantomData<S>,
     #[cfg(feature = "hooks")]
     /// Optional per-request hook for events
-    hook: Option<&'a dyn PromptHook<M>>,
+    hook: Option<&'a dyn crate::agent::PromptHook<M>>,
 }
 
 impl<'a, M: CompletionModel> PromptRequest<'a, Standard, M> {
@@ -107,7 +107,7 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
 
     #[cfg(feature = "hooks")]
     /// Attach a per-request hook for tool call events
-    pub fn with_hook(self, hook: &'a dyn PromptHook<M>) -> PromptRequest<'a, S, M> {
+    pub fn with_hook(self, hook: &'a dyn crate::agent::PromptHook<M>) -> PromptRequest<'a, S, M> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
@@ -127,6 +127,7 @@ pub trait PromptHook<M: CompletionModel>: Send + Sync {
     async fn on_completion_call(&self, prompt: &Message, history: &[Message]);
 
     /// Called after the prompt is sent to the model and a response is received
+    /// NOTE: This currently does not work with streaming multi-turn.
     async fn on_completion_response(
         &self,
         prompt: &Message,

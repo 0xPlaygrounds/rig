@@ -50,7 +50,7 @@ where
     agent: &'a Agent<M>,
     #[cfg(feature = "hooks")]
     /// Optional per-request hook for events
-    hook: Option<&'a dyn PromptHook<M>>,
+    hook: Option<&'a dyn crate::agent::PromptHook<M>>,
 }
 
 impl<'a, M> StreamingPromptRequest<'a, M>
@@ -85,7 +85,10 @@ where
 
     #[cfg(feature = "hooks")]
     /// Attach a per-request hook for tool call events
-    pub fn with_hook(self, hook: &'a dyn PromptHook<M>) -> PromptRequest<'a, S, M> {
+    pub fn with_hook(
+        mut self,
+        hook: &'a dyn crate::agent::PromptHook<M>,
+    ) -> StreamingPromptRequest<'a, M> {
         self.hook = Some(hook);
         self
     }
@@ -135,6 +138,17 @@ where
                         );
                     }
 
+                    #[cfg(feature = "hooks")]
+                    if let Some(hook) = req.hook.as_ref() {
+                        let reader = chat_history.read().await;
+                        let prompt = last().cloned().expect("there should always be at least one message in the chat history");
+                        let chat_history_except_last = reader[..reader.len() - 1].to_vec();
+
+                        hook.on_completion_call(&prompt, &chat_history_except_last)
+                            .await;
+                    }
+
+
                     let mut stream = agent
                         .stream_completion(current_prompt.clone(), (*chat_history.read().await).clone())
                         .await?
@@ -153,9 +167,18 @@ where
                                 did_call_tool = false;
                             },
                             Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
+                                #[cfg(feature = "hooks")]
+                                if let Some(hook) = req.hook.as_ref() {
+                                    hook.on_tool_call(tool_name, &args).await;
+                                }
                                 let tool_result =
                                     agent.tools.call(&tool_call.function.name, tool_call.function.arguments.to_string()).await?;
 
+                                #[cfg(feature = "hooks")]
+                                if let Some(hook) = self.hook.as_ref() {
+                                    hook.on_tool_result(&tool_call.function.name, &tool_call.function.arguments.to_string(), &tool_result.to_string())
+                                        .await;
+                                }
                                 let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
 
                                 tool_calls.push(tool_call_msg);
