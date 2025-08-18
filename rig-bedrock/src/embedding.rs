@@ -54,7 +54,8 @@ impl EmbeddingModel {
 
         let model_response = self
             .client
-            .aws_client
+            .get_inner()
+            .await
             .invoke_model()
             .model_id(self.model.as_str())
             .content_type("application/json")

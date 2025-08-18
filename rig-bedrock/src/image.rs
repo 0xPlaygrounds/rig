@@ -42,7 +42,8 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
         let body = serde_json::to_string(&request)?;
         let model_response = self
             .client
-            .aws_client
+            .get_inner()
+            .await
             .invoke_model()
             .model_id(self.model.as_str())
             .content_type("application/json")
