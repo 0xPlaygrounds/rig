@@ -1010,9 +1010,6 @@ pub mod gemini_api_types {
         /// Configuration for thinking/reasoning.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thinking_config: Option<ThinkingConfig>,
-        /// Additional parameters.
-        #[serde(flatten, skip_serializing_if = "Option::is_none")]
-        pub additional_params: Option<serde_json::Map<String, serde_json::Value>>,
     }
 
     impl GenerationConfig {
@@ -1178,6 +1175,9 @@ pub mod gemini_api_types {
         /// From [Gemini API Reference](https://ai.google.dev/gemini-api/docs/system-instructions?lang=rest)
         pub system_instruction: Option<Content>,
         // cachedContent: Optional<String>
+        /// Additional parameters.
+        #[serde(flatten, skip_serializing_if = "Option::is_none")]
+        pub additional_params: Option<serde_json::Map<String, serde_json::Value>>,
     }
 
     #[derive(Debug, Serialize)]
