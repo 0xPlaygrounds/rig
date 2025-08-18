@@ -3,7 +3,7 @@ use crate::{
     agent::prompt_request::streaming::StreamingPromptRequest,
     completion::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
-        Message, Prompt, PromptError,
+        GetTokenUsage, Message, Prompt, PromptError,
     },
     streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
     tool::ToolSet,
@@ -249,6 +249,7 @@ impl<M: CompletionModel> StreamingCompletion<M> for Agent<M> {
 impl<M> StreamingPrompt<M, M::StreamingResponse> for Agent<M>
 where
     M: CompletionModel + 'static,
+    M::StreamingResponse: GetTokenUsage,
 {
     #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
     fn stream_prompt(&self, prompt: impl Into<Message> + Send) -> StreamingPromptRequest<'_, M> {
@@ -259,6 +260,7 @@ where
 impl<M> StreamingChat<M, M::StreamingResponse> for Agent<M>
 where
     M: CompletionModel + 'static,
+    M::StreamingResponse: GetTokenUsage,
 {
     fn stream_chat(
         &self,

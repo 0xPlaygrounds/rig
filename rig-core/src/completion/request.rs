@@ -236,17 +236,33 @@ pub struct CompletionResponse<T> {
     pub raw_response: T,
 }
 
+/// A trait for grabbing the token usage of a completion response.
+///
+/// Primarily designed for streamed completion responses in streamed multi-turn, as otherwise it would be impossible to do.
+pub trait GetTokenUsage {
+    fn token_usage(&self) -> Option<crate::completion::Usage>;
+}
+
+impl GetTokenUsage for () {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        None
+    }
+}
+
 /// Struct representing the token usage for a completion request.
 /// If tokens used are `0`, then the provider failed to supply token usage metrics.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub struct Usage {
+    /// The number of input ("prompt") tokens used in a given request.
     pub input_tokens: u64,
+    /// The number of output ("completion") tokens used in a given request.
     pub output_tokens: u64,
-    // We store this separately as some providers may only report one number
+    /// We store this separately as some providers may only report one number
     pub total_tokens: u64,
 }
 
 impl Usage {
+    /// Creates a new instance of `Usage`.
     pub fn new() -> Self {
         Self {
             input_tokens: 0,
@@ -289,7 +305,13 @@ pub trait CompletionModel: Clone + Send + Sync {
     /// The raw response type returned by the underlying completion model.
     type Response: Send + Sync + Serialize + DeserializeOwned;
     /// The raw response type returned by the underlying completion model when streaming.
-    type StreamingResponse: Clone + Unpin + Send + Sync + Serialize + DeserializeOwned;
+    type StreamingResponse: Clone
+        + Unpin
+        + Send
+        + Sync
+        + Serialize
+        + DeserializeOwned
+        + GetTokenUsage;
 
     /// Generates a completion response for the given completion request.
     fn completion(
@@ -331,7 +353,7 @@ pub trait CompletionModelDyn: Send + Sync {
 impl<T, R> CompletionModelDyn for T
 where
     T: CompletionModel<StreamingResponse = R>,
-    R: Clone + Unpin + 'static,
+    R: Clone + Unpin + GetTokenUsage + 'static,
 {
     fn completion(
         &self,

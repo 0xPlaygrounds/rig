@@ -1,6 +1,7 @@
+use rig::agent::stream_to_stdout;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::{StreamingPrompt, stream_to_stdout};
+use rig::streaming::StreamingPrompt;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -17,15 +18,12 @@ async fn main() -> Result<(), anyhow::Error> {
     // Stream the response and print chunks as they arrive
     let mut stream = agent
         .stream_prompt("When and where and what type is the next solar eclipse?")
-        .await?;
+        .await;
 
-    stream_to_stdout(&agent, &mut stream).await?;
+    let res = stream_to_stdout(&mut stream).await?;
 
-    if let Some(response) = stream.response {
-        println!("Usage: {:?}", response.usage)
-    };
-
-    println!("Message: {:?}", stream.choice);
+    println!("Token usage response: {usage:?}", usage = res.usage());
+    println!("Final text response: {message:?}", message = res.response());
 
     Ok(())
 }

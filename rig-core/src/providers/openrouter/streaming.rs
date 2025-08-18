@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
+    completion::GetTokenUsage,
     json_utils,
     message::{ToolCall, ToolFunction},
     streaming::{self},
@@ -24,6 +25,18 @@ pub struct StreamingCompletionResponse {
     pub system_fingerprint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<ResponseUsage>,
+}
+
+impl GetTokenUsage for FinalCompletionResponse {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+
+        usage.input_tokens = self.usage.prompt_tokens as u64;
+        usage.output_tokens = self.usage.completion_tokens as u64;
+        usage.total_tokens = self.usage.total_tokens as u64;
+
+        Some(usage)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]

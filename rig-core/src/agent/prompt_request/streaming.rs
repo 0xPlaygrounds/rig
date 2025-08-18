@@ -1,9 +1,11 @@
 use crate::{
     OneOrMany,
+    completion::GetTokenUsage,
     message::{AssistantContent, ToolResultContent, UserContent},
-    streaming::StreamingCompletion,
+    streaming::{StreamedAssistantContent, StreamingCompletion},
 };
 use futures::{Stream, StreamExt};
+use serde::{Deserialize, Serialize};
 use std::{pin::Pin, sync::Arc};
 use tokio::sync::RwLock;
 
@@ -11,11 +13,57 @@ use crate::{
     agent::Agent,
     completion::{CompletionError, CompletionModel, PromptError},
     message::{Message, Text},
-    streaming::StreamedAssistantContent,
     tool::ToolSetError,
 };
 
-type StreamingResult<'a> = Pin<Box<dyn Stream<Item = Result<Text, StreamingError>> + 'a>>;
+type StreamingResult<'a> =
+    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + 'a>>;
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum MultiTurnStreamItem {
+    Text(Text),
+    FinalResponse(FinalResponse),
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FinalResponse {
+    response: String,
+    aggregated_usage: crate::completion::Usage,
+}
+
+impl FinalResponse {
+    pub fn empty() -> Self {
+        Self {
+            response: String::new(),
+            aggregated_usage: crate::completion::Usage::new(),
+        }
+    }
+
+    pub fn response(&self) -> &str {
+        &self.response
+    }
+
+    pub fn usage(&self) -> crate::completion::Usage {
+        self.aggregated_usage
+    }
+}
+
+impl MultiTurnStreamItem {
+    pub(crate) fn text(text: &str) -> Self {
+        Self::Text(Text {
+            text: text.to_string(),
+        })
+    }
+
+    pub fn final_response(response: &str, aggregated_usage: crate::completion::Usage) -> Self {
+        Self::FinalResponse(FinalResponse {
+            response: response.to_string(),
+            aggregated_usage,
+        })
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum StreamingError {
@@ -56,7 +104,7 @@ where
 impl<'a, M> StreamingPromptRequest<'a, M>
 where
     M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: Send,
+    <M as CompletionModel>::StreamingResponse: Send + GetTokenUsage,
 {
     /// Create a new PromptRequest with the given prompt and model
     pub fn new(agent: &'a Agent<M>, prompt: impl Into<Message>) -> Self {
@@ -119,13 +167,20 @@ where
             let mut current_max_depth = 0;
             let mut last_prompt_error = String::new();
 
+            let mut last_text_response = String::new();
+            let mut is_text_response = false;
+            let mut max_depth_reached = false;
+
+            let mut aggregated_usage = crate::completion::Usage::new();
+
             Box::pin(async_stream::stream! {
-                let mut current_prompt = prompt;
+                let mut current_prompt = prompt.clone();
                 let mut did_call_tool = false;
 
                 'outer: loop {
                     if current_max_depth > req.max_depth + 1 {
                         last_prompt_error = current_prompt.rag_text().unwrap_or_default();
+                        max_depth_reached = true;
                         break;
                     }
 
@@ -142,7 +197,7 @@ where
                     #[cfg(feature = "hooks")]
                     if let Some(hook) = req.hook.as_ref() {
                         let reader = chat_history.read().await;
-                        let prompt = last().cloned().expect("there should always be at least one message in the chat history");
+                        let prompt = reader.last().cloned().expect("there should always be at least one message in the chat history");
                         let chat_history_except_last = reader[..reader.len() - 1].to_vec();
 
                         hook.on_completion_call(&prompt, &chat_history_except_last)
@@ -164,19 +219,24 @@ where
                     while let Some(content) = stream.next().await {
                         match content {
                             Ok(StreamedAssistantContent::Text(text)) => {
-                                yield Ok(Text { text: text.text });
+                                if !is_text_response {
+                                    last_text_response = String::new();
+                                    is_text_response = true;
+                                }
+                                last_text_response.push_str(&text.text);
+                                yield Ok(MultiTurnStreamItem::text(&text.text));
                                 did_call_tool = false;
                             },
                             Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
                                 #[cfg(feature = "hooks")]
                                 if let Some(hook) = req.hook.as_ref() {
-                                    hook.on_tool_call(tool_name, &args).await;
+                                    hook.on_tool_call(&tool_call.function.name, &tool_call.function.arguments.to_string()).await;
                                 }
                                 let tool_result =
                                     agent.tools.call(&tool_call.function.name, tool_call.function.arguments.to_string()).await?;
 
                                 #[cfg(feature = "hooks")]
-                                if let Some(hook) = self.hook.as_ref() {
+                                if let Some(hook) = req.hook.as_ref() {
                                     hook.on_tool_result(&tool_call.function.name, &tool_call.function.arguments.to_string(), &tool_result.to_string())
                                         .await;
                                 }
@@ -190,10 +250,17 @@ where
                             },
                             Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, .. })) => {
                                 let text = reasoning.into_iter().collect::<Vec<String>>().join("");
-                                yield Ok(Text { text });
+                                yield Ok(MultiTurnStreamItem::text(&text));
                                 did_call_tool = false;
                             },
-                            Ok(StreamedAssistantContent::Final(_)) => {
+                            Ok(StreamedAssistantContent::Final(final_resp)) => {
+                                if is_text_response {
+                                    #[cfg(feature = "hooks")]
+                                    if let Some(hook) = req.hook.as_ref() {
+                                        hook.on_stream_completion_response_finish(&prompt, &final_resp).await;
+                                    }
+                                }
+                                if let Some(usage) = final_resp.token_usage() { aggregated_usage += usage; };
                                 // Do nothing here, since at the moment the final generic is actually unreachable.
                                 // We need to implement a trait that aggregates token usage.
                                 // TODO: Add a way to aggregate token responses from the generic variant
@@ -241,15 +308,18 @@ where
                     };
 
                     if !did_call_tool {
+                        yield Ok(MultiTurnStreamItem::final_response(&last_text_response, aggregated_usage));
                         break;
                     }
                 }
 
-                    yield Err(PromptError::MaxDepthError {
-                        max_depth: req.max_depth,
-                        chat_history: (*chat_history.read().await).clone(),
-                        prompt: last_prompt_error.into(),
-                    }.into());
+                    if max_depth_reached {
+                        yield Err(PromptError::MaxDepthError {
+                            max_depth: req.max_depth,
+                            chat_history: (*chat_history.read().await).clone(),
+                            prompt: last_prompt_error.into(),
+                        }.into());
+                    }
 
             })
         }
@@ -273,20 +343,25 @@ where
 }
 
 /// helper function to stream a completion request to stdout
-pub async fn stream_to_stdout(stream: &mut StreamingResult<'_>) -> Result<(), std::io::Error> {
+pub async fn stream_to_stdout(
+    stream: &mut StreamingResult<'_>,
+) -> Result<FinalResponse, std::io::Error> {
+    let mut final_res = FinalResponse::empty();
     print!("Response: ");
     while let Some(content) = stream.next().await {
         match content {
-            Ok(Text { text }) => {
+            Ok(MultiTurnStreamItem::Text(Text { text })) => {
                 print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;
+            }
+            Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                final_res = res;
             }
             Err(err) => {
                 eprintln!("Error: {err}");
             }
         }
     }
-    println!(); // New line after streaming completes
 
-    Ok(())
+    Ok(final_res)
 }

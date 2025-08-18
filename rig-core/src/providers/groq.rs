@@ -12,6 +12,7 @@ use std::collections::HashMap;
 
 use super::openai::{CompletionResponse, StreamingToolCall, TranscriptionResponse, Usage};
 use crate::client::{ClientBuilderError, CompletionClient, TranscriptionClient};
+use crate::completion::GetTokenUsage;
 use crate::json_utils::merge;
 use futures::StreamExt;
 
@@ -564,6 +565,18 @@ struct StreamingCompletionChunk {
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct StreamingCompletionResponse {
     pub usage: Usage,
+}
+
+impl GetTokenUsage for StreamingCompletionResponse {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+
+        usage.input_tokens = self.usage.prompt_tokens as u64;
+        usage.total_tokens = self.usage.total_tokens as u64;
+        usage.output_tokens = self.usage.total_tokens as u64 - self.usage.prompt_tokens as u64;
+
+        Some(usage)
+    }
 }
 
 pub async fn send_compatible_streaming_request(

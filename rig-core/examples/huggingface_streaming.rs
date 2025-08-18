@@ -1,9 +1,10 @@
 use rig::prelude::*;
 use std::env;
 
+use rig::agent::stream_to_stdout;
 use rig::{
     providers::huggingface::{self},
-    streaming::{StreamingPrompt, stream_to_stdout},
+    streaming::StreamingPrompt,
 };
 
 #[tokio::main]
@@ -30,9 +31,9 @@ async fn hf_inference(api_key: &str) -> Result<(), anyhow::Error> {
     // Stream the response and print chunks as they arrive
     let mut stream = agent
         .stream_prompt("When and where and what type is the next solar eclipse?")
-        .await?;
+        .await;
 
-    stream_to_stdout(&agent, &mut stream).await?;
+    let _ = stream_to_stdout(&mut stream).await?;
 
     Ok(())
 }
@@ -49,9 +50,9 @@ async fn together(api_key: &str) -> Result<(), anyhow::Error> {
     // Stream the response and print chunks as they arrive
     let mut stream = agent
         .stream_prompt("When and where and what type is the next solar eclipse?")
-        .await?;
+        .await;
 
-    stream_to_stdout(&agent, &mut stream).await?;
+    let _ = stream_to_stdout(&mut stream).await?;
 
     Ok(())
 }

@@ -1,6 +1,6 @@
 use anyhow::Result;
+use rig::agent::stream_to_stdout;
 use rig::prelude::*;
-use rig::streaming::stream_to_stdout;
 use rig::{completion::ToolDefinition, providers, streaming::StreamingPrompt, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -107,9 +107,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     println!("Calculate 2 - 5");
-    let mut stream = calculator_agent.stream_prompt("Calculate 2 - 5").await?;
+    let mut stream = calculator_agent.stream_prompt("Calculate 2 - 5").await;
 
-    stream_to_stdout(&calculator_agent, &mut stream).await?;
+    let _ = stream_to_stdout(&mut stream).await?;
 
     Ok(())
 }

@@ -1,32 +1,13 @@
-use futures::{Stream, StreamExt};
 use rig::streaming::StreamingPrompt;
 use rig::{
-    OneOrMany,
-    agent::{Agent, stream_to_stdout},
+    agent::stream_to_stdout,
     client::{CompletionClient, ProviderClient},
-    completion::{self, CompletionError, CompletionModel, PromptError, ToolDefinition},
-    message::{AssistantContent, Message, Text, ToolResultContent, UserContent},
+    completion::ToolDefinition,
     providers::anthropic,
-    streaming::{StreamedAssistantContent, StreamingCompletion},
-    tool::{Tool, ToolSetError},
+    tool::Tool,
 };
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
-
-use std::pin::Pin;
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-enum StreamingError {
-    #[error("CompletionError: {0}")]
-    Completion(#[from] CompletionError),
-    #[error("PromptError: {0}")]
-    Prompt(#[from] PromptError),
-    #[error("ToolSetError: {0}")]
-    Tool(#[from] ToolSetError),
-}
-
-type StreamingResult = Pin<Box<dyn Stream<Item = Result<Text, StreamingError>> + Send>>;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

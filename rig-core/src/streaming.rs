@@ -12,7 +12,8 @@ use crate::OneOrMany;
 use crate::agent::Agent;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
 use crate::completion::{
-    CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message, Usage,
+    CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
+    Message, Usage,
 };
 use crate::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction};
 use futures::stream::{AbortHandle, Abortable};
@@ -59,7 +60,7 @@ pub type StreamingResult<R> =
 /// The response from a streaming completion request;
 /// message and response are populated at the end of the
 /// `inner` stream.
-pub struct StreamingCompletionResponse<R: Clone + Unpin> {
+pub struct StreamingCompletionResponse<R: Clone + Unpin + GetTokenUsage> {
     pub(crate) inner: Abortable<StreamingResult<R>>,
     pub(crate) abort_handle: AbortHandle,
     text: String,
@@ -74,7 +75,10 @@ pub struct StreamingCompletionResponse<R: Clone + Unpin> {
     pub final_response_yielded: AtomicBool,
 }
 
-impl<R: Clone + Unpin> StreamingCompletionResponse<R> {
+impl<R> StreamingCompletionResponse<R>
+where
+    R: Clone + Unpin + GetTokenUsage,
+{
     pub fn stream(inner: StreamingResult<R>) -> StreamingCompletionResponse<R> {
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let abortable_stream = Abortable::new(inner, abort_registration);
@@ -95,7 +99,10 @@ impl<R: Clone + Unpin> StreamingCompletionResponse<R> {
     }
 }
 
-impl<R: Clone + Unpin> From<StreamingCompletionResponse<R>> for CompletionResponse<Option<R>> {
+impl<R> From<StreamingCompletionResponse<R>> for CompletionResponse<Option<R>>
+where
+    R: Clone + Unpin + GetTokenUsage,
+{
     fn from(value: StreamingCompletionResponse<R>) -> CompletionResponse<Option<R>> {
         CompletionResponse {
             choice: value.choice,
@@ -105,7 +112,10 @@ impl<R: Clone + Unpin> From<StreamingCompletionResponse<R>> for CompletionRespon
     }
 }
 
-impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
+impl<R> Stream for StreamingCompletionResponse<R>
+where
+    R: Clone + Unpin + GetTokenUsage,
+{
     type Item = Result<StreamedAssistantContent<R>, CompletionError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -207,7 +217,7 @@ pub trait StreamingPrompt<M, R>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: Send,
-    R: Clone + Unpin,
+    R: Clone + Unpin + GetTokenUsage,
 {
     /// Stream a simple prompt to the model
     fn stream_prompt(&self, prompt: impl Into<Message> + Send) -> StreamingPromptRequest<'_, M>;
@@ -218,7 +228,7 @@ pub trait StreamingChat<M, R>: Send + Sync
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: Send,
-    R: Clone + Unpin,
+    R: Clone + Unpin + GetTokenUsage,
 {
     /// Stream a chat with history to the model
     fn stream_chat(
@@ -351,6 +361,14 @@ mod tests {
     pub struct MockResponse {
         #[allow(dead_code)]
         token_count: u32,
+    }
+
+    impl GetTokenUsage for MockResponse {
+        fn token_usage(&self) -> Option<crate::completion::Usage> {
+            let mut usage = Usage::new();
+            usage.total_tokens = 15;
+            Some(usage)
+        }
     }
 
     fn create_mock_stream() -> StreamingCompletionResponse<MockResponse> {
