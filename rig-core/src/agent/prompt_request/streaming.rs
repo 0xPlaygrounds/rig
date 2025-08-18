@@ -259,6 +259,8 @@ where
                                     if let Some(hook) = req.hook.as_ref() {
                                         hook.on_stream_completion_response_finish(&prompt, &final_resp).await;
                                     }
+                                    yield Ok(MultiTurnStreamItem::text("\n"));
+                                    is_text_response = false;
                                 }
                                 if let Some(usage) = final_resp.token_usage() { aggregated_usage += usage; };
                                 // Do nothing here, since at the moment the final generic is actually unreachable.

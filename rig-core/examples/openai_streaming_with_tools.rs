@@ -107,10 +107,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .tool(Subtract)
         .build();
 
-    let mut stream = calculator_agent
-        .stream_prompt("Calculate 2 - 5")
-        .multi_turn(3)
-        .await;
+    let mut stream = calculator_agent.stream_prompt("Calculate 2 - 5").await;
 
     let res = stream_to_stdout(&mut stream).await?;
 
