@@ -15,7 +15,7 @@ use crate::{
     tool::ToolSetError,
 };
 
-type StreamingResult<'a> = Pin<Box<dyn Stream<Item = Result<Text, StreamingError>> + Send + 'a>>;
+type StreamingResult<'a> = Pin<Box<dyn Stream<Item = Result<Text, StreamingError>> + 'a>>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StreamingError {
@@ -264,7 +264,7 @@ where
     <M as CompletionModel>::StreamingResponse: Send,
 {
     type Output = StreamingResult<'a>; // what `.await` returns
-    type IntoFuture = Pin<Box<dyn futures::Future<Output = Self::Output> + Send + 'a>>;
+    type IntoFuture = Pin<Box<dyn futures::Future<Output = Self::Output> + 'a>>;
 
     fn into_future(self) -> Self::IntoFuture {
         // Wrap send() in a future, because send() returns a stream immediately
