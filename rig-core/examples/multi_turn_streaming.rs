@@ -1,7 +1,8 @@
 use futures::{Stream, StreamExt};
+use rig::streaming::StreamingPrompt;
 use rig::{
     OneOrMany,
-    agent::Agent,
+    agent::{Agent, stream_to_stdout},
     client::{CompletionClient, ProviderClient},
     completion::{self, CompletionError, CompletionModel, PromptError, ToolDefinition},
     message::{AssistantContent, Message, Text, ToolResultContent, UserContent},
@@ -58,14 +59,10 @@ async fn main() -> anyhow::Result<()> {
         .build();
 
     // Prompt the agent and get the stream
-    let mut stream = multi_turn_prompt(
-        calculator_agent,
-        "Calculate 2 * (3 + 5) / 9  = ?. Describe the result to me.",
-        Vec::new(),
-    )
-    .await;
+    let prompt = "Calculate 2 * (3 + 5) / 9  = ?. Describe the result to me.";
+    let mut stream = calculator_agent.stream_prompt(prompt).multi_turn(10).await;
 
-    custom_stream_to_stdout(&mut stream).await?;
+    stream_to_stdout(&mut stream).await?;
 
     Ok(())
 }
@@ -175,23 +172,23 @@ where
 }
 
 /// helper function to stream a completion request to stdout
-async fn custom_stream_to_stdout(stream: &mut StreamingResult) -> Result<(), std::io::Error> {
-    print!("Response: ");
-    while let Some(content) = stream.next().await {
-        match content {
-            Ok(Text { text }) => {
-                print!("{text}");
-                std::io::Write::flush(&mut std::io::stdout())?;
-            }
-            Err(err) => {
-                eprintln!("Error: {err}");
-            }
-        }
-    }
-    println!(); // New line after streaming completes
+// async fn custom_stream_to_stdout(stream: &mut StreamingResult) -> Result<(), std::io::Error> {
+//     print!("Response: ");
+//     while let Some(content) = stream.next().await {
+//         match content {
+//             Ok(Text { text }) => {
+//                 print!("{text}");
+//                 std::io::Write::flush(&mut std::io::stdout())?;
+//             }
+//             Err(err) => {
+//                 eprintln!("Error: {err}");
+//             }
+//         }
+//     }
+//     println!(); // New line after streaming completes
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 #[derive(Deserialize, JsonSchema)]
 struct OperationArgs {

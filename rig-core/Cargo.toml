@@ -40,6 +40,7 @@ url = { workspace = true }
 worker = { workspace = true, optional = true }
 rmcp = { version = "0.5", optional = true, features = ["client"] }
 reqwest-eventsource = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }

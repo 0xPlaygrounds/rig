@@ -10,6 +10,7 @@
 
 use crate::OneOrMany;
 use crate::agent::Agent;
+use crate::agent::prompt_request::streaming::StreamingPromptRequest;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, Message, Usage,
 };
@@ -202,22 +203,29 @@ impl<R: Clone + Unpin> Stream for StreamingCompletionResponse<R> {
 }
 
 /// Trait for high-level streaming prompt interface
-pub trait StreamingPrompt<R: Clone + Unpin>: Send + Sync {
+pub trait StreamingPrompt<M, R>
+where
+    M: CompletionModel + 'static,
+    <M as CompletionModel>::StreamingResponse: Send,
+    R: Clone + Unpin,
+{
     /// Stream a simple prompt to the model
-    fn stream_prompt(
-        &self,
-        prompt: impl Into<Message> + Send,
-    ) -> impl Future<Output = Result<StreamingCompletionResponse<R>, CompletionError>>;
+    fn stream_prompt(&self, prompt: impl Into<Message> + Send) -> StreamingPromptRequest<'_, M>;
 }
 
 /// Trait for high-level streaming chat interface
-pub trait StreamingChat<R: Clone + Unpin>: Send + Sync {
+pub trait StreamingChat<M, R>: Send + Sync
+where
+    M: CompletionModel + 'static,
+    <M as CompletionModel>::StreamingResponse: Send,
+    R: Clone + Unpin,
+{
     /// Stream a chat with history to the model
     fn stream_chat(
         &self,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> impl Future<Output = Result<StreamingCompletionResponse<R>, CompletionError>>;
+    ) -> StreamingPromptRequest<'_, M>;
 }
 
 /// Trait for low-level streaming completion interface

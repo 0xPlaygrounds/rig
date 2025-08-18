@@ -1,3 +1,5 @@
+pub mod streaming;
+
 use std::{future::IntoFuture, marker::PhantomData};
 
 use futures::{FutureExt, StreamExt, future::BoxFuture, stream};
