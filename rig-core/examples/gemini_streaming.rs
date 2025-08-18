@@ -17,7 +17,7 @@ async fn main() -> Result<(), anyhow::Error> {
         }),
         ..Default::default()
     };
-    let cfg = AdditionalParameters::default().with_cfg(gen_cfg);
+    let cfg = AdditionalParameters::default().with_config(gen_cfg);
     // Create streaming agent with a single context prompt
     let agent = gemini::Client::from_env()
         .agent("gemini-2.5-flash")
