@@ -1,14 +1,12 @@
 use rig::agent::stream_to_stdout;
-use rig::client::CompletionClient;
+use rig::client::{CompletionClient, ProviderClient};
 use rig::streaming::StreamingPrompt;
-use rig_bedrock::{client::ClientBuilder, completion::AMAZON_NOVA_LITE};
+use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create streaming agent with a single context prompt
-    let agent = ClientBuilder::new()
-        .build()
-        .await
+    let agent = Client::from_env()
         .agent(AMAZON_NOVA_LITE)
         .preamble("Be precise and concise.")
         .temperature(0.5)

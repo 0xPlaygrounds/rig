@@ -1,6 +1,6 @@
-use rig::client::ImageGenerationClient;
+use rig::client::{ImageGenerationClient, ProviderClient};
 use rig::image_generation::ImageGenerationModel;
-use rig_bedrock::client::ClientBuilder;
+use rig_bedrock::client::Client;
 use rig_bedrock::image::AMAZON_NOVA_CANVAS;
 use std::fs::File;
 use std::io::Write;
@@ -10,7 +10,7 @@ const DEFAULT_PATH: &str = "./output.png";
 
 #[tokio::main]
 async fn main() {
-    let client = ClientBuilder::new().build().await;
+    let client = Client::from_env();
     let image_generation_model = client.image_generation_model(AMAZON_NOVA_CANVAS);
     let response = image_generation_model
         .image_generation_request()

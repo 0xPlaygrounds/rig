@@ -1,16 +1,14 @@
 use rig::agent::stream_to_stdout;
-use rig::client::CompletionClient;
+use rig::client::{CompletionClient, ProviderClient};
 use rig::streaming::StreamingPrompt;
-use rig_bedrock::{client::ClientBuilder, completion::AMAZON_NOVA_LITE};
+use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
 mod common;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     // Create agent with a single context prompt and two tools
-    let agent = ClientBuilder::new()
-        .build()
-        .await
+    let agent = Client::from_env()
         .agent(AMAZON_NOVA_LITE)
         .preamble(
             "You are a calculator here to help the user perform arithmetic

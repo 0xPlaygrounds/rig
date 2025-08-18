@@ -21,7 +21,8 @@ impl CompletionModel {
 
         let mut converse_builder = self
             .client
-            .aws_client
+            .get_inner()
+            .await
             .converse_stream()
             .model_id(self.model.as_str());
 
