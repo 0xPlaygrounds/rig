@@ -1,4 +1,5 @@
 use rig::prelude::*;
+use rig::providers::gemini::completion::gemini_api_types::AdditionalParameters;
 use rig::{
     completion::Prompt,
     providers::gemini::{self, completion::gemini_api_types::GenerationConfig},
@@ -14,18 +15,21 @@ async fn main() -> Result<(), anyhow::Error> {
     // Initialize the Google Gemini client
     let client = gemini::Client::from_env();
 
+    let gen_cfg = GenerationConfig {
+        top_k: Some(1),
+        top_p: Some(0.95),
+        candidate_count: Some(1),
+        ..Default::default()
+    };
+    let cfg = AdditionalParameters::default().with_config(gen_cfg);
+
     // Create agent with a single context prompt
     let agent = client
         .agent("gemini-2.5-pro")
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)
         // The `GenerationConfig` utility struct helps construct a typesafe `additional_params`
-        .additional_params(serde_json::to_value(GenerationConfig {
-            top_k: Some(1),
-            top_p: Some(0.95),
-            candidate_count: Some(1),
-            ..Default::default()
-        })?) // Unwrap the Result to get the Value
+        .additional_params(serde_json::to_value(cfg)?) // Unwrap the Result to get the Value
         .build();
     tracing::info!("Prompting the agent...");
 
