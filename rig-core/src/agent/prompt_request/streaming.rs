@@ -131,8 +131,8 @@ where
         self
     }
 
-    #[cfg(any(doc, feature = "hooks"))]
     /// Attach a per-request hook for tool call events
+    #[cfg(feature = "hooks")]
     pub fn with_hook(
         mut self,
         hook: &'a dyn crate::agent::PromptHook<M>,
