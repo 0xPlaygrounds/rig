@@ -115,6 +115,7 @@ impl<M: CompletionModel> AgentBuilder<M> {
     }
 
     // Add an MCP tool (from `rmcp`) to the agent
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     #[cfg(feature = "rmcp")]
     pub fn rmcp_tool(mut self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
         let toolname = tool.name.clone();

@@ -185,7 +185,7 @@ impl<T: Tool> ToolDyn for T {
     }
 }
 
-#[cfg(feature = "rmcp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 pub mod rmcp {
     use crate::completion::ToolDefinition;
     use crate::tool::ToolDyn;

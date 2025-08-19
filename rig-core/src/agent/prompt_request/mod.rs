@@ -105,8 +105,9 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
         }
     }
 
-    /// Attach a per-request hook for tool call events
+    #[cfg_attr(docsrs, doc(cfg(feature = "hooks")))]
     #[cfg(feature = "hooks")]
+    /// Attach a per-request hook for tool call events
     pub fn with_hook(self, hook: &'a dyn crate::agent::PromptHook<M>) -> PromptRequest<'a, S, M> {
         PromptRequest {
             prompt: self.prompt,
@@ -222,6 +223,7 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
 ///     Ok(())
 /// }
 /// ```
+#[cfg_attr(docsrs, doc(cfg(feature = "hooks")))]
 #[cfg(feature = "hooks")]
 #[async_trait::async_trait]
 pub trait PromptHook<M: CompletionModel>: Send + Sync {
