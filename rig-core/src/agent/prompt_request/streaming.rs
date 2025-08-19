@@ -96,6 +96,7 @@ where
     max_depth: usize,
     /// The agent to use for execution
     agent: &'a Agent<M>,
+    #[cfg_attr(docsrs, doc(cfg(feature = "hooks")))]
     #[cfg(feature = "hooks")]
     /// Optional per-request hook for events
     hook: Option<&'a dyn crate::agent::PromptHook<M>>,
@@ -113,6 +114,7 @@ where
             chat_history: None,
             max_depth: 0,
             agent,
+            #[cfg_attr(docsrs, doc(cfg(feature = "hooks")))]
             #[cfg(feature = "hooks")]
             hook: None,
         }
@@ -131,8 +133,9 @@ where
         self
     }
 
-    #[cfg(any(doc, feature = "hooks"))]
     /// Attach a per-request hook for tool call events
+    #[cfg_attr(docsrs, doc(cfg(feature = "hooks")))]
+    #[cfg(feature = "hooks")]
     pub fn with_hook(
         mut self,
         hook: &'a dyn crate::agent::PromptHook<M>,

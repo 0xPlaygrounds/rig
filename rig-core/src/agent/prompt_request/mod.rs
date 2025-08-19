@@ -105,7 +105,8 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
         }
     }
 
-    #[cfg(any(doc, feature = "hooks"))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "hooks")))]
+    #[cfg(feature = "hooks")]
     /// Attach a per-request hook for tool call events
     pub fn with_hook(self, hook: &'a dyn crate::agent::PromptHook<M>) -> PromptRequest<'a, S, M> {
         PromptRequest {
@@ -121,7 +122,6 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
 }
 
 // dead code allowed because of functions being left empty to allow for users to not have to implement every single function
-#[cfg(any(doc, feature = "hooks"))]
 /// Trait for per-request hooks to observe tool call events.
 /// Usage:
 /// ```rust
@@ -223,6 +223,8 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
 ///     Ok(())
 /// }
 /// ```
+#[cfg_attr(docsrs, doc(cfg(feature = "hooks")))]
+#[cfg(feature = "hooks")]
 #[async_trait::async_trait]
 pub trait PromptHook<M: CompletionModel>: Send + Sync {
     #[allow(unused_variables)]
