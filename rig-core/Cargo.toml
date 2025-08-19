@@ -125,10 +125,6 @@ name = "together_embeddings"
 required-features = ["derive"]
 
 [[example]]
-name = "mcp_tool"
-required-features = ["mcp"]
-
-[[example]]
 name = "openai_audio_generation"
 required-features = ["audio"]
 
