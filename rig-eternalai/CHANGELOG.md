@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.3.2...rig-eternalai-v0.3.3) - 2025-08-19
+
+### Added
+
+- *(rig-865)* multi turn streaming ([#712](https://github.com/0xPlaygrounds/rig/pull/712))
+
 ## [0.3.2](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.3.1...rig-eternalai-v0.3.2) - 2025-08-05
 
 ### Other

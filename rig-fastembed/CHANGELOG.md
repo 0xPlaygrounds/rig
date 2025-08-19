@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.7](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.2.6...rig-fastembed-v0.2.7) - 2025-08-19
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.2.6](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.2.5...rig-fastembed-v0.2.6) - 2025-08-05
 
 ### Other
