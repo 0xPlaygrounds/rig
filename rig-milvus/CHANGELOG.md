@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/0xPlaygrounds/rig/compare/rig-milvus-v0.1.6...rig-milvus-v0.1.7) - 2025-08-19
+
+### Other
+
+- *(rig-862)* remove sync bound from fn call() in tool trait ([#678](https://github.com/0xPlaygrounds/rig/pull/678))
+
 ## [0.1.6](https://github.com/0xPlaygrounds/rig/compare/rig-milvus-v0.1.5...rig-milvus-v0.1.6) - 2025-08-05
 
 ### Other

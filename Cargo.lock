@@ -8977,7 +8977,7 @@ checksum = "57397d16646700483b67d2dd6511d79318f9d057fdbd21a4066aeac8b41d310a"
 
 [[package]]
 name = "rig-bedrock"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -8986,7 +8986,7 @@ dependencies = [
  "aws-smithy-types",
  "base64 0.22.1",
  "reqwest 0.12.20",
- "rig-core 0.17.1",
+ "rig-core 0.18.0",
  "rig-derive",
  "schemars 1.0.4",
  "serde",
@@ -9000,6 +9000,30 @@ dependencies = [
 [[package]]
 name = "rig-core"
 version = "0.17.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e57d16b6bc8ed1a4d7cea51782f1c6320e0a98b01a8de719540251a81b027ffb"
+dependencies = [
+ "as-any",
+ "async-stream",
+ "base64 0.22.1",
+ "bytes",
+ "futures",
+ "glob",
+ "mime_guess",
+ "ordered-float",
+ "reqwest 0.12.20",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tracing",
+ "url",
+ "worker",
+]
+
+[[package]]
+name = "rig-core"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "as-any",
@@ -9036,39 +9060,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-core"
-version = "0.17.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e57d16b6bc8ed1a4d7cea51782f1c6320e0a98b01a8de719540251a81b027ffb"
-dependencies = [
- "as-any",
- "async-stream",
- "base64 0.22.1",
- "bytes",
- "futures",
- "glob",
- "mime_guess",
- "ordered-float",
- "reqwest 0.12.20",
- "schemars 0.8.22",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
- "tracing",
- "url",
- "worker",
-]
-
-[[package]]
 name = "rig-derive"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "convert_case 0.8.0",
  "deluxe",
  "indoc",
  "proc-macro2",
  "quote",
- "rig-core 0.17.1",
+ "rig-core 0.18.0",
  "serde",
  "serde_json",
  "syn 2.0.104",
@@ -9078,13 +9078,13 @@ dependencies = [
 
 [[package]]
 name = "rig-eternalai"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "anyhow",
  "async-stream",
  "ethers",
  "reqwest 0.12.20",
- "rig-core 0.17.1",
+ "rig-core 0.18.0",
  "schemars 1.0.4",
  "serde",
  "serde_json",
@@ -9095,11 +9095,11 @@ dependencies = [
 
 [[package]]
 name = "rig-fastembed"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "anyhow",
  "fastembed",
- "rig-core 0.17.1",
+ "rig-core 0.18.0",
  "schemars 1.0.4",
  "serde",
  "serde_json",
@@ -9109,7 +9109,7 @@ dependencies = [
 
 [[package]]
 name = "rig-lancedb"
-version = "0.2.17"
+version = "0.2.18"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -9117,7 +9117,7 @@ dependencies = [
  "futures",
  "httpmock",
  "lancedb",
- "rig-core 0.17.1",
+ "rig-core 0.18.0",
  "serde",
  "serde_json",
  "tokio",
@@ -9125,11 +9125,11 @@ dependencies = [
 
 [[package]]
 name = "rig-milvus"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "reqwest 0.12.20",
- "rig-core 0.17.1",
+ "rig-core 0.18.0",
  "serde",
  "serde_json",
  "tokio",
@@ -9139,13 +9139,13 @@ dependencies = [
 
 [[package]]
 name = "rig-mongodb"
-version = "0.2.17"
+version = "0.2.18"
 dependencies = [
  "anyhow",
  "futures",
  "httpmock",
  "mongodb",
- "rig-core 0.17.1",
+ "rig-core 0.18.0",
  "serde",
  "serde_json",
  "testcontainers",
@@ -9156,13 +9156,13 @@ dependencies = [
 
 [[package]]
 name = "rig-neo4j"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "futures",
  "httpmock",
  "neo4rs",
- "rig-core 0.17.1",
+ "rig-core 0.18.0",
  "serde",
  "serde_json",
  "term_size",
@@ -9175,14 +9175,14 @@ dependencies = [
 
 [[package]]
 name = "rig-postgres"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "dotenvy",
  "httpmock",
  "log",
  "pgvector",
- "rig-core 0.17.1",
+ "rig-core 0.18.0",
  "serde",
  "serde_json",
  "sqlx",
@@ -9196,12 +9196,12 @@ dependencies = [
 
 [[package]]
 name = "rig-qdrant"
-version = "0.1.20"
+version = "0.1.21"
 dependencies = [
  "anyhow",
  "httpmock",
  "qdrant-client",
- "rig-core 0.17.1",
+ "rig-core 0.18.0",
  "serde",
  "serde_json",
  "testcontainers",
@@ -9211,13 +9211,13 @@ dependencies = [
 
 [[package]]
 name = "rig-s3vectors"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "aws-config",
  "aws-sdk-s3vectors",
  "aws-smithy-types",
- "rig-core 0.17.1",
+ "rig-core 0.18.0",
  "serde",
  "serde_json",
  "tokio",
@@ -9228,13 +9228,13 @@ dependencies = [
 
 [[package]]
 name = "rig-scylladb"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "chrono",
  "futures",
  "httpmock",
- "rig-core 0.17.1",
+ "rig-core 0.18.0",
  "scylla",
  "serde",
  "serde_json",
@@ -9247,12 +9247,12 @@ dependencies = [
 
 [[package]]
 name = "rig-sqlite"
-version = "0.1.17"
+version = "0.1.18"
 dependencies = [
  "anyhow",
  "chrono",
  "httpmock",
- "rig-core 0.17.1",
+ "rig-core 0.18.0",
  "rusqlite",
  "serde",
  "serde_json",
@@ -9266,10 +9266,10 @@ dependencies = [
 
 [[package]]
 name = "rig-surrealdb"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "anyhow",
- "rig-core 0.17.1",
+ "rig-core 0.18.0",
  "serde",
  "serde_json",
  "surrealdb",
@@ -9288,7 +9288,7 @@ dependencies = [
  "bytes",
  "console_error_panic_hook",
  "futures",
- "rig-core 0.17.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rig-core 0.17.1",
  "send_wrapper 0.6.0",
  "serde",
  "serde-wasm-bindgen",
