@@ -6,10 +6,6 @@ use crate::{
     vector_store::VectorStoreIndexDyn,
 };
 
-#[allow(deprecated)]
-#[cfg(feature = "mcp")]
-use crate::tool::mcp::McpTool;
-
 #[cfg(feature = "rmcp")]
 use crate::tool::rmcp::McpTool as RmcpTool;
 
@@ -114,20 +110,6 @@ impl<M: CompletionModel> AgentBuilder<M> {
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
         self.tools.add_tool(tool);
-        self.static_tools.push(toolname);
-        self
-    }
-
-    // Add an MCP tool to the agent
-    #[cfg(feature = "mcp")]
-    pub fn mcp_tool<T: mcp_core::transport::Transport>(
-        mut self,
-        tool: mcp_core::types::Tool,
-        client: mcp_core::client::Client<T>,
-    ) -> Self {
-        let toolname = tool.name.clone();
-        #[allow(deprecated)]
-        self.tools.add_tool(McpTool::from_mcp_server(tool, client));
         self.static_tools.push(toolname);
         self
     }
