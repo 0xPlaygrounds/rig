@@ -39,7 +39,7 @@
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
 use crate::client::{ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient};
-use crate::completion::Usage;
+use crate::completion::{GetTokenUsage, Usage};
 use crate::json_utils::merge_inplace;
 use crate::streaming::RawStreamingChoice;
 use crate::{
@@ -477,6 +477,20 @@ pub struct StreamingCompletionResponse {
     pub eval_count: Option<u64>,
     pub eval_duration: Option<u64>,
 }
+
+impl GetTokenUsage for StreamingCompletionResponse {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+        let input_tokens = self.prompt_eval_count.unwrap_or_default();
+        let output_tokens = self.eval_count.unwrap_or_default();
+        usage.input_tokens = input_tokens;
+        usage.output_tokens = output_tokens;
+        usage.total_tokens = input_tokens + output_tokens;
+
+        Some(usage)
+    }
+}
+
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;

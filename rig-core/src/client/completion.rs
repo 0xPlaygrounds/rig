@@ -2,6 +2,7 @@ use crate::agent::AgentBuilder;
 use crate::client::{AsCompletion, ProviderClient};
 use crate::completion::{
     CompletionError, CompletionModel, CompletionModelDyn, CompletionRequest, CompletionResponse,
+    GetTokenUsage,
 };
 use crate::extractor::ExtractorBuilder;
 use crate::streaming::StreamingCompletionResponse;
@@ -97,7 +98,7 @@ pub trait CompletionClientDyn: ProviderClient {
 impl<
     T: CompletionClient<CompletionModel = M>,
     M: CompletionModel<StreamingResponse = R> + 'static,
-    R: Clone + Unpin + 'static,
+    R: Clone + Unpin + GetTokenUsage + 'static,
 > CompletionClientDyn for T
 {
     fn completion_model<'a>(&self, model: &str) -> Box<dyn CompletionModelDyn + 'a> {

@@ -1,31 +1,13 @@
-use futures::{Stream, StreamExt};
+use rig::streaming::StreamingPrompt;
 use rig::{
-    OneOrMany,
-    agent::Agent,
+    agent::stream_to_stdout,
     client::{CompletionClient, ProviderClient},
-    completion::{self, CompletionError, CompletionModel, PromptError, ToolDefinition},
-    message::{AssistantContent, Message, Text, ToolResultContent, UserContent},
+    completion::ToolDefinition,
     providers::anthropic,
-    streaming::{StreamedAssistantContent, StreamingCompletion},
-    tool::{Tool, ToolSetError},
+    tool::Tool,
 };
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
-
-use std::pin::Pin;
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-enum StreamingError {
-    #[error("CompletionError: {0}")]
-    Completion(#[from] CompletionError),
-    #[error("PromptError: {0}")]
-    Prompt(#[from] PromptError),
-    #[error("ToolSetError: {0}")]
-    Tool(#[from] ToolSetError),
-}
-
-type StreamingResult = Pin<Box<dyn Stream<Item = Result<Text, StreamingError>> + Send>>;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -58,137 +40,10 @@ async fn main() -> anyhow::Result<()> {
         .build();
 
     // Prompt the agent and get the stream
-    let mut stream = multi_turn_prompt(
-        calculator_agent,
-        "Calculate 2 * (3 + 5) / 9  = ?. Describe the result to me.",
-        Vec::new(),
-    )
-    .await;
+    let prompt = "Calculate 2 * (3 + 5) / 9  = ?. Describe the result to me.";
+    let mut stream = calculator_agent.stream_prompt(prompt).multi_turn(10).await;
 
-    custom_stream_to_stdout(&mut stream).await?;
-
-    Ok(())
-}
-
-async fn multi_turn_prompt<M>(
-    agent: Agent<M>,
-    prompt: impl Into<Message> + Send,
-    mut chat_history: Vec<completion::Message>,
-) -> StreamingResult
-where
-    M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: std::marker::Send,
-{
-    let prompt: Message = prompt.into();
-
-    (Box::pin(async_stream::stream! {
-        let mut current_prompt = prompt;
-        let mut did_call_tool = false;
-
-        'outer: loop {
-            let mut stream = agent
-                .stream_completion(current_prompt.clone(), chat_history.clone())
-                .await?
-                .stream()
-                .await?;
-
-            chat_history.push(current_prompt.clone());
-
-            let mut tool_calls = vec![];
-            let mut tool_results = vec![];
-
-            while let Some(content) = stream.next().await {
-                match content {
-                    Ok(StreamedAssistantContent::Text(text)) => {
-                        yield Ok(Text { text: text.text });
-                        did_call_tool = false;
-                    },
-                    Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
-                        let tool_result =
-                            agent.tools.call(&tool_call.function.name, tool_call.function.arguments.to_string()).await?;
-
-                        let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
-
-                        tool_calls.push(tool_call_msg);
-                        tool_results.push((tool_call.id, tool_call.call_id, tool_result));
-
-                        did_call_tool = true;
-                        // break;
-                    },
-                    Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, .. })) => {
-                        let text = reasoning.into_iter().collect::<Vec<String>>().join("");
-                        yield Ok(Text { text });
-                        did_call_tool = false;
-                    },
-                    Ok(_) => {
-                        // do nothing here as we don't need to accumulate token usage
-                    }
-                    Err(e) => {
-                        yield Err(e.into());
-                        break 'outer;
-                    }
-                }
-            }
-
-            // Add (parallel) tool calls to chat history
-            if !tool_calls.is_empty() {
-                chat_history.push(Message::Assistant {
-                    id: None,
-                    content: OneOrMany::many(tool_calls).expect("Impossible EmptyListError"),
-                });
-            }
-
-            // Add tool results to chat history
-            for (id, call_id, tool_result) in tool_results {
-                if let Some(call_id) = call_id {
-                    chat_history.push(Message::User {
-                        content: OneOrMany::one(UserContent::tool_result_with_call_id(
-                            id,
-                            call_id,
-                            OneOrMany::one(ToolResultContent::text(tool_result)),
-                        )),
-                    });
-                } else {
-                    chat_history.push(Message::User {
-                        content: OneOrMany::one(UserContent::tool_result(
-                            id,
-                            OneOrMany::one(ToolResultContent::text(tool_result)),
-                        )),
-                    });
-
-                }
-
-            }
-
-            // Set the current prompt to the last message in the chat history
-            current_prompt = match chat_history.pop() {
-                Some(prompt) => prompt,
-                None => unreachable!("Chat history should never be empty at this point"),
-            };
-
-            if !did_call_tool {
-                break;
-            }
-        }
-
-    })) as _
-}
-
-/// helper function to stream a completion request to stdout
-async fn custom_stream_to_stdout(stream: &mut StreamingResult) -> Result<(), std::io::Error> {
-    print!("Response: ");
-    while let Some(content) = stream.next().await {
-        match content {
-            Ok(Text { text }) => {
-                print!("{text}");
-                std::io::Write::flush(&mut std::io::stdout())?;
-            }
-            Err(err) => {
-                eprintln!("Error: {err}");
-            }
-        }
-    }
-    println!(); // New line after streaming completes
+    stream_to_stdout(&mut stream).await?;
 
     Ok(())
 }

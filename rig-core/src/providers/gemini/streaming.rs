@@ -8,7 +8,7 @@ use super::completion::{
     gemini_api_types::{ContentCandidate, Part, PartKind},
 };
 use crate::{
-    completion::{CompletionError, CompletionRequest},
+    completion::{CompletionError, CompletionRequest, GetTokenUsage},
     streaming::{self},
 };
 
@@ -30,6 +30,14 @@ pub struct StreamGenerateContentResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage_metadata: PartialUsage,
+}
+
+impl GetTokenUsage for StreamingCompletionResponse {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+        usage.total_tokens = self.usage_metadata.total_token_count as u64;
+        Some(usage)
+    }
 }
 
 impl CompletionModel {

@@ -5,7 +5,7 @@ use serde_json::json;
 
 use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefinition, Usage};
 use super::decoders::sse::from_response as sse_from_response;
-use crate::completion::{CompletionError, CompletionRequest};
+use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::json_utils::merge_inplace;
 use crate::streaming;
 use crate::streaming::{RawStreamingChoice, StreamingResult};
@@ -78,6 +78,18 @@ struct ToolCallState {
 #[derive(Clone, Deserialize, Serialize)]
 pub struct StreamingCompletionResponse {
     pub usage: PartialUsage,
+}
+
+impl GetTokenUsage for StreamingCompletionResponse {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+        usage.input_tokens = self.usage.input_tokens.unwrap_or(0) as u64;
+        usage.output_tokens = self.usage.output_tokens as u64;
+        usage.total_tokens =
+            self.usage.input_tokens.unwrap_or(0) as u64 + self.usage.output_tokens as u64;
+
+        Some(usage)
+    }
 }
 
 impl CompletionModel {

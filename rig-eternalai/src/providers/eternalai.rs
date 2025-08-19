@@ -15,6 +15,7 @@ use async_stream::stream;
 use rig::OneOrMany;
 use rig::agent::AgentBuilder;
 use rig::client::ClientBuilderError;
+use rig::completion::GetTokenUsage;
 use rig::completion::{CompletionError, CompletionRequest};
 use rig::embeddings::{EmbeddingError, EmbeddingsBuilder};
 use rig::extractor::ExtractorBuilder;
@@ -391,6 +392,18 @@ pub struct CompletionResponse {
     pub choices: Vec<Choice>,
     pub usage: Option<Usage>,
     pub onchain_data: Option<Value>,
+}
+
+impl GetTokenUsage for CompletionResponse {
+    fn token_usage(&self) -> Option<rig::completion::Usage> {
+        let api_usage = self.usage.clone()?;
+        let mut usage = rig::completion::Usage::new();
+
+        usage.input_tokens = api_usage.prompt_tokens as u64;
+        usage.total_tokens = api_usage.total_tokens as u64;
+        usage.output_tokens = (api_usage.total_tokens - api_usage.prompt_tokens) as u64;
+        Some(usage)
+    }
 }
 
 impl From<ApiErrorResponse> for CompletionError {

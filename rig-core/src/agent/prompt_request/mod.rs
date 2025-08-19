@@ -1,3 +1,5 @@
+pub(crate) mod streaming;
+
 use std::{future::IntoFuture, marker::PhantomData};
 
 use futures::{FutureExt, StreamExt, future::BoxFuture, stream};
@@ -40,7 +42,7 @@ pub struct PromptRequest<'a, S: PromptType, M: CompletionModel> {
     state: PhantomData<S>,
     #[cfg(feature = "hooks")]
     /// Optional per-request hook for events
-    hook: Option<&'a dyn PromptHook<M>>,
+    hook: Option<&'a dyn crate::agent::PromptHook<M>>,
 }
 
 impl<'a, M: CompletionModel> PromptRequest<'a, Standard, M> {
@@ -103,9 +105,9 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
         }
     }
 
-    #[cfg(feature = "hooks")]
+    #[cfg(any(doc, feature = "hooks"))]
     /// Attach a per-request hook for tool call events
-    pub fn with_hook(self, hook: &'a dyn PromptHook<M>) -> PromptRequest<'a, S, M> {
+    pub fn with_hook(self, hook: &'a dyn crate::agent::PromptHook<M>) -> PromptRequest<'a, S, M> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
@@ -117,25 +119,142 @@ impl<'a, S: PromptType, M: CompletionModel> PromptRequest<'a, S, M> {
         }
     }
 }
-#[cfg(feature = "hooks")]
-/// Trait for per-request hooks to observe tool call events
+
+// dead code allowed because of functions being left empty to allow for users to not have to implement every single function
+#[cfg(any(doc, feature = "hooks"))]
+/// Trait for per-request hooks to observe tool call events.
+/// Usage:
+/// ```rust
+///
+/// use std::env;
+///
+/// use rig::agent::PromptHook;
+/// use rig::client::CompletionClient;
+/// use rig::completion::{CompletionModel, CompletionResponse, Message, Prompt};
+/// use rig::message::{AssistantContent, UserContent};
+/// use rig::providers;
+///
+/// struct SessionIdHook<'a> {
+///     session_id: &'a str,
+/// }
+///
+/// #[async_trait::async_trait]
+/// impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
+///     async fn on_tool_call(&self, tool_name: &str, args: &str) {
+///         println!(
+///             "[Session {}] Calling tool: {} with args: {}",
+///             self.session_id, tool_name, args
+///         );
+///     }
+///     async fn on_tool_result(&self, tool_name: &str, args: &str, result: &str) {
+///         println!(
+///             "[Session {}] Tool result for {} (args: {}): {}",
+///             self.session_id, tool_name, args, result
+///         );
+///     }
+///
+///     async fn on_completion_call(&self, prompt: &Message, _history: &[Message]) {
+///         println!(
+///             "[Session {}] Sending prompt: {}",
+///             self.session_id,
+///             match prompt {
+///                 Message::User { content } => content
+///                     .iter()
+///                     .filter_map(|c| {
+///                         if let UserContent::Text(text_content) = c {
+///                             Some(text_content.text.clone())
+///                         } else {
+///                             None
+///                         }
+///                     })
+///                     .collect::<Vec<_>>()
+///                     .join("\n"),
+///                 Message::Assistant { content, .. } => content
+///                     .iter()
+///                     .filter_map(|c| if let AssistantContent::Text(text_content) = c {
+///                         Some(text_content.text.clone())
+///                     } else {
+///                         None
+///                     })
+///                     .collect::<Vec<_>>()
+///                     .join("\n"),
+///             }
+///         );
+///     }
+///
+///     async fn on_completion_response(
+///         &self,
+///         _prompt: &Message,
+///         response: &CompletionResponse<M::Response>,
+///     ) {
+///         if let Ok(resp) = serde_json::to_string(&response.raw_response) {
+///             println!("[Session {}] Received response: {}", self.session_id, resp);
+///         } else {
+///             println!(
+///                 "[Session {}] Received response: <non-serializable>",
+///                 self.session_id
+///             );
+///         }
+///     }
+/// }
+///
+/// // Example main function (pseudo-code, as actual Agent/CompletionModel setup is project-specific)
+/// #[tokio::main]
+/// async fn main() -> Result<(), anyhow::Error> {
+///     let client = providers::openai::Client::new(
+///         &env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"),
+///     );
+///
+///     // Create agent with a single context prompt
+///     let comedian_agent = client
+///         .agent("gpt-4o")
+///         .preamble("You are a comedian here to entertain the user using humour and jokes.")
+///         .build();
+///
+///     let session_id = "abc123";
+///     let hook = SessionIdHook { session_id };
+///
+///     // Prompt the agent and print the response
+///     comedian_agent
+///         .prompt("Entertain me!")
+///         .with_hook(&hook)
+///         .await?;
+///
+///     Ok(())
+/// }
+/// ```
 #[async_trait::async_trait]
 pub trait PromptHook<M: CompletionModel>: Send + Sync {
+    #[allow(unused_variables)]
     /// Called before the prompt is sent to the model
-    async fn on_completion_call(&self, prompt: &Message, history: &[Message]);
+    async fn on_completion_call(&self, prompt: &Message, history: &[Message]) {}
 
-    /// Called after the prompt is sent to the model and a response is received
+    #[allow(unused_variables)]
+    /// Called after the prompt is sent to the model and a response is received.
+    /// This function is for non-streamed responses. Please refer to `on_stream_completion_response_finish` for streamed responses.
     async fn on_completion_response(
         &self,
         prompt: &Message,
         response: &crate::completion::CompletionResponse<M::Response>,
-    );
+    ) {
+    }
 
-    /// Called before a tool is invoked
-    async fn on_tool_call(&self, tool_name: &str, args: &str);
+    #[allow(unused_variables)]
+    /// Called after the model provider has finished streaming a text response from their completion API to the client.
+    async fn on_stream_completion_response_finish(
+        &self,
+        prompt: &Message,
+        response: &<M as CompletionModel>::StreamingResponse,
+    ) {
+    }
 
-    /// Called after a tool is invoked
-    async fn on_tool_result(&self, tool_name: &str, args: &str, result: &str);
+    #[allow(unused_variables)]
+    /// Called before a tool is invoked.
+    async fn on_tool_call(&self, tool_name: &str, args: &str) {}
+
+    #[allow(unused_variables)]
+    /// Called after a tool is invoked (and a result has been returned).
+    async fn on_tool_result(&self, tool_name: &str, args: &str, result: &str) {}
 }
 
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`

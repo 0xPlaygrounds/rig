@@ -9323,7 +9323,7 @@ dependencies = [
  "aws-smithy-types",
  "base64 0.22.1",
  "reqwest 0.12.20",
- "rig-core",
+ "rig-core 0.17.1",
  "rig-derive",
  "schemars 0.8.22",
  "serde",
@@ -9375,6 +9375,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-core"
+version = "0.17.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e57d16b6bc8ed1a4d7cea51782f1c6320e0a98b01a8de719540251a81b027ffb"
+dependencies = [
+ "as-any",
+ "async-stream",
+ "base64 0.22.1",
+ "bytes",
+ "futures",
+ "glob",
+ "mime_guess",
+ "ordered-float",
+ "reqwest 0.12.20",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tracing",
+ "url",
+ "worker",
+]
+
+[[package]]
 name = "rig-derive"
 version = "0.1.4"
 dependencies = [
@@ -9383,7 +9407,7 @@ dependencies = [
  "indoc",
  "proc-macro2",
  "quote",
- "rig-core",
+ "rig-core 0.17.1",
  "serde",
  "serde_json",
  "syn 2.0.104",
@@ -9399,7 +9423,7 @@ dependencies = [
  "async-stream",
  "ethers",
  "reqwest 0.12.20",
- "rig-core",
+ "rig-core 0.17.1",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -9414,7 +9438,7 @@ version = "0.2.6"
 dependencies = [
  "anyhow",
  "fastembed",
- "rig-core",
+ "rig-core 0.17.1",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -9432,7 +9456,7 @@ dependencies = [
  "futures",
  "httpmock",
  "lancedb",
- "rig-core",
+ "rig-core 0.17.1",
  "serde",
  "serde_json",
  "tokio",
@@ -9444,7 +9468,7 @@ version = "0.1.6"
 dependencies = [
  "anyhow",
  "reqwest 0.12.20",
- "rig-core",
+ "rig-core 0.17.1",
  "serde",
  "serde_json",
  "tokio",
@@ -9460,7 +9484,7 @@ dependencies = [
  "futures",
  "httpmock",
  "mongodb",
- "rig-core",
+ "rig-core 0.17.1",
  "serde",
  "serde_json",
  "testcontainers",
@@ -9477,7 +9501,7 @@ dependencies = [
  "futures",
  "httpmock",
  "neo4rs",
- "rig-core",
+ "rig-core 0.17.1",
  "serde",
  "serde_json",
  "term_size",
@@ -9497,7 +9521,7 @@ dependencies = [
  "httpmock",
  "log",
  "pgvector",
- "rig-core",
+ "rig-core 0.17.1",
  "serde",
  "serde_json",
  "sqlx",
@@ -9516,7 +9540,7 @@ dependencies = [
  "anyhow",
  "httpmock",
  "qdrant-client",
- "rig-core",
+ "rig-core 0.17.1",
  "serde",
  "serde_json",
  "testcontainers",
@@ -9532,7 +9556,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-s3vectors",
  "aws-smithy-types",
- "rig-core",
+ "rig-core 0.17.1",
  "serde",
  "serde_json",
  "tokio",
@@ -9549,7 +9573,7 @@ dependencies = [
  "chrono",
  "futures",
  "httpmock",
- "rig-core",
+ "rig-core 0.17.1",
  "scylla",
  "serde",
  "serde_json",
@@ -9567,7 +9591,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "httpmock",
- "rig-core",
+ "rig-core 0.17.1",
  "rusqlite",
  "serde",
  "serde_json",
@@ -9584,7 +9608,7 @@ name = "rig-surrealdb"
 version = "0.1.12"
 dependencies = [
  "anyhow",
- "rig-core",
+ "rig-core 0.17.1",
  "serde",
  "serde_json",
  "surrealdb",
@@ -9603,7 +9627,7 @@ dependencies = [
  "bytes",
  "console_error_panic_hook",
  "futures",
- "rig-core",
+ "rig-core 0.17.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "send_wrapper 0.6.0",
  "serde",
  "serde-wasm-bindgen",

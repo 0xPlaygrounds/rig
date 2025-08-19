@@ -109,11 +109,12 @@
 
 mod builder;
 mod completion;
-mod prompt_request;
+pub(crate) mod prompt_request;
 mod tool;
 
 pub use builder::AgentBuilder;
 pub use completion::Agent;
 #[cfg(feature = "hooks")]
 pub use prompt_request::PromptHook;
+pub use prompt_request::streaming::{StreamingPromptRequest, stream_to_stdout};
 pub use prompt_request::{PromptRequest, PromptResponse};

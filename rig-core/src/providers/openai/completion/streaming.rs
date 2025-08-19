@@ -1,4 +1,4 @@
-use crate::completion::{CompletionError, CompletionRequest};
+use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::json_utils;
 use crate::json_utils::merge;
 use crate::providers::openai::completion::{CompletionModel, Usage};
@@ -52,6 +52,16 @@ struct StreamingCompletionChunk {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage: Usage,
+}
+
+impl GetTokenUsage for StreamingCompletionResponse {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+        usage.input_tokens = self.usage.prompt_tokens as u64;
+        usage.output_tokens = self.usage.total_tokens as u64 - self.usage.prompt_tokens as u64;
+        usage.total_tokens = self.usage.total_tokens as u64;
+        Some(usage)
+    }
 }
 
 impl CompletionModel {

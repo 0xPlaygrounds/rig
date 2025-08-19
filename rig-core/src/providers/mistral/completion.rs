@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use std::{convert::Infallible, str::FromStr};
 
 use super::client::{Client, Usage};
+use crate::completion::GetTokenUsage;
 use crate::streaming::{RawStreamingChoice, StreamingCompletionResponse};
 use crate::{
     OneOrMany,
@@ -333,6 +334,19 @@ pub struct CompletionResponse {
     pub system_fingerprint: Option<String>,
     pub choices: Vec<Choice>,
     pub usage: Option<Usage>,
+}
+
+impl GetTokenUsage for CompletionResponse {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let api_usage = self.usage.clone()?;
+
+        let mut usage = crate::completion::Usage::new();
+        usage.input_tokens = api_usage.prompt_tokens as u64;
+        usage.output_tokens = api_usage.completion_tokens as u64;
+        usage.total_tokens = api_usage.total_tokens as u64;
+
+        Some(usage)
+    }
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {

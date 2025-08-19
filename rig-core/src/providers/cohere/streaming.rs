@@ -1,4 +1,4 @@
-use crate::completion::{CompletionError, CompletionRequest};
+use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::Usage;
 use crate::streaming::RawStreamingChoice;
@@ -58,6 +58,30 @@ struct MessageEndDelta {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage: Option<Usage>,
+}
+
+impl GetTokenUsage for StreamingCompletionResponse {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let tokens = self
+            .usage
+            .clone()
+            .and_then(|response| response.tokens)
+            .map(|tokens| {
+                (
+                    tokens.input_tokens.map(|x| x as u64),
+                    tokens.output_tokens.map(|y| y as u64),
+                )
+            });
+        let Some((Some(input), Some(output))) = tokens else {
+            return None;
+        };
+        let mut usage = crate::completion::Usage::new();
+        usage.input_tokens = input;
+        usage.output_tokens = output;
+        usage.total_tokens = input + output;
+
+        Some(usage)
+    }
 }
 
 impl CompletionModel {
