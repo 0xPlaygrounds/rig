@@ -1,12 +1,13 @@
 use anyhow::Result;
+use rig::prelude::*;
 use rig::{
+    Embed,
     completion::Prompt,
     embeddings::EmbeddingsBuilder,
     message::Message,
-    providers::anthropic::{ClientBuilder, CLAUDE_3_7_SONNET},
+    providers::anthropic::{CLAUDE_3_7_SONNET, ClientBuilder},
     think_tool::ThinkTool,
     vector_store::in_memory_store::InMemoryVectorStore,
-    Embed,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -32,7 +33,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let anthropic_api_key = env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
     let anthropic_client = ClientBuilder::new(&anthropic_api_key)
         .anthropic_beta("token-efficient-tools-2025-02-19") // Enable efficient tool calling
-        .build();
+        .build()?;
 
     // Create the embedding model for our vector store
     // We'll use OpenAI's embedding model for this example
@@ -90,9 +91,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let research_agent = anthropic_client
         .agent(CLAUDE_3_7_SONNET)
         .preamble(
-            "You are a specialized research agent focused on environmental science and sustainability. 
-            Your role is to provide detailed, accurate information about climate change, renewable energy, 
-            sustainable practices, and related topics. Always cite your sources when possible and 
+            "You are a specialized research agent focused on environmental science and sustainability.
+            Your role is to provide detailed, accurate information about climate change, renewable energy,
+            sustainable practices, and related topics. Always cite your sources when possible and
             maintain scientific accuracy in your responses."
         )
         .name("research_agent")
@@ -142,7 +143,7 @@ async fn main() -> Result<(), anyhow::Error> {
             3. Use the data analysis agent to interpret any data or statistics
             4. Use the think tool to reason through the problem and plan your approach
             5. Use the recommendation agent to generate practical solutions
-            
+
             Combine these tools effectively to provide comprehensive, accurate, and actionable advice on
             environmental sustainability issues."
         )
@@ -151,6 +152,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .tool(research_agent)
         .tool(analysis_agent)
         .tool(recommendation_agent)
+        .name("orchestrator_agent")
         .build();
 
     println!("=== Complex Agentic Loop with Claude ===");
@@ -190,7 +192,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 i,
                 serde_json::to_string_pretty(content).expect("Failed to serialize user message")
             ),
-            Message::Assistant { content } => println!(
+            Message::Assistant { content, .. } => println!(
                 "Assistant [{}]: {}",
                 i,
                 serde_json::to_string_pretty(content)

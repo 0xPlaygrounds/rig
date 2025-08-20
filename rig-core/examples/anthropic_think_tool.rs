@@ -1,4 +1,5 @@
 use anyhow::Result;
+use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers;
 use rig::think_tool::ThinkTool;
@@ -10,8 +11,9 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create agent with the Think tool
     let agent = providers::anthropic::Client::from_env()
         .agent(providers::anthropic::CLAUDE_3_7_SONNET)
+        .name("Anthropic Thinker")
         .preamble(
-            "You are a helpful assistant that can solve complex problems. 
+            "You are a helpful assistant that can solve complex problems.
             Use the 'think' tool to reason through complex problems step by step.
             When faced with a multi-step problem or when analyzing tool results,
             use the 'think' tool to organize your thoughts before responding.",

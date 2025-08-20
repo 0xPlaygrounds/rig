@@ -41,8 +41,6 @@ where
     name: Option<String>,
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     model: M,
-    /// Agent name (used in logging and agent-as-tool)
-    name: Option<String>,
     /// System prompt
     preamble: Option<String>,
     /// Context documents always available to the agent

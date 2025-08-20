@@ -1,15 +1,15 @@
 use futures::future::BoxFuture;
 pub use request::VectorSearchRequest;
 use reqwest::StatusCode;
-use serde::Deserialize;
-use serde::Serialize;
-use serde_json::Value;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
-use crate::embeddings::EmbeddingError;
-use crate::{Embed, OneOrMany, embeddings::Embedding};
-use std::future::Future;
-
-use crate::{completion::ToolDefinition, tool::Tool};
+use crate::{
+    Embed, OneOrMany,
+    completion::ToolDefinition,
+    embeddings::{Embedding, EmbeddingError},
+    tool::Tool,
+};
 
 pub mod in_memory_store;
 pub mod request;
@@ -123,12 +123,6 @@ fn prune_document(document: serde_json::Value) -> Option<serde_json::Value> {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct VectorStoreArgs {
-    pub query: String,
-    pub top_n: Option<usize>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
 pub struct VectorStoreOutput {
     pub score: f64,
     pub id: String,
@@ -139,7 +133,7 @@ impl<T: VectorStoreIndex> Tool for T {
     const NAME: &'static str = "search_vector_store";
 
     type Error = VectorStoreError;
-    type Args = VectorStoreArgs;
+    type Args = VectorSearchRequest;
     type Output = Vec<VectorStoreOutput>;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
@@ -155,35 +149,31 @@ impl<T: VectorStoreIndex> Tool for T {
                         "type": "string",
                         "description": "The query string to search for relevant documents in the vector store."
                     },
-                    "top_n": {
+                    "samples": {
                         "type": "integer",
-                        "description": "The number of top matching documents to retrieve.",
+                        "description": "The maxinum number of samples / documents to retrieve.",
                         "default": 5,
                         "minimum": 1
+                    },
+                    "threshold": {
+                        "type": "number",
+                        "description": "Similarity search threshold. If present, any result with a distance less than this may be omitted from the final result."
                     }
                 },
-                "required": ["query"]
+                "required": ["query", "samples"]
             }),
         }
     }
 
-    fn call(
-        &self,
-        args: Self::Args,
-    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send + Sync {
-        let query = args.query.clone();
-        let n = args.top_n.unwrap_or(5);
-
-        async move {
-            let results = futures::executor::block_on(self.top_n(&query, n))?;
-            Ok(results
-                .into_iter()
-                .map(|(score, id, document)| VectorStoreOutput {
-                    score,
-                    id,
-                    document,
-                })
-                .collect())
-        }
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let results = self.top_n(args).await?;
+        Ok(results
+            .into_iter()
+            .map(|(score, id, document)| VectorStoreOutput {
+                score,
+                id,
+                document,
+            })
+            .collect())
     }
 }

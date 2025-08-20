@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rig::completion::Prompt;
 use rig::message::Message;
+use rig::prelude::*;
 use rig::think_tool::ThinkTool;
 use rig::{completion::ToolDefinition, providers, tool::Tool};
 use serde::{Deserialize, Serialize};
@@ -192,7 +193,7 @@ impl Tool for DatabaseLookup {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "database_lookup".to_string(),
-            description: "Look up information in a database. Only can use `customer_policy`, 
+            description: "Look up information in a database. Only can use `customer_policy`,
             `shipping_rates` and `product_inventory` as valid queries."
                 .to_string(),
             parameters: json!({
@@ -233,27 +234,28 @@ async fn main() -> Result<(), anyhow::Error> {
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
     let client = providers::anthropic::ClientBuilder::new(&api_key)
         .anthropic_beta("token-efficient-tools-2025-02-19")
-        .build();
+        .build()?;
 
     // Create agent with the Think tool and other tools
     let agent = client
         .agent(providers::anthropic::CLAUDE_3_7_SONNET)
+        .name("Customer Service Agent")
         .preamble(
-            "You are a customer service agent for an online store. 
+            "You are a customer service agent for an online store.
             You have access to several tools:
-            
+
             1. The 'think' tool allows you to reason through complex problems step by step.
                Use it when you need to analyze information or plan your response.
-               
+
             2. The 'calculator' tool can perform basic math operations.
-            
+
             3. The 'database_lookup' tool can retrieve information about store policies,
                shipping rates, and product inventory.
-            
+
             When handling customer inquiries, use the 'think' tool to analyze the situation
             before responding or using other tools. This will help you provide accurate
             and helpful responses.
-            
+
             IMPORTANT: Remember you have `parallel_tool_calling` enabled which means you can call
              multiple tools at once.",
         )
