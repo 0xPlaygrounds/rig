@@ -11,6 +11,7 @@
 use crate::{
     OneOrMany,
     agent::AgentBuilder,
+    client::{VerifyClient, VerifyError},
     completion::{self, CompletionError, MessageError, message},
     extractor::ExtractorBuilder,
     impl_conversion_traits, json_utils,
@@ -151,6 +152,13 @@ impl CompletionClient for Client {
 
     fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
+    }
+}
+
+impl VerifyClient for Client {
+    async fn verify(&self) -> Result<(), VerifyError> {
+        // No API endpoint to verify the API key
+        Ok(())
     }
 }
 

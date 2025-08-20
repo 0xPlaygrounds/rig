@@ -38,7 +38,10 @@
 //! let agent = client.agent("llama3.2");
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
-use crate::client::{ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient};
+use crate::client::{
+    ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient, VerifyClient,
+    VerifyError,
+};
 use crate::completion::{GetTokenUsage, Usage};
 use crate::json_utils::merge_inplace;
 use crate::streaming::RawStreamingChoice;
@@ -135,9 +138,14 @@ impl Client {
         Self::builder().build().expect("Ollama client should build")
     }
 
-    pub fn post(&self, path: &str) -> Result<reqwest::RequestBuilder, url::ParseError> {
+    pub(crate) fn post(&self, path: &str) -> Result<reqwest::RequestBuilder, url::ParseError> {
         let url = self.base_url.join(path)?;
         Ok(self.http_client.post(url))
+    }
+
+    pub(crate) fn get(&self, path: &str) -> Result<reqwest::RequestBuilder, url::ParseError> {
+        let url = self.base_url.join(path)?;
+        Ok(self.http_client.get(url))
     }
 }
 
@@ -177,6 +185,23 @@ impl EmbeddingsClient for Client {
     }
     fn embeddings<D: Embed>(&self, model: &str) -> EmbeddingsBuilder<EmbeddingModel, D> {
         EmbeddingsBuilder::new(self.embedding_model(model))
+    }
+}
+
+impl VerifyClient for Client {
+    async fn verify(&self) -> Result<(), VerifyError> {
+        let response = self
+            .get("api/tags")
+            .expect("Failed to build request")
+            .send()
+            .await?;
+        match response.status() {
+            reqwest::StatusCode::OK => Ok(()),
+            _ => {
+                response.error_for_status()?;
+                Ok(())
+            }
+        }
     }
 }
 

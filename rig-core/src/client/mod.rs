@@ -8,6 +8,7 @@ pub mod completion;
 pub mod embeddings;
 pub mod image_generation;
 pub mod transcription;
+pub mod verify;
 
 #[cfg(feature = "derive")]
 pub use rig_derive::ProviderClient;
@@ -155,6 +156,13 @@ pub trait AsImageGeneration {
     }
 }
 
+/// Attempt to convert a ProviderClient to a VerifyClient
+pub trait AsVerify {
+    fn as_verify(&self) -> Option<Box<dyn VerifyClientDyn>> {
+        None
+    }
+}
+
 #[cfg(not(feature = "audio"))]
 impl<T: ProviderClient> AsAudioGeneration for T {}
 
@@ -229,6 +237,7 @@ use crate::client::embeddings::EmbeddingsClientDyn;
 #[cfg(feature = "image")]
 use crate::client::image_generation::ImageGenerationClientDyn;
 use crate::client::transcription::TranscriptionClientDyn;
+use crate::client::verify::VerifyClientDyn;
 
 #[cfg(feature = "audio")]
 pub use crate::client::audio_generation::AudioGenerationClient;
@@ -237,6 +246,7 @@ pub use crate::client::embeddings::EmbeddingsClient;
 #[cfg(feature = "image")]
 pub use crate::client::image_generation::ImageGenerationClient;
 pub use crate::client::transcription::TranscriptionClient;
+pub use crate::client::verify::{VerifyClient, VerifyError};
 
 #[cfg(test)]
 mod tests {
