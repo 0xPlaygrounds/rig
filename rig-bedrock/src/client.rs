@@ -103,6 +103,14 @@ impl ImageGenerationClient for Client {
         ImageGenerationModel::new(self.clone(), model)
     }
 }
+
+impl VerifyClient for Client {
+    async fn verify(&self) -> Result<(), VerifyError> {
+        // No API endpoint to verify the API key
+        Ok(())
+    }
+}
+
 impl_conversion_traits!(
     AsTranscription,
     AsAudioGeneration for Client
