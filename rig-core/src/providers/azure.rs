@@ -852,6 +852,7 @@ mod audio_generation {
 }
 
 impl VerifyClient for Client {
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         // There is currently no way to verify the Azure OpenAI API key or token without
         // consuming tokens

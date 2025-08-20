@@ -162,6 +162,7 @@ impl CompletionClient for Client {
 }
 
 impl VerifyClient for Client {
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         let response = self.get("/users/me").send().await?;
         match response.status() {

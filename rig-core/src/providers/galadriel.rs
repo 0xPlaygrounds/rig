@@ -181,6 +181,7 @@ impl CompletionClient for Client {
 }
 
 impl VerifyClient for Client {
+    #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         // Could not find an API endpoint to verify the API key
         Ok(())
