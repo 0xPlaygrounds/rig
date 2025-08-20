@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.2](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.18.1...rig-core-v0.18.2) - 2025-08-20
+
+### Fixed
+
+- docs are broken (...again) ([#722](https://github.com/0xPlaygrounds/rig/pull/722))
+
 ## [0.18.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.18.0...rig-core-v0.18.1) - 2025-08-19
 
 ### Fixed
