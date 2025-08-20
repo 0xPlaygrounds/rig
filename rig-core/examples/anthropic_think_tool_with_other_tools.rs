@@ -63,7 +63,7 @@ impl Tool for Calculator {
             for c in expression.chars() {
                 if c.is_whitespace() {
                     continue;
-                } else if c.is_digit(10) || c == '.' {
+                } else if c.is_ascii_digit() || c == '.' {
                     num.push(c);
                 } else {
                     if !num.is_empty() {

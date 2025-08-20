@@ -72,9 +72,11 @@ mod tests {
         let definition = tool.definition("".to_string()).await;
 
         assert_eq!(definition.name, "think");
-        assert!(definition
-            .description
-            .contains("Use the tool to think about something"));
+        assert!(
+            definition
+                .description
+                .contains("Use the tool to think about something")
+        );
     }
 
     #[tokio::test]
