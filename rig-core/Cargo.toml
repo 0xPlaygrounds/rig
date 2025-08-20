@@ -7,10 +7,6 @@ readme = "README.md"
 description = "An opinionated library for building LLM powered applications."
 repository = "https://github.com/0xPlaygrounds/rig"
 
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
-
 [lib]
 name = "rig"
 path = "src/lib.rs"
