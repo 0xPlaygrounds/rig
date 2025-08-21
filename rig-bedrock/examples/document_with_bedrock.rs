@@ -1,17 +1,15 @@
-use reqwest::Client;
-
 use rig::{
     completion::{Prompt, message::Document},
     message::{ContentFormat, DocumentMediaType},
 };
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::client::CompletionClient;
-use rig_bedrock::{client::ClientBuilder, completion::AMAZON_NOVA_LITE};
+use rig::client::{CompletionClient, ProviderClient};
+use rig_bedrock::client::Client;
+use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use tracing::info;
 
-const DOCUMENT_URL: &str =
-    "https://www.inf.ed.ac.uk/teaching/courses/ai2/module4/small_slides/small-agents.pdf";
+const DOCUMENT_URL: &str = "https://bitcoin.org/bitcoin.pdf";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -22,14 +20,14 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let client = ClientBuilder::new().build().await;
+    let client = Client::from_env();
     let agent = client
         .agent(AMAZON_NOVA_LITE)
-        .preamble("Describe this document but respond with json format only")
+        .preamble("Describe this document")
         .temperature(0.5)
         .build();
 
-    let reqwest_client = Client::new();
+    let reqwest_client = reqwest::Client::new();
     let response = reqwest_client.get(DOCUMENT_URL).send().await?;
 
     info!("Status: {}", response.status().as_str());
