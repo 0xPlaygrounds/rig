@@ -38,6 +38,8 @@
     "@qdrant/js-client-rest": "^1.15"
   },
   "dependencies": {
+    "@types/sqlite3": "^5.1.0",
+    "sqlite": "^5.1.1",
     "tslib": "^2.8.1",
     "typescript": "^5.8.3"
   },
