@@ -1,3 +1,4 @@
+use rig::client::CompletionClient;
 use rig::{
     completion::Prompt,
     providers::{self, perplexity::SONAR},

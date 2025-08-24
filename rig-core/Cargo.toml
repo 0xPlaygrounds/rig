@@ -1,15 +1,11 @@
 [package]
 name = "rig-core"
-version = "0.18.1"
+version = "0.18.2"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "An opinionated library for building LLM powered applications."
 repository = "https://github.com/0xPlaygrounds/rig"
-
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
 
 [lib]
 name = "rig"
