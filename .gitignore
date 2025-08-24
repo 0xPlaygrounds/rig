@@ -12,4 +12,3 @@ target/
 # nodejs stuff
 node_modules/
 dist/
-bun-lock
