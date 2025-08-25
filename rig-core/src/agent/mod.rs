@@ -116,5 +116,7 @@ pub use completion::Agent;
 #[cfg_attr(docsrs, doc(cfg(feature = "hooks")))]
 #[cfg(feature = "hooks")]
 pub use prompt_request::PromptHook;
-pub use prompt_request::streaming::{StreamingPromptRequest, stream_to_stdout};
+pub use prompt_request::streaming::{
+    FinalResponse, MultiTurnStreamItem, StreamingPromptRequest, stream_to_stdout,
+};
 pub use prompt_request::{PromptRequest, PromptResponse};
