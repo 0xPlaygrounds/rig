@@ -14,3 +14,5 @@ pub use crate::client::image_generation::ImageGenerationClient;
 
 #[cfg(feature = "audio")]
 pub use crate::client::audio_generation::AudioGenerationClient;
+
+pub use crate::client::{VerifyClient, VerifyError};

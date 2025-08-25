@@ -1,4 +1,6 @@
-use crate::client::{ClientBuilderError, EmbeddingsClient, ProviderClient};
+use crate::client::{
+    ClientBuilderError, EmbeddingsClient, ProviderClient, VerifyClient, VerifyError,
+};
 use crate::embeddings::EmbeddingError;
 use crate::{embeddings, impl_conversion_traits};
 use serde::Deserialize;
@@ -94,6 +96,14 @@ impl Client {
     pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.post(url).bearer_auth(&self.api_key)
+    }
+}
+
+impl VerifyClient for Client {
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn verify(&self) -> Result<(), VerifyError> {
+        // No API endpoint to verify the API key
+        Ok(())
     }
 }
 

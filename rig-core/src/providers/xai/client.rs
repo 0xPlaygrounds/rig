@@ -1,5 +1,8 @@
 use super::completion::CompletionModel;
-use crate::client::{ClientBuilderError, CompletionClient, ProviderClient, impl_conversion_traits};
+use crate::client::{
+    ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError,
+    impl_conversion_traits,
+};
 
 // ================================================================
 // xAI Client
@@ -106,6 +109,16 @@ impl Client {
             .bearer_auth(&self.api_key)
             .headers(self.default_headers.clone())
     }
+
+    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+
+        tracing::debug!("GET {}", url);
+        self.http_client
+            .get(url)
+            .bearer_auth(&self.api_key)
+            .headers(self.default_headers.clone())
+    }
 }
 
 impl ProviderClient for Client {
@@ -130,6 +143,26 @@ impl CompletionClient for Client {
     /// Create a completion model with the given name.
     fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
+    }
+}
+
+impl VerifyClient for Client {
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn verify(&self) -> Result<(), VerifyError> {
+        let response = self.get("/v1/api-key").send().await?;
+        match response.status() {
+            reqwest::StatusCode::OK => Ok(()),
+            reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
+                Err(VerifyError::InvalidAuthentication)
+            }
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
+                Err(VerifyError::ProviderError(response.text().await?))
+            }
+            _ => {
+                response.error_for_status()?;
+                Ok(())
+            }
+        }
     }
 }
 

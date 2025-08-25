@@ -7,7 +7,9 @@
 //! let client = mira::Client::new("YOUR_API_KEY");
 //!
 //! ```
-use crate::client::{ClientBuilderError, CompletionClient, ProviderClient};
+use crate::client::{
+    ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError,
+};
 use crate::json_utils::merge;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
@@ -206,15 +208,7 @@ impl Client {
 
     /// List available models
     pub async fn list_models(&self) -> Result<Vec<String>, MiraError> {
-        let url = format!("{}/v1/models", self.base_url);
-
-        let response = self
-            .http_client
-            .get(&url)
-            .bearer_auth(&self.api_key)
-            .headers(self.headers.clone())
-            .send()
-            .await?;
+        let response = self.get("/v1/models").send().await?;
 
         let status = response.status();
 
@@ -233,6 +227,22 @@ impl Client {
         })?;
 
         Ok(models.data.into_iter().map(|model| model.id).collect())
+    }
+
+    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        self.http_client
+            .post(url)
+            .bearer_auth(&self.api_key)
+            .headers(self.headers.clone())
+    }
+
+    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        self.http_client
+            .get(url)
+            .bearer_auth(&self.api_key)
+            .headers(self.headers.clone())
     }
 }
 
@@ -257,6 +267,24 @@ impl CompletionClient for Client {
     /// Create a completion model with the given name.
     fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.to_owned(), model)
+    }
+}
+
+impl VerifyClient for Client {
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn verify(&self) -> Result<(), VerifyError> {
+        let response = self.get("/user-credits").send().await?;
+        match response.status() {
+            reqwest::StatusCode::OK => Ok(()),
+            reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
+                Err(VerifyError::ProviderError(response.text().await?))
+            }
+            _ => {
+                response.error_for_status()?;
+                Ok(())
+            }
+        }
     }
 }
 
@@ -380,10 +408,7 @@ impl completion::CompletionModel for CompletionModel {
 
         let response = self
             .client
-            .http_client
-            .post(format!("{}/v1/chat/completions", self.client.base_url))
-            .bearer_auth(&self.client.api_key)
-            .headers(self.client.headers.clone())
+            .post("/v1/chat/completions")
             .json(&mira_request)
             .send()
             .await
@@ -414,12 +439,7 @@ impl completion::CompletionModel for CompletionModel {
 
         request = merge(request, json!({"stream": true}));
 
-        let builder = self
-            .client
-            .http_client
-            .post(format!("{}/v1/chat/completions", self.client.base_url))
-            .headers(self.client.headers.clone())
-            .json(&request);
+        let builder = self.client.post("/v1/chat/completions").json(&request);
 
         send_compatible_streaming_request(builder).await
     }

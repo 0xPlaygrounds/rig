@@ -1,4 +1,8 @@
-use crate::{Embed, embeddings::EmbeddingsBuilder};
+use crate::{
+    Embed,
+    client::{VerifyClient, VerifyError},
+    embeddings::EmbeddingsBuilder,
+};
 
 use super::{CompletionModel, EmbeddingModel};
 use crate::client::{
@@ -110,6 +114,11 @@ impl Client {
         self.http_client.post(url).bearer_auth(&self.api_key)
     }
 
+    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        self.http_client.get(url).bearer_auth(&self.api_key)
+    }
+
     pub fn embeddings<D: Embed>(
         &self,
         model: &str,
@@ -181,6 +190,24 @@ impl EmbeddingsClient for Client {
 
     fn embeddings<D: Embed>(&self, model: &str) -> EmbeddingsBuilder<Self::EmbeddingModel, D> {
         self.embeddings(model, "search_document")
+    }
+}
+
+impl VerifyClient for Client {
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn verify(&self) -> Result<(), VerifyError> {
+        let response = self.get("/v1/models").send().await?;
+        match response.status() {
+            reqwest::StatusCode::OK => Ok(()),
+            reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
+                Err(VerifyError::ProviderError(response.text().await?))
+            }
+            _ => {
+                response.error_for_status()?;
+                Ok(())
+            }
+        }
     }
 }
 

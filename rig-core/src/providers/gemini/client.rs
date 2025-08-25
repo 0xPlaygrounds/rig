@@ -3,7 +3,7 @@ use super::{
 };
 use crate::client::{
     ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient,
-    impl_conversion_traits,
+    VerifyClient, VerifyError, impl_conversion_traits,
 };
 use crate::{
     Embed,
@@ -115,6 +115,16 @@ impl Client {
             .headers(self.default_headers.clone())
     }
 
+    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
+        // API key gets inserted as query param - no need to add bearer auth or headers
+        let url = format!("{}/{}?key={}", self.base_url, path, self.api_key).replace("//", "/");
+
+        tracing::debug!("GET {}/{}?key={}", self.base_url, path, "****");
+        self.http_client
+            .get(url)
+            .headers(self.default_headers.clone())
+    }
+
     pub(crate) fn post_sse(&self, path: &str) -> reqwest::RequestBuilder {
         let url =
             format!("{}/{}?alt=sse&key={}", self.base_url, path, self.api_key).replace("//", "/");
@@ -220,6 +230,25 @@ impl TranscriptionClient for Client {
     /// [Gemini API Reference](https://ai.google.dev/api/generate-content#generationconfig)
     fn transcription_model(&self, model: &str) -> TranscriptionModel {
         TranscriptionModel::new(self.clone(), model)
+    }
+}
+
+impl VerifyClient for Client {
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn verify(&self) -> Result<(), VerifyError> {
+        let response = self.get("/v1beta/models").send().await?;
+        match response.status() {
+            reqwest::StatusCode::OK => Ok(()),
+            reqwest::StatusCode::FORBIDDEN => Err(VerifyError::InvalidAuthentication),
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR
+            | reqwest::StatusCode::SERVICE_UNAVAILABLE => {
+                Err(VerifyError::ProviderError(response.text().await?))
+            }
+            _ => {
+                response.error_for_status()?;
+                Ok(())
+            }
+        }
     }
 }
 
