@@ -16,8 +16,13 @@ use crate::{
     tool::ToolSetError,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
 type StreamingResult<'a> =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send + 'a>>;
+
+#[cfg(target_arch = "wasm32")]
+type StreamingResult<'a> =
+    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + 'a>>;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
