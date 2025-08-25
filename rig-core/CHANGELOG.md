@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.18.2...rig-core-v0.19.0) - 2025-08-25
+
+### Added
+
+- VerifyClient trait ([#724](https://github.com/0xPlaygrounds/rig/pull/724))
+- *(rig-898)* make MultiTurnStreamItem pub ([#735](https://github.com/0xPlaygrounds/rig/pull/735))
+
+### Other
+
+- Remove duplicate methods in perplexity ([#725](https://github.com/0xPlaygrounds/rig/pull/725))
+
 ## [0.18.2](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.18.1...rig-core-v0.18.2) - 2025-08-20
 
 ### Fixed

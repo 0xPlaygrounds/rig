@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.21](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.20...rig-lancedb-v0.2.21) - 2025-08-25
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.2.20](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.19...rig-lancedb-v0.2.20) - 2025-08-20
 
 ### Other
