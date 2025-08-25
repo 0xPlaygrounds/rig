@@ -131,6 +131,19 @@ pub struct Text {
     pub text: String,
 }
 
+impl Text {
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+}
+
+impl std::fmt::Display for Text {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { text } = self;
+        write!(f, "{text}")
+    }
+}
+
 /// Image content containing image data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Image {
