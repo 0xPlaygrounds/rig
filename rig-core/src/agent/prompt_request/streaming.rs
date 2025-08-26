@@ -340,7 +340,7 @@ where
     P: PromptHook<M> + 'static,
 {
     type Output = StreamingResult; // what `.await` returns
-    type IntoFuture = Pin<Box<dyn futures::Future<Output = Self::Output>>>;
+    type IntoFuture = Pin<Box<dyn futures::Future<Output = Self::Output> + Send>>;
 
     fn into_future(self) -> Self::IntoFuture {
         // Wrap send() in a future, because send() returns a stream immediately
