@@ -10,7 +10,7 @@ use crate::{
     vector_store::{VectorStoreError, request::VectorSearchRequest},
 };
 use futures::{StreamExt, TryStreamExt, stream};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
@@ -34,12 +34,13 @@ const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 ///     .await
 ///     .expect("Failed to prompt the agent");
 /// ```
+#[derive(Clone)]
 #[non_exhaustive]
 pub struct Agent<M: CompletionModel> {
     /// Name of the agent used for logging and debugging
     pub name: Option<String>,
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
-    pub model: M,
+    pub model: Arc<M>,
     /// System prompt
     pub preamble: String,
     /// Context documents always available to the agent
@@ -53,11 +54,11 @@ pub struct Agent<M: CompletionModel> {
     /// Additional parameters to be passed to the model
     pub additional_params: Option<serde_json::Value>,
     /// List of vector store, with the sample number
-    pub dynamic_context: Vec<(usize, Box<dyn crate::vector_store::VectorStoreIndexDyn>)>,
+    pub dynamic_context: Arc<Vec<(usize, Box<dyn crate::vector_store::VectorStoreIndexDyn>)>>,
     /// Dynamic tools
-    pub dynamic_tools: Vec<(usize, Box<dyn crate::vector_store::VectorStoreIndexDyn>)>,
+    pub dynamic_tools: Arc<Vec<(usize, Box<dyn crate::vector_store::VectorStoreIndexDyn>)>>,
     /// Actual tool implementations
-    pub tools: ToolSet,
+    pub tools: Arc<ToolSet>,
 }
 
 impl<M: CompletionModel> Completion<M> for Agent<M> {
@@ -202,7 +203,7 @@ impl<M: CompletionModel> Prompt for Agent<M> {
     fn prompt(
         &self,
         prompt: impl Into<Message> + Send,
-    ) -> PromptRequest<'_, prompt_request::Standard, M> {
+    ) -> PromptRequest<'_, prompt_request::Standard, M, ()> {
         PromptRequest::new(self, prompt)
     }
 }
@@ -213,7 +214,7 @@ impl<M: CompletionModel> Prompt for &Agent<M> {
     fn prompt(
         &self,
         prompt: impl Into<Message> + Send,
-    ) -> PromptRequest<'_, prompt_request::Standard, M> {
+    ) -> PromptRequest<'_, prompt_request::Standard, M, ()> {
         PromptRequest::new(*self, prompt)
     }
 }
@@ -252,8 +253,9 @@ where
     M::StreamingResponse: GetTokenUsage,
 {
     #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
-    fn stream_prompt(&self, prompt: impl Into<Message> + Send) -> StreamingPromptRequest<'_, M> {
-        StreamingPromptRequest::new(self, prompt)
+    fn stream_prompt(&self, prompt: impl Into<Message> + Send) -> StreamingPromptRequest<M, ()> {
+        let arc = Arc::new(self.clone());
+        StreamingPromptRequest::new(arc, prompt)
     }
 }
 
@@ -266,8 +268,9 @@ where
         &self,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> StreamingPromptRequest<'_, M> {
-        StreamingPromptRequest::new(self, prompt).with_history(chat_history)
+    ) -> StreamingPromptRequest<M, ()> {
+        let arc = Arc::new(self.clone());
+        StreamingPromptRequest::new(arc, prompt).with_history(chat_history)
     }
 }
 

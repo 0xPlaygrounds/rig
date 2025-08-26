@@ -1,5 +1,6 @@
 use crate::{
     OneOrMany,
+    agent::prompt_request::PromptHook,
     completion::GetTokenUsage,
     message::{AssistantContent, ToolResultContent, UserContent},
     streaming::{StreamedAssistantContent, StreamingCompletion},
@@ -17,12 +18,11 @@ use crate::{
 };
 
 #[cfg(not(target_arch = "wasm32"))]
-type StreamingResult<'a> =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send + 'a>>;
+type StreamingResult =
+    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send>>;
 
 #[cfg(target_arch = "wasm32")]
-type StreamingResult<'a> =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + 'a>>;
+type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>>>>;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -88,9 +88,10 @@ pub enum StreamingError {
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxDepthError`] if the agent decides to call tools
 /// back to back.
-pub struct StreamingPromptRequest<'a, M>
+pub struct StreamingPromptRequest<M, P>
 where
     M: CompletionModel,
+    P: PromptHook<M> + 'static,
 {
     /// The prompt message to send to the model
     prompt: Message,
@@ -100,25 +101,24 @@ where
     /// Maximum depth for multi-turn conversations (0 means no multi-turn)
     max_depth: usize,
     /// The agent to use for execution
-    agent: &'a Agent<M>,
-    #[cfg(feature = "hooks")]
+    agent: Arc<Agent<M>>,
     /// Optional per-request hook for events
-    hook: Option<&'a dyn crate::agent::PromptHook<M>>,
+    hook: Option<P>,
 }
 
-impl<'a, M> StreamingPromptRequest<'a, M>
+impl<M, P> StreamingPromptRequest<M, P>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: Send + GetTokenUsage,
+    P: PromptHook<M>,
 {
     /// Create a new PromptRequest with the given prompt and model
-    pub fn new(agent: &'a Agent<M>, prompt: impl Into<Message>) -> Self {
+    pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> Self {
         Self {
             prompt: prompt.into(),
             chat_history: None,
             max_depth: 0,
             agent,
-            #[cfg(feature = "hooks")]
             hook: None,
         }
     }
@@ -137,27 +137,29 @@ where
     }
 
     /// Attach a per-request hook for tool call events
-    #[cfg(feature = "hooks")]
-    pub fn with_hook(
-        mut self,
-        hook: &'a dyn crate::agent::PromptHook<M>,
-    ) -> StreamingPromptRequest<'a, M> {
-        self.hook = Some(hook);
-        self
+    pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2>
+    where
+        P2: PromptHook<M>,
+    {
+        StreamingPromptRequest {
+            prompt: self.prompt,
+            chat_history: self.chat_history,
+            max_depth: self.max_depth,
+            agent: self.agent,
+            hook: Some(hook),
+        }
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
-    async fn send(self) -> StreamingResult<'a> {
+    async fn send(self) -> StreamingResult {
         let agent_name = self.agent.name_owned();
 
         #[tracing::instrument(skip_all, fields(agent_name = agent_name))]
-        fn inner<'a, M>(
-            req: StreamingPromptRequest<'a, M>,
-            agent_name: String,
-        ) -> StreamingResult<'a>
+        fn inner<M, P>(req: StreamingPromptRequest<M, P>, agent_name: String) -> StreamingResult
         where
             M: CompletionModel + 'static,
             <M as CompletionModel>::StreamingResponse: Send,
+            P: PromptHook<M> + 'static,
         {
             let prompt = req.prompt;
             let agent = req.agent;
@@ -199,8 +201,7 @@ where
                         );
                     }
 
-                    #[cfg(feature = "hooks")]
-                    if let Some(hook) = req.hook.as_ref() {
+                    if let Some(ref hook) = req.hook {
                         let reader = chat_history.read().await;
                         let prompt = reader.last().cloned().expect("there should always be at least one message in the chat history");
                         let chat_history_except_last = reader[..reader.len() - 1].to_vec();
@@ -233,15 +234,13 @@ where
                                 did_call_tool = false;
                             },
                             Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
-                                #[cfg(feature = "hooks")]
-                                if let Some(hook) = req.hook.as_ref() {
+                                if let Some(ref hook) = req.hook {
                                     hook.on_tool_call(&tool_call.function.name, &tool_call.function.arguments.to_string()).await;
                                 }
                                 let tool_result =
                                     agent.tools.call(&tool_call.function.name, tool_call.function.arguments.to_string()).await?;
 
-                                #[cfg(feature = "hooks")]
-                                if let Some(hook) = req.hook.as_ref() {
+                                if let Some(ref hook) = req.hook {
                                     hook.on_tool_result(&tool_call.function.name, &tool_call.function.arguments.to_string(), &tool_result.to_string())
                                         .await;
                                 }
@@ -260,8 +259,7 @@ where
                             },
                             Ok(StreamedAssistantContent::Final(final_resp)) => {
                                 if is_text_response {
-                                    #[cfg(feature = "hooks")]
-                                    if let Some(hook) = req.hook.as_ref() {
+                                    if let Some(ref hook) = req.hook {
                                         hook.on_stream_completion_response_finish(&prompt, &final_resp).await;
                                     }
                                     yield Ok(MultiTurnStreamItem::text("\n"));
@@ -335,13 +333,14 @@ where
     }
 }
 
-impl<'a, M> IntoFuture for StreamingPromptRequest<'a, M>
+impl<M, P> IntoFuture for StreamingPromptRequest<M, P>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: Send,
+    P: PromptHook<M> + 'static,
 {
-    type Output = StreamingResult<'a>; // what `.await` returns
-    type IntoFuture = Pin<Box<dyn futures::Future<Output = Self::Output> + 'a>>;
+    type Output = StreamingResult; // what `.await` returns
+    type IntoFuture = Pin<Box<dyn futures::Future<Output = Self::Output>>>;
 
     fn into_future(self) -> Self::IntoFuture {
         // Wrap send() in a future, because send() returns a stream immediately
@@ -351,7 +350,7 @@ where
 
 /// helper function to stream a completion request to stdout
 pub async fn stream_to_stdout(
-    stream: &mut StreamingResult<'_>,
+    stream: &mut StreamingResult,
 ) -> Result<FinalResponse, std::io::Error> {
     let mut final_res = FinalResponse::empty();
     print!("Response: ");

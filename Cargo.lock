@@ -9029,7 +9029,6 @@ dependencies = [
  "as-any",
  "assert_fs",
  "async-stream",
- "async-trait",
  "axum 0.8.4",
  "base64 0.22.1",
  "bytes",

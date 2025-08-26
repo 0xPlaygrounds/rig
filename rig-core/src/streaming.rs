@@ -220,7 +220,7 @@ where
     R: Clone + Unpin + GetTokenUsage,
 {
     /// Stream a simple prompt to the model
-    fn stream_prompt(&self, prompt: impl Into<Message> + Send) -> StreamingPromptRequest<'_, M>;
+    fn stream_prompt(&self, prompt: impl Into<Message> + Send) -> StreamingPromptRequest<M, ()>;
 }
 
 /// Trait for high-level streaming chat interface
@@ -235,7 +235,7 @@ where
         &self,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> StreamingPromptRequest<'_, M>;
+    ) -> StreamingPromptRequest<M, ()>;
 }
 
 /// Trait for low-level streaming completion interface

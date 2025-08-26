@@ -6,11 +6,11 @@ use rig::completion::{CompletionModel, CompletionResponse, Message, Prompt};
 use rig::message::{AssistantContent, UserContent};
 use rig::providers;
 
+#[derive(Clone)]
 struct SessionIdHook<'a> {
     session_id: &'a str,
 }
 
-#[async_trait::async_trait]
 impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
     async fn on_tool_call(&self, tool_name: &str, args: &str) {
         println!(
@@ -89,7 +89,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Prompt the agent and print the response
     comedian_agent
         .prompt("Entertain me!")
-        .with_hook(&hook)
+        .with_hook(hook)
         .await?;
 
     Ok(())
