@@ -129,6 +129,8 @@ pub enum Message {
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
+        #[serde(flatten)]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
     #[serde(rename = "tool")]
     ToolResult {
@@ -382,6 +384,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                         .into_iter()
                         .map(|tool_call| tool_call.into())
                         .collect::<Vec<_>>(),
+                    extra: serde_json::Map::new(),
                 }])
             }
         }
@@ -556,6 +559,8 @@ pub struct CompletionResponse {
     pub system_fingerprint: Option<String>,
     pub choices: Vec<Choice>,
     pub usage: Option<Usage>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
@@ -642,6 +647,8 @@ pub struct Choice {
 pub struct Usage {
     pub prompt_tokens: usize,
     pub total_tokens: usize,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 impl fmt::Display for Usage {
@@ -649,6 +656,7 @@ impl fmt::Display for Usage {
         let Usage {
             prompt_tokens,
             total_tokens,
+            ..
         } = self;
         write!(
             f,
