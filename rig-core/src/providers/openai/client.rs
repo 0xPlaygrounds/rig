@@ -523,6 +523,7 @@ mod tests {
             audio: None,
             name: None,
             tool_calls: vec![],
+            extra: serde_json::map::new(),
         };
 
         let converted_user_message: message::Message = user_message.clone().try_into().unwrap();
