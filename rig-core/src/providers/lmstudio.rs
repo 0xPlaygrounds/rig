@@ -70,3 +70,21 @@ impl TranscriptionClient for Client {
         self.inner.transcription_model(model)
     }
 }
+
+#[cfg(feature = "image")]
+impl crate::client::ImageGenerationClient for Client {
+    type ImageGenerationModel = openai::image_generation::ImageGenerationModel;
+
+    fn image_generation_model(&self, model: &str) -> Self::ImageGenerationModel {
+        self.inner.image_generation_model(model)
+    }
+}
+
+#[cfg(feature = "audio")]
+impl crate::client::AudioGenerationClient for Client {
+    type AudioGenerationModel = openai::audio_generation::AudioGenerationModel;
+
+    fn audio_generation_model(&self, model: &str) -> Self::AudioGenerationModel {
+        self.inner.audio_generation_model(model)
+    }
+}
