@@ -1,6 +1,6 @@
 use rig::agent::stream_to_stdout;
 use rig::prelude::*;
-use rig::providers::{openai,lmstudio};
+use rig::providers::{lmstudio, openai};
 use rig::streaming::StreamingPrompt;
 
 #[tokio::main]
