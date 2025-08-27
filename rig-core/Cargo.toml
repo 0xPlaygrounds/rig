@@ -17,7 +17,6 @@ doctest = false
 [dependencies]
 as-any = { workspace = true }
 async-stream = { workspace = true }
-async-trait = { workspace = true, optional = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
 epub = { workspace = true, optional = true }
@@ -74,7 +73,6 @@ epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 worker = ["dep:worker"]
 rmcp = ["dep:rmcp"]
-hooks = ["dep:async-trait"]
 socks = ["reqwest/socks"]
 # Replace "default-tls" with "rustls-tls" in "reqwest/default"
 reqwest-rustls = [
@@ -146,4 +144,3 @@ required-features = ["rmcp"]
 
 [[example]]
 name = "request_hook"
-required-features = ["hooks"]
