@@ -776,7 +776,10 @@ mod image_generation {
 // Azure OpenAI Audio Generation API
 // ================================================================
 
-use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient};
+use crate::client::{
+    CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient, VerifyClient,
+    VerifyError,
+};
 #[cfg(feature = "audio")]
 pub use audio_generation::*;
 
@@ -845,6 +848,15 @@ mod audio_generation {
                 model: model.to_string(),
             }
         }
+    }
+}
+
+impl VerifyClient for Client {
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn verify(&self) -> Result<(), VerifyError> {
+        // There is currently no way to verify the Azure OpenAI API key or token without
+        // consuming tokens
+        Ok(())
     }
 }
 

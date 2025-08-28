@@ -1,7 +1,8 @@
 //! Anthropic client api implementation
 use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
 use crate::client::{
-    ClientBuilderError, CompletionClient, ProviderClient, ProviderValue, impl_conversion_traits,
+    ClientBuilderError, CompletionClient, ProviderClient, ProviderValue, VerifyClient, VerifyError,
+    impl_conversion_traits,
 };
 
 // ================================================================
@@ -156,6 +157,14 @@ impl Client {
             .header("X-Api-Key", &self.api_key)
             .headers(self.default_headers.clone())
     }
+
+    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        self.http_client
+            .get(url)
+            .header("X-Api-Key", &self.api_key)
+            .headers(self.default_headers.clone())
+    }
 }
 
 impl ProviderClient for Client {
@@ -178,6 +187,29 @@ impl CompletionClient for Client {
     type CompletionModel = CompletionModel;
     fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
+    }
+}
+
+impl VerifyClient for Client {
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn verify(&self) -> Result<(), VerifyError> {
+        let response = self.get("/v1/models").send().await?;
+        match response.status() {
+            reqwest::StatusCode::OK => Ok(()),
+            reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
+                Err(VerifyError::InvalidAuthentication)
+            }
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
+                Err(VerifyError::ProviderError(response.text().await?))
+            }
+            status if status.as_u16() == 529 => {
+                Err(VerifyError::ProviderError(response.text().await?))
+            }
+            _ => {
+                response.error_for_status()?;
+                Ok(())
+            }
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     completion::{CompletionModel, Document},
@@ -171,16 +171,16 @@ impl<M: CompletionModel> AgentBuilder<M> {
     pub fn build(self) -> Agent<M> {
         Agent {
             name: self.name,
-            model: self.model,
+            model: Arc::new(self.model),
             preamble: self.preamble.unwrap_or_default(),
             static_context: self.static_context,
             static_tools: self.static_tools,
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
-            dynamic_context: self.dynamic_context,
-            dynamic_tools: self.dynamic_tools,
-            tools: self.tools,
+            dynamic_context: Arc::new(self.dynamic_context),
+            dynamic_tools: Arc::new(self.dynamic_tools),
+            tools: Arc::new(self.tools),
         }
     }
 }

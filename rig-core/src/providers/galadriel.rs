@@ -11,7 +11,9 @@
 //! let gpt4o = client.completion_model(galadriel::GPT_4O);
 //! ```
 use super::openai;
-use crate::client::{ClientBuilderError, CompletionClient, ProviderClient};
+use crate::client::{
+    ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError,
+};
 use crate::json_utils::merge;
 use crate::message::MessageError;
 use crate::providers::openai::send_compatible_streaming_request;
@@ -175,6 +177,14 @@ impl CompletionClient for Client {
     /// ```
     fn completion_model(&self, model: &str) -> CompletionModel {
         CompletionModel::new(self.clone(), model)
+    }
+}
+
+impl VerifyClient for Client {
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn verify(&self) -> Result<(), VerifyError> {
+        // Could not find an API endpoint to verify the API key
+        Ok(())
     }
 }
 

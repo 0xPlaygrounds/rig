@@ -1,5 +1,8 @@
 use super::{M2_BERT_80M_8K_RETRIEVAL, completion::CompletionModel, embedding::EmbeddingModel};
-use crate::client::{ClientBuilderError, EmbeddingsClient, ProviderClient, impl_conversion_traits};
+use crate::client::{
+    ClientBuilderError, EmbeddingsClient, ProviderClient, VerifyClient, VerifyError,
+    impl_conversion_traits,
+};
 use rig::client::CompletionClient;
 
 // ================================================================
@@ -106,6 +109,16 @@ impl Client {
             .bearer_auth(&self.api_key)
             .headers(self.default_headers.clone())
     }
+
+    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+
+        tracing::debug!("GET {}", url);
+        self.http_client
+            .get(url)
+            .bearer_auth(&self.api_key)
+            .headers(self.default_headers.clone())
+    }
 }
 
 impl ProviderClient for Client {
@@ -171,6 +184,24 @@ impl EmbeddingsClient for Client {
     /// ```
     fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> EmbeddingModel {
         EmbeddingModel::new(self.clone(), model, ndims)
+    }
+}
+
+impl VerifyClient for Client {
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn verify(&self) -> Result<(), VerifyError> {
+        let response = self.get("/models").send().await?;
+        match response.status() {
+            reqwest::StatusCode::OK => Ok(()),
+            reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR | reqwest::StatusCode::GATEWAY_TIMEOUT => {
+                Err(VerifyError::ProviderError(response.text().await?))
+            }
+            _ => {
+                response.error_for_status()?;
+                Ok(())
+            }
+        }
     }
 }
 

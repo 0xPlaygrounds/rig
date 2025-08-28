@@ -4,6 +4,8 @@ use aws_config::{BehaviorVersion, Region};
 use rig::client::ProviderValue;
 use rig::impl_conversion_traits;
 use rig::prelude::*;
+use std::sync::Arc;
+use tokio::sync::OnceCell;
 
 pub const DEFAULT_AWS_REGION: &str = "us-east-1";
 
@@ -12,8 +14,11 @@ pub struct ClientBuilder<'a> {
     region: &'a str,
 }
 
-/// Create a new Bedrock client using the builder <br>
 impl<'a> ClientBuilder<'a> {
+    #[deprecated(
+        since = "0.2.6",
+        note = "Use `Client::from_env` or `Client::with_profile_name(\"aws_profile\")` instead"
+    )]
     pub fn new() -> Self {
         Self {
             region: DEFAULT_AWS_REGION,
@@ -37,42 +42,83 @@ impl<'a> ClientBuilder<'a> {
             .load()
             .await;
         let client = aws_sdk_bedrockruntime::Client::new(&sdk_config);
-        Client { aws_client: client }
+        Client {
+            profile_name: None,
+            aws_client: Arc::new(OnceCell::from(client)),
+        }
     }
 }
 
 impl Default for ClientBuilder<'_> {
     fn default() -> Self {
+        #[allow(deprecated)]
         Self::new()
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Client {
-    pub(crate) aws_client: aws_sdk_bedrockruntime::Client,
+    profile_name: Option<String>,
+    pub(crate) aws_client: Arc<OnceCell<aws_sdk_bedrockruntime::Client>>,
 }
 
 impl From<aws_sdk_bedrockruntime::Client> for Client {
     fn from(aws_client: aws_sdk_bedrockruntime::Client) -> Self {
-        Client { aws_client }
+        Client {
+            profile_name: None,
+            aws_client: Arc::new(OnceCell::from(aws_client)),
+        }
     }
 }
 
-impl Client {}
+impl Client {
+    fn new() -> Self {
+        Self {
+            profile_name: None,
+            aws_client: Arc::new(OnceCell::new()),
+        }
+    }
+
+    /// Create an AWS Bedrock client using AWS profile name
+    pub fn with_profile_name(profile_name: &str) -> Self {
+        Self {
+            profile_name: Some(profile_name.into()),
+            aws_client: Arc::new(OnceCell::new()),
+        }
+    }
+
+    pub async fn get_inner(&self) -> &aws_sdk_bedrockruntime::Client {
+        self.aws_client
+            .get_or_init(|| async {
+                let config = if let Some(profile_name) = &self.profile_name {
+                    aws_config::defaults(BehaviorVersion::latest())
+                        .profile_name(profile_name)
+                        .load()
+                        .await
+                } else {
+                    aws_config::load_from_env().await
+                };
+                aws_sdk_bedrockruntime::Client::new(&config)
+            })
+            .await
+    }
+}
 
 impl ProviderClient for Client {
     fn from_env() -> Self
     where
         Self: Sized,
     {
-        panic!("You should not call from_env to build a Bedrock client");
+        Client::new()
     }
 
     fn from_val(_: ProviderValue) -> Self
     where
         Self: Sized,
     {
-        panic!("Unimplemented due to lack of use. Please reach out if you need to use this!");
+        panic!(
+            "Please use `Client::from_env` or `Client::with_profile_name(\"aws_profile\")` instead"
+        );
     }
 }
 
@@ -103,6 +149,14 @@ impl ImageGenerationClient for Client {
         ImageGenerationModel::new(self.clone(), model)
     }
 }
+
+impl VerifyClient for Client {
+    async fn verify(&self) -> Result<(), VerifyError> {
+        // No API endpoint to verify the API key
+        Ok(())
+    }
+}
+
 impl_conversion_traits!(
     AsTranscription,
     AsAudioGeneration for Client

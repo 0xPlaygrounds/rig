@@ -1,7 +1,10 @@
 use super::completion::CompletionModel;
 #[cfg(feature = "image")]
 use crate::client::ImageGenerationClient;
-use crate::client::{ClientBuilderError, CompletionClient, ProviderClient, TranscriptionClient};
+use crate::client::{
+    ClientBuilderError, CompletionClient, ProviderClient, TranscriptionClient, VerifyClient,
+    VerifyError,
+};
 #[cfg(feature = "image")]
 use crate::image_generation::ImageGenerationError;
 #[cfg(feature = "image")]
@@ -214,6 +217,14 @@ impl Client {
             .bearer_auth(&self.api_key)
             .headers(self.default_headers.clone())
     }
+
+    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        self.http_client
+            .get(url)
+            .bearer_auth(&self.api_key)
+            .headers(self.default_headers.clone())
+    }
 }
 
 impl ProviderClient for Client {
@@ -288,6 +299,24 @@ impl ImageGenerationClient for Client {
     /// ```
     fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
         ImageGenerationModel::new(self.clone(), model)
+    }
+}
+
+impl VerifyClient for Client {
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn verify(&self) -> Result<(), VerifyError> {
+        let response = self.get("/api/whoami-v2").send().await?;
+        match response.status() {
+            reqwest::StatusCode::OK => Ok(()),
+            reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
+                Err(VerifyError::ProviderError(response.text().await?))
+            }
+            _ => {
+                response.error_for_status()?;
+                Ok(())
+            }
+        }
     }
 }
 

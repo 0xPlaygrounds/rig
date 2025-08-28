@@ -11,7 +11,9 @@
 use std::collections::HashMap;
 
 use super::openai::{CompletionResponse, StreamingToolCall, TranscriptionResponse, Usage};
-use crate::client::{ClientBuilderError, CompletionClient, TranscriptionClient};
+use crate::client::{
+    ClientBuilderError, CompletionClient, TranscriptionClient, VerifyClient, VerifyError,
+};
 use crate::completion::GetTokenUsage;
 use crate::json_utils::merge;
 use futures::StreamExt;
@@ -123,6 +125,11 @@ impl Client {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.post(url).bearer_auth(&self.api_key)
     }
+
+    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        self.http_client.get(url).bearer_auth(&self.api_key)
+    }
 }
 
 impl ProviderClient for Client {
@@ -176,6 +183,26 @@ impl TranscriptionClient for Client {
     /// ```
     fn transcription_model(&self, model: &str) -> TranscriptionModel {
         TranscriptionModel::new(self.clone(), model)
+    }
+}
+
+impl VerifyClient for Client {
+    #[cfg_attr(feature = "worker", worker::send)]
+    async fn verify(&self) -> Result<(), VerifyError> {
+        let response = self.get("/models").send().await?;
+        match response.status() {
+            reqwest::StatusCode::OK => Ok(()),
+            reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR
+            | reqwest::StatusCode::SERVICE_UNAVAILABLE
+            | reqwest::StatusCode::BAD_GATEWAY => {
+                Err(VerifyError::ProviderError(response.text().await?))
+            }
+            _ => {
+                response.error_for_status()?;
+                Ok(())
+            }
+        }
     }
 }
 
