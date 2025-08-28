@@ -1091,11 +1091,110 @@ pub mod gemini_api_types {
         pub items: Option<Box<Schema>>,
     }
 
+    /// Flattens a JSON schema by resolving all `$ref` references inline.
+    /// It takes a JSON schema that may contain `$ref` references to definitions
+    /// in `$defs` or `definitions` sections and returns a new schema with all references
+    /// resolved and inlined. This is necessary for APIs like Gemini that don't support
+    /// schema references.
+    pub fn flatten_schema(mut schema: Value) -> Result<Value, CompletionError> {
+        // extracting $defs if they exist
+        let defs = if let Some(obj) = schema.as_object() {
+            obj.get("$defs").or_else(|| obj.get("definitions")).cloned()
+        } else {
+            None
+        };
+
+        let Some(defs_value) = defs else {
+            return Ok(schema);
+        };
+
+        let Some(defs_obj) = defs_value.as_object() else {
+            return Err(CompletionError::ResponseError(
+                "$defs must be an object".into(),
+            ));
+        };
+
+        resolve_refs(&mut schema, defs_obj)?;
+
+        // removing $defs from the final schema because we have inlined everything
+        if let Some(obj) = schema.as_object_mut() {
+            obj.remove("$defs");
+            obj.remove("definitions");
+        }
+
+        Ok(schema)
+    }
+
+    /// Recursively resolves all `$ref` references in a JSON value by
+    /// replacing them with their definitions.
+    fn resolve_refs(
+        value: &mut Value,
+        defs: &serde_json::Map<String, Value>,
+    ) -> Result<(), CompletionError> {
+        match value {
+            Value::Object(obj) => {
+                if let Some(ref_value) = obj.get("$ref")
+                    && let Some(ref_str) = ref_value.as_str()
+                {
+                    // "#/$defs/Person" -> "Person"
+                    let def_name = parse_ref_path(ref_str)?;
+
+                    let def = defs.get(&def_name).ok_or_else(|| {
+                        CompletionError::ResponseError(format!("Reference not found: {}", ref_str))
+                    })?;
+
+                    let mut resolved = def.clone();
+                    resolve_refs(&mut resolved, defs)?;
+                    *value = resolved;
+                    return Ok(());
+                }
+
+                for (_, v) in obj.iter_mut() {
+                    resolve_refs(v, defs)?;
+                }
+            }
+            Value::Array(arr) => {
+                for item in arr.iter_mut() {
+                    resolve_refs(item, defs)?;
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    /// Parses a JSON Schema `$ref` path to extract the definition name.
+    ///
+    /// JSON Schema references use URI fragment syntax to point to definitions within
+    /// the same document. This function extracts the definition name from common
+    /// reference patterns used in JSON Schema.
+    fn parse_ref_path(ref_str: &str) -> Result<String, CompletionError> {
+        if let Some(fragment) = ref_str.strip_prefix('#') {
+            if let Some(name) = fragment.strip_prefix("/$defs/") {
+                Ok(name.to_string())
+            } else if let Some(name) = fragment.strip_prefix("/definitions/") {
+                Ok(name.to_string())
+            } else {
+                Err(CompletionError::ResponseError(format!(
+                    "Unsupported reference format: {}",
+                    ref_str
+                )))
+            }
+        } else {
+            Err(CompletionError::ResponseError(format!(
+                "Only fragment references (#/...) are supported: {}",
+                ref_str
+            )))
+        }
+    }
+
     impl TryFrom<Value> for Schema {
         type Error = CompletionError;
 
         fn try_from(value: Value) -> Result<Self, Self::Error> {
-            if let Some(obj) = value.as_object() {
+            let flattened_val = flatten_schema(value)?;
+            if let Some(obj) = flattened_val.as_object() {
                 Ok(Schema {
                     r#type: obj
                         .get("type")
@@ -1236,7 +1335,7 @@ pub mod gemini_api_types {
 
 #[cfg(test)]
 mod tests {
-    use crate::message;
+    use crate::{message, providers::gemini::completion::gemini_api_types::flatten_schema};
 
     use super::*;
     use serde_json::json;
@@ -1443,6 +1542,124 @@ mod tests {
             );
         } else {
             panic!("Expected function call part");
+        }
+    }
+
+    #[test]
+    fn test_vec_schema_conversion() {
+        let schema_with_ref = json!({
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/Person"
+            },
+            "$defs": {
+                "Person": {
+                    "type": "object",
+                    "properties": {
+                        "first_name": {
+                            "type": ["string", "null"],
+                            "description": "The person's first name, if provided (null otherwise)"
+                        },
+                        "last_name": {
+                            "type": ["string", "null"],
+                            "description": "The person's last name, if provided (null otherwise)"
+                        },
+                        "job": {
+                            "type": ["string", "null"],
+                            "description": "The person's job, if provided (null otherwise)"
+                        }
+                    },
+                    "required": []
+                }
+            }
+        });
+
+        let result: Result<Schema, _> = schema_with_ref.try_into();
+
+        match result {
+            Ok(schema) => {
+                assert_eq!(schema.r#type, "array");
+
+                if let Some(items) = schema.items {
+                    println!("item types: {}", items.r#type);
+
+                    assert_ne!(items.r#type, "", "Items type should not be empty string!");
+                    assert_eq!(items.r#type, "object", "Items should be object type");
+                } else {
+                    panic!("Schema should have items field for array type");
+                }
+            }
+            Err(e) => println!("Schema conversion failed: {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_object_schema() {
+        let simple_schema = json!({
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                }
+            }
+        });
+
+        let schema: Schema = simple_schema.try_into().unwrap();
+        assert_eq!(schema.r#type, "object");
+        assert!(schema.properties.is_some());
+    }
+
+    #[test]
+    fn test_array_with_inline_items() {
+        let inline_schema = json!({
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    }
+                }
+            }
+        });
+
+        let schema: Schema = inline_schema.try_into().unwrap();
+        assert_eq!(schema.r#type, "array");
+
+        if let Some(items) = schema.items {
+            assert_eq!(items.r#type, "object");
+            assert!(items.properties.is_some());
+        } else {
+            panic!("Schema should have items field");
+        }
+    }
+    #[test]
+    fn test_flattened_schema() {
+        let ref_schema = json!({
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/Person"
+            },
+            "$defs": {
+                "Person": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string" }
+                    }
+                }
+            }
+        });
+
+        let flattened = flatten_schema(ref_schema).unwrap();
+        let schema: Schema = flattened.try_into().unwrap();
+
+        assert_eq!(schema.r#type, "array");
+
+        if let Some(items) = schema.items {
+            println!("Flattened items type: '{}'", items.r#type);
+
+            assert_eq!(items.r#type, "object");
+            assert!(items.properties.is_some());
         }
     }
 }
