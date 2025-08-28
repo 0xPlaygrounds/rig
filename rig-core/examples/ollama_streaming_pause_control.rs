@@ -1,23 +1,13 @@
-use rig::prelude::*;
-use rig::providers::ollama;
+use futures::StreamExt;
 use rig::completion::CompletionModel;
 use rig::completion::GetTokenUsage;
-use futures::StreamExt;
+use rig::prelude::*;
+use rig::providers::ollama;
 use std::time::Duration;
 use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create streaming agent with Ollama
-    let agent = ollama::Client::new()
-        .agent("gemma3:4b")
-        .preamble("You are a helpful AI assistant. Provide detailed explanations.")
-        .temperature(0.7)
-        .build();
-
-    println!("Starting streaming response...");
-    println!("Press Enter to pause/resume, or Ctrl+C to exit\n");
-
     // Use the direct model streaming to get access to pause control
     let model = ollama::Client::new().completion_model("gemma3:4b");
     let completion_request = model
@@ -25,11 +15,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .preamble("You are a helpful AI assistant. Provide concise explanations.".to_string())
         .temperature(0.7)
         .build();
-    
     let mut stream = model.stream(completion_request).await?;
 
     let mut chunk_count = 0;
-    let mut is_paused = false;
 
     // Process the stream with pause control
     while let Some(chunk_result) = stream.next().await {
@@ -60,18 +48,14 @@ async fn main() -> Result<(), anyhow::Error> {
 
                 // Demonstrate pause control every 10 chunks
                 if chunk_count % 50 == 0 && chunk_count > 0 {
-                    if !is_paused {
-                        println!("\n\n[Pausing stream for 2 seconds...]");
-                        stream.pause();
-                        is_paused = true;
-                        
-                        // Wait for 2 seconds while paused
-                        sleep(Duration::from_secs(2)).await;
-                        
-                        println!("[Resuming stream...]");
-                        stream.resume();
-                        is_paused = false;
-                    }
+                    println!("\n\n[Pausing stream for 2 seconds...]");
+                    stream.pause();
+
+                    // Wait for 2 seconds while paused
+                    sleep(Duration::from_secs(2)).await;
+
+                    println!("[Resuming stream...]");
+                    stream.resume();
                 }
             }
             Err(e) => {

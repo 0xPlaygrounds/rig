@@ -19,12 +19,12 @@ use crate::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction};
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::sync::watch;
 use std::boxed::Box;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
 use std::task::{Context, Poll};
+use tokio::sync::watch;
 
 /// Control for pausing and resuming a streaming response
 pub struct PauseControl {
@@ -35,7 +35,10 @@ pub struct PauseControl {
 impl PauseControl {
     pub fn new() -> Self {
         let (paused_tx, paused_rx) = watch::channel(false);
-        Self { paused_tx, paused_rx }
+        Self {
+            paused_tx,
+            paused_rx,
+        }
     }
 
     pub fn pause(&self) {
@@ -143,7 +146,7 @@ where
 
     pub fn is_paused(&self) -> bool {
         self.pause_control.is_paused()
-    } 
+    }
 }
 
 impl<R> From<StreamingCompletionResponse<R>> for CompletionResponse<Option<R>>
@@ -169,7 +172,6 @@ where
         let stream = self.get_mut();
 
         if stream.is_paused() {
-            let _ = stream.pause_control.paused_rx.changed();
             cx.waker().wake_by_ref();
             return Poll::Pending;
         }
@@ -492,11 +494,11 @@ mod tests {
     #[tokio::test]
     async fn test_stream_pause_resume() {
         let stream = create_mock_stream();
-        
+
         // Test pause
         stream.pause();
         assert!(stream.is_paused());
-        
+
         // Test resume
         stream.resume();
         assert!(!stream.is_paused());
