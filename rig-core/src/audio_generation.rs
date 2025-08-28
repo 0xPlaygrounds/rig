@@ -113,15 +113,6 @@ pub struct AudioGenerationRequest {
     pub additional_params: Option<Value>,
 }
 
-impl AudioGenerationRequest {
-    fn builder<M>() -> AudioGenerationRequestBuilder
-    where
-        M: AudioGenerationModel,
-    {
-        AudioGenerationRequestBuilder::new(model)
-    }
-}
-
 #[non_exhaustive]
 pub struct AudioGenerationRequestBuilder<M>
 where
