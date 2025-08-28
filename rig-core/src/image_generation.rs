@@ -26,7 +26,10 @@ pub enum ImageGenerationError {
     #[error("ProviderError: {0}")]
     ProviderError(String),
 }
-pub trait ImageGeneration<M: ImageGenerationModel> {
+pub trait ImageGeneration<M>
+where
+    M: ImageGenerationModel,
+{
     /// Generates a transcription request builder for the given `file`.
     /// This function is meant to be called by the user to further customize the
     /// request at transcription time before sending it.
@@ -76,7 +79,10 @@ pub trait ImageGenerationModelDyn: Send + Sync {
     ) -> ImageGenerationRequestBuilder<ImageGenerationModelHandle<'_>>;
 }
 
-impl<T: ImageGenerationModel> ImageGenerationModelDyn for T {
+impl<T> ImageGenerationModelDyn for T
+where
+    T: ImageGenerationModel,
+{
     fn image_generation(
         &self,
         request: ImageGenerationRequest,
@@ -106,7 +112,10 @@ pub struct ImageGenerationRequest {
     pub additional_params: Option<Value>,
 }
 
-pub struct ImageGenerationRequestBuilder<M: ImageGenerationModel> {
+pub struct ImageGenerationRequestBuilder<M>
+where
+    M: ImageGenerationModel,
+{
     model: M,
     prompt: String,
     width: u32,
@@ -114,7 +123,10 @@ pub struct ImageGenerationRequestBuilder<M: ImageGenerationModel> {
     additional_params: Option<Value>,
 }
 
-impl<M: ImageGenerationModel> ImageGenerationRequestBuilder<M> {
+impl<M> ImageGenerationRequestBuilder<M>
+where
+    M: ImageGenerationModel,
+{
     pub fn new(model: M) -> Self {
         Self {
             model,

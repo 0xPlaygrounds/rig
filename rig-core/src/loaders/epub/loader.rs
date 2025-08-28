@@ -163,7 +163,10 @@ impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
     }
 }
 
-impl<'a, P: TextProcessor> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
+impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P>
+where
+    P: TextProcessor,
+{
     /// Directly reads the contents of the epub files within the iterator returned by
     ///  [EpubFileLoader::with_glob] or [EpubFileLoader::with_dir].
     ///
@@ -228,7 +231,10 @@ impl<'a, P: TextProcessor> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, 
     }
 }
 
-impl<'a, P: TextProcessor + 'a> EpubFileLoader<'a, EpubDoc<BufReader<File>>, P> {
+impl<'a, P> EpubFileLoader<'a, EpubDoc<BufReader<File>>, P>
+where
+    P: TextProcessor + 'a,
+{
     /// Chunks the chapters of a loaded document by chapter, flattened as a single vector.
     ///
     /// # Example
@@ -285,7 +291,10 @@ impl<'a, P: TextProcessor> EpubFileLoader<'a, (PathBuf, EpubDoc<BufReader<File>>
     }
 }
 
-impl<'a, P: TextProcessor> EpubFileLoader<'a, ByChapter, P> {
+impl<'a, P> EpubFileLoader<'a, ByChapter, P>
+where
+    P: TextProcessor,
+{
     /// Ignores errors in the iterator, returning only successful results. This can be used on any
     ///  [EpubFileLoader] state of iterator whose items are results.
     ///
@@ -432,7 +441,10 @@ impl<P> EpubChapterIterator<P> {
     }
 }
 
-impl<P: TextProcessor> Iterator for EpubChapterIterator<P> {
+impl<P> Iterator for EpubChapterIterator<P>
+where
+    P: TextProcessor,
+{
     type Item = Result<String, EpubLoaderError>;
 
     fn next(&mut self) -> Option<Self::Item> {

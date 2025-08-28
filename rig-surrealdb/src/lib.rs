@@ -13,7 +13,11 @@ use surrealdb::{Connection, Surreal, sql::Thing};
 pub use surrealdb::engine::local::Mem;
 pub use surrealdb::engine::remote::ws::{Ws, Wss};
 
-pub struct SurrealVectorStore<Model: EmbeddingModel, C: Connection> {
+pub struct SurrealVectorStore<C, Model>
+where
+    C: Connection,
+    Model: EmbeddingModel,
+{
     model: Model,
     surreal: Surreal<C>,
     documents_table: String,
@@ -70,10 +74,10 @@ impl SearchResult {
     }
 }
 
-impl<Model, C> InsertDocuments for SurrealVectorStore<Model, C>
+impl<C, Model> InsertDocuments for SurrealVectorStore<C, Model>
 where
-    Model: EmbeddingModel + Send + Sync,
     C: Connection + Send + Sync,
+    Model: EmbeddingModel + Send + Sync,
 {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
@@ -105,7 +109,11 @@ where
     }
 }
 
-impl<Model: EmbeddingModel, C: Connection> SurrealVectorStore<Model, C> {
+impl<C, Model> SurrealVectorStore<C, Model>
+where
+    C: Connection,
+    Model: EmbeddingModel,
+{
     pub fn new(
         model: Model,
         surreal: Surreal<C>,
@@ -152,7 +160,11 @@ impl<Model: EmbeddingModel, C: Connection> SurrealVectorStore<Model, C> {
     }
 }
 
-impl<Model: EmbeddingModel, C: Connection> VectorStoreIndex for SurrealVectorStore<Model, C> {
+impl<C, Model> VectorStoreIndex for SurrealVectorStore<C, Model>
+where
+    C: Connection,
+    Model: EmbeddingModel,
+{
     /// Get the top n documents based on the distance to the given query.
     /// The result is a list of tuples of the form (score, id, document)
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(

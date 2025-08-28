@@ -77,7 +77,10 @@ struct SearchResultDataOnlyId {
     distance: f64,
 }
 
-impl<M: EmbeddingModel> MilvusVectorStore<M> {
+impl<M> MilvusVectorStore<M>
+where
+    M: EmbeddingModel,
+{
     /// Creates a new instance of `MilvusVectorStore`.
     ///
     /// # Arguments
@@ -221,7 +224,10 @@ where
     }
 }
 
-impl<M: EmbeddingModel> VectorStoreIndex for MilvusVectorStore<M> {
+impl<M> VectorStoreIndex for MilvusVectorStore<M>
+where
+    M: EmbeddingModel,
+{
     /// Search for the top `n` nearest neighbors to the given query within the Milvus vector store.
     /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(

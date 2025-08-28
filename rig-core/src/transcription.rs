@@ -34,7 +34,10 @@ pub enum TranscriptionError {
 }
 
 /// Trait defining a low-level LLM transcription interface
-pub trait Transcription<M: TranscriptionModel> {
+pub trait Transcription<M>
+where
+    M: TranscriptionModel,
+{
     /// Generates a transcription request builder for the given `file`.
     /// This function is meant to be called by the user to further customize the
     /// request at transcription time before sending it.
@@ -89,7 +92,10 @@ pub trait TranscriptionModelDyn: Send + Sync {
     fn transcription_request(&self) -> TranscriptionRequestBuilder<TranscriptionModelHandle<'_>>;
 }
 
-impl<T: TranscriptionModel> TranscriptionModelDyn for T {
+impl<T> TranscriptionModelDyn for T
+where
+    T: TranscriptionModel,
+{
     fn transcription(
         &self,
         request: TranscriptionRequest,
@@ -169,7 +175,10 @@ pub struct TranscriptionRequest {
 ///
 /// Note: It is usually unnecessary to create a completion request builder directly.
 /// Instead, use the [TranscriptionModel::transcription_request] method.
-pub struct TranscriptionRequestBuilder<M: TranscriptionModel> {
+pub struct TranscriptionRequestBuilder<M>
+where
+    M: TranscriptionModel,
+{
     model: M,
     data: Vec<u8>,
     filename: Option<String>,
@@ -179,7 +188,10 @@ pub struct TranscriptionRequestBuilder<M: TranscriptionModel> {
     additional_params: Option<serde_json::Value>,
 }
 
-impl<M: TranscriptionModel> TranscriptionRequestBuilder<M> {
+impl<M> TranscriptionRequestBuilder<M>
+where
+    M: TranscriptionModel,
+{
     pub fn new(model: M) -> Self {
         TranscriptionRequestBuilder {
             model,

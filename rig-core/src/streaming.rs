@@ -27,7 +27,10 @@ use std::task::{Context, Poll};
 
 /// Enum representing a streaming chunk from the model
 #[derive(Debug, Clone)]
-pub enum RawStreamingChoice<R: Clone> {
+pub enum RawStreamingChoice<R>
+where
+    R: Clone,
+{
     /// A text chunk from a message response
     Message(String),
 
@@ -60,7 +63,10 @@ pub type StreamingResult<R> =
 /// The response from a streaming completion request;
 /// message and response are populated at the end of the
 /// `inner` stream.
-pub struct StreamingCompletionResponse<R: Clone + Unpin + GetTokenUsage> {
+pub struct StreamingCompletionResponse<R>
+where
+    R: Clone + Unpin + GetTokenUsage,
+{
     pub(crate) inner: Abortable<StreamingResult<R>>,
     pub(crate) abort_handle: AbortHandle,
     text: String,
@@ -289,10 +295,13 @@ impl<R: Clone + Unpin> Stream for StreamingResultDyn<R> {
 }
 
 /// helper function to stream a completion request to stdout
-pub async fn stream_to_stdout<M: CompletionModel>(
+pub async fn stream_to_stdout<M>(
     agent: &Agent<M>,
     stream: &mut StreamingCompletionResponse<M::StreamingResponse>,
-) -> Result<(), std::io::Error> {
+) -> Result<(), std::io::Error>
+where
+    M: CompletionModel,
+{
     let mut is_reasoning = false;
     print!("Response: ");
     while let Some(chunk) = stream.next().await {

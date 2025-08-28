@@ -56,15 +56,20 @@ pub enum ExtractionError {
 }
 
 /// Extractor for structured data from text
-pub struct Extractor<M: CompletionModel, T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync> {
+pub struct Extractor<M, T>
+where
+    M: CompletionModel,
+    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync,
+{
     agent: Agent<M>,
     _t: PhantomData<T>,
     retries: u64,
 }
 
-impl<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync, M: CompletionModel> Extractor<M, T>
+impl<M, T> Extractor<M, T>
 where
-    M: Sync,
+    M: CompletionModel,
+    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync,
 {
     /// Attempts to extract data from the given text with a number of retries.
     ///
@@ -160,17 +165,20 @@ where
 }
 
 /// Builder for the Extractor
-pub struct ExtractorBuilder<
-    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync + 'static,
+pub struct ExtractorBuilder<M, T>
+where
     M: CompletionModel,
-> {
+    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync + 'static,
+{
     agent_builder: AgentBuilder<M>,
     _t: PhantomData<T>,
     retries: Option<u64>,
 }
 
-impl<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync, M: CompletionModel>
-    ExtractorBuilder<T, M>
+impl<M, T> ExtractorBuilder<M, T>
+where
+    M: CompletionModel,
+    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync + 'static,
 {
     pub fn new(model: M) -> Self {
         Self {
@@ -229,7 +237,10 @@ impl<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync, M: Compl
 }
 
 #[derive(Deserialize, Serialize)]
-struct SubmitTool<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync> {
+struct SubmitTool<T>
+where
+    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+{
     _t: PhantomData<T>,
 }
 
@@ -237,7 +248,10 @@ struct SubmitTool<T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync> {
 #[error("SubmitError")]
 struct SubmitError;
 
-impl<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync> Tool for SubmitTool<T> {
+impl<T> Tool for SubmitTool<T>
+where
+    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+{
     const NAME: &'static str = SUBMIT_TOOL_NAME;
     type Error = SubmitError;
     type Args = T;

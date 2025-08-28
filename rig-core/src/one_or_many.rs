@@ -112,10 +112,10 @@ impl<T: Clone> OneOrMany<T> {
     /// Specialized try map function for OneOrMany objects.
     ///
     /// Same as `OneOrMany::map` but fallible.
-    pub(crate) fn try_map<U, E, F: FnMut(T) -> Result<U, E>>(
-        self,
-        mut op: F,
-    ) -> Result<OneOrMany<U>, E> {
+    pub(crate) fn try_map<U, E, F>(self, mut op: F) -> Result<OneOrMany<U>, E>
+    where
+        F: FnMut(T) -> Result<U, E>,
+    {
         Ok(OneOrMany {
             first: op(self.first)?,
             rest: self
@@ -187,7 +187,10 @@ pub struct IntoIter<T> {
 }
 
 /// Implement `Iterator` for `IntoIter<T>`.
-impl<T: Clone> IntoIterator for OneOrMany<T> {
+impl<T> IntoIterator for OneOrMany<T>
+where
+    T: Clone,
+{
     type Item = T;
     type IntoIter = IntoIter<T>;
 
@@ -201,7 +204,10 @@ impl<T: Clone> IntoIterator for OneOrMany<T> {
 
 /// Implement `Iterator` for `IntoIter<T>`.
 /// The Item type of the `Iterator` trait is an owned `T`.
-impl<T: Clone> Iterator for IntoIter<T> {
+impl<T> Iterator for IntoIter<T>
+where
+    T: Clone,
+{
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -254,9 +260,9 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 }
 
 // Serialize `OneOrMany<T>` into a json sequence (akin to `Vec<T>`)
-impl<T: Clone> Serialize for OneOrMany<T>
+impl<T> Serialize for OneOrMany<T>
 where
-    T: Serialize,
+    T: Serialize + Clone,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

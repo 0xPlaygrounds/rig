@@ -32,15 +32,20 @@ mod audio {
         fn audio_generation_model<'a>(&self, model: &str) -> Box<dyn AudioGenerationModelDyn + 'a>;
     }
 
-    impl<T: AudioGenerationClient<AudioGenerationModel = M>, M: AudioGenerationModel + 'static>
-        AudioGenerationClientDyn for T
+    impl<T, M> AudioGenerationClientDyn for T
+    where
+        T: AudioGenerationClient<AudioGenerationModel = M>,
+        M: AudioGenerationModel + 'static,
     {
         fn audio_generation_model<'a>(&self, model: &str) -> Box<dyn AudioGenerationModelDyn + 'a> {
             Box::new(self.audio_generation_model(model))
         }
     }
 
-    impl<T: AudioGenerationClientDyn + Clone + 'static> AsAudioGeneration for T {
+    impl<T> AsAudioGeneration for T
+    where
+        T: AudioGenerationClientDyn + Clone + 'static,
+    {
         fn as_audio_generation(&self) -> Option<Box<dyn AudioGenerationClientDyn>> {
             Some(Box::new(self.clone()))
         }
@@ -51,6 +56,7 @@ mod audio {
     pub struct AudioGenerationModelHandle<'a> {
         pub(crate) inner: Arc<dyn AudioGenerationModelDyn + 'a>,
     }
+
     impl AudioGenerationModel for AudioGenerationModelHandle<'_> {
         type Response = ();
 

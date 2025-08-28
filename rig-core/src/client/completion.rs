@@ -54,7 +54,7 @@ pub trait CompletionClient: ProviderClient + Clone {
     fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
         &self,
         model: &str,
-    ) -> ExtractorBuilder<T, Self::CompletionModel> {
+    ) -> ExtractorBuilder<Self::CompletionModel, T> {
         ExtractorBuilder::new(self.completion_model(model))
     }
 }
@@ -95,11 +95,11 @@ pub trait CompletionClientDyn: ProviderClient {
     fn agent<'a>(&self, model: &str) -> AgentBuilder<CompletionModelHandle<'a>>;
 }
 
-impl<
+impl<T, M, R> CompletionClientDyn for T
+where
     T: CompletionClient<CompletionModel = M>,
     M: CompletionModel<StreamingResponse = R> + 'static,
     R: Clone + Unpin + GetTokenUsage + 'static,
-> CompletionClientDyn for T
 {
     fn completion_model<'a>(&self, model: &str) -> Box<dyn CompletionModelDyn + 'a> {
         Box::new(self.completion_model(model))
@@ -112,7 +112,10 @@ impl<
     }
 }
 
-impl<T: CompletionClientDyn + Clone + 'static> AsCompletion for T {
+impl<T> AsCompletion for T
+where
+    T: CompletionClientDyn + Clone + 'static,
+{
     fn as_completion(&self) -> Option<Box<dyn CompletionClientDyn>> {
         Some(Box::new(self.clone()))
     }
