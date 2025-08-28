@@ -25,7 +25,7 @@ impl<M: CompletionModel> Tool for Agent<M> {
             description: format!(
                 "A tool that allows the agent to call another agent by prompting it. The preamble
                 of that agent follows:
-                --- 
+                ---
                 {}",
                 self.preamble.clone()
             ),
@@ -39,6 +39,6 @@ impl<M: CompletionModel> Tool for Agent<M> {
     }
 
     fn name(&self) -> String {
-        Self::NAME.to_string()
+        self.name.clone().unwrap_or_else(|| Self::NAME.to_string())
     }
 }
