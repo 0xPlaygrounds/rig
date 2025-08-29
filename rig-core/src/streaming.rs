@@ -24,6 +24,41 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
 use std::task::{Context, Poll};
+use tokio::sync::watch;
+
+/// Control for pausing and resuming a streaming response
+pub struct PauseControl {
+    pub(crate) paused_tx: watch::Sender<bool>,
+    pub(crate) paused_rx: watch::Receiver<bool>,
+}
+
+impl PauseControl {
+    pub fn new() -> Self {
+        let (paused_tx, paused_rx) = watch::channel(false);
+        Self {
+            paused_tx,
+            paused_rx,
+        }
+    }
+
+    pub fn pause(&self) {
+        self.paused_tx.send(true).unwrap();
+    }
+
+    pub fn resume(&self) {
+        self.paused_tx.send(false).unwrap();
+    }
+
+    pub fn is_paused(&self) -> bool {
+        *self.paused_rx.borrow()
+    }
+}
+
+impl Default for PauseControl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Enum representing a streaming chunk from the model
 #[derive(Debug, Clone)]
@@ -63,6 +98,7 @@ pub type StreamingResult<R> =
 pub struct StreamingCompletionResponse<R: Clone + Unpin + GetTokenUsage> {
     pub(crate) inner: Abortable<StreamingResult<R>>,
     pub(crate) abort_handle: AbortHandle,
+    pub(crate) pause_control: PauseControl,
     text: String,
     reasoning: String,
     tool_calls: Vec<ToolCall>,
@@ -82,9 +118,11 @@ where
     pub fn stream(inner: StreamingResult<R>) -> StreamingCompletionResponse<R> {
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let abortable_stream = Abortable::new(inner, abort_registration);
+        let pause_control = PauseControl::new();
         Self {
             inner: abortable_stream,
             abort_handle,
+            pause_control,
             reasoning: String::new(),
             text: "".to_string(),
             tool_calls: vec![],
@@ -96,6 +134,18 @@ where
 
     pub fn cancel(&self) {
         self.abort_handle.abort();
+    }
+
+    pub fn pause(&self) {
+        self.pause_control.pause();
+    }
+
+    pub fn resume(&self) {
+        self.pause_control.resume();
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.pause_control.is_paused()
     }
 }
 
@@ -120,6 +170,11 @@ where
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();
+
+        if stream.is_paused() {
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
 
         match Pin::new(&mut stream.inner).poll_next(cx) {
             Poll::Pending => Poll::Pending,
@@ -434,6 +489,19 @@ mod tests {
             next_chunk.is_none(),
             "Expected no further chunks after cancellation, got {next_chunk:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_stream_pause_resume() {
+        let stream = create_mock_stream();
+
+        // Test pause
+        stream.pause();
+        assert!(stream.is_paused());
+
+        // Test resume
+        stream.resume();
+        assert!(!stream.is_paused());
     }
 }
 
