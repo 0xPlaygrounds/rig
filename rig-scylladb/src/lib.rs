@@ -41,7 +41,10 @@ struct VectorRecord {
     created_at: i64,  // Unix timestamp
 }
 
-impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
+impl<M> ScyllaDbVectorStore<M>
+where
+    M: EmbeddingModel,
+{
     /// Creates a new instance of `ScyllaDbVectorStore`.
     ///
     /// # Arguments
@@ -228,7 +231,10 @@ where
     }
 }
 
-impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for ScyllaDbVectorStore<M> {
+impl<M> VectorStoreIndex for ScyllaDbVectorStore<M>
+where
+    M: EmbeddingModel + std::marker::Sync + Send,
+{
     /// Search for the top `n` nearest neighbors to the given query.
     /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
     ///

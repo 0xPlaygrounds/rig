@@ -47,12 +47,21 @@ use crate::{
 ///     .build()
 ///     .await?;
 /// ```
-pub struct EmbeddingsBuilder<M: EmbeddingModel, T: Embed> {
+#[non_exhaustive]
+pub struct EmbeddingsBuilder<M, T>
+where
+    M: EmbeddingModel,
+    T: Embed,
+{
     model: M,
     documents: Vec<(T, Vec<String>)>,
 }
 
-impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
+impl<M, T> EmbeddingsBuilder<M, T>
+where
+    M: EmbeddingModel,
+    T: Embed,
+{
     /// Create a new embedding builder with the given embedding model
     pub fn new(model: M) -> Self {
         Self {
@@ -82,7 +91,11 @@ impl<M: EmbeddingModel, T: Embed> EmbeddingsBuilder<M, T> {
     }
 }
 
-impl<M: EmbeddingModel, T: Embed + Send> EmbeddingsBuilder<M, T> {
+impl<M, T> EmbeddingsBuilder<M, T>
+where
+    M: EmbeddingModel,
+    T: Embed + Send,
+{
     /// Generate embeddings for all documents in the builder.
     /// Returns a vector of tuples, where the first element is the document and the second element is the embeddings (either one embedding or many).
     pub async fn build(self) -> Result<Vec<(T, OneOrMany<Embedding>)>, EmbeddingError> {

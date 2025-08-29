@@ -216,7 +216,7 @@ impl Client {
     pub fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
         &self,
         model: &str,
-    ) -> ExtractorBuilder<T, CompletionModel> {
+    ) -> ExtractorBuilder<CompletionModel, T> {
         ExtractorBuilder::new(self.completion_model(model, None))
     }
 }

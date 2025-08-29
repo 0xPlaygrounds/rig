@@ -36,7 +36,10 @@ const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 /// ```
 #[derive(Clone)]
 #[non_exhaustive]
-pub struct Agent<M: CompletionModel> {
+pub struct Agent<M>
+where
+    M: CompletionModel,
+{
     /// Name of the agent used for logging and debugging
     pub name: Option<String>,
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
@@ -61,7 +64,26 @@ pub struct Agent<M: CompletionModel> {
     pub tools: Arc<ToolSet>,
 }
 
-impl<M: CompletionModel> Completion<M> for Agent<M> {
+impl<M> Agent<M>
+where
+    M: CompletionModel,
+{
+    /// Returns the name of the agent.
+    pub(crate) fn name(&self) -> &str {
+        self.name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
+    }
+
+    /// Returns the name of the agent as an owned variable.
+    /// Useful in some cases where having the agent name as an owned variable is required.
+    pub(crate) fn name_owned(&self) -> String {
+        self.name.clone().unwrap_or(UNKNOWN_AGENT_NAME.to_string())
+    }
+}
+
+impl<M> Completion<M> for Agent<M>
+where
+    M: CompletionModel,
+{
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
     async fn completion(
         &self,
@@ -198,7 +220,10 @@ impl<M: CompletionModel> Completion<M> for Agent<M> {
 //  - https://github.com/rust-lang/rust/issues/121718 (refining_impl_trait)
 
 #[allow(refining_impl_trait)]
-impl<M: CompletionModel> Prompt for Agent<M> {
+impl<M> Prompt for Agent<M>
+where
+    M: CompletionModel,
+{
     #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
     fn prompt(
         &self,
@@ -209,7 +234,10 @@ impl<M: CompletionModel> Prompt for Agent<M> {
 }
 
 #[allow(refining_impl_trait)]
-impl<M: CompletionModel> Prompt for &Agent<M> {
+impl<M> Prompt for &Agent<M>
+where
+    M: CompletionModel,
+{
     #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
     fn prompt(
         &self,
@@ -220,7 +248,10 @@ impl<M: CompletionModel> Prompt for &Agent<M> {
 }
 
 #[allow(refining_impl_trait)]
-impl<M: CompletionModel> Chat for Agent<M> {
+impl<M> Chat for Agent<M>
+where
+    M: CompletionModel,
+{
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
     async fn chat(
         &self,
@@ -234,7 +265,10 @@ impl<M: CompletionModel> Chat for Agent<M> {
     }
 }
 
-impl<M: CompletionModel> StreamingCompletion<M> for Agent<M> {
+impl<M> StreamingCompletion<M> for Agent<M>
+where
+    M: CompletionModel,
+{
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
     async fn stream_completion(
         &self,
@@ -271,18 +305,5 @@ where
     ) -> StreamingPromptRequest<M, ()> {
         let arc = Arc::new(self.clone());
         StreamingPromptRequest::new(arc, prompt).with_history(chat_history)
-    }
-}
-
-impl<M: CompletionModel> Agent<M> {
-    /// Returns the name of the agent.
-    pub(crate) fn name(&self) -> &str {
-        self.name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
-    }
-
-    /// Returns the name of the agent as an owned variable.
-    /// Useful in some cases where having the agent name as an owned variable is required.
-    pub(crate) fn name_owned(&self) -> String {
-        self.name.clone().unwrap_or(UNKNOWN_AGENT_NAME.to_string())
     }
 }

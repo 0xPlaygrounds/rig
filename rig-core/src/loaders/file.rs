@@ -158,7 +158,10 @@ impl<'a> FileLoader<'a, Result<PathBuf, FileLoaderError>> {
     }
 }
 
-impl<'a, T: 'a> FileLoader<'a, Result<T, FileLoaderError>> {
+impl<'a, T> FileLoader<'a, Result<T, FileLoaderError>>
+where
+    T: 'a,
+{
     /// Ignores errors in the iterator, returning only successful results. This can be used on any
     ///  [FileLoader] state of iterator whose items are results.
     ///

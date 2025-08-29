@@ -71,7 +71,10 @@ impl SearchResult {
     }
 }
 
-impl<Model: EmbeddingModel> PostgresVectorStore<Model> {
+impl<Model> PostgresVectorStore<Model>
+where
+    Model: EmbeddingModel,
+{
     pub fn new(
         model: Model,
         pg_pool: PgPool,
@@ -159,7 +162,10 @@ where
     }
 }
 
-impl<Model: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<Model> {
+impl<Model> VectorStoreIndex for PostgresVectorStore<Model>
+where
+    Model: EmbeddingModel,
+{
     /// Get the top n documents based on the distance to the given query.
     /// The result is a list of tuples of the form (score, id, document)
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(

@@ -32,7 +32,10 @@ use super::Agent;
 ///     .additional_params(json!({"foo": "bar"}))
 ///     .build();
 /// ```
-pub struct AgentBuilder<M: CompletionModel> {
+pub struct AgentBuilder<M>
+where
+    M: CompletionModel,
+{
     /// Name of the agent used for logging and debugging
     name: Option<String>,
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
@@ -57,7 +60,10 @@ pub struct AgentBuilder<M: CompletionModel> {
     tools: ToolSet,
 }
 
-impl<M: CompletionModel> AgentBuilder<M> {
+impl<M> AgentBuilder<M>
+where
+    M: CompletionModel,
+{
     pub fn new(model: M) -> Self {
         Self {
             name: None,

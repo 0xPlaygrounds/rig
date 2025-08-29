@@ -100,8 +100,10 @@ pub trait EmbeddingsClientDyn: ProviderClient {
     ) -> Box<dyn EmbeddingModelDyn + 'a>;
 }
 
-impl<T: EmbeddingsClient<EmbeddingModel = M>, M: EmbeddingModel + 'static> EmbeddingsClientDyn
-    for T
+impl<M, T> EmbeddingsClientDyn for T
+where
+    T: EmbeddingsClient<EmbeddingModel = M>,
+    M: EmbeddingModel + 'static,
 {
     fn embedding_model<'a>(&self, model: &str) -> Box<dyn EmbeddingModelDyn + 'a> {
         Box::new(self.embedding_model(model))
@@ -116,7 +118,10 @@ impl<T: EmbeddingsClient<EmbeddingModel = M>, M: EmbeddingModel + 'static> Embed
     }
 }
 
-impl<T: EmbeddingsClientDyn + Clone + 'static> AsEmbeddings for T {
+impl<T> AsEmbeddings for T
+where
+    T: EmbeddingsClientDyn + Clone + 'static,
+{
     fn as_embeddings(&self) -> Option<Box<dyn EmbeddingsClientDyn>> {
         Some(Box::new(self.clone()))
     }

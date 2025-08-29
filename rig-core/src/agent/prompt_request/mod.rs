@@ -49,7 +49,10 @@ where
     hook: Option<P>,
 }
 
-impl<'a, M: CompletionModel> PromptRequest<'a, Standard, M, ()> {
+impl<'a, M> PromptRequest<'a, Standard, M, ()>
+where
+    M: CompletionModel,
+{
     /// Create a new PromptRequest with the given prompt and model
     pub fn new(agent: &'a Agent<M>, prompt: impl Into<Message>) -> Self {
         Self {
@@ -127,7 +130,10 @@ where
 
 // dead code allowed because of functions being left empty to allow for users to not have to implement every single function
 /// Trait for per-request hooks to observe tool call events.
-pub trait PromptHook<M: CompletionModel>: Clone + Send + Sync {
+pub trait PromptHook<M>: Clone + Send + Sync
+where
+    M: CompletionModel,
+{
     #[allow(unused_variables)]
     /// Called before the prompt is sent to the model
     fn on_completion_call(

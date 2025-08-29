@@ -43,7 +43,10 @@ pub struct LanceDbVectorIndex<M: EmbeddingModel> {
     search_params: SearchParams,
 }
 
-impl<M: EmbeddingModel> LanceDbVectorIndex<M> {
+impl<M> LanceDbVectorIndex<M>
+where
+    M: EmbeddingModel,
+{
     /// Create an instance of `LanceDbVectorIndex` with an existing table and model.
     /// Define the id field name of the table.
     /// Define search parameters that will be used to perform vector searches on the table.
@@ -176,7 +179,10 @@ impl SearchParams {
     }
 }
 
-impl<M: EmbeddingModel + Sync + Send> VectorStoreIndex for LanceDbVectorIndex<M> {
+impl<M> VectorStoreIndex for LanceDbVectorIndex<M>
+where
+    M: EmbeddingModel + Sync + Send,
+{
     /// Implement the `top_n` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
     /// # Example
     /// ```

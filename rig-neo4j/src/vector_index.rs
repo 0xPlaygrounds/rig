@@ -13,7 +13,10 @@ use serde::{Deserialize, Serialize, de::Error};
 
 use crate::Neo4jClient;
 
-pub struct Neo4jVectorIndex<M: EmbeddingModel> {
+pub struct Neo4jVectorIndex<M>
+where
+    M: EmbeddingModel,
+{
     graph: Graph,
     embedding_model: M,
     search_params: SearchParams,
@@ -101,7 +104,10 @@ const BASE_VECTOR_SEARCH_QUERY: &str = "
     YIELD node, score
 ";
 
-impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
+impl<M> Neo4jVectorIndex<M>
+where
+    M: EmbeddingModel,
+{
     pub fn new(
         graph: Graph,
         embedding_model: M,
@@ -218,7 +224,10 @@ struct RowResult {
     element_id: i64,
 }
 
-impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for Neo4jVectorIndex<M> {
+impl<M> VectorStoreIndex for Neo4jVectorIndex<M>
+where
+    M: EmbeddingModel + std::marker::Sync + Send,
+{
     /// Get the top n nodes and scores matching the query.
     ///
     /// #### Generic Type Parameters

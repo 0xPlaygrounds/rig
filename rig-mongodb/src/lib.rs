@@ -96,7 +96,11 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 /// # Ok::<_, anyhow::Error>(())
 /// # }).unwrap()
 /// ```
-pub struct MongoDbVectorIndex<M: EmbeddingModel, C: Send + Sync> {
+pub struct MongoDbVectorIndex<C, M>
+where
+    C: Send + Sync,
+    M: EmbeddingModel,
+{
     collection: mongodb::Collection<C>,
     model: M,
     index_name: String,
@@ -104,7 +108,11 @@ pub struct MongoDbVectorIndex<M: EmbeddingModel, C: Send + Sync> {
     search_params: SearchParams,
 }
 
-impl<M: EmbeddingModel, C: Send + Sync> MongoDbVectorIndex<M, C> {
+impl<C, M> MongoDbVectorIndex<C, M>
+where
+    C: Send + Sync,
+    M: EmbeddingModel,
+{
     /// Vector search stage of aggregation pipeline of mongoDB collection.
     /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
     fn pipeline_search_stage(&self, prompt_embedding: &Embedding, n: usize) -> bson::Document {
@@ -138,7 +146,11 @@ impl<M: EmbeddingModel, C: Send + Sync> MongoDbVectorIndex<M, C> {
     }
 }
 
-impl<M: EmbeddingModel, C: Send + Sync> MongoDbVectorIndex<M, C> {
+impl<C, M> MongoDbVectorIndex<C, M>
+where
+    M: EmbeddingModel,
+    C: Send + Sync,
+{
     /// Create a new `MongoDbVectorIndex`.
     ///
     /// The index (of type "vector") must already exist for the MongoDB collection.
@@ -223,8 +235,10 @@ impl SearchParams {
     }
 }
 
-impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
-    for MongoDbVectorIndex<M, C>
+impl<C, M> VectorStoreIndex for MongoDbVectorIndex<C, M>
+where
+    C: Sync + Send,
+    M: EmbeddingModel + Sync + Send,
 {
     /// Implement the `top_n` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
     ///
@@ -315,7 +329,11 @@ impl<M: EmbeddingModel + Sync + Send, C: Sync + Send> VectorStoreIndex
     }
 }
 
-impl<M: EmbeddingModel + Send + Sync, C: Send + Sync> InsertDocuments for MongoDbVectorIndex<M, C> {
+impl<C, M> InsertDocuments for MongoDbVectorIndex<C, M>
+where
+    C: Send + Sync,
+    M: EmbeddingModel + Send + Sync,
+{
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
