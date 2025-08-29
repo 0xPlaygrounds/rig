@@ -287,7 +287,7 @@ pub async fn send_compatible_streaming_request(
                                     tool_calls.push(streaming::RawStreamingChoice::ToolCall { id: func.id.clone(), call_id: Some(func.call_id.clone()), name: func.name.clone(), arguments: func.arguments.clone() });
                                 }
 
-                                StreamingItemDoneOutput {  item: Output::Reasoning {  summary, .. }, .. } => {
+                                StreamingItemDoneOutput {  item: Output::Reasoning {  summary, id }, .. } => {
                                     let reasoning = summary
                                         .iter()
                                         .map(|x| {
@@ -296,7 +296,7 @@ pub async fn send_compatible_streaming_request(
                                         })
                                         .collect::<Vec<String>>()
                                         .join("\n");
-                                    yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning, id: None })
+                                    yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning, id: Some(id.to_string()) })
                                 }
                                 _ => continue
                             }
