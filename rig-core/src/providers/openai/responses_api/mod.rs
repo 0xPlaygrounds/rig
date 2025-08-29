@@ -332,6 +332,51 @@ pub struct ResponsesToolDefinition {
     pub description: String,
 }
 
+/// Recursively ensures all object schemas in a JSON schema have `additionalProperties: false`.
+/// Nested arrays, schema $defs, object properties and enums should be handled through this method
+/// This seems to be required by OpenAI's Responses API when using strict mode.
+fn add_props_false(schema: &mut serde_json::Value) {
+    if let Value::Object(obj) = schema {
+        let is_object_schema = obj.get("type") == Some(&Value::String("object".to_string()))
+            || obj.contains_key("properties");
+
+        if is_object_schema && !obj.contains_key("additionalProperties") {
+            obj.insert("additionalProperties".to_string(), Value::Bool(false));
+        }
+
+        if let Some(defs) = obj.get_mut("$defs")
+            && let Value::Object(defs_obj) = defs
+        {
+            for (_, def_schema) in defs_obj.iter_mut() {
+                add_props_false(def_schema);
+            }
+        }
+
+        if let Some(properties) = obj.get_mut("properties")
+            && let Value::Object(props) = properties
+        {
+            for (_, prop_value) in props.iter_mut() {
+                add_props_false(prop_value);
+            }
+        }
+
+        if let Some(items) = obj.get_mut("items") {
+            add_props_false(items);
+        }
+
+        // should handle Enums (anyOf/oneOf)
+        for key in ["anyOf", "oneOf", "allOf"] {
+            if let Some(variants) = obj.get_mut(key)
+                && let Value::Array(variants_array) = variants
+            {
+                for variant in variants_array.iter_mut() {
+                    add_props_false(variant);
+                }
+            }
+        }
+    }
+}
+
 impl From<completion::ToolDefinition> for ResponsesToolDefinition {
     fn from(value: completion::ToolDefinition) -> Self {
         let completion::ToolDefinition {
@@ -340,15 +385,7 @@ impl From<completion::ToolDefinition> for ResponsesToolDefinition {
             description,
         } = value;
 
-        let parameters = parameters
-            .as_object_mut()
-            .expect("parameters should be a JSON object");
-        parameters.insert(
-            "additionalProperties".to_string(),
-            serde_json::Value::Bool(false),
-        );
-
-        let parameters = serde_json::Value::Object(parameters.clone());
+        add_props_false(&mut parameters);
 
         Self {
             name,
