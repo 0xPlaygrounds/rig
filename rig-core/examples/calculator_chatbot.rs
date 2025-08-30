@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rig::prelude::*;
 use rig::{
-    cli_chatbot::cli_chatbot,
+    cli_chatbot::ChatbotBuilder,
     completion::ToolDefinition,
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
@@ -273,8 +273,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .dynamic_tools(4, index, toolset)
         .build();
 
-    // Prompt the agent and print the response
-    cli_chatbot(calculator_rag).await?;
+    // Create a CLI chatbot from the agent
+    let chatbot = ChatbotBuilder::new().agent(calculator_rag).build();
+
+    chatbot.run().await?;
 
     Ok(())
 }
