@@ -95,7 +95,7 @@ async fn main() -> Result<()> {
     println!("Starting CLI chatbot...");
 
     // Start interactive CLI
-    rig::cli_chatbot::cli_chatbot(rag_agent).await?;
+    rig::cli_chatbot::cli_chatbot(rag_agent, 10).await?;
 
     Ok(())
 }
