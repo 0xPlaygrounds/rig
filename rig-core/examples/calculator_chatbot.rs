@@ -50,7 +50,8 @@ impl Tool for Add {
                         "type": "number",
                         "description": "The second number to add"
                     }
-                }
+                },
+                "required": [ "x", "y" ]
             }
         }))
         .expect("Tool Definition")
@@ -102,7 +103,8 @@ impl Tool for Subtract {
                         "type": "number",
                         "description": "The number to subtract"
                     }
-                }
+                },
+                "required": [ "x", "y" ]
             }
         }))
         .expect("Tool Definition")
@@ -153,7 +155,8 @@ impl Tool for Multiply {
                         "type": "number",
                         "description": "The second factor in the product"
                     }
-                }
+                },
+                "required": [ "x", "y" ]
             }
         }))
         .expect("Tool Definition")
@@ -200,7 +203,8 @@ impl Tool for Divide {
                         "type": "number",
                         "description": "The Divisor of the division. The number by which the dividend is being divided"
                     }
-                }
+                },
+                "required": [ "x", "y" ]
             }
         }))
         .expect("Tool Definition")
