@@ -437,7 +437,7 @@ pub enum ToolType {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ToolDefinition {
     pub r#type: String,
-    pub function: completion::ToolDefinition,
+    pub function: DeepseekToolDefinition,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -473,7 +473,7 @@ impl DeepseekToolDefinition {
 impl From<DeepseekToolDefinition> for ToolDefinition {
     fn from(function: DeepseekToolDefinition) -> Self {
         Self {
-            r#type: "function",
+            r#type: "function".to_string(),
             function,
         }
     }
@@ -589,13 +589,18 @@ impl CompletionModel {
             completion_request
                 .tools
                 .into_iter()
-                .map(|x| ToolDefinition::from_tool(x, BetaMode::Enabled))
+                .map(|x| {
+                    DeepSeekToolDefinition::from_tool(x, BetaMode::Enabled).into::<ToolDefinition>()
+                })
                 .collect::<Vec<_>>()
         } else {
             completion_request
                 .tools
                 .into_iter()
-                .map(|x| ToolDefinition::from_tool(x, BetaMode::Disabled))
+                .map(|x| {
+                    DeepSeekToolDefinition::from_tool(x, BetaMode::Disabled)
+                        .into::<ToolDefinition>()
+                })
                 .collect::<Vec<_>>()
         };
 
