@@ -21,12 +21,14 @@ pub mod file;
 pub use file::FileLoader;
 
 #[cfg(feature = "pdf")]
+#[cfg_attr(docsrs, doc(cfg(feature = "pdf")))]
 pub mod pdf;
 
 #[cfg(feature = "pdf")]
 pub use pdf::PdfFileLoader;
 
 #[cfg(feature = "epub")]
+#[cfg_attr(docsrs, doc(cfg(feature = "epub")))]
 pub mod epub;
 
 #[cfg(feature = "epub")]

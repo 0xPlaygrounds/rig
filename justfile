@@ -20,3 +20,8 @@ build-wasm:
 # build-wasm-full
 bwf:
     just build-wasm && npm run build --prefix ./rig-wasm/pkg
+
+# Runs a command that compiles the docs then opens it as if it were the official docs on Docs.rs
+# Requires nightly toolchain
+doc:
+    RUSTDOCFLAGS="--cfg docsrs" cargo +nightly -p rig-core doc --all-features --open

@@ -23,9 +23,20 @@ pub fn derive_provider_client(input: TokenStream) -> TokenStream {
     client::provider_client(input)
 }
 
-/// References:
-/// <https://doc.rust-lang.org/book/ch19-06-macros.html#how-to-write-a-custom-derive-macro>
-/// <https://doc.rust-lang.org/reference/procedural-macros.html>
+//References:
+//<https://doc.rust-lang.org/book/ch19-06-macros.html#how-to-write-a-custom-derive-macro>
+//<https://doc.rust-lang.org/reference/procedural-macros.html>
+/// A macro that allows you to implement the `rig::embedding::Embed` trait by deriving it.
+/// Usage can be found below:
+///
+/// ```rust
+/// #[derive(Embed)]
+/// struct Foo {
+///     id: String,
+///     #[embed] // this helper shows which field to embed
+///     description: String
+///}
+/// ```
 #[proc_macro_derive(Embed, attributes(embed))]
 pub fn derive_embedding_trait(item: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(item as DeriveInput);

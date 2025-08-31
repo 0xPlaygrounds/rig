@@ -7,6 +7,7 @@ use crate::{
 };
 
 #[cfg(feature = "rmcp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 use crate::tool::rmcp::McpTool as RmcpTool;
 
 use super::Agent;
