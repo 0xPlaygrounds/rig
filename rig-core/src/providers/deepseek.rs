@@ -440,13 +440,50 @@ pub struct ToolDefinition {
     pub function: completion::ToolDefinition,
 }
 
-impl From<crate::completion::ToolDefinition> for ToolDefinition {
-    fn from(tool: crate::completion::ToolDefinition) -> Self {
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DeepseekToolDefinition {
+    name: String,
+    description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    strict: Option<bool>,
+    parameters: serde_json::Value,
+}
+
+impl DeepseekToolDefinition {
+    fn from_tool(tool: completion::ToolDefinition, beta_mode: BetaMode) -> Self {
+        let completion::ToolDefinition {
+            name,
+            description,
+            parameters,
+        } = tool;
+        let strict = if matches!(beta_mode, BetaMode::Enabled) {
+            Some(true)
+        } else {
+            None
+        };
         Self {
-            r#type: "function".into(),
-            function: tool,
+            name,
+            description,
+            strict,
+            parameters,
         }
     }
+}
+
+impl From<DeepseekToolDefinition> for ToolDefinition {
+    fn from(function: DeepseekToolDefinition) -> Self {
+        Self {
+            r#type: "function",
+            function,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum BetaMode {
+    Enabled,
+    Disabled,
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
@@ -544,6 +581,24 @@ impl CompletionModel {
                 .collect::<Vec<_>>(),
         );
 
+        let tools = if self
+            .client
+            .base_url
+            .starts_with("https://api.deepseek.com/beta")
+        {
+            completion_request
+                .tools
+                .into_iter()
+                .map(|x| ToolDefinition::from_tool(x, BetaMode::Enabled))
+                .collect::<Vec<_>>()
+        } else {
+            completion_request
+                .tools
+                .into_iter()
+                .map(|x| ToolDefinition::from_tool(x, BetaMode::Disabled))
+                .collect::<Vec<_>>()
+        };
+
         let request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
@@ -555,7 +610,7 @@ impl CompletionModel {
                 "model": self.model,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
-                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
+                "tools": tools,
                 "tool_choice": "auto",
             })
         };
