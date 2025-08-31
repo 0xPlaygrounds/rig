@@ -581,26 +581,23 @@ impl CompletionModel {
                 .collect::<Vec<_>>(),
         );
 
-        let tools = if self
+        let tools: Vec<ToolDefinition> = if self
             .client
             .base_url
             .starts_with("https://api.deepseek.com/beta")
         {
             completion_request
                 .tools
-                .into_iter()
-                .map(|x| {
-                    DeepSeekToolDefinition::from_tool(x, BetaMode::Enabled).into::<ToolDefinition>()
-                })
+                .iter()
+                .cloned()
+                .map(|x| DeepseekToolDefinition::from_tool(x, BetaMode::Enabled).into())
                 .collect::<Vec<_>>()
         } else {
             completion_request
                 .tools
-                .into_iter()
-                .map(|x| {
-                    DeepSeekToolDefinition::from_tool(x, BetaMode::Disabled)
-                        .into::<ToolDefinition>()
-                })
+                .iter()
+                .cloned()
+                .map(|x| DeepseekToolDefinition::from_tool(x, BetaMode::Disabled).into())
                 .collect::<Vec<_>>()
         };
 
