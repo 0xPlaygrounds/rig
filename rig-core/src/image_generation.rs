@@ -1,3 +1,5 @@
+//! Everything related to core image generation abstractions in Rig.
+//! Rig allows calling a number of different providers (that support image generation) using the [ImageGenerationModel] trait.
 use crate::client::image_generation::ImageGenerationModelHandle;
 use futures::future::BoxFuture;
 use serde_json::Value;
@@ -47,6 +49,7 @@ where
     > + Send;
 }
 
+/// A unified response for a model image generation, returning both the image and the raw response.
 #[derive(Debug)]
 pub struct ImageGenerationResponse<T> {
     pub image: Vec<u8>,
@@ -105,6 +108,8 @@ where
     }
 }
 
+/// An image generation request.
+#[non_exhaustive]
 pub struct ImageGenerationRequest {
     pub prompt: String,
     pub width: u32,
@@ -112,10 +117,12 @@ pub struct ImageGenerationRequest {
     pub additional_params: Option<Value>,
 }
 
+/// A builder for `ImageGenerationRequest`.
+/// Can be sent to a model provider.
+#[non_exhaustive]
 pub struct ImageGenerationRequestBuilder<M>
 where
-    M: ImageGenerationModel,
-{
+    M: ImageGenerationModel {
     model: M,
     prompt: String,
     width: u32,

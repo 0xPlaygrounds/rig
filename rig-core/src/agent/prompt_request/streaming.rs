@@ -2,7 +2,7 @@ use crate::{
     OneOrMany,
     agent::prompt_request::PromptHook,
     completion::GetTokenUsage,
-    message::{AssistantContent, ToolResultContent, UserContent},
+    message::{AssistantContent, Reasoning, ToolResultContent, UserContent},
     streaming::{StreamedAssistantContent, StreamingCompletion},
 };
 use futures::{Stream, StreamExt};
@@ -252,7 +252,13 @@ where
                                 did_call_tool = true;
                                 // break;
                             },
-                            Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, .. })) => {
+                            Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id })) => {
+                                chat_history.write().await.push(rig::message::Message::Assistant {
+                                    id: None,
+                                    content: OneOrMany::one(AssistantContent::Reasoning(Reasoning {
+                                        reasoning: reasoning.clone(), id
+                                    }))
+                                });
                                 let text = reasoning.into_iter().collect::<Vec<String>>().join("");
                                 yield Ok(MultiTurnStreamItem::text(&text));
                                 did_call_tool = false;

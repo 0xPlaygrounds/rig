@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rig::prelude::*;
 use rig::{
-    cli_chatbot::cli_chatbot,
+    cli_chatbot::ChatbotBuilder,
     completion::ToolDefinition,
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
@@ -50,7 +50,8 @@ impl Tool for Add {
                         "type": "number",
                         "description": "The second number to add"
                     }
-                }
+                },
+                "required": [ "x", "y" ]
             }
         }))
         .expect("Tool Definition")
@@ -102,7 +103,8 @@ impl Tool for Subtract {
                         "type": "number",
                         "description": "The number to subtract"
                     }
-                }
+                },
+                "required": [ "x", "y" ]
             }
         }))
         .expect("Tool Definition")
@@ -153,7 +155,8 @@ impl Tool for Multiply {
                         "type": "number",
                         "description": "The second factor in the product"
                     }
-                }
+                },
+                "required": [ "x", "y" ]
             }
         }))
         .expect("Tool Definition")
@@ -200,7 +203,8 @@ impl Tool for Divide {
                         "type": "number",
                         "description": "The Divisor of the division. The number by which the dividend is being divided"
                     }
-                }
+                },
+                "required": [ "x", "y" ]
             }
         }))
         .expect("Tool Definition")
@@ -269,8 +273,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .dynamic_tools(4, index, toolset)
         .build();
 
-    // Prompt the agent and print the response
-    cli_chatbot(calculator_rag).await?;
+    // Create a CLI chatbot from the agent
+    let chatbot = ChatbotBuilder::new().agent(calculator_rag).build();
+
+    chatbot.run().await?;
 
     Ok(())
 }

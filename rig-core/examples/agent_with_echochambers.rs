@@ -2,7 +2,7 @@ use anyhow::Result;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use rig::prelude::*;
 use rig::{
-    cli_chatbot::cli_chatbot,
+    cli_chatbot::ChatbotBuilder,
     completion::ToolDefinition,
     providers::openai::{Client, GPT_4O},
     tool::Tool,
@@ -360,7 +360,14 @@ async fn main() -> Result<(), anyhow::Error> {
         .tool(GetMetricsHistory)
         .build();
 
-    // Start the CLI chatbot
-    cli_chatbot(echochambers_agent).await?;
+    // Build a CLI chatbot from the agent, with multi-turn enabled
+    let chatbot = ChatbotBuilder::new()
+        .agent(echochambers_agent)
+        .multi_turn_depth(10)
+        .build();
+
+    // Run the agent
+    chatbot.run().await?;
+
     Ok(())
 }

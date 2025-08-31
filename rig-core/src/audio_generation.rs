@@ -1,3 +1,5 @@
+//! Everything related to audio generation (ie, Text To Speech).
+//! Rig abstracts over a number of different providers using the [AudioGenerationModel] trait.
 use crate::client::audio_generation::AudioGenerationModelHandle;
 use futures::future::BoxFuture;
 use serde_json::Value;
