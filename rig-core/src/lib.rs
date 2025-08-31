@@ -60,31 +60,55 @@
 //! # Integrations
 //! ## Model Providers
 //! Rig natively supports the following completion and embedding model provider integrations:
-//! - OpenAI
-//! - Cohere
 //! - Anthropic
+//! - Azure
+//! - Cohere
+//! - Deepseek
+//! - Galadriel
+//! - Gemini
+//! - Groq
+//! - Huggingface
+//! - Hyperbolic
+//! - Mira
+//! - Mistral
+//! - Moonshot
+//! - Ollama
+//! - Openai
+//! - OpenRouter
 //! - Perplexity
-//! - Google Gemini
+//! - Together
+//! - Voyage AI
 //! - xAI
-//! - DeepSeek
 //!
 //! You can also implement your own model provider integration by defining types that
 //! implement the [CompletionModel](crate::completion::CompletionModel) and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits.
 //!
-//! ## Vector Stores
-//! Rig currently supports the following vector store integrations via companion crates:
-//! - `rig-mongodb`: Vector store implementation for MongoDB
-//! - `rig-lancedb`: Vector store implementation for LanceDB
-//! - `rig-neo4j`: Vector store implementation for Neo4j
-//! - `rig-qdrant`: Vector store implementation for Qdrant
+//! Vector stores are available as separate companion-crates:
+//!
+//! - MongoDB: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-mongodb)
+//! - LanceDB: [`rig-lancedb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-lancedb)
+//! - Neo4j: [`rig-neo4j`](https://github.com/0xPlaygrounds/rig/tree/main/rig-neo4j)
+//! - Qdrant: [`rig-qdrant`](https://github.com/0xPlaygrounds/rig/tree/main/rig-qdrant)
+//! - SQLite: [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/rig-sqlite)
+//! - SurrealDB: [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-surrealdb)
+//! - Milvus: [`rig-milvus`](https://github.com/0xPlaygrounds/rig/tree/main/rig-milvus)
+//! - ScyllaDB: [`rig-scylladb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-scylladb)
+//! - AWS S3Vectors: [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/rig-s3vectors)
 //!
 //! You can also implement your own vector store integration by defining types that
 //! implement the [VectorStoreIndex](crate::vector_store::VectorStoreIndex) trait.
+//!
+//! The following providers are available as separate companion-crates:
+//!
+//! - Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/rig-fastembed)
+//! - Eternal AI: [`rig-eternalai`](https://github.com/0xPlaygrounds/rig/tree/main/rig-eternalai)
+//!
 
 extern crate self as rig;
 
 pub mod agent;
 #[cfg(feature = "audio")]
+#[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
 pub mod cli_chatbot;
 pub mod client;
@@ -92,6 +116,7 @@ pub mod completion;
 pub mod embeddings;
 pub mod extractor;
 #[cfg(feature = "image")]
+#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
 pub(crate) mod json_utils;
 pub mod loaders;
@@ -110,4 +135,5 @@ pub use embeddings::Embed;
 pub use one_or_many::{EmptyListError, OneOrMany};
 
 #[cfg(feature = "derive")]
+#[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use rig_derive::Embed;
