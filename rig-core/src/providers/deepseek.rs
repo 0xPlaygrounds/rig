@@ -8,6 +8,21 @@
 //!
 //! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_CHAT);
 //! ```
+//!
+//! # Deepseek Beta
+//! The Deepseek Beta mode can be accessed by simply amending the base URL for your client.
+//!
+//! An example can be found below:
+//! ```rust
+//! let api_key = "deepseek_api_key";
+//!
+//! let client = rig::providers::deepseek::Client::builder(api_key)
+//!     .base_url("https://api.deepseek.com/beta")
+//!     .build();
+//! ```
+//!
+//! Currently, Rig supports the following features for the beta:
+//! - Strict mode tool calling (this is added on automatically by Rig, so you don't need to make any changes yourself)
 
 use futures::StreamExt;
 use std::collections::HashMap;
@@ -207,6 +222,7 @@ pub struct CompletionResponse {
     // you may want other fields
 }
 
+/// Deepseek API token usage metrics
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Usage {
     pub completion_tokens: u32,
@@ -234,18 +250,23 @@ impl Usage {
     }
 }
 
+/// An optional nested field of `Usage` that stores reasoning tokens.
+/// If you aren't using reasoning, this may be None.
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct CompletionTokensDetails {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_tokens: Option<u32>,
 }
 
+/// An optional nested field of `Usage` that stores token usage from cache hits.
+/// If there is a cache miss on the Deepseek API, this may be None.
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct PromptTokensDetails {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached_tokens: Option<u32>,
 }
 
+/// Part of the `Message` type for Deepseek.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Choice {
     pub index: usize,
@@ -254,6 +275,12 @@ pub struct Choice {
     pub finish_reason: String,
 }
 
+/// DeepSeek message types.
+/// Messages on Deepseek are generally split into four types:
+/// - System messages or prompts
+/// - User messages (ie, user prompts)
+/// - Assistant messages (typically responses from the API)
+/// - Tool result messages (should be the latest message in the chain when trying to use function calling from an API)
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
@@ -286,6 +313,7 @@ pub enum Message {
 }
 
 impl Message {
+    /// A system message.
     pub fn system(content: &str) -> Self {
         Message::System {
             content: content.to_owned(),
@@ -411,6 +439,7 @@ impl TryFrom<message::Message> for Vec<Message> {
     }
 }
 
+/// A tool call with Deepseek.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolCall {
     pub id: String,
@@ -420,6 +449,7 @@ pub struct ToolCall {
     pub function: Function,
 }
 
+/// A function tool call on Deepseek.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Function {
     pub name: String,
@@ -427,6 +457,7 @@ pub struct Function {
     pub arguments: serde_json::Value,
 }
 
+/// The type of a tool call. Generally speaking this can only be `Function` at the moment.
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum ToolType {
@@ -434,12 +465,16 @@ pub enum ToolType {
     Function,
 }
 
+/// A tool definition. Used in request inputs for Deepseek.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ToolDefinition {
     pub r#type: String,
     pub function: DeepseekToolDefinition,
 }
 
+/// A Deepseek-specific tool definition.
+/// The difference between this and other tool types is that it includes a `strict` bool field for strict mode tool function calling.
+/// To use this field, you must be using the Beta API (find out more about this in the `crate::providers::deepseek` module).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DeepseekToolDefinition {
     name: String,
@@ -450,13 +485,13 @@ pub struct DeepseekToolDefinition {
 }
 
 impl DeepseekToolDefinition {
-    fn from_tool(tool: completion::ToolDefinition, beta_mode: BetaMode) -> Self {
+    fn from_tool(tool: completion::ToolDefinition, beta_mode: &BetaMode) -> Self {
         let completion::ToolDefinition {
             name,
             description,
             parameters,
         } = tool;
-        let strict = if matches!(beta_mode, BetaMode::Enabled) {
+        let strict = if matches!(beta_mode, &BetaMode::Enabled) {
             Some(true)
         } else {
             None
@@ -479,11 +514,22 @@ impl From<DeepseekToolDefinition> for ToolDefinition {
     }
 }
 
+/// Whether beta mode is enabled or not.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum BetaMode {
     Enabled,
     Disabled,
+}
+
+impl BetaMode {
+    fn check_from_url(url: &str) -> Self {
+        if url.starts_with("https://api.deepseek.com/beta") {
+            Self::Enabled
+        } else {
+            Self::Disabled
+        }
+    }
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
@@ -581,25 +627,7 @@ impl CompletionModel {
                 .collect::<Vec<_>>(),
         );
 
-        let tools: Vec<ToolDefinition> = if self
-            .client
-            .base_url
-            .starts_with("https://api.deepseek.com/beta")
-        {
-            completion_request
-                .tools
-                .iter()
-                .cloned()
-                .map(|x| DeepseekToolDefinition::from_tool(x, BetaMode::Enabled).into())
-                .collect::<Vec<_>>()
-        } else {
-            completion_request
-                .tools
-                .iter()
-                .cloned()
-                .map(|x| DeepseekToolDefinition::from_tool(x, BetaMode::Disabled).into())
-                .collect::<Vec<_>>()
-        };
+        let beta_mode = BetaMode::check_from_url(&self.client.base_url);
 
         let request = if completion_request.tools.is_empty() {
             json!({
@@ -612,7 +640,12 @@ impl CompletionModel {
                 "model": self.model,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
-                "tools": tools,
+                "tools": completion_request
+                            .tools
+                            .iter()
+                            .cloned()
+                            .map(|x| ToolDefinition::from(DeepseekToolDefinition::from_tool(x, &beta_mode)))
+                            .collect::<Vec<_>>(),
                 "tool_choice": "auto",
             })
         };
@@ -683,6 +716,7 @@ impl completion::CompletionModel for CompletionModel {
     }
 }
 
+/// A streaming chunk from the Deepseek completions streaming API.
 #[derive(Deserialize, Debug)]
 pub struct StreamingDelta {
     #[serde(default)]
@@ -692,6 +726,7 @@ pub struct StreamingDelta {
     reasoning_content: Option<String>,
 }
 
+/// A streaming delta (ie, a part of a text response) from the Deepseek completions streaming API.
 #[derive(Deserialize, Debug)]
 struct StreamingChoice {
     delta: StreamingDelta,
