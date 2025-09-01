@@ -16,12 +16,19 @@ struct Person {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    tracing_subscriber::fmt().init();
+
+    let deepseek_api_key = std::env::var("DEEPSEEK_API_KEY")
+        .expect("DEEPSEEK_API_KEY should exist as an environment variable");
     // Create DeepSeek client
-    let deepseek_client = deepseek::Client::from_env();
+    let deepseek_client = deepseek::Client::builder(&deepseek_api_key)
+        .base_url("https://api.deepseek.com/beta")
+        .build()?;
 
     // Create extractor
     let data_extractor = deepseek_client
         .extractor::<Person>(deepseek::DEEPSEEK_CHAT)
+        .retries(2)
         .build();
     let person = data_extractor
         .extract("Hello my name is John Doe! I am a software engineer.")
