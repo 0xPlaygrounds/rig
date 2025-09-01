@@ -2,6 +2,9 @@ ci:
     just fmt
     just clippy
 
+example example_name:
+    RUST_LOG=trace cargo run --example {{example_name}}
+
 clippy:
     cargo clippy --all-features --all-targets
 

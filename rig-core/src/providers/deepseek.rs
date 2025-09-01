@@ -674,7 +674,7 @@ impl completion::CompletionModel for CompletionModel {
     > {
         let request = self.create_completion_request(completion_request)?;
 
-        tracing::debug!("DeepSeek completion request: {request:?}");
+        tracing::debug!(target = "rig", "DeepSeek completion request: {request:?}");
 
         let response = self
             .client
@@ -685,7 +685,7 @@ impl completion::CompletionModel for CompletionModel {
 
         if response.status().is_success() {
             let t = response.text().await?;
-            tracing::debug!(target: "rig", "DeepSeek completion: {}", t);
+            tracing::debug!(target = "rig", "DeepSeek completion: {t}");
 
             match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
                 ApiResponse::Ok(response) => response.try_into(),
