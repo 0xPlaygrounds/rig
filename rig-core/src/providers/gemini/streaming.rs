@@ -16,6 +16,13 @@ use crate::{
 #[serde(rename_all = "camelCase")]
 pub struct PartialUsage {
     pub total_token_count: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cached_content_token_count: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub candidates_token_count: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thoughts_token_count: Option<i32>,
+    pub prompt_token_count: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,6 +43,12 @@ impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         let mut usage = crate::completion::Usage::new();
         usage.total_tokens = self.usage_metadata.total_token_count as u64;
+        usage.output_tokens = self
+            .usage_metadata
+            .candidates_token_count
+            .map(|x| x as u64)
+            .unwrap_or(0);
+        usage.input_tokens = self.usage_metadata.prompt_token_count as u64;
         Some(usage)
     }
 }
@@ -124,14 +137,8 @@ impl CompletionModel {
 
                         // Check if this is the final response
                         if choice.finish_reason.is_some() {
-                            let usage = data.usage_metadata
-                                            .map(|u| u.total_token_count)
-                                            .unwrap_or(0);
-
                             yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                                usage_metadata: PartialUsage {
-                                    total_token_count: usage,
-                                }
+                                usage_metadata: data.usage_metadata.unwrap_or_default()
                             }));
                             break;
                         }

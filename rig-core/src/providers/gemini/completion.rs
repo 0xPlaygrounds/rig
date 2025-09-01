@@ -851,6 +851,8 @@ pub mod gemini_api_types {
         pub cached_content_token_count: Option<i32>,
         pub candidates_token_count: i32,
         pub total_token_count: i32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub thoughts_token_count: Option<i32>,
     }
 
     impl std::fmt::Display for UsageMetadata {

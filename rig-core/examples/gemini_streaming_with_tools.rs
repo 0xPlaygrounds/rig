@@ -1,9 +1,13 @@
 use anyhow::Result;
 use rig::agent::stream_to_stdout;
 use rig::prelude::*;
+use rig::providers::gemini::completion::gemini_api_types::{
+    AdditionalParameters, GenerationConfig,
+};
 use rig::{completion::ToolDefinition, providers, streaming::StreamingPrompt, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tracing_subscriber::EnvFilter;
 
 #[derive(Deserialize)]
 struct OperationArgs {
@@ -88,7 +92,12 @@ impl Tool for Subtract {
 }
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    tracing_subscriber::fmt().init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
+
+    let gen_cfg = GenerationConfig::default();
+    let cfg = AdditionalParameters::default().with_config(gen_cfg);
 
     // Create agent with a single context prompt and two tools
     let calculator_agent = providers::gemini::Client::from_env()
@@ -102,6 +111,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .max_tokens(1024)
         .tool(Adder)
         .tool(Subtract)
+        .additional_params(serde_json::to_value(&cfg).unwrap())
         .build();
 
     println!("Calculate 2 - 5");
