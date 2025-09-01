@@ -37,7 +37,10 @@ impl Loadable for PathBuf {
     }
 }
 
-impl<T: Loadable> Loadable for Result<T, PdfLoaderError> {
+impl<T> Loadable for Result<T, PdfLoaderError>
+where
+    T: Loadable,
+{
     fn load(self) -> Result<Document, PdfLoaderError> {
         self.map(|t| t.load())?
     }
@@ -327,7 +330,10 @@ impl<'a> PdfFileLoader<'a, ByPage> {
     }
 }
 
-impl<'a, T: 'a> PdfFileLoader<'a, Result<T, PdfLoaderError>> {
+impl<'a, T> PdfFileLoader<'a, Result<T, PdfLoaderError>>
+where
+    T: 'a,
+{
     /// Ignores errors in the iterator, returning only successful results. This can be used on any
     ///  [PdfFileLoader] state of iterator whose items are results.
     ///

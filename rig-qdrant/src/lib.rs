@@ -24,7 +24,10 @@ pub struct QdrantVectorStore<M: EmbeddingModel> {
     query_params: QueryPoints,
 }
 
-impl<M: EmbeddingModel> QdrantVectorStore<M> {
+impl<M> QdrantVectorStore<M>
+where
+    M: EmbeddingModel,
+{
     /// Creates a new instance of `QdrantVectorStore`.
     ///
     /// # Arguments
@@ -113,7 +116,10 @@ fn stringify_id(id: PointId) -> Result<String, VectorStoreError> {
     }
 }
 
-impl<M: EmbeddingModel + std::marker::Sync + Send> VectorStoreIndex for QdrantVectorStore<M> {
+impl<M> VectorStoreIndex for QdrantVectorStore<M>
+where
+    M: EmbeddingModel + std::marker::Sync + Send,
+{
     /// Search for the top `n` nearest neighbors to the given query within the Qdrant vector store.
     /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(

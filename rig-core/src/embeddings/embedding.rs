@@ -74,7 +74,10 @@ pub trait EmbeddingModelDyn: Sync + Send {
     ) -> BoxFuture<'_, Result<Vec<Embedding>, EmbeddingError>>;
 }
 
-impl<T: EmbeddingModel> EmbeddingModelDyn for T {
+impl<T> EmbeddingModelDyn for T
+where
+    T: EmbeddingModel,
+{
     fn max_documents(&self) -> usize {
         T::MAX_DOCUMENTS
     }

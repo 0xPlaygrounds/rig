@@ -31,15 +31,20 @@ pub trait TranscriptionClientDyn: ProviderClient {
     fn transcription_model<'a>(&self, model: &str) -> Box<dyn TranscriptionModelDyn + 'a>;
 }
 
-impl<T: TranscriptionClient<TranscriptionModel = M>, M: TranscriptionModel + 'static>
-    TranscriptionClientDyn for T
+impl<M, T> TranscriptionClientDyn for T
+where
+    T: TranscriptionClient<TranscriptionModel = M>,
+    M: TranscriptionModel + 'static,
 {
     fn transcription_model<'a>(&self, model: &str) -> Box<dyn TranscriptionModelDyn + 'a> {
         Box::new(self.transcription_model(model))
     }
 }
 
-impl<T: TranscriptionClientDyn + Clone + 'static> AsTranscription for T {
+impl<T> AsTranscription for T
+where
+    T: TranscriptionClientDyn + Clone + 'static,
+{
     fn as_transcription(&self) -> Option<Box<dyn TranscriptionClientDyn>> {
         Some(Box::new(self.clone()))
     }

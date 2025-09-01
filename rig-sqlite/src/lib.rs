@@ -86,12 +86,20 @@ pub trait SqliteVectorStoreTable: Send + Sync + Clone {
 }
 
 #[derive(Clone)]
-pub struct SqliteVectorStore<E: EmbeddingModel + 'static, T: SqliteVectorStoreTable + 'static> {
+pub struct SqliteVectorStore<E, T>
+where
+    E: EmbeddingModel + 'static,
+    T: SqliteVectorStoreTable + 'static,
+{
     conn: Connection,
     _phantom: PhantomData<(E, T)>,
 }
 
-impl<E: EmbeddingModel + 'static, T: SqliteVectorStoreTable + 'static> SqliteVectorStore<E, T> {
+impl<E, T> SqliteVectorStore<E, T>
+where
+    E: EmbeddingModel + 'static,
+    T: SqliteVectorStoreTable + 'static,
+{
     pub async fn new(conn: Connection, embedding_model: &E) -> Result<Self, VectorStoreError> {
         let dims = embedding_model.ndims();
         let table_name = T::name();
@@ -313,12 +321,20 @@ impl<E: EmbeddingModel + 'static, T: SqliteVectorStoreTable + 'static> SqliteVec
 ///     .top_n::<Document>("Example query", 2)
 ///     .await?;
 /// ```
-pub struct SqliteVectorIndex<E: EmbeddingModel + 'static, T: SqliteVectorStoreTable + 'static> {
+pub struct SqliteVectorIndex<E, T>
+where
+    E: EmbeddingModel + 'static,
+    T: SqliteVectorStoreTable + 'static,
+{
     store: SqliteVectorStore<E, T>,
     embedding_model: E,
 }
 
-impl<E: EmbeddingModel + 'static, T: SqliteVectorStoreTable> SqliteVectorIndex<E, T> {
+impl<E, T> SqliteVectorIndex<E, T>
+where
+    E: EmbeddingModel + 'static,
+    T: SqliteVectorStoreTable,
+{
     pub fn new(embedding_model: E, store: SqliteVectorStore<E, T>) -> Self {
         Self {
             store,

@@ -28,13 +28,19 @@ pub trait VerifyClientDyn: ProviderClient {
     fn verify(&self) -> BoxFuture<'_, Result<(), VerifyError>>;
 }
 
-impl<T: VerifyClient> VerifyClientDyn for T {
+impl<T> VerifyClientDyn for T
+where
+    T: VerifyClient,
+{
     fn verify(&self) -> BoxFuture<'_, Result<(), VerifyError>> {
         Box::pin(self.verify())
     }
 }
 
-impl<T: VerifyClientDyn + Clone + 'static> AsVerify for T {
+impl<T> AsVerify for T
+where
+    T: VerifyClientDyn + Clone + 'static,
+{
     fn as_verify(&self) -> Option<Box<dyn VerifyClientDyn>> {
         Some(Box::new(self.clone()))
     }
