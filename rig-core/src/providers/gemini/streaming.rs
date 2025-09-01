@@ -137,7 +137,6 @@ impl CompletionModel {
 
                         // Check if this is the final response
                         if choice.finish_reason.is_some() {
-                            let data = data;
                             yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                                 usage_metadata: data.usage_metadata.unwrap_or_default()
                             }));
