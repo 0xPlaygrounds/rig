@@ -4,14 +4,14 @@ use futures::StreamExt;
 
 use crate::{
     agent::{Agent, prompt_request::streaming::MultiTurnStreamItem},
-    completion::{CompletionError, CompletionModel, Message, PromptError},
+    completion::{Chat, CompletionError, CompletionModel, Message, PromptError},
     streaming::StreamingPrompt,
 };
 
 /// Type-state representing an empty `agent` field in `ChatbotBuilder`
 pub struct AgentNotSet;
 
-/// Builder pattern for CLI chatbots
+/// Builder pattern for CLI chatbots.
 ///
 /// # Example
 /// ```rust
@@ -85,7 +85,8 @@ where
     }
 }
 
-/// A CLI chatbot
+/// A CLI chatbot.
+/// Only takes [Agent] types unlike [cli_chatbot] which takes any `impl Chat` type.
 ///
 /// # Example
 /// ```rust
@@ -190,4 +191,47 @@ where
 
         Ok(())
     }
+}
+
+/// Utility function to create a simple REPL CLI chatbot from a type that implements the
+/// `Chat` trait.
+///
+/// Where the [Chatbot] type takes an agent, this takes any type that implements the [Chat] trait.
+pub async fn cli_chatbot(chatbot: impl Chat) -> Result<(), PromptError> {
+    let stdin = io::stdin();
+    let mut stdout = io::stdout();
+    let mut chat_log = vec![];
+
+    println!("Welcome to the chatbot! Type 'exit' to quit.");
+    loop {
+        print!("> ");
+        // Flush stdout to ensure the prompt appears before input
+        stdout.flush().unwrap();
+
+        let mut input = String::new();
+        match stdin.read_line(&mut input) {
+            Ok(_) => {
+                // Remove the newline character from the input
+                let input = input.trim();
+                // Check for a command to exit
+                if input == "exit" {
+                    break;
+                }
+                tracing::info!("Prompt:\n{}\n", input);
+
+                let response = chatbot.chat(input, chat_log.clone()).await?;
+                chat_log.push(Message::user(input));
+                chat_log.push(Message::assistant(response.clone()));
+
+                println!("========================== Response ============================");
+                println!("{response}");
+                println!("================================================================\n\n");
+
+                tracing::info!("Response:\n{}\n", response);
+            }
+            Err(error) => println!("Error reading input: {error}"),
+        }
+    }
+
+    Ok(())
 }
