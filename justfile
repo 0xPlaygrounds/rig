@@ -27,4 +27,4 @@ bwf:
 # Runs a command that compiles the docs then opens it as if it were the official docs on Docs.rs
 # Requires nightly toolchain
 doc:
-    RUSTDOCFLAGS="--cfg docsrs" cargo +nightly -p rig-core doc --all-features --open
+    RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --package rig-core --all-features --open
