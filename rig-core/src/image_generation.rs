@@ -122,7 +122,8 @@ pub struct ImageGenerationRequest {
 #[non_exhaustive]
 pub struct ImageGenerationRequestBuilder<M>
 where
-    M: ImageGenerationModel {
+    M: ImageGenerationModel,
+{
     model: M,
     prompt: String,
     width: u32,
