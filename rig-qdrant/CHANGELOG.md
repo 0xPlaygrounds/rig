@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.24](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.23...rig-qdrant-v0.1.24) - 2025-09-02
+
+### Other
+
+- *(rig-907)* use where clause for trait bounds ([#749](https://github.com/0xPlaygrounds/rig/pull/749))
+
 ## [0.1.23](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.22...rig-qdrant-v0.1.23) - 2025-08-20
 
 ### Other

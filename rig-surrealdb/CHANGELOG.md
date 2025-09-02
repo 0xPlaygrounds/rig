@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.16](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.1.15...rig-surrealdb-v0.1.16) - 2025-09-02
+
+### Other
+
+- *(rig-907)* use where clause for trait bounds ([#749](https://github.com/0xPlaygrounds/rig/pull/749))
+
 ## [0.1.15](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.1.14...rig-surrealdb-v0.1.15) - 2025-08-20
 
 ### Other

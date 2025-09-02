@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.21](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.1.20...rig-sqlite-v0.1.21) - 2025-09-02
+
+### Other
+
+- *(rig-907)* use where clause for trait bounds ([#749](https://github.com/0xPlaygrounds/rig/pull/749))
+
 ## [0.1.20](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.1.19...rig-sqlite-v0.1.20) - 2025-08-20
 
 ### Other

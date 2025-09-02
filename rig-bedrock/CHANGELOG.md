@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.2.9...rig-bedrock-v0.3.0) - 2025-09-02
+
+### Added
+
+- VerifyClient trait ([#724](https://github.com/0xPlaygrounds/rig/pull/724))
+
+### Other
+
+- added AWS Bedrock client creation using from_env ([#710](https://github.com/0xPlaygrounds/rig/pull/710))
+
 ## [0.2.9](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.2.8...rig-bedrock-v0.2.9) - 2025-08-20
 
 ### Other

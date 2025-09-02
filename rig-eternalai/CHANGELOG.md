@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.3.5...rig-eternalai-v0.3.6) - 2025-09-02
+
+### Other
+
+- *(rig-907)* use where clause for trait bounds ([#749](https://github.com/0xPlaygrounds/rig/pull/749))
+
 ## [0.3.5](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.3.4...rig-eternalai-v0.3.5) - 2025-08-20
 
 ### Other
