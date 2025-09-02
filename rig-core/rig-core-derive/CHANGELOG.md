@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.5...rig-derive-v0.1.6) - 2025-09-02
+
+### Other
+
+- *(rig-913)* add feature gated items to docs ([#764](https://github.com/0xPlaygrounds/rig/pull/764))
+
 ## [0.1.5](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.4...rig-derive-v0.1.5) - 2025-08-19
 
 ### Other
