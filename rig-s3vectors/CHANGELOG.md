@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.6...rig-s3vectors-v0.1.7) - 2025-09-02
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.1.6](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.5...rig-s3vectors-v0.1.6) - 2025-08-20
 
 ### Other

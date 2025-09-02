@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.10](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.2.9...rig-fastembed-v0.2.10) - 2025-09-02
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.2.9](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.2.8...rig-fastembed-v0.2.9) - 2025-08-20
 
 ### Other

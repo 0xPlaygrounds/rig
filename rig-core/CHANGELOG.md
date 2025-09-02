@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.18.2...rig-core-v0.19.0) - 2025-09-02
+
+### Added
+
+- *(rig-core)* add fn cli_chatbot() back ([#769](https://github.com/0xPlaygrounds/rig/pull/769))
+- *(rig-918)* expose more token usage metadata metrics for gemini ([#768](https://github.com/0xPlaygrounds/rig/pull/768))
+- *(rig-911)* ConvertMessage trait ([#753](https://github.com/0xPlaygrounds/rig/pull/753))
+- *(openai responses)* add `minimal` variant to ReasoningEffort ([#765](https://github.com/0xPlaygrounds/rig/pull/765))
+- *(rig-904)* Rework CLI chatbot integration ([#756](https://github.com/0xPlaygrounds/rig/pull/756))
+- Pauseable streams ([#733](https://github.com/0xPlaygrounds/rig/pull/733))
+- *(rig-910)* function calls fail when using OpenAI Responses API with reasoning models ([#754](https://github.com/0xPlaygrounds/rig/pull/754))
+- *(rig-901)* Make multi-turn stream return a `Send + 'static` stream ([#739](https://github.com/0xPlaygrounds/rig/pull/739))
+- VerifyClient trait ([#724](https://github.com/0xPlaygrounds/rig/pull/724))
+- *(rig-898)* make MultiTurnStreamItem pub ([#735](https://github.com/0xPlaygrounds/rig/pull/735))
+
+### Fixed
+
+- *(rig-core examples)* add `required` field to calculator example tool definitions ([#757](https://github.com/0xPlaygrounds/rig/pull/757))
+- *(openai responses)* recursively add additionalProperties: false to nested schemas ([#755](https://github.com/0xPlaygrounds/rig/pull/755))
+- empty type in Vec<T> schema conversion for Gemini API ([#721](https://github.com/0xPlaygrounds/rig/pull/721)) ([#748](https://github.com/0xPlaygrounds/rig/pull/748))
+
+### Other
+- 修改文档错误 ([#771](https://github.com/0xPlaygrounds/rig/pull/771))
+- *(rig-907)* use where clause for trait bounds ([#749](https://github.com/0xPlaygrounds/rig/pull/749))
+- *(rig-913)* add feature gated items to docs ([#764](https://github.com/0xPlaygrounds/rig/pull/764))
+- Remove duplicate methods in perplexity ([#725](https://github.com/0xPlaygrounds/rig/pull/725))
+
 ## [0.18.2](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.18.1...rig-core-v0.18.2) - 2025-08-20
 
 ### Fixed
