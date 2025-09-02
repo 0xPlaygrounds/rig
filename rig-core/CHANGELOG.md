@@ -14,7 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(rig-core)* add fn cli_chatbot() back ([#769](https://github.com/0xPlaygrounds/rig/pull/769))
 - *(rig-918)* expose more token usage metadata metrics for gemini ([#768](https://github.com/0xPlaygrounds/rig/pull/768))
 - *(rig-911)* ConvertMessage trait ([#753](https://github.com/0xPlaygrounds/rig/pull/753))
-- *(rig-915)* function calling strict mode for deepseek ([#763](https://github.com/0xPlaygrounds/rig/pull/763))
 - *(openai responses)* add `minimal` variant to ReasoningEffort ([#765](https://github.com/0xPlaygrounds/rig/pull/765))
 - *(rig-904)* Rework CLI chatbot integration ([#756](https://github.com/0xPlaygrounds/rig/pull/756))
 - Pauseable streams ([#733](https://github.com/0xPlaygrounds/rig/pull/733))
@@ -30,7 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - empty type in Vec<T> schema conversion for Gemini API ([#721](https://github.com/0xPlaygrounds/rig/pull/721)) ([#748](https://github.com/0xPlaygrounds/rig/pull/748))
 
 ### Other
-
 - 修改文档错误 ([#771](https://github.com/0xPlaygrounds/rig/pull/771))
 - *(rig-907)* use where clause for trait bounds ([#749](https://github.com/0xPlaygrounds/rig/pull/749))
 - *(rig-913)* add feature gated items to docs ([#764](https://github.com/0xPlaygrounds/rig/pull/764))
