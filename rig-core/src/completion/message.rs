@@ -16,9 +16,9 @@ use super::CompletionError;
 /// when trying to use `TryFrom<T>`, you would normally run into the orphan rule as Vec is
 /// technically considered a foreign type (it's owned by stdlib).
 pub trait ConvertMessage: Sized + Send + Sync {
-    type Error: std::error::Error + Send;
+	type Error: std::error::Error + Send;
 
-    fn convert_from_message(message: Message) -> Result<Vec<Self>, Self::Error>;
+	fn convert_from_message(message: Message) -> Result<Vec<Self>, Self::Error>;
 }
 
 /// A message represents a run of input (user) and output (assistant).
@@ -34,14 +34,14 @@ pub trait ConvertMessage: Sized + Send + Sync {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
-    /// User message containing one or more content types defined by `UserContent`.
-    User { content: OneOrMany<UserContent> },
+	/// User message containing one or more content types defined by `UserContent`.
+	User { content: OneOrMany<UserContent> },
 
-    /// Assistant message containing one or more content types defined by `AssistantContent`.
-    Assistant {
-        id: Option<String>,
-        content: OneOrMany<AssistantContent>,
-    },
+	/// Assistant message containing one or more content types defined by `AssistantContent`.
+	Assistant {
+		id: Option<String>,
+		content: OneOrMany<AssistantContent>,
+	},
 }
 
 /// Describes the content of a message, which can be text, a tool result, an image, audio, or
@@ -50,86 +50,89 @@ pub enum Message {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum UserContent {
-    Text(Text),
-    ToolResult(ToolResult),
-    Image(Image),
-    Audio(Audio),
-    Video(Video),
-    Document(Document),
+	Text(Text),
+	ToolResult(ToolResult),
+	Image(Image),
+	Audio(Audio),
+	Video(Video),
+	Document(Document),
 }
 
 /// Describes responses from a provider which is either text or a tool call.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum AssistantContent {
-    Text(Text),
-    ToolCall(ToolCall),
-    Reasoning(Reasoning),
+	Text(Text),
+	ToolCall(ToolCall),
+	Reasoning(Reasoning),
 }
-
+#[non_exhaustive]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Reasoning {
-    pub id: Option<String>,
-    pub reasoning: Vec<String>,
+	pub id: Option<String>,
+	pub reasoning: Vec<String>,
 }
 
 impl Reasoning {
-    /// Create a new reasoning item from a single item
-    pub fn new(input: &str) -> Self {
-        Self {
-            id: None,
-            reasoning: vec![input.to_string()],
-        }
-    }
+	/// Create a new reasoning item from a single item
+	pub fn new(input: &str) -> Self {
+		Self {
+			id: None,
+			reasoning: vec![input.to_string()],
+		}
+	}
 
-    pub fn multi(input: Vec<String>) -> Self {
-        Self {
-            id: None,
-            reasoning: input,
-        }
-    }
+	pub fn multi(input: Vec<String>) -> Self {
+		Self {
+			id: None,
+			reasoning: input,
+		}
+	}
 
-    pub fn optional_id(mut self, id: Option<String>) -> Self {
-        self.id = id;
-        self
-    }
+	pub fn optional_id(mut self, id: Option<String>) -> Self {
+		self.id = id;
+		self
+	}
 
-    pub fn with_id(mut self, id: String) -> Self {
-        self.id = Some(id);
-        self
-    }
+	pub fn with_id(mut self, id: String) -> Self {
+		self.id = Some(id);
+		self
+	}
 }
 
 /// Tool result content containing information about a tool call and it's resulting content.
+// to add #[non_exhaustive] we will need to add a builder/new method
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolResult {
-    pub id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub call_id: Option<String>,
-    pub content: OneOrMany<ToolResultContent>,
+	pub id: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub call_id: Option<String>,
+	pub content: OneOrMany<ToolResultContent>,
 }
 
 /// Describes the content of a tool result, which can be text or an image.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ToolResultContent {
-    Text(Text),
-    Image(Image),
+	Text(Text),
+	Image(Image),
 }
 
 /// Describes a tool call with an id and function to call, generally produced by a provider.
+// to add #[non_exhaustive] we will need to add a builder/new method
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolCall {
-    pub id: String,
-    pub call_id: Option<String>,
-    pub function: ToolFunction,
+	pub id: String,
+	pub call_id: Option<String>,
+	pub function: ToolFunction,
 }
 
 /// Describes a tool function to call with a name and arguments, generally produced by a provider.
+// to add #[non_exhaustive] we will need to add a builder/new method
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolFunction {
-    pub name: String,
-    pub arguments: serde_json::Value,
+	pub name: String,
+	pub arguments: serde_json::Value,
 }
 
 // ================================================================
@@ -137,104 +140,111 @@ pub struct ToolFunction {
 // ================================================================
 
 /// Basic text content.
+// to add #[non_exhaustive] we will need to add a builder/new method
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Text {
-    pub text: String,
+	pub text: String,
 }
 
 impl Text {
-    pub fn text(&self) -> &str {
-        &self.text
-    }
+	pub fn text(&self) -> &str {
+		&self.text
+	}
 }
 
 impl std::fmt::Display for Text {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self { text } = self;
-        write!(f, "{text}")
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let Self { text } = self;
+		write!(f, "{text}")
+	}
 }
 
 /// Image content containing image data and metadata about it.
+// to add #[non_exhaustive] we will need to add a builder/new method
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Image {
-    pub data: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<ContentFormat>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub media_type: Option<ImageMediaType>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<ImageDetail>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<serde_json::Value>,
+	pub data: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub format: Option<ContentFormat>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub media_type: Option<ImageMediaType>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub detail: Option<ImageDetail>,
+	#[serde(flatten, skip_serializing_if = "Option::is_none")]
+	pub additional_params: Option<serde_json::Value>,
 }
 
 /// Audio content containing audio data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Audio {
-    pub data: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<ContentFormat>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub media_type: Option<AudioMediaType>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<serde_json::Value>,
+	pub data: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub format: Option<ContentFormat>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub media_type: Option<AudioMediaType>,
+	#[serde(flatten, skip_serializing_if = "Option::is_none")]
+	pub additional_params: Option<serde_json::Value>,
 }
 
 /// Video content containing video data and metadata about it.
+// to add #[non_exhaustive] we will need to add a builder/new method
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Video {
-    pub data: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<ContentFormat>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub media_type: Option<VideoMediaType>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<serde_json::Value>,
+	pub data: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub format: Option<ContentFormat>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub media_type: Option<VideoMediaType>,
+	#[serde(flatten, skip_serializing_if = "Option::is_none")]
+	pub additional_params: Option<serde_json::Value>,
 }
 
 /// Document content containing document data and metadata about it.
+// to add #[non_exhaustive] we will need to add a builder/new method
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Document {
-    pub data: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<ContentFormat>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub media_type: Option<DocumentMediaType>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<serde_json::Value>,
+	pub data: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub format: Option<ContentFormat>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub media_type: Option<DocumentMediaType>,
+	#[serde(flatten, skip_serializing_if = "Option::is_none")]
+	pub additional_params: Option<serde_json::Value>,
 }
 
 /// Describes the format of the content, which can be base64 or string.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum ContentFormat {
-    #[default]
-    Base64,
-    String,
+	#[default]
+	Base64,
+	String,
 }
 
 /// Helper enum that tracks the media type of the content.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[non_exhaustive]
 pub enum MediaType {
-    Image(ImageMediaType),
-    Audio(AudioMediaType),
-    Document(DocumentMediaType),
-    Video(VideoMediaType),
+	Image(ImageMediaType),
+	Audio(AudioMediaType),
+	Document(DocumentMediaType),
+	Video(VideoMediaType),
 }
 
 /// Describes the image media type of the content. Not every provider supports every media type.
 /// Convertible to and from MIME type strings.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum ImageMediaType {
-    JPEG,
-    PNG,
-    GIF,
-    WEBP,
-    HEIC,
-    HEIF,
-    SVG,
+	JPEG,
+	PNG,
+	GIF,
+	WEBP,
+	HEIC,
+	HEIF,
+	SVG,
 }
 
 /// Describes the document media type of the content. Not every provider supports every media type.
@@ -242,50 +252,54 @@ pub enum ImageMediaType {
 /// Convertible to and from MIME type strings.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum DocumentMediaType {
-    PDF,
-    TXT,
-    RTF,
-    HTML,
-    CSS,
-    MARKDOWN,
-    CSV,
-    XML,
-    Javascript,
-    Python,
+	PDF,
+	TXT,
+	RTF,
+	HTML,
+	CSS,
+	MARKDOWN,
+	CSV,
+	XML,
+	Javascript,
+	Python,
 }
 
 /// Describes the audio media type of the content. Not every provider supports every media type.
 /// Convertible to and from MIME type strings.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum AudioMediaType {
-    WAV,
-    MP3,
-    AIFF,
-    AAC,
-    OGG,
-    FLAC,
+	WAV,
+	MP3,
+	AIFF,
+	AAC,
+	OGG,
+	FLAC,
 }
 
 /// Describes the video media type of the content. Not every provider supports every media type.
 /// Convertible to and from MIME type strings.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum VideoMediaType {
-    AVI,
-    MP4,
-    MPEG,
+	AVI,
+	MP4,
+	MPEG,
 }
 
 /// Describes the detail of the image content, which can be low, high, or auto (open-ai specific).
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum ImageDetail {
-    Low,
-    High,
-    #[default]
-    Auto,
+	Low,
+	High,
+	#[default]
+	Auto,
 }
 
 // ================================================================
@@ -293,353 +307,353 @@ pub enum ImageDetail {
 // ================================================================
 
 impl Message {
-    /// This helper method is primarily used to extract the first string prompt from a `Message`.
-    /// Since `Message` might have more than just text content, we need to find the first text.
-    pub(crate) fn rag_text(&self) -> Option<String> {
-        match self {
-            Message::User { content } => {
-                for item in content.iter() {
-                    if let UserContent::Text(Text { text }) = item {
-                        return Some(text.clone());
-                    }
-                }
-                None
-            }
-            _ => None,
-        }
-    }
+	/// This helper method is primarily used to extract the first string prompt from a `Message`.
+	/// Since `Message` might have more than just text content, we need to find the first text.
+	pub(crate) fn rag_text(&self) -> Option<String> {
+		match self {
+			Message::User { content } => {
+				for item in content.iter() {
+					if let UserContent::Text(Text { text }) = item {
+						return Some(text.clone());
+					}
+				}
+				None
+			}
+			_ => None,
+		}
+	}
 
-    /// Helper constructor to make creating user messages easier.
-    pub fn user(text: impl Into<String>) -> Self {
-        Message::User {
-            content: OneOrMany::one(UserContent::text(text)),
-        }
-    }
+	/// Helper constructor to make creating user messages easier.
+	pub fn user(text: impl Into<String>) -> Self {
+		Message::User {
+			content: OneOrMany::one(UserContent::text(text)),
+		}
+	}
 
-    /// Helper constructor to make creating assistant messages easier.
-    pub fn assistant(text: impl Into<String>) -> Self {
-        Message::Assistant {
-            id: None,
-            content: OneOrMany::one(AssistantContent::text(text)),
-        }
-    }
+	/// Helper constructor to make creating assistant messages easier.
+	pub fn assistant(text: impl Into<String>) -> Self {
+		Message::Assistant {
+			id: None,
+			content: OneOrMany::one(AssistantContent::text(text)),
+		}
+	}
 
-    /// Helper constructor to make creating assistant messages easier.
-    pub fn assistant_with_id(id: String, text: impl Into<String>) -> Self {
-        Message::Assistant {
-            id: Some(id),
-            content: OneOrMany::one(AssistantContent::text(text)),
-        }
-    }
+	/// Helper constructor to make creating assistant messages easier.
+	pub fn assistant_with_id(id: String, text: impl Into<String>) -> Self {
+		Message::Assistant {
+			id: Some(id),
+			content: OneOrMany::one(AssistantContent::text(text)),
+		}
+	}
 
-    /// Helper constructor to make creating tool result messages easier.
-    pub fn tool_result(id: impl Into<String>, content: impl Into<String>) -> Self {
-        Message::User {
-            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
-                id: id.into(),
-                call_id: None,
-                content: OneOrMany::one(ToolResultContent::text(content)),
-            })),
-        }
-    }
+	/// Helper constructor to make creating tool result messages easier.
+	pub fn tool_result(id: impl Into<String>, content: impl Into<String>) -> Self {
+		Message::User {
+			content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+				id: id.into(),
+				call_id: None,
+				content: OneOrMany::one(ToolResultContent::text(content)),
+			})),
+		}
+	}
 
-    pub fn tool_result_with_call_id(
-        id: impl Into<String>,
-        call_id: Option<String>,
-        content: impl Into<String>,
-    ) -> Self {
-        Message::User {
-            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
-                id: id.into(),
-                call_id,
-                content: OneOrMany::one(ToolResultContent::text(content)),
-            })),
-        }
-    }
+	pub fn tool_result_with_call_id(
+		id: impl Into<String>,
+		call_id: Option<String>,
+		content: impl Into<String>,
+	) -> Self {
+		Message::User {
+			content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+				id: id.into(),
+				call_id,
+				content: OneOrMany::one(ToolResultContent::text(content)),
+			})),
+		}
+	}
 }
 
 impl UserContent {
-    /// Helper constructor to make creating user text content easier.
-    pub fn text(text: impl Into<String>) -> Self {
-        UserContent::Text(text.into().into())
-    }
+	/// Helper constructor to make creating user text content easier.
+	pub fn text(text: impl Into<String>) -> Self {
+		UserContent::Text(text.into().into())
+	}
 
-    /// Helper constructor to make creating user image content easier.
-    pub fn image(
-        data: impl Into<String>,
-        format: Option<ContentFormat>,
-        media_type: Option<ImageMediaType>,
-        detail: Option<ImageDetail>,
-    ) -> Self {
-        UserContent::Image(Image {
-            data: data.into(),
-            format,
-            media_type,
-            detail,
-            additional_params: None,
-        })
-    }
+	/// Helper constructor to make creating user image content easier.
+	pub fn image(
+		data: impl Into<String>,
+		format: Option<ContentFormat>,
+		media_type: Option<ImageMediaType>,
+		detail: Option<ImageDetail>,
+	) -> Self {
+		UserContent::Image(Image {
+			data: data.into(),
+			format,
+			media_type,
+			detail,
+			additional_params: None,
+		})
+	}
 
-    /// Helper constructor to make creating user audio content easier.
-    pub fn audio(
-        data: impl Into<String>,
-        format: Option<ContentFormat>,
-        media_type: Option<AudioMediaType>,
-    ) -> Self {
-        UserContent::Audio(Audio {
-            data: data.into(),
-            format,
-            media_type,
-            additional_params: None,
-        })
-    }
+	/// Helper constructor to make creating user audio content easier.
+	pub fn audio(
+		data: impl Into<String>,
+		format: Option<ContentFormat>,
+		media_type: Option<AudioMediaType>,
+	) -> Self {
+		UserContent::Audio(Audio {
+			data: data.into(),
+			format,
+			media_type,
+			additional_params: None,
+		})
+	}
 
-    /// Helper constructor to make creating user document content easier.
-    pub fn document(
-        data: impl Into<String>,
-        format: Option<ContentFormat>,
-        media_type: Option<DocumentMediaType>,
-    ) -> Self {
-        UserContent::Document(Document {
-            data: data.into(),
-            format,
-            media_type,
-            additional_params: None,
-        })
-    }
+	/// Helper constructor to make creating user document content easier.
+	pub fn document(
+		data: impl Into<String>,
+		format: Option<ContentFormat>,
+		media_type: Option<DocumentMediaType>,
+	) -> Self {
+		UserContent::Document(Document {
+			data: data.into(),
+			format,
+			media_type,
+			additional_params: None,
+		})
+	}
 
-    /// Helper constructor to make creating user tool result content easier.
-    pub fn tool_result(id: impl Into<String>, content: OneOrMany<ToolResultContent>) -> Self {
-        UserContent::ToolResult(ToolResult {
-            id: id.into(),
-            call_id: None,
-            content,
-        })
-    }
+	/// Helper constructor to make creating user tool result content easier.
+	pub fn tool_result(id: impl Into<String>, content: OneOrMany<ToolResultContent>) -> Self {
+		UserContent::ToolResult(ToolResult {
+			id: id.into(),
+			call_id: None,
+			content,
+		})
+	}
 
-    /// Helper constructor to make creating user tool result content easier.
-    pub fn tool_result_with_call_id(
-        id: impl Into<String>,
-        call_id: String,
-        content: OneOrMany<ToolResultContent>,
-    ) -> Self {
-        UserContent::ToolResult(ToolResult {
-            id: id.into(),
-            call_id: Some(call_id),
-            content,
-        })
-    }
+	/// Helper constructor to make creating user tool result content easier.
+	pub fn tool_result_with_call_id(
+		id: impl Into<String>,
+		call_id: String,
+		content: OneOrMany<ToolResultContent>,
+	) -> Self {
+		UserContent::ToolResult(ToolResult {
+			id: id.into(),
+			call_id: Some(call_id),
+			content,
+		})
+	}
 }
 
 impl AssistantContent {
-    /// Helper constructor to make creating assistant text content easier.
-    pub fn text(text: impl Into<String>) -> Self {
-        AssistantContent::Text(text.into().into())
-    }
+	/// Helper constructor to make creating assistant text content easier.
+	pub fn text(text: impl Into<String>) -> Self {
+		AssistantContent::Text(text.into().into())
+	}
 
-    /// Helper constructor to make creating assistant tool call content easier.
-    pub fn tool_call(
-        id: impl Into<String>,
-        name: impl Into<String>,
-        arguments: serde_json::Value,
-    ) -> Self {
-        AssistantContent::ToolCall(ToolCall {
-            id: id.into(),
-            call_id: None,
-            function: ToolFunction {
-                name: name.into(),
-                arguments,
-            },
-        })
-    }
+	/// Helper constructor to make creating assistant tool call content easier.
+	pub fn tool_call(
+		id: impl Into<String>,
+		name: impl Into<String>,
+		arguments: serde_json::Value,
+	) -> Self {
+		AssistantContent::ToolCall(ToolCall {
+			id: id.into(),
+			call_id: None,
+			function: ToolFunction {
+				name: name.into(),
+				arguments,
+			},
+		})
+	}
 
-    pub fn tool_call_with_call_id(
-        id: impl Into<String>,
-        call_id: String,
-        name: impl Into<String>,
-        arguments: serde_json::Value,
-    ) -> Self {
-        AssistantContent::ToolCall(ToolCall {
-            id: id.into(),
-            call_id: Some(call_id),
-            function: ToolFunction {
-                name: name.into(),
-                arguments,
-            },
-        })
-    }
+	pub fn tool_call_with_call_id(
+		id: impl Into<String>,
+		call_id: String,
+		name: impl Into<String>,
+		arguments: serde_json::Value,
+	) -> Self {
+		AssistantContent::ToolCall(ToolCall {
+			id: id.into(),
+			call_id: Some(call_id),
+			function: ToolFunction {
+				name: name.into(),
+				arguments,
+			},
+		})
+	}
 }
 
 impl ToolResultContent {
-    /// Helper constructor to make creating tool result text content easier.
-    pub fn text(text: impl Into<String>) -> Self {
-        ToolResultContent::Text(text.into().into())
-    }
+	/// Helper constructor to make creating tool result text content easier.
+	pub fn text(text: impl Into<String>) -> Self {
+		ToolResultContent::Text(text.into().into())
+	}
 
-    /// Helper constructor to make creating tool result image content easier.
-    pub fn image(
-        data: impl Into<String>,
-        format: Option<ContentFormat>,
-        media_type: Option<ImageMediaType>,
-        detail: Option<ImageDetail>,
-    ) -> Self {
-        ToolResultContent::Image(Image {
-            data: data.into(),
-            format,
-            media_type,
-            detail,
-            additional_params: None,
-        })
-    }
+	/// Helper constructor to make creating tool result image content easier.
+	pub fn image(
+		data: impl Into<String>,
+		format: Option<ContentFormat>,
+		media_type: Option<ImageMediaType>,
+		detail: Option<ImageDetail>,
+	) -> Self {
+		ToolResultContent::Image(Image {
+			data: data.into(),
+			format,
+			media_type,
+			detail,
+			additional_params: None,
+		})
+	}
 }
 
 /// Trait for converting between MIME types and media types.
 pub trait MimeType {
-    fn from_mime_type(mime_type: &str) -> Option<Self>
-    where
-        Self: Sized;
-    fn to_mime_type(&self) -> &'static str;
+	fn from_mime_type(mime_type: &str) -> Option<Self>
+	where
+		Self: Sized;
+	fn to_mime_type(&self) -> &'static str;
 }
 
 impl MimeType for MediaType {
-    fn from_mime_type(mime_type: &str) -> Option<Self> {
-        ImageMediaType::from_mime_type(mime_type)
-            .map(MediaType::Image)
-            .or_else(|| {
-                DocumentMediaType::from_mime_type(mime_type)
-                    .map(MediaType::Document)
-                    .or_else(|| AudioMediaType::from_mime_type(mime_type).map(MediaType::Audio))
-            })
-    }
+	fn from_mime_type(mime_type: &str) -> Option<Self> {
+		ImageMediaType::from_mime_type(mime_type)
+			.map(MediaType::Image)
+			.or_else(|| {
+				DocumentMediaType::from_mime_type(mime_type)
+					.map(MediaType::Document)
+					.or_else(|| AudioMediaType::from_mime_type(mime_type).map(MediaType::Audio))
+			})
+	}
 
-    fn to_mime_type(&self) -> &'static str {
-        match self {
-            MediaType::Image(media_type) => media_type.to_mime_type(),
-            MediaType::Audio(media_type) => media_type.to_mime_type(),
-            MediaType::Document(media_type) => media_type.to_mime_type(),
-            MediaType::Video(media_type) => media_type.to_mime_type(),
-        }
-    }
+	fn to_mime_type(&self) -> &'static str {
+		match self {
+			MediaType::Image(media_type) => media_type.to_mime_type(),
+			MediaType::Audio(media_type) => media_type.to_mime_type(),
+			MediaType::Document(media_type) => media_type.to_mime_type(),
+			MediaType::Video(media_type) => media_type.to_mime_type(),
+		}
+	}
 }
 
 impl MimeType for ImageMediaType {
-    fn from_mime_type(mime_type: &str) -> Option<Self> {
-        match mime_type {
-            "image/jpeg" => Some(ImageMediaType::JPEG),
-            "image/png" => Some(ImageMediaType::PNG),
-            "image/gif" => Some(ImageMediaType::GIF),
-            "image/webp" => Some(ImageMediaType::WEBP),
-            "image/heic" => Some(ImageMediaType::HEIC),
-            "image/heif" => Some(ImageMediaType::HEIF),
-            "image/svg+xml" => Some(ImageMediaType::SVG),
-            _ => None,
-        }
-    }
+	fn from_mime_type(mime_type: &str) -> Option<Self> {
+		match mime_type {
+			"image/jpeg" => Some(ImageMediaType::JPEG),
+			"image/png" => Some(ImageMediaType::PNG),
+			"image/gif" => Some(ImageMediaType::GIF),
+			"image/webp" => Some(ImageMediaType::WEBP),
+			"image/heic" => Some(ImageMediaType::HEIC),
+			"image/heif" => Some(ImageMediaType::HEIF),
+			"image/svg+xml" => Some(ImageMediaType::SVG),
+			_ => None,
+		}
+	}
 
-    fn to_mime_type(&self) -> &'static str {
-        match self {
-            ImageMediaType::JPEG => "image/jpeg",
-            ImageMediaType::PNG => "image/png",
-            ImageMediaType::GIF => "image/gif",
-            ImageMediaType::WEBP => "image/webp",
-            ImageMediaType::HEIC => "image/heic",
-            ImageMediaType::HEIF => "image/heif",
-            ImageMediaType::SVG => "image/svg+xml",
-        }
-    }
+	fn to_mime_type(&self) -> &'static str {
+		match self {
+			ImageMediaType::JPEG => "image/jpeg",
+			ImageMediaType::PNG => "image/png",
+			ImageMediaType::GIF => "image/gif",
+			ImageMediaType::WEBP => "image/webp",
+			ImageMediaType::HEIC => "image/heic",
+			ImageMediaType::HEIF => "image/heif",
+			ImageMediaType::SVG => "image/svg+xml",
+		}
+	}
 }
 
 impl MimeType for DocumentMediaType {
-    fn from_mime_type(mime_type: &str) -> Option<Self> {
-        match mime_type {
-            "application/pdf" => Some(DocumentMediaType::PDF),
-            "text/plain" => Some(DocumentMediaType::TXT),
-            "text/rtf" => Some(DocumentMediaType::RTF),
-            "text/html" => Some(DocumentMediaType::HTML),
-            "text/css" => Some(DocumentMediaType::CSS),
-            "text/md" | "text/markdown" => Some(DocumentMediaType::MARKDOWN),
-            "text/csv" => Some(DocumentMediaType::CSV),
-            "text/xml" => Some(DocumentMediaType::XML),
-            "application/x-javascript" | "text/x-javascript" => Some(DocumentMediaType::Javascript),
-            "application/x-python" | "text/x-python" => Some(DocumentMediaType::Python),
-            _ => None,
-        }
-    }
+	fn from_mime_type(mime_type: &str) -> Option<Self> {
+		match mime_type {
+			"application/pdf" => Some(DocumentMediaType::PDF),
+			"text/plain" => Some(DocumentMediaType::TXT),
+			"text/rtf" => Some(DocumentMediaType::RTF),
+			"text/html" => Some(DocumentMediaType::HTML),
+			"text/css" => Some(DocumentMediaType::CSS),
+			"text/md" | "text/markdown" => Some(DocumentMediaType::MARKDOWN),
+			"text/csv" => Some(DocumentMediaType::CSV),
+			"text/xml" => Some(DocumentMediaType::XML),
+			"application/x-javascript" | "text/x-javascript" => Some(DocumentMediaType::Javascript),
+			"application/x-python" | "text/x-python" => Some(DocumentMediaType::Python),
+			_ => None,
+		}
+	}
 
-    fn to_mime_type(&self) -> &'static str {
-        match self {
-            DocumentMediaType::PDF => "application/pdf",
-            DocumentMediaType::TXT => "text/plain",
-            DocumentMediaType::RTF => "text/rtf",
-            DocumentMediaType::HTML => "text/html",
-            DocumentMediaType::CSS => "text/css",
-            DocumentMediaType::MARKDOWN => "text/markdown",
-            DocumentMediaType::CSV => "text/csv",
-            DocumentMediaType::XML => "text/xml",
-            DocumentMediaType::Javascript => "application/x-javascript",
-            DocumentMediaType::Python => "application/x-python",
-        }
-    }
+	fn to_mime_type(&self) -> &'static str {
+		match self {
+			DocumentMediaType::PDF => "application/pdf",
+			DocumentMediaType::TXT => "text/plain",
+			DocumentMediaType::RTF => "text/rtf",
+			DocumentMediaType::HTML => "text/html",
+			DocumentMediaType::CSS => "text/css",
+			DocumentMediaType::MARKDOWN => "text/markdown",
+			DocumentMediaType::CSV => "text/csv",
+			DocumentMediaType::XML => "text/xml",
+			DocumentMediaType::Javascript => "application/x-javascript",
+			DocumentMediaType::Python => "application/x-python",
+		}
+	}
 }
 
 impl MimeType for AudioMediaType {
-    fn from_mime_type(mime_type: &str) -> Option<Self> {
-        match mime_type {
-            "audio/wav" => Some(AudioMediaType::WAV),
-            "audio/mp3" => Some(AudioMediaType::MP3),
-            "audio/aiff" => Some(AudioMediaType::AIFF),
-            "audio/aac" => Some(AudioMediaType::AAC),
-            "audio/ogg" => Some(AudioMediaType::OGG),
-            "audio/flac" => Some(AudioMediaType::FLAC),
-            _ => None,
-        }
-    }
+	fn from_mime_type(mime_type: &str) -> Option<Self> {
+		match mime_type {
+			"audio/wav" => Some(AudioMediaType::WAV),
+			"audio/mp3" => Some(AudioMediaType::MP3),
+			"audio/aiff" => Some(AudioMediaType::AIFF),
+			"audio/aac" => Some(AudioMediaType::AAC),
+			"audio/ogg" => Some(AudioMediaType::OGG),
+			"audio/flac" => Some(AudioMediaType::FLAC),
+			_ => None,
+		}
+	}
 
-    fn to_mime_type(&self) -> &'static str {
-        match self {
-            AudioMediaType::WAV => "audio/wav",
-            AudioMediaType::MP3 => "audio/mp3",
-            AudioMediaType::AIFF => "audio/aiff",
-            AudioMediaType::AAC => "audio/aac",
-            AudioMediaType::OGG => "audio/ogg",
-            AudioMediaType::FLAC => "audio/flac",
-        }
-    }
+	fn to_mime_type(&self) -> &'static str {
+		match self {
+			AudioMediaType::WAV => "audio/wav",
+			AudioMediaType::MP3 => "audio/mp3",
+			AudioMediaType::AIFF => "audio/aiff",
+			AudioMediaType::AAC => "audio/aac",
+			AudioMediaType::OGG => "audio/ogg",
+			AudioMediaType::FLAC => "audio/flac",
+		}
+	}
 }
 
 impl MimeType for VideoMediaType {
-    fn from_mime_type(mime_type: &str) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        match mime_type {
-            "video/avi" => Some(VideoMediaType::AVI),
-            "video/mp4" => Some(VideoMediaType::MP4),
-            "video/mpeg" => Some(VideoMediaType::MPEG),
-            &_ => None,
-        }
-    }
+	fn from_mime_type(mime_type: &str) -> Option<Self>
+	where
+		Self: Sized,
+	{
+		match mime_type {
+			"video/avi" => Some(VideoMediaType::AVI),
+			"video/mp4" => Some(VideoMediaType::MP4),
+			"video/mpeg" => Some(VideoMediaType::MPEG),
+			&_ => None,
+		}
+	}
 
-    fn to_mime_type(&self) -> &'static str {
-        match self {
-            VideoMediaType::AVI => "video/avi",
-            VideoMediaType::MP4 => "video/mp4",
-            VideoMediaType::MPEG => "video/mpeg",
-        }
-    }
+	fn to_mime_type(&self) -> &'static str {
+		match self {
+			VideoMediaType::AVI => "video/avi",
+			VideoMediaType::MP4 => "video/mp4",
+			VideoMediaType::MPEG => "video/mpeg",
+		}
+	}
 }
 
 impl std::str::FromStr for ImageDetail {
-    type Err = ();
+	type Err = ();
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "low" => Ok(ImageDetail::Low),
-            "high" => Ok(ImageDetail::High),
-            "auto" => Ok(ImageDetail::Auto),
-            _ => Err(()),
-        }
-    }
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s.to_lowercase().as_str() {
+			"low" => Ok(ImageDetail::Low),
+			"high" => Ok(ImageDetail::High),
+			"auto" => Ok(ImageDetail::Auto),
+			_ => Err(()),
+		}
+	}
 }
 
 // ================================================================
@@ -647,161 +661,161 @@ impl std::str::FromStr for ImageDetail {
 // ================================================================
 
 impl From<String> for Text {
-    fn from(text: String) -> Self {
-        Text { text }
-    }
+	fn from(text: String) -> Self {
+		Text { text }
+	}
 }
 
 impl From<&String> for Text {
-    fn from(text: &String) -> Self {
-        text.to_owned().into()
-    }
+	fn from(text: &String) -> Self {
+		text.to_owned().into()
+	}
 }
 
 impl From<&str> for Text {
-    fn from(text: &str) -> Self {
-        text.to_owned().into()
-    }
+	fn from(text: &str) -> Self {
+		text.to_owned().into()
+	}
 }
 
 impl FromStr for Text {
-    type Err = Infallible;
+	type Err = Infallible;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(s.into())
-    }
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		Ok(s.into())
+	}
 }
 
 impl From<String> for Message {
-    fn from(text: String) -> Self {
-        Message::User {
-            content: OneOrMany::one(UserContent::Text(text.into())),
-        }
-    }
+	fn from(text: String) -> Self {
+		Message::User {
+			content: OneOrMany::one(UserContent::Text(text.into())),
+		}
+	}
 }
 
 impl From<&str> for Message {
-    fn from(text: &str) -> Self {
-        Message::User {
-            content: OneOrMany::one(UserContent::Text(text.into())),
-        }
-    }
+	fn from(text: &str) -> Self {
+		Message::User {
+			content: OneOrMany::one(UserContent::Text(text.into())),
+		}
+	}
 }
 
 impl From<&String> for Message {
-    fn from(text: &String) -> Self {
-        Message::User {
-            content: OneOrMany::one(UserContent::Text(text.into())),
-        }
-    }
+	fn from(text: &String) -> Self {
+		Message::User {
+			content: OneOrMany::one(UserContent::Text(text.into())),
+		}
+	}
 }
 
 impl From<Text> for Message {
-    fn from(text: Text) -> Self {
-        Message::User {
-            content: OneOrMany::one(UserContent::Text(text)),
-        }
-    }
+	fn from(text: Text) -> Self {
+		Message::User {
+			content: OneOrMany::one(UserContent::Text(text)),
+		}
+	}
 }
 
 impl From<Image> for Message {
-    fn from(image: Image) -> Self {
-        Message::User {
-            content: OneOrMany::one(UserContent::Image(image)),
-        }
-    }
+	fn from(image: Image) -> Self {
+		Message::User {
+			content: OneOrMany::one(UserContent::Image(image)),
+		}
+	}
 }
 
 impl From<Audio> for Message {
-    fn from(audio: Audio) -> Self {
-        Message::User {
-            content: OneOrMany::one(UserContent::Audio(audio)),
-        }
-    }
+	fn from(audio: Audio) -> Self {
+		Message::User {
+			content: OneOrMany::one(UserContent::Audio(audio)),
+		}
+	}
 }
 
 impl From<Document> for Message {
-    fn from(document: Document) -> Self {
-        Message::User {
-            content: OneOrMany::one(UserContent::Document(document)),
-        }
-    }
+	fn from(document: Document) -> Self {
+		Message::User {
+			content: OneOrMany::one(UserContent::Document(document)),
+		}
+	}
 }
 
 impl From<String> for ToolResultContent {
-    fn from(text: String) -> Self {
-        ToolResultContent::text(text)
-    }
+	fn from(text: String) -> Self {
+		ToolResultContent::text(text)
+	}
 }
 
 impl From<String> for AssistantContent {
-    fn from(text: String) -> Self {
-        AssistantContent::text(text)
-    }
+	fn from(text: String) -> Self {
+		AssistantContent::text(text)
+	}
 }
 
 impl From<String> for UserContent {
-    fn from(text: String) -> Self {
-        UserContent::text(text)
-    }
+	fn from(text: String) -> Self {
+		UserContent::text(text)
+	}
 }
 
 impl From<AssistantContent> for Message {
-    fn from(content: AssistantContent) -> Self {
-        Message::Assistant {
-            id: None,
-            content: OneOrMany::one(content),
-        }
-    }
+	fn from(content: AssistantContent) -> Self {
+		Message::Assistant {
+			id: None,
+			content: OneOrMany::one(content),
+		}
+	}
 }
 
 impl From<UserContent> for Message {
-    fn from(content: UserContent) -> Self {
-        Message::User {
-            content: OneOrMany::one(content),
-        }
-    }
+	fn from(content: UserContent) -> Self {
+		Message::User {
+			content: OneOrMany::one(content),
+		}
+	}
 }
 
 impl From<OneOrMany<AssistantContent>> for Message {
-    fn from(content: OneOrMany<AssistantContent>) -> Self {
-        Message::Assistant { id: None, content }
-    }
+	fn from(content: OneOrMany<AssistantContent>) -> Self {
+		Message::Assistant { id: None, content }
+	}
 }
 
 impl From<OneOrMany<UserContent>> for Message {
-    fn from(content: OneOrMany<UserContent>) -> Self {
-        Message::User { content }
-    }
+	fn from(content: OneOrMany<UserContent>) -> Self {
+		Message::User { content }
+	}
 }
 
 impl From<ToolCall> for Message {
-    fn from(tool_call: ToolCall) -> Self {
-        Message::Assistant {
-            id: None,
-            content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
-        }
-    }
+	fn from(tool_call: ToolCall) -> Self {
+		Message::Assistant {
+			id: None,
+			content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
+		}
+	}
 }
 
 impl From<ToolResult> for Message {
-    fn from(tool_result: ToolResult) -> Self {
-        Message::User {
-            content: OneOrMany::one(UserContent::ToolResult(tool_result)),
-        }
-    }
+	fn from(tool_result: ToolResult) -> Self {
+		Message::User {
+			content: OneOrMany::one(UserContent::ToolResult(tool_result)),
+		}
+	}
 }
 
 impl From<ToolResultContent> for Message {
-    fn from(tool_result_content: ToolResultContent) -> Self {
-        Message::User {
-            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
-                id: String::new(),
-                call_id: None,
-                content: OneOrMany::one(tool_result_content),
-            })),
-        }
-    }
+	fn from(tool_result_content: ToolResultContent) -> Self {
+		Message::User {
+			content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+				id: String::new(),
+				call_id: None,
+				content: OneOrMany::one(tool_result_content),
+			})),
+		}
+	}
 }
 
 // ================================================================
@@ -810,13 +824,14 @@ impl From<ToolResultContent> for Message {
 
 /// Error type to represent issues with converting messages to and from specific provider messages.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum MessageError {
-    #[error("Message conversion error: {0}")]
-    ConversionError(String),
+	#[error("Message conversion error: {0}")]
+	ConversionError(String),
 }
 
 impl From<MessageError> for CompletionError {
-    fn from(error: MessageError) -> Self {
-        CompletionError::RequestError(error.into())
-    }
+	fn from(error: MessageError) -> Self {
+		CompletionError::RequestError(error.into())
+	}
 }

@@ -5,13 +5,14 @@ use epub::doc::DocError;
 use crate::loaders::file::FileLoaderError;
 
 #[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
 pub enum EpubLoaderError {
-    #[error("IO error: {0}")]
-    EpubError(#[from] DocError),
+	#[error("IO error: {0}")]
+	EpubError(#[from] DocError),
 
-    #[error("File loader error: {0}")]
-    FileLoaderError(#[from] FileLoaderError),
+	#[error("File loader error: {0}")]
+	FileLoaderError(#[from] FileLoaderError),
 
-    #[error("Text processor error: {0}")]
-    TextProcessorError(#[from] Box<dyn Error>),
+	#[error("Text processor error: {0}")]
+	TextProcessorError(#[from] Box<dyn Error>),
 }

@@ -30,218 +30,220 @@
 
 use std::marker::PhantomData;
 
-use schemars::{JsonSchema, schema_for};
+use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{
-    agent::{Agent, AgentBuilder},
-    completion::{Completion, CompletionError, CompletionModel, ToolDefinition},
-    message::{AssistantContent, Message, ToolCall, ToolFunction},
-    tool::Tool,
+	agent::{Agent, AgentBuilder},
+	completion::{Completion, CompletionError, CompletionModel, ToolDefinition},
+	message::{AssistantContent, Message, ToolCall, ToolFunction},
+	tool::Tool,
 };
 
 const SUBMIT_TOOL_NAME: &str = "submit";
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ExtractionError {
-    #[error("No data extracted")]
-    NoData,
+	#[error("No data extracted")]
+	NoData,
 
-    #[error("Failed to deserialize the extracted data: {0}")]
-    DeserializationError(#[from] serde_json::Error),
+	#[error("Failed to deserialize the extracted data: {0}")]
+	DeserializationError(#[from] serde_json::Error),
 
-    #[error("CompletionError: {0}")]
-    CompletionError(#[from] CompletionError),
+	#[error("CompletionError: {0}")]
+	CompletionError(#[from] CompletionError),
 }
 
 /// Extractor for structured data from text
 pub struct Extractor<M, T>
 where
-    M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync,
+	M: CompletionModel,
+	T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync,
 {
-    agent: Agent<M>,
-    _t: PhantomData<T>,
-    retries: u64,
+	agent: Agent<M>,
+	_t: PhantomData<T>,
+	retries: u64,
 }
 
 impl<M, T> Extractor<M, T>
 where
-    M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync,
+	M: CompletionModel,
+	T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync,
 {
-    /// Attempts to extract data from the given text with a number of retries.
-    ///
-    /// The function will retry the extraction if the initial attempt fails or
-    /// if the model does not call the `submit` tool.
-    ///
-    /// The number of retries is determined by the `retries` field on the Extractor struct.
-    pub async fn extract(&self, text: impl Into<Message> + Send) -> Result<T, ExtractionError> {
-        let mut last_error = None;
-        let text_message = text.into();
+	/// Attempts to extract data from the given text with a number of retries.
+	///
+	/// The function will retry the extraction if the initial attempt fails or
+	/// if the model does not call the `submit` tool.
+	///
+	/// The number of retries is determined by the `retries` field on the Extractor struct.
+	pub async fn extract(&self, text: impl Into<Message> + Send) -> Result<T, ExtractionError> {
+		let mut last_error = None;
+		let text_message = text.into();
 
-        for i in 0..=self.retries {
-            tracing::debug!(
+		for i in 0..=self.retries {
+			tracing::debug!(
                 "Attempting to extract JSON. Retries left: {retries}",
                 retries = self.retries - i
             );
-            let attempt_text = text_message.clone();
-            match self.extract_json(attempt_text).await {
-                Ok(data) => return Ok(data),
-                Err(e) => {
-                    tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
-                    last_error = Some(e);
-                }
-            }
-        }
+			let attempt_text = text_message.clone();
+			match self.extract_json(attempt_text).await {
+				Ok(data) => return Ok(data),
+				Err(e) => {
+					tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
+					last_error = Some(e);
+				}
+			}
+		}
 
-        // If the loop finishes without a successful extraction, return the last error encountered.
-        Err(last_error.unwrap_or(ExtractionError::NoData))
-    }
+		// If the loop finishes without a successful extraction, return the last error encountered.
+		Err(last_error.unwrap_or(ExtractionError::NoData))
+	}
 
-    async fn extract_json(&self, text: impl Into<Message> + Send) -> Result<T, ExtractionError> {
-        let response = self.agent.completion(text, vec![]).await?.send().await?;
+	async fn extract_json(&self, text: impl Into<Message> + Send) -> Result<T, ExtractionError> {
+		let response = self.agent.completion(text, vec![]).await?.send().await?;
 
-        if !response.choice.iter().any(|x| {
-            let AssistantContent::ToolCall(ToolCall {
-                function: ToolFunction { name, .. },
-                ..
-            }) = x
-            else {
-                return false;
-            };
+		if !response.choice.iter().any(|x| {
+			let AssistantContent::ToolCall(ToolCall {
+				                               function: ToolFunction { name, .. },
+				                               ..
+			                               }) = x
+			else {
+				return false;
+			};
 
-            name == SUBMIT_TOOL_NAME
-        }) {
-            tracing::warn!(
+			name == SUBMIT_TOOL_NAME
+		}) {
+			tracing::warn!(
                 "The submit tool was not called. If this happens more than once, please ensure the model you are using is powerful enough to reliably call tools."
             );
-        }
+		}
 
-        let arguments = response
-            .choice
-            .into_iter()
-            // We filter tool calls to look for submit tool calls
-            .filter_map(|content| {
-                if let AssistantContent::ToolCall(ToolCall {
-                    function: ToolFunction { arguments, name },
-                    ..
-                }) = content
-                {
-                    if name == SUBMIT_TOOL_NAME {
-                        Some(arguments)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
+		let arguments = response
+			.choice
+			.into_iter()
+			// We filter tool calls to look for submit tool calls
+			.filter_map(|content| {
+				if let AssistantContent::ToolCall(ToolCall {
+					                                  function: ToolFunction { arguments, name },
+					                                  ..
+				                                  }) = content
+				{
+					if name == SUBMIT_TOOL_NAME {
+						Some(arguments)
+					} else {
+						None
+					}
+				} else {
+					None
+				}
+			})
+			.collect::<Vec<_>>();
 
-        if arguments.len() > 1 {
-            tracing::warn!(
+		if arguments.len() > 1 {
+			tracing::warn!(
                 "Multiple submit calls detected, using the last one. Providers / agents should only ensure one submit call."
             );
-        }
+		}
 
-        let raw_data = if let Some(arg) = arguments.into_iter().next() {
-            arg
-        } else {
-            return Err(ExtractionError::NoData);
-        };
+		let raw_data = if let Some(arg) = arguments.into_iter().next() {
+			arg
+		} else {
+			return Err(ExtractionError::NoData);
+		};
 
-        Ok(serde_json::from_value(raw_data)?)
-    }
+		Ok(serde_json::from_value(raw_data)?)
+	}
 
-    pub async fn get_inner(&self) -> &Agent<M> {
-        &self.agent
-    }
+	pub async fn get_inner(&self) -> &Agent<M> {
+		&self.agent
+	}
 
-    pub async fn into_inner(self) -> Agent<M> {
-        self.agent
-    }
+	pub async fn into_inner(self) -> Agent<M> {
+		self.agent
+	}
 }
 
 /// Builder for the Extractor
+#[non_exhaustive]
 pub struct ExtractorBuilder<M, T>
 where
-    M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync + 'static,
+	M: CompletionModel,
+	T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync + 'static,
 {
-    agent_builder: AgentBuilder<M>,
-    _t: PhantomData<T>,
-    retries: Option<u64>,
+	agent_builder: AgentBuilder<M>,
+	_t: PhantomData<T>,
+	retries: Option<u64>,
 }
 
 impl<M, T> ExtractorBuilder<M, T>
 where
-    M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync + 'static,
+	M: CompletionModel,
+	T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync + 'static,
 {
-    pub fn new(model: M) -> Self {
-        Self {
-            agent_builder: AgentBuilder::new(model)
-                .preamble("\
+	pub fn new(model: M) -> Self {
+		Self {
+			agent_builder: AgentBuilder::new(model)
+				.preamble("\
                     You are an AI assistant whose purpose is to extract structured data from the provided text.\n\
                     You will have access to a `submit` function that defines the structure of the data to extract from the provided text.\n\
                     Use the `submit` function to submit the structured data.\n\
                     Be sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.
                 ")
-                .tool(SubmitTool::<T> {_t: PhantomData}),
-            retries: None,
-            _t: PhantomData,
-        }
-    }
+				.tool(SubmitTool::<T> { _t: PhantomData }),
+			retries: None,
+			_t: PhantomData,
+		}
+	}
 
-    /// Add additional preamble to the extractor
-    pub fn preamble(mut self, preamble: &str) -> Self {
-        self.agent_builder = self.agent_builder.append_preamble(&format!(
-            "\n=============== ADDITIONAL INSTRUCTIONS ===============\n{preamble}"
-        ));
-        self
-    }
+	/// Add additional preamble to the extractor
+	pub fn preamble(mut self, preamble: &str) -> Self {
+		self.agent_builder = self.agent_builder.append_preamble(&format!(
+			"\n=============== ADDITIONAL INSTRUCTIONS ===============\n{preamble}"
+		));
+		self
+	}
 
-    /// Add a context document to the extractor
-    pub fn context(mut self, doc: &str) -> Self {
-        self.agent_builder = self.agent_builder.context(doc);
-        self
-    }
+	/// Add a context document to the extractor
+	pub fn context(mut self, doc: &str) -> Self {
+		self.agent_builder = self.agent_builder.context(doc);
+		self
+	}
 
-    pub fn additional_params(mut self, params: serde_json::Value) -> Self {
-        self.agent_builder = self.agent_builder.additional_params(params);
-        self
-    }
+	pub fn additional_params(mut self, params: serde_json::Value) -> Self {
+		self.agent_builder = self.agent_builder.additional_params(params);
+		self
+	}
 
-    /// Set the maximum number of tokens for the completion
-    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
-        self.agent_builder = self.agent_builder.max_tokens(max_tokens);
-        self
-    }
+	/// Set the maximum number of tokens for the completion
+	pub fn max_tokens(mut self, max_tokens: u64) -> Self {
+		self.agent_builder = self.agent_builder.max_tokens(max_tokens);
+		self
+	}
 
-    /// Set the maximum number of retries for the extractor.
-    pub fn retries(mut self, retries: u64) -> Self {
-        self.retries = Some(retries);
-        self
-    }
+	/// Set the maximum number of retries for the extractor.
+	pub fn retries(mut self, retries: u64) -> Self {
+		self.retries = Some(retries);
+		self
+	}
 
-    /// Build the Extractor
-    pub fn build(self) -> Extractor<M, T> {
-        Extractor {
-            agent: self.agent_builder.build(),
-            _t: PhantomData,
-            retries: self.retries.unwrap_or(0),
-        }
-    }
+	/// Build the Extractor
+	pub fn build(self) -> Extractor<M, T> {
+		Extractor {
+			agent: self.agent_builder.build(),
+			_t: PhantomData,
+			retries: self.retries.unwrap_or(0),
+		}
+	}
 }
 
 #[derive(Deserialize, Serialize)]
 struct SubmitTool<T>
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+	T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
 {
-    _t: PhantomData<T>,
+	_t: PhantomData<T>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -250,23 +252,23 @@ struct SubmitError;
 
 impl<T> Tool for SubmitTool<T>
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+	T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
 {
-    const NAME: &'static str = SUBMIT_TOOL_NAME;
-    type Error = SubmitError;
-    type Args = T;
-    type Output = T;
+	const NAME: &'static str = SUBMIT_TOOL_NAME;
+	type Error = SubmitError;
+	type Args = T;
+	type Output = T;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Submit the structured data you extracted from the provided text."
-                .to_string(),
-            parameters: json!(schema_for!(T)),
-        }
-    }
+	async fn definition(&self, _prompt: String) -> ToolDefinition {
+		ToolDefinition {
+			name: Self::NAME.to_string(),
+			description: "Submit the structured data you extracted from the provided text."
+				.to_string(),
+			parameters: json!(schema_for!(T)),
+		}
+	}
 
-    async fn call(&self, data: Self::Args) -> Result<Self::Output, Self::Error> {
-        Ok(data)
-    }
+	async fn call(&self, data: Self::Args) -> Result<Self::Output, Self::Error> {
+		Ok(data)
+	}
 }
