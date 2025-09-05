@@ -26,7 +26,8 @@ opt-level = "s"
 
 [workspace.package]
 edition = "2024"
-
+hard_tabs = false
+tab_spaces = 4
 [workspace.dependencies]
 anyhow = "1.0.98"
 arrow-array = "55.2"
