@@ -1,9 +1,9 @@
 use crate::{
-    OneOrMany,
     agent::prompt_request::PromptHook,
     completion::GetTokenUsage,
     message::{AssistantContent, Reasoning, ToolResultContent, UserContent},
     streaming::{StreamedAssistantContent, StreamingCompletion},
+    OneOrMany,
 };
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -19,65 +19,68 @@ use crate::{
 
 #[cfg(not(target_arch = "wasm32"))]
 type StreamingResult =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send>>;
+Pin<Box<dyn Stream<Item=Result<MultiTurnStreamItem, StreamingError>> + Send>>;
 
 #[cfg(target_arch = "wasm32")]
-type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>>>>;
+type StreamingResult = Pin<Box<dyn Stream<Item=Result<MultiTurnStreamItem, StreamingError>>>>;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[non_exhaustive]
 pub enum MultiTurnStreamItem {
-    Text(Text),
-    FinalResponse(FinalResponse),
+	Text(Text),
+	FinalResponse(FinalResponse),
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive] // i took empty() is intiator but I am not sure about
 pub struct FinalResponse {
-    response: String,
-    aggregated_usage: crate::completion::Usage,
+	response: String,
+	aggregated_usage: crate::completion::Usage,
 }
 
 impl FinalResponse {
-    pub fn empty() -> Self {
-        Self {
-            response: String::new(),
-            aggregated_usage: crate::completion::Usage::new(),
-        }
-    }
+	pub fn empty() -> Self {
+		Self {
+			response: String::new(),
+			aggregated_usage: crate::completion::Usage::new(),
+		}
+	}
 
-    pub fn response(&self) -> &str {
-        &self.response
-    }
+	pub fn response(&self) -> &str {
+		&self.response
+	}
 
-    pub fn usage(&self) -> crate::completion::Usage {
-        self.aggregated_usage
-    }
+	pub fn usage(&self) -> crate::completion::Usage {
+		self.aggregated_usage
+	}
 }
 
 impl MultiTurnStreamItem {
-    pub(crate) fn text(text: &str) -> Self {
-        Self::Text(Text {
-            text: text.to_string(),
-        })
-    }
+	pub(crate) fn text(text: &str) -> Self {
+		Self::Text(Text {
+			text: text.to_string(),
+		})
+	}
 
-    pub fn final_response(response: &str, aggregated_usage: crate::completion::Usage) -> Self {
-        Self::FinalResponse(FinalResponse {
-            response: response.to_string(),
-            aggregated_usage,
-        })
-    }
+	pub fn final_response(response: &str, aggregated_usage: crate::completion::Usage) -> Self {
+		Self::FinalResponse(FinalResponse {
+			response: response.to_string(),
+			aggregated_usage,
+		})
+	}
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum StreamingError {
-    #[error("CompletionError: {0}")]
-    Completion(#[from] CompletionError),
-    #[error("PromptError: {0}")]
-    Prompt(#[from] PromptError),
-    #[error("ToolSetError: {0}")]
-    Tool(#[from] ToolSetError),
+	#[error("CompletionError: {0}")]
+	Completion(#[from] CompletionError),
+	#[error("PromptError: {0}")]
+	Prompt(#[from] PromptError),
+	#[error("ToolSetError: {0}")]
+	Tool(#[from] ToolSetError),
 }
 
 /// A builder for creating prompt requests with customizable options.
@@ -88,99 +91,100 @@ pub enum StreamingError {
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxDepthError`] if the agent decides to call tools
 /// back to back.
+#[non_exhaustive]
 pub struct StreamingPromptRequest<M, P>
 where
-    M: CompletionModel,
-    P: PromptHook<M> + 'static,
+	M: CompletionModel,
+	P: PromptHook<M> + 'static,
 {
-    /// The prompt message to send to the model
-    prompt: Message,
-    /// Optional chat history to include with the prompt
-    /// Note: chat history needs to outlive the agent as it might be used with other agents
-    chat_history: Option<Vec<Message>>,
-    /// Maximum depth for multi-turn conversations (0 means no multi-turn)
-    max_depth: usize,
-    /// The agent to use for execution
-    agent: Arc<Agent<M>>,
-    /// Optional per-request hook for events
-    hook: Option<P>,
+	/// The prompt message to send to the model
+	prompt: Message,
+	/// Optional chat history to include with the prompt
+	/// Note: chat history needs to outlive the agent as it might be used with other agents
+	chat_history: Option<Vec<Message>>,
+	/// Maximum depth for multi-turn conversations (0 means no multi-turn)
+	max_depth: usize,
+	/// The agent to use for execution
+	agent: Arc<Agent<M>>,
+	/// Optional per-request hook for events
+	hook: Option<P>,
 }
 
 impl<M, P> StreamingPromptRequest<M, P>
 where
-    M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: Send + GetTokenUsage,
-    P: PromptHook<M>,
+	M: CompletionModel + 'static,
+	<M as CompletionModel>::StreamingResponse: Send + GetTokenUsage,
+	P: PromptHook<M>,
 {
-    /// Create a new PromptRequest with the given prompt and model
-    pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> Self {
-        Self {
-            prompt: prompt.into(),
-            chat_history: None,
-            max_depth: 0,
-            agent,
-            hook: None,
-        }
-    }
+	/// Create a new PromptRequest with the given prompt and model
+	pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> Self {
+		Self {
+			prompt: prompt.into(),
+			chat_history: None,
+			max_depth: 0,
+			agent,
+			hook: None,
+		}
+	}
 
-    /// Set the maximum depth for multi-turn conversations (ie, the maximum number of turns an LLM can have calling tools before writing a text response).
-    /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxDepthError`].
-    pub fn multi_turn(mut self, depth: usize) -> Self {
-        self.max_depth = depth;
-        self
-    }
+	/// Set the maximum depth for multi-turn conversations (ie, the maximum number of turns an LLM can have calling tools before writing a text response).
+	/// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxDepthError`].
+	pub fn multi_turn(mut self, depth: usize) -> Self {
+		self.max_depth = depth;
+		self
+	}
 
-    /// Add chat history to the prompt request
-    pub fn with_history(mut self, history: Vec<Message>) -> Self {
-        self.chat_history = Some(history);
-        self
-    }
+	/// Add chat history to the prompt request
+	pub fn with_history(mut self, history: Vec<Message>) -> Self {
+		self.chat_history = Some(history);
+		self
+	}
 
-    /// Attach a per-request hook for tool call events
-    pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2>
-    where
-        P2: PromptHook<M>,
-    {
-        StreamingPromptRequest {
-            prompt: self.prompt,
-            chat_history: self.chat_history,
-            max_depth: self.max_depth,
-            agent: self.agent,
-            hook: Some(hook),
-        }
-    }
+	/// Attach a per-request hook for tool call events
+	pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2>
+	where
+		P2: PromptHook<M>,
+	{
+		StreamingPromptRequest {
+			prompt: self.prompt,
+			chat_history: self.chat_history,
+			max_depth: self.max_depth,
+			agent: self.agent,
+			hook: Some(hook),
+		}
+	}
 
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn send(self) -> StreamingResult {
-        let agent_name = self.agent.name_owned();
+	#[cfg_attr(feature = "worker", worker::send)]
+	async fn send(self) -> StreamingResult {
+		let agent_name = self.agent.name_owned();
 
-        #[tracing::instrument(skip_all, fields(agent_name = agent_name))]
-        fn inner<M, P>(req: StreamingPromptRequest<M, P>, agent_name: String) -> StreamingResult
-        where
-            M: CompletionModel + 'static,
-            <M as CompletionModel>::StreamingResponse: Send,
-            P: PromptHook<M> + 'static,
-        {
-            let prompt = req.prompt;
-            let agent = req.agent;
+		#[tracing::instrument(skip_all, fields(agent_name = agent_name))]
+		fn inner<M, P>(req: StreamingPromptRequest<M, P>, agent_name: String) -> StreamingResult
+		where
+			M: CompletionModel + 'static,
+			<M as CompletionModel>::StreamingResponse: Send,
+			P: PromptHook<M> + 'static,
+		{
+			let prompt = req.prompt;
+			let agent = req.agent;
 
-            let chat_history = if let Some(mut history) = req.chat_history {
-                history.push(prompt.clone());
-                Arc::new(RwLock::new(history))
-            } else {
-                Arc::new(RwLock::new(vec![prompt.clone()]))
-            };
+			let chat_history = if let Some(mut history) = req.chat_history {
+				history.push(prompt.clone());
+				Arc::new(RwLock::new(history))
+			} else {
+				Arc::new(RwLock::new(vec![prompt.clone()]))
+			};
 
-            let mut current_max_depth = 0;
-            let mut last_prompt_error = String::new();
+			let mut current_max_depth = 0;
+			let mut last_prompt_error = String::new();
 
-            let mut last_text_response = String::new();
-            let mut is_text_response = false;
-            let mut max_depth_reached = false;
+			let mut last_text_response = String::new();
+			let mut is_text_response = false;
+			let mut max_depth_reached = false;
 
-            let mut aggregated_usage = crate::completion::Usage::new();
+			let mut aggregated_usage = crate::completion::Usage::new();
 
-            Box::pin(async_stream::stream! {
+			Box::pin(async_stream::stream! {
                 let mut current_prompt = prompt.clone();
                 let mut did_call_tool = false;
 
@@ -333,47 +337,47 @@ where
                     }
 
             })
-        }
+		}
 
-        inner(self, agent_name)
-    }
+		inner(self, agent_name)
+	}
 }
 
 impl<M, P> IntoFuture for StreamingPromptRequest<M, P>
 where
-    M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: Send,
-    P: PromptHook<M> + 'static,
+	M: CompletionModel + 'static,
+	<M as CompletionModel>::StreamingResponse: Send,
+	P: PromptHook<M> + 'static,
 {
-    type Output = StreamingResult; // what `.await` returns
-    type IntoFuture = Pin<Box<dyn futures::Future<Output = Self::Output> + Send>>;
+	type Output = StreamingResult; // what `.await` returns
+	type IntoFuture = Pin<Box<dyn futures::Future<Output=Self::Output> + Send>>;
 
-    fn into_future(self) -> Self::IntoFuture {
-        // Wrap send() in a future, because send() returns a stream immediately
-        Box::pin(async move { self.send().await })
-    }
+	fn into_future(self) -> Self::IntoFuture {
+		// Wrap send() in a future, because send() returns a stream immediately
+		Box::pin(async move { self.send().await })
+	}
 }
 
 /// helper function to stream a completion request to stdout
 pub async fn stream_to_stdout(
-    stream: &mut StreamingResult,
+	stream: &mut StreamingResult,
 ) -> Result<FinalResponse, std::io::Error> {
-    let mut final_res = FinalResponse::empty();
-    print!("Response: ");
-    while let Some(content) = stream.next().await {
-        match content {
-            Ok(MultiTurnStreamItem::Text(Text { text })) => {
-                print!("{text}");
-                std::io::Write::flush(&mut std::io::stdout())?;
-            }
-            Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                final_res = res;
-            }
-            Err(err) => {
-                eprintln!("Error: {err}");
-            }
-        }
-    }
+	let mut final_res = FinalResponse::empty();
+	print!("Response: ");
+	while let Some(content) = stream.next().await {
+		match content {
+			Ok(MultiTurnStreamItem::Text(Text { text })) => {
+				print!("{text}");
+				std::io::Write::flush(&mut std::io::stdout())?;
+			}
+			Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+				final_res = res;
+			}
+			Err(err) => {
+				eprintln!("Error: {err}");
+			}
+		}
+	}
 
-    Ok(final_res)
+	Ok(final_res)
 }

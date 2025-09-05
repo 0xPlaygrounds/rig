@@ -3,45 +3,46 @@ use futures::future::BoxFuture;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum VerifyError {
-    #[error("invalid authentication")]
-    InvalidAuthentication,
-    #[error("provider error: {0}")]
-    ProviderError(String),
-    #[error("http error: {0}")]
-    HttpError(
-        #[from]
-        #[source]
-        reqwest::Error,
-    ),
+	#[error("invalid authentication")]
+	InvalidAuthentication,
+	#[error("provider error: {0}")]
+	ProviderError(String),
+	#[error("http error: {0}")]
+	HttpError(
+		#[from]
+		#[source]
+		reqwest::Error,
+	),
 }
 
 /// A provider client that can verify the configuration.
 /// Clone is required for conversions between client types.
 pub trait VerifyClient: ProviderClient + Clone {
-    /// Verify the configuration.
-    fn verify(&self) -> impl Future<Output = Result<(), VerifyError>> + Send;
+	/// Verify the configuration.
+	fn verify(&self) -> impl Future<Output=Result<(), VerifyError>> + Send;
 }
 
 pub trait VerifyClientDyn: ProviderClient {
-    /// Verify the configuration.
-    fn verify(&self) -> BoxFuture<'_, Result<(), VerifyError>>;
+	/// Verify the configuration.
+	fn verify(&self) -> BoxFuture<'_, Result<(), VerifyError>>;
 }
 
 impl<T> VerifyClientDyn for T
 where
-    T: VerifyClient,
+	T: VerifyClient,
 {
-    fn verify(&self) -> BoxFuture<'_, Result<(), VerifyError>> {
-        Box::pin(self.verify())
-    }
+	fn verify(&self) -> BoxFuture<'_, Result<(), VerifyError>> {
+		Box::pin(self.verify())
+	}
 }
 
 impl<T> AsVerify for T
 where
-    T: VerifyClientDyn + Clone + 'static,
+	T: VerifyClientDyn + Clone + 'static,
 {
-    fn as_verify(&self) -> Option<Box<dyn VerifyClientDyn>> {
-        Some(Box::new(self.clone()))
-    }
+	fn as_verify(&self) -> Option<Box<dyn VerifyClientDyn>> {
+		Some(Box::new(self.clone()))
+	}
 }
