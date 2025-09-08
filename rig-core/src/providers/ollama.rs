@@ -797,7 +797,12 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                         images: if images.is_empty() {
                             None
                         } else {
-                            Some(images)
+                            Some(
+                                images
+                                    .into_iter()
+                                    .map(|x| x.to_string())
+                                    .collect::<Vec<String>>(),
+                            )
                         },
                         name: None,
                     }])

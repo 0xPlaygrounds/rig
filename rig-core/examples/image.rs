@@ -1,4 +1,5 @@
 use reqwest::Client;
+use rig::message::DocumentSourceKind;
 use rig::prelude::*;
 use rig::{
     completion::{Prompt, message::Image},
@@ -36,7 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Compose `Image` for prompt
     let image = Image {
-        data: image_base64,
+        data: DocumentSourceKind::base64(&image_base64),
         media_type: Some(ImageMediaType::JPEG),
         format: Some(ContentFormat::Base64),
         ..Default::default()

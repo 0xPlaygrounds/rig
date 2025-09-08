@@ -11,7 +11,7 @@ use super::{Client, responses_api::streaming::StreamingCompletionResponse};
 use super::{ImageUrl, InputAudio, SystemContent};
 use crate::completion::CompletionError;
 use crate::json_utils;
-use crate::message::{AudioMediaType, Document, MessageError, Text};
+use crate::message::{AudioMediaType, Document, DocumentSourceKind, MessageError, Text};
 use crate::one_or_many::string_or_one_or_many;
 
 use crate::{OneOrMany, completion, message};
@@ -1153,31 +1153,34 @@ impl TryFrom<message::Message> for Vec<Message> {
                         })
                         .collect::<Result<Vec<_>, _>>()
                 } else {
-                    let other_content = OneOrMany::many(other_content).expect(
-                        "There must be other content here if there were no tool result content",
-                    );
-
-                    Ok(vec![Message::User {
-                        content: other_content.map(|content| match content {
+                    let other_content = other_content
+                        .into_iter()
+                        .map(|content| match content {
                             message::UserContent::Text(message::Text { text }) => {
-                                UserContent::InputText { text }
+                                Ok(UserContent::InputText { text })
                             }
                             message::UserContent::Image(message::Image {
                                 data, detail, ..
-                            }) => UserContent::Image {
-                                image_url: ImageUrl {
-                                    url: data,
+                            }) => {
+                                let DocumentSourceKind::Url(url) = data else {
+                                    return Err(message::MessageError::ConversionError(
+                                        "Only image URL user content is accepted with OpenAI Chat Completions API".to_string()
+                                    ))};
+                                Ok(UserContent::Image {
+                                    image_url: ImageUrl {
+                                    url,
                                     detail: detail.unwrap_or_default(),
-                                },
-                            },
+                                    },
+                                })
+                            }
                             message::UserContent::Document(message::Document { data, .. }) => {
-                                UserContent::InputText { text: data }
+                                Ok(UserContent::InputText { text: data })
                             }
                             message::UserContent::Audio(message::Audio {
                                 data,
                                 media_type,
                                 ..
-                            }) => UserContent::Audio {
+                            }) => Ok(UserContent::Audio {
                                 input_audio: InputAudio {
                                     data,
                                     format: match media_type {
@@ -1185,9 +1188,17 @@ impl TryFrom<message::Message> for Vec<Message> {
                                         None => AudioMediaType::MP3,
                                     },
                                 },
-                            },
+                            }),
                             _ => unreachable!(),
-                        }),
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    let other_content = OneOrMany::many(other_content).expect(
+                        "There must be other content here if there were no tool result content",
+                    );
+
+                    Ok(vec![Message::User {
+                        content: other_content,
                         name: None,
                     }])
                 }

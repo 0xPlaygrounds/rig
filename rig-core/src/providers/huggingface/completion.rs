@@ -188,7 +188,7 @@ impl From<UserContent> for message::UserContent {
     fn from(value: UserContent) -> Self {
         match value {
             UserContent::Text { text } => message::UserContent::text(text),
-            UserContent::ImageUrl { image_url } => message::UserContent::image(
+            UserContent::ImageUrl { image_url } => message::UserContent::image_url(
                 image_url.url,
                 Some(message::ContentFormat::String),
                 None,
@@ -204,9 +204,9 @@ impl TryFrom<message::UserContent> for UserContent {
     fn try_from(content: message::UserContent) -> Result<Self, Self::Error> {
         match content {
             message::UserContent::Text(text) => Ok(UserContent::Text { text: text.text }),
-            message::UserContent::Image(message::Image { data, format, .. }) => match format {
-                Some(message::ContentFormat::String) => Ok(UserContent::ImageUrl {
-                    image_url: ImageUrl { url: data },
+            message::UserContent::Image(message::Image { data, .. }) => match data {
+                message::DocumentSourceKind::Url(url) => Ok(UserContent::ImageUrl {
+                    image_url: ImageUrl { url },
                 }),
                 _ => Err(message::MessageError::ConversionError(
                     "Huggingface only supports images as urls".into(),

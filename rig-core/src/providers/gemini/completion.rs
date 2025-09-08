@@ -302,7 +302,7 @@ pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
-    use crate::message::ContentFormat;
+    use crate::message::{ContentFormat, DocumentSourceKind, ImageMediaType};
     use crate::{
         OneOrMany,
         completion::CompletionError,
@@ -425,7 +425,7 @@ pub mod gemini_api_types {
 
                                         match mime_type {
                                             Some(message::MediaType::Image(media_type)) => {
-                                                message::UserContent::image(
+                                                message::UserContent::image_base64(
                                                     inline_data.data,
                                                     Some(message::ContentFormat::default()),
                                                     Some(media_type),
@@ -568,6 +568,29 @@ pub mod gemini_api_types {
         }
     }
 
+    impl TryFrom<(ImageMediaType, DocumentSourceKind)> for PartKind {
+        type Error = message::MessageError;
+        fn try_from(
+            (mime_type, doc_src): (ImageMediaType, DocumentSourceKind),
+        ) -> Result<Self, Self::Error> {
+            let mime_type = mime_type.to_mime_type().to_string();
+            let part = match doc_src {
+                DocumentSourceKind::Url(url) => PartKind::FileData(FileData {
+                    mime_type: Some(mime_type),
+                    file_uri: url,
+                }),
+                DocumentSourceKind::Base64(data) => PartKind::InlineData(Blob { mime_type, data }),
+                DocumentSourceKind::Unknown => {
+                    return Err(message::MessageError::ConversionError(
+                        "Can't convert an unknown document source".to_string(),
+                    ));
+                }
+            };
+
+            Ok(part)
+        }
+    }
+
     impl TryFrom<message::UserContent> for Part {
         type Error = message::MessageError;
 
@@ -615,15 +638,15 @@ pub mod gemini_api_types {
                         | message::ImageMediaType::PNG
                         | message::ImageMediaType::WEBP
                         | message::ImageMediaType::HEIC
-                        | message::ImageMediaType::HEIF => Ok(Part {
-                            thought: Some(false),
-                            thought_signature: None,
-                            part: PartKind::InlineData(Blob {
-                                mime_type: media_type.to_mime_type().to_owned(),
-                                data,
-                            }),
-                            additional_params: None,
-                        }),
+                        | message::ImageMediaType::HEIF => {
+                            let part = PartKind::try_from((media_type, data))?;
+                            Ok(Part {
+                                thought: Some(false),
+                                thought_signature: None,
+                                part,
+                                additional_params: None,
+                            })
+                        }
                         _ => Err(message::MessageError::ConversionError(format!(
                             "Unsupported image media type {media_type:?}"
                         ))),

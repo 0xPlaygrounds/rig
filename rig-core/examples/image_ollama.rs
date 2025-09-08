@@ -1,4 +1,5 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
+use rig::message::DocumentSourceKind;
 use rig::prelude::*;
 use rig::providers::ollama;
 use rig::{
@@ -33,7 +34,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Compose `Image` for prompt
     let image = Image {
-        data: image_base64,
+        data: DocumentSourceKind::base64(&image_base64),
         media_type: Some(ImageMediaType::JPEG),
         format: Some(ContentFormat::Base64),
         ..Default::default()
