@@ -27,7 +27,7 @@ impl<M: CompletionModel> Tool for Agent<M> {
                 of that agent follows:
                 --- 
                 {}",
-                self.preamble.clone()
+                self.preamble.clone().unwrap_or_default()
             ),
             parameters: serde_json::to_value(schema_for!(AgentToolArgs))
                 .expect("converting JSON schema to JSON value should never fail"),

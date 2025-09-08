@@ -45,7 +45,7 @@ where
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     pub model: Arc<M>,
     /// System prompt
-    pub preamble: String,
+    pub preamble: Option<String>,
     /// Context documents always available to the agent
     pub static_context: Vec<Document>,
     /// Tools that are always available to the agent (identified by their name)
@@ -104,12 +104,16 @@ where
         let completion_request = self
             .model
             .completion_request(prompt)
-            .preamble(self.preamble.clone())
             .messages(chat_history)
             .temperature_opt(self.temperature)
             .max_tokens_opt(self.max_tokens)
             .additional_params_opt(self.additional_params.clone())
             .documents(self.static_context.clone());
+        let completion_request = if let Some(preamble) = &self.preamble {
+            completion_request.preamble(preamble.to_owned())
+        } else {
+            completion_request
+        };
 
         // If the agent has RAG text, we need to fetch the dynamic context and tools
         let agent = match &rag_text {
