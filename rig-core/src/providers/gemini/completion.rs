@@ -280,7 +280,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             .as_ref()
             .map(|usage| completion::Usage {
                 input_tokens: usage.prompt_token_count as u64,
-                output_tokens: usage.candidates_token_count as u64,
+                output_tokens: usage.candidates_token_count.unwrap_or(0) as u64,
                 total_tokens: usage.total_token_count as u64,
             })
             .unwrap_or_default();
@@ -849,7 +849,8 @@ pub mod gemini_api_types {
         pub prompt_token_count: i32,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub cached_content_token_count: Option<i32>,
-        pub candidates_token_count: i32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub candidates_token_count: Option<i32>,
         pub total_token_count: i32,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thoughts_token_count: Option<i32>,
@@ -865,7 +866,10 @@ pub mod gemini_api_types {
                     Some(count) => count.to_string(),
                     None => "n/a".to_string(),
                 },
-                self.candidates_token_count,
+                match self.candidates_token_count {
+                    Some(count) => count.to_string(),
+                    None => "n/a".to_string(),
+                },
                 self.total_token_count
             )
         }
