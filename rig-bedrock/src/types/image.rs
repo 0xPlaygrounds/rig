@@ -129,7 +129,7 @@ mod tests {
         let rig_image = RigImage(Image {
             data: DocumentSourceKind::Base64(encoded_str),
             format: Some(ContentFormat::Base64),
-            media_type: Some(ImageMediaType::JPEG),
+            media_type: Some(ImageMediaType::HEIC),
             detail: None,
             additional_params: None,
         });
