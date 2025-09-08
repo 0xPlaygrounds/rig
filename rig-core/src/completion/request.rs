@@ -528,6 +528,11 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         self
     }
 
+    pub fn without_preamble(mut self) -> Self {
+        self.preamble = None;
+        self
+    }
+
     /// Adds a message to the chat history for the completion request.
     pub fn message(mut self, message: Message) -> Self {
         self.chat_history.push(message);

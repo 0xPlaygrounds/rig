@@ -93,6 +93,12 @@ where
         self
     }
 
+    /// Remove the system prompt
+    pub fn without_preamble(mut self) -> Self {
+        self.preamble = None;
+        self
+    }
+
     /// Append to the preamble of the agent
     pub fn append_preamble(mut self, doc: &str) -> Self {
         self.preamble = Some(format!(
@@ -179,7 +185,7 @@ where
         Agent {
             name: self.name,
             model: Arc::new(self.model),
-            preamble: self.preamble.unwrap_or_default(),
+            preamble: self.preamble,
             static_context: self.static_context,
             static_tools: self.static_tools,
             temperature: self.temperature,
