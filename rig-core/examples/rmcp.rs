@@ -10,7 +10,7 @@ use rig::{
 };
 use rmcp::{
     RoleServer, ServerHandler,
-    handler::server::{router::tool::ToolRouter, tool::Parameters},
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
     schemars,
     service::RequestContext,

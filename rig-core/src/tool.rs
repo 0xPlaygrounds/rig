@@ -280,18 +280,22 @@ pub mod rmcp {
                 if let Some(true) = result.is_error {
                     let error_msg = result
                         .content
-                        .as_deref()
-                        .and_then(|errors| errors.first())
-                        .and_then(|error| error.as_text())
-                        .map(|raw| raw.text.as_str())
-                        .unwrap_or("No error message returned");
-                    return Err(McpToolError(error_msg.to_string()).into());
+                        .into_iter()
+                        .map(|x| x.raw.as_text().map(|y| y.to_owned()))
+                        .map(|x| x.map(|x| x.clone().text))
+                        .collect::<Option<Vec<String>>>();
+
+                    let error_message = error_msg.map(|x| x.join("\n"));
+                    if let Some(error_message) = error_message {
+                        return Err(McpToolError(error_message).into());
+                    } else {
+                        return Err(McpToolError("No message returned".to_string()).into());
+                    }
                 };
 
                 Ok(result
                     .content
                     .into_iter()
-                    .flatten()
                     .map(|c| match c.raw {
                         rmcp::model::RawContent::Text(raw) => raw.text,
                         rmcp::model::RawContent::Image(raw) => {
@@ -302,6 +306,7 @@ pub mod rmcp {
                                 uri,
                                 mime_type,
                                 text,
+                                ..
                             } => {
                                 format!(
                                     "{mime_type}{uri}:{text}",
@@ -314,6 +319,7 @@ pub mod rmcp {
                                 uri,
                                 mime_type,
                                 blob,
+                                ..
                             } => format!(
                                 "{mime_type}{uri}:{blob}",
                                 mime_type = mime_type
@@ -323,6 +329,9 @@ pub mod rmcp {
                         },
                         RawContent::Audio(_) => {
                             unimplemented!("Support for audio results from an MCP tool is currently unimplemented. Come back later!")
+                        }
+                        thing => {
+                            unimplemented!("Unsupported type found: {thing:?}")
                         }
                     })
                     .collect::<String>())
