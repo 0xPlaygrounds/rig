@@ -57,7 +57,9 @@ mod tests {
     use base64::{Engine, prelude::BASE64_STANDARD};
     use rig::{
         completion::CompletionError,
-        message::{ContentFormat, Image, ImageMediaType, Text, ToolResultContent},
+        message::{
+            ContentFormat, DocumentSourceKind, Image, ImageMediaType, Text, ToolResultContent,
+        },
     };
 
     use crate::types::tool::RigToolResultContent;
@@ -75,8 +77,9 @@ mod tests {
 
     #[test]
     fn rig_tool_image_to_aws_tool() {
+        let encoded_str = BASE64_STANDARD.encode("img_data");
         let image = Image {
-            data: BASE64_STANDARD.encode("img_data"),
+            data: DocumentSourceKind::Base64(encoded_str),
             format: Some(ContentFormat::Base64),
             media_type: Some(ImageMediaType::JPEG),
             detail: None,

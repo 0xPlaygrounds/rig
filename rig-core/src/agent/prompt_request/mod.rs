@@ -379,7 +379,7 @@ where
         // If we reach here, we never resolved the final tool call. We need to do ... something.
         Err(PromptError::MaxDepthError {
             max_depth: self.max_depth,
-            chat_history: chat_history.clone(),
+            chat_history: Box::new(chat_history.clone()),
             prompt: last_prompt,
         })
     }
