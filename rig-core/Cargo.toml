@@ -40,7 +40,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 worker = { workspace = true, optional = true }
-rmcp = { version = "0.5", optional = true, features = ["client"] }
+rmcp = { version = "0.6", optional = true, features = ["client"] }
 reqwest-eventsource = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 
@@ -55,10 +55,12 @@ base64 = { workspace = true }
 
 # Required for `rmcp` example
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
-rmcp = { version = "0.5", features = [
+rmcp = { version = "0.6", features = [
     "client",
+    "macros",
     "reqwest",                                  # required for some strange reason
     "transport-streamable-http-client",
+    "transport-streamable-http-client-reqwest",
     "transport-streamable-http-server-session",
     "transport-streamable-http-server",
     "transport-worker",
