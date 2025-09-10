@@ -708,6 +708,7 @@ impl transcription::TranscriptionModel for TranscriptionModel {
 #[cfg(feature = "image")]
 pub use image_generation::*;
 #[cfg(feature = "image")]
+#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod image_generation {
     use crate::client::ImageGenerationClient;
     use crate::image_generation;
@@ -784,6 +785,7 @@ use crate::client::{
 pub use audio_generation::*;
 
 #[cfg(feature = "audio")]
+#[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 mod audio_generation {
     use super::Client;
     use crate::audio_generation;

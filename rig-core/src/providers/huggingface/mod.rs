@@ -14,6 +14,7 @@ pub mod client;
 pub mod completion;
 
 #[cfg(feature = "image")]
+#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
 pub mod streaming;
 pub mod transcription;
