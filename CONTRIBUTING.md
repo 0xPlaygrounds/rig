@@ -28,6 +28,15 @@ This will then auto-link issue 999 (for example) and will automatically close th
 
 **Working on your first Pull Request?** You can learn how from this *free* series [How to Contribute to an Open Source Project on GitHub](https://kcd.im/pull-request)
 
+### Code Contribution Guidelines
+Most non-trivial open source projects often have a set of code contribution guidelines that are highly advised to stick to for the easiest path to a merge. Such policies also exist to ensure that the project is able to remain easy to contribute to.
+
+While we will not strictly enforce any guidelines as such because we want to make it as easy as possible to contribute to Rig, we do have two policies that we advise contributors to stick to:
+- Use docstrings on any new public items (structs, enums, methods whether free-standing or associated).
+- Ensure that you use full syntax for trait bounds where possible. This makes the code much easier to read.
+
+Other than that, each PR will be taken on a case-by-case basis.
+
 ## Project Structure
 
 Rig is split up into multiple crates in a monorepo structure. The main crate `rig-core` contains all of the foundational abstractions for building with LLMs. This crate avoids adding many new dependencies to keep to lean and only really contains simple provider integrations on top of the base layer of abstractions. Side crates are leveraged to help add important first-party behavior without over burdening the main library with dependencies. For example, `rig-mongodb` contains extra dependencies to be able to interact with `mongodb` as a vector store.
