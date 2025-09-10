@@ -3,9 +3,9 @@ use std::io::{self, Write};
 use futures::StreamExt;
 
 use crate::{
-    agent::{Agent, prompt_request::streaming::MultiTurnStreamItem},
+    agent::{Agent, Text, prompt_request::streaming::MultiTurnStreamItem},
     completion::{Chat, CompletionError, CompletionModel, Message, PromptError},
-    streaming::StreamingPrompt,
+    streaming::{StreamedAssistantContent, StreamingPrompt},
 };
 
 /// Type-state representing an empty `agent` field in `ChatbotBuilder`
@@ -150,22 +150,23 @@ where
 
                     while let Some(chunk) = stream_response.next().await {
                         match chunk {
-                            Ok(MultiTurnStreamItem::Text(s)) => {
-                                let text = s.text.as_str();
+                            Ok(MultiTurnStreamItem::StreamItem(
+                                StreamedAssistantContent::Text(Text { text }),
+                            )) => {
                                 print!("{text}");
-                                response.push_str(text);
+                                response.push_str(&text);
                             }
                             Ok(MultiTurnStreamItem::FinalResponse(r)) => {
                                 if self.show_usage {
                                     usage = Some(r.usage());
                                 }
                             }
-
                             Err(e) => {
                                 return Err(PromptError::CompletionError(
                                     CompletionError::ResponseError(e.to_string()),
                                 ));
                             }
+                            _ => {}
                         }
                     }
 
