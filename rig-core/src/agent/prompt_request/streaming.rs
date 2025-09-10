@@ -22,7 +22,7 @@ pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send>>;
 
 #[cfg(target_arch = "wasm32")]
-pub type StreamingResult<R: Clone + Unpin> =
+pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>>>>;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
