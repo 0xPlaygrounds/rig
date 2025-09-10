@@ -4,7 +4,7 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError},
     json_utils,
-    message::{self, DocumentMediaType, MessageError, Reasoning},
+    message::{self, DocumentMediaType, DocumentSourceKind, MessageError, Reasoning},
     one_or_many::string_or_one_or_many,
 };
 use std::{convert::Infallible, str::FromStr};
@@ -366,28 +366,34 @@ impl TryFrom<message::Message> for Message {
                                 Ok(ToolResultContent::Text { text })
                             }
                             message::ToolResultContent::Image(image) => {
+                                let DocumentSourceKind::Base64(data) = image.data else {
+                                    return Err(MessageError::ConversionError(
+                                        "Only base64 strings can be used with the Anthropic API"
+                                            .to_string(),
+                                    ));
+                                };
                                 let media_type =
                                     image.media_type.ok_or(MessageError::ConversionError(
                                         "Image media type is required".to_owned(),
                                     ))?;
-                                let format = image.format.ok_or(MessageError::ConversionError(
-                                    "Image format is required".to_owned(),
-                                ))?;
                                 Ok(ToolResultContent::Image(ImageSource {
-                                    data: image.data,
+                                    data,
                                     media_type: media_type.try_into()?,
-                                    r#type: format.try_into()?,
+                                    r#type: SourceType::BASE64,
                                 }))
                             }
                         })?,
                         is_error: None,
                     }),
                     message::UserContent::Image(message::Image {
-                        data,
-                        format,
-                        media_type,
-                        ..
+                        data, media_type, ..
                     }) => {
+                        let DocumentSourceKind::Base64(data) = data else {
+                            return Err(MessageError::ConversionError(
+                                "Only base64 strings are allowed in the Anthropic API".to_string(),
+                            ));
+                        };
+
                         let source = ImageSource {
                             data,
                             media_type: match media_type {
@@ -398,10 +404,7 @@ impl TryFrom<message::Message> for Message {
                                     ));
                                 }
                             },
-                            r#type: match format {
-                                Some(format) => format.try_into()?,
-                                None => SourceType::BASE64,
-                            },
+                            r#type: SourceType::BASE64,
                         };
                         Ok(Content::Image { source })
                     }
@@ -475,13 +478,8 @@ impl From<ToolResultContent> for message::ToolResultContent {
             ToolResultContent::Image(ImageSource {
                 data,
                 media_type: format,
-                r#type,
-            }) => message::ToolResultContent::image(
-                data,
-                Some(r#type.into()),
-                Some(format.into()),
-                None,
-            ),
+                ..
+            }) => message::ToolResultContent::image_base64(data, Some(format.into()), None),
         }
     }
 }
@@ -504,8 +502,7 @@ impl TryFrom<Message> for message::Message {
                             content.map(|content| content.into()),
                         ),
                         Content::Image { source } => message::UserContent::Image(message::Image {
-                            data: source.data,
-                            format: Some(message::ContentFormat::Base64),
+                            data: DocumentSourceKind::base64(&source.data),
                             media_type: Some(source.media_type.into()),
                             detail: None,
                             additional_params: None,
@@ -942,13 +939,9 @@ mod tests {
 
                 match iter.next().unwrap() {
                     message::UserContent::Image(message::Image {
-                        data,
-                        format,
-                        media_type,
-                        ..
+                        data, media_type, ..
                     }) => {
-                        assert_eq!(data, "/9j/4AAQSkZJRg...");
-                        assert_eq!(format.unwrap(), message::ContentFormat::Base64);
+                        assert_eq!(data, DocumentSourceKind::base64("/9j/4AAQSkZJRg..."));
                         assert_eq!(media_type, Some(message::ImageMediaType::JPEG));
                     }
                     _ => panic!("Expected image content"),
@@ -963,13 +956,9 @@ mod tests {
 
                 match iter.next().unwrap() {
                     message::UserContent::Document(message::Document {
-                        data,
-                        format,
-                        media_type,
-                        ..
+                        data, media_type, ..
                     }) => {
                         assert_eq!(data, "base64_encoded_pdf_data");
-                        assert_eq!(format.unwrap(), message::ContentFormat::Base64);
                         assert_eq!(media_type, Some(message::DocumentMediaType::PDF));
                     }
                     _ => panic!("Expected document content"),

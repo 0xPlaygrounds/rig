@@ -158,15 +158,51 @@ impl std::fmt::Display for Text {
 /// Image content containing image data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Image {
-    pub data: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<ContentFormat>,
+    pub data: DocumentSourceKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<ImageMediaType>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<ImageDetail>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
+}
+
+/// The kind of image source (to be used).
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+#[serde(tag = "type", rename_all = "camelCase")]
+#[non_exhaustive]
+pub enum DocumentSourceKind {
+    /// A file URL/URI.
+    Url(String),
+    /// A base-64 encoded string.
+    Base64(String),
+    #[default]
+    /// An unknown file source (there's nothing there).
+    Unknown,
+}
+
+impl DocumentSourceKind {
+    pub fn url(url: &str) -> Self {
+        Self::Url(url.to_string())
+    }
+
+    pub fn base64(base64_string: &str) -> Self {
+        Self::Base64(base64_string.to_string())
+    }
+
+    pub fn unknown() -> Self {
+        Self::Unknown
+    }
+}
+
+impl std::fmt::Display for DocumentSourceKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Url(string) => write!(f, "{string}"),
+            Self::Base64(string) => write!(f, "{string}"),
+            Self::Unknown => write!(f, "<unknown>"),
+        }
+    }
 }
 
 /// Audio content containing audio data and metadata about it.
@@ -365,15 +401,27 @@ impl UserContent {
     }
 
     /// Helper constructor to make creating user image content easier.
-    pub fn image(
+    pub fn image_base64(
         data: impl Into<String>,
-        format: Option<ContentFormat>,
         media_type: Option<ImageMediaType>,
         detail: Option<ImageDetail>,
     ) -> Self {
         UserContent::Image(Image {
-            data: data.into(),
-            format,
+            data: DocumentSourceKind::Base64(data.into()),
+            media_type,
+            detail,
+            additional_params: None,
+        })
+    }
+
+    /// Helper constructor to make creating user image content easier.
+    pub fn image_url(
+        url: impl Into<String>,
+        media_type: Option<ImageMediaType>,
+        detail: Option<ImageDetail>,
+    ) -> Self {
+        UserContent::Image(Image {
+            data: DocumentSourceKind::Url(url.into()),
             media_type,
             detail,
             additional_params: None,
@@ -476,16 +524,28 @@ impl ToolResultContent {
         ToolResultContent::Text(text.into().into())
     }
 
-    /// Helper constructor to make creating tool result image content easier.
-    pub fn image(
+    /// Helper constructor to make tool result images from a base64-encoded string.
+    pub fn image_base64(
         data: impl Into<String>,
-        format: Option<ContentFormat>,
         media_type: Option<ImageMediaType>,
         detail: Option<ImageDetail>,
     ) -> Self {
         ToolResultContent::Image(Image {
-            data: data.into(),
-            format,
+            data: DocumentSourceKind::Base64(data.into()),
+            media_type,
+            detail,
+            additional_params: None,
+        })
+    }
+
+    /// Helper constructor to make tool result images from a URL.
+    pub fn image_url(
+        url: impl Into<String>,
+        media_type: Option<ImageMediaType>,
+        detail: Option<ImageDetail>,
+    ) -> Self {
+        ToolResultContent::Image(Image {
+            data: DocumentSourceKind::Url(url.into()),
             media_type,
             detail,
             additional_params: None,

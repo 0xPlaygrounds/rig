@@ -125,7 +125,7 @@ pub enum PromptError {
     #[error("MaxDepthError: (reached limit: {max_depth})")]
     MaxDepthError {
         max_depth: usize,
-        chat_history: Vec<Message>,
+        chat_history: Box<Vec<Message>>,
         prompt: Message,
     },
 }

@@ -4,7 +4,7 @@
 
 use super::{ApiErrorResponse, ApiResponse, Client, streaming::StreamingCompletionResponse};
 use crate::completion::{CompletionError, CompletionRequest};
-use crate::message::{AudioMediaType, ImageDetail};
+use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail};
 use crate::one_or_many::string_or_one_or_many;
 use crate::{OneOrMany, completion, json_utils, message};
 use serde::{Deserialize, Serialize};
@@ -312,41 +312,51 @@ impl TryFrom<message::Message> for Vec<Message> {
                         })
                         .collect::<Result<Vec<_>, _>>()
                 } else {
+                    let other_content: Vec<UserContent> = other_content.into_iter().map(|content| match content {
+                        message::UserContent::Text(message::Text { text }) => {
+                            Ok(UserContent::Text { text })
+                        }
+                        message::UserContent::Image(message::Image {
+                            data, detail, ..
+                        }) => {
+                            let DocumentSourceKind::Url(url) = data else { return Err(message::MessageError::ConversionError(
+                                "Only image URL user content is accepted with OpenAI Chat Completions API".to_string()
+                            ))};
+
+                            Ok(UserContent::Image {
+                                    image_url: ImageUrl {
+                                    url,
+                                    detail: detail.unwrap_or_default(),
+                                    }
+                                }
+                            )
+
+                        },
+                        message::UserContent::Document(message::Document { data, .. }) => {
+                            Ok(UserContent::Text { text: data })
+                        }
+                        message::UserContent::Audio(message::Audio {
+                            data,
+                            media_type,
+                            ..
+                        }) => Ok(UserContent::Audio {
+                            input_audio: InputAudio {
+                                data,
+                                format: match media_type {
+                                    Some(media_type) => media_type,
+                                    None => AudioMediaType::MP3,
+                                },
+                            },
+                        }),
+                        _ => unreachable!(),
+                    }).collect::<Result<Vec<_>, _>>()?;
+
                     let other_content = OneOrMany::many(other_content).expect(
                         "There must be other content here if there were no tool result content",
                     );
 
                     Ok(vec![Message::User {
-                        content: other_content.map(|content| match content {
-                            message::UserContent::Text(message::Text { text }) => {
-                                UserContent::Text { text }
-                            }
-                            message::UserContent::Image(message::Image {
-                                data, detail, ..
-                            }) => UserContent::Image {
-                                image_url: ImageUrl {
-                                    url: data,
-                                    detail: detail.unwrap_or_default(),
-                                },
-                            },
-                            message::UserContent::Document(message::Document { data, .. }) => {
-                                UserContent::Text { text: data }
-                            }
-                            message::UserContent::Audio(message::Audio {
-                                data,
-                                media_type,
-                                ..
-                            }) => UserContent::Audio {
-                                input_audio: InputAudio {
-                                    data,
-                                    format: match media_type {
-                                        Some(media_type) => media_type,
-                                        None => AudioMediaType::MP3,
-                                    },
-                                },
-                            },
-                            _ => unreachable!(),
-                        }),
+                        content: other_content,
                         name: None,
                     }])
                 }
@@ -481,12 +491,9 @@ impl From<UserContent> for message::UserContent {
     fn from(content: UserContent) -> Self {
         match content {
             UserContent::Text { text } => message::UserContent::text(text),
-            UserContent::Image { image_url } => message::UserContent::image(
-                image_url.url,
-                Some(message::ContentFormat::default()),
-                None,
-                Some(image_url.detail),
-            ),
+            UserContent::Image { image_url } => {
+                message::UserContent::image_url(image_url.url, None, Some(image_url.detail))
+            }
             UserContent::Audio { input_audio } => message::UserContent::audio(
                 input_audio.data,
                 Some(message::ContentFormat::default()),

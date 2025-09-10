@@ -20,7 +20,7 @@ enum StreamingError {
     #[error("CompletionError: {0}")]
     Completion(#[from] CompletionError),
     #[error("PromptError: {0}")]
-    Prompt(#[from] PromptError),
+    Prompt(#[from] Box<PromptError>),
     #[error("ToolSetError: {0}")]
     Tool(#[from] ToolSetError),
 }

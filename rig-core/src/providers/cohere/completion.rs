@@ -373,12 +373,9 @@ impl TryFrom<Message> for message::Message {
                     UserContent::Text { text } => {
                         message::UserContent::Text(message::Text { text })
                     }
-                    UserContent::ImageUrl { image_url } => message::UserContent::image(
-                        image_url.url,
-                        Some(message::ContentFormat::String),
-                        None,
-                        None,
-                    ),
+                    UserContent::ImageUrl { image_url } => {
+                        message::UserContent::image_url(image_url.url, None, None)
+                    }
                 }),
             }),
             Message::Assistant {

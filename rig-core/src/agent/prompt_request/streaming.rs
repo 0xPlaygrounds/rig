@@ -75,7 +75,7 @@ pub enum StreamingError {
     #[error("CompletionError: {0}")]
     Completion(#[from] CompletionError),
     #[error("PromptError: {0}")]
-    Prompt(#[from] PromptError),
+    Prompt(#[from] Box<PromptError>),
     #[error("ToolSetError: {0}")]
     Tool(#[from] ToolSetError),
 }
@@ -325,11 +325,11 @@ where
                 }
 
                     if max_depth_reached {
-                        yield Err(PromptError::MaxDepthError {
+                        yield Err(Box::new(PromptError::MaxDepthError {
                             max_depth: req.max_depth,
-                            chat_history: (*chat_history.read().await).clone(),
+                            chat_history: Box::new((*chat_history.read().await).clone()),
                             prompt: last_prompt_error.into(),
-                        }.into());
+                        }).into());
                     }
 
             })
