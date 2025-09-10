@@ -160,8 +160,6 @@ impl std::fmt::Display for Text {
 pub struct Image {
     pub data: DocumentSourceKind,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<ContentFormat>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<ImageMediaType>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<ImageDetail>,
@@ -172,6 +170,7 @@ pub struct Image {
 /// The kind of image source (to be used).
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[non_exhaustive]
 pub enum DocumentSourceKind {
     /// A file URL/URI.
     Url(String),
@@ -404,13 +403,11 @@ impl UserContent {
     /// Helper constructor to make creating user image content easier.
     pub fn image_base64(
         data: impl Into<String>,
-        format: Option<ContentFormat>,
         media_type: Option<ImageMediaType>,
         detail: Option<ImageDetail>,
     ) -> Self {
         UserContent::Image(Image {
             data: DocumentSourceKind::Base64(data.into()),
-            format,
             media_type,
             detail,
             additional_params: None,
@@ -420,13 +417,11 @@ impl UserContent {
     /// Helper constructor to make creating user image content easier.
     pub fn image_url(
         url: impl Into<String>,
-        format: Option<ContentFormat>,
         media_type: Option<ImageMediaType>,
         detail: Option<ImageDetail>,
     ) -> Self {
         UserContent::Image(Image {
             data: DocumentSourceKind::Url(url.into()),
-            format,
             media_type,
             detail,
             additional_params: None,
@@ -532,13 +527,11 @@ impl ToolResultContent {
     /// Helper constructor to make tool result images from a base64-encoded string.
     pub fn image_base64(
         data: impl Into<String>,
-        format: Option<ContentFormat>,
         media_type: Option<ImageMediaType>,
         detail: Option<ImageDetail>,
     ) -> Self {
         ToolResultContent::Image(Image {
             data: DocumentSourceKind::Base64(data.into()),
-            format,
             media_type,
             detail,
             additional_params: None,
@@ -548,13 +541,11 @@ impl ToolResultContent {
     /// Helper constructor to make tool result images from a URL.
     pub fn image_url(
         url: impl Into<String>,
-        format: Option<ContentFormat>,
         media_type: Option<ImageMediaType>,
         detail: Option<ImageDetail>,
     ) -> Self {
         ToolResultContent::Image(Image {
             data: DocumentSourceKind::Url(url.into()),
-            format,
             media_type,
             detail,
             additional_params: None,

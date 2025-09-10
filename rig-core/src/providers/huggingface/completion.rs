@@ -188,12 +188,9 @@ impl From<UserContent> for message::UserContent {
     fn from(value: UserContent) -> Self {
         match value {
             UserContent::Text { text } => message::UserContent::text(text),
-            UserContent::ImageUrl { image_url } => message::UserContent::image_url(
-                image_url.url,
-                Some(message::ContentFormat::String),
-                None,
-                None,
-            ),
+            UserContent::ImageUrl { image_url } => {
+                message::UserContent::image_url(image_url.url, None, None)
+            }
         }
     }
 }

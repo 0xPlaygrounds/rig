@@ -4,7 +4,7 @@ use rig::prelude::*;
 use rig::providers::ollama;
 use rig::{
     completion::{Prompt, message::Image},
-    message::{ContentFormat, ImageMediaType},
+    message::ImageMediaType,
 };
 use tokio::fs;
 
@@ -36,7 +36,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let image = Image {
         data: DocumentSourceKind::base64(&image_base64),
         media_type: Some(ImageMediaType::JPEG),
-        format: Some(ContentFormat::Base64),
         ..Default::default()
     };
 

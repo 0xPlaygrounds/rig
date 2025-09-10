@@ -427,7 +427,6 @@ pub mod gemini_api_types {
                                             Some(message::MediaType::Image(media_type)) => {
                                                 message::UserContent::image_base64(
                                                     inline_data.data,
-                                                    Some(message::ContentFormat::default()),
                                                     Some(media_type),
                                                     Some(message::ImageDetail::default()),
                                                 )

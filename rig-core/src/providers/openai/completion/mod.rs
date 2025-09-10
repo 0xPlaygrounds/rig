@@ -491,12 +491,9 @@ impl From<UserContent> for message::UserContent {
     fn from(content: UserContent) -> Self {
         match content {
             UserContent::Text { text } => message::UserContent::text(text),
-            UserContent::Image { image_url } => message::UserContent::image_url(
-                image_url.url,
-                Some(message::ContentFormat::default()),
-                None,
-                Some(image_url.detail),
-            ),
+            UserContent::Image { image_url } => {
+                message::UserContent::image_url(image_url.url, None, Some(image_url.detail))
+            }
             UserContent::Audio { input_audio } => message::UserContent::audio(
                 input_audio.data,
                 Some(message::ContentFormat::default()),

@@ -35,7 +35,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let image = Image {
         data: DocumentSourceKind::base64(&image_base64),
         media_type: Some(ImageMediaType::PNG),
-        format: Some(ContentFormat::Base64),
         ..Default::default()
     };
 

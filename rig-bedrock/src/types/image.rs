@@ -2,7 +2,7 @@ use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig::{
     completion::CompletionError,
-    message::{ContentFormat, DocumentSourceKind, Image, ImageMediaType, MimeType},
+    message::{DocumentSourceKind, Image, ImageMediaType, MimeType},
 };
 
 use base64::{Engine, prelude::BASE64_STANDARD};
@@ -76,7 +76,6 @@ impl TryFrom<aws_bedrock::ImageBlock> for RigImage {
         }?;
         Ok(RigImage(Image {
             data: DocumentSourceKind::Base64(data),
-            format: Some(ContentFormat::Base64),
             media_type: Some(media_type),
             detail: None,
             additional_params: None,
@@ -90,7 +89,7 @@ mod tests {
     use base64::{Engine, prelude::BASE64_STANDARD};
     use rig::{
         completion::CompletionError,
-        message::{ContentFormat, DocumentSourceKind, Image, ImageMediaType},
+        message::{DocumentSourceKind, Image, ImageMediaType},
     };
 
     use crate::types::image::RigImage;
@@ -100,7 +99,6 @@ mod tests {
         let encoded_str = BASE64_STANDARD.encode("img_data");
         let rig_image = RigImage(Image {
             data: DocumentSourceKind::Base64(encoded_str),
-            format: Some(ContentFormat::Base64),
             media_type: Some(ImageMediaType::JPEG),
             detail: None,
             additional_params: None,
@@ -128,7 +126,6 @@ mod tests {
         let encoded_str = BASE64_STANDARD.encode("img_data");
         let rig_image = RigImage(Image {
             data: DocumentSourceKind::Base64(encoded_str),
-            format: Some(ContentFormat::Base64),
             media_type: Some(ImageMediaType::HEIC),
             detail: None,
             additional_params: None,

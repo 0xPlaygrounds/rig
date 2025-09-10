@@ -3,7 +3,7 @@ use rig::message::DocumentSourceKind;
 use rig::prelude::*;
 use rig::{
     completion::{Prompt, message::Image},
-    message::{ContentFormat, ImageMediaType},
+    message::ImageMediaType,
     providers::anthropic::{self, CLAUDE_3_5_SONNET},
 };
 
@@ -39,7 +39,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let image = Image {
         data: DocumentSourceKind::base64(&image_base64),
         media_type: Some(ImageMediaType::JPEG),
-        format: Some(ContentFormat::Base64),
         ..Default::default()
     };
 

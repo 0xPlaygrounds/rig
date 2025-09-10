@@ -57,9 +57,7 @@ mod tests {
     use base64::{Engine, prelude::BASE64_STANDARD};
     use rig::{
         completion::CompletionError,
-        message::{
-            ContentFormat, DocumentSourceKind, Image, ImageMediaType, Text, ToolResultContent,
-        },
+        message::{DocumentSourceKind, Image, ImageMediaType, Text, ToolResultContent},
     };
 
     use crate::types::tool::RigToolResultContent;
@@ -80,7 +78,6 @@ mod tests {
         let encoded_str = BASE64_STANDARD.encode("img_data");
         let image = Image {
             data: DocumentSourceKind::Base64(encoded_str),
-            format: Some(ContentFormat::Base64),
             media_type: Some(ImageMediaType::JPEG),
             detail: None,
             additional_params: None,
