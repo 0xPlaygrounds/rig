@@ -461,6 +461,7 @@ impl completion::CompletionModel for CompletionModel {
 pub use image_generation::*;
 
 #[cfg(feature = "image")]
+#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod image_generation {
     use super::{ApiResponse, Client};
     use crate::client::ImageGenerationClient;
@@ -480,14 +481,12 @@ mod image_generation {
     pub const SDXL_CONTROLNET: &str = "SDXL-ControlNet";
     pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
 
-    #[cfg(feature = "image")]
     #[derive(Clone)]
     pub struct ImageGenerationModel {
         client: Client,
         pub model: String,
     }
 
-    #[cfg(feature = "image")]
     impl ImageGenerationModel {
         pub(crate) fn new(client: Client, model: &str) -> ImageGenerationModel {
             Self {
@@ -497,19 +496,16 @@ mod image_generation {
         }
     }
 
-    #[cfg(feature = "image")]
     #[derive(Clone, Deserialize)]
     pub struct Image {
         image: String,
     }
 
-    #[cfg(feature = "image")]
     #[derive(Clone, Deserialize)]
     pub struct ImageGenerationResponse {
         images: Vec<Image>,
     }
 
-    #[cfg(feature = "image")]
     impl TryFrom<ImageGenerationResponse>
         for image_generation::ImageGenerationResponse<ImageGenerationResponse>
     {
@@ -527,7 +523,6 @@ mod image_generation {
         }
     }
 
-    #[cfg(feature = "image")]
     impl image_generation::ImageGenerationModel for ImageGenerationModel {
         type Response = ImageGenerationResponse;
 
@@ -600,6 +595,7 @@ mod image_generation {
 pub use audio_generation::*;
 
 #[cfg(feature = "audio")]
+#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod audio_generation {
     use super::{ApiResponse, Client};
     use crate::audio_generation;
