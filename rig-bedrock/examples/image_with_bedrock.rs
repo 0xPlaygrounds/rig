@@ -2,7 +2,7 @@ use reqwest::Client;
 
 use rig::{
     completion::{Prompt, message::Image},
-    message::{ContentFormat, DocumentSourceKind, ImageMediaType},
+    message::{DocumentSourceKind, ImageMediaType},
 };
 
 use base64::{Engine, prelude::BASE64_STANDARD};
