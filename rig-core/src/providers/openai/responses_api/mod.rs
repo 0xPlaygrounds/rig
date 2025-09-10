@@ -11,7 +11,7 @@ use super::{Client, responses_api::streaming::StreamingCompletionResponse};
 use super::{ImageUrl, InputAudio, SystemContent};
 use crate::completion::CompletionError;
 use crate::json_utils;
-use crate::message::{AudioMediaType, Document, DocumentSourceKind, MessageError, Text};
+use crate::message::{AudioMediaType, Document, DocumentSourceKind, MessageError, MimeType, Text};
 use crate::one_or_many::string_or_one_or_many;
 
 use crate::{OneOrMany, completion, message};
@@ -241,11 +241,41 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 }),
                             })
                         }
-                        _ => {
-                            return Err(CompletionError::ProviderError(
-                                "This API only supports text and tool results at the moment"
-                                    .to_string(),
-                            ));
+                        crate::message::UserContent::Image(crate::message::Image {
+                            data,
+                            media_type,
+                            detail,
+                            ..
+                        }) => {
+                            let url = match data {
+                                DocumentSourceKind::Base64(data) => {
+                                    let media_type = if let Some(media_type) = media_type {
+                                        media_type.to_mime_type().to_string()
+                                    } else {
+                                        String::new()
+                                    };
+                                    format!("data:{media_type};base64,{data}")
+                                }
+                                DocumentSourceKind::Url(url) => url,
+                                DocumentSourceKind::Unknown => return Err(CompletionError::RequestError("Attempted to create an OpenAI Responses AI image input from unknown variant".into()))
+                            };
+                            items.push(InputItem {
+                                role: Some(Role::User),
+                                input: InputContent::Message(Message::User {
+                                    content: OneOrMany::one(UserContent::InputImage {
+                                        image_url: ImageUrl {
+                                            url,
+                                            detail: detail.unwrap_or_default(),
+                                        },
+                                    }),
+                                    name: None,
+                                }),
+                            });
+                        }
+                        message => {
+                            return Err(CompletionError::ProviderError(format!(
+                                "Unsupported message: {message:?}"
+                            )));
                         }
                     }
                 }
@@ -1103,8 +1133,7 @@ pub enum UserContent {
     InputText {
         text: String,
     },
-    #[serde(rename = "image_url")]
-    Image {
+    InputImage {
         image_url: ImageUrl,
     },
     Audio {
@@ -1160,16 +1189,28 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 Ok(UserContent::InputText { text })
                             }
                             message::UserContent::Image(message::Image {
-                                data, detail, ..
+                                data,
+                                detail,
+                                media_type,
+                                ..
                             }) => {
-                                let DocumentSourceKind::Url(url) = data else {
-                                    return Err(message::MessageError::ConversionError(
-                                        "Only image URL user content is accepted with OpenAI Chat Completions API".to_string()
-                                    ))};
-                                Ok(UserContent::Image {
+                                let url = match data {
+                                    DocumentSourceKind::Base64(data) => {
+                                        let media_type = if let Some(media_type) = media_type {
+                                            media_type.to_mime_type().to_string()
+                                        } else {
+                                            String::new()
+                                        };
+                                        format!("data:{media_type};base64,{data}")
+                                    }
+                                    DocumentSourceKind::Url(url) => url,
+                                    DocumentSourceKind::Unknown => return Err(MessageError::ConversionError("Attempted to convert unknown image type to OpenAI image input".to_string()))
+                                };
+
+                                Ok(UserContent::InputImage {
                                     image_url: ImageUrl {
-                                    url,
-                                    detail: detail.unwrap_or_default(),
+                                        url,
+                                        detail: detail.unwrap_or_default(),
                                     },
                                 })
                             }
