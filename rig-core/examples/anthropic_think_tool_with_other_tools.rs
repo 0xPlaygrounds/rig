@@ -3,6 +3,7 @@ use rig::completion::Prompt;
 use rig::message::Message;
 use rig::prelude::*;
 use rig::think_tool::ThinkTool;
+use rig::tools::ThinkTool;
 use rig::{completion::ToolDefinition, providers, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;

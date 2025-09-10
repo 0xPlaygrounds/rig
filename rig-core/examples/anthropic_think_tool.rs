@@ -2,7 +2,7 @@ use anyhow::Result;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers;
-use rig::think_tool::ThinkTool;
+use rig::tools::ThinkTool;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {

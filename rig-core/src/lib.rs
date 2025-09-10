@@ -125,8 +125,8 @@ pub mod pipeline;
 pub mod prelude;
 pub mod providers;
 pub mod streaming;
-pub mod think_tool;
 pub mod tool;
+pub mod tools;
 pub mod transcription;
 pub mod vector_store;
 
