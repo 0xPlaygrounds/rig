@@ -8,9 +8,13 @@ use super::embedding::{
 use super::image_generation::ImageGenerationModel;
 use super::transcription::TranscriptionModel;
 
-use crate::client::{
-    ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient,
-    VerifyClient, VerifyError,
+use crate::{
+    client::{
+        ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient,
+        TranscriptionClient, VerifyClient, VerifyError,
+    },
+    extractor::ExtractorBuilder,
+    providers::openai::CompletionModel,
 };
 
 #[cfg(feature = "audio")]
@@ -18,7 +22,8 @@ use crate::client::AudioGenerationClient;
 #[cfg(feature = "image")]
 use crate::client::ImageGenerationClient;
 
-use serde::Deserialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 // ================================================================
 // Main OpenAI Client
@@ -115,6 +120,18 @@ impl Client {
     pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
         self.http_client.get(url).bearer_auth(&self.api_key)
+    }
+
+    /// Create an extractor builder with the given completion model.
+    /// Intended for use exclusively with the Chat Completions API.
+    /// Useful for using extractors with Chat Completion compliant APIs.
+    pub fn extractor_completions_api<
+        T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+    >(
+        &self,
+        model: &str,
+    ) -> ExtractorBuilder<CompletionModel, T> {
+        ExtractorBuilder::new(self.completion_model(model).completions_api())
     }
 }
 
