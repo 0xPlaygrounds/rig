@@ -125,12 +125,10 @@ impl Client {
     /// Create an extractor builder with the given completion model.
     /// Intended for use exclusively with the Chat Completions API.
     /// Useful for using extractors with Chat Completion compliant APIs.
-    pub fn extractor_completions_api<
+    pub fn extractor_completions_api<T>(&self, model: &str) -> ExtractorBuilder<CompletionModel, T>
+    where
         T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
-    >(
-        &self,
-        model: &str,
-    ) -> ExtractorBuilder<CompletionModel, T> {
+    {
         ExtractorBuilder::new(self.completion_model(model).completions_api())
     }
 }
