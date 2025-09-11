@@ -1,7 +1,7 @@
 use helix_rs::HelixDBClient;
 use rig::{
     embeddings::EmbeddingModel,
-    vector_store::{VectorStoreError, VectorStoreIndex},
+    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
 };
 use serde::{Deserialize, Serialize};
 
@@ -49,6 +49,46 @@ where
     }
 }
 
+impl<C, E> InsertDocuments for HelixDBVectorStore<C, E>
+where
+    C: HelixDBClient + Send + Sync,
+    E: EmbeddingModel + Send + Sync,
+{
+    async fn insert_documents<Doc: Serialize + rig::Embed + Send>(
+        &self,
+        documents: Vec<(Doc, rig::OneOrMany<rig::embeddings::Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        #[derive(Serialize, Deserialize, Clone, Debug, Default)]
+        struct QueryInput {
+            vector: Vec<f64>,
+            doc: String,
+            json_payload: String,
+        }
+
+        for (document, embeddings) in documents {
+            let json_document: serde_json::Value = serde_json::to_value(&document).unwrap();
+            let json_document_as_string = serde_json::to_string(&json_document).unwrap();
+
+            for embedding in embeddings {
+                let embedded_text = embedding.document;
+                let vector: Vec<f64> = embedding.vec;
+
+                let query = QueryInput {
+                    vector,
+                    doc: embedded_text,
+                    json_payload: json_document_as_string.clone(),
+                };
+
+                self.client
+                    .query::<QueryInput, String>("InsertVector", &query)
+                    .await
+                    .map_err(|x| VectorStoreError::DatastoreError(x.to_string().into()))?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl<C, E> VectorStoreIndex for HelixDBVectorStore<C, E>
 where
     C: HelixDBClient + Send + Sync,
@@ -89,8 +129,30 @@ where
 
     async fn top_n_ids(
         &self,
-        _req: rig::vector_store::VectorSearchRequest,
+        req: rig::vector_store::VectorSearchRequest,
     ) -> Result<Vec<(f64, String)>, rig::vector_store::VectorStoreError> {
-        todo!()
+        let vector = self.model.embed_text(req.query()).await?.vec;
+
+        let query_input =
+            QueryInput::new(vector, req.samples(), req.threshold().unwrap_or_default());
+
+        #[derive(Serialize, Deserialize, Debug)]
+        struct VecResult {
+            vec_docs: Vec<QueryResult>,
+        }
+
+        let result: VecResult = self
+            .client
+            .query::<QueryInput, VecResult>("VectorSearch", &query_input)
+            .await
+            .unwrap();
+
+        let docs = result
+            .vec_docs
+            .into_iter()
+            .map(|x| Ok((x.score, x.id)))
+            .collect::<Result<Vec<_>, VectorStoreError>>()?;
+
+        Ok(docs)
     }
 }

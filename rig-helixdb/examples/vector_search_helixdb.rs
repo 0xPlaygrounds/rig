@@ -2,8 +2,8 @@ use helix_rs::{HelixDB, HelixDBClient};
 use rig::{
     Embed,
     client::{EmbeddingsClient, ProviderClient},
-    embeddings::EmbeddingModel,
-    vector_store::{VectorSearchRequest, VectorStoreIndex},
+    embeddings::EmbeddingsBuilder,
+    vector_store::{InsertDocuments, VectorSearchRequest, VectorStoreIndex},
 };
 use rig_helixdb::HelixDBVectorStore;
 use serde::{Deserialize, Serialize};
@@ -25,46 +25,54 @@ impl std::fmt::Display for WordDefinition {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-struct QueryInput {
-    vector: Vec<f64>,
-    doc: String,
-    json_payload: String,
-}
-
 #[tokio::main]
 async fn main() {
     let openai_model =
         rig::providers::openai::Client::from_env().embedding_model("text-embedding-ada-002");
 
     let helixdb_client = HelixDB::new(None, Some(6969), None); // Uses default port 6969
+    let vector_store = HelixDBVectorStore::new(helixdb_client, openai_model.clone());
 
-    let doc = "Hello world!".to_string();
-    let vector = openai_model.embed_text(&doc).await.unwrap().vec;
+    let words = vec![
+        WordDefinition {
+            word: "flurbo".to_string(),
+            definition: "1. *flurbo* (name): A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
+        },
+        WordDefinition {
+            word: "glarb-glarb".to_string(),
+            definition: "1. *glarb-glarb* (noun): A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
+        },
+        WordDefinition {
+            word: "linglingdong".to_string(),
+            definition: "1. *linglingdong* (noun): A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
+        }];
 
-    let queryinput = QueryInput {
-        vector,
-        doc: doc.clone(),
-        json_payload: "todo".to_string(),
-    };
-
-    #[derive(Deserialize)]
-    struct Thing {
-        doc: String,
-    }
-
-    helixdb_client
-        .query::<QueryInput, Thing>("InsertVector", &queryinput)
+    let documents = EmbeddingsBuilder::new(openai_model)
+        .documents(words)
+        .unwrap()
+        .build()
         .await
-        .unwrap();
+        .expect("Failed to create embeddings");
 
-    let thing = HelixDBVectorStore::new(helixdb_client, openai_model);
+    vector_store.insert_documents(documents).await.unwrap();
 
+    let query = "What does \"glarb-glarb\" mean?";
     let vector_req = VectorSearchRequest::builder()
-        .query(doc)
+        .query(query)
         .samples(5)
         .build()
         .unwrap();
 
-    let docs = thing.top_n::<String>(vector_req).await.unwrap();
+    let docs = vector_store
+        .top_n::<WordDefinition>(vector_req)
+        .await
+        .unwrap();
+
+    for doc in docs {
+        println!(
+            "Vector found with id: {id} and score: {score}",
+            id = doc.1,
+            score = doc.0
+        )
+    }
 }
