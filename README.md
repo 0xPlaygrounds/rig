@@ -116,6 +116,8 @@ Vector stores are available as separate companion-crates:
 - Milvus: [`rig-milvus`](https://github.com/0xPlaygrounds/rig/tree/main/rig-milvus)
 - ScyllaDB: [`rig-scylladb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-scylladb)
 - AWS S3Vectors: [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/rig-s3vectors)
+- HelixDB: [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-s3vectors)
+  - While the rest of this repo is specifcially MIT, please note that `rig-helixdb` itself is licensed as AGPL-3.0 due to using the `helix-rs` crate.
 
 The following providers are available as separate companion-crates:
 - Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/rig-fastembed)

@@ -2,6 +2,10 @@
 name = "rig-helixdb"
 version = "0.1.0"
 edition.workspace = true
+license = "AGPL-3.0"
+readme = "README.md"
+description = "Rig vector store index integration for HelixDB."
+repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
 helix-rs = "0.1.9"
