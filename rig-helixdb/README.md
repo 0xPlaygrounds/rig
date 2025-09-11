@@ -32,3 +32,6 @@ Finally, use the following command below to run the example:
 ```bash
 cargo run --example vector_search_helixdb --features rig-core/derive
 ```
+
+## Licensing
+Unlike the rest of the crates in this workspace, `rig-helixdb` is licensed as AGPL 3.0 due to using `helix-rs` which also uses AGPL 3.0.
