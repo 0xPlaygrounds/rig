@@ -1,0 +1,17 @@
+[package]
+name = "rig-helixdb"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+helix-rs = "0.1.9"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+rig-core = { path = "../rig-core", version = "0.19.0" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[[example]]
+name = "vector_search_helixdb"
+required-features = ["rig-core/derive"]
