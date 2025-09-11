@@ -30,7 +30,7 @@
 
 use std::marker::PhantomData;
 
-use schemars::{JsonSchema, schema_for};
+use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -44,6 +44,7 @@ use crate::{
 const SUBMIT_TOOL_NAME: &str = "submit";
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ExtractionError {
     #[error("No data extracted")]
     NoData,
@@ -105,9 +106,9 @@ where
 
         if !response.choice.iter().any(|x| {
             let AssistantContent::ToolCall(ToolCall {
-                function: ToolFunction { name, .. },
-                ..
-            }) = x
+                                               function: ToolFunction { name, .. },
+                                               ..
+                                           }) = x
             else {
                 return false;
             };
@@ -125,9 +126,9 @@ where
             // We filter tool calls to look for submit tool calls
             .filter_map(|content| {
                 if let AssistantContent::ToolCall(ToolCall {
-                    function: ToolFunction { arguments, name },
-                    ..
-                }) = content
+                                                      function: ToolFunction { arguments, name },
+                                                      ..
+                                                  }) = content
                 {
                     if name == SUBMIT_TOOL_NAME {
                         Some(arguments)
@@ -165,6 +166,7 @@ where
 }
 
 /// Builder for the Extractor
+#[non_exhaustive]
 pub struct ExtractorBuilder<M, T>
 where
     M: CompletionModel,
@@ -189,7 +191,7 @@ where
                     Use the `submit` function to submit the structured data.\n\
                     Be sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.
                 ")
-                .tool(SubmitTool::<T> {_t: PhantomData}),
+                .tool(SubmitTool::<T> { _t: PhantomData }),
             retries: None,
             _t: PhantomData,
         }

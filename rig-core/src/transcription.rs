@@ -11,6 +11,7 @@ use thiserror::Error;
 
 // Errors
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum TranscriptionError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]
@@ -51,7 +52,7 @@ where
         filename: &str,
         data: &[u8],
     ) -> impl std::future::Future<
-        Output = Result<TranscriptionRequestBuilder<M>, TranscriptionError>,
+        Output=Result<TranscriptionRequestBuilder<M>, TranscriptionError>,
     > + Send;
 }
 
@@ -74,7 +75,7 @@ pub trait TranscriptionModel: Clone + Send + Sync {
         &self,
         request: TranscriptionRequest,
     ) -> impl std::future::Future<
-        Output = Result<TranscriptionResponse<Self::Response>, TranscriptionError>,
+        Output=Result<TranscriptionResponse<Self::Response>, TranscriptionError>,
     > + Send;
 
     /// Generates a transcription request builder for the given `file`
@@ -230,7 +231,7 @@ where
                 .expect("Failed to convert filename to ascii")
                 .to_string(),
         ))
-        .data(data)
+            .data(data)
     }
 
     /// Sets the output language for the transcription request

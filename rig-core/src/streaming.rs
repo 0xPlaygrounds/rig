@@ -8,14 +8,14 @@
 //! - [StreamingCompletion]: Defines a low-level streaming LLM completion interface
 //!
 
-use crate::OneOrMany;
-use crate::agent::Agent;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
+use crate::agent::Agent;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
     Message, Usage,
 };
 use crate::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction};
+use crate::OneOrMany;
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -27,6 +27,7 @@ use std::task::{Context, Poll};
 use tokio::sync::watch;
 
 /// Control for pausing and resuming a streaming response
+#[non_exhaustive]
 pub struct PauseControl {
     pub(crate) paused_tx: watch::Sender<bool>,
     pub(crate) paused_rx: watch::Receiver<bool>,
@@ -62,6 +63,7 @@ impl Default for PauseControl {
 
 /// Enum representing a streaming chunk from the model
 #[derive(Debug, Clone)]
+// did not add #[non_exhaustive]
 pub enum RawStreamingChoice<R>
 where
     R: Clone,
@@ -89,11 +91,11 @@ where
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type StreamingResult<R> =
-    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
+Pin<Box<dyn Stream<Item=Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
 
 #[cfg(target_arch = "wasm32")]
 pub type StreamingResult<R> =
-    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>>>>;
+Pin<Box<dyn Stream<Item=Result<RawStreamingChoice<R>, CompletionError>>>>;
 
 /// The response from a streaming completion request;
 /// message and response are populated at the end of the
@@ -306,7 +308,7 @@ pub trait StreamingCompletion<M: CompletionModel> {
         &self,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> impl Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>;
+    ) -> impl Future<Output=Result<CompletionRequestBuilder<M>, CompletionError>>;
 }
 
 pub(crate) struct StreamingResultDyn<R: Clone + Unpin> {

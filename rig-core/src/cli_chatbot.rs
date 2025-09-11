@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use futures::StreamExt;
 
 use crate::{
-    agent::{Agent, prompt_request::streaming::MultiTurnStreamItem},
+    agent::{prompt_request::streaming::MultiTurnStreamItem, Agent},
     completion::{Chat, CompletionError, CompletionModel, Message, PromptError},
     streaming::StreamingPrompt,
 };
@@ -18,6 +18,7 @@ pub struct AgentNotSet;
 /// let chatbot = ChatbotBuilder::new().agent(my_agent).show_usage().build();
 ///
 /// chatbot.run().await?;
+#[non_exhaustive]
 pub struct ChatbotBuilder<A> {
     agent: A,
     multi_turn_depth: usize,
