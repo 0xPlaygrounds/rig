@@ -13,6 +13,7 @@
 /// Used by default implementations of [Embed] for common types.
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
+#[non_exhaustive]
 pub struct EmbedError(#[from] Box<dyn std::error::Error + Send + Sync>);
 
 impl EmbedError {
