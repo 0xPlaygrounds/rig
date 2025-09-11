@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use futures::StreamExt;
 
 use crate::{
-    agent::{prompt_request::streaming::MultiTurnStreamItem, Agent},
+    agent::{Agent, prompt_request::streaming::MultiTurnStreamItem},
     completion::{Chat, CompletionError, CompletionModel, Message, PromptError},
     streaming::StreamingPrompt,
 };

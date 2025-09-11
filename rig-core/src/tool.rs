@@ -103,7 +103,7 @@ pub trait Tool: Sized + Send + Sync {
 
     /// A method returning the tool definition. The user prompt can be used to
     /// tailor the definition to the specific use case.
-    fn definition(&self, _prompt: String) -> impl Future<Output=ToolDefinition> + Send + Sync;
+    fn definition(&self, _prompt: String) -> impl Future<Output = ToolDefinition> + Send + Sync;
 
     /// The tool execution method.
     /// Both the arguments and return value are a String since these values are meant to
@@ -111,7 +111,7 @@ pub trait Tool: Sized + Send + Sync {
     fn call(
         &self,
         args: Self::Args,
-    ) -> impl Future<Output=Result<Self::Output, Self::Error>> + Send;
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send;
 }
 
 /// Trait that represents an LLM tool that can be stored in a vector store and RAGged
@@ -148,12 +148,12 @@ pub trait ToolDyn: Send + Sync {
     fn definition(
         &self,
         prompt: String,
-    ) -> Pin<Box<dyn Future<Output=ToolDefinition> + Send + Sync + '_>>;
+    ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + Sync + '_>>;
 
     fn call(
         &self,
         args: String,
-    ) -> Pin<Box<dyn Future<Output=Result<String, ToolError>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>>;
 }
 
 impl<T: Tool> ToolDyn for T {
@@ -164,14 +164,14 @@ impl<T: Tool> ToolDyn for T {
     fn definition(
         &self,
         prompt: String,
-    ) -> Pin<Box<dyn Future<Output=ToolDefinition> + Send + Sync + '_>> {
+    ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + Sync + '_>> {
         Box::pin(<Self as Tool>::definition(self, prompt))
     }
 
     fn call(
         &self,
         args: String,
-    ) -> Pin<Box<dyn Future<Output=Result<String, ToolError>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
         Box::pin(async move {
             match serde_json::from_str(&args) {
                 Ok(args) => <Self as Tool>::call(self, args)
@@ -248,7 +248,7 @@ pub mod rmcp {
         fn definition(
             &self,
             _prompt: String,
-        ) -> Pin<Box<dyn Future<Output=ToolDefinition> + Send + Sync + '_>> {
+        ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + Sync + '_>> {
             Box::pin(async move {
                 ToolDefinition {
                     name: self.definition.name.to_string(),
@@ -267,7 +267,7 @@ pub mod rmcp {
         fn call(
             &self,
             args: String,
-        ) -> Pin<Box<dyn Future<Output=Result<String, ToolError>> + Send + '_>> {
+        ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
             let name = self.definition.name.clone();
             let arguments = serde_json::from_str(&args).unwrap_or_default();
 
@@ -640,7 +640,7 @@ mod tests {
                         "required": ["x", "y"]
                     }
                 }))
-                    .expect("Tool Definition")
+                .expect("Tool Definition")
             }
 
             async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

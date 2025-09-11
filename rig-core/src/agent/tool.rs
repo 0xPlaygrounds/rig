@@ -3,7 +3,7 @@ use crate::{
     completion::{CompletionModel, Prompt, PromptError, ToolDefinition},
     tool::Tool,
 };
-use schemars::{schema_for, JsonSchema};
+use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

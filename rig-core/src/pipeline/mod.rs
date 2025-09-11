@@ -97,7 +97,7 @@ pub mod conditional;
 
 use std::future::Future;
 
-pub use op::{map, passthrough, then, Op};
+pub use op::{Op, map, passthrough, then};
 pub use try_op::TryOp;
 
 use crate::{completion, extractor::Extractor, vector_store};
@@ -210,7 +210,7 @@ impl<E> PipelineBuilder<E> {
         I: vector_store::VectorStoreIndex,
         Output: Send + Sync + for<'a> serde::Deserialize<'a>,
         Input: Into<String> + Send + Sync,
-    // E: From<vector_store::VectorStoreError> + Send + Sync,
+        // E: From<vector_store::VectorStoreError> + Send + Sync,
         Self: Sized,
     {
         agent_ops::Lookup::new(index, n)
@@ -237,7 +237,7 @@ impl<E> PipelineBuilder<E> {
     where
         P: completion::Prompt,
         Input: Into<String> + Send + Sync,
-    // E: From<completion::PromptError> + Send + Sync,
+        // E: From<completion::PromptError> + Send + Sync,
         Self: Sized,
     {
         agent_ops::Prompt::new(agent)

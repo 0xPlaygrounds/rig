@@ -8,14 +8,14 @@
 //! - [StreamingCompletion]: Defines a low-level streaming LLM completion interface
 //!
 
-use crate::agent::prompt_request::streaming::StreamingPromptRequest;
+use crate::OneOrMany;
 use crate::agent::Agent;
+use crate::agent::prompt_request::streaming::StreamingPromptRequest;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
     Message, Usage,
 };
 use crate::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction};
-use crate::OneOrMany;
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -91,11 +91,11 @@ where
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type StreamingResult<R> =
-Pin<Box<dyn Stream<Item=Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
+    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
 
 #[cfg(target_arch = "wasm32")]
 pub type StreamingResult<R> =
-Pin<Box<dyn Stream<Item=Result<RawStreamingChoice<R>, CompletionError>>>>;
+    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>>>>;
 
 /// The response from a streaming completion request;
 /// message and response are populated at the end of the
@@ -308,7 +308,7 @@ pub trait StreamingCompletion<M: CompletionModel> {
         &self,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> impl Future<Output=Result<CompletionRequestBuilder<M>, CompletionError>>;
+    ) -> impl Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>;
 }
 
 pub(crate) struct StreamingResultDyn<R: Clone + Unpin> {

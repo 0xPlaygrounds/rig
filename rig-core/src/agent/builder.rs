@@ -35,8 +35,8 @@ use super::Agent;
 /// ```
 #[non_exhaustive]
 pub struct AgentBuilder<M>
-    where
-        M: CompletionModel,
+where
+    M: CompletionModel,
 {
     /// Name of the agent used for logging and debugging
     name: Option<String>,
@@ -63,8 +63,8 @@ pub struct AgentBuilder<M>
 }
 
 impl<M> AgentBuilder<M>
-    where
-        M: CompletionModel,
+where
+    M: CompletionModel,
 {
     pub fn new(model: M) -> Self {
         Self {

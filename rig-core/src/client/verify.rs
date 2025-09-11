@@ -21,7 +21,7 @@ pub enum VerifyError {
 /// Clone is required for conversions between client types.
 pub trait VerifyClient: ProviderClient + Clone {
     /// Verify the configuration.
-    fn verify(&self) -> impl Future<Output=Result<(), VerifyError>> + Send;
+    fn verify(&self) -> impl Future<Output = Result<(), VerifyError>> + Send;
 }
 
 pub trait VerifyClientDyn: ProviderClient {

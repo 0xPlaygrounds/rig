@@ -46,7 +46,7 @@ where
         prompt: &str,
         size: &(u32, u32),
     ) -> impl std::future::Future<
-        Output=Result<ImageGenerationRequestBuilder<M>, ImageGenerationError>,
+        Output = Result<ImageGenerationRequestBuilder<M>, ImageGenerationError>,
     > + Send;
 }
 
@@ -64,7 +64,7 @@ pub trait ImageGenerationModel: Clone + Send + Sync {
         &self,
         request: ImageGenerationRequest,
     ) -> impl std::future::Future<
-        Output=Result<ImageGenerationResponse<Self::Response>, ImageGenerationError>,
+        Output = Result<ImageGenerationResponse<Self::Response>, ImageGenerationError>,
     > + Send;
 
     fn image_generation_request(&self) -> ImageGenerationRequestBuilder<Self> {

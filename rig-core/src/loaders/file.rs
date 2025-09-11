@@ -112,7 +112,7 @@ impl<T: Readable> Readable for Result<T, FileLoaderError> {
 /// [FileLoader] uses strict typing between the iterator methods to ensure that transitions between
 ///   different implementations of the loaders and it's methods are handled properly by the compiler.
 pub struct FileLoader<'a, T> {
-    iterator: Box<dyn Iterator<Item=T> + 'a>,
+    iterator: Box<dyn Iterator<Item = T> + 'a>,
 }
 
 impl<'a> FileLoader<'a, Result<PathBuf, FileLoaderError>> {
@@ -259,7 +259,7 @@ impl<'a> FileLoader<'a, Vec<u8>> {
 // ================================================================
 
 pub struct IntoIter<'a, T> {
-    iterator: Box<dyn Iterator<Item=T> + 'a>,
+    iterator: Box<dyn Iterator<Item = T> + 'a>,
 }
 
 impl<'a, T> IntoIterator for FileLoader<'a, T> {

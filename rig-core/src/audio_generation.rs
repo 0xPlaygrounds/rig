@@ -46,7 +46,7 @@ where
         text: &str,
         voice: &str,
     ) -> impl std::future::Future<
-        Output=Result<AudioGenerationRequestBuilder<M>, AudioGenerationError>,
+        Output = Result<AudioGenerationRequestBuilder<M>, AudioGenerationError>,
     > + Send;
 }
 
@@ -62,7 +62,7 @@ pub trait AudioGenerationModel: Clone + Send + Sync {
         &self,
         request: AudioGenerationRequest,
     ) -> impl std::future::Future<
-        Output=Result<AudioGenerationResponse<Self::Response>, AudioGenerationError>,
+        Output = Result<AudioGenerationResponse<Self::Response>, AudioGenerationError>,
     > + Send;
 
     fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<Self> {

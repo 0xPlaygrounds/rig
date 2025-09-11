@@ -30,7 +30,7 @@
 
 use std::marker::PhantomData;
 
-use schemars::{schema_for, JsonSchema};
+use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -106,9 +106,9 @@ where
 
         if !response.choice.iter().any(|x| {
             let AssistantContent::ToolCall(ToolCall {
-                                               function: ToolFunction { name, .. },
-                                               ..
-                                           }) = x
+                function: ToolFunction { name, .. },
+                ..
+            }) = x
             else {
                 return false;
             };
@@ -126,9 +126,9 @@ where
             // We filter tool calls to look for submit tool calls
             .filter_map(|content| {
                 if let AssistantContent::ToolCall(ToolCall {
-                                                      function: ToolFunction { arguments, name },
-                                                      ..
-                                                  }) = content
+                    function: ToolFunction { arguments, name },
+                    ..
+                }) = content
                 {
                     if name == SUBMIT_TOOL_NAME {
                         Some(arguments)

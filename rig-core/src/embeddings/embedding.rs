@@ -47,14 +47,14 @@ pub trait EmbeddingModel: Clone + Sync + Send {
     /// Embed multiple text documents in a single request
     fn embed_texts(
         &self,
-        texts: impl IntoIterator<Item=String> + Send,
-    ) -> impl std::future::Future<Output=Result<Vec<Embedding>, EmbeddingError>> + Send;
+        texts: impl IntoIterator<Item = String> + Send,
+    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + Send;
 
     /// Embed a single text document.
     fn embed_text(
         &self,
         text: &str,
-    ) -> impl std::future::Future<Output=Result<Embedding, EmbeddingError>> + Send {
+    ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + Send {
         async {
             Ok(self
                 .embed_texts(vec![text.to_string()])
@@ -110,14 +110,14 @@ pub trait ImageEmbeddingModel: Clone + Sync + Send {
     /// Embed multiple images in a single request from bytes.
     fn embed_images(
         &self,
-        images: impl IntoIterator<Item=Vec<u8>> + Send,
-    ) -> impl std::future::Future<Output=Result<Vec<Embedding>, EmbeddingError>> + Send;
+        images: impl IntoIterator<Item = Vec<u8>> + Send,
+    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + Send;
 
     /// Embed a single image from bytes.
     fn embed_image<'a>(
         &'a self,
         bytes: &'a [u8],
-    ) -> impl std::future::Future<Output=Result<Embedding, EmbeddingError>> + Send {
+    ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + Send {
         async move {
             Ok(self
                 .embed_images(vec![bytes.to_owned()])

@@ -6,7 +6,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::embeddings::EmbeddingError;
-use crate::{embeddings::Embedding, Embed, OneOrMany};
+use crate::{Embed, OneOrMany, embeddings::Embedding};
 
 pub mod in_memory_store;
 pub mod request;
@@ -44,7 +44,7 @@ pub trait InsertDocuments: Send + Sync {
     fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
-    ) -> impl std::future::Future<Output=Result<(), VectorStoreError>> + Send;
+    ) -> impl std::future::Future<Output = Result<(), VectorStoreError>> + Send;
 }
 
 /// Trait for vector store indexes
@@ -54,13 +54,13 @@ pub trait VectorStoreIndex: Send + Sync {
     fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
         req: VectorSearchRequest,
-    ) -> impl std::future::Future<Output=Result<Vec<(f64, String, T)>, VectorStoreError>> + Send;
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, String, T)>, VectorStoreError>> + Send;
 
     /// Same as `top_n` but returns the document ids only.
     fn top_n_ids(
         &self,
         req: VectorSearchRequest,
-    ) -> impl std::future::Future<Output=Result<Vec<(f64, String)>, VectorStoreError>> + Send;
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + Send;
 }
 
 pub type TopNResults = Result<Vec<(f64, String, Value)>, VectorStoreError>;

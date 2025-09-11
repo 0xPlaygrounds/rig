@@ -34,7 +34,7 @@ pub enum ClientBuilderError {
 /// All conversion traits must be implemented, they are automatically
 /// implemented if the respective client trait is implemented.
 pub trait ProviderClient:
-AsCompletion + AsTranscription + AsEmbeddings + AsImageGeneration + AsAudioGeneration + Debug
+    AsCompletion + AsTranscription + AsEmbeddings + AsImageGeneration + AsAudioGeneration + Debug
 {
     /// Create a client from the process's environment.
     /// Panics if an environment is improperly configured.
@@ -251,6 +251,7 @@ pub use crate::client::verify::{VerifyClient, VerifyError};
 
 #[cfg(test)]
 mod tests {
+    use crate::OneOrMany;
     use crate::client::ProviderClient;
     use crate::completion::{Completion, CompletionRequest, ToolDefinition};
     use crate::image_generation::ImageGenerationRequest;
@@ -262,7 +263,6 @@ mod tests {
     use crate::streaming::StreamingCompletion;
     use crate::tool::Tool;
     use crate::transcription::TranscriptionRequest;
-    use crate::OneOrMany;
     use futures::StreamExt;
     use rig::message::Message;
     use rig::providers::{groq, ollama, perplexity};
@@ -1041,7 +1041,7 @@ mod tests {
                     }
                 }
             }))
-                .expect("Tool Definition")
+            .expect("Tool Definition")
         }
 
         async fn call(&self, args: Self::Args) -> anyhow::Result<Self::Output, Self::Error> {
