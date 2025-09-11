@@ -7,6 +7,7 @@ use thiserror::Error;
 use super::file::FileLoaderError;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum PdfLoaderError {
     #[error("{0}")]
     FileLoaderError(#[from] FileLoaderError),
@@ -100,7 +101,7 @@ impl Loadable for Vec<u8> {
 ///  between different implementations of the loaders and it's methods are handled properly by
 ///  the compiler.
 pub struct PdfFileLoader<'a, T> {
-    iterator: Box<dyn Iterator<Item = T> + 'a>,
+    iterator: Box<dyn Iterator<Item=T> + 'a>,
 }
 
 impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
@@ -174,7 +175,7 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
                     .enumerate()
                     .map(|(page_no, _)| {
                         doc.extract_text(&[page_no as u32 + 1])
-                            .map_err(PdfLoaderError::PdfError)
+                           .map_err(PdfLoaderError::PdfError)
                     })
                     .collect::<Result<Vec<String>, PdfLoaderError>>()?
                     .into_iter()
@@ -213,7 +214,7 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
                     .enumerate()
                     .map(|(page_no, _)| {
                         doc.extract_text(&[page_no as u32 + 1])
-                            .map_err(PdfLoaderError::PdfError)
+                           .map_err(PdfLoaderError::PdfError)
                     })
                     .collect::<Result<Vec<String>, PdfLoaderError>>()?
                     .into_iter()
@@ -244,12 +245,12 @@ impl<'a> PdfFileLoader<'a, Document> {
         PdfFileLoader {
             iterator: Box::new(self.iterator.flat_map(|doc| {
                 doc.page_iter()
-                    .enumerate()
-                    .map(|(page_no, _)| {
-                        doc.extract_text(&[page_no as u32 + 1])
-                            .map_err(PdfLoaderError::PdfError)
-                    })
-                    .collect::<Vec<_>>()
+                   .enumerate()
+                   .map(|(page_no, _)| {
+                       doc.extract_text(&[page_no as u32 + 1])
+                          .map_err(PdfLoaderError::PdfError)
+                   })
+                   .collect::<Vec<_>>()
             })),
         }
     }
@@ -289,15 +290,15 @@ impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
                 (
                     path,
                     doc.page_iter()
-                        .enumerate()
-                        .map(|(page_no, _)| {
-                            (
-                                page_no,
-                                doc.extract_text(&[page_no as u32 + 1])
-                                    .map_err(PdfLoaderError::PdfError),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
+                       .enumerate()
+                       .map(|(page_no, _)| {
+                           (
+                               page_no,
+                               doc.extract_text(&[page_no as u32 + 1])
+                                  .map_err(PdfLoaderError::PdfError),
+                           )
+                       })
+                       .collect::<Vec<_>>(),
                 )
             })),
         }
@@ -430,7 +431,7 @@ impl<'a> PdfFileLoader<'a, Vec<u8>> {
 // ================================================================
 
 pub struct IntoIter<'a, T> {
-    iterator: Box<dyn Iterator<Item = T> + 'a>,
+    iterator: Box<dyn Iterator<Item=T> + 'a>,
 }
 
 impl<'a, T> IntoIterator for PdfFileLoader<'a, T> {

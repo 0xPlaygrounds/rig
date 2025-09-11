@@ -1,7 +1,7 @@
 use std::{convert::Infallible, error::Error};
 
-use quick_xml::Reader;
 use quick_xml::events::Event;
+use quick_xml::Reader;
 
 // ================================================================
 // Implementing TextProcessor trait for post-processing epubs
@@ -24,6 +24,7 @@ impl TextProcessor for RawTextProcessor {
 }
 
 #[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
 pub enum XmlProcessingError {
     #[error("XML parsing error: {0}")]
     Xml(#[from] quick_xml::Error),
