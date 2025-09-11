@@ -2,13 +2,13 @@ pub(crate) mod streaming;
 
 use std::{future::IntoFuture, marker::PhantomData};
 
-use futures::{FutureExt, StreamExt, future::BoxFuture, stream};
+use futures::{future::BoxFuture, stream, FutureExt, StreamExt};
 
 use crate::{
-    OneOrMany,
     completion::{Completion, CompletionError, CompletionModel, Message, PromptError, Usage},
     message::{AssistantContent, UserContent},
     tool::ToolSetError,
+    OneOrMany,
 };
 
 use super::Agent;
@@ -28,11 +28,12 @@ impl PromptType for Extended {}
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxDepthError`] if the agent decides to call tools
 /// back to back.
+#[non_exhaustive] // as already there is a method to initiate an instance
 pub struct PromptRequest<'a, S, M, P>
-where
-    S: PromptType,
-    M: CompletionModel,
-    P: PromptHook<M>,
+    where
+        S: PromptType,
+        M: CompletionModel,
+        P: PromptHook<M>,
 {
     /// The prompt message to send to the model
     prompt: Message,
@@ -50,8 +51,8 @@ where
 }
 
 impl<'a, M> PromptRequest<'a, Standard, M, ()>
-where
-    M: CompletionModel,
+    where
+        M: CompletionModel,
 {
     /// Create a new PromptRequest with the given prompt and model
     pub fn new(agent: &'a Agent<M>, prompt: impl Into<Message>) -> Self {
@@ -67,10 +68,10 @@ where
 }
 
 impl<'a, S, M, P> PromptRequest<'a, S, M, P>
-where
-    S: PromptType,
-    M: CompletionModel,
-    P: PromptHook<M>,
+    where
+        S: PromptType,
+        M: CompletionModel,
+        P: PromptHook<M>,
 {
     /// Enable returning extended details for responses (includes aggregated token usage)
     ///
@@ -114,8 +115,8 @@ where
 
     /// Attach a per-request hook for tool call events
     pub fn with_hook<P2>(self, hook: P2) -> PromptRequest<'a, S, M, P2>
-    where
-        P2: PromptHook<M>,
+        where
+            P2: PromptHook<M>,
     {
         PromptRequest {
             prompt: self.prompt,
@@ -131,8 +132,8 @@ where
 // dead code allowed because of functions being left empty to allow for users to not have to implement every single function
 /// Trait for per-request hooks to observe tool call events.
 pub trait PromptHook<M>: Clone + Send + Sync
-where
-    M: CompletionModel,
+    where
+        M: CompletionModel,
 {
     #[allow(unused_variables)]
     /// Called before the prompt is sent to the model
@@ -140,7 +141,7 @@ where
         &self,
         prompt: &Message,
         history: &[Message],
-    ) -> impl Future<Output = ()> + Send {
+    ) -> impl Future<Output=()> + Send {
         async {}
     }
 
@@ -151,7 +152,7 @@ where
         &self,
         prompt: &Message,
         response: &crate::completion::CompletionResponse<M::Response>,
-    ) -> impl Future<Output = ()> + Send {
+    ) -> impl Future<Output=()> + Send {
         async {}
     }
 
@@ -161,13 +162,13 @@ where
         &self,
         prompt: &Message,
         response: &<M as CompletionModel>::StreamingResponse,
-    ) -> impl Future<Output = ()> + Send {
+    ) -> impl Future<Output=()> + Send {
         async {}
     }
 
     #[allow(unused_variables)]
     /// Called before a tool is invoked.
-    fn on_tool_call(&self, tool_name: &str, args: &str) -> impl Future<Output = ()> + Send {
+    fn on_tool_call(&self, tool_name: &str, args: &str) -> impl Future<Output=()> + Send {
         async {}
     }
 
@@ -178,7 +179,7 @@ where
         tool_name: &str,
         args: &str,
         result: &str,
-    ) -> impl Future<Output = ()> + Send {
+    ) -> impl Future<Output=()> + Send {
         async {}
     }
 }
@@ -189,9 +190,9 @@ impl<M> PromptHook<M> for () where M: CompletionModel {}
 ///  for the `IntoFuture` implementation. In the future, we should be able to use `impl Future<...>`
 ///  directly via the associated type.
 impl<'a, M, P> IntoFuture for PromptRequest<'a, Standard, M, P>
-where
-    M: CompletionModel,
-    P: PromptHook<M> + 'static,
+    where
+        M: CompletionModel,
+        P: PromptHook<M> + 'static,
 {
     type Output = Result<String, PromptError>;
     type IntoFuture = BoxFuture<'a, Self::Output>; // This future should not outlive the agent
@@ -202,9 +203,9 @@ where
 }
 
 impl<'a, M, P> IntoFuture for PromptRequest<'a, Extended, M, P>
-where
-    M: CompletionModel,
-    P: PromptHook<M> + 'static,
+    where
+        M: CompletionModel,
+        P: PromptHook<M> + 'static,
 {
     type Output = Result<PromptResponse, PromptError>;
     type IntoFuture = BoxFuture<'a, Self::Output>; // This future should not outlive the agent
@@ -215,9 +216,9 @@ where
 }
 
 impl<M, P> PromptRequest<'_, Standard, M, P>
-where
-    M: CompletionModel,
-    P: PromptHook<M>,
+    where
+        M: CompletionModel,
+        P: PromptHook<M>,
 {
     async fn send(self) -> Result<String, PromptError> {
         self.extended_details().send().await.map(|resp| resp.output)
@@ -240,9 +241,9 @@ impl PromptResponse {
 }
 
 impl<M, P> PromptRequest<'_, Extended, M, P>
-where
-    M: CompletionModel,
-    P: PromptHook<M>,
+    where
+        M: CompletionModel,
+        P: PromptHook<M>,
 {
     #[tracing::instrument(skip(self), fields(agent_name = self.agent.name()))]
     async fn send(self) -> Result<PromptResponse, PromptError> {

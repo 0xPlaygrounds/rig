@@ -1,9 +1,9 @@
 use crate::{
-    OneOrMany,
     agent::prompt_request::PromptHook,
     completion::GetTokenUsage,
     message::{AssistantContent, Reasoning, ToolResultContent, UserContent},
     streaming::{StreamedAssistantContent, StreamingCompletion},
+    OneOrMany,
 };
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -19,13 +19,14 @@ use crate::{
 
 #[cfg(not(target_arch = "wasm32"))]
 type StreamingResult =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send>>;
+Pin<Box<dyn Stream<Item=Result<MultiTurnStreamItem, StreamingError>> + Send>>;
 
 #[cfg(target_arch = "wasm32")]
-type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>>>>;
+type StreamingResult = Pin<Box<dyn Stream<Item=Result<MultiTurnStreamItem, StreamingError>>>>;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[non_exhaustive]
 pub enum MultiTurnStreamItem {
     Text(Text),
     FinalResponse(FinalResponse),
@@ -33,6 +34,7 @@ pub enum MultiTurnStreamItem {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive] // i took empty() is initiator but I am not sure about
 pub struct FinalResponse {
     response: String,
     aggregated_usage: crate::completion::Usage,
@@ -71,6 +73,7 @@ impl MultiTurnStreamItem {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum StreamingError {
     #[error("CompletionError: {0}")]
     Completion(#[from] CompletionError),
@@ -88,10 +91,11 @@ pub enum StreamingError {
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxDepthError`] if the agent decides to call tools
 /// back to back.
+#[non_exhaustive]
 pub struct StreamingPromptRequest<M, P>
-where
-    M: CompletionModel,
-    P: PromptHook<M> + 'static,
+    where
+        M: CompletionModel,
+        P: PromptHook<M> + 'static,
 {
     /// The prompt message to send to the model
     prompt: Message,
@@ -107,10 +111,10 @@ where
 }
 
 impl<M, P> StreamingPromptRequest<M, P>
-where
-    M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: Send + GetTokenUsage,
-    P: PromptHook<M>,
+    where
+        M: CompletionModel + 'static,
+        <M as CompletionModel>::StreamingResponse: Send + GetTokenUsage,
+        P: PromptHook<M>,
 {
     /// Create a new PromptRequest with the given prompt and model
     pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> Self {
@@ -138,8 +142,8 @@ where
 
     /// Attach a per-request hook for tool call events
     pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2>
-    where
-        P2: PromptHook<M>,
+        where
+            P2: PromptHook<M>,
     {
         StreamingPromptRequest {
             prompt: self.prompt,
@@ -156,10 +160,10 @@ where
 
         #[tracing::instrument(skip_all, fields(agent_name = agent_name))]
         fn inner<M, P>(req: StreamingPromptRequest<M, P>, agent_name: String) -> StreamingResult
-        where
-            M: CompletionModel + 'static,
-            <M as CompletionModel>::StreamingResponse: Send,
-            P: PromptHook<M> + 'static,
+            where
+                M: CompletionModel + 'static,
+                <M as CompletionModel>::StreamingResponse: Send,
+                P: PromptHook<M> + 'static,
         {
             let prompt = req.prompt;
             let agent = req.agent;
@@ -340,13 +344,13 @@ where
 }
 
 impl<M, P> IntoFuture for StreamingPromptRequest<M, P>
-where
-    M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: Send,
-    P: PromptHook<M> + 'static,
+    where
+        M: CompletionModel + 'static,
+        <M as CompletionModel>::StreamingResponse: Send,
+        P: PromptHook<M> + 'static,
 {
     type Output = StreamingResult; // what `.await` returns
-    type IntoFuture = Pin<Box<dyn futures::Future<Output = Self::Output> + Send>>;
+    type IntoFuture = Pin<Box<dyn futures::Future<Output=Self::Output> + Send>>;
 
     fn into_future(self) -> Self::IntoFuture {
         // Wrap send() in a future, because send() returns a stream immediately

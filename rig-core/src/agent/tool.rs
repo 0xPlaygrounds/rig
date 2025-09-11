@@ -3,10 +3,11 @@ use crate::{
     completion::{CompletionModel, Prompt, PromptError, ToolDefinition},
     tool::Tool,
 };
-use schemars::{JsonSchema, schema_for};
+use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+// I did not implement #[non_exhaustive] as there is no initiator method
 pub struct AgentToolArgs {
     /// The prompt for the agent to call.
     prompt: String,

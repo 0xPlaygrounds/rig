@@ -33,9 +33,10 @@ use super::Agent;
 ///     .additional_params(json!({"foo": "bar"}))
 ///     .build();
 /// ```
+#[non_exhaustive]
 pub struct AgentBuilder<M>
-where
-    M: CompletionModel,
+    where
+        M: CompletionModel,
 {
     /// Name of the agent used for logging and debugging
     name: Option<String>,
@@ -62,8 +63,8 @@ where
 }
 
 impl<M> AgentBuilder<M>
-where
-    M: CompletionModel,
+    where
+        M: CompletionModel,
 {
     pub fn new(model: M) -> Self {
         Self {
