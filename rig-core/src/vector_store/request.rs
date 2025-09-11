@@ -4,6 +4,7 @@ use super::VectorStoreError;
 
 /// A vector search request - used in the [`super::VectorStoreIndex`] trait.
 #[derive(Clone, Serialize, Deserialize, Debug)]
+//did not add #[non_exhaustive] as there is not initiator
 pub struct VectorSearchRequest {
     /// The query to be embedded and used in similarity search.
     query: String,

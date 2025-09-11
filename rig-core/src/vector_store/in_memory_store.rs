@@ -7,15 +7,16 @@ use std::{
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 
-use super::{VectorStoreError, VectorStoreIndex, request::VectorSearchRequest};
+use super::{request::VectorSearchRequest, VectorStoreError, VectorStoreIndex};
 use crate::{
+    embeddings::{distance::VectorDistance, Embedding, EmbeddingModel},
     OneOrMany,
-    embeddings::{Embedding, EmbeddingModel, distance::VectorDistance},
 };
 
 /// [InMemoryVectorStore] is a simple in-memory vector store that stores embeddings
 /// in-memory using a HashMap.
 #[derive(Clone, Default)]
+#[non_exhaustive] // as there are initiator methods such as from_documents
 pub struct InMemoryVectorStore<D: Serialize> {
     /// The embeddings are stored in a HashMap.
     /// Hashmap key is the document id.
@@ -27,7 +28,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings.
     /// Ids are automatically generated have will have the form `"doc{n}"` where `n`
     /// is the index of the document.
-    pub fn from_documents(documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>) -> Self {
+    pub fn from_documents(documents: impl IntoIterator<Item=(D, OneOrMany<Embedding>)>) -> Self {
         let mut store = HashMap::new();
         documents
             .into_iter()
@@ -41,7 +42,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
 
     /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings with ids.
     pub fn from_documents_with_ids(
-        documents: impl IntoIterator<Item = (impl ToString, D, OneOrMany<Embedding>)>,
+        documents: impl IntoIterator<Item=(impl ToString, D, OneOrMany<Embedding>)>,
     ) -> Self {
         let mut store = HashMap::new();
         documents.into_iter().for_each(|(i, doc, embeddings)| {
@@ -54,7 +55,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings.
     /// Document ids are generated using the provided function.
     pub fn from_documents_with_id_f(
-        documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>,
+        documents: impl IntoIterator<Item=(D, OneOrMany<Embedding>)>,
         f: fn(&D) -> String,
     ) -> Self {
         let mut store = HashMap::new();
@@ -109,7 +110,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// is the index of the document.
     pub fn add_documents(
         &mut self,
-        documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>,
+        documents: impl IntoIterator<Item=(D, OneOrMany<Embedding>)>,
     ) {
         let current_index = self.embeddings.len();
         documents
@@ -124,7 +125,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// Add documents and their corresponding embeddings to the store with ids.
     pub fn add_documents_with_ids(
         &mut self,
-        documents: impl IntoIterator<Item = (impl ToString, D, OneOrMany<Embedding>)>,
+        documents: impl IntoIterator<Item=(impl ToString, D, OneOrMany<Embedding>)>,
     ) {
         documents.into_iter().for_each(|(id, doc, embeddings)| {
             self.embeddings.insert(id.to_string(), (doc, embeddings));
@@ -180,7 +181,7 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         InMemoryVectorIndex::new(model, self)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, OneOrMany<Embedding>))> {
+    pub fn iter(&self) -> impl Iterator<Item=(&String, &(D, OneOrMany<Embedding>))> {
         self.embeddings.iter()
     }
 
@@ -192,7 +193,7 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         self.embeddings.is_empty()
     }
 }
-
+#[non_exhaustive]
 pub struct InMemoryVectorIndex<M: EmbeddingModel, D: Serialize> {
     model: M,
     pub store: InMemoryVectorStore<D>,
@@ -203,7 +204,7 @@ impl<M: EmbeddingModel, D: Serialize> InMemoryVectorIndex<M, D> {
         Self { model, store }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, OneOrMany<Embedding>))> {
+    pub fn iter(&self) -> impl Iterator<Item=(&String, &(D, OneOrMany<Embedding>))> {
         self.store.iter()
     }
 
@@ -217,7 +218,7 @@ impl<M: EmbeddingModel, D: Serialize> InMemoryVectorIndex<M, D> {
 }
 
 impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
-    for InMemoryVectorIndex<M, D>
+for InMemoryVectorIndex<M, D>
 {
     async fn top_n<T: for<'a> Deserialize<'a>>(
         &self,
@@ -239,7 +240,7 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
                     serde_json::from_str(
                         &serde_json::to_string(doc).map_err(VectorStoreError::JsonError)?,
                     )
-                    .map_err(VectorStoreError::JsonError)?,
+                        .map_err(VectorStoreError::JsonError)?,
                 ))
             })
             .collect::<Result<Vec<_>, _>>()
@@ -265,7 +266,7 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
 mod tests {
     use std::cmp::Reverse;
 
-    use crate::{OneOrMany, embeddings::embedding::Embedding};
+    use crate::{embeddings::embedding::Embedding, OneOrMany};
 
     use super::{InMemoryVectorStore, RankingItem};
 
@@ -444,7 +445,7 @@ mod tests {
                         vec: vec![-0.5, 0.9, 0.1],
                     },
                 ])
-                .unwrap(),
+                    .unwrap(),
             ),
             (
                 "doc2",
@@ -459,7 +460,7 @@ mod tests {
                         vec: vec![0.5, 0.5, -0.7],
                     },
                 ])
-                .unwrap(),
+                    .unwrap(),
             ),
             (
                 "doc3",
@@ -474,7 +475,7 @@ mod tests {
                         vec: vec![0.1, -0.5, -0.5],
                     },
                 ])
-                .unwrap(),
+                    .unwrap(),
             ),
         ]);
 
