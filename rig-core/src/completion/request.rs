@@ -66,12 +66,12 @@
 use super::message::{AssistantContent, ContentFormat, DocumentMediaType};
 use crate::client::completion::CompletionModelHandle;
 use crate::streaming::StreamingCompletionResponse;
-use crate::{OneOrMany, streaming};
 use crate::{
     json_utils,
     message::{Message, UserContent},
     tool::ToolSetError,
 };
+use crate::{streaming, OneOrMany};
 use futures::future::BoxFuture;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -82,6 +82,7 @@ use thiserror::Error;
 
 // Errors
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum CompletionError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]
@@ -110,6 +111,7 @@ pub enum CompletionError {
 
 /// Prompt errors
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum PromptError {
     /// Something went wrong with the completion
     #[error("CompletionError: {0}")]
@@ -183,7 +185,7 @@ pub trait Prompt: Send + Sync {
     fn prompt(
         &self,
         prompt: impl Into<Message> + Send,
-    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: Send>;
+    ) -> impl std::future::IntoFuture<Output=Result<String, PromptError>, IntoFuture: Send>;
 }
 
 /// Trait defining a high-level LLM chat interface (i.e.: prompt and chat history in, response out).
@@ -200,7 +202,7 @@ pub trait Chat: Send + Sync {
         &self,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: Send>;
+    ) -> impl std::future::IntoFuture<Output=Result<String, PromptError>, IntoFuture: Send>;
 }
 
 /// Trait defining a low-level LLM completion interface
@@ -220,7 +222,7 @@ pub trait Completion<M: CompletionModel> {
         &self,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>> + Send;
+    ) -> impl std::future::Future<Output=Result<CompletionRequestBuilder<M>, CompletionError>> + Send;
 }
 
 /// General completion response struct that contains the high-level completion choice
@@ -252,6 +254,7 @@ impl GetTokenUsage for () {
 /// Struct representing the token usage for a completion request.
 /// If tokens used are `0`, then the provider failed to supply token usage metrics.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Usage {
     /// The number of input ("prompt") tokens used in a given request.
     pub input_tokens: u64,
@@ -306,26 +309,26 @@ pub trait CompletionModel: Clone + Send + Sync {
     type Response: Send + Sync + Serialize + DeserializeOwned;
     /// The raw response type returned by the underlying completion model when streaming.
     type StreamingResponse: Clone
-        + Unpin
-        + Send
-        + Sync
-        + Serialize
-        + DeserializeOwned
-        + GetTokenUsage;
+    + Unpin
+    + Send
+    + Sync
+    + Serialize
+    + DeserializeOwned
+    + GetTokenUsage;
 
     /// Generates a completion response for the given completion request.
     fn completion(
         &self,
         request: CompletionRequest,
     ) -> impl std::future::Future<
-        Output = Result<CompletionResponse<Self::Response>, CompletionError>,
+        Output=Result<CompletionResponse<Self::Response>, CompletionError>,
     > + Send;
 
     fn stream(
         &self,
         request: CompletionRequest,
     ) -> impl std::future::Future<
-        Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
+        Output=Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
     > + Send;
 
     /// Generates a completion request builder for the given `prompt`.
@@ -352,7 +355,7 @@ pub trait CompletionModelDyn: Send + Sync {
 
 impl<T, R> CompletionModelDyn for T
 where
-    T: CompletionModel<StreamingResponse = R>,
+    T: CompletionModel<StreamingResponse=R>,
     R: Clone + Unpin + GetTokenUsage + 'static,
 {
     fn completion(
@@ -495,6 +498,7 @@ impl CompletionRequest {
 ///
 /// Note: It is usually unnecessary to create a completion request builder directly.
 /// Instead, use the [CompletionModel::completion_request] method.
+#[non_exhaustive]
 pub struct CompletionRequestBuilder<M: CompletionModel> {
     model: M,
     prompt: Message,
@@ -662,7 +666,6 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]
@@ -690,10 +693,10 @@ mod tests {
         };
 
         let expected = concat!(
-            "<file id: 123>\n",
-            "<metadata author: \"John Doe\" length: \"42\" />\n",
-            "This is a test document.\n",
-            "</file>\n"
+        "<file id: 123>\n",
+        "<metadata author: \"John Doe\" length: \"42\" />\n",
+        "This is a test document.\n",
+        "</file>\n"
         );
         assert_eq!(format!("{doc}"), expected);
     }
@@ -735,7 +738,7 @@ mod tests {
                     Some(DocumentMediaType::TXT),
                 ),
             ])
-            .expect("There will be at least one document"),
+                .expect("There will be at least one document"),
         };
 
         assert_eq!(request.normalized_documents(), Some(expected));

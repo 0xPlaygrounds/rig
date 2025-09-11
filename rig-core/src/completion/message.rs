@@ -33,6 +33,7 @@ pub trait ConvertMessage: Sized + Send + Sync {
 ///  provider) though the message being converted back and forth should always be the same.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "role", rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum Message {
     /// User message containing one or more content types defined by `UserContent`.
     User { content: OneOrMany<UserContent> },
@@ -49,6 +50,7 @@ pub enum Message {
 ///  base64 (defined by it's format) encoded but additionally supports urls (for some providers).
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum UserContent {
     Text(Text),
     ToolResult(ToolResult),
@@ -61,6 +63,7 @@ pub enum UserContent {
 /// Describes responses from a provider which is either text or a tool call.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
+#[non_exhaustive]
 pub enum AssistantContent {
     Text(Text),
     ToolCall(ToolCall),
@@ -68,6 +71,7 @@ pub enum AssistantContent {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[non_exhaustive]
 pub struct Reasoning {
     pub id: Option<String>,
     pub reasoning: Vec<String>,
@@ -112,6 +116,7 @@ pub struct ToolResult {
 /// Describes the content of a tool result, which can be text or an image.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum ToolResultContent {
     Text(Text),
     Image(Image),
@@ -244,6 +249,7 @@ pub struct Document {
 /// Describes the format of the content, which can be base64 or string.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum ContentFormat {
     #[default]
     Base64,
@@ -252,6 +258,7 @@ pub enum ContentFormat {
 
 /// Helper enum that tracks the media type of the content.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[non_exhaustive]
 pub enum MediaType {
     Image(ImageMediaType),
     Audio(AudioMediaType),
@@ -263,6 +270,7 @@ pub enum MediaType {
 /// Convertible to and from MIME type strings.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum ImageMediaType {
     JPEG,
     PNG,
@@ -278,6 +286,7 @@ pub enum ImageMediaType {
 /// Convertible to and from MIME type strings.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum DocumentMediaType {
     PDF,
     TXT,
@@ -295,6 +304,7 @@ pub enum DocumentMediaType {
 /// Convertible to and from MIME type strings.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum AudioMediaType {
     WAV,
     MP3,
@@ -308,6 +318,7 @@ pub enum AudioMediaType {
 /// Convertible to and from MIME type strings.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum VideoMediaType {
     AVI,
     MP4,
@@ -317,6 +328,7 @@ pub enum VideoMediaType {
 /// Describes the detail of the image content, which can be low, high, or auto (open-ai specific).
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum ImageDetail {
     Low,
     High,
