@@ -12,6 +12,7 @@ use std::panic::{RefUnwindSafe, UnwindSafe};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ClientBuildError {
     #[error("factory error: {}", .0)]
     FactoryError(String),
@@ -57,6 +58,7 @@ pub type BoxTranscriptionModel<'a> = Box<dyn TranscriptionModelDyn + 'a>;
 ///     println!("Response from Anthropic (using Claude 3.7 Sonnet): {res_anthropic}");
 /// }
 /// ```
+#[non_exhaustive] // as there are several initiator methods
 pub struct DynClientBuilder {
     registry: HashMap<String, ClientFactory>,
 }
@@ -75,98 +77,98 @@ impl<'a> DynClientBuilder {
         Self {
             registry: HashMap::new(),
         }
-        .register_all(vec![
-            ClientFactory::new(
-                DefaultProviders::ANTHROPIC,
-                anthropic::Client::from_env_boxed,
-                anthropic::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::COHERE,
-                cohere::Client::from_env_boxed,
-                cohere::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::GEMINI,
-                gemini::Client::from_env_boxed,
-                gemini::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::HUGGINGFACE,
-                huggingface::Client::from_env_boxed,
-                huggingface::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::OPENAI,
-                openai::Client::from_env_boxed,
-                openai::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::OPENROUTER,
-                openrouter::Client::from_env_boxed,
-                openrouter::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::TOGETHER,
-                together::Client::from_env_boxed,
-                together::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::XAI,
-                xai::Client::from_env_boxed,
-                xai::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::AZURE,
-                azure::Client::from_env_boxed,
-                azure::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::DEEPSEEK,
-                deepseek::Client::from_env_boxed,
-                deepseek::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::GALADRIEL,
-                galadriel::Client::from_env_boxed,
-                galadriel::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::GROQ,
-                groq::Client::from_env_boxed,
-                groq::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::HYPERBOLIC,
-                hyperbolic::Client::from_env_boxed,
-                hyperbolic::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::MOONSHOT,
-                moonshot::Client::from_env_boxed,
-                moonshot::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::MIRA,
-                mira::Client::from_env_boxed,
-                mira::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::MISTRAL,
-                mistral::Client::from_env_boxed,
-                mistral::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::OLLAMA,
-                ollama::Client::from_env_boxed,
-                ollama::Client::from_val_boxed,
-            ),
-            ClientFactory::new(
-                DefaultProviders::PERPLEXITY,
-                perplexity::Client::from_env_boxed,
-                perplexity::Client::from_val_boxed,
-            ),
-        ])
+            .register_all(vec![
+                ClientFactory::new(
+                    DefaultProviders::ANTHROPIC,
+                    anthropic::Client::from_env_boxed,
+                    anthropic::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::COHERE,
+                    cohere::Client::from_env_boxed,
+                    cohere::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::GEMINI,
+                    gemini::Client::from_env_boxed,
+                    gemini::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::HUGGINGFACE,
+                    huggingface::Client::from_env_boxed,
+                    huggingface::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::OPENAI,
+                    openai::Client::from_env_boxed,
+                    openai::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::OPENROUTER,
+                    openrouter::Client::from_env_boxed,
+                    openrouter::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::TOGETHER,
+                    together::Client::from_env_boxed,
+                    together::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::XAI,
+                    xai::Client::from_env_boxed,
+                    xai::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::AZURE,
+                    azure::Client::from_env_boxed,
+                    azure::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::DEEPSEEK,
+                    deepseek::Client::from_env_boxed,
+                    deepseek::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::GALADRIEL,
+                    galadriel::Client::from_env_boxed,
+                    galadriel::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::GROQ,
+                    groq::Client::from_env_boxed,
+                    groq::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::HYPERBOLIC,
+                    hyperbolic::Client::from_env_boxed,
+                    hyperbolic::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::MOONSHOT,
+                    moonshot::Client::from_env_boxed,
+                    moonshot::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::MIRA,
+                    mira::Client::from_env_boxed,
+                    mira::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::MISTRAL,
+                    mistral::Client::from_env_boxed,
+                    mistral::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::OLLAMA,
+                    ollama::Client::from_env_boxed,
+                    ollama::Client::from_val_boxed,
+                ),
+                ClientFactory::new(
+                    DefaultProviders::PERPLEXITY,
+                    perplexity::Client::from_env_boxed,
+                    perplexity::Client::from_val_boxed,
+                ),
+            ])
     }
 
     /// Generate a new instance of `DynClientBuilder` with no client factories registered.
@@ -184,7 +186,7 @@ impl<'a> DynClientBuilder {
     }
 
     /// Register multiple ClientFactories
-    pub fn register_all(mut self, factories: impl IntoIterator<Item = ClientFactory>) -> Self {
+    pub fn register_all(mut self, factories: impl IntoIterator<Item=ClientFactory>) -> Self {
         for factory in factories {
             self.registry.insert(factory.name.clone(), factory);
         }
@@ -374,7 +376,7 @@ impl<'a> DynClientBuilder {
         })
     }
 }
-
+// din not implement #[non_exhaustive] as there is no initiator method
 pub struct ProviderModelId<'builder, 'id> {
     builder: &'builder DynClientBuilder,
     provider: &'id str,
@@ -479,7 +481,7 @@ pub use audio::*;
 use rig::providers::mistral;
 
 use super::ProviderValue;
-
+#[non_exhaustive]
 pub struct ClientFactory {
     pub name: String,
     pub factory_env: Box<dyn Fn() -> Box<dyn ProviderClient>>,

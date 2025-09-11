@@ -34,7 +34,7 @@ pub enum ClientBuilderError {
 /// All conversion traits must be implemented, they are automatically
 /// implemented if the respective client trait is implemented.
 pub trait ProviderClient:
-    AsCompletion + AsTranscription + AsEmbeddings + AsImageGeneration + AsAudioGeneration + Debug
+AsCompletion + AsTranscription + AsEmbeddings + AsImageGeneration + AsAudioGeneration + Debug
 {
     /// Create a client from the process's environment.
     /// Panics if an environment is improperly configured.
@@ -76,6 +76,7 @@ pub trait ProviderClient:
 }
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub enum ProviderValue {
     Simple(String),
     ApiKeyWithOptionalKey(String, Option<String>),
@@ -250,7 +251,6 @@ pub use crate::client::verify::{VerifyClient, VerifyError};
 
 #[cfg(test)]
 mod tests {
-    use crate::OneOrMany;
     use crate::client::ProviderClient;
     use crate::completion::{Completion, CompletionRequest, ToolDefinition};
     use crate::image_generation::ImageGenerationRequest;
@@ -262,6 +262,7 @@ mod tests {
     use crate::streaming::StreamingCompletion;
     use crate::tool::Tool;
     use crate::transcription::TranscriptionRequest;
+    use crate::OneOrMany;
     use futures::StreamExt;
     use rig::message::Message;
     use rig::providers::{groq, ollama, perplexity};
@@ -530,11 +531,11 @@ mod tests {
         };
 
         let model = client.agent(model)
-            .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
-            .max_tokens(1024)
-            .tool(Adder)
-            .tool(Subtract)
-            .build();
+                          .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
+                          .max_tokens(1024)
+                          .tool(Adder)
+                          .tool(Subtract)
+                          .build();
 
         let request = model.completion("Calculate 2 - 5", vec![]).await;
 
@@ -656,11 +657,11 @@ mod tests {
         };
 
         let model = client.agent(model)
-            .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
-            .max_tokens(1024)
-            .tool(Adder)
-            .tool(Subtract)
-            .build();
+                          .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
+                          .max_tokens(1024)
+                          .tool(Adder)
+                          .tool(Subtract)
+                          .build();
 
         let request = model.stream_completion("Calculate 2 - 5", vec![]).await;
 
@@ -1040,7 +1041,7 @@ mod tests {
                     }
                 }
             }))
-            .expect("Tool Definition")
+                .expect("Tool Definition")
         }
 
         async fn call(&self, args: Self::Args) -> anyhow::Result<Self::Output, Self::Error> {
