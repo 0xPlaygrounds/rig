@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.19.0...rig-core-v0.20.0) - 2025-09-12
+
+### Added
+
+- *(rig-926)* make agent multi stream prompting more granular ([#796](https://github.com/0xPlaygrounds/rig/pull/796))
+- *(rig-928)* allow openai chat completions to be used as an extractor ([#797](https://github.com/0xPlaygrounds/rig/pull/797))
+- *(rig-831)* ensure all features are added to docs.rs ([#801](https://github.com/0xPlaygrounds/rig/pull/801))
+- *(rig-931)* support file input for images on Gemini ([#790](https://github.com/0xPlaygrounds/rig/pull/790))
+
+### Fixed
+
+- *(rig-933)* openai responses api integration does not properly take images ([#799](https://github.com/0xPlaygrounds/rig/pull/799))
+
+### Other
+
+- *(rig-924)* update rmcp to 0.6 ([#785](https://github.com/0xPlaygrounds/rig/pull/785))
+- optional candidates token count ([#793](https://github.com/0xPlaygrounds/rig/pull/793))
+- allow prompt without preamble ([#791](https://github.com/0xPlaygrounds/rig/pull/791))
+
 ## [0.19.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.18.2...rig-core-v0.19.0) - 2025-09-02
 
 ### Added
