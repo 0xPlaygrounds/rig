@@ -18,16 +18,18 @@ use crate::{
 };
 
 #[cfg(not(target_arch = "wasm32"))]
-type StreamingResult =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send>>;
+pub type StreamingResult<R> =
+    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send>>;
 
 #[cfg(target_arch = "wasm32")]
-type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>>>>;
+pub type StreamingResult<R> =
+    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>>>>;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub enum MultiTurnStreamItem {
-    Text(Text),
+#[non_exhaustive]
+pub enum MultiTurnStreamItem<R> {
+    StreamItem(StreamedAssistantContent<R>),
     FinalResponse(FinalResponse),
 }
 
@@ -55,11 +57,9 @@ impl FinalResponse {
     }
 }
 
-impl MultiTurnStreamItem {
-    pub(crate) fn text(text: &str) -> Self {
-        Self::Text(Text {
-            text: text.to_string(),
-        })
+impl<R> MultiTurnStreamItem<R> {
+    pub(crate) fn stream_item(item: StreamedAssistantContent<R>) -> Self {
+        Self::StreamItem(item)
     }
 
     pub fn final_response(response: &str, aggregated_usage: crate::completion::Usage) -> Self {
@@ -151,11 +151,14 @@ where
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
-    async fn send(self) -> StreamingResult {
+    async fn send(self) -> StreamingResult<M::StreamingResponse> {
         let agent_name = self.agent.name_owned();
 
         #[tracing::instrument(skip_all, fields(agent_name = agent_name))]
-        fn inner<M, P>(req: StreamingPromptRequest<M, P>, agent_name: String) -> StreamingResult
+        fn inner<M, P>(
+            req: StreamingPromptRequest<M, P>,
+            agent_name: String,
+        ) -> StreamingResult<M::StreamingResponse>
         where
             M: CompletionModel + 'static,
             <M as CompletionModel>::StreamingResponse: Send,
@@ -230,7 +233,7 @@ where
                                     is_text_response = true;
                                 }
                                 last_text_response.push_str(&text.text);
-                                yield Ok(MultiTurnStreamItem::text(&text.text));
+                                yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
                                 did_call_tool = false;
                             },
                             Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
@@ -256,25 +259,21 @@ where
                                 chat_history.write().await.push(rig::message::Message::Assistant {
                                     id: None,
                                     content: OneOrMany::one(AssistantContent::Reasoning(Reasoning {
-                                        reasoning: reasoning.clone(), id
+                                        reasoning: reasoning.clone(), id: id.clone()
                                     }))
                                 });
-                                let text = reasoning.into_iter().collect::<Vec<String>>().join("");
-                                yield Ok(MultiTurnStreamItem::text(&text));
+                                yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id })));
                                 did_call_tool = false;
                             },
                             Ok(StreamedAssistantContent::Final(final_resp)) => {
+                                if let Some(usage) = final_resp.token_usage() { aggregated_usage += usage; };
                                 if is_text_response {
                                     if let Some(ref hook) = req.hook {
                                         hook.on_stream_completion_response_finish(&prompt, &final_resp).await;
                                     }
-                                    yield Ok(MultiTurnStreamItem::text("\n"));
+                                    yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Final(final_resp)));
                                     is_text_response = false;
                                 }
-                                if let Some(usage) = final_resp.token_usage() { aggregated_usage += usage; };
-                                // Do nothing here, since at the moment the final generic is actually unreachable.
-                                // We need to implement a trait that aggregates token usage.
-                                // TODO: Add a way to aggregate token responses from the generic variant
                             }
                             Err(e) => {
                                 yield Err(e.into());
@@ -345,7 +344,7 @@ where
     <M as CompletionModel>::StreamingResponse: Send,
     P: PromptHook<M> + 'static,
 {
-    type Output = StreamingResult; // what `.await` returns
+    type Output = StreamingResult<M::StreamingResponse>; // what `.await` returns
     type IntoFuture = Pin<Box<dyn futures::Future<Output = Self::Output> + Send>>;
 
     fn into_future(self) -> Self::IntoFuture {
@@ -355,16 +354,23 @@ where
 }
 
 /// helper function to stream a completion request to stdout
-pub async fn stream_to_stdout(
-    stream: &mut StreamingResult,
+pub async fn stream_to_stdout<R>(
+    stream: &mut StreamingResult<R>,
 ) -> Result<FinalResponse, std::io::Error> {
     let mut final_res = FinalResponse::empty();
     print!("Response: ");
     while let Some(content) = stream.next().await {
         match content {
-            Ok(MultiTurnStreamItem::Text(Text { text })) => {
+            Ok(MultiTurnStreamItem::StreamItem(StreamedAssistantContent::Text(Text { text }))) => {
                 print!("{text}");
-                std::io::Write::flush(&mut std::io::stdout())?;
+                std::io::Write::flush(&mut std::io::stdout()).unwrap();
+            }
+            Ok(MultiTurnStreamItem::StreamItem(StreamedAssistantContent::Reasoning(
+                Reasoning { reasoning, .. },
+            ))) => {
+                let reasoning = reasoning.join("\n");
+                print!("{reasoning}");
+                std::io::Write::flush(&mut std::io::stdout()).unwrap();
             }
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                 final_res = res;
@@ -372,6 +378,7 @@ pub async fn stream_to_stdout(
             Err(err) => {
                 eprintln!("Error: {err}");
             }
+            _ => {}
         }
     }
 
