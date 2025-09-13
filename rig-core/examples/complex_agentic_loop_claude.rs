@@ -6,7 +6,7 @@ use rig::{
     embeddings::EmbeddingsBuilder,
     message::Message,
     providers::anthropic::{CLAUDE_3_7_SONNET, ClientBuilder},
-    think_tool::ThinkTool,
+    tools::ThinkTool,
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
