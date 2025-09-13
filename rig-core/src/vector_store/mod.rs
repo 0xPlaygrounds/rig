@@ -1,12 +1,15 @@
 use futures::future::BoxFuture;
 pub use request::VectorSearchRequest;
 use reqwest::StatusCode;
-use serde::Deserialize;
-use serde::Serialize;
-use serde_json::Value;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
-use crate::embeddings::EmbeddingError;
-use crate::{Embed, OneOrMany, embeddings::Embedding};
+use crate::{
+    Embed, OneOrMany,
+    completion::ToolDefinition,
+    embeddings::{Embedding, EmbeddingError},
+    tool::Tool,
+};
 
 pub mod in_memory_store;
 pub mod request;
@@ -116,5 +119,64 @@ fn prune_document(document: serde_json::Value) -> Option<serde_json::Value> {
         Value::String(s) => Some(Value::String(s)),
         Value::Bool(b) => Some(Value::Bool(b)),
         Value::Null => Some(Value::Null),
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VectorStoreOutput {
+    pub score: f64,
+    pub id: String,
+    pub document: Value,
+}
+
+impl<T> Tool for T
+where
+    T: VectorStoreIndex,
+{
+    const NAME: &'static str = "search_vector_store";
+
+    type Error = VectorStoreError;
+    type Args = VectorSearchRequest;
+    type Output = Vec<VectorStoreOutput>;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description:
+                "Retrieves the most relevant documents from a vector store based on a query."
+                    .to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The query string to search for relevant documents in the vector store."
+                    },
+                    "samples": {
+                        "type": "integer",
+                        "description": "The maxinum number of samples / documents to retrieve.",
+                        "default": 5,
+                        "minimum": 1
+                    },
+                    "threshold": {
+                        "type": "number",
+                        "description": "Similarity search threshold. If present, any result with a distance less than this may be omitted from the final result."
+                    }
+                },
+                "required": ["query", "samples"]
+            }),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let results = self.top_n(args).await?;
+        Ok(results
+            .into_iter()
+            .map(|(score, id, document)| VectorStoreOutput {
+                score,
+                id,
+                document,
+            })
+            .collect())
     }
 }
