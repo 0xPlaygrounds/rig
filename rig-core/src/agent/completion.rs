@@ -260,11 +260,10 @@ where
     async fn chat(
         &self,
         prompt: impl Into<Message> + Send,
-        chat_history: Vec<Message>,
+        mut chat_history: Vec<Message>,
     ) -> Result<String, PromptError> {
-        let mut cloned_history = chat_history.clone();
         PromptRequest::new(self, prompt)
-            .with_history(&mut cloned_history)
+            .with_history(&mut chat_history)
             .await
     }
 }
