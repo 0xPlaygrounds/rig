@@ -129,7 +129,10 @@ pub struct VectorStoreOutput {
     pub document: Value,
 }
 
-impl<T: VectorStoreIndex> Tool for T {
+impl<T> Tool for T
+where
+    T: VectorStoreIndex,
+{
     const NAME: &'static str = "search_vector_store";
 
     type Error = VectorStoreError;
