@@ -100,7 +100,8 @@ pub async fn send_compatible_streaming_request(
 
         let mut final_usage = Usage {
             prompt_tokens: 0,
-            total_tokens: 0
+            total_tokens: 0,
+            extra: serde_json::Map::new(),
         };
 
         let mut partial_data = None;
