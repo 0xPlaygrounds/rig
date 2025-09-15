@@ -651,6 +651,15 @@ pub struct Usage {
     pub total_tokens: usize,
 }
 
+impl Usage {
+    pub fn new() -> Self {
+        Self {
+            prompt_tokens: 0,
+            total_tokens: 0,
+        }
+    }
+}
+
 impl fmt::Display for Usage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Usage {
