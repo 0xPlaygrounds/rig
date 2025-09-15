@@ -635,7 +635,7 @@ pub async fn send_compatible_streaming_request(
                 Ok(Event::Message(message)) => {
                     let data_str = message.data.trim();
 
-                    let parsed = serde_json::from_str::<StreamingCompletionChunk>(&data_str);
+                    let parsed = serde_json::from_str::<StreamingCompletionChunk>(data_str);
                     let Ok(data) = parsed else {
                         let err = parsed.unwrap_err();
                         tracing::debug!("Couldn't parse SSE payload as StreamingCompletionChunk: {:?}", err);

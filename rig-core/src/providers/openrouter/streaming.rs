@@ -423,10 +423,8 @@ pub async fn send_streaming_request1(
                         }
 
                         // Streamed text content
-                        if let Some(content) = &delta.content {
-                            if !content.is_empty() {
-                                yield Ok(streaming::RawStreamingChoice::Message(content.clone()));
-                            }
+                        if let Some(content) = &delta.content && !content.is_empty() {
+                            yield Ok(streaming::RawStreamingChoice::Message(content.clone()));
                         }
 
                         // usage update (if present)

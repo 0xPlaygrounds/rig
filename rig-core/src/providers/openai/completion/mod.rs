@@ -660,6 +660,12 @@ impl Usage {
     }
 }
 
+impl Default for Usage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl fmt::Display for Usage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Usage {
