@@ -582,7 +582,7 @@ impl completion::CompletionModel for CompletionModel {
                 Ok(Event::Message(message)) => {
                     let data_str = message.data.trim();
 
-                    let parsed = serde_json::from_str::<CompletionResponse>(&data_str);
+                    let parsed = serde_json::from_str::<CompletionResponse>(data_str);
                     let Ok(response) = parsed else {
                         tracing::debug!("Couldn't parse SSE payload as CompletionResponse");
                         continue;
