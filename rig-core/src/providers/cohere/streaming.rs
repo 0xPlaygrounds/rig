@@ -5,8 +5,8 @@ use crate::streaming::RawStreamingChoice;
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
+use reqwest_eventsource::{Event, RequestBuilderExt};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
@@ -91,119 +91,109 @@ impl CompletionModel {
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let request = self.create_completion_request(request)?;
-        let request = json_utils::merge(request, json!({"stream": true}));
+        let request = json_utils::merge(request, serde_json::json!({"stream": true}));
 
         tracing::debug!(
             "Cohere request: {}",
             serde_json::to_string_pretty(&request)?
         );
 
-        let response = self.client.post("/v2/chat").json(&request).send().await?;
-
-        if !response.status().is_success() {
-            return Err(CompletionError::ProviderError(format!(
-                "{}: {}",
-                response.status(),
-                response.text().await?
-            )));
-        }
+        let mut event_source = self
+            .client
+            .post("/v2/chat")
+            .json(&request)
+            .eventsource()
+            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 
         let stream = Box::pin(stream! {
-            let mut stream = response.bytes_stream();
             let mut current_tool_call: Option<(String, String, String)> = None;
 
-            while let Some(chunk_result) = stream.next().await {
-               let chunk = match chunk_result {
-                    Ok(c) => c,
-                    Err(e) => {
-                        yield Err(CompletionError::from(e));
-                        break;
-                    }
-                };
-
-               let text = match String::from_utf8(chunk.to_vec()) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        yield Err(CompletionError::ResponseError(e.to_string()));
-                        break;
-                    }
-               };
-
-                for line in text.lines() {
-
-                    let Some(line) = line.strip_prefix("data: ") else {
+            while let Some(event_result) = event_source.next().await {
+                match event_result {
+                    Ok(Event::Open) => {
+                        tracing::trace!("SSE connection opened");
                         continue;
-                    };
+                    }
 
-                    let event = {
-                       let result = serde_json::from_str::<StreamingEvent>(line);
+                    Ok(Event::Message(message)) => {
+                        let data_str = message.data.trim();
+                        if data_str.is_empty() || data_str == "[DONE]" {
+                            continue;
+                        }
 
-                       let Ok(event) = result else {
-                           continue;
-                       };
+                        let event: StreamingEvent = match serde_json::from_str(data_str) {
+                            Ok(ev) => ev,
+                            Err(_) => {
+                                tracing::debug!("Couldn't parse SSE payload as StreamingEvent");
+                                continue;
+                            }
+                        };
 
-                        event
-                    };
+                        match event {
+                            StreamingEvent::ContentDelta { delta: Some(delta) } => {
+                                let Some(message) = &delta.message else { continue; };
+                                let Some(content) = &message.content else { continue; };
+                                let Some(text) = &content.text else { continue; };
 
-                    match event {
-                        StreamingEvent::ContentDelta { delta: Some(delta) } => {
-                            let Some(message) = &delta.message else { continue; };
-                            let Some(content) = &message.content else { continue; };
-                            let Some(text) = &content.text else { continue; };
+                                yield Ok(RawStreamingChoice::Message(text.clone()));
+                            },
 
-                            yield Ok(RawStreamingChoice::Message(text.clone()));
-                        },
-                        StreamingEvent::MessageEnd {delta: Some(delta)} => {
-                            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                                usage: delta.usage.clone()
-                            }));
-                        },
-                        StreamingEvent::ToolCallStart { delta: Some(delta)} => {
-                            // Skip the delta if there's any missing information,
-                            // though this *should* all be present
-                            let Some(message) = &delta.message else { continue; };
-                            let Some(tool_calls) = &message.tool_calls else { continue; };
-                            let Some(id) = tool_calls.id.clone() else { continue; };
-                            let Some(function) = &tool_calls.function else { continue; };
-                            let Some(name) = function.name.clone() else { continue; };
-                            let Some(arguments) = function.arguments.clone() else { continue; };
+                            StreamingEvent::MessageEnd { delta: Some(delta) } => {
+                                yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                                    usage: delta.usage.clone()
+                                }));
+                            },
 
-                            current_tool_call = Some((id, name, arguments));
-                        },
-                        StreamingEvent::ToolCallDelta { delta: Some(delta)} => {
-                            // Skip the delta if there's any missing information,
-                            // though this *should* all be present
-                            let Some(message) = &delta.message else { continue; };
-                            let Some(tool_calls) = &message.tool_calls else { continue; };
-                            let Some(function) = &tool_calls.function else { continue; };
-                            let Some(arguments) = function.arguments.clone() else { continue; };
+                            StreamingEvent::ToolCallStart { delta: Some(delta) } => {
+                                let Some(message) = &delta.message else { continue; };
+                                let Some(tool_calls) = &message.tool_calls else { continue; };
+                                let Some(id) = tool_calls.id.clone() else { continue; };
+                                let Some(function) = &tool_calls.function else { continue; };
+                                let Some(name) = function.name.clone() else { continue; };
+                                let Some(arguments) = function.arguments.clone() else { continue; };
 
-                            if let Some(tc) = current_tool_call.clone() {
-                                current_tool_call = Some((
-                                    tc.0,
-                                    tc.1,
-                                    format!("{}{}", tc.2, arguments)
-                                ));
-                            };
-                        },
-                        StreamingEvent::ToolCallEnd => {
-                            let Some(tc) = current_tool_call.clone() else { continue; };
+                                current_tool_call = Some((id, name, arguments));
+                            },
 
-                            let Ok(args) = serde_json::from_str(&tc.2) else { continue; };
+                            StreamingEvent::ToolCallDelta { delta: Some(delta) } => {
+                                let Some(message) = &delta.message else { continue; };
+                                let Some(tool_calls) = &message.tool_calls else { continue; };
+                                let Some(function) = &tool_calls.function else { continue; };
+                                let Some(arguments) = function.arguments.clone() else { continue; };
 
-                            yield Ok(RawStreamingChoice::ToolCall {
-                                id: tc.0,
-                                name: tc.1,
-                                arguments: args,
-                                call_id: None
-                            });
+                                let Some(tc) = current_tool_call.clone() else { continue; };
+                                current_tool_call = Some((tc.0, tc.1, format!("{}{}", tc.2, arguments)));
+                            },
 
-                            current_tool_call = None;
-                        },
-                        _ => {}
-                    };
+                            StreamingEvent::ToolCallEnd => {
+                                let Some(tc) = current_tool_call.clone() else { continue; };
+                                let Ok(args) = serde_json::from_str(&tc.2) else { continue; };
+
+                                yield Ok(RawStreamingChoice::ToolCall {
+                                    id: tc.0,
+                                    name: tc.1,
+                                    arguments: args,
+                                    call_id: None
+                                });
+
+                                current_tool_call = None;
+                            },
+
+                            _ => {}
+                        }
+                    },
+
+                    Err(reqwest_eventsource::Error::StreamEnded) => break,
+
+                    Err(err) => {
+                        tracing::error!(?err, "SSE error");
+                        yield Err(CompletionError::ResponseError(err.to_string()));
+                        break;
+                    }
                 }
             }
+
+            event_source.close();
         });
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))
