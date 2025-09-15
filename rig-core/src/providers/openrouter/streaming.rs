@@ -346,20 +346,6 @@ pub async fn send_streaming_request1(
                 Ok(Event::Message(event_message)) => {
                     let raw = event_message.data;
 
-                    // let raw_trimmed = raw.trim();
-                    // // Skip empty data, SSE comments/heartbeats (lines starting with ':'), and done markers
-                    // if raw_trimmed.is_empty()
-                    //     || raw_trimmed == "[DONE]"
-                    //     || raw_trimmed.starts_with(':')
-                    //     || raw_trimmed == ": OPENROUTER PROCESSING"
-                    // {
-                    //     continue;
-                    // }
-
-                    // // Some endpoints include a "data: " prefix in the raw stream; be tolerant.
-                    // let payload = raw_trimmed.strip_prefix("data: ").unwrap_or(raw_trimmed);
-
-                    // Try to parse the payload as the expected response object
                     let parsed = serde_json::from_str::<StreamingCompletionResponse>(&raw);
                     let Ok(data) = parsed else {
                         tracing::debug!("Couldn't parse OpenRouter payload as StreamingCompletionResponse; skipping chunk");
