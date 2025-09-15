@@ -56,6 +56,7 @@ use crate::{
 use async_stream::stream;
 use futures::StreamExt;
 use reqwest;
+use reqwest_eventsource::{Event, RequestBuilderExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{convert::TryFrom, str::FromStr};
@@ -563,85 +564,73 @@ impl completion::CompletionModel for CompletionModel {
         let mut request_payload = self.create_completion_request(request)?;
         merge_inplace(&mut request_payload, json!({"stream": true}));
 
-        let response = self
+        let mut event_source = self
             .client
             .post("api/chat")?
             .json(&request_payload)
-            .send()
-            .await
-            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let err_text = response
-                .text()
-                .await
-                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-            return Err(CompletionError::ProviderError(err_text));
-        }
+            .eventsource()
+            .expect("Cloning request must succeed");
 
         let stream = Box::pin(stream! {
-            let mut stream = response.bytes_stream();
-            while let Some(chunk_result) = stream.next().await {
-                let chunk = match chunk_result {
-                    Ok(c) => c,
-                    Err(e) => {
-                        yield Err(CompletionError::from(e));
-                        break;
-                    }
-                };
+        while let Some(event_result) = event_source.next().await {
+            match event_result {
+                Ok(Event::Open) => {
+                    tracing::trace!("SSE connection opened");
+                    continue;
+                }
 
-                let text = match String::from_utf8(chunk.to_vec()) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        yield Err(CompletionError::ResponseError(e.to_string()));
-                        break;
-                    }
-                };
+                Ok(Event::Message(message)) => {
+                    let data_str = message.data.trim();
 
-
-                for line in text.lines() {
-                    let line = line.to_string();
-
-                    let Ok(response) = serde_json::from_str::<CompletionResponse>(&line) else {
+                    let parsed = serde_json::from_str::<CompletionResponse>(data_str);
+                    let Ok(response) = parsed else {
+                        tracing::debug!("Couldn't parse SSE payload as CompletionResponse");
                         continue;
                     };
 
                     match response.message {
-                        Message::Assistant{ content, tool_calls, .. } => {
+                        Message::Assistant { content, tool_calls, .. } => {
                             if !content.is_empty() {
-                                yield Ok(RawStreamingChoice::Message(content))
+                                yield Ok(RawStreamingChoice::Message(content));
                             }
 
-                            for tool_call in tool_calls.iter() {
+                            for tool_call in tool_calls {
                                 let function = tool_call.function.clone();
-
                                 yield Ok(RawStreamingChoice::ToolCall {
                                     id: "".to_string(),
                                     name: function.name,
                                     arguments: function.arguments,
-                                    call_id: None
+                                    call_id: None,
                                 });
                             }
                         }
-                        _ => {
-                            continue;
-                        }
+                        _ => continue,
                     }
 
                     if response.done {
-                        yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                            total_duration: response.total_duration,
-                            load_duration: response.load_duration,
-                            prompt_eval_count: response.prompt_eval_count,
-                            prompt_eval_duration: response.prompt_eval_duration,
-                            eval_count: response.eval_count,
-                            eval_duration: response.eval_duration,
-                            done_reason: response.done_reason,
-                        }));
+                        yield Ok(RawStreamingChoice::FinalResponse(
+                            StreamingCompletionResponse {
+                                total_duration: response.total_duration,
+                                load_duration: response.load_duration,
+                                prompt_eval_count: response.prompt_eval_count,
+                                prompt_eval_duration: response.prompt_eval_duration,
+                                eval_count: response.eval_count,
+                                eval_duration: response.eval_duration,
+                                done_reason: response.done_reason,
+                            }
+                        ));
                     }
                 }
-            }
-        });
+
+                Err(reqwest_eventsource::Error::StreamEnded) => break,
+
+                Err(err) => {
+                    tracing::error!(?err, "SSE error");
+                    yield Err(CompletionError::ResponseError(err.to_string()));
+                    break;
+                }
+            };
+        }});
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
