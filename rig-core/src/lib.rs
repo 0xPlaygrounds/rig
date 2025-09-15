@@ -126,6 +126,7 @@ pub mod prelude;
 pub mod providers;
 pub mod streaming;
 pub mod tool;
+pub mod tools;
 pub mod transcription;
 pub mod vector_store;
 
