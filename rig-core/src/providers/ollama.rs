@@ -580,12 +580,61 @@ impl completion::CompletionModel for CompletionModel {
         }
 
         let stream = Box::pin(stream! {
-            let mut stream = response.bytes_stream();
-            while let Some(chunk_result) = stream.next().await {
-                let chunk = match chunk_result {
-                    Ok(c) => c,
-                    Err(e) => {
-                        yield Err(CompletionError::from(e));
+            while let Some(event_result) = event_source.next().await {
+                match event_result {
+                    Ok(Event::Open) => {
+                        tracing::trace!("SSE connection opened");
+                        continue;
+                    }
+
+                    Ok(Event::Message(message)) => {
+                        let data_str = message.data.trim();
+
+                        let parsed = serde_json::from_str::<CompletionResponse>(&data_str);
+                        let Ok(response) = parsed else {
+                            tracing::debug!("Couldn't parse SSE payload as CompletionResponse");
+                            continue;
+                        };
+
+                        match response.message {
+                            Message::Assistant { content, tool_calls, .. } => {
+                                if !content.is_empty() {
+                                    yield Ok(RawStreamingChoice::Message(content));
+                                }
+
+                                for tool_call in tool_calls {
+                                    let function = tool_call.function.clone();
+                                    yield Ok(RawStreamingChoice::ToolCall {
+                                        id: "".to_string(),
+                                        name: function.name,
+                                        arguments: function.arguments,
+                                        call_id: None,
+                                    });
+                                }
+                            }
+                            _ => continue,
+                        }
+
+                        if response.done {
+                            yield Ok(RawStreamingChoice::FinalResponse(
+                                StreamingCompletionResponse {
+                                    total_duration: response.total_duration,
+                                    load_duration: response.load_duration,
+                                    prompt_eval_count: response.prompt_eval_count,
+                                    prompt_eval_duration: response.prompt_eval_duration,
+                                    eval_count: response.eval_count,
+                                    eval_duration: response.eval_duration,
+                                    done_reason: response.done_reason,
+                                }
+                            ));
+                        }
+                    }
+
+                    Err(reqwest_eventsource::Error::StreamEnded) => break,
+
+                    Err(err) => {
+                        tracing::error!(?err, "SSE error");
+                        yield Err(CompletionError::ResponseError(err.to_string()));
                         break;
                     }
                 };
