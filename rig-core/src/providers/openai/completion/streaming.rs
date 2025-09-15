@@ -7,6 +7,8 @@ use crate::streaming::RawStreamingChoice;
 use async_stream::stream;
 use futures::StreamExt;
 use reqwest::RequestBuilder;
+use reqwest_eventsource::Event;
+use reqwest_eventsource::RequestBuilderExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -84,151 +86,133 @@ impl CompletionModel {
 pub async fn send_compatible_streaming_request(
     request_builder: RequestBuilder,
 ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError> {
-    let response = request_builder.send().await?;
+    // Build the request with proper headers for SSE
+    let mut event_source = request_builder
+        .eventsource()
+        .expect("Cloning request must always succeed");
 
-    if !response.status().is_success() {
-        return Err(CompletionError::ProviderError(format!(
-            "{}: {}",
-            response.status(),
-            response.text().await?
-        )));
-    }
+    let stream = Box::pin(stream! {
+        let mut final_usage = Usage::new();
 
-    // Handle OpenAI Compatible SSE chunks
-    let inner = Box::pin(stream! {
-        let mut stream = response.bytes_stream();
+        // Track in-progress tool calls
+        let mut tool_calls: HashMap<usize, (String, String, String)> = HashMap::new();
 
-        let mut final_usage = Usage {
-            prompt_tokens: 0,
-            total_tokens: 0
-        };
-
-        let mut partial_data = None;
-        let mut calls: HashMap<usize, (String, String, String)> = HashMap::new();
-
-        while let Some(chunk_result) = stream.next().await {
-            let chunk = match chunk_result {
-                Ok(c) => c,
-                Err(e) => {
-                    yield Err(CompletionError::from(e));
-                    break;
+        while let Some(event_result) = event_source.next().await {
+            match event_result {
+                Ok(Event::Open) => {
+                    tracing::trace!("SSE connection opened");
+                    continue;
                 }
-            };
+                Ok(Event::Message(message)) => {
+                    if message.data.trim().is_empty() || message.data == "[DONE]" {
+                        continue;
+                    }
 
-            let text = match String::from_utf8(chunk.to_vec()) {
-                Ok(t) => t,
-                Err(e) => {
-                    yield Err(CompletionError::ResponseError(e.to_string()));
-                    break;
-                }
-            };
-
-
-            for line in text.lines() {
-                let mut line = line.to_string();
-
-                // If there was a remaining part, concat with current line
-                if partial_data.is_some() {
-                    line = format!("{}{}", partial_data.unwrap(), line);
-                    partial_data = None;
-                }
-                // Otherwise full data line
-                else {
-                    let Some(data) = line.strip_prefix("data:") else {
+                    let data = serde_json::from_str::<StreamingCompletionChunk>(&message.data);
+                    let Ok(data) = data else {
+                        let err = data.unwrap_err();
+                        debug!("Couldn't serialize data as StreamingCompletionChunk: {:?}", err);
                         continue;
                     };
 
-                    let data = data.trim_start();
+                    if let Some(choice) = data.choices.first() {
+                        let delta = &choice.delta;
 
-                    if data == "[DONE]" {
-                        break
-                    }
+                        // Tool calls
+                        if !delta.tool_calls.is_empty() {
+                            for tool_call in &delta.tool_calls {
+                                let function = tool_call.function.clone();
 
-                    // Partial data, split somewhere in the middle
-                    if !line.ends_with("}") {
-                        partial_data = Some(data.to_string());
-                    } else {
-                        line = data.to_string();
-                    }
-                }
+                                // Start of tool call
+                                if function.name.is_some() && function.arguments.is_empty() {
+                                    let id = tool_call.id.clone().unwrap_or_default();
+                                    tool_calls.insert(
+                                        tool_call.index,
+                                        (id, function.name.clone().unwrap(), "".to_string()),
+                                    );
+                                }
+                                // tool call partial (ie, a continuation of a previously received tool call)
+                                // name: None or Empty String
+                                // arguments: Some(String)
+                                else if function.name.clone().is_none_or(|s| s.is_empty())
+                                    && !function.arguments.is_empty()
+                                {
+                                    if let Some((id, name, arguments)) =
+                                        tool_calls.get(&tool_call.index)
+                                    {
+                                        let new_arguments = &tool_call.function.arguments;
+                                        let arguments = format!("{arguments}{new_arguments}");
+                                        tool_calls.insert(
+                                            tool_call.index,
+                                            (id.clone(), name.clone(), arguments),
+                                        );
+                                    } else {
+                                        debug!("Partial tool call received but tool call was never started.");
+                                    }
+                                }
+                                // Complete tool call
+                                else {
+                                    let id = tool_call.id.clone().unwrap_or_default();
+                                    let name = function.name.expect("tool call should have a name");
+                                    let arguments = function.arguments;
+                                    let Ok(arguments) = serde_json::from_str(&arguments) else {
+                                        debug!("Couldn't serialize '{arguments}' as JSON");
+                                        continue;
+                                    };
 
-                let data = serde_json::from_str::<StreamingCompletionChunk>(&line);
-
-                let Ok(data) = data else {
-                    let err = data.unwrap_err();
-                    debug!("Couldn't serialize data as StreamingCompletionChunk: {:?}", err);
-                    continue;
-                };
-
-
-                if let Some(choice) = data.choices.first() {
-
-                    let delta = &choice.delta;
-
-                    if !delta.tool_calls.is_empty() {
-                        for tool_call in &delta.tool_calls {
-                            let function = tool_call.function.clone();
-                            // Start of tool call
-                            // name: Some(String)
-                            // arguments: None
-                            if function.name.is_some() && function.arguments.is_empty() {
-                                let id = tool_call.id.clone().unwrap_or("".to_string());
-
-                                calls.insert(tool_call.index, (id, function.name.clone().unwrap(), "".to_string()));
+                                    yield Ok(streaming::RawStreamingChoice::ToolCall {
+                                        id,
+                                        name,
+                                        arguments,
+                                        call_id: None,
+                                    });
+                                }
                             }
-                            // Part of tool call
-                            // name: None or Empty String
-                            // arguments: Some(String)
-                            else if function.name.clone().is_none_or(|s| s.is_empty()) && !function.arguments.is_empty() {
-                                let Some((id, name, arguments)) = calls.get(&tool_call.index) else {
-                                    debug!("Partial tool call received but tool call was never started.");
-                                    continue;
-                                };
+                        }
 
-                                let new_arguments = &tool_call.function.arguments;
-                                let arguments = format!("{arguments}{new_arguments}");
-
-                                calls.insert(tool_call.index, (id.clone(), name.clone(), arguments));
-                            }
-                            // Entire tool call
-                            else {
-                                let id = tool_call.id.clone().unwrap_or("".to_string());
-                                let name = function.name.expect("function name should be present for complete tool call");
-                                let arguments = function.arguments;
-                                let Ok(arguments) = serde_json::from_str(&arguments) else {
-                                    debug!("Couldn't serialize '{}' as a json value", arguments);
-                                    continue;
-                                };
-
-                                yield Ok(streaming::RawStreamingChoice::ToolCall {id, name, arguments, call_id: None })
-                            }
+                        // Message content
+                        if let Some(content) = &choice.delta.content {
+                            yield Ok(streaming::RawStreamingChoice::Message(content.clone()))
                         }
                     }
 
-                    if let Some(content) = &choice.delta.content {
-                        yield Ok(streaming::RawStreamingChoice::Message(content.clone()))
+                    // Usage updates
+                    if let Some(usage) = data.usage {
+                        final_usage = usage.clone();
                     }
                 }
-
-
-                if let Some(usage) = data.usage {
-                    final_usage = usage.clone();
+                Err(reqwest_eventsource::Error::StreamEnded) => {
+                    break;
+                }
+                Err(error) => {
+                    tracing::error!(?error, "SSE error");
+                    yield Err(CompletionError::ResponseError(error.to_string()));
+                    break;
                 }
             }
         }
 
-        for (_, (id, name, arguments)) in calls {
+        // Ensure event source is closed when stream ends
+        event_source.close();
+
+        // Flush any tool calls that weren’t fully yielded
+        for (_, (id, name, arguments)) in tool_calls {
             let Ok(arguments) = serde_json::from_str(&arguments) else {
                 continue;
             };
 
-            yield Ok(RawStreamingChoice::ToolCall {id, name, arguments, call_id: None });
+            yield Ok(RawStreamingChoice::ToolCall {
+                id,
+                name,
+                arguments,
+                call_id: None,
+            });
         }
 
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
             usage: final_usage.clone()
-        }))
+        }));
     });
 
-    Ok(streaming::StreamingCompletionResponse::stream(inner))
+    Ok(streaming::StreamingCompletionResponse::stream(stream))
 }
