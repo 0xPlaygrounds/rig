@@ -73,7 +73,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let results = vector_store.top_n::<WordDefinition>(req).await?;
 
-    println!("#{} results for query: {}", results.len(), query);
+    println!("{} results for query: {}", results.len(), query);
     for (distance, _id, doc) in results.iter() {
         println!("Result distance {distance} for word: {doc}");
 
