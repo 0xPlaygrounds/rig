@@ -1515,7 +1515,7 @@ dependencies = [
  "bitflags 2.9.1",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.10.5",
  "lazy_static",
  "lazycell",
  "log",
@@ -5311,7 +5311,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.61.2",
+ "windows-core 0.57.0",
 ]
 
 [[package]]
@@ -6455,7 +6455,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.53.2",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -9389,9 +9389,8 @@ dependencies = [
 
 [[package]]
 name = "rmcp"
-version = "0.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7dd163d26e254725137b7933e4ba042ea6bf2d756a4260559aaea8b6ad4c27e"
+version = "0.6.4"
+source = "git+https://github.com/microsandbox/rust-sdk?branch=develop#f8a747eaca997c8382e7bfbc7de3a859700c51f5"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -9420,9 +9419,8 @@ dependencies = [
 
 [[package]]
 name = "rmcp-macros"
-version = "0.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a43bb4c90a0d4b12f7315eb681a73115d335a2cee81322eca96f3467fe4cd06f"
+version = "0.6.4"
+source = "git+https://github.com/microsandbox/rust-sdk?branch=develop#f8a747eaca997c8382e7bfbc7de3a859700c51f5"
 dependencies = [
  "darling 0.21.0",
  "proc-macro2",
@@ -12695,7 +12693,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

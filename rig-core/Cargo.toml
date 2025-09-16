@@ -40,7 +40,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 worker = { workspace = true, optional = true }
-rmcp = { version = "0.6", optional = true, features = ["client"] }
+rmcp = { git = "https://github.com/microsandbox/rust-sdk", branch = "develop", optional = true, features = ["client"] }
 reqwest-eventsource = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 
@@ -55,7 +55,7 @@ base64 = { workspace = true }
 
 # Required for `rmcp` example
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
-rmcp = { version = "0.6", features = [
+rmcp = { git = "https://github.com/microsandbox/rust-sdk", branch = "develop", features = [
     "client",
     "macros",
     "reqwest",                                  # required for some strange reason
