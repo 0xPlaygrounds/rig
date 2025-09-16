@@ -208,15 +208,51 @@ impl FromStr for ToolResultContent {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum ImageSourceData {
+    Base64(String),
+    Url(String),
+}
+
+impl From<ImageSourceData> for DocumentSourceKind {
+    fn from(value: ImageSourceData) -> Self {
+        match value {
+            ImageSourceData::Base64(data) => DocumentSourceKind::Base64(data),
+            ImageSourceData::Url(url) => DocumentSourceKind::Url(url),
+        }
+    }
+}
+
+impl TryFrom<DocumentSourceKind> for ImageSourceData {
+    type Error = MessageError;
+
+    fn try_from(value: DocumentSourceKind) -> Result<Self, Self::Error> {
+        match value {
+            DocumentSourceKind::Base64(data) => Ok(ImageSourceData::Base64(data)),
+            DocumentSourceKind::Url(url) => Ok(ImageSourceData::Url(url)),
+            _ => Err(MessageError::ConversionError("Content has no body".into())),
+        }
+    }
+}
+
+impl From<ImageSourceData> for String {
+    fn from(value: ImageSourceData) -> Self {
+        match value {
+            ImageSourceData::Base64(s) | ImageSourceData::Url(s) => s,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ImageSource {
-    pub data: String,
+    pub data: ImageSourceData,
     pub media_type: ImageFormat,
     pub r#type: SourceType,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct DocumentSource {
-    pub data: String,
+    pub data: DocumentSourceKind,
     pub media_type: DocumentFormat,
     pub r#type: SourceType,
 }
@@ -248,6 +284,7 @@ pub enum DocumentFormat {
 #[serde(rename_all = "lowercase")]
 pub enum SourceType {
     BASE64,
+    URL,
 }
 
 impl From<String> for Content {
@@ -268,9 +305,7 @@ impl TryFrom<message::ContentFormat> for SourceType {
     fn try_from(format: message::ContentFormat) -> Result<Self, Self::Error> {
         match format {
             message::ContentFormat::Base64 => Ok(SourceType::BASE64),
-            message::ContentFormat::String => Err(MessageError::ConversionError(
-                "Image urls are not supported in Anthropic".to_owned(),
-            )),
+            message::ContentFormat::String => Ok(SourceType::URL),
         }
     }
 }
@@ -279,6 +314,7 @@ impl From<SourceType> for message::ContentFormat {
     fn from(source_type: SourceType) -> Self {
         match source_type {
             SourceType::BASE64 => message::ContentFormat::Base64,
+            SourceType::URL => message::ContentFormat::String,
         }
     }
 }
@@ -366,6 +402,7 @@ impl TryFrom<message::Message> for Message {
                                 Ok(ToolResultContent::Text { text })
                             }
                             message::ToolResultContent::Image(image) => {
+                                // NOTE: (@FayCarsons) Do we want to support URLs here?
                                 let DocumentSourceKind::Base64(data) = image.data else {
                                     return Err(MessageError::ConversionError(
                                         "Only base64 strings can be used with the Anthropic API"
@@ -377,7 +414,7 @@ impl TryFrom<message::Message> for Message {
                                         "Image media type is required".to_owned(),
                                     ))?;
                                 Ok(ToolResultContent::Image(ImageSource {
-                                    data,
+                                    data: ImageSourceData::Base64(data),
                                     media_type: media_type.try_into()?,
                                     r#type: SourceType::BASE64,
                                 }))
@@ -388,24 +425,28 @@ impl TryFrom<message::Message> for Message {
                     message::UserContent::Image(message::Image {
                         data, media_type, ..
                     }) => {
-                        let DocumentSourceKind::Base64(data) = data else {
-                            return Err(MessageError::ConversionError(
-                                "Only base64 strings are allowed in the Anthropic API".to_string(),
-                            ));
+                        let media_type = media_type.ok_or(MessageError::ConversionError(
+                            "Image media type is required for Claude API".into(),
+                        ))?;
+
+                        let source = match data {
+                            DocumentSourceKind::Base64(data) => ImageSource {
+                                data: ImageSourceData::Base64(data),
+                                r#type: SourceType::BASE64,
+                                media_type: ImageFormat::try_from(media_type)?,
+                            },
+                            DocumentSourceKind::Url(url) => ImageSource {
+                                data: ImageSourceData::Url(url),
+                                r#type: SourceType::URL,
+                                media_type: ImageFormat::try_from(media_type)?,
+                            },
+                            DocumentSourceKind::Unknown => {
+                                return Err(MessageError::ConversionError(
+                                    "Image content has no body".into(),
+                                ));
+                            }
                         };
 
-                        let source = ImageSource {
-                            data,
-                            media_type: match media_type {
-                                Some(media_type) => media_type.try_into()?,
-                                None => {
-                                    return Err(MessageError::ConversionError(
-                                        "Image media type is required".to_owned(),
-                                    ));
-                                }
-                            },
-                            r#type: SourceType::BASE64,
-                        };
                         Ok(Content::Image { source })
                     }
                     message::UserContent::Document(message::Document {
@@ -434,7 +475,7 @@ impl TryFrom<message::Message> for Message {
                         "Audio is not supported in Anthropic".to_owned(),
                     )),
                     message::UserContent::Video { .. } => Err(MessageError::ConversionError(
-                        "Audio is not supported in Anthropic".to_owned(),
+                        "Video is not supported in Anthropic".to_owned(),
                     )),
                 })?,
             },
@@ -502,16 +543,20 @@ impl TryFrom<Message> for message::Message {
                             content.map(|content| content.into()),
                         ),
                         Content::Image { source } => message::UserContent::Image(message::Image {
-                            data: DocumentSourceKind::base64(&source.data),
+                            data: source.data.into(),
                             media_type: Some(source.media_type.into()),
                             detail: None,
                             additional_params: None,
                         }),
-                        Content::Document { source } => message::UserContent::document(
-                            source.data,
-                            Some(message::ContentFormat::Base64),
-                            Some(message::DocumentMediaType::PDF),
-                        ),
+                        Content::Document { source } => {
+                            message::UserContent::document(
+                                source.data.try_into_inner().ok_or(
+                                    MessageError::ConversionError("Document has no body".into()),
+                                )?,
+                                Some(message::ContentFormat::Base64),
+                                Some(message::DocumentMediaType::PDF),
+                            )
+                        }
                         _ => {
                             return Err(MessageError::ConversionError(
                                 "Unsupported content type for User role".to_owned(),
@@ -835,7 +880,7 @@ mod tests {
                     assert_eq!(
                         source,
                         ImageSource {
-                            data: "/9j/4AAQSkZJRg...".to_owned(),
+                            data: ImageSourceData::Base64("/9j/4AAQSkZJRg...".to_owned()),
                             media_type: ImageFormat::JPEG,
                             r#type: SourceType::BASE64,
                         }
@@ -958,7 +1003,10 @@ mod tests {
                     message::UserContent::Document(message::Document {
                         data, media_type, ..
                     }) => {
-                        assert_eq!(data, "base64_encoded_pdf_data");
+                        assert_eq!(
+                            data,
+                            DocumentSourceKind::Base64("base64_encoded_pdf_data".into())
+                        );
                         assert_eq!(media_type, Some(message::DocumentMediaType::PDF));
                     }
                     _ => panic!("Expected document content"),

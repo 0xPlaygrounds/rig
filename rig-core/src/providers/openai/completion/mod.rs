@@ -319,6 +319,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                         message::UserContent::Image(message::Image {
                             data, detail, ..
                         }) => {
+                            // NOTE: Does this include data URIs? Or should we be accepting base64 as well  
                             let DocumentSourceKind::Url(url) = data else { return Err(message::MessageError::ConversionError(
                                 "Only image URL user content is accepted with OpenAI Chat Completions API".to_string()
                             ))};
@@ -333,10 +334,16 @@ impl TryFrom<message::Message> for Vec<Message> {
 
                         },
                         message::UserContent::Document(message::Document { data, .. }) => {
-                            Ok(UserContent::Text { text: data })
+                            // NOTE: This doesn't feel right but I'm not sure how else we'd want to
+                            // handle it
+                            if let DocumentSourceKind::Base64(text) = data {
+                                Ok(UserContent::Text { text })
+                            } else {
+                                Err(message::MessageError::ConversionError("Documents must be base64".into()))
+                            }
                         }
                         message::UserContent::Audio(message::Audio {
-                            data,
+                            data: DocumentSourceKind::Base64(data),
                             media_type,
                             ..
                         }) => Ok(UserContent::Audio {
@@ -348,7 +355,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 },
                             },
                         }),
-                        _ => unreachable!(),
+                        _ => Err(message::MessageError::ConversionError("Tool result is in unsupported format".into()))
                     }).collect::<Result<Vec<_>, _>>()?;
 
                     let other_content = OneOrMany::many(other_content).expect(

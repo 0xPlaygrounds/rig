@@ -11,6 +11,7 @@ use crate::client::{
     ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError,
 };
 use crate::json_utils::merge;
+use crate::message::{Document, DocumentSourceKind};
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
@@ -329,7 +330,10 @@ impl CompletionModel {
             let text = content
                 .into_iter()
                 .filter_map(|doc| match doc {
-                    UserContent::Document(doc) => Some(doc.data),
+                    UserContent::Document(Document {
+                        data: DocumentSourceKind::Base64(data),
+                        ..
+                    }) => Some(data),
                     UserContent::Text(text) => Some(text.text),
 
                     // This should always be `Document`

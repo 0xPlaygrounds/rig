@@ -302,11 +302,11 @@ pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
-    use crate::message::{ContentFormat, DocumentSourceKind, ImageMediaType};
+    use crate::message::{DocumentSourceKind, ImageMediaType, MimeType};
     use crate::{
         OneOrMany,
         completion::CompletionError,
-        message::{self, MimeType as _, Reasoning, Text},
+        message::{self, Reasoning, Text},
         providers::gemini::gemini_api_types::{CodeExecutionResult, ExecutableCode},
     };
 
@@ -512,7 +512,7 @@ pub mod gemini_api_types {
         Model,
     }
 
-    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+    #[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
     #[serde(rename_all = "camelCase")]
     pub struct Part {
         /// whether or not the part is a reasoning/thinking text or not
@@ -540,6 +540,14 @@ pub mod gemini_api_types {
         FileData(FileData),
         ExecutableCode(ExecutableCode),
         CodeExecutionResult(CodeExecutionResult),
+    }
+
+    // This default instance is primarily so we can easily fill in the optional fields of `Part`
+    // So this instance for `PartKind` (and the allocation it would cause) should be optimized away
+    impl Default for PartKind {
+        fn default() -> Self {
+            Self::Text(String::new())
+        }
     }
 
     impl From<String> for Part {
@@ -656,75 +664,102 @@ pub mod gemini_api_types {
                 },
                 message::UserContent::Document(message::Document {
                     data, media_type, ..
-                }) => match media_type {
-                    Some(media_type) => match media_type {
-                        message::DocumentMediaType::PDF
-                        | message::DocumentMediaType::TXT
-                        | message::DocumentMediaType::RTF
-                        | message::DocumentMediaType::HTML
-                        | message::DocumentMediaType::CSS
-                        | message::DocumentMediaType::MARKDOWN
-                        | message::DocumentMediaType::CSV
-                        | message::DocumentMediaType::XML => Ok(Part {
-                            thought: Some(false),
-                            thought_signature: None,
-                            part: PartKind::InlineData(Blob {
-                                mime_type: media_type.to_mime_type().to_owned(),
-                                data,
-                            }),
-                            additional_params: None,
-                        }),
-                        _ => Err(message::MessageError::ConversionError(format!(
-                            "Unsupported document media type {media_type:?}"
-                        ))),
-                    },
-                    None => Err(message::MessageError::ConversionError(
+                }) => {
+                    let media_type = media_type.ok_or(message::MessageError::ConversionError(
                         "Media type for document is required for Gemini".to_string(), // Fixed error message
-                    )),
-                },
+                    ))?;
+
+                    if !media_type.is_code() {
+                        let mime_type = media_type.to_mime_type().to_string();
+
+                        let part = match data {
+                            DocumentSourceKind::Url(file_uri) => PartKind::FileData(FileData {
+                                mime_type: Some(mime_type),
+                                file_uri,
+                            }),
+                            DocumentSourceKind::Base64(data) => {
+                                PartKind::InlineData(Blob { data, mime_type })
+                            }
+                            DocumentSourceKind::Unknown => {
+                                return Err(message::MessageError::ConversionError(
+                                    "Document has no body".to_string(),
+                                ));
+                            }
+                        };
+
+                        Ok(Part {
+                            thought: Some(false),
+                            part,
+                            ..Default::default()
+                        })
+                    } else {
+                        Err(message::MessageError::ConversionError(format!(
+                            "Unsupported document media type {media_type:?}"
+                        )))
+                    }
+                }
+
                 message::UserContent::Audio(message::Audio {
                     data, media_type, ..
-                }) => match media_type {
-                    Some(media_type) => Ok(Part {
-                        thought: Some(false),
-                        thought_signature: None,
-                        part: PartKind::InlineData(Blob {
-                            mime_type: media_type.to_mime_type().to_owned(),
-                            data,
-                        }),
-                        additional_params: None,
-                    }),
-                    None => Err(message::MessageError::ConversionError(
+                }) => {
+                    let media_type = media_type.ok_or(message::MessageError::ConversionError(
                         "Media type for audio is required for Gemini".to_string(),
-                    )),
-                },
+                    ))?;
+
+                    let mime_type = media_type.to_mime_type().to_string();
+
+                    let part = match data {
+                        DocumentSourceKind::Base64(data) => {
+                            PartKind::InlineData(Blob { data, mime_type })
+                        }
+                        DocumentSourceKind::Url(file_uri) => PartKind::FileData(FileData {
+                            mime_type: Some(mime_type),
+                            file_uri,
+                        }),
+                        DocumentSourceKind::Unknown => {
+                            return Err(message::MessageError::ConversionError(
+                                "Content has no body".to_string(),
+                            ));
+                        }
+                    };
+
+                    Ok(Part {
+                        thought: Some(false),
+                        part,
+                        ..Default::default()
+                    })
+                }
                 message::UserContent::Video(message::Video {
                     data,
                     media_type,
-                    format,
                     additional_params,
+                    ..
                 }) => {
-                    let mime_type = media_type.map(|m| m.to_mime_type().to_owned());
+                    let media_type = media_type.ok_or(message::MessageError::ConversionError(
+                        "Media type for video is required for Gemini".to_string(),
+                    ))?;
 
-                    let data = match format {
-                        Some(ContentFormat::String) => PartKind::FileData(FileData {
-                            mime_type,
-                            file_uri: data,
+                    let mime_type = media_type.to_mime_type().to_owned();
+
+                    let part = match data {
+                        DocumentSourceKind::Url(file_uri) => PartKind::FileData(FileData {
+                            mime_type: Some(mime_type),
+                            file_uri,
                         }),
-                        _ => match mime_type {
-                            Some(mime_type) => PartKind::InlineData(Blob { mime_type, data }),
-                            None => {
-                                return Err(message::MessageError::ConversionError(
-                                    "Media type for video is required for Gemini".to_string(),
-                                ));
-                            }
-                        },
+                        DocumentSourceKind::Base64(data) => {
+                            PartKind::InlineData(Blob { mime_type, data })
+                        }
+                        DocumentSourceKind::Unknown => {
+                            return Err(message::MessageError::ConversionError(
+                                "Media type for video is required for Gemini".to_string(),
+                            ));
+                        }
                     };
 
                     Ok(Part {
                         thought: Some(false),
                         thought_signature: None,
-                        part: data,
+                        part,
                         additional_params,
                     })
                 }
