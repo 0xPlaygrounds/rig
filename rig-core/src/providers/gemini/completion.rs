@@ -659,14 +659,14 @@ pub mod gemini_api_types {
                         ))),
                     },
                     None => Err(message::MessageError::ConversionError(
-                        "Media type for image is required for Gemini".to_string(), // Fixed error message
+                        "Media type for image is required for Gemini".to_string(),
                     )),
                 },
                 message::UserContent::Document(message::Document {
                     data, media_type, ..
                 }) => {
                     let media_type = media_type.ok_or(message::MessageError::ConversionError(
-                        "Media type for document is required for Gemini".to_string(), // Fixed error message
+                        "Media type for document is required for Gemini".to_string(),
                     ))?;
 
                     if !media_type.is_code() {

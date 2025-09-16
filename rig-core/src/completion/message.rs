@@ -300,10 +300,7 @@ pub enum DocumentMediaType {
 
 impl DocumentMediaType {
     pub fn is_code(&self) -> bool {
-        match self {
-            Self::Javascript | Self::Python => true,
-            _ => false,
-        }
+        matches!(self, Self::Javascript | Self::Python)
     }
 }
 
