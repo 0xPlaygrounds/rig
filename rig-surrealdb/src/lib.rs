@@ -153,8 +153,10 @@ where
         } = self;
         format!(
             "
-               SELECT id {document} {embedded_text}, {distance_function}($vec, embedding) as distance \
-              from type::table($tablename) where distance >= $threshold order by distance desc \
+            SELECT id {document} {embedded_text}, {distance_function}($vec, embedding) as distance \
+              from type::table($tablename) \
+              where {distance_function}($vec, embedding) >= $threshold \
+              order by distance desc \
             LIMIT $limit",
         )
     }
