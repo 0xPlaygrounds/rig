@@ -564,73 +564,63 @@ impl completion::CompletionModel for CompletionModel {
         let mut request_payload = self.create_completion_request(request)?;
         merge_inplace(&mut request_payload, json!({"stream": true}));
 
-        let mut event_source = self
+        let response = self
             .client
             .post("api/chat")?
             .json(&request_payload)
-            .eventsource()
-            .expect("Cloning request must succeed");
+            .send()
+            .await
+            .map_err(|e| CompletionError::ProviderError(e.to_string()))?
+            .bytes_stream();
 
         let stream = Box::pin(stream! {
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => {
-                    tracing::trace!("SSE connection opened");
-                    continue;
-                }
-
-                Ok(Event::Message(message)) => {
-                    let data_str = message.data.trim();
-
-                    let parsed = serde_json::from_str::<CompletionResponse>(data_str);
-                    let Ok(response) = parsed else {
-                        tracing::debug!("Couldn't parse SSE payload as CompletionResponse");
+            for await chunk in response {
+                let bytes = match chunk {
+                    Ok(b) => b,
+                    Err(e) => {
+                        yield Err(CompletionError::ResponseError(e.to_string()));
                         continue;
-                    };
+                    }
+                };
 
-                    match response.message {
-                        Message::Assistant { content, tool_calls, .. } => {
+                match serde_json::from_slice::<CompletionResponse>(&bytes) {
+                    Ok(response) => {
+                        if response.done {
+                            yield Ok(RawStreamingChoice::FinalResponse(
+                                StreamingCompletionResponse {
+                                    total_duration: response.total_duration,
+                                    load_duration: response.load_duration,
+                                    prompt_eval_count: response.prompt_eval_count,
+                                    prompt_eval_duration: response.prompt_eval_duration,
+                                    eval_count: response.eval_count,
+                                    eval_duration: response.eval_duration,
+                                    done_reason: response.done_reason,
+                                }
+                            ));
+                            break;
+                        }
+
+                        if let Message::Assistant { content, tool_calls, .. } = response.message {
                             if !content.is_empty() {
                                 yield Ok(RawStreamingChoice::Message(content));
                             }
-
                             for tool_call in tool_calls {
-                                let function = tool_call.function.clone();
                                 yield Ok(RawStreamingChoice::ToolCall {
-                                    id: "".to_string(),
-                                    name: function.name,
-                                    arguments: function.arguments,
+                                    id: String::new(),
+                                    name: tool_call.function.name,
+                                    arguments: tool_call.function.arguments,
                                     call_id: None,
                                 });
                             }
                         }
-                        _ => continue,
                     }
-
-                    if response.done {
-                        yield Ok(RawStreamingChoice::FinalResponse(
-                            StreamingCompletionResponse {
-                                total_duration: response.total_duration,
-                                load_duration: response.load_duration,
-                                prompt_eval_count: response.prompt_eval_count,
-                                prompt_eval_duration: response.prompt_eval_duration,
-                                eval_count: response.eval_count,
-                                eval_duration: response.eval_duration,
-                                done_reason: response.done_reason,
-                            }
-                        ));
+                    Err(err) => {
+                        tracing::error!(?err, "NDJSON error");
+                        yield Err(CompletionError::JsonError(err));
                     }
                 }
-
-                Err(reqwest_eventsource::Error::StreamEnded) => break,
-
-                Err(err) => {
-                    tracing::error!(?err, "SSE error");
-                    yield Err(CompletionError::ResponseError(err.to_string()));
-                    break;
-                }
-            };
-        }});
+            }
+        });
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
