@@ -76,12 +76,17 @@ pub struct Reasoning {
 
 impl Reasoning {
     /// Create a new reasoning item from a single item
-    pub fn new() -> ReasoningBuilder {
+    pub fn new(input: &str) -> ReasoningBuilder {
         ReasoningBuilder::new()
+            .add_step(input)
+        
     }
+    // TODO: Deprecate this signature in favor of a parameterless new()
+  
 
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct ReasoningBuilder{
     pub id: Option<String>,
     pub reasoning: Vec<String>,
