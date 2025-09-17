@@ -53,10 +53,10 @@ use crate::{
     message::{ImageDetail, Text},
     streaming,
 };
-use async_stream::stream;
+use async_stream::try_stream;
 use futures::StreamExt;
 use reqwest;
-use reqwest_eventsource::{Event, RequestBuilderExt};
+// use reqwest_eventsource::{Event, RequestBuilderExt}; // (Not used currently as Ollama does not support SSE)
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{convert::TryFrom, str::FromStr};
@@ -570,53 +570,58 @@ impl completion::CompletionModel for CompletionModel {
             .json(&request_payload)
             .send()
             .await
-            .map_err(|e| CompletionError::ProviderError(e.to_string()))?
-            .bytes_stream();
+            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 
-        let stream = Box::pin(stream! {
-            for await chunk in response {
-                let bytes = match chunk {
-                    Ok(b) => b,
-                    Err(e) => {
-                        yield Err(CompletionError::ResponseError(e.to_string()));
+        if !response.status().is_success() {
+            let err_text = response
+                .text()
+                .await
+                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            return Err(CompletionError::ProviderError(err_text));
+        }
+
+        let stream = Box::pin(try_stream! {
+            let mut byte_stream = response.bytes_stream();
+
+            while let Some(chunk) = byte_stream.next().await {
+                let bytes = chunk.map_err(|e| CompletionError::ResponseError(e.to_string()))?;
+
+                for line in bytes.split(|&b| b == b'\n') {
+                    if line.is_empty() {
                         continue;
                     }
-                };
 
-                match serde_json::from_slice::<CompletionResponse>(&bytes) {
-                    Ok(response) => {
-                        if response.done {
-                            yield Ok(RawStreamingChoice::FinalResponse(
-                                StreamingCompletionResponse {
-                                    total_duration: response.total_duration,
-                                    load_duration: response.load_duration,
-                                    prompt_eval_count: response.prompt_eval_count,
-                                    prompt_eval_duration: response.prompt_eval_duration,
-                                    eval_count: response.eval_count,
-                                    eval_duration: response.eval_duration,
-                                    done_reason: response.done_reason,
-                                }
-                            ));
-                            break;
-                        }
+                    let response: CompletionResponse =
+                        serde_json::from_slice(line)
+                        .map_err(CompletionError::JsonError)?;
 
-                        if let Message::Assistant { content, tool_calls, .. } = response.message {
-                            if !content.is_empty() {
-                                yield Ok(RawStreamingChoice::Message(content));
+                    if response.done {
+                        yield RawStreamingChoice::FinalResponse(
+                            StreamingCompletionResponse {
+                                total_duration: response.total_duration,
+                                load_duration: response.load_duration,
+                                prompt_eval_count: response.prompt_eval_count,
+                                prompt_eval_duration: response.prompt_eval_duration,
+                                eval_count: response.eval_count,
+                                eval_duration: response.eval_duration,
+                                done_reason: response.done_reason,
                             }
-                            for tool_call in tool_calls {
-                                yield Ok(RawStreamingChoice::ToolCall {
-                                    id: String::new(),
-                                    name: tool_call.function.name,
-                                    arguments: tool_call.function.arguments,
-                                    call_id: None,
-                                });
-                            }
-                        }
+                        );
+                        break;
                     }
-                    Err(err) => {
-                        tracing::error!(?err, "NDJSON error");
-                        yield Err(CompletionError::JsonError(err));
+
+                    if let Message::Assistant { content, tool_calls, .. } = response.message {
+                        if !content.is_empty() {
+                            yield RawStreamingChoice::Message(content);
+                        }
+                        for tool_call in tool_calls {
+                            yield RawStreamingChoice::ToolCall {
+                                id: String::new(),
+                                name: tool_call.function.name,
+                                arguments: tool_call.function.arguments,
+                                call_id: None,
+                            };
+                        }
                     }
                 }
             }
