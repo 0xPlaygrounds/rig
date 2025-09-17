@@ -43,7 +43,9 @@ async fn main() -> Result<(), anyhow::Error> {
             content: OneOrMany::many(vec![
                 UserContent::text("Summarize the video."),
                 UserContent::Video(Video {
-                    data: "https://www.youtube.com/watch?v=emtHJIxLwEc".to_string(),
+                    data: rig::message::DocumentSourceKind::Url(
+                        "https://www.youtube.com/watch?v=emtHJIxLwEc".to_string(),
+                    ),
                     format: Some(ContentFormat::String),
                     media_type: None,
                     additional_params: Some(json!({
