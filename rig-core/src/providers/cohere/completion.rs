@@ -1,7 +1,8 @@
 use crate::{
     OneOrMany,
     completion::{self, CompletionError},
-    json_utils, message,
+    json_utils,
+    message::{self, Reasoning},
 };
 use std::collections::HashMap;
 
@@ -97,6 +98,12 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         } else {
             OneOrMany::many(content.into_iter().map(|content| match content {
                 AssistantContent::Text { text } => completion::AssistantContent::text(text),
+                AssistantContent::Thinking { thinking } => {
+                    completion::AssistantContent::Reasoning(Reasoning {
+                        id: None,
+                        reasoning: vec![thinking],
+                    })
+                }
             }))
             .map_err(|_| {
                 CompletionError::ResponseError(
@@ -247,6 +254,7 @@ pub enum UserContent {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum AssistantContent {
     Text { text: String },
+    Thinking { thinking: String },
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -347,8 +355,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                             }),
                         });
                     }
-                    message::AssistantContent::Reasoning(_) => {
-                        unimplemented!("Reasoning is not natively supported on Cohere V2");
+                    message::AssistantContent::Reasoning(Reasoning { reasoning, .. }) => {
+                        let thinking = reasoning.join("\n");
+                        text_content.push(AssistantContent::Thinking { thinking });
                     }
                 });
 
@@ -387,6 +396,12 @@ impl TryFrom<Message> for message::Message {
                     .into_iter()
                     .map(|content| match content {
                         AssistantContent::Text { text } => message::AssistantContent::text(text),
+                        AssistantContent::Thinking { thinking } => {
+                            message::AssistantContent::Reasoning(Reasoning {
+                                id: None,
+                                reasoning: vec![thinking],
+                            })
+                        }
                     })
                     .collect::<Vec<_>>();
 
