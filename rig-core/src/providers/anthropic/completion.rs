@@ -252,7 +252,7 @@ pub struct ImageSource {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct DocumentSource {
-    pub data: DocumentSourceKind,
+    pub data: String,
     pub media_type: DocumentFormat,
     pub r#type: SourceType,
 }
@@ -455,9 +455,13 @@ impl TryFrom<message::Message> for Message {
                         media_type,
                         ..
                     }) => {
-                        let Some(media_type) = media_type else {
+                        let media_type = media_type.ok_or(MessageError::ConversionError(
+                            "Document media type is required".to_string(),
+                        ))?;
+
+                        let DocumentSourceKind::Base64(data) = data else {
                             return Err(MessageError::ConversionError(
-                                "Document media type is required".to_string(),
+                                "Only base64 encoded documents currently supported".into(),
                             ));
                         };
 
@@ -548,15 +552,11 @@ impl TryFrom<Message> for message::Message {
                             detail: None,
                             additional_params: None,
                         }),
-                        Content::Document { source } => {
-                            message::UserContent::document(
-                                source.data.try_into_inner().ok_or(
-                                    MessageError::ConversionError("Document has no body".into()),
-                                )?,
-                                Some(message::ContentFormat::Base64),
-                                Some(message::DocumentMediaType::PDF),
-                            )
-                        }
+                        Content::Document { source } => message::UserContent::document(
+                            source.data,
+                            Some(message::ContentFormat::Base64),
+                            Some(message::DocumentMediaType::PDF),
+                        ),
                         _ => {
                             return Err(MessageError::ConversionError(
                                 "Unsupported content type for User role".to_owned(),

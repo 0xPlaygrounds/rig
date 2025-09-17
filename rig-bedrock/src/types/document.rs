@@ -97,10 +97,13 @@ mod tests {
             media_type: Some(DocumentMediaType::PDF),
             additional_params: None,
         });
+
         let aws_document: Result<aws_bedrock::DocumentBlock, _> = rig_document.clone().try_into();
         assert!(aws_document.is_ok());
+
         let aws_document = aws_document.unwrap();
         assert_eq!(aws_document.format, aws_bedrock::DocumentFormat::Pdf);
+
         let document_data = rig_document
             .0
             .data
@@ -108,6 +111,8 @@ mod tests {
             .unwrap()
             .as_bytes()
             .to_vec();
+
+        let document_data = BASE64_STANDARD.decode(document_data).unwrap();
 
         let aws_document_bytes = aws_document
             .source()
