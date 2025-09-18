@@ -2,11 +2,8 @@ use super::completion::CompletionModel;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils::merge_inplace;
 use crate::providers::openai::{StreamingCompletionResponse, send_compatible_streaming_request};
-use crate::{json_utils, streaming};
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use std::convert::Infallible;
-use std::str::FromStr;
+use crate::streaming;
+use serde_json::json;
 
 impl CompletionModel {
     pub(crate) async fn stream(
