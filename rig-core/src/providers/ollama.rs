@@ -579,9 +579,7 @@ impl completion::CompletionModel for CompletionModel {
 
                     tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(line));
 
-                    let response: CompletionResponse =
-                        serde_json::from_slice(line)
-                        .map_err(CompletionError::JsonError)?;
+                    let response: CompletionResponse = serde_json::from_slice(line)?;
 
                     if response.done {
                         yield RawStreamingChoice::FinalResponse(
