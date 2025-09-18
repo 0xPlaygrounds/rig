@@ -1,4 +1,4 @@
-use rig::message::{ContentFormat, Message, UserContent, Video};
+use rig::message::{Message, UserContent, Video};
 use rig::prelude::*;
 use rig::providers::gemini::completion::gemini_api_types::AdditionalParameters;
 use rig::{
