@@ -578,7 +578,7 @@ fn calculate_max_tokens(model: &str) -> Option<u64> {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct Metadata {
+pub struct Metadata {
     user_id: Option<String>,
 }
 
