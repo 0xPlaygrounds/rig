@@ -29,7 +29,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt
-          toolchain: {{ env.RUST_VERSION }}
+          toolchain: ${{ vars.RUST_VERSION }}
 
       - name: Run cargo fmt
         run: cargo fmt -- --check
@@ -46,7 +46,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: wasm32-unknown-unknown
-          toolchain: {{ env.RUST_VERSION }}
+          toolchain: ${{ vars.RUST_VERSION }}
 
       - name: Run cargo check wasm target
         run: cargo check --package rig-core --features worker --target wasm32-unknown-unknown
@@ -64,7 +64,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy
-          toolchain: {{ env.RUST_VERSION }}
+          toolchain: ${{ vars.RUST_VERSION }}
 
       # Required to compile rig-lancedb
       - name: Install Protoc
@@ -86,8 +86,8 @@ jobs:
 
       - name: Install Rust stable
         uses: actions-rust-lang/setup-rust-toolchain@v1
-        with: 
-          toolchain: {{ env.RUST_VERSION }}
+        with:
+          toolchain: ${{ vars.RUST_VERSION }}
 
       - name: Install nextest
         uses: taiki-e/install-action@v2
@@ -123,7 +123,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rust-docs
-          toolchain: {{ env.RUST_VERSION }}
+          toolchain: ${{ vars.RUST_VERSION }}
 
       # Required to compile rig-lancedb
       - name: Install Protoc
