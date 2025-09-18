@@ -617,7 +617,7 @@ impl completion::CompletionModel for CompletionModel {
                                 e,
                                 String::from_utf8_lossy(line)
                             );
-                            CompletionError::ResponseError(e.to_string())
+                            CompletionError::JsonError(e)
                         })?;
 
                     if response.done {
