@@ -46,7 +46,6 @@ async fn main() -> Result<(), anyhow::Error> {
                     data: rig::message::DocumentSourceKind::Url(
                         "https://www.youtube.com/watch?v=emtHJIxLwEc".to_string(),
                     ),
-                    format: Some(ContentFormat::String),
                     media_type: None,
                     additional_params: Some(json!({
                         "video_metadata": {
