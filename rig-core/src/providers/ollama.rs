@@ -296,8 +296,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         let response = self.client.post("api/embed")?.json(&payload).send().await?;
 
         if !response.status().is_success() {
-            let err_text = response.text().await?;
-            return Err(EmbeddingError::ProviderError(err_text));
+            return Err(EmbeddingError::ProviderError(response.text().await?));
         }
 
         let bytes = response.bytes().await?;
@@ -561,20 +560,17 @@ impl completion::CompletionModel for CompletionModel {
             .post("api/chat")?
             .json(&request_payload)
             .send()
-            .await
-            .map_err(CompletionError::HttpError)?;
+            .await?;
 
         if !response.status().is_success() {
-            return Err(CompletionError::ProviderError(
-                response.text().await.map_err(CompletionError::HttpError)?,
-            ));
+            return Err(CompletionError::ProviderError(response.text().await?));
         }
 
         let stream = Box::pin(try_stream! {
             let mut byte_stream = response.bytes_stream();
 
             while let Some(chunk) = byte_stream.next().await {
-                let bytes = chunk.map_err(CompletionError::HttpError)?;
+                let bytes = chunk?;
 
                 for line in bytes.split(|&b| b == b'\n') {
                     if line.is_empty() {
