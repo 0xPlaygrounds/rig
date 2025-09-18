@@ -440,7 +440,6 @@ pub mod gemini_api_types {
                                             Some(message::MediaType::Audio(media_type)) => {
                                                 message::UserContent::audio(
                                                     inline_data.data,
-                                                    Some(message::ContentFormat::default()),
                                                     Some(media_type),
                                                 )
                                             }

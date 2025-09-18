@@ -1,7 +1,7 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig::{
     completion::CompletionError,
-    message::{ContentFormat, Document, DocumentSourceKind},
+    message::{Document, DocumentSourceKind},
 };
 
 pub(crate) use crate::types::media_types::RigDocumentMediaType;

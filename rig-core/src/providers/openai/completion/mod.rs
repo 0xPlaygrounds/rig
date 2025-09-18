@@ -527,11 +527,9 @@ impl From<UserContent> for message::UserContent {
             UserContent::Image { image_url } => {
                 message::UserContent::image_url(image_url.url, None, Some(image_url.detail))
             }
-            UserContent::Audio { input_audio } => message::UserContent::audio(
-                input_audio.data,
-                Some(message::ContentFormat::default()),
-                Some(input_audio.format),
-            ),
+            UserContent::Audio { input_audio } => {
+                message::UserContent::audio(input_audio.data, Some(input_audio.format))
+            }
         }
     }
 }
