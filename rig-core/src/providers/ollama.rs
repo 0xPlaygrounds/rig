@@ -299,26 +299,42 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
-        if response.status().is_success() {
-            let api_resp: EmbeddingResponse = response
-                .json()
-                .await
-                .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
-            if api_resp.embeddings.len() != docs.len() {
-                return Err(EmbeddingError::ResponseError(
-                    "Number of returned embeddings does not match input".into(),
-                ));
-            }
-            Ok(api_resp
-                .embeddings
-                .into_iter()
-                .zip(docs.into_iter())
-                .map(|(vec, document)| embeddings::Embedding { document, vec })
-                .collect())
-        } else {
-            Err(EmbeddingError::ProviderError(response.text().await?))
+            .map_err(|e| {
+				tracing::error!(target: "rig", "Failed to send request to Ollama /api/embed: {}", e);
+				EmbeddingError::HttpError(e)
+			})?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let err_text = response.text().await.map_err(|e| {
+				tracing::error!(target: "rig", "Failed to read error body from Ollama (status {}): {}", status, e);
+				EmbeddingError::HttpError(e)
+			})?;
+            tracing::error!(target: "rig", "Ollama returned error status {} with body: {}", status, err_text);
+            return Err(EmbeddingError::ProviderError(err_text));
         }
+
+        let bytes = response.bytes().await.map_err(|e| {
+            tracing::error!(target: "rig", "Failed to read response body from Ollama: {}", e);
+            EmbeddingError::HttpError(e)
+        })?;
+
+        let api_resp: EmbeddingResponse = serde_json::from_slice(&bytes).map_err(|e| {
+			tracing::error!(target: "rig", "Failed to parse JSON response from Ollama: {} | raw: {}", e, String::from_utf8_lossy(&bytes));
+			EmbeddingError::JsonError(e)
+		})?;
+
+        if api_resp.embeddings.len() != docs.len() {
+            return Err(EmbeddingError::ResponseError(
+                "Number of returned embeddings does not match input".into(),
+            ));
+        }
+        Ok(api_resp
+            .embeddings
+            .into_iter()
+            .zip(docs.into_iter())
+            .map(|(vec, document)| embeddings::Embedding { document, vec })
+            .collect())
     }
 }
 
