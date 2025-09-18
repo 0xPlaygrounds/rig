@@ -19,7 +19,7 @@ use crate::client::{
 };
 use crate::completion::GetTokenUsage;
 use crate::json_utils::merge;
-use crate::message::Document;
+use crate::message::{Document, DocumentSourceKind};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -355,12 +355,13 @@ impl TryFrom<message::Message> for Vec<Message> {
                             content: text.text,
                             name: None,
                         }),
-                        message::UserContent::Document(Document { data, .. }) => {
-                            Some(Message::User {
-                                content: data,
-                                name: None,
-                            })
-                        }
+                        message::UserContent::Document(Document {
+                            data: DocumentSourceKind::Base64(content),
+                            ..
+                        }) => Some(Message::User {
+                            content,
+                            name: None,
+                        }),
                         _ => None,
                     })
                     .collect::<Vec<_>>();

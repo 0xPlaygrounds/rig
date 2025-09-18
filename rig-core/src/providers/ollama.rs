@@ -44,6 +44,7 @@ use crate::client::{
 };
 use crate::completion::{GetTokenUsage, Usage};
 use crate::json_utils::merge_inplace;
+use crate::message::DocumentSourceKind;
 use crate::streaming::RawStreamingChoice;
 use crate::{
     Embed, OneOrMany,
@@ -769,11 +770,14 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                                     text,
                                 }) => texts.push(text),
                                 crate::message::UserContent::Image(crate::message::Image {
-                                    data,
+                                    data: DocumentSourceKind::Base64(data),
                                     ..
                                 }) => images.push(data),
                                 crate::message::UserContent::Document(
-                                    crate::message::Document { data, .. },
+                                    crate::message::Document {
+                                        data: DocumentSourceKind::Base64(data),
+                                        ..
+                                    },
                                 ) => texts.push(data),
                                 _ => {} // Audio not supported by Ollama
                             }

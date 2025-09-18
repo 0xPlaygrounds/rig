@@ -1,6 +1,6 @@
 use rig::{
     completion::{Prompt, message::Document},
-    message::{ContentFormat, DocumentMediaType},
+    message::{DocumentMediaType, DocumentSourceKind},
 };
 
 use base64::{Engine, prelude::BASE64_STANDARD};
@@ -37,8 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let bytes_base64 = BASE64_STANDARD.encode(document_bytes);
 
     let document = Document {
-        data: bytes_base64,
-        format: Some(ContentFormat::Base64),
+        data: DocumentSourceKind::Base64(bytes_base64),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
     };

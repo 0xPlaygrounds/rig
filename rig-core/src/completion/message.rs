@@ -193,6 +193,13 @@ impl DocumentSourceKind {
     pub fn unknown() -> Self {
         Self::Unknown
     }
+
+    pub fn try_into_inner(self) -> Option<String> {
+        match self {
+            Self::Url(s) | Self::Base64(s) => Some(s),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for DocumentSourceKind {
@@ -208,9 +215,7 @@ impl std::fmt::Display for DocumentSourceKind {
 /// Audio content containing audio data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Audio {
-    pub data: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<ContentFormat>,
+    pub data: DocumentSourceKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<AudioMediaType>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -220,9 +225,7 @@ pub struct Audio {
 /// Video content containing video data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Video {
-    pub data: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<ContentFormat>,
+    pub data: DocumentSourceKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<VideoMediaType>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -232,9 +235,7 @@ pub struct Video {
 /// Document content containing document data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Document {
-    pub data: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<ContentFormat>,
+    pub data: DocumentSourceKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<DocumentMediaType>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -289,6 +290,12 @@ pub enum DocumentMediaType {
     XML,
     Javascript,
     Python,
+}
+
+impl DocumentMediaType {
+    pub fn is_code(&self) -> bool {
+        matches!(self, Self::Javascript | Self::Python)
+    }
 }
 
 /// Describes the audio media type of the content. Not every provider supports every media type.
@@ -429,30 +436,37 @@ impl UserContent {
     }
 
     /// Helper constructor to make creating user audio content easier.
-    pub fn audio(
-        data: impl Into<String>,
-        format: Option<ContentFormat>,
-        media_type: Option<AudioMediaType>,
-    ) -> Self {
+    pub fn audio(data: impl Into<String>, media_type: Option<AudioMediaType>) -> Self {
         UserContent::Audio(Audio {
-            data: data.into(),
-            format,
+            data: DocumentSourceKind::Base64(data.into()),
             media_type,
             additional_params: None,
         })
     }
 
+    /// Helper to create an audio resource froma URL
+    pub fn audio_url(url: impl Into<String>, media_type: Option<AudioMediaType>) -> Self {
+        UserContent::Audio(Audio {
+            data: DocumentSourceKind::Url(url.into()),
+            media_type,
+            ..Default::default()
+        })
+    }
+
     /// Helper constructor to make creating user document content easier.
-    pub fn document(
-        data: impl Into<String>,
-        format: Option<ContentFormat>,
-        media_type: Option<DocumentMediaType>,
-    ) -> Self {
+    pub fn document(data: impl Into<String>, media_type: Option<DocumentMediaType>) -> Self {
         UserContent::Document(Document {
-            data: data.into(),
-            format,
+            data: DocumentSourceKind::Base64(data.into()),
             media_type,
             additional_params: None,
+        })
+    }
+
+    pub fn document_url(url: impl Into<String>, media_type: Option<DocumentMediaType>) -> Self {
+        UserContent::Document(Document {
+            data: DocumentSourceKind::Url(url.into()),
+            media_type,
+            ..Default::default()
         })
     }
 

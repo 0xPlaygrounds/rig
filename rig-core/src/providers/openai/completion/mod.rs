@@ -4,7 +4,7 @@
 
 use super::{ApiErrorResponse, ApiResponse, Client, streaming::StreamingCompletionResponse};
 use crate::completion::{CompletionError, CompletionRequest};
-use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail};
+use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
 use crate::{OneOrMany, completion, json_utils, message};
 use serde::{Deserialize, Serialize};
@@ -312,44 +312,77 @@ impl TryFrom<message::Message> for Vec<Message> {
                         })
                         .collect::<Result<Vec<_>, _>>()
                 } else {
-                    let other_content: Vec<UserContent> = other_content.into_iter().map(|content| match content {
-                        message::UserContent::Text(message::Text { text }) => {
-                            Ok(UserContent::Text { text })
-                        }
-                        message::UserContent::Image(message::Image {
-                            data, detail, ..
-                        }) => {
-                            let DocumentSourceKind::Url(url) = data else { return Err(message::MessageError::ConversionError(
-                                "Only image URL user content is accepted with OpenAI Chat Completions API".to_string()
-                            ))};
-
-                            Ok(UserContent::Image {
-                                    image_url: ImageUrl {
-                                    url,
-                                    detail: detail.unwrap_or_default(),
-                                    }
-                                }
-                            )
-
-                        },
-                        message::UserContent::Document(message::Document { data, .. }) => {
-                            Ok(UserContent::Text { text: data })
-                        }
-                        message::UserContent::Audio(message::Audio {
-                            data,
-                            media_type,
-                            ..
-                        }) => Ok(UserContent::Audio {
-                            input_audio: InputAudio {
+                    let other_content: Vec<UserContent> = other_content
+                        .into_iter()
+                        .map(|content| match content {
+                            message::UserContent::Text(message::Text { text }) => {
+                                Ok(UserContent::Text { text })
+                            }
+                            message::UserContent::Image(message::Image {
                                 data,
-                                format: match media_type {
-                                    Some(media_type) => media_type,
-                                    None => AudioMediaType::MP3,
-                                },
+                                detail,
+                                media_type,
+                                ..
+                            }) => match data {
+                                DocumentSourceKind::Url(url) => Ok(UserContent::Image {
+                                    image_url: ImageUrl {
+                                        url,
+                                        detail: detail.unwrap_or_default(),
+                                    },
+                                }),
+                                DocumentSourceKind::Base64(data) => {
+                                    let url = format!(
+                                        "data:{};base64,{}",
+                                        media_type.map(|i| i.to_mime_type()).ok_or(
+                                            message::MessageError::ConversionError(
+                                                "OpenAI Image URI must have media type".into()
+                                            )
+                                        )?,
+                                        data
+                                    );
+
+                                    let detail =
+                                        detail.ok_or(message::MessageError::ConversionError(
+                                            "OpenAI image URI must have image detail".into(),
+                                        ))?;
+
+                                    Ok(UserContent::Image {
+                                        image_url: ImageUrl { url, detail },
+                                    })
+                                }
+                                DocumentSourceKind::Unknown => {
+                                    Err(message::MessageError::ConversionError(
+                                        "Document has no body".into(),
+                                    ))
+                                }
                             },
-                        }),
-                        _ => unreachable!(),
-                    }).collect::<Result<Vec<_>, _>>()?;
+                            message::UserContent::Document(message::Document { data, .. }) => {
+                                if let DocumentSourceKind::Base64(text) = data {
+                                    Ok(UserContent::Text { text })
+                                } else {
+                                    Err(message::MessageError::ConversionError(
+                                        "Documents must be base64".into(),
+                                    ))
+                                }
+                            }
+                            message::UserContent::Audio(message::Audio {
+                                data: DocumentSourceKind::Base64(data),
+                                media_type,
+                                ..
+                            }) => Ok(UserContent::Audio {
+                                input_audio: InputAudio {
+                                    data,
+                                    format: match media_type {
+                                        Some(media_type) => media_type,
+                                        None => AudioMediaType::MP3,
+                                    },
+                                },
+                            }),
+                            _ => Err(message::MessageError::ConversionError(
+                                "Tool result is in unsupported format".into(),
+                            )),
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
 
                     let other_content = OneOrMany::many(other_content).expect(
                         "There must be other content here if there were no tool result content",
@@ -494,11 +527,9 @@ impl From<UserContent> for message::UserContent {
             UserContent::Image { image_url } => {
                 message::UserContent::image_url(image_url.url, None, Some(image_url.detail))
             }
-            UserContent::Audio { input_audio } => message::UserContent::audio(
-                input_audio.data,
-                Some(message::ContentFormat::default()),
-                Some(input_audio.format),
-            ),
+            UserContent::Audio { input_audio } => {
+                message::UserContent::audio(input_audio.data, Some(input_audio.format))
+            }
         }
     }
 }

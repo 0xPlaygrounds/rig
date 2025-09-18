@@ -1,4 +1,4 @@
-use rig::message::{ContentFormat, Message, UserContent, Video};
+use rig::message::{Message, UserContent, Video};
 use rig::prelude::*;
 use rig::providers::gemini::completion::gemini_api_types::AdditionalParameters;
 use rig::{
@@ -43,8 +43,9 @@ async fn main() -> Result<(), anyhow::Error> {
             content: OneOrMany::many(vec![
                 UserContent::text("Summarize the video."),
                 UserContent::Video(Video {
-                    data: "https://www.youtube.com/watch?v=emtHJIxLwEc".to_string(),
-                    format: Some(ContentFormat::String),
+                    data: rig::message::DocumentSourceKind::Url(
+                        "https://www.youtube.com/watch?v=emtHJIxLwEc".to_string(),
+                    ),
                     media_type: None,
                     additional_params: Some(json!({
                         "video_metadata": {

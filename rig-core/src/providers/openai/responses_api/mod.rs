@@ -232,15 +232,16 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             }
                         }
                         // todo: should we ensure this takes into account file size?
-                        crate::message::UserContent::Document(Document { data, .. }) => {
-                            items.push(InputItem {
-                                role: Some(Role::User),
-                                input: InputContent::Message(Message::User {
-                                    content: OneOrMany::one(UserContent::InputText { text: data }),
-                                    name: None,
-                                }),
-                            })
-                        }
+                        crate::message::UserContent::Document(Document {
+                            data: DocumentSourceKind::Base64(text),
+                            ..
+                        }) => items.push(InputItem {
+                            role: Some(Role::User),
+                            input: InputContent::Message(Message::User {
+                                content: OneOrMany::one(UserContent::InputText { text }),
+                                name: None,
+                            }),
+                        }),
                         crate::message::UserContent::Image(crate::message::Image {
                             data,
                             media_type,
@@ -1214,11 +1215,11 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     },
                                 })
                             }
-                            message::UserContent::Document(message::Document { data, .. }) => {
-                                Ok(UserContent::InputText { text: data })
+                            message::UserContent::Document(message::Document { data: DocumentSourceKind::Base64(text), .. }) => {
+                                Ok(UserContent::InputText { text })
                             }
                             message::UserContent::Audio(message::Audio {
-                                data,
+                                data: DocumentSourceKind::Base64(data),
                                 media_type,
                                 ..
                             }) => Ok(UserContent::Audio {
@@ -1230,7 +1231,8 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     },
                                 },
                             }),
-                            _ => unreachable!(),
+                            message::UserContent::Audio(_) => Err(MessageError::ConversionError("Audio must be base64 encoded data".into())),
+                            _ => unreachable!()
                         })
                         .collect::<Result<Vec<_>, _>>()?;
 
