@@ -33,14 +33,6 @@ pub struct ScyllaDbVectorStore<M: EmbeddingModel> {
     get_by_id_stmt: PreparedStatement,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct VectorRecord {
-    id: Uuid,
-    vector: Vec<f32>,
-    metadata: String, // JSON serialized metadata
-    created_at: i64,  // Unix timestamp
-}
-
 impl<M> ScyllaDbVectorStore<M>
 where
     M: EmbeddingModel,
