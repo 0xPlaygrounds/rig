@@ -9,7 +9,7 @@ on:
 jobs:
   run-ci:
     permissions:
-        checks: write
+      checks: write
     uses: ./.github/workflows/ci.yaml
     secrets: inherit
 
@@ -18,8 +18,8 @@ jobs:
     needs: run-ci
     runs-on: ubuntu-latest
     permissions:
-        pull-requests: write
-        contents: write
+      pull-requests: write
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,6 +28,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ vars.RUST_VERSION }}
 
       # Required to compile rig-lancedb
       - name: Install Protoc
