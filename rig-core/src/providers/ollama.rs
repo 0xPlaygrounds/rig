@@ -293,36 +293,16 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             "model": self.model,
             "input": docs,
         });
-        let response = self
-            .client
-            .post("api/embed")?
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| {
-				tracing::error!(target: "rig", "Failed to send request to Ollama /api/embed: {}", e);
-				EmbeddingError::HttpError(e)
-			})?;
+        let response = self.client.post("api/embed")?.json(&payload).send().await?;
 
         if !response.status().is_success() {
-            let status = response.status();
-            let err_text = response.text().await.map_err(|e| {
-				tracing::error!(target: "rig", "Failed to read error body from Ollama (status {}): {}", status, e);
-				EmbeddingError::HttpError(e)
-			})?;
-            tracing::error!(target: "rig", "Ollama returned error status {} with body: {}", status, err_text);
+            let err_text = response.text().await?;
             return Err(EmbeddingError::ProviderError(err_text));
         }
 
-        let bytes = response.bytes().await.map_err(|e| {
-            tracing::error!(target: "rig", "Failed to read response body from Ollama: {}", e);
-            EmbeddingError::HttpError(e)
-        })?;
+        let bytes = response.bytes().await?;
 
-        let api_resp: EmbeddingResponse = serde_json::from_slice(&bytes).map_err(|e| {
-			tracing::error!(target: "rig", "Failed to parse JSON response from Ollama: {} | raw: {}", e, String::from_utf8_lossy(&bytes));
-			EmbeddingError::JsonError(e)
-		})?;
+        let api_resp: EmbeddingResponse = serde_json::from_slice(&bytes)?;
 
         if api_resp.embeddings.len() != docs.len() {
             return Err(EmbeddingError::ResponseError(
@@ -550,47 +530,17 @@ impl completion::CompletionModel for CompletionModel {
             .post("api/chat")?
             .json(&request_payload)
             .send()
-            .await
-            .map_err(|e| {
-                tracing::error!(
-                    target: "rig",
-                    "Failed to send request to Ollama /api/chat: {}", e
-                );
-                CompletionError::HttpError(e)
-            })?;
+            .await?;
 
         if !response.status().is_success() {
-            let status = response.status();
-            let err_text = response.text().await.map_err(|e| {
-                tracing::error!(
-                    target: "rig",
-                    "Failed to read error body from Ollama (status {}): {}", status, e
-                );
-                CompletionError::HttpError(e)
-            })?;
-            tracing::error!(
-                target: "rig",
-                "Ollama returned error status {} with body: {}", status, err_text
-            );
-            return Err(CompletionError::ProviderError(err_text));
+            return Err(CompletionError::ProviderError(response.text().await?));
         }
 
-        let bytes = response.bytes().await.map_err(|e| {
-            tracing::error!(target: "rig", "Failed to read response body from Ollama: {}", e);
-            CompletionError::HttpError(e)
-        })?;
+        let bytes = response.bytes().await?;
 
         tracing::debug!(target: "rig", "Received response from Ollama: {}", String::from_utf8_lossy(&bytes));
 
-        let chat_resp: CompletionResponse = serde_json::from_slice(&bytes).map_err(|e| {
-            tracing::error!(
-                target: "rig",
-                "Failed to parse JSON response from Ollama: {} | raw: {}",
-                e,
-                String::from_utf8_lossy(&bytes)
-            );
-            CompletionError::JsonError(e)
-        })?;
+        let chat_resp: CompletionResponse = serde_json::from_slice(&bytes)?;
 
         let conv: completion::CompletionResponse<CompletionResponse> = chat_resp.try_into()?;
 
@@ -612,38 +562,19 @@ impl completion::CompletionModel for CompletionModel {
             .json(&request_payload)
             .send()
             .await
-            .map_err(|e| {
-                tracing::error!(
-                    target: "rig",
-                    "Failed to send request to Ollama /api/chat: {}", e
-                );
-                CompletionError::HttpError(e)
-            })?;
+            .map_err(CompletionError::HttpError)?;
 
         if !response.status().is_success() {
-            let status = response.status();
-            let err_text = response.text().await.map_err(|e| {
-                tracing::error!(
-                    target: "rig",
-                    "Failed to read error body from Ollama (status {}): {}", status, e
-                );
-                CompletionError::HttpError(e)
-            })?;
-            tracing::error!(
-                target: "rig",
-                "Ollama returned error status {} with body: {}", status, err_text
-            );
-            return Err(CompletionError::ProviderError(err_text));
+            return Err(CompletionError::ProviderError(
+                response.text().await.map_err(CompletionError::HttpError)?,
+            ));
         }
 
         let stream = Box::pin(try_stream! {
             let mut byte_stream = response.bytes_stream();
 
             while let Some(chunk) = byte_stream.next().await {
-                let bytes = chunk.map_err(|e| {
-                    tracing::error!(target: "rig", "Error reading streaming chunk from Ollama: {}", e);
-                    CompletionError::HttpError(e)
-                })?;
+                let bytes = chunk.map_err(CompletionError::HttpError)?;
 
                 for line in bytes.split(|&b| b == b'\n') {
                     if line.is_empty() {
@@ -654,15 +585,7 @@ impl completion::CompletionModel for CompletionModel {
 
                     let response: CompletionResponse =
                         serde_json::from_slice(line)
-                        .map_err(|e| {
-                            tracing::error!(
-                                target: "rig",
-                                "Failed to parse NDJSON line from Ollama: {} | raw: {:?}",
-                                e,
-                                String::from_utf8_lossy(line)
-                            );
-                            CompletionError::JsonError(e)
-                        })?;
+                        .map_err(CompletionError::JsonError)?;
 
                     if response.done {
                         yield RawStreamingChoice::FinalResponse(
