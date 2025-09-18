@@ -241,8 +241,6 @@ pub struct Video {
 pub struct Document {
     pub data: DocumentSourceKind,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<ContentFormat>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<DocumentMediaType>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
@@ -465,14 +463,9 @@ impl UserContent {
     }
 
     /// Helper constructor to make creating user document content easier.
-    pub fn document(
-        data: impl Into<String>,
-        format: Option<ContentFormat>,
-        media_type: Option<DocumentMediaType>,
-    ) -> Self {
+    pub fn document(data: impl Into<String>, media_type: Option<DocumentMediaType>) -> Self {
         UserContent::Document(Document {
             data: DocumentSourceKind::Base64(data.into()),
-            format,
             media_type,
             additional_params: None,
         })

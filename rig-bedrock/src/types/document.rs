@@ -71,7 +71,6 @@ impl TryFrom<aws_bedrock::DocumentBlock> for RigDocument {
 
         Ok(RigDocument(Document {
             data,
-            format: Some(ContentFormat::Base64),
             media_type: Some(media_type),
             additional_params: None,
         }))
@@ -84,7 +83,7 @@ mod tests {
     use base64::{Engine, prelude::BASE64_STANDARD};
     use rig::{
         completion::CompletionError,
-        message::{ContentFormat, Document, DocumentMediaType, DocumentSourceKind},
+        message::{Document, DocumentMediaType, DocumentSourceKind},
     };
 
     use crate::types::document::RigDocument;
@@ -93,7 +92,6 @@ mod tests {
     fn test_document_to_aws_document() {
         let rig_document = RigDocument(Document {
             data: DocumentSourceKind::Base64("data".into()),
-            format: Some(ContentFormat::String),
             media_type: Some(DocumentMediaType::PDF),
             additional_params: None,
         });
@@ -131,7 +129,6 @@ mod tests {
     fn test_base64_document_to_aws_document() {
         let rig_document = RigDocument(Document {
             data: DocumentSourceKind::Base64("data".into()),
-            format: Some(ContentFormat::Base64),
             media_type: Some(DocumentMediaType::PDF),
             additional_params: None,
         });
@@ -154,7 +151,6 @@ mod tests {
     fn test_unsupported_document_to_aws_document() {
         let rig_document = RigDocument(Document {
             data: DocumentSourceKind::Base64("data".into()),
-            format: Some(ContentFormat::String),
             media_type: Some(DocumentMediaType::Javascript),
             additional_params: None,
         });

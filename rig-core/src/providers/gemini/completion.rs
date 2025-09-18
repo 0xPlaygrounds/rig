@@ -434,7 +434,6 @@ pub mod gemini_api_types {
                                             Some(message::MediaType::Document(media_type)) => {
                                                 message::UserContent::document(
                                                     inline_data.data,
-                                                    Some(message::ContentFormat::default()),
                                                     Some(media_type),
                                                 )
                                             }

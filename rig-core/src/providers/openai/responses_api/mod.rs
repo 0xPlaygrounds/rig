@@ -1216,10 +1216,6 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 })
                             }
                             message::UserContent::Document(message::Document { data: DocumentSourceKind::Base64(text), .. }) => {
-                                // NOTE: This also seems like a place where we'd want a
-                                // `DocumentSourceKind::PlainText` ? or to change `Base64` to `Blob` 
-                                // or something else that communicates that it can be plain text in
-                                // addition to b64
                                 Ok(UserContent::InputText { text })
                             }
                             message::UserContent::Audio(message::Audio {

@@ -63,7 +63,7 @@
 //! For more information on how to use the completion functionality, refer to the documentation of
 //! the individual traits, structs, and enums defined in this module.
 
-use super::message::{AssistantContent, ContentFormat, DocumentMediaType};
+use super::message::{AssistantContent, DocumentMediaType};
 use crate::client::completion::CompletionModelHandle;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{OneOrMany, streaming};
@@ -439,7 +439,6 @@ impl CompletionRequest {
                     doc.to_string(),
                     // In the future, we can customize `Document` to pass these extra types through.
                     // Most providers ditch these but they might want to use them.
-                    Some(ContentFormat::String),
                     Some(DocumentMediaType::TXT),
                 )
             })
@@ -726,12 +725,10 @@ mod tests {
             content: OneOrMany::many(vec![
                 UserContent::document(
                     "<file id: doc1>\nDocument 1 text.\n</file>\n".to_string(),
-                    Some(ContentFormat::String),
                     Some(DocumentMediaType::TXT),
                 ),
                 UserContent::document(
                     "<file id: doc2>\nDocument 2 text.\n</file>\n".to_string(),
-                    Some(ContentFormat::String),
                     Some(DocumentMediaType::TXT),
                 ),
             ])

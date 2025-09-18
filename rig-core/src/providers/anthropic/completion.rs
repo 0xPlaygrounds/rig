@@ -402,7 +402,6 @@ impl TryFrom<message::Message> for Message {
                                 Ok(ToolResultContent::Text { text })
                             }
                             message::ToolResultContent::Image(image) => {
-                                // NOTE: (@FayCarsons) Do we want to support URLs here?
                                 let DocumentSourceKind::Base64(data) = image.data else {
                                     return Err(MessageError::ConversionError(
                                         "Only base64 strings can be used with the Anthropic API"
@@ -450,10 +449,7 @@ impl TryFrom<message::Message> for Message {
                         Ok(Content::Image { source })
                     }
                     message::UserContent::Document(message::Document {
-                        data,
-                        format,
-                        media_type,
-                        ..
+                        data, media_type, ..
                     }) => {
                         let media_type = media_type.ok_or(MessageError::ConversionError(
                             "Document media type is required".to_string(),
@@ -468,10 +464,7 @@ impl TryFrom<message::Message> for Message {
                         let source = DocumentSource {
                             data,
                             media_type: media_type.try_into()?,
-                            r#type: match format {
-                                Some(format) => format.try_into()?,
-                                None => SourceType::BASE64,
-                            },
+                            r#type: SourceType::BASE64,
                         };
                         Ok(Content::Document { source })
                     }
@@ -554,7 +547,6 @@ impl TryFrom<Message> for message::Message {
                         }),
                         Content::Document { source } => message::UserContent::document(
                             source.data,
-                            Some(message::ContentFormat::Base64),
                             Some(message::DocumentMediaType::PDF),
                         ),
                         _ => {

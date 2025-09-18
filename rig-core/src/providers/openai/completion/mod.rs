@@ -357,8 +357,6 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 }
                             },
                             message::UserContent::Document(message::Document { data, .. }) => {
-                                // NOTE: This doesn't feel right but I'm not sure how else we'd want to
-                                // handle it
                                 if let DocumentSourceKind::Base64(text) = data {
                                     Ok(UserContent::Text { text })
                                 } else {
