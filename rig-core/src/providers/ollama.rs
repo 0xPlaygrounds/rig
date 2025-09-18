@@ -535,24 +535,50 @@ impl completion::CompletionModel for CompletionModel {
             .json(&request_payload)
             .send()
             .await
-            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-        if response.status().is_success() {
-            let text = response
-                .text()
-                .await
-                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-            tracing::debug!(target: "rig", "Ollama chat response: {}", text);
-            let chat_resp: CompletionResponse = serde_json::from_str(&text)
-                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-            let conv: completion::CompletionResponse<CompletionResponse> = chat_resp.try_into()?;
-            Ok(conv)
-        } else {
-            let err_text = response
-                .text()
-                .await
-                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-            Err(CompletionError::ProviderError(err_text))
+            .map_err(|e| {
+                tracing::error!(
+                    target: "rig",
+                    "Failed to send request to Ollama /api/chat: {}", e
+                );
+                CompletionError::HttpError(e)
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let err_text = response.text().await.map_err(|e| {
+                tracing::error!(
+                    target: "rig",
+                    "Failed to read error body from Ollama (status {}): {}", status, e
+                );
+                CompletionError::HttpError(e)
+            })?;
+            tracing::error!(
+                target: "rig",
+                "Ollama returned error status {} with body: {}", status, err_text
+            );
+            return Err(CompletionError::ProviderError(err_text));
         }
+
+        let bytes = response.bytes().await.map_err(|e| {
+            tracing::error!(target: "rig", "Failed to read response body from Ollama: {}", e);
+            CompletionError::HttpError(e)
+        })?;
+
+        tracing::debug!(target: "rig", "Received response from Ollama: {}", String::from_utf8_lossy(&bytes));
+
+        let chat_resp: CompletionResponse = serde_json::from_slice(&bytes).map_err(|e| {
+            tracing::error!(
+                target: "rig",
+                "Failed to parse JSON response from Ollama: {} | raw: {}",
+                e,
+                String::from_utf8_lossy(&bytes)
+            );
+            CompletionError::JsonError(e)
+        })?;
+
+        let conv: completion::CompletionResponse<CompletionResponse> = chat_resp.try_into()?;
+
+        Ok(conv)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -575,7 +601,7 @@ impl completion::CompletionModel for CompletionModel {
                     target: "rig",
                     "Failed to send request to Ollama /api/chat: {}", e
                 );
-                CompletionError::ProviderError(e.to_string())
+                CompletionError::HttpError(e)
             })?;
 
         if !response.status().is_success() {
@@ -585,7 +611,7 @@ impl completion::CompletionModel for CompletionModel {
                     target: "rig",
                     "Failed to read error body from Ollama (status {}): {}", status, e
                 );
-                CompletionError::ProviderError(e.to_string())
+                CompletionError::HttpError(e)
             })?;
             tracing::error!(
                 target: "rig",
@@ -600,13 +626,15 @@ impl completion::CompletionModel for CompletionModel {
             while let Some(chunk) = byte_stream.next().await {
                 let bytes = chunk.map_err(|e| {
                     tracing::error!(target: "rig", "Error reading streaming chunk from Ollama: {}", e);
-                    CompletionError::ResponseError(e.to_string())
+                    CompletionError::HttpError(e)
                 })?;
 
                 for line in bytes.split(|&b| b == b'\n') {
                     if line.is_empty() {
                         continue;
                     }
+
+                    tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(line));
 
                     let response: CompletionResponse =
                         serde_json::from_slice(line)
