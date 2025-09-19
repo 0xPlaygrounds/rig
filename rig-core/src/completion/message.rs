@@ -77,50 +77,47 @@ pub struct Reasoning {
 impl Reasoning {
     /// Create a new reasoning item from a single item
     pub fn new(input: &str) -> ReasoningBuilder {
-        ReasoningBuilder::new()
-            .add_step(input)
-        
+        //ReasoningBuilder::new().add_step(input)
+        ReasoningBuilder::new().multi(vec![input.to_string()])
     }
     // TODO: Deprecate this signature in favor of a parameterless new()
-  
-
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct ReasoningBuilder{
+#[non_exhaustive]
+pub struct ReasoningBuilder {
     pub id: Option<String>,
     pub reasoning: Vec<String>,
 }
-impl ReasoningBuilder{
+impl ReasoningBuilder {
     pub fn new() -> Self {
         Self {
             id: None,
             reasoning: Vec::new(),
         }
     }
-    
-    pub fn multi(mut self,input: Vec<String>) -> Self {
-        
+
+    pub fn multi(mut self, input: Vec<String>) -> Self {
         self.reasoning = input;
         self
-       
     }
+    /*
     pub fn add_step(mut self,step: impl Into<String>)->Self{
         self.reasoning.push(step.into());
         self
     }
-    
+    */
     pub fn optional_id(mut self, id: Option<String>) -> Self {
         self.id = id;
         self
     }
-    
+
     pub fn with_id(mut self, id: String) -> Self {
         self.id = Some(id);
         self
     }
-    pub fn build(self)->Reasoning{
-        Reasoning{
+    pub fn build(self) -> Reasoning {
+        Reasoning {
             id: self.id,
             reasoning: self.reasoning,
         }
