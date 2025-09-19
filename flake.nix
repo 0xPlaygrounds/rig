@@ -4,6 +4,10 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -11,32 +15,32 @@
       self,
       nixpkgs,
       flake-utils,
+      rust-overlay
     }:
-    flake-utils.lib.eachDefaultSystem (
-      system:
-      let
-        pkgs = nixpkgs.legacyPackages.${system};
+    flake-utils.lib.eachDefaultSystem (system:
+      let 
+        overlays = [ (import rust-overlay) ];
+        pkgs = import nixpkgs {
+            inherit system overlays;
+          };
       in
-      {
-        devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [
+      { 
+        devShells.default = with pkgs; mkShell {
+          buildInputs = [
+            pkg-config
+            cmake
+
             openssl
             sqlite
             postgresql
             protobuf
+
+            rust-bin.stable."1.90.0".default
           ];
 
-          nativeBuildInputs = with pkgs; [
-            pkg-config
-            cmake
-
-            cargo
-            rustc
-          ];
-
-          OPENSSL_DEV = pkgs.openssl.dev;
-          OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
-          OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
+          OPENSSL_DEV = openssl.dev;
+          OPENSSL_LIB_DIR = "${openssl.out}/lib";
+          OPENSSL_INCLUDE_DIR = "${openssl.dev}/include";
         };
       }
     );
