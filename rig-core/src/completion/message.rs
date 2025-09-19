@@ -68,6 +68,7 @@ pub enum AssistantContent {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[non_exhaustive]
 pub struct Reasoning {
     pub id: Option<String>,
     pub reasoning: Vec<String>,
@@ -82,21 +83,20 @@ impl Reasoning {
         }
     }
 
+    pub fn optional_id(mut self, id: Option<String>) -> Self {
+        self.id = id;
+        self
+    }
+    pub fn with_id(mut self, id: String) -> Self {
+        self.id = Some(id);
+        self
+    }
+
     pub fn multi(input: Vec<String>) -> Self {
         Self {
             id: None,
             reasoning: input,
         }
-    }
-
-    pub fn optional_id(mut self, id: Option<String>) -> Self {
-        self.id = id;
-        self
-    }
-
-    pub fn with_id(mut self, id: String) -> Self {
-        self.id = Some(id);
-        self
     }
 }
 
