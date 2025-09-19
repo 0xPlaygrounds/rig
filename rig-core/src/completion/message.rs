@@ -92,9 +92,11 @@ impl Reasoning {
         self
     }
 
-    pub fn multi(mut self, input: Vec<String>) -> Self {
-        self.reasoning = input;
-        self
+    pub fn multi(input: Vec<String>) -> Self {
+        Self {
+            id: None,
+            reasoning: input,
+        }
     }
 }
 
