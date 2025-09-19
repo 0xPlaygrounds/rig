@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.20.0...rig-core-v0.21.0) - 2025-09-19
+
+### Added
+
+- *(rig-795)* support file URLs for audio, video, documents ([#823](https://github.com/0xPlaygrounds/rig/pull/823))
+- *(rig-943)* support thinking for cohere ([#827](https://github.com/0xPlaygrounds/rig/pull/827))
+
+### Fixed
+
+- *(rig-950)* openai imagegen doesn't work with gpt-image-1 ([#837](https://github.com/0xPlaygrounds/rig/pull/837))
+- ci lints ([#832](https://github.com/0xPlaygrounds/rig/pull/832))
+
+### Other
+
+- parse NDJSON correctly, fixes #825 ([#826](https://github.com/0xPlaygrounds/rig/pull/826))
+- make Reasoning non-exhaustive ([#830](https://github.com/0xPlaygrounds/rig/pull/830))
+
 ## [0.20.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.19.0...rig-core-v0.20.0) - 2025-09-15
 
 ### Added
