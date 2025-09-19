@@ -54,10 +54,10 @@ use crate::{
     message::{ImageDetail, Text},
     streaming,
 };
-use async_stream::stream;
+use async_stream::try_stream;
 use futures::StreamExt;
 use reqwest;
-use reqwest_eventsource::{Event, RequestBuilderExt};
+// use reqwest_eventsource::{Event, RequestBuilderExt}; // (Not used currently as Ollama does not support SSE)
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{convert::TryFrom, str::FromStr};
@@ -294,32 +294,27 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             "model": self.model,
             "input": docs,
         });
-        let response = self
-            .client
-            .post("api/embed")?
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
-        if response.status().is_success() {
-            let api_resp: EmbeddingResponse = response
-                .json()
-                .await
-                .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
-            if api_resp.embeddings.len() != docs.len() {
-                return Err(EmbeddingError::ResponseError(
-                    "Number of returned embeddings does not match input".into(),
-                ));
-            }
-            Ok(api_resp
-                .embeddings
-                .into_iter()
-                .zip(docs.into_iter())
-                .map(|(vec, document)| embeddings::Embedding { document, vec })
-                .collect())
-        } else {
-            Err(EmbeddingError::ProviderError(response.text().await?))
+        let response = self.client.post("api/embed")?.json(&payload).send().await?;
+
+        if !response.status().is_success() {
+            return Err(EmbeddingError::ProviderError(response.text().await?));
         }
+
+        let bytes = response.bytes().await?;
+
+        let api_resp: EmbeddingResponse = serde_json::from_slice(&bytes)?;
+
+        if api_resp.embeddings.len() != docs.len() {
+            return Err(EmbeddingError::ResponseError(
+                "Number of returned embeddings does not match input".into(),
+            ));
+        }
+        Ok(api_resp
+            .embeddings
+            .into_iter()
+            .zip(docs.into_iter())
+            .map(|(vec, document)| embeddings::Embedding { document, vec })
+            .collect())
     }
 }
 
@@ -535,25 +530,21 @@ impl completion::CompletionModel for CompletionModel {
             .post("api/chat")?
             .json(&request_payload)
             .send()
-            .await
-            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-        if response.status().is_success() {
-            let text = response
-                .text()
-                .await
-                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-            tracing::debug!(target: "rig", "Ollama chat response: {}", text);
-            let chat_resp: CompletionResponse = serde_json::from_str(&text)
-                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-            let conv: completion::CompletionResponse<CompletionResponse> = chat_resp.try_into()?;
-            Ok(conv)
-        } else {
-            let err_text = response
-                .text()
-                .await
-                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-            Err(CompletionError::ProviderError(err_text))
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(CompletionError::ProviderError(response.text().await?));
         }
+
+        let bytes = response.bytes().await?;
+
+        tracing::debug!(target: "rig", "Received response from Ollama: {}", String::from_utf8_lossy(&bytes));
+
+        let chat_resp: CompletionResponse = serde_json::from_slice(&bytes)?;
+
+        let conv: completion::CompletionResponse<CompletionResponse> = chat_resp.try_into()?;
+
+        Ok(conv)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -565,51 +556,34 @@ impl completion::CompletionModel for CompletionModel {
         let mut request_payload = self.create_completion_request(request)?;
         merge_inplace(&mut request_payload, json!({"stream": true}));
 
-        let mut event_source = self
+        let response = self
             .client
             .post("api/chat")?
             .json(&request_payload)
-            .eventsource()
-            .expect("Cloning request must succeed");
+            .send()
+            .await?;
 
-        let stream = Box::pin(stream! {
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => {
-                    tracing::trace!("SSE connection opened");
-                    continue;
-                }
+        if !response.status().is_success() {
+            return Err(CompletionError::ProviderError(response.text().await?));
+        }
 
-                Ok(Event::Message(message)) => {
-                    let data_str = message.data.trim();
+        let stream = Box::pin(try_stream! {
+            let mut byte_stream = response.bytes_stream();
 
-                    let parsed = serde_json::from_str::<CompletionResponse>(data_str);
-                    let Ok(response) = parsed else {
-                        tracing::debug!("Couldn't parse SSE payload as CompletionResponse");
+            while let Some(chunk) = byte_stream.next().await {
+                let bytes = chunk?;
+
+                for line in bytes.split(|&b| b == b'\n') {
+                    if line.is_empty() {
                         continue;
-                    };
-
-                    match response.message {
-                        Message::Assistant { content, tool_calls, .. } => {
-                            if !content.is_empty() {
-                                yield Ok(RawStreamingChoice::Message(content));
-                            }
-
-                            for tool_call in tool_calls {
-                                let function = tool_call.function.clone();
-                                yield Ok(RawStreamingChoice::ToolCall {
-                                    id: "".to_string(),
-                                    name: function.name,
-                                    arguments: function.arguments,
-                                    call_id: None,
-                                });
-                            }
-                        }
-                        _ => continue,
                     }
 
+                    tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(line));
+
+                    let response: CompletionResponse = serde_json::from_slice(line)?;
+
                     if response.done {
-                        yield Ok(RawStreamingChoice::FinalResponse(
+                        yield RawStreamingChoice::FinalResponse(
                             StreamingCompletionResponse {
                                 total_duration: response.total_duration,
                                 load_duration: response.load_duration,
@@ -619,19 +593,26 @@ impl completion::CompletionModel for CompletionModel {
                                 eval_duration: response.eval_duration,
                                 done_reason: response.done_reason,
                             }
-                        ));
+                        );
+                        break;
+                    }
+
+                    if let Message::Assistant { content, tool_calls, .. } = response.message {
+                        if !content.is_empty() {
+                            yield RawStreamingChoice::Message(content);
+                        }
+                        for tool_call in tool_calls {
+                            yield RawStreamingChoice::ToolCall {
+                                id: String::new(),
+                                name: tool_call.function.name,
+                                arguments: tool_call.function.arguments,
+                                call_id: None,
+                            };
+                        }
                     }
                 }
-
-                Err(reqwest_eventsource::Error::StreamEnded) => break,
-
-                Err(err) => {
-                    tracing::error!(?err, "SSE error");
-                    yield Err(CompletionError::ResponseError(err.to_string()));
-                    break;
-                }
-            };
-        }});
+            }
+        });
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
