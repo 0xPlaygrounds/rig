@@ -1,5 +1,6 @@
 use crate::image_generation;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+use crate::json_utils::merge_inplace;
 use crate::providers::openai::{ApiResponse, Client};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
@@ -69,12 +70,20 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
         generation_request: ImageGenerationRequest,
     ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
     {
-        let request = json!({
+        let mut request = json!({
             "model": self.model,
             "prompt": generation_request.prompt,
             "size": format!("{}x{}", generation_request.width, generation_request.height),
-            "response_format": "b64_json"
         });
+
+        if self.model != *"gpt-image-1" {
+            merge_inplace(
+                &mut request,
+                json!({
+                    "response_format": "b64_json"
+                }),
+            );
+        }
 
         let response = self
             .client
