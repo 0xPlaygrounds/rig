@@ -1,0 +1,19 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+  otlphttp/langfuse:
+    endpoint: "https://cloud.langfuse.com/api/public/otel"
+    headers:
+      Authorization: "Basic ${AUTH_STRING}"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlphttp/langfuse, debug]

@@ -17,6 +17,7 @@ use crate::one_or_many::string_or_one_or_many;
 use crate::{OneOrMany, completion, message};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use tracing::{Instrument, info_span};
 
 use std::convert::Infallible;
 use std::ops::Add;
@@ -976,22 +977,65 @@ impl completion::CompletionModel for ResponsesCompletionModel {
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
-        let request = self.create_completion_request(completion_request)?;
-        let request = serde_json::to_value(request)?;
-
-        tracing::debug!("OpenAI input: {}", serde_json::to_string_pretty(&request)?);
-
-        let response = self.client.post("/responses").json(&request).send().await?;
-
-        if response.status().is_success() {
-            let t = response.text().await?;
-            tracing::debug!(target: "rig", "OpenAI response: {}", t);
-
-            let response = serde_json::from_str::<Self::Response>(&t)?;
-            response.try_into()
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = tracing::field::Empty,
+                gen_ai.request.model = tracing::field::Empty,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            tracing::Span::current()
+        };
+
+        span.record("gen_ai.provider.name", "openai");
+        span.record("gen_ai.request.model", &self.model);
+        let request = self.create_completion_request(completion_request)?;
+        span.record(
+            "gen_ai.input.messages",
+            serde_json::to_string(&request.input)
+                .expect("openai request to successfully turn into a JSON value"),
+        );
+        let request_json = serde_json::to_value(request.clone())?;
+
+        async move {
+            let response = self
+                .client
+                .post("/responses")
+                .json(&request_json)
+                .send()
+                .await?;
+
+            if response.status().is_success() {
+                let t = response.text().await?;
+                let response = serde_json::from_str::<Self::Response>(&t)?;
+                let span = tracing::Span::current();
+                span.record(
+                    "gen_ai.output.messages",
+                    serde_json::to_string(&response.output).unwrap(),
+                );
+                span.record("gen_ai.response.id", &response.id);
+                span.record("gen_ai.response.model", &response.model);
+                if let Some(ref usage) = response.usage {
+                    span.record("gen_ai.usage.output_tokens", usage.output_tokens);
+                    span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+                }
+                // We need to call the event here to get the span to actually send anything
+                tracing::info!("API successfully called");
+                response.try_into()
+            } else {
+                Err(CompletionError::ProviderError(response.text().await?))
+            }
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

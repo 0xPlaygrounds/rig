@@ -228,7 +228,6 @@ impl<M> Prompt for Agent<M>
 where
     M: CompletionModel,
 {
-    #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
     fn prompt(
         &self,
         prompt: impl Into<Message> + Send,

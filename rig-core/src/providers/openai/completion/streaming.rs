@@ -72,13 +72,15 @@ impl CompletionModel {
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
-        let mut request = self.create_completion_request(completion_request)?;
-        request = merge(
-            request,
+        let request = super::CompletionRequest::try_from((self.model.clone(), completion_request))?;
+        let mut request_as_json = serde_json::to_value(request).expect("this should never fail");
+
+        request_as_json = merge(
+            request_as_json,
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
 
-        let builder = self.client.post("/chat/completions").json(&request);
+        let builder = self.client.post("/chat/completions").json(&request_as_json);
         send_compatible_streaming_request(builder).await
     }
 }
