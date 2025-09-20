@@ -250,19 +250,31 @@ where
     M: CompletionModel,
     P: PromptHook<M>,
 {
-    #[tracing::instrument(skip(self), fields(agent_name = self.agent.name()))]
+    #[tracing::instrument(skip(self),
+        name = "invoke_agent"
+        fields(
+        gen_ai.operation.name = "invoke_agent",
+        gen_ai.agent.name = self.agent.name(),
+        gen_ai.prompt = tracing::field::Empty,
+        gen_ai.completion = tracing::field::Empty,
+    ))]
     async fn send(self) -> Result<PromptResponse, PromptError> {
+        let agent_span = tracing::Span::current();
         let agent = self.agent;
         let chat_history = if let Some(history) = self.chat_history {
-            history.push(self.prompt);
+            history.push(self.prompt.to_owned());
             history
         } else {
-            &mut vec![self.prompt]
+            &mut vec![self.prompt.to_owned()]
         };
+
+        if let Some(text) = self.prompt.rag_text() {
+            agent_span.record("gen_ai.prompt", text);
+        }
 
         let mut current_max_depth = 0;
         let mut usage = Usage::new();
-        let current_span_id: Option<AtomicU64> = None;
+        let current_span_id: AtomicU64 = AtomicU64::new(0);
 
         // We need to do at least 2 loops for 1 roundtrip (user expects normal message)
         let last_prompt = loop {
@@ -305,17 +317,15 @@ where
                 gen_ai.output.messages = tracing::field::Empty,
             );
 
-            let chat_span = if let Some(id) = &current_span_id {
-                let id = Id::from_u64(id.load(Ordering::SeqCst));
+            let chat_span = if current_span_id.load(Ordering::SeqCst) != 0 {
+                let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
                 chat_span.follows_from(id).to_owned()
             } else {
                 chat_span
             };
 
-            if let Some(id) = chat_span.id()
-                && let Some(atomic) = &current_span_id
-            {
-                atomic.store(id.into_u64(), Ordering::SeqCst);
+            if let Some(id) = chat_span.id() {
+                current_span_id.store(id.into_u64(), Ordering::SeqCst);
             };
 
             let resp = agent
@@ -361,6 +371,8 @@ where
                     tracing::info!("Depth reached: {}/{}", current_max_depth, self.max_depth);
                 }
 
+                agent_span.record("gen_ai.completion", &merged_texts);
+
                 // If there are no tool calls, depth is not relevant, we can just return the merged text response.
                 return Ok(PromptResponse::new(merged_texts, usage));
             }
@@ -381,17 +393,15 @@ where
                         gen_ai.tool.call.result = tracing::field::Empty
                     );
 
-                    let tool_span = if let Some(id) = &current_span_id {
-                        let id = Id::from_u64(id.load(Ordering::SeqCst));
+                    let tool_span = if current_span_id.load(Ordering::SeqCst) != 0 {
+                        let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
                         tool_span.follows_from(id).to_owned()
                     } else {
                         tool_span
                     };
 
-                    if let Some(id) = tool_span.id()
-                        && let Some(atomic) = &current_span_id
-                    {
-                        atomic.store(id.into_u64(), Ordering::SeqCst);
+                    if let Some(id) = tool_span.id() {
+                        current_span_id.store(id.into_u64(), Ordering::SeqCst);
                     };
 
                     async move {

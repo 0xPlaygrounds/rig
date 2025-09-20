@@ -4,6 +4,14 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+processors:
+  transform:
+    trace_statements:
+      - context: span
+        statements:
+          # Rename span if it's "invoke_agent" and has an agent attribute
+          - set(name, attributes["gen_ai.agent.name"]) where name == "invoke_agent" and attributes["gen_ai.agent.name"] != nil
+
 exporters:
   debug:
     verbosity: detailed
@@ -16,4 +24,5 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
+      processors: [transform]
       exporters: [otlphttp/langfuse, debug]

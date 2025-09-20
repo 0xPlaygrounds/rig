@@ -8,11 +8,11 @@ use crate::streaming;
 use crate::streaming::RawStreamingChoice;
 use async_stream::stream;
 use futures::StreamExt;
-use reqwest::RequestBuilder;
 use reqwest_eventsource::Event;
 use reqwest_eventsource::RequestBuilderExt;
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+use tracing::{debug, info_span};
+use tracing_futures::Instrument as _;
 
 use super::{CompletionResponse, Output};
 
@@ -200,116 +200,138 @@ impl ResponsesCompletionModel {
         let mut request = self.create_completion_request(completion_request)?;
         request.stream = Some(true);
 
-        tracing::debug!("Input: {}", serde_json::to_string_pretty(&request)?);
+        let request_builder = self.client.post("/responses").json(&request);
 
-        let builder = self.client.post("/responses").json(&request);
-        send_compatible_streaming_request(builder).await
-    }
-}
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = tracing::field::Empty,
+                gen_ai.request.model = tracing::field::Empty,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+        span.record("gen_ai.provider.name", "openai");
+        span.record("gen_ai.request.model", &self.model);
+        span.record(
+            "gen_ai.input.messages",
+            serde_json::to_string(&request.input).expect("This should always work"),
+        );
+        // Build the request with proper headers for SSE
+        let mut event_source = request_builder
+            .eventsource()
+            .expect("Cloning request must always succeed");
 
-/// Send a compatible streaming request.
-/// The following are assumed to already be set:
-/// - The URL to send a POST request to
-/// - The JSON body
-pub async fn send_compatible_streaming_request(
-    request_builder: RequestBuilder,
-) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError> {
-    // Build the request with proper headers for SSE
-    let mut event_source = request_builder
-        .eventsource()
-        .expect("Cloning request must always succeed");
+        let stream = Box::pin(stream! {
+            let mut final_usage = ResponsesUsage::new();
 
-    let stream = Box::pin(stream! {
-        let mut final_usage = ResponsesUsage::new();
+            let mut tool_calls: Vec<RawStreamingChoice<StreamingCompletionResponse>> = Vec::new();
+            let mut combined_text = String::new();
+            let span = tracing::Span::current();
 
-        let mut tool_calls: Vec<RawStreamingChoice<StreamingCompletionResponse>> = Vec::new();
-
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => {
-                    tracing::trace!("SSE connection opened");
-                    continue;
-                }
-                Ok(Event::Message(message)) => {
-                    // Skip heartbeat messages or empty data
-                    if message.data.trim().is_empty() {
+            while let Some(event_result) = event_source.next().await {
+                match event_result {
+                    Ok(Event::Open) => {
+                        tracing::trace!("SSE connection opened");
                         continue;
                     }
-
-                    let data = serde_json::from_str::<StreamingCompletionChunk>(&message.data);
-
-                    let Ok(data) = data else {
-                        let err = data.unwrap_err();
-                        debug!("Couldn't serialize data as StreamingCompletionResponse: {:?}", err);
-                        continue;
-                    };
-
-                    if let StreamingCompletionChunk::Delta(chunk) = &data {
-                        match &chunk.data {
-                            ItemChunkKind::OutputItemDone(message) => {
-                                match message {
-                                    StreamingItemDoneOutput {  item: Output::FunctionCall(func), .. } => {
-                                        tracing::debug!("Function call received: {func:?}");
-                                        tool_calls.push(streaming::RawStreamingChoice::ToolCall { id: func.id.clone(), call_id: Some(func.call_id.clone()), name: func.name.clone(), arguments: func.arguments.clone() });
-                                    }
-
-                                    StreamingItemDoneOutput {  item: Output::Reasoning {  summary, id }, .. } => {
-                                        let reasoning = summary
-                                            .iter()
-                                            .map(|x| {
-                                                let ReasoningSummary::SummaryText { text } = x;
-                                                text.to_owned()
-                                            })
-                                            .collect::<Vec<String>>()
-                                            .join("\n");
-                                        yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning, id: Some(id.to_string()) })
-                                    }
-                                    _ => continue
-                                }
-                            }
-                            ItemChunkKind::OutputTextDelta(delta) => {
-                                yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
-                            }
-                            ItemChunkKind::RefusalDelta(delta) => {
-                                yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
-                            }
-
-                            _ => { continue }
-                        }
-                    }
-
-                    if let StreamingCompletionChunk::Response(chunk) = data {
-                        if let ResponseChunk { kind: ResponseChunkKind::ResponseCompleted, response, .. } = *chunk {
-                            if let Some(usage) = response.usage {
-                                final_usage = usage;
-                            }
-                        } else {
+                    Ok(Event::Message(message)) => {
+                        // Skip heartbeat messages or empty data
+                        if message.data.trim().is_empty() {
                             continue;
                         }
+
+                        let data = serde_json::from_str::<StreamingCompletionChunk>(&message.data);
+
+                        let Ok(data) = data else {
+                            let err = data.unwrap_err();
+                            debug!("Couldn't serialize data as StreamingCompletionResponse: {:?}", err);
+                            continue;
+                        };
+
+                        if let StreamingCompletionChunk::Delta(chunk) = &data {
+                            match &chunk.data {
+                                ItemChunkKind::OutputItemDone(message) => {
+                                    match message {
+                                        StreamingItemDoneOutput {  item: Output::FunctionCall(func), .. } => {
+                                            tool_calls.push(streaming::RawStreamingChoice::ToolCall { id: func.id.clone(), call_id: Some(func.call_id.clone()), name: func.name.clone(), arguments: func.arguments.clone() });
+                                        }
+
+                                        StreamingItemDoneOutput {  item: Output::Reasoning {  summary, id }, .. } => {
+                                            let reasoning = summary
+                                                .iter()
+                                                .map(|x| {
+                                                    let ReasoningSummary::SummaryText { text } = x;
+                                                    text.to_owned()
+                                                })
+                                                .collect::<Vec<String>>()
+                                                .join("\n");
+                                            yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning, id: Some(id.to_string()) })
+                                        }
+                                        _ => continue
+                                    }
+                                }
+                                ItemChunkKind::OutputTextDelta(delta) => {
+                                    combined_text.push_str(&delta.delta);
+                                    yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
+                                }
+                                ItemChunkKind::RefusalDelta(delta) => {
+                                    combined_text.push_str(&delta.delta);
+                                    yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
+                                }
+
+                                _ => { continue }
+                            }
+                        }
+
+                        if let StreamingCompletionChunk::Response(chunk) = data {
+                            if let ResponseChunk { kind: ResponseChunkKind::ResponseCompleted, response, .. } = *chunk {
+                                span.record("gen_ai.output.messages", serde_json::to_string(&response.output).unwrap());
+                                span.record("gen_ai.response.id", response.id);
+                                span.record("gen_ai.response.model", response.model);
+                                if let Some(usage) = response.usage {
+                                    final_usage = usage;
+                                }
+                            } else {
+                                continue;
+                            }
+                        }
+                    }
+                    Err(reqwest_eventsource::Error::StreamEnded) => {
+                        break;
+                    }
+                    Err(error) => {
+                        tracing::error!(?error, "SSE error");
+                        yield Err(CompletionError::ResponseError(error.to_string()));
+                        break;
                     }
                 }
-                Err(reqwest_eventsource::Error::StreamEnded) => {
-                    break;
-                }
-                Err(error) => {
-                    tracing::error!(?error, "SSE error");
-                    yield Err(CompletionError::ResponseError(error.to_string()));
-                    break;
-                }
             }
-        }
 
-        // Ensure event source is closed when stream ends
-        event_source.close();
+            // Ensure event source is closed when stream ends
+            event_source.close();
 
-        for tool_call in &tool_calls {
-            yield Ok(tool_call.to_owned())
-        }
+            for tool_call in &tool_calls {
+                yield Ok(tool_call.to_owned())
+            }
 
-        yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-            usage: final_usage.clone()
-        }));
-    });
+            span.record("gen_ai.usage.input_tokens", final_usage.input_tokens);
+            span.record("gen_ai.usage.output_tokens", final_usage.output_tokens);
+            tracing::info!("OpenAI stream finished");
 
-    Ok(streaming::StreamingCompletionResponse::stream(stream))
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                usage: final_usage.clone()
+            }));
+        }.instrument(span));
+
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
+    }
 }

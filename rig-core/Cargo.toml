@@ -43,6 +43,7 @@ worker = { workspace = true, optional = true }
 rmcp = { version = "0.6", optional = true, features = ["client"] }
 reqwest-eventsource = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
+tracing-futures = { version = "0.2.5", features = ["futures-03"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }

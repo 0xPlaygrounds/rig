@@ -1,24 +1,15 @@
-//! Agent multi-turn with tools, but with a tracing subscriber that sends all logs/traces to an OTel collector.
-//! Note that if the tool runs too fast, a given observability platform may put traces in the wrong order
-//! hence the delay.
-//!
-//! In production, this is very unlikely to be a problem as many of the tools used may include MCP servers and other long-running
-//! operations, which may cause issues.
-use std::time::Duration;
-
 use anyhow::Result;
+use rig::agent::stream_to_stdout;
+use rig::prelude::*;
+
+use rig::{completion::ToolDefinition, providers, streaming::StreamingPrompt, tool::Tool};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::trace::SdkTracerProvider;
-use rig::prelude::*;
-use rig::{
-    completion::{Prompt, ToolDefinition},
-    providers,
-    tool::Tool,
-};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 use tracing::Level;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -35,6 +26,7 @@ struct MathError;
 
 #[derive(Deserialize, Serialize)]
 struct Adder;
+
 impl Tool for Adder {
     const NAME: &'static str = "add";
     type Error = MathError;
@@ -63,7 +55,6 @@ impl Tool for Adder {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        println!("[tool-call] Adding {} and {}", args.x, args.y);
         let result = args.x + args.y;
         Ok(result)
     }
@@ -95,18 +86,13 @@ impl Tool for Subtract {
                     }
                 },
                 "required": ["x", "y"],
-            },
+            }
         }))
         .expect("Tool Definition")
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        println!("[tool-call] Subtracting {} from {}", args.y, args.x);
         let result = args.x - args.y;
-        // Sleep for 1 microsecond to allow simulating a more compute-heavy tool
-        // Tools with <1ms execution time can get mixed up in tracing order on
-        // observability backend platforms
-        tokio::time::sleep(Duration::from_micros(1)).await;
         Ok(result)
     }
 }
@@ -140,25 +126,26 @@ async fn main() -> Result<(), anyhow::Error> {
         .with(otel_layer)
         .init();
 
-    // Create OpenAI client
-    let openai_client = providers::openai::Client::from_env();
-
     // Create agent with a single context prompt and two tools
-    let calculator_agent = openai_client
+    let calculator_agent = providers::openai::Client::from_env()
         .agent(providers::openai::GPT_4O)
-        .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
+        .preamble(
+            "You are a calculator here to help the user perform arithmetic
+            operations. Use the tools provided to answer the user's question.
+            make your answer long, so we can test the streaming functionality,
+            like 20 words",
+        )
         .max_tokens(1024)
         .tool(Adder)
         .tool(Subtract)
         .build();
 
-    // Prompt the agent and print the response
-    println!("Calculate 2 - 5");
+    let mut stream = calculator_agent.stream_prompt("Calculate 2 - 5").await;
 
-    println!(
-        "OpenAI Calculator Agent: {}",
-        calculator_agent.prompt("Calculate 2 - 5").await?
-    );
+    let res = stream_to_stdout(&mut stream).await?;
+
+    println!("Token usage response: {usage:?}", usage = res.usage());
+    println!("Final text response: {message:?}", message = res.response());
 
     let _ = provider.shutdown();
 
