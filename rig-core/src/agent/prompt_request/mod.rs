@@ -257,6 +257,8 @@ where
         gen_ai.agent.name = self.agent.name(),
         gen_ai.prompt = tracing::field::Empty,
         gen_ai.completion = tracing::field::Empty,
+        gen_ai.usage.input_tokens = tracing::field::Empty,
+        gen_ai.usage.output_tokens = tracing::field::Empty,
     ))]
     async fn send(self) -> Result<PromptResponse, PromptError> {
         let agent_span = tracing::Span::current();
@@ -372,6 +374,8 @@ where
                 }
 
                 agent_span.record("gen_ai.completion", &merged_texts);
+                agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+                agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
 
                 // If there are no tool calls, depth is not relevant, we can just return the merged text response.
                 return Ok(PromptResponse::new(merged_texts, usage));

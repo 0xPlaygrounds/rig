@@ -138,6 +138,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .max_tokens(1024)
         .tool(Adder)
         .tool(Subtract)
+        .name("Bob")
         .build();
 
     let mut stream = calculator_agent.stream_prompt("Calculate 2 - 5").await;

@@ -241,6 +241,7 @@ impl ResponsesCompletionModel {
                 match event_result {
                     Ok(Event::Open) => {
                         tracing::trace!("SSE connection opened");
+                        tracing::info!("OpenAI stream started");
                         continue;
                     }
                     Ok(Event::Message(message)) => {
