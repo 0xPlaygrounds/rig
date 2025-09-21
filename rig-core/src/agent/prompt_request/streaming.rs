@@ -152,19 +152,21 @@ where
         }
     }
 
-    #[tracing::instrument(skip(self),
-        name = "invoke_agent"
-        fields(
-        gen_ai.operation.name = "invoke_agent",
-        gen_ai.agent.name = self.agent.name(),
-        gen_ai.prompt = tracing::field::Empty,
-        gen_ai.completion = tracing::field::Empty,
-        gen_ai.usage.input_tokens = tracing::field::Empty,
-        gen_ai.usage.output_tokens = tracing::field::Empty,
-    ))]
     #[cfg_attr(feature = "worker", worker::send)]
     async fn send(self) -> StreamingResult<M::StreamingResponse> {
-        let agent_span = tracing::Span::current();
+        let agent_span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                "invoke_agent",
+                gen_ai.operation.name = "invoke_agent",
+                gen_ai.agent.name = self.agent.name(),
+                gen_ai.prompt = tracing::field::Empty,
+                gen_ai.completion = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
 
         let prompt = self.prompt;
         if let Some(text) = prompt.rag_text() {
@@ -189,6 +191,7 @@ where
         let mut aggregated_usage = crate::completion::Usage::new();
 
         Box::pin(async_stream::stream! {
+            let _guard = agent_span.enter();
             let mut current_prompt = prompt.clone();
             let mut did_call_tool = false;
 
@@ -381,7 +384,7 @@ where
                 }).into());
             }
 
-        }.instrument(agent_span))
+        })
     }
 }
 
