@@ -347,14 +347,12 @@ pub mod turbomcp {
     use crate::tool::ToolDyn;
     use crate::tool::ToolError;
     use std::pin::Pin;
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
     use futures::Future;
     use tracing::{debug, warn};
 
-    pub struct TurboMcpTool {
+    pub struct TurboMcpTool<C> {
         definition: turbomcp_protocol::types::Tool,
-        client: Arc<dyn TurboMcpClient>,
+        client: C,
     }
     
     /// Trait abstraction over TurboMCP client to avoid exposing transport details
@@ -374,7 +372,7 @@ pub mod turbomcp {
     /// - **Custom middleware** for cross-cutting concerns
     /// 
     /// All plugin benefits are transparent to Rig - no code changes needed!
-    pub trait TurboMcpClient: Send + Sync {
+    pub trait TurboMcpClient: Send + Sync + Clone {
         /// Call a tool on the MCP server
         /// 
         /// This method automatically benefits from any registered plugins:
@@ -418,19 +416,15 @@ pub mod turbomcp {
         }
     }
     
-    /// Implementation for any concrete TurboMCP client
-    /// 
-    /// This implementation automatically benefits from TurboMCP v1.0.8's plugin system:
-    /// - Automatic retry logic (if RetryPlugin is registered)
-    /// - Response caching (if CachePlugin is registered)  
-    /// - Metrics collection (if MetricsPlugin is registered)
-    /// - Custom middleware (if custom plugins are registered)
-    impl<T: turbomcp_transport::Transport> TurboMcpClient for Mutex<turbomcp_client::Client<T>> {
-        fn call_tool(&self, name: &str, arguments: serde_json::Value) 
+    /// Re-export TurboMCP's SharedClient for convenience
+    pub use turbomcp_client::SharedClient;
+
+    impl<T: turbomcp_transport::Transport + Send + 'static> TurboMcpClient for SharedClient<T> {
+        fn call_tool(&self, name: &str, arguments: serde_json::Value)
             -> Pin<Box<dyn Future<Output = turbomcp_core::Result<serde_json::Value>> + Send + '_>> {
             let name = name.to_string();
+            let client = self.clone(); // SharedClient is Clone!
             Box::pin(async move {
-                let mut client = self.lock().await;
                 // Convert serde_json::Value to Option<HashMap<String, serde_json::Value>>
                 let args = if arguments.is_object() {
                     arguments.as_object()
@@ -438,14 +432,15 @@ pub mod turbomcp {
                 } else {
                     None
                 };
+                // SharedClient provides clean async access - no lock().await needed!
                 // This call automatically goes through the plugin middleware pipeline
                 client.call_tool(&name, args).await
             })
         }
         
         fn has_plugin(&self, name: &str) -> bool {
-            // TurboMCP 1.0.8+ provides client.has_plugin() method
-            // However, this trait method is sync while the client method is async
+            // TurboMCP 1.0.9+ SharedClient provides comprehensive shared wrapper system
+            // Note: This trait method is sync while SharedClient methods are async
             // Conservative assumption: return true for known plugin types
             // In practice, plugin presence should be checked at agent setup time
             match name {
@@ -453,26 +448,29 @@ pub mod turbomcp {
                 _ => false,
             }
         }
-        
+
         fn plugin_info(&self) -> Vec<String> {
-            // TurboMCP 1.0.8+ provides client.get_plugin() method for detailed plugin info
+            // TurboMCP 1.0.9+ SharedClient with comprehensive shared wrapper system
             // This sync method provides general information about available plugin types
-            // For real-time plugin status, use the async client.has_plugin() method
+            // For real-time plugin status, use the async SharedClient methods
             vec![
-                "Available plugin types in TurboMCP 1.0.8:".to_string(),
+                "Available plugin types in TurboMCP 1.0.9:".to_string(),
                 "• metrics: Request/response metrics collection with detailed statistics".to_string(),
                 "• retry: Automatic retry with exponential backoff and configurable policies".to_string(),
                 "• cache: Response caching with TTL, LRU eviction, and hit/miss tracking".to_string(),
                 "• OAuth 2.1: RFC-compliant OAuth integration for secure authentication".to_string(),
+                "• SharedClient: Official shared wrapper eliminating Arc/Mutex complexity".to_string(),
+                "• SharedTransport: Thread-safe transport layer sharing".to_string(),
+                "• SharedServer: Concurrent server management capabilities".to_string(),
                 "Note: Use ClientBuilder.with_plugin() to register plugins at client creation".to_string()
             ]
         }
     }
 
-    impl TurboMcpTool {
+    impl<C> TurboMcpTool<C> {
         pub fn from_mcp_server(
             definition: turbomcp_protocol::types::Tool,
-            client: Arc<dyn TurboMcpClient>,
+            client: C,
         ) -> Self {
             Self { definition, client }
         }
@@ -524,7 +522,7 @@ pub mod turbomcp {
         }
     }
 
-    impl ToolDyn for TurboMcpTool {
+    impl<C: TurboMcpClient + 'static> ToolDyn for TurboMcpTool<C> {
         fn name(&self) -> String {
             self.definition.name.clone()
         }
