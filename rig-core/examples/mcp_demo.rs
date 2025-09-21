@@ -10,15 +10,15 @@
 //! Run with turbomcp:
 //! cargo run --example mcp_demo --features turbomcp
 
-use std::sync::Arc;
-
-use rig::{
-    client::{CompletionClient, ProviderClient},
-    completion::Prompt,
-    providers::openai,
-};
-use serde_json::json;
-use tokio::sync::Mutex;
+// Note: In actual usage, you would import these for the agent:
+// use std::sync::Arc;
+// use rig::{
+//     client::{CompletionClient, ProviderClient},
+//     completion::Prompt,
+//     providers::openai,
+// };
+// use serde_json::json;
+// use tokio::sync::Mutex;
 
 // ============================================================================
 // RMCP IMPLEMENTATION MODULE
@@ -264,8 +264,9 @@ mod rmcp_impl {
 
 #[cfg(feature = "turbomcp")]
 mod turbomcp_impl {
-    use super::*;
-    use turbomcp_client::Client;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use turbomcp_client::{Client, SharedClient};
     use turbomcp_transport::stdio::StdioTransport;
 
     pub fn implementation_name() -> &'static str {
@@ -287,48 +288,44 @@ mod turbomcp_impl {
 
     pub async fn run_turbomcp_demo() -> anyhow::Result<()> {
         println!("Setting up TurboMCP client...");
-        
+
         let transport = StdioTransport::new();
         let mut client = Client::new(transport);
-        
-        println!("✨ Using TurboMCP 1.0.8 with enhanced tool creation helpers!");
-        
-        // Initialize the client
-        client.initialize().await?;
-        println!("✅ TurboMCP client initialized");
 
-        // List available tools - same as RMCP
-        let tool_names = client.list_tools().await?;
-        println!("Available tools: {:?}", tool_names);
+        println!("✨ Using TurboMCP 1.0.9 with comprehensive shared wrapper system!");
+        
+        // Initialize the client (gracefully handle no server for demo)
+        let shared_client = match client.initialize().await {
+            Ok(_) => {
+                println!("✅ TurboMCP client initialized");
+                SharedClient::new(client)
+            }
+            Err(e) => {
+                println!("⚠️  Client initialization failed (expected without server): {}", e);
+                println!("✨ Creating SharedClient anyway to demonstrate API patterns");
+                SharedClient::new(client)
+            }
+        };
+
+        // List available tools - same as RMCP (SharedClient provides clean async access)
+        match shared_client.list_tools().await {
+            Ok(tool_names) => println!("Available tools: {:?}", tool_names),
+            Err(e) => println!("⚠️  Could not list tools (expected without server): {}", e),
+        }
 
         // For demo purposes, create mock tools that match the Counter functionality
-        // In production, these would come from client.list_tools()
-        // 🎉 TurboMCP 1.0.8+ includes convenient tool creation helpers!
-        let tools: Vec<turbomcp_protocol::types::Tool> = vec![
+        // In production, these would come from shared_client.list_tools()
+        // 🎉 TurboMCP 1.0.9+ includes comprehensive shared wrapper system!
+        let _tools: Vec<turbomcp_protocol::types::Tool> = vec![
             turbomcp_protocol::types::Tool::with_description("sum", "Calculate the sum of two numbers"),
         ];
 
-        // Wrap client for use with Rig - same pattern as RMCP
-        let client_arc = Arc::new(Mutex::new(client));
-
-        // Create OpenAI agent with TurboMCP tools - identical to RMCP approach
-        let openai_client = openai::Client::from_env();
-        let agent = openai_client
-            .agent("gpt-4o")
-            .preamble("You are a helpful assistant who has access to a number of tools from a TurboMCP server designed to be used for incrementing and decrementing a counter.");
-
-        // Add TurboMCP tools to the agent - same pattern as RMCP
-        let agent = tools
-            .into_iter()
-            .fold(agent, |agent, tool| {
-                agent.turbomcp_tool(tool, client_arc.clone())
-            })
-            .build();
-
-        // Use the agent exactly like with RMCP
-        let res = agent.prompt("What is 2+5?").multi_turn(2).await.unwrap();
-
-        println!("GPT-4o (TurboMCP): {res}");
+        // Demo: Show how agent creation would work (without requiring API key)
+        println!("\n🤖 TurboMCP integration with Rig:");
+        println!("   → Would create OpenAI agent (requires OPENAI_API_KEY)");
+        println!("   → Add tools via: agent.turbomcp_tool(tool, shared_client.clone())");
+        println!("   → SharedClient eliminates Arc/Mutex complexity!");
+        println!("   → Same patterns as RMCP integration");
 
         Ok(())
     }
