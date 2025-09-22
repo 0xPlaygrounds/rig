@@ -3,7 +3,6 @@ use serde_json::{Value, json};
 use std::{convert::Infallible, str::FromStr};
 
 use super::client::Client;
-use crate::message::DocumentSourceKind;
 use crate::providers::openai::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
