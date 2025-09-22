@@ -169,7 +169,7 @@ pub struct Image {
 
 /// The kind of image source (to be used).
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "type", content = "value", rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum DocumentSourceKind {
     /// A file URL/URI.
