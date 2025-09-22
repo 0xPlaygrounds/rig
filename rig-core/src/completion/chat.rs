@@ -15,8 +15,6 @@ pub struct AgentImpl<M: CompletionModel + 'static> {
     agent: Agent<M>,
     multi_turn_depth: usize,
     show_usage: bool,
-    // This *could* hold total usage?
-    // Currently it's per-request but maybe that's not what we want
     usage: Usage,
 }
 
@@ -27,8 +25,6 @@ pub struct ChatBot<T>(T);
 /// Trait to abstract message behavior away from cli_chat/`run` loop
 #[allow(private_interfaces)]
 trait CliChat {
-    // Handles printing responses so we can minimize TTFT
-    // but still returns a string so that the history can be managed elsewhere
     async fn request(&mut self, prompt: &str, history: Vec<Message>)
     -> Result<String, PromptError>;
 
