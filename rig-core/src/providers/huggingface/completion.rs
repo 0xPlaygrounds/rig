@@ -296,8 +296,15 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::UserContent::Text(text) => {
                                 Ok(UserContent::Text { text: text.text })
                             }
+                            message::UserContent::Image(image) => {
+                                let url = image.try_into_url()?;
+
+                                Ok(UserContent::ImageUrl {
+                                    image_url: ImageUrl { url },
+                                })
+                            }
                             _ => Err(message::MessageError::ConversionError(
-                                "Huggingface does not support non-text".into(),
+                                "Huggingface inputs only support text and image URLs (both base64-encoded images and regular URLs)".into(),
                             )),
                         })?,
                     }])

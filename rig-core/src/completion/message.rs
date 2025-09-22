@@ -167,6 +167,30 @@ pub struct Image {
     pub additional_params: Option<serde_json::Value>,
 }
 
+impl Image {
+    pub fn try_into_url(self) -> Result<String, MessageError> {
+        match self.data {
+            DocumentSourceKind::Url(url) => Ok(url),
+            DocumentSourceKind::Base64(data) => {
+                let Some(media_type) = self.media_type else {
+                    return Err(MessageError::ConversionError(
+                        "A media type is required to create a valid base64-encoded image URL"
+                            .to_string(),
+                    ));
+                };
+
+                Ok(format!(
+                    "data:image/{ty};base64,{data}",
+                    ty = media_type.to_mime_type()
+                ))
+            }
+            unknown => Err(MessageError::ConversionError(format!(
+                "Tried to convert unknown type to a URL: {unknown:?}"
+            ))),
+        }
+    }
+}
+
 /// The kind of image source (to be used).
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 #[serde(tag = "type", rename_all = "camelCase")]
