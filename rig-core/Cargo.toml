@@ -91,7 +91,6 @@ rayon = ["dep:rayon"]
 worker = ["dep:worker"]
 rmcp = ["dep:rmcp"]
 turbomcp = ["dep:turbomcp-client", "dep:turbomcp-protocol", "dep:turbomcp-transport", "dep:turbomcp-core"]
-all-mcp = ["rmcp", "turbomcp"]
 socks = ["reqwest/socks"]
 # Replace "default-tls" with "rustls-tls" in "reqwest/default"
 reqwest-rustls = [
