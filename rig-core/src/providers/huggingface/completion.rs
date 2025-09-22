@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 use std::{convert::Infallible, str::FromStr};
 
 use super::client::Client;
+use crate::message::DocumentSourceKind;
 use crate::providers::openai::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
@@ -296,8 +297,15 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::UserContent::Text(text) => {
                                 Ok(UserContent::Text { text: text.text })
                             }
+                            message::UserContent::Image(image) => {
+                                let url = image.try_get_url()?;
+
+                                Ok(UserContent::ImageUrl {
+                                    image_url: ImageUrl { url },
+                                })
+                            }
                             _ => Err(message::MessageError::ConversionError(
-                                "Huggingface does not support non-text".into(),
+                                "Huggingface inputs only support text and image URLs (both base64-encoded images and regular URLs)".into(),
                             )),
                         })?,
                     }])
