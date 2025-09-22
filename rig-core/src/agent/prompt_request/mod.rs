@@ -250,18 +250,22 @@ where
     M: CompletionModel,
     P: PromptHook<M>,
 {
-    #[tracing::instrument(skip(self),
-        name = "invoke_agent"
-        fields(
-        gen_ai.operation.name = "invoke_agent",
-        gen_ai.agent.name = self.agent.name(),
-        gen_ai.prompt = tracing::field::Empty,
-        gen_ai.completion = tracing::field::Empty,
-        gen_ai.usage.input_tokens = tracing::field::Empty,
-        gen_ai.usage.output_tokens = tracing::field::Empty,
-    ))]
     async fn send(self) -> Result<PromptResponse, PromptError> {
-        let agent_span = tracing::Span::current();
+        let agent_span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                "invoke_agent",
+                gen_ai.operation.name = "invoke_agent",
+                gen_ai.agent.name = self.agent.name(),
+                gen_ai.system_instructions = self.agent.preamble,
+                gen_ai.prompt = tracing::field::Empty,
+                gen_ai.completion = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
         let agent = self.agent;
         let chat_history = if let Some(history) = self.chat_history {
             history.push(self.prompt.to_owned());
@@ -309,6 +313,7 @@ where
                 parent: &span,
                 "chat",
                 gen_ai.operation.name = "chat",
+                gen_ai.system_instructions = self.agent.preamble,
                 gen_ai.provider.name = tracing::field::Empty,
                 gen_ai.request.model = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,

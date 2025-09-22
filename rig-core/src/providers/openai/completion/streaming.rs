@@ -12,7 +12,8 @@ use reqwest_eventsource::RequestBuilderExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
-use tracing::debug;
+use tracing::{debug, info_span};
+use tracing_futures::Instrument;
 
 // ================================================================
 // OpenAI Completion Streaming API
@@ -73,6 +74,8 @@ impl CompletionModel {
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let request = super::CompletionRequest::try_from((self.model.clone(), completion_request))?;
+        let request_messages = serde_json::to_string(&request.messages)
+            .expect("Converting to JSON from a Rust struct shouldn't fail");
         let mut request_as_json = serde_json::to_value(request).expect("this should never fail");
 
         request_as_json = merge(
@@ -81,23 +84,46 @@ impl CompletionModel {
         );
 
         let builder = self.client.post("/chat/completions").json(&request_as_json);
-        send_compatible_streaming_request(builder).await
+
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "openai",
+                gen_ai.request.model = self.model,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = self.model,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = request_messages,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        tracing::Instrument::instrument(send_compatible_streaming_request(builder), span).await
     }
 }
 
 pub async fn send_compatible_streaming_request(
     request_builder: RequestBuilder,
 ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError> {
+    let span = tracing::Span::current();
     // Build the request with proper headers for SSE
     let mut event_source = request_builder
         .eventsource()
         .expect("Cloning request must always succeed");
 
     let stream = Box::pin(stream! {
+        let span = tracing::Span::current();
         let mut final_usage = Usage::new();
 
         // Track in-progress tool calls
         let mut tool_calls: HashMap<usize, (String, String, String)> = HashMap::new();
+
+        let mut text_content = String::new();
 
         while let Some(event_result) = event_source.next().await {
             match event_result {
@@ -174,6 +200,7 @@ pub async fn send_compatible_streaming_request(
 
                         // Message content
                         if let Some(content) = &choice.delta.content {
+                            text_content += content;
                             yield Ok(streaming::RawStreamingChoice::Message(content.clone()))
                         }
                     }
@@ -197,11 +224,21 @@ pub async fn send_compatible_streaming_request(
         // Ensure event source is closed when stream ends
         event_source.close();
 
+        let mut vec_toolcalls = vec![];
+
         // Flush any tool calls that weren’t fully yielded
         for (_, (id, name, arguments)) in tool_calls {
-            let Ok(arguments) = serde_json::from_str(&arguments) else {
+            let Ok(arguments) = serde_json::from_str::<serde_json::Value>(&arguments) else {
                 continue;
             };
+
+            vec_toolcalls.push(super::ToolCall {
+                r#type: super::ToolType::Function,
+                id: id.clone(),
+                function: super::Function {
+                    name: name.clone(), arguments: arguments.clone()
+                },
+            });
 
             yield Ok(RawStreamingChoice::ToolCall {
                 id,
@@ -211,10 +248,22 @@ pub async fn send_compatible_streaming_request(
             });
         }
 
+        let message_output = super::Message::Assistant {
+            content: vec![super::AssistantContent::Text { text: text_content }],
+            refusal: None,
+            audio: None,
+            name: None,
+            tool_calls: vec_toolcalls
+        };
+
+        span.record("gen_ai.usage.input_tokens", final_usage.prompt_tokens);
+        span.record("gen_ai.usage.output_tokens", final_usage.total_tokens - final_usage.prompt_tokens);
+        span.record("gen_ai.output.messages", serde_json::to_string(&vec![message_output]).expect("Converting from a Rust struct should always convert to JSON without failing"));
+
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
             usage: final_usage.clone()
         }));
-    });
+    }.instrument(span));
 
     Ok(streaming::StreamingCompletionResponse::stream(stream))
 }

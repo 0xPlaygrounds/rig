@@ -31,6 +31,7 @@ use self::gemini_api_types::Schema;
 use crate::message::Reasoning;
 use crate::providers::gemini::completion::gemini_api_types::AdditionalParameters;
 use crate::providers::gemini::streaming::StreamingCompletionResponse;
+use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -41,6 +42,7 @@ use gemini_api_types::{
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
+use tracing::info_span;
 
 use super::Client;
 
@@ -72,7 +74,27 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "generate_content",
+                gen_ai.operation.name = "generate_content",
+                gen_ai.provider.name = "gcp.gemini",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
         let request = create_request_body(completion_request)?;
+        span.record_model_input(&request.contents);
 
         tracing::debug!(
             "Sending completion request to Gemini API {}",
@@ -88,17 +110,16 @@ impl completion::CompletionModel for CompletionModel {
 
         if response.status().is_success() {
             let response = response.json::<GenerateContentResponse>().await?;
-            match response.usage_metadata {
-                Some(ref usage) => tracing::info!(target: "rig",
-                "Gemini completion token usage: {}",
-                usage
-                ),
-                None => tracing::info!(target: "rig",
-                    "Gemini completion token usage: n/a",
-                ),
-            }
 
-            tracing::debug!("Received response");
+            let span = tracing::Span::current();
+            span.record_model_output(&response.candidates);
+            span.record_response_metadata(&response);
+            span.record_token_usage(&response.usage_metadata);
+
+            tracing::debug!(
+                "Received response from Gemini API: {}",
+                serde_json::to_string_pretty(&request)?
+            );
 
             Ok(completion::CompletionResponse::try_from(response))
         } else {
@@ -294,6 +315,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
 }
 
 pub mod gemini_api_types {
+    use crate::telemetry::ProviderResponseExt;
     use std::{collections::HashMap, convert::Infallible, str::FromStr};
 
     // =================================================================
@@ -302,6 +324,7 @@ pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
+    use crate::completion::GetTokenUsage;
     use crate::message::{DocumentSourceKind, ImageMediaType, MimeType};
     use crate::{
         OneOrMany,
@@ -342,6 +365,7 @@ pub mod gemini_api_types {
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct GenerateContentResponse {
+        pub response_id: String,
         /// Candidate responses from the model.
         pub candidates: Vec<ContentCandidate>,
         /// Returns the prompt's feedback related to the content filters.
@@ -351,8 +375,60 @@ pub mod gemini_api_types {
         pub model_version: Option<String>,
     }
 
+    impl ProviderResponseExt for GenerateContentResponse {
+        type OutputMessage = ContentCandidate;
+        type Usage = UsageMetadata;
+
+        fn get_response_id(&self) -> Option<String> {
+            Some(self.response_id.clone())
+        }
+
+        fn get_response_model_name(&self) -> Option<String> {
+            None
+        }
+
+        fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+            self.candidates.clone()
+        }
+
+        fn get_text_response(&self) -> Option<String> {
+            let str = self
+                .candidates
+                .iter()
+                .filter_map(|x| {
+                    if x.content.role.as_ref().is_none_or(|y| y != &Role::Model) {
+                        return None;
+                    }
+
+                    let res = x
+                        .content
+                        .parts
+                        .iter()
+                        .filter_map(|part| {
+                            if let PartKind::Text(ref str) = part.part {
+                                Some(str.to_owned())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<String>>()
+                        .join("\n");
+
+                    Some(res)
+                })
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            if str.is_empty() { None } else { Some(str) }
+        }
+
+        fn get_usage(&self) -> Option<Self::Usage> {
+            self.usage_metadata.clone()
+        }
+    }
+
     /// A response candidate generated from the model.
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct ContentCandidate {
         /// Output only. Generated content returned from the model.
@@ -377,7 +453,7 @@ pub mod gemini_api_types {
         pub index: Option<i32>,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct Content {
         /// Ordered Parts that constitute a single message. Parts may have different MIME types.
         #[serde(default)]
@@ -930,6 +1006,21 @@ pub mod gemini_api_types {
         }
     }
 
+    impl GetTokenUsage for UsageMetadata {
+        fn token_usage(&self) -> Option<crate::completion::Usage> {
+            let mut usage = crate::completion::Usage::new();
+
+            usage.input_tokens = self.prompt_token_count as u64;
+            usage.output_tokens = (self.cached_content_token_count.unwrap_or_default()
+                + self.candidates_token_count.unwrap_or_default()
+                + self.thoughts_token_count.unwrap_or_default())
+                as u64;
+            usage.total_tokens = usage.input_tokens + usage.output_tokens;
+
+            Some(usage)
+        }
+    }
+
     /// A set of the feedback metadata the prompt specified in [GenerateContentRequest.contents](GenerateContentRequest).
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -956,7 +1047,7 @@ pub mod gemini_api_types {
         ProhibitedContent,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum FinishReason {
         /// Default value. This value is unused.
@@ -983,13 +1074,13 @@ pub mod gemini_api_types {
         MalformedFunctionCall,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct CitationMetadata {
         pub citation_sources: Vec<CitationSource>,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct CitationSource {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1002,19 +1093,19 @@ pub mod gemini_api_types {
         pub license: Option<String>,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct LogprobsResult {
         pub top_candidate: Vec<TopCandidate>,
         pub chosen_candidate: Vec<LogProbCandidate>,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct TopCandidate {
         pub candidates: Vec<LogProbCandidate>,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct LogProbCandidate {
         pub token: String,

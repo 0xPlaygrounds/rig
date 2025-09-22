@@ -3,9 +3,12 @@
 // ================================================================
 
 use super::{ApiErrorResponse, ApiResponse, Client, streaming::StreamingCompletionResponse};
-use crate::completion::{CompletionError, CompletionRequest as CoreCompletionRequest};
+use crate::completion::{
+    CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
+};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
+use crate::telemetry::{ProviderRequestExt, SpanCombinator};
 use crate::{OneOrMany, completion, json_utils, message};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
@@ -735,6 +738,17 @@ impl fmt::Display for Usage {
     }
 }
 
+impl GetTokenUsage for Usage {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+        usage.input_tokens = self.prompt_tokens as u64;
+        usage.output_tokens = (self.total_tokens - self.prompt_tokens) as u64;
+        usage.total_tokens = self.total_tokens as u64;
+
+        Some(usage)
+    }
+}
+
 #[derive(Clone)]
 pub struct CompletionModel {
     pub(crate) client: Client,
@@ -822,6 +836,18 @@ impl crate::telemetry::ProviderRequestExt for CompletionRequest {
         self.messages.clone()
     }
 
+    fn get_system_prompt(&self) -> Option<String> {
+        let first_message = self.messages.first()?;
+
+        let Message::System { ref content, .. } = first_message.clone() else {
+            return None;
+        };
+
+        let SystemContent { text, .. } = content.first();
+
+        Some(text)
+    }
+
     fn get_prompt(&self) -> Option<String> {
         let last_message = self.messages.last()?;
 
@@ -850,20 +876,29 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CoreCompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let span = info_span!("openai::completion",
-            langfuse.trace.name = "OpenAI Completion",
-            langfuse.trace.input = tracing::field::Empty,
-            langfuse.trace.output = tracing::field::Empty,
-            langfuse.observation.type = tracing::field::Empty,
-            langfuse.observation.input = tracing::field::Empty,
-            langfuse.observation.output = tracing::field::Empty,
-            langfuse.observation.usage_details = tracing::field::Empty,
-            langfuse.observation.model.name = self.model);
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "openai",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
 
-        span.record("langfuse.observation.type", "generation");
+        let request = CompletionRequest::try_from((self.model.to_owned(), completion_request))?;
+        span.record_model_input(&request.messages);
 
         async move {
-            let request = CompletionRequest::try_from((self.model.to_owned(), completion_request))?;
             let response = self
                 .client
                 .post("/chat/completions")
@@ -875,27 +910,11 @@ impl completion::CompletionModel for CompletionModel {
                 let t = response.text().await?;
                 match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
                     ApiResponse::Ok(response) => {
-                        let request = serde_json::to_string(&request.messages).unwrap();
                         let span = tracing::Span::current();
-                        span.record("langfuse.trace.input", &request);
-                        span.record("langfuse.observation.input", request);
-                        span.record(
-                            "langfuse.trace.output",
-                            serde_json::to_string(&response.choices).unwrap(),
-                        );
-                        span.record(
-                            "langfuse.observation.output",
-                            serde_json::to_string(&response.choices).unwrap(),
-                        );
-                        span.record("langfuse.observation.model.name", "gpt-4o");
-                        if let Some(ref usage) = response.usage {
-                            span.record(
-                                "langfuse.observation.usage_details",
-                                serde_json::to_string(usage).unwrap(),
-                            );
-                        };
-                        // We need to call the event here to get the span to actually send anything
-                        tracing::info!("API successfully called");
+                        span.record_model_output(&response.choices);
+                        span.record_response_metadata(&response);
+                        span.record_token_usage(&response.usage);
+                        tracing::debug!("OpenAI response: {response:?}");
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),

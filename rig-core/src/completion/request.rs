@@ -249,6 +249,19 @@ impl GetTokenUsage for () {
     }
 }
 
+impl<T> GetTokenUsage for Option<T>
+where
+    T: GetTokenUsage,
+{
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        if let Some(usage) = self {
+            usage.token_usage()
+        } else {
+            None
+        }
+    }
+}
+
 /// Struct representing the token usage for a completion request.
 /// If tokens used are `0`, then the provider failed to supply token usage metrics.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
