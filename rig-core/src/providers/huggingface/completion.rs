@@ -297,7 +297,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 Ok(UserContent::Text { text: text.text })
                             }
                             message::UserContent::Image(image) => {
-                                let url = image.try_get_url()?;
+                                let url = image.try_into_url()?;
 
                                 Ok(UserContent::ImageUrl {
                                     image_url: ImageUrl { url },

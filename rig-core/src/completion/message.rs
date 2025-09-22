@@ -168,7 +168,7 @@ pub struct Image {
 }
 
 impl Image {
-    pub fn try_get_url(&self) -> Result<String, MessageError> {
+    pub fn try_into_url(self) -> Result<String, MessageError> {
         match self.data {
             DocumentSourceKind::Url(url) => Ok(url),
             DocumentSourceKind::Base64(data) => {
