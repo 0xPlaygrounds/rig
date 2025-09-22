@@ -27,10 +27,8 @@ async fn main() -> anyhow::Result<()> {
 
     // For this demo, create a sample tool (in real usage, you'd get tools from the server)
     // This demonstrates the same pattern as the RMCP example
-    let tool = turbomcp_protocol::types::Tool::with_description(
-        "sum",
-        "Calculate the sum of two numbers"
-    );
+    let tool =
+        turbomcp_protocol::types::Tool::with_description("sum", "Calculate the sum of two numbers");
 
     // Create OpenAI agent - identical pattern to RMCP
     let openai_client = openai::Client::from_env();
