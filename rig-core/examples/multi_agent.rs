@@ -2,8 +2,7 @@ use anyhow::Result;
 use rig::prelude::*;
 use rig::{
     agent::{Agent, AgentBuilder},
-    cli_chatbot::ChatbotBuilder,
-    completion::{Chat, CompletionModel, PromptError, ToolDefinition},
+    completion::{Chat, CompletionModel, PromptError, ToolDefinition, chat::ChatBotBuilder},
     providers::openai::Client as OpenAIClient,
     tool::Tool,
 };
@@ -88,7 +87,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Spin up a CLI chatbot using the multi-agent system
-    let chatbot = ChatbotBuilder::new()
+    let chatbot = ChatBotBuilder::new()
         .agent(multi_agent_system)
         .multi_turn_depth(1)
         .build();
