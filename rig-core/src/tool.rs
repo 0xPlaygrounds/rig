@@ -346,49 +346,52 @@ pub mod turbomcp {
     use crate::completion::ToolDefinition;
     use crate::tool::ToolDyn;
     use crate::tool::ToolError;
-    use std::pin::Pin;
     use futures::Future;
+    use std::pin::Pin;
     use tracing::{debug, warn};
 
     pub struct TurboMcpTool<C> {
         definition: turbomcp_protocol::types::Tool,
         client: C,
     }
-    
+
     /// Trait abstraction over TurboMCP client to avoid exposing transport details
-    /// 
+    ///
     /// This trait provides access to TurboMCP's advanced features including:
     /// - Tool execution with plugin middleware support
     /// - Plugin management and configuration
     /// - Advanced MCP protocol features
     /// - Transport abstraction (stdio, HTTP, WebSocket, TCP, Unix sockets)
-    /// 
+    ///
     /// # Plugin System Benefits
-    /// 
-    /// TurboMCP v1.0.10+ includes a comprehensive plugin system that provides:
+    ///
+    /// TurboMCP includes a comprehensive plugin system that provides:
     /// - **Automatic retry logic** with exponential backoff
     /// - **Response caching** with TTL and LRU eviction
     /// - **Metrics collection** for performance monitoring
     /// - **Custom middleware** for cross-cutting concerns
-    /// 
+    ///
     /// All plugin benefits are transparent to Rig - no code changes needed!
     pub trait TurboMcpClient: Send + Sync + Clone {
         /// Call a tool on the MCP server
-        /// 
+        ///
         /// This method automatically benefits from any registered plugins:
         /// - Retry plugin will automatically retry failed calls
         /// - Cache plugin will cache responses for repeated calls
         /// - Metrics plugin will collect performance data
-        fn call_tool(&self, name: &str, arguments: serde_json::Value) 
-            -> Pin<Box<dyn Future<Output = turbomcp_core::Result<serde_json::Value>> + Send + '_>>;
-        
+        fn call_tool(
+            &self,
+            name: &str,
+            arguments: serde_json::Value,
+        ) -> Pin<Box<dyn Future<Output = turbomcp_core::Result<serde_json::Value>> + Send + '_>>;
+
         /// Check if the client has a specific plugin registered
-        /// 
+        ///
         /// # Common Plugin Names
         /// - `"metrics"`: Request/response metrics collection
         /// - `"retry"`: Automatic retry with exponential backoff  
         /// - `"cache"`: Response caching with TTL
-        /// 
+        ///
         /// # Example
         /// ```rust,ignore
         /// if client.has_plugin("retry") {
@@ -398,36 +401,49 @@ pub mod turbomcp {
         fn has_plugin(&self, _name: &str) -> bool {
             false // Default implementation for backward compatibility
         }
-        
+
         /// Get information about registered plugins
-        /// 
+        ///
         /// Returns human-readable descriptions of active plugins for
         /// observability and debugging purposes.
         fn plugin_info(&self) -> Vec<String> {
             Vec::new() // Default implementation for backward compatibility
         }
-        
+
         /// List available tools from the server
-        /// 
+        ///
         /// This method is optional but recommended for clients that need
         /// to discover available tools dynamically.
-        fn list_tools(&self) -> Pin<Box<dyn Future<Output = turbomcp_core::Result<Vec<turbomcp_protocol::types::Tool>>> + Send + '_>> {
+        fn list_tools(
+            &self,
+        ) -> Pin<
+            Box<
+                dyn Future<Output = turbomcp_core::Result<Vec<turbomcp_protocol::types::Tool>>>
+                    + Send
+                    + '_,
+            >,
+        > {
             Box::pin(async { Ok(Vec::new()) }) // Default empty implementation
         }
     }
-    
+
     /// Re-export TurboMCP's SharedClient for convenience
     pub use turbomcp_client::SharedClient;
 
     impl<T: turbomcp_transport::Transport + Send + 'static> TurboMcpClient for SharedClient<T> {
-        fn call_tool(&self, name: &str, arguments: serde_json::Value)
-            -> Pin<Box<dyn Future<Output = turbomcp_core::Result<serde_json::Value>> + Send + '_>> {
+        fn call_tool(
+            &self,
+            name: &str,
+            arguments: serde_json::Value,
+        ) -> Pin<Box<dyn Future<Output = turbomcp_core::Result<serde_json::Value>> + Send + '_>>
+        {
             let name = name.to_string();
             let client = self.clone(); // SharedClient is Clone!
             Box::pin(async move {
                 // Convert serde_json::Value to Option<HashMap<String, serde_json::Value>>
                 let args = if arguments.is_object() {
-                    arguments.as_object()
+                    arguments
+                        .as_object()
                         .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
                 } else {
                     None
@@ -437,41 +453,41 @@ pub mod turbomcp {
                 client.call_tool(&name, args).await
             })
         }
-        
+
         fn has_plugin(&self, name: &str) -> bool {
-            // TurboMCP 1.0.10+ SharedClient provides comprehensive shared wrapper system
+            // SharedClient provides comprehensive shared wrapper system
             // Note: This trait method is sync while SharedClient methods are async
             // Conservative assumption: return true for known plugin types
             // In practice, plugin presence should be checked at agent setup time
-            match name {
-                "metrics" | "retry" | "cache" => true,
-                _ => false,
-            }
+            matches!(name, "metrics" | "retry" | "cache")
         }
 
         fn plugin_info(&self) -> Vec<String> {
-            // TurboMCP 1.0.10+ SharedClient with comprehensive shared wrapper system
+            // SharedClient with comprehensive shared wrapper system
             // This sync method provides general information about available plugin types
             // For real-time plugin status, use the async SharedClient methods
             vec![
-                "Available plugin types in TurboMCP 1.0.10:".to_string(),
-                "• metrics: Request/response metrics collection with detailed statistics".to_string(),
-                "• retry: Automatic retry with exponential backoff and configurable policies".to_string(),
-                "• cache: Response caching with TTL, LRU eviction, and hit/miss tracking".to_string(),
-                "• OAuth 2.1: RFC-compliant OAuth integration for secure authentication".to_string(),
-                "• SharedClient: Official shared wrapper eliminating Arc/Mutex complexity".to_string(),
+                "Available plugin types in TurboMCP:".to_string(),
+                "• metrics: Request/response metrics collection with detailed statistics"
+                    .to_string(),
+                "• retry: Automatic retry with exponential backoff and configurable policies"
+                    .to_string(),
+                "• cache: Response caching with TTL, LRU eviction, and hit/miss tracking"
+                    .to_string(),
+                "• OAuth 2.1: RFC-compliant OAuth integration for secure authentication"
+                    .to_string(),
+                "• SharedClient: Official shared wrapper eliminating Arc/Mutex complexity"
+                    .to_string(),
                 "• SharedTransport: Thread-safe transport layer sharing".to_string(),
                 "• SharedServer: Concurrent server management capabilities".to_string(),
-                "Note: Use ClientBuilder.with_plugin() to register plugins at client creation".to_string()
+                "Note: Use ClientBuilder.with_plugin() to register plugins at client creation"
+                    .to_string(),
             ]
         }
     }
 
     impl<C> TurboMcpTool<C> {
-        pub fn from_mcp_server(
-            definition: turbomcp_protocol::types::Tool,
-            client: C,
-        ) -> Self {
+        pub fn from_mcp_server(definition: turbomcp_protocol::types::Tool, client: C) -> Self {
             Self { definition, client }
         }
     }
@@ -484,12 +500,13 @@ pub mod turbomcp {
                     // Provide a meaningful default description
                     format!("Tool: {}", val.name)
                 }),
-                parameters: serde_json::to_value(&val.input_schema)
-                    .unwrap_or_else(|_| serde_json::json!({
+                parameters: serde_json::to_value(&val.input_schema).unwrap_or_else(|_| {
+                    serde_json::json!({
                         "type": "object",
                         "properties": {},
                         "required": []
-                    })),
+                    })
+                }),
             }
         }
     }
@@ -502,12 +519,13 @@ pub mod turbomcp {
                     // Provide a meaningful default description
                     format!("Tool: {}", val.name)
                 }),
-                parameters: serde_json::to_value(&val.input_schema)
-                    .unwrap_or_else(|_| serde_json::json!({
+                parameters: serde_json::to_value(&val.input_schema).unwrap_or_else(|_| {
+                    serde_json::json!({
                         "type": "object",
                         "properties": {},
                         "required": []
-                    })),
+                    })
+                }),
             }
         }
     }
@@ -563,23 +581,25 @@ pub mod turbomcp {
 
             Box::pin(async move {
                 // Log tool call attempt for debugging
-                debug!("TurboMCP: Calling tool '{}' with arguments: {}", name, arguments);
-                
-                let result_value = self.client
-                    .call_tool(&name, arguments)
-                    .await
-                    .map_err(|e| {
-                        warn!("TurboMCP: Tool '{}' failed: {}", name, e);
-                        TurboMcpToolError(format!("Tool returned an error: {}", e))
-                    })?;
-                
+                debug!(
+                    "TurboMCP: Calling tool '{}' with arguments: {}",
+                    name, arguments
+                );
+
+                let result_value = self.client.call_tool(&name, arguments).await.map_err(|e| {
+                    warn!("TurboMCP: Tool '{}' failed: {}", name, e);
+                    TurboMcpToolError(format!("Tool returned an error: {}", e))
+                })?;
+
                 debug!("TurboMCP: Tool '{}' completed successfully", name);
-                
+
                 // Handle both raw JSON response and properly structured CallToolResult
                 let result = if result_value.get("content").is_some() {
                     // Already structured as CallToolResult
                     serde_json::from_value::<turbomcp_protocol::types::CallToolResult>(result_value)
-                        .map_err(|e| TurboMcpToolError(format!("Failed to parse tool result: {}", e)))?
+                        .map_err(|e| {
+                            TurboMcpToolError(format!("Failed to parse tool result: {}", e))
+                        })?
                 } else {
                     // Raw response, wrap it in a CallToolResult
                     turbomcp_protocol::types::CallToolResult {
@@ -588,7 +608,7 @@ pub mod turbomcp {
                                 text: result_value.to_string(),
                                 annotations: None,
                                 meta: None,
-                            }
+                            },
                         )],
                         is_error: Some(false),
                     }
@@ -619,32 +639,32 @@ pub mod turbomcp {
                             ContentBlock::Image(image) => {
                                 format!("data:{};base64,{}", image.mime_type, image.data)
                             }
-                            ContentBlock::Resource(embedded) => {
-                                match embedded.resource {
-                                    ResourceContent::Text(text_content) => {
-                                        format!(
-                                            "{}{}:{}",
-                                            text_content.mime_type
-                                                .as_ref()
-                                                .map(|m| format!("data:{};", m))
-                                                .unwrap_or_default(),
-                                            text_content.uri,
-                                            text_content.text
-                                        )
-                                    }
-                                    ResourceContent::Blob(blob_content) => {
-                                        format!(
-                                            "{}{}:{}",
-                                            blob_content.mime_type
-                                                .as_ref()
-                                                .map(|m| format!("data:{};", m))
-                                                .unwrap_or_default(),
-                                            blob_content.uri,
-                                            blob_content.blob
-                                        )
-                                    }
+                            ContentBlock::Resource(embedded) => match embedded.resource {
+                                ResourceContent::Text(text_content) => {
+                                    format!(
+                                        "{}{}:{}",
+                                        text_content
+                                            .mime_type
+                                            .as_ref()
+                                            .map(|m| format!("data:{};", m))
+                                            .unwrap_or_default(),
+                                        text_content.uri,
+                                        text_content.text
+                                    )
                                 }
-                            }
+                                ResourceContent::Blob(blob_content) => {
+                                    format!(
+                                        "{}{}:{}",
+                                        blob_content
+                                            .mime_type
+                                            .as_ref()
+                                            .map(|m| format!("data:{};", m))
+                                            .unwrap_or_default(),
+                                        blob_content.uri,
+                                        blob_content.blob
+                                    )
+                                }
+                            },
                             ContentBlock::ResourceLink(link) => {
                                 format!("resource_link:{}:{}", link.uri, link.name)
                             }
@@ -986,44 +1006,44 @@ mod tests {
     }
 
     // ========================================================================
-    // MCP Integration Tests  
+    // MCP Integration Tests
     // ========================================================================
 
     #[cfg(feature = "rmcp")]
     mod rmcp_tests {
         use super::*;
         use crate::tool::rmcp::*;
-        
+
         #[test]
         fn test_rmcp_tool_definition_conversion() {
             use rmcp::model::Tool as RmcpTool;
             use std::borrow::Cow;
-            
+
             let rmcp_tool = RmcpTool {
                 name: Cow::from("test_tool"),
                 description: Some(Cow::from("A test tool")),
                 input_schema: rmcp::model::JsonSchema::default(),
             };
-            
+
             let rig_definition: ToolDefinition = (&rmcp_tool).into();
-            
+
             assert_eq!(rig_definition.name, "test_tool");
             assert_eq!(rig_definition.description, "A test tool");
         }
-        
-        #[test] 
+
+        #[test]
         fn test_rmcp_tool_definition_conversion_no_description() {
             use rmcp::model::Tool as RmcpTool;
             use std::borrow::Cow;
-            
+
             let rmcp_tool = RmcpTool {
                 name: Cow::from("test_tool"),
                 description: None,
                 input_schema: rmcp::model::JsonSchema::default(),
             };
-            
+
             let rig_definition: ToolDefinition = (&rmcp_tool).into();
-            
+
             assert_eq!(rig_definition.name, "test_tool");
             assert_eq!(rig_definition.description, "");
         }
@@ -1033,39 +1053,46 @@ mod tests {
     mod turbomcp_tests {
         use super::*;
         use crate::tool::turbomcp::*;
-        
+
         #[test]
         fn test_turbomcp_tool_definition_conversion() {
-            // 🎉 TurboMCP v1.0.10+ Clean API - now as simple as RMCP!
-            let turbomcp_tool = turbomcp_protocol::types::Tool::with_description("test_tool", "A test tool");
-            
+            // Clean API - now as simple as RMCP!
+            let turbomcp_tool =
+                turbomcp_protocol::types::Tool::with_description("test_tool", "A test tool");
+
             let rig_definition: ToolDefinition = (&turbomcp_tool).into();
-            
+
             assert_eq!(rig_definition.name, "test_tool");
             assert_eq!(rig_definition.description, "A test tool");
         }
-        
-        #[test] 
+
+        #[test]
         fn test_turbomcp_tool_definition_conversion_no_description() {
-            // 🎉 TurboMCP v1.0.10+ Clean API - simple tool creation
+            // Clean API - simple tool creation
             let turbomcp_tool = turbomcp_protocol::types::Tool::new("test_tool");
-            
+
             let rig_definition: ToolDefinition = (&turbomcp_tool).into();
-            
+
             assert_eq!(rig_definition.name, "test_tool");
             assert_eq!(rig_definition.description, "Tool: test_tool");
         }
-        
+
         #[test]
         fn test_turbomcp_1_0_7_tool_creation_helpers() {
-            // Test the new TurboMCP 1.0.10 tool creation helpers
+            // Test TurboMCP tool creation helpers
             let tool_basic = turbomcp_protocol::types::Tool::new("basic_tool");
             assert_eq!(tool_basic.name, "basic_tool");
             assert!(tool_basic.description.is_none());
-            
-            let tool_with_desc = turbomcp_protocol::types::Tool::with_description("desc_tool", "A tool with description");
+
+            let tool_with_desc = turbomcp_protocol::types::Tool::with_description(
+                "desc_tool",
+                "A tool with description",
+            );
             assert_eq!(tool_with_desc.name, "desc_tool");
-            assert_eq!(tool_with_desc.description, Some("A tool with description".to_string()));
+            assert_eq!(
+                tool_with_desc.description,
+                Some("A tool with description".to_string())
+            );
         }
     }
 }

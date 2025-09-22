@@ -12676,9 +12676,9 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-client"
-version = "1.0.10"
+version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51e7dd3ade8f1f46a9f3128fb6d113f562287192f00d032f55e85a3e0cb866b7"
+checksum = "3014ecf88f8df8a191a2766d3fe876468435cacd8a23bab1d30f7f72f32a8cab"
 dependencies = [
  "async-trait",
  "chrono",
@@ -12697,9 +12697,9 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-core"
-version = "1.0.10"
+version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "058001632765530368171a05b51fbe8b55fafa9443814ef6678e7d7fd5a8a327"
+checksum = "8c8617e7556e3348254b5fa69d739e8ed5781a5b94a0b19639ffed4b2df580cf"
 dependencies = [
  "ahash 0.8.12",
  "arc-swap",
@@ -12730,9 +12730,9 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-protocol"
-version = "1.0.10"
+version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66c340826973f2e055d809d82d67ca8fd07a1bc405c4a6d9f80bf7682cd8638f"
+checksum = "a3d68792b0bd39b2aa8d342218a1168b58218e4f6c8316784b12f29cec2e8c23"
 dependencies = [
  "chrono",
  "regex",
@@ -12745,9 +12745,9 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-transport"
-version = "1.0.10"
+version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a177034679a65da0e5ba8079cea2513afc97829b32ddaa15ee195eaf467ac6a"
+checksum = "912590ca5c89d868973fe5d7fdeff5c507eccb9e9bff3c404b416ea7e6951e9e"
 dependencies = [
  "ahash 0.8.12",
  "anyhow",

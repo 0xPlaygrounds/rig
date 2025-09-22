@@ -145,16 +145,17 @@ where
         self
     }
 
-    // Add an MCP tool (from `turbomcp`) to the agent with SharedClient from 1.0.10
+    // Add an MCP tool (from `turbomcp`) to the agent with SharedClient
     #[cfg_attr(docsrs, doc(cfg(feature = "turbomcp")))]
     #[cfg(feature = "turbomcp")]
     pub fn turbomcp_tool<T: turbomcp_transport::Transport + Send + 'static>(
         mut self,
         tool: turbomcp_protocol::types::Tool,
-        client: turbomcp_client::SharedClient<T>
+        client: turbomcp_client::SharedClient<T>,
     ) -> Self {
         let toolname = tool.name.clone();
-        self.tools.add_tool(TurboMcpTool::from_mcp_server(tool, client));
+        self.tools
+            .add_tool(TurboMcpTool::from_mcp_server(tool, client));
         self.static_tools.push(toolname.to_string());
         self
     }
