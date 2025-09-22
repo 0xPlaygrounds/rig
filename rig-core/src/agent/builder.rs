@@ -145,7 +145,7 @@ where
         self
     }
 
-    // Add an MCP tool (from `turbomcp`) to the agent with SharedClient from 1.0.9
+    // Add an MCP tool (from `turbomcp`) to the agent with SharedClient from 1.0.10
     #[cfg_attr(docsrs, doc(cfg(feature = "turbomcp")))]
     #[cfg(feature = "turbomcp")]
     pub fn turbomcp_tool<T: turbomcp_transport::Transport + Send + 'static>(

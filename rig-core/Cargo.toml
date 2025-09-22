@@ -162,4 +162,8 @@ name = "rmcp"
 required-features = ["rmcp"]
 
 [[example]]
+name = "turbomcp"
+required-features = ["turbomcp"]
+
+[[example]]
 name = "request_hook"

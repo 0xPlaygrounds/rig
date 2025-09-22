@@ -365,7 +365,7 @@ pub mod turbomcp {
     /// 
     /// # Plugin System Benefits
     /// 
-    /// TurboMCP v1.0.8+ includes a comprehensive plugin system that provides:
+    /// TurboMCP v1.0.10+ includes a comprehensive plugin system that provides:
     /// - **Automatic retry logic** with exponential backoff
     /// - **Response caching** with TTL and LRU eviction
     /// - **Metrics collection** for performance monitoring
@@ -439,7 +439,7 @@ pub mod turbomcp {
         }
         
         fn has_plugin(&self, name: &str) -> bool {
-            // TurboMCP 1.0.9+ SharedClient provides comprehensive shared wrapper system
+            // TurboMCP 1.0.10+ SharedClient provides comprehensive shared wrapper system
             // Note: This trait method is sync while SharedClient methods are async
             // Conservative assumption: return true for known plugin types
             // In practice, plugin presence should be checked at agent setup time
@@ -450,11 +450,11 @@ pub mod turbomcp {
         }
 
         fn plugin_info(&self) -> Vec<String> {
-            // TurboMCP 1.0.9+ SharedClient with comprehensive shared wrapper system
+            // TurboMCP 1.0.10+ SharedClient with comprehensive shared wrapper system
             // This sync method provides general information about available plugin types
             // For real-time plugin status, use the async SharedClient methods
             vec![
-                "Available plugin types in TurboMCP 1.0.9:".to_string(),
+                "Available plugin types in TurboMCP 1.0.10:".to_string(),
                 "• metrics: Request/response metrics collection with detailed statistics".to_string(),
                 "• retry: Automatic retry with exponential backoff and configurable policies".to_string(),
                 "• cache: Response caching with TTL, LRU eviction, and hit/miss tracking".to_string(),
@@ -1036,7 +1036,7 @@ mod tests {
         
         #[test]
         fn test_turbomcp_tool_definition_conversion() {
-            // 🎉 TurboMCP v1.0.8+ Clean API - now as simple as RMCP!
+            // 🎉 TurboMCP v1.0.10+ Clean API - now as simple as RMCP!
             let turbomcp_tool = turbomcp_protocol::types::Tool::with_description("test_tool", "A test tool");
             
             let rig_definition: ToolDefinition = (&turbomcp_tool).into();
@@ -1047,7 +1047,7 @@ mod tests {
         
         #[test] 
         fn test_turbomcp_tool_definition_conversion_no_description() {
-            // 🎉 TurboMCP v1.0.8+ Clean API - simple tool creation
+            // 🎉 TurboMCP v1.0.10+ Clean API - simple tool creation
             let turbomcp_tool = turbomcp_protocol::types::Tool::new("test_tool");
             
             let rig_definition: ToolDefinition = (&turbomcp_tool).into();
@@ -1058,7 +1058,7 @@ mod tests {
         
         #[test]
         fn test_turbomcp_1_0_7_tool_creation_helpers() {
-            // Test the new TurboMCP 1.0.8 tool creation helpers
+            // Test the new TurboMCP 1.0.10 tool creation helpers
             let tool_basic = turbomcp_protocol::types::Tool::new("basic_tool");
             assert_eq!(tool_basic.name, "basic_tool");
             assert!(tool_basic.description.is_none());
