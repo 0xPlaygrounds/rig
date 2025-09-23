@@ -6612,9 +6612,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.175"
+version = "0.2.176"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a82ae493e598baaea5209805c49bbf2ea7de956d50d7da0da1164f9c6d28543"
+checksum = "58f929b4d672ea937a23a1ab494143d968337a5f47e56d0815df1e0890ddf174"
 
 [[package]]
 name = "libfuzzer-sys"
@@ -7092,23 +7092,22 @@ dependencies = [
 
 [[package]]
 name = "moka"
-version = "0.12.10"
+version = "0.12.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9321642ca94a4282428e6ea4af8cc2ca4eac48ac7a6a4ea8f33f76d0ce70926"
+checksum = "8261cd88c312e0004c1d51baad2980c66528dfdb2bee62003e643a4d8f86b077"
 dependencies = [
  "async-lock",
  "crossbeam-channel",
  "crossbeam-epoch",
  "crossbeam-utils",
+ "equivalent",
  "event-listener 5.4.1",
  "futures-util",
- "loom",
  "parking_lot",
  "portable-atomic",
  "rustc_version",
  "smallvec",
  "tagptr",
- "thiserror 1.0.69",
  "uuid 1.18.1",
 ]
 
@@ -7616,9 +7615,9 @@ dependencies = [
 
 [[package]]
 name = "object_store"
-version = "0.12.3"
+version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efc4f07659e11cd45a341cd24d71e683e3be65d9ff1f8150061678fe60437496"
+checksum = "4c1be0c6c22ec0817cdc77d3842f721a17fd30ab6965001415b5402a74e6b740"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -11890,9 +11889,9 @@ checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 
 [[package]]
 name = "tempfile"
-version = "3.22.0"
+version = "3.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84fa4d11fadde498443cca10fd3ac23c951f0dc59e080e9f4b93d4df4e4eea53"
+checksum = "2d31c77bdf42a745371d260a26ca7163f1e0924b64afa0b688e61b5a9fa02f16"
 dependencies = [
  "fastrand",
  "getrandom 0.3.3",
@@ -12676,9 +12675,9 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-client"
-version = "1.0.11"
+version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3014ecf88f8df8a191a2766d3fe876468435cacd8a23bab1d30f7f72f32a8cab"
+checksum = "e75d5e11a4b0c8dda700027384f766bc1762aacfc5136369c7ddb2b2ae22c7c8"
 dependencies = [
  "async-trait",
  "chrono",
@@ -12697,9 +12696,9 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-core"
-version = "1.0.11"
+version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c8617e7556e3348254b5fa69d739e8ed5781a5b94a0b19639ffed4b2df580cf"
+checksum = "993395f8eec08d363618648a4b11c37960c805012fb470d7dacff6359167efc2"
 dependencies = [
  "ahash 0.8.12",
  "arc-swap",
@@ -12730,9 +12729,9 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-protocol"
-version = "1.0.11"
+version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3d68792b0bd39b2aa8d342218a1168b58218e4f6c8316784b12f29cec2e8c23"
+checksum = "b945cefb4095b70fb1ab81680d68a0a39011277d21da1f34d66c70759f0e394a"
 dependencies = [
  "chrono",
  "regex",
@@ -12745,9 +12744,9 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-transport"
-version = "1.0.11"
+version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "912590ca5c89d868973fe5d7fdeff5c507eccb9e9bff3c404b416ea7e6951e9e"
+checksum = "b0c9d9ca75c58f9fd894145c70468009e27453bee5c3f0a9efaf5585f3951600"
 dependencies = [
  "ahash 0.8.12",
  "anyhow",
