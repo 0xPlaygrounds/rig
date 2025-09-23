@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 pub enum EmbeddingError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]
-    HttpError(#[from] reqwest::Error),
+    HttpError(Box<dyn std::error::Error + Send + Sync + 'static>),
 
     /// Json error (e.g.: serialization, deserialization)
     #[error("JsonError: {0}")]

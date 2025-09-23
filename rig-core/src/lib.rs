@@ -115,6 +115,7 @@ pub mod client;
 pub mod completion;
 pub mod embeddings;
 pub mod extractor;
+pub mod http_client;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;

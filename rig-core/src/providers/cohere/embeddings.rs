@@ -1,6 +1,9 @@
 use super::{Client, client::ApiResponse};
 
-use crate::embeddings::{self, EmbeddingError};
+use crate::{
+    embeddings::{self, EmbeddingError},
+    http_client::HttpClientExt,
+};
 
 use serde::Deserialize;
 use serde_json::json;
@@ -56,14 +59,17 @@ impl std::fmt::Display for BilledUnits {
 }
 
 #[derive(Clone)]
-pub struct EmbeddingModel {
-    client: Client,
+pub struct EmbeddingModel<T> {
+    client: Client<T>,
     pub model: String,
     pub input_type: String,
     ndims: usize,
 }
 
-impl embeddings::EmbeddingModel for EmbeddingModel {
+impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+where
+    T: HttpClientExt + Clone,
+{
     const MAX_DOCUMENTS: usize = 96;
 
     fn ndims(&self) -> usize {
@@ -77,19 +83,24 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
 
-        let response = self
+        let req = self
             .client
             .post("/v1/embed")
-            .json(&json!({
+            .map_err(|e| EmbeddingError::HttpError(e.into()))?
+            .with_json(&json!({
                 "model": self.model,
                 "texts": documents,
                 "input_type": self.input_type,
-            }))
-            .send()
-            .await?;
+            }));
+
+        let response = self
+            .client
+            .send(req)
+            .await
+            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
         if response.status().is_success() {
-            match response.json::<ApiResponse<EmbeddingResponse>>().await? {
+            match response.json::<ApiResponse<EmbeddingResponse>>()? {
                 ApiResponse::Ok(response) => {
                     match response.meta {
                         Some(meta) => tracing::info!(target: "rig",
@@ -125,13 +136,18 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 ApiResponse::Err(error) => Err(EmbeddingError::ProviderError(error.message)),
             }
         } else {
-            Err(EmbeddingError::ProviderError(response.text().await?))
+            Err(EmbeddingError::ProviderError(
+                response
+                    .text()
+                    .map_err(|e| EmbeddingError::HttpError(e.into()))?
+                    .to_string(),
+            ))
         }
     }
 }
 
-impl EmbeddingModel {
-    pub fn new(client: Client, model: &str, input_type: &str, ndims: usize) -> Self {
+impl<T> EmbeddingModel<T> {
+    pub fn new(client: Client<T>, model: &str, input_type: &str, ndims: usize) -> Self {
         Self {
             client,
             model: model.to_string(),

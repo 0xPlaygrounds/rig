@@ -1,4 +1,5 @@
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::http_client::HttpClientExt;
 use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::Usage;
 use crate::streaming::RawStreamingChoice;
@@ -84,7 +85,8 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl CompletionModel {
+impl CompletionModel<reqwest::Client>
+{
     pub(crate) async fn stream(
         &self,
         request: CompletionRequest,
@@ -98,10 +100,10 @@ impl CompletionModel {
             serde_json::to_string_pretty(&request)?
         );
 
+        let req = self.client.post("/v2/chat").map_err(|e| CompletionError::HttpError(e.into()))?.with_json(&request)
+
         let mut event_source = self
             .client
-            .post("/v2/chat")
-            .json(&request)
             .eventsource()
             .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 

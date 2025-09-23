@@ -169,32 +169,37 @@ impl<T: ProviderClient> AsAudioGeneration for T {}
 #[cfg(not(feature = "image"))]
 impl<T: ProviderClient> AsImageGeneration for T {}
 
-/// Implements the conversion traits for a given struct
-/// ```rust
-/// pub struct Client;
-/// impl ProviderClient for Client {
-///     ...
-/// }
-/// impl_conversion_traits!(AsCompletion, AsEmbeddings for Client);
-/// ```
 #[macro_export]
 macro_rules! impl_conversion_traits {
-    ($( $trait_:ident ),* for $struct_:ident ) => {
-        $(
-            impl_conversion_traits!(@impl $trait_ for $struct_);
-        )*
+    ($( $trait_:ident ),* for $($type_spec:tt)+) => {
+        impl_conversion_traits!(@expand_traits [$($trait_)+] $($type_spec)+);
     };
 
-    (@impl AsAudioGeneration for $struct_:ident ) => {
-        rig::client::impl_audio_generation!($struct_);
+    (@expand_traits [$trait_:ident $($rest_traits:ident)*] $($type_spec:tt)+) => {
+        impl_conversion_traits!(@impl $trait_ for $($type_spec)+);
+        impl_conversion_traits!(@expand_traits [$($rest_traits)*] $($type_spec)+);
     };
 
-    (@impl AsImageGeneration for $struct_:ident ) => {
-        rig::client::impl_image_generation!($struct_);
+    (@expand_traits [] $($type_spec:tt)+) => {};
+
+    (@impl AsAudioGeneration for $($type_spec:tt)+) => {
+        rig::client::impl_audio_generation!($($type_spec)+);
     };
 
-    (@impl $trait_:ident for $struct_:ident) => {
+    (@impl AsImageGeneration for $($type_spec:tt)+) => {
+        rig::client::impl_image_generation!($($type_spec)+);
+    };
+
+    (@impl $trait_:ident for $($type_spec:tt)+) => {
+        impl_conversion_traits!(@impl_trait $trait_ for $($type_spec)+);
+    };
+
+    (@impl_trait $trait_:ident for $struct_:ident) => {
         impl rig::client::$trait_ for $struct_ {}
+    };
+
+    (@impl_trait $trait_:ident for $struct_:ident<$($generics:tt),*>) => {
+        impl<$($generics),*> rig::client::$trait_ for $struct_<$($generics),*> {}
     };
 }
 
@@ -204,12 +209,15 @@ macro_rules! impl_audio_generation {
     ($struct_:ident) => {
         impl rig::client::AsAudioGeneration for $struct_ {}
     };
+    ($struct_:ident<$($generics:tt),*>) => {
+        impl<$($generics),*> rig::client::AsAudioGeneration for $struct_<$($generics),*> {}
+    };
 }
 
 #[cfg(not(feature = "audio"))]
 #[macro_export]
 macro_rules! impl_audio_generation {
-    ($struct_:ident) => {};
+    ($($tokens:tt)*) => {};
 }
 
 #[cfg(feature = "image")]
@@ -218,12 +226,15 @@ macro_rules! impl_image_generation {
     ($struct_:ident) => {
         impl rig::client::AsImageGeneration for $struct_ {}
     };
+    ($struct_:ident<$($generics:tt),*>) => {
+        impl<$($generics),*> rig::client::AsImageGeneration for $struct_<$($generics),*> {}
+    };
 }
 
 #[cfg(not(feature = "image"))]
 #[macro_export]
 macro_rules! impl_image_generation {
-    ($struct_:ident) => {};
+    ($($tokens:tt)*) => {};
 }
 
 pub use impl_audio_generation;

@@ -3,6 +3,7 @@
 use crate::{
     OneOrMany,
     completion::{self, CompletionError},
+    http_client::HttpClientExt,
     json_utils,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, Reasoning},
     one_or_many::string_or_one_or_many,
@@ -12,6 +13,7 @@ use std::{convert::Infallible, str::FromStr};
 use super::client::Client;
 use crate::completion::CompletionRequest;
 use crate::providers::anthropic::streaming::StreamingCompletionResponse;
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -576,14 +578,17 @@ impl TryFrom<Message> for message::Message {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T> {
+    pub(crate) client: Client<T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt,
+{
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -630,7 +635,10 @@ pub enum ToolChoice {
     },
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default,
+{
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -700,26 +708,52 @@ impl completion::CompletionModel for CompletionModel {
 
         tracing::debug!("Anthropic completion request: {request}");
 
-        let response = self
+        let request: Vec<u8> = serde_json::to_vec(&request)?;
+
+        let req = self
             .client
             .post("/v1/messages")
-            .json(&request)
-            .send()
-            .await?;
+            .body(request)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        let response = self
+            .client
+            .send::<_, Bytes>(req)
+            .await
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
+            match serde_json::from_slice::<ApiResponse<CompletionResponse>>(
+                response
+                    .into_body()
+                    .await
+                    .map_err(|e| CompletionError::HttpError(e.into()))?
+                    .to_vec()
+                    .as_slice(),
+            )? {
                 ApiResponse::Message(completion) => {
-                    tracing::info!(target: "rig",
-                        "Anthropic completion token usage: {}",
-                        completion.usage
+                    let completion: Result<completion::CompletionResponse<CompletionResponse>, _> =
+                        completion.try_into();
+
+                    tracing::info!(
+                        target: "rig",
+                        "Anthropic completion token usage: {:?}",
+                        completion
                     );
-                    completion.try_into()
+
+                    completion
                 }
                 ApiResponse::Error(error) => Err(CompletionError::ProviderError(error.message)),
             }
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            let text: String = String::from_utf8_lossy(
+                &response
+                    .into_body()
+                    .await
+                    .map_err(|e| CompletionError::HttpError(e.into()))?,
+            )
+            .into();
+            Err(CompletionError::ProviderError(text))
         }
     }
 

@@ -1,6 +1,7 @@
 use crate::{
     OneOrMany,
     completion::{self, CompletionError},
+    http_client::HttpClientExt,
     json_utils,
     message::{self, Reasoning},
 };
@@ -455,13 +456,16 @@ impl TryFrom<Message> for message::Message {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T> {
+    pub(crate) client: Client<T>,
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt,
+{
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -513,7 +517,10 @@ impl CompletionModel {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone,
+{
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -528,18 +535,31 @@ impl completion::CompletionModel for CompletionModel {
             serde_json::to_string_pretty(&request)?
         );
 
-        let response = self.client.post("/v2/chat").json(&request).send().await?;
+        let req = self
+            .client
+            .post("/v2/chat")
+            .map_err(|e| CompletionError::HttpError(e.into()))?
+            .with_json(&request);
+
+        let response = self
+            .client
+            .send(req)
+            .await
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        let text = response
+            .text()
+            .map_err(|e| CompletionError::ResponseError(e.to_string()))?;
 
         if response.status().is_success() {
-            let text_response = response.text().await?;
-            tracing::debug!("Cohere response text: {}", text_response);
+            tracing::debug!("Cohere response text: {}", text);
 
-            let json_response: CompletionResponse = serde_json::from_str(&text_response)?;
+            let json_response: CompletionResponse = serde_json::from_str(&text)?;
             let completion: completion::CompletionResponse<CompletionResponse> =
                 json_response.try_into()?;
             Ok(completion)
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            Err(CompletionError::ProviderError(text.to_string()))
         }
     }
 

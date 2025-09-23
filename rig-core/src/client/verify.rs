@@ -1,4 +1,7 @@
-use crate::client::{AsVerify, ProviderClient};
+use crate::{
+    client::{AsVerify, ProviderClient},
+    http_client,
+};
 use futures::future::BoxFuture;
 use thiserror::Error;
 
@@ -12,7 +15,7 @@ pub enum VerifyError {
     HttpError(
         #[from]
         #[source]
-        reqwest::Error,
+        http_client::HttpClientError,
     ),
 }
 

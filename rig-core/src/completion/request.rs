@@ -66,7 +66,7 @@
 use super::message::{AssistantContent, DocumentMediaType};
 use crate::client::completion::CompletionModelHandle;
 use crate::streaming::StreamingCompletionResponse;
-use crate::{OneOrMany, streaming};
+use crate::{OneOrMany, http_client, streaming};
 use crate::{
     json_utils,
     message::{Message, UserContent},
@@ -85,7 +85,7 @@ use thiserror::Error;
 pub enum CompletionError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]
-    HttpError(#[from] reqwest::Error),
+    HttpError(#[from] http_client::HttpClientError),
 
     /// Json error (e.g.: serialization, deserialization)
     #[error("JsonError: {0}")]

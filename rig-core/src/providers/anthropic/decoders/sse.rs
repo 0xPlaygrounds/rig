@@ -1,5 +1,6 @@
 use super::line::{self, LineDecoder};
-use futures::{Stream, StreamExt};
+use bytes::Bytes;
+use futures::{Stream, StreamExt, stream::BoxStream};
 use std::fmt::Debug;
 use thiserror::Error;
 
@@ -181,14 +182,14 @@ fn extract_sse_chunk(buffer: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
     Some((chunk, remaining))
 }
 
-pub fn from_response(
-    response: reqwest::Response,
-) -> impl Stream<Item = Result<ServerSentEvent, SSEDecoderError>> {
-    let stream = response.bytes_stream().map(|result| {
-        result
-            .map_err(std::io::Error::other)
-            .map(|bytes| bytes.to_vec())
-    });
-
-    iter_sse_messages(stream)
+pub fn from_response<'a, E>(
+    stream: BoxStream<'a, Result<Bytes, E>>,
+) -> impl Stream<Item = Result<ServerSentEvent, SSEDecoderError>>
+where
+    E: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
+    iter_sse_messages(stream.map(|result| match result {
+        Ok(bytes) => Ok(bytes.to_vec()),
+        Err(e) => Err(std::io::Error::other(e)),
+    }))
 }
