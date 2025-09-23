@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rig::completion::chat::ChatBotBuilder;
+use rig::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::{
     Embed, embeddings::EmbeddingsBuilder, loaders::PdfFileLoader, providers::openai,
