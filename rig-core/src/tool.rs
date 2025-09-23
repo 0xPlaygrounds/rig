@@ -1009,6 +1009,52 @@ mod tests {
     // MCP Integration Tests
     // ========================================================================
 
+    #[cfg(feature = "rmcp")]
+    mod rmcp_tests {
+        use super::*;
+
+        #[test]
+        fn test_rmcp_tool_definition_conversion() {
+            use ::rmcp::model::Tool as RmcpTool;
+            use std::borrow::Cow;
+
+            let rmcp_tool = RmcpTool {
+                name: Cow::from("test_tool"),
+                description: Some(Cow::from("A test tool")),
+                input_schema: std::sync::Arc::new(serde_json::Map::new()),
+                output_schema: None,
+                title: None,
+                icons: None,
+                annotations: None,
+            };
+
+            let rig_definition: ToolDefinition = (&rmcp_tool).into();
+
+            assert_eq!(rig_definition.name, "test_tool");
+            assert_eq!(rig_definition.description, "A test tool");
+        }
+
+        #[test]
+        fn test_rmcp_tool_definition_conversion_no_description() {
+            use ::rmcp::model::Tool as RmcpTool;
+            use std::borrow::Cow;
+
+            let rmcp_tool = RmcpTool {
+                name: Cow::from("test_tool"),
+                description: None,
+                input_schema: std::sync::Arc::new(serde_json::Map::new()),
+                output_schema: None,
+                title: None,
+                icons: None,
+                annotations: None,
+            };
+
+            let rig_definition: ToolDefinition = (&rmcp_tool).into();
+
+            assert_eq!(rig_definition.name, "test_tool");
+            assert_eq!(rig_definition.description, "");
+        }
+    }
 
     #[cfg(feature = "turbomcp")]
     mod turbomcp_tests {
