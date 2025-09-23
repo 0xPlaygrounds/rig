@@ -282,7 +282,7 @@ where
                                 }
 
                                 tool_span.record("gen_ai.tool.name", &tool_call.function.name);
-                                tool_span.record("gen_ai.tool.call.arguments", &tool_call.function.arguments.to_string());
+                                tool_span.record("gen_ai.tool.call.arguments", tool_call.function.arguments.to_string());
 
                                 let tool_result = match
                                 agent.tools.call(&tool_call.function.name, tool_call.function.arguments.to_string()).await {
