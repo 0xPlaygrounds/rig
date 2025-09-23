@@ -9,9 +9,14 @@ use std::io::{self, Write};
 
 pub struct NoImplProvided;
 
-pub struct ChatImpl<T: Chat>(T);
+pub struct ChatImpl<T>(T)
+where
+    T: Chat;
 
-pub struct AgentImpl<M: CompletionModel + 'static> {
+pub struct AgentImpl<M>
+where
+    M: CompletionModel + 'static,
+{
     agent: Agent<M>,
     multi_turn_depth: usize,
     show_usage: bool,
@@ -37,7 +42,10 @@ trait CliChat {
     }
 }
 
-impl<T: Chat> CliChat for ChatImpl<T> {
+impl<T> CliChat for ChatImpl<T>
+where
+    T: Chat,
+{
     async fn request(
         &mut self,
         prompt: &str,
@@ -50,7 +58,10 @@ impl<T: Chat> CliChat for ChatImpl<T> {
     }
 }
 
-impl<M: CompletionModel + 'static> CliChat for AgentImpl<M> {
+impl<M> CliChat for AgentImpl<M>
+where
+    M: CompletionModel + 'static,
+{
     async fn request(
         &mut self,
         prompt: &str,
@@ -127,14 +138,20 @@ impl ChatBotBuilder<NoImplProvided> {
     }
 }
 
-impl<T: Chat> ChatBotBuilder<ChatImpl<T>> {
+impl<T> ChatBotBuilder<ChatImpl<T>>
+where
+    T: Chat,
+{
     pub fn build(self) -> ChatBot<ChatImpl<T>> {
         let ChatBotBuilder(chat_impl) = self;
         ChatBot(chat_impl)
     }
 }
 
-impl<M: CompletionModel + 'static> ChatBotBuilder<AgentImpl<M>> {
+impl<M> ChatBotBuilder<AgentImpl<M>>
+where
+    M: CompletionModel + 'static,
+{
     pub fn multi_turn_depth(self, multi_turn_depth: usize) -> Self {
         ChatBotBuilder(AgentImpl {
             multi_turn_depth,
@@ -155,7 +172,10 @@ impl<M: CompletionModel + 'static> ChatBotBuilder<AgentImpl<M>> {
 }
 
 #[allow(private_bounds)]
-impl<T: CliChat> ChatBot<T> {
+impl<T> ChatBot<T>
+where
+    T: CliChat,
+{
     pub async fn run(mut self) -> Result<(), PromptError> {
         let stdin = io::stdin();
         let mut stdout = io::stdout();
