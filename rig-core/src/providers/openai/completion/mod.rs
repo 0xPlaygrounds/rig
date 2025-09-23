@@ -8,7 +8,7 @@ use crate::completion::{
 };
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
-use crate::telemetry::{ProviderRequestExt, SpanCombinator};
+use crate::telemetry::{ProviderResponseExt, SpanCombinator};
 use crate::{OneOrMany, completion, json_utils, message};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
@@ -671,9 +671,17 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-impl crate::telemetry::ProviderResponseExt for CompletionResponse {
+impl ProviderResponseExt for CompletionResponse {
     type OutputMessage = Choice;
     type Usage = Usage;
+
+    fn get_response_id(&self) -> Option<String> {
+        Some(self.id.to_owned())
+    }
+
+    fn get_response_model_name(&self) -> Option<String> {
+        Some(self.model.to_owned())
+    }
 
     fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
         self.choices.clone()

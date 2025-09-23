@@ -1,8 +1,9 @@
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError},
+    completion::{self, CompletionError, GetTokenUsage},
     json_utils,
     message::{self, Reasoning},
+    telemetry::SpanCombinator,
 };
 use std::collections::HashMap;
 
@@ -11,6 +12,7 @@ use crate::completion::CompletionRequest;
 use crate::providers::cohere::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tracing::{Instrument, info_span};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -38,6 +40,47 @@ impl CompletionResponse {
     }
 }
 
+impl crate::telemetry::ProviderResponseExt for CompletionResponse {
+    type OutputMessage = Message;
+    type Usage = Usage;
+
+    fn get_response_id(&self) -> Option<String> {
+        Some(self.id.clone())
+    }
+
+    fn get_response_model_name(&self) -> Option<String> {
+        None
+    }
+
+    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+        vec![self.message.clone()]
+    }
+
+    fn get_text_response(&self) -> Option<String> {
+        let Message::Assistant { ref content, .. } = self.message else {
+            return None;
+        };
+
+        let res = content
+            .iter()
+            .filter_map(|x| {
+                if let AssistantContent::Text { text } = x {
+                    Some(text.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        if res.is_empty() { None } else { Some(res) }
+    }
+
+    fn get_usage(&self) -> Option<Self::Usage> {
+        self.usage.clone()
+    }
+}
+
 #[derive(Debug, Deserialize, PartialEq, Eq, Clone, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum FinishReason {
@@ -54,6 +97,20 @@ pub struct Usage {
     pub billed_units: Option<BilledUnits>,
     #[serde(default)]
     pub tokens: Option<Tokens>,
+}
+
+impl GetTokenUsage for Usage {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+
+        if let Some(ref billed_units) = self.billed_units {
+            usage.input_tokens = billed_units.input_tokens.unwrap_or_default() as u64;
+            usage.output_tokens = billed_units.output_tokens.unwrap_or_default() as u64;
+            usage.total_tokens = usage.input_tokens + usage.output_tokens;
+        }
+
+        Some(usage)
+    }
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
@@ -523,24 +580,52 @@ impl completion::CompletionModel for CompletionModel {
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let request = self.create_completion_request(completion_request)?;
+
+        let llm_span = if tracing::Span::current().is_disabled() {
+            info_span!(
+            target: "rig::completions",
+            "chat",
+            gen_ai.operation.name = "chat",
+            gen_ai.provider.name = "cohere",
+            gen_ai.request.model = self.model,
+            gen_ai.response.id = tracing::field::Empty,
+            gen_ai.response.model = self.model,
+            gen_ai.usage.output_tokens = tracing::field::Empty,
+            gen_ai.usage.input_tokens = tracing::field::Empty,
+            gen_ai.input.messages = serde_json::to_string(request.get("messages").expect("Converting request messages to JSON should not fail!")).unwrap(),
+            gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
         tracing::debug!(
             "Cohere request: {}",
             serde_json::to_string_pretty(&request)?
         );
 
-        let response = self.client.post("/v2/chat").json(&request).send().await?;
+        async {
+            let response = self.client.post("/v2/chat").json(&request).send().await?;
 
-        if response.status().is_success() {
-            let text_response = response.text().await?;
-            tracing::debug!("Cohere response text: {}", text_response);
+            if response.status().is_success() {
+                let text_response = response.text().await?;
+                tracing::debug!("Cohere completion request: {}", text_response);
 
-            let json_response: CompletionResponse = serde_json::from_str(&text_response)?;
-            let completion: completion::CompletionResponse<CompletionResponse> =
-                json_response.try_into()?;
-            Ok(completion)
-        } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+                let json_response: CompletionResponse = serde_json::from_str(&text_response)?;
+                let span = tracing::Span::current();
+                span.record_token_usage(&json_response.usage);
+                span.record_model_output(&json_response.message);
+                span.record_response_metadata(&json_response);
+                tracing::debug!("Cohere completion response: {}", text_response);
+                let completion: completion::CompletionResponse<CompletionResponse> =
+                    json_response.try_into()?;
+                Ok(completion)
+            } else {
+                Err(CompletionError::ProviderError(response.text().await?))
+            }
         }
+        .instrument(llm_span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

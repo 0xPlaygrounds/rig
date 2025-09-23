@@ -1,12 +1,17 @@
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::providers::cohere::CompletionModel;
-use crate::providers::cohere::completion::Usage;
+use crate::providers::cohere::completion::{
+    AssistantContent, Message, ToolCall, ToolCallFunction, ToolType, Usage,
+};
 use crate::streaming::RawStreamingChoice;
+use crate::telemetry::SpanCombinator;
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
 use reqwest_eventsource::{Event, RequestBuilderExt};
 use serde::{Deserialize, Serialize};
+use tracing::info_span;
+use tracing_futures::Instrument;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
@@ -91,10 +96,28 @@ impl CompletionModel {
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let request = self.create_completion_request(request)?;
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "cohere",
+                gen_ai.request.model = self.model,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = self.model,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
         let request = json_utils::merge(request, serde_json::json!({"stream": true}));
 
         tracing::debug!(
-            "Cohere request: {}",
+            "Cohere streaming completion input: {}",
             serde_json::to_string_pretty(&request)?
         );
 
@@ -107,6 +130,8 @@ impl CompletionModel {
 
         let stream = Box::pin(stream! {
             let mut current_tool_call: Option<(String, String, String)> = None;
+            let mut text_response = String::new();
+            let mut tool_calls = Vec::new();
 
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -135,10 +160,23 @@ impl CompletionModel {
                                 let Some(content) = &message.content else { continue; };
                                 let Some(text) = &content.text else { continue; };
 
+                                text_response += text;
+
                                 yield Ok(RawStreamingChoice::Message(text.clone()));
                             },
 
                             StreamingEvent::MessageEnd { delta: Some(delta) } => {
+                                let message = Message::Assistant {
+                                    tool_calls: tool_calls.clone(),
+                                    content: vec![AssistantContent::Text { text: text_response.clone() }],
+                                    tool_plan: None,
+                                    citations: vec![]
+                                };
+
+                                let span = tracing::Span::current();
+                                span.record_token_usage(&delta.usage);
+                                span.record_model_output(&vec![message]);
+
                                 yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                                     usage: delta.usage.clone()
                                 }));
@@ -167,7 +205,16 @@ impl CompletionModel {
 
                             StreamingEvent::ToolCallEnd => {
                                 let Some(tc) = current_tool_call.clone() else { continue; };
-                                let Ok(args) = serde_json::from_str(&tc.2) else { continue; };
+                                let Ok(args) = serde_json::from_str::<serde_json::Value>(&tc.2) else { continue; };
+
+                                tool_calls.push(ToolCall {
+                                    id: Some(tc.0.clone()),
+                                    r#type: Some(ToolType::Function),
+                                    function: Some(ToolCallFunction {
+                                        name: tc.1.clone(),
+                                        arguments: args.clone()
+                                    })
+                                });
 
                                 yield Ok(RawStreamingChoice::ToolCall {
                                     id: tc.0,
@@ -194,7 +241,7 @@ impl CompletionModel {
             }
 
             event_source.close();
-        });
+        }.instrument(span));
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))
     }

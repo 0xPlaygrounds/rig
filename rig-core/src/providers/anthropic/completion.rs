@@ -65,36 +65,40 @@ impl ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
     fn get_response_id(&self) -> Option<String> {
-        Some(self.id)
+        Some(self.id.to_owned())
     }
 
     fn get_response_model_name(&self) -> Option<String> {
-        Some(self.model)
+        Some(self.model.to_owned())
     }
+
     fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        self.messages.clone()
+        self.content.clone()
     }
 
     fn get_text_response(&self) -> Option<String> {
-        self.content
+        let res = self
+            .content
             .iter()
             .filter_map(|x| {
-                if let Content::Text { text } = *x {
-                    Some(text)
+                if let Content::Text { text } = x {
+                    Some(text.to_owned())
                 } else {
                     None
                 }
             })
-            .collect()
-            .join("\n")
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        if res.is_empty() { None } else { Some(res) }
     }
 
     fn get_usage(&self) -> Option<Self::Usage> {
-        Some(self.usage)
+        Some(self.usage.clone())
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub input_tokens: u64,
     pub cache_read_input_tokens: Option<u64>,
