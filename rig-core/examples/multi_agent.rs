@@ -1,8 +1,9 @@
 use anyhow::Result;
+use rig::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::{
     agent::{Agent, AgentBuilder},
-    completion::{Chat, CompletionModel, PromptError, ToolDefinition, chat::ChatBotBuilder},
+    completion::{Chat, CompletionModel, PromptError, ToolDefinition},
     providers::openai::Client as OpenAIClient,
     tool::Tool,
 };

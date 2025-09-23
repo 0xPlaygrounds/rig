@@ -110,6 +110,7 @@ pub mod agent;
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
+pub mod cli_chatbot;
 pub mod client;
 pub mod completion;
 pub mod embeddings;
