@@ -154,4 +154,3 @@ async fn test_provider_model_id_streaming(
 
     Ok(())
 }
-
