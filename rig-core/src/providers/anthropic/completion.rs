@@ -305,7 +305,10 @@ impl TryFrom<message::ContentFormat> for SourceType {
     fn try_from(format: message::ContentFormat) -> Result<Self, Self::Error> {
         match format {
             message::ContentFormat::Base64 => Ok(SourceType::BASE64),
-            message::ContentFormat::String => Ok(SourceType::URL),
+            message::ContentFormat::Url => Ok(SourceType::URL),
+            message::ContentFormat::String => Err(MessageError::ConversionError(
+                "ContentFormat::String is deprecated, use ContentFormat::Url for URLs".into(),
+            )),
         }
     }
 }
@@ -314,7 +317,7 @@ impl From<SourceType> for message::ContentFormat {
     fn from(source_type: SourceType) -> Self {
         match source_type {
             SourceType::BASE64 => message::ContentFormat::Base64,
-            SourceType::URL => message::ContentFormat::String,
+            SourceType::URL => message::ContentFormat::Url,
         }
     }
 }
@@ -1051,5 +1054,31 @@ mod tests {
         assert_eq!(user_message, original_user_message);
         assert_eq!(assistant_message, original_assistant_message);
         assert_eq!(tool_message, original_tool_message);
+    }
+
+    #[test]
+    fn test_content_format_conversion() {
+        use crate::completion::message::ContentFormat;
+
+        let source_type: SourceType = ContentFormat::Url.try_into().unwrap();
+        assert_eq!(source_type, SourceType::URL);
+
+        let content_format: ContentFormat = SourceType::URL.into();
+        assert_eq!(content_format, ContentFormat::Url);
+
+        let source_type: SourceType = ContentFormat::Base64.try_into().unwrap();
+        assert_eq!(source_type, SourceType::BASE64);
+
+        let content_format: ContentFormat = SourceType::BASE64.into();
+        assert_eq!(content_format, ContentFormat::Base64);
+
+        let result: Result<SourceType, _> = ContentFormat::String.try_into();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("ContentFormat::String is deprecated")
+        );
     }
 }
