@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use tracing::{Instrument, info_span};
 
 use super::client::{ApiErrorResponse, ApiResponse, Client, Usage};
 
@@ -13,6 +14,7 @@ use serde_json::{Value, json};
 use crate::providers::openai::AssistantContent;
 use crate::providers::openrouter::streaming::FinalCompletionResponse;
 use crate::streaming::StreamingCompletionResponse;
+use crate::telemetry::SpanCombinator;
 
 // ================================================================
 // OpenRouter Completion API
@@ -191,31 +193,56 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let preamble = completion_request.preamble.clone();
         let request = self.create_completion_request(completion_request)?;
-
-        let response = self
-            .client
-            .post("/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
-                ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "OpenRouter completion token usage: {:?}",
-                        response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
-                    );
-                    tracing::debug!(target: "rig",
-                        "OpenRouter response: {response:?}");
-                    response.try_into()
-                }
-                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
-            }
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completion",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "openrouter",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            tracing::Span::current()
+        };
+
+        async move {
+            let response = self
+                .client
+                .post("/chat/completions")
+                .json(&request)
+                .send()
+                .await?;
+
+            if response.status().is_success() {
+                match response.json::<ApiResponse<CompletionResponse>>().await? {
+                    ApiResponse::Ok(response) => {
+                        let span = tracing::Span::current();
+                        span.record_token_usage(&response.usage);
+                        span.record_model_output(&response.choices);
+                        span.record("gen_ai.response.id", &response.id);
+                        span.record("gen_ai.response.model_name", &response.model);
+
+                        tracing::debug!(target: "rig::completion",
+                            "OpenRouter response: {response:?}");
+                        response.try_into()
+                    }
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                }
+            } else {
+                Err(CompletionError::ProviderError(response.text().await?))
+            }
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

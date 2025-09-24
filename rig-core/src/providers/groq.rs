@@ -10,6 +10,8 @@
 //! ```
 use reqwest_eventsource::{Event, RequestBuilderExt};
 use std::collections::HashMap;
+use tracing::info_span;
+use tracing_futures::Instrument;
 
 use super::openai::{CompletionResponse, StreamingToolCall, TranscriptionResponse, Usage};
 use crate::client::{
@@ -17,6 +19,7 @@ use crate::client::{
 };
 use crate::completion::GetTokenUsage;
 use crate::json_utils::merge;
+use crate::providers::openai::{AssistantContent, Function, ToolType};
 use async_stream::stream;
 use futures::StreamExt;
 
@@ -436,29 +439,63 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let preamble = completion_request.preamble.clone();
+
         let request = self.create_completion_request(completion_request)?;
-
-        let response = self
-            .client
-            .post("/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
-                ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "groq completion token usage: {:?}",
-                        response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
-                    );
-                    response.try_into()
-                }
-                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
-            }
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "groq",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
-        }
+            tracing::Span::current()
+        };
+
+        let async_block = async move {
+            let response = self
+                .client
+                .post("/chat/completions")
+                .json(&request)
+                .send()
+                .await?;
+
+            if response.status().is_success() {
+                match response.json::<ApiResponse<CompletionResponse>>().await? {
+                    ApiResponse::Ok(response) => {
+                        let span = tracing::Span::current();
+                        span.record("gen_ai.response.id", response.id.clone());
+                        span.record("gen_ai.response.model_name", response.model.clone());
+                        span.record(
+                            "gen_ai.output.messages",
+                            serde_json::to_string(&response.choices).unwrap(),
+                        );
+                        if let Some(ref usage) = response.usage {
+                            span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
+                            span.record(
+                                "gen_ai.usage.output_tokens",
+                                usage.total_tokens - usage.prompt_tokens,
+                            );
+                        }
+                        response.try_into()
+                    }
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                }
+            } else {
+                Err(CompletionError::ProviderError(response.text().await?))
+            }
+        };
+
+        tracing::Instrument::instrument(async_block, span).await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -469,6 +506,7 @@ impl completion::CompletionModel for CompletionModel {
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
+        let preamble = request.preamble.clone();
         let mut request = self.create_completion_request(request)?;
 
         request = merge(
@@ -478,7 +516,26 @@ impl completion::CompletionModel for CompletionModel {
 
         let builder = self.client.post("/chat/completions").json(&request);
 
-        send_compatible_streaming_request(builder).await
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "groq",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        tracing::Instrument::instrument(send_compatible_streaming_request(builder), span).await
     }
 }
 
@@ -613,15 +670,19 @@ pub async fn send_compatible_streaming_request(
     crate::streaming::StreamingCompletionResponse<StreamingCompletionResponse>,
     CompletionError,
 > {
+    let span = tracing::Span::current();
     let mut event_source = request_builder
         .eventsource()
         .expect("Cloning request must succeed");
 
     let stream = Box::pin(stream! {
+        let span = tracing::Span::current();
         let mut final_usage = Usage {
             prompt_tokens: 0,
             total_tokens: 0
         };
+
+        let mut text_response = String::new();
 
         let mut calls: HashMap<usize, (String, String, String)> = HashMap::new();
 
@@ -697,6 +758,7 @@ pub async fn send_compatible_streaming_request(
 
                                 // Streamed content
                                 if let Some(content) = content {
+                                    text_response += content;
                                     yield Ok(crate::streaming::RawStreamingChoice::Message(content.clone()));
                                 }
                             }
@@ -718,11 +780,21 @@ pub async fn send_compatible_streaming_request(
             }
         }
 
+        let mut tool_calls = Vec::new();
         // Flush accumulated tool calls
         for (_, (id, name, arguments)) in calls {
             let Ok(arguments_json) = serde_json::from_str::<serde_json::Value>(&arguments) else {
                 continue;
             };
+
+            tool_calls.push(rig::providers::openai::completion::ToolCall {
+                id: id.clone(),
+                r#type: ToolType::Function,
+                function: Function {
+                    name: name.clone(),
+                    arguments: arguments_json.clone()
+                }
+            });
             yield Ok(crate::streaming::RawStreamingChoice::ToolCall {
                 id,
                 name,
@@ -731,11 +803,23 @@ pub async fn send_compatible_streaming_request(
             });
         }
 
+        let response_message = crate::providers::openai::completion::Message::Assistant {
+            content: vec![AssistantContent::Text { text: text_response }],
+            refusal: None,
+            audio: None,
+            name: None,
+            tool_calls
+        };
+
+        span.record("gen_ai.output.messages", serde_json::to_string(&vec![response_message]).unwrap());
+        span.record("gen_ai.usage.input_tokens", final_usage.prompt_tokens);
+        span.record("gen_ai.usage.output_tokens", final_usage.total_tokens - final_usage.prompt_tokens);
+
         // Final response
         yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse { usage: final_usage.clone() }
         ));
-    });
+    }.instrument(span));
 
     Ok(crate::streaming::StreamingCompletionResponse::stream(
         stream,
