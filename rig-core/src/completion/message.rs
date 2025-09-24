@@ -273,6 +273,7 @@ pub enum ContentFormat {
     #[default]
     Base64,
     String,
+    Url,
 }
 
 /// Helper enum that tracks the media type of the content.
