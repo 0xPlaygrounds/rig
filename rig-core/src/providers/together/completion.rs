@@ -246,10 +246,10 @@ impl completion::CompletionModel for CompletionModel {
                         span.record("gen_ai.response.id", &response.id);
                         span.record("gen_ai.response.model_name", &response.model);
                         if let Some(ref usage) = response.usage {
-                            span.record("gen_ai.usage.input_tokens", &usage.prompt_tokens);
+                            span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
                             span.record(
                                 "gen_ai.usage.output_tokens",
-                                &usage.total_tokens - usage.prompt_tokens,
+                                usage.total_tokens - usage.prompt_tokens,
                             );
                         }
                         response.try_into()
