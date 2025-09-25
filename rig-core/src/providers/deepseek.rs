@@ -372,6 +372,22 @@ impl TryFrom<message::Message> for Vec<Message> {
             message::Message::Assistant { content, .. } => {
                 let mut messages: Vec<Message> = vec![];
 
+                // extract text
+                let text_content = content
+                    .clone()
+                    .into_iter()
+                    .filter_map(|content| match content {
+                        message::AssistantContent::Text(text) => Some(Message::Assistant {
+                            content: text.text,
+                            name: None,
+                            tool_calls: vec![],
+                        }),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+
+                messages.extend(text_content);
+
                 // extract tool calls
                 let tool_calls = content
                     .clone()
@@ -392,21 +408,6 @@ impl TryFrom<message::Message> for Vec<Message> {
                         tool_calls,
                     });
                 }
-
-                // extract text
-                let text_content = content
-                    .into_iter()
-                    .filter_map(|content| match content {
-                        message::AssistantContent::Text(text) => Some(Message::Assistant {
-                            content: text.text,
-                            name: None,
-                            tool_calls: vec![],
-                        }),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-
-                messages.extend(text_content);
 
                 Ok(messages)
             }
