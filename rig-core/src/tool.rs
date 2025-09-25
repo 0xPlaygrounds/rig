@@ -611,6 +611,8 @@ pub mod turbomcp {
                             },
                         )],
                         is_error: Some(false),
+                        structured_content: None,
+                        _meta: None,
                     }
                 };
 
