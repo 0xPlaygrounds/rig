@@ -584,6 +584,11 @@ pub mod gemini_api_types {
                     mime_type: Some(mime_type),
                     file_uri: url,
                 }),
+                DocumentSourceKind::Raw(_) => {
+                    return Err(message::MessageError::ConversionError(
+                        "Raw files not supported, encode as base64 first".into(),
+                    ));
+                }
                 DocumentSourceKind::Base64(data) => PartKind::InlineData(Blob { mime_type, data }),
                 DocumentSourceKind::Unknown => {
                     return Err(message::MessageError::ConversionError(
@@ -678,6 +683,11 @@ pub mod gemini_api_types {
                             DocumentSourceKind::Base64(data) => {
                                 PartKind::InlineData(Blob { data, mime_type })
                             }
+                            DocumentSourceKind::Raw(_) => {
+                                return Err(message::MessageError::ConversionError(
+                                    "Raw files not supported, encode as base64 first".into(),
+                                ));
+                            }
                             DocumentSourceKind::Unknown => {
                                 return Err(message::MessageError::ConversionError(
                                     "Document has no body".to_string(),
@@ -714,6 +724,11 @@ pub mod gemini_api_types {
                             mime_type: Some(mime_type),
                             file_uri,
                         }),
+                        DocumentSourceKind::Raw(_) => {
+                            return Err(message::MessageError::ConversionError(
+                                "Raw files not supported, encode as base64 first".into(),
+                            ));
+                        }
                         DocumentSourceKind::Unknown => {
                             return Err(message::MessageError::ConversionError(
                                 "Content has no body".to_string(),
@@ -746,6 +761,11 @@ pub mod gemini_api_types {
                         }),
                         DocumentSourceKind::Base64(data) => {
                             PartKind::InlineData(Blob { mime_type, data })
+                        }
+                        DocumentSourceKind::Raw(_) => {
+                            return Err(message::MessageError::ConversionError(
+                                "Raw file data not supported, encode as base64 first".into(),
+                            ));
                         }
                         DocumentSourceKind::Unknown => {
                             return Err(message::MessageError::ConversionError(

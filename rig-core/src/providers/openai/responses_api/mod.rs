@@ -258,6 +258,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                     format!("data:{media_type};base64,{data}")
                                 }
                                 DocumentSourceKind::Url(url) => url,
+                                DocumentSourceKind::Raw(_) => return Err(CompletionError::RequestError("Raw file data not supported, encode as base64 first".into())),
                                 DocumentSourceKind::Unknown => return Err(CompletionError::RequestError("Attempted to create an OpenAI Responses AI image input from unknown variant".into()))
                             };
                             items.push(InputItem {
@@ -1205,6 +1206,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                         format!("data:{media_type};base64,{data}")
                                     }
                                     DocumentSourceKind::Url(url) => url,
+                                    DocumentSourceKind::Raw(_) => return Err(MessageError::ConversionError("Raw files not supported, encode as base64 first".into())),
                                     DocumentSourceKind::Unknown => return Err(MessageError::ConversionError("Attempted to convert unknown image type to OpenAI image input".to_string()))
                                 };
 

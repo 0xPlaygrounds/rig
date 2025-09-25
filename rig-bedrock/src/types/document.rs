@@ -27,15 +27,25 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
             None => Ok(None),
         }?;
 
-        let DocumentSourceKind::Base64(data) = data else {
-            return Err(CompletionError::RequestError(
-                "Invalid document format".into(),
-            ));
+        let data = match data {
+            DocumentSourceKind::Base64(blob) => BASE64_STANDARD
+                .decode(blob)
+                .map_err(|e| CompletionError::RequestError(e.into()))?,
+            DocumentSourceKind::Raw(bytes) => bytes,
+            DocumentSourceKind::Url(_) => {
+                return Err(CompletionError::RequestError(
+                    "File URLs not supported".into(),
+                ));
+            }
+            DocumentSourceKind::Unknown => {
+                return Err(CompletionError::RequestError("Document has no body".into()));
+            }
+            _ => {
+                return Err(CompletionError::RequestError(
+                    "Unsupported document kind".into(),
+                ));
+            }
         };
-
-        let data = BASE64_STANDARD
-            .decode(data)
-            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 
         let data = aws_smithy_types::Blob::new(data);
         let document_source = aws_bedrock::DocumentSource::Bytes(data);
