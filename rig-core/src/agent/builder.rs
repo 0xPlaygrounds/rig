@@ -10,6 +10,10 @@ use crate::{
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 use crate::tool::rmcp::McpTool as RmcpTool;
 
+#[cfg(feature = "turbomcp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "turbomcp")))]
+use crate::tool::turbomcp::TurboMcpTool;
+
 use super::Agent;
 
 /// A builder for creating an agent
@@ -133,6 +137,21 @@ where
     pub fn rmcp_tool(mut self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
         let toolname = tool.name.clone();
         self.tools.add_tool(RmcpTool::from_mcp_server(tool, client));
+        self.static_tools.push(toolname.to_string());
+        self
+    }
+
+    // Add an MCP tool (from `turbomcp`) to the agent with SharedClient
+    #[cfg_attr(docsrs, doc(cfg(feature = "turbomcp")))]
+    #[cfg(feature = "turbomcp")]
+    pub fn turbomcp_tool<T: turbomcp_transport::Transport + Send + 'static>(
+        mut self,
+        tool: turbomcp_protocol::types::Tool,
+        client: turbomcp_client::SharedClient<T>,
+    ) -> Self {
+        let toolname = tool.name.clone();
+        self.tools
+            .add_tool(TurboMcpTool::from_mcp_server(tool, client));
         self.static_tools.push(toolname.to_string());
         self
     }
