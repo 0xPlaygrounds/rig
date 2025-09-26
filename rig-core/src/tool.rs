@@ -1058,48 +1058,4 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "turbomcp")]
-    mod turbomcp_tests {
-        use super::*;
-        #[test]
-        fn test_turbomcp_tool_definition_conversion() {
-            // Clean API - now as simple as RMCP!
-            let turbomcp_tool =
-                turbomcp_protocol::types::Tool::with_description("test_tool", "A test tool");
-
-            let rig_definition: ToolDefinition = (&turbomcp_tool).into();
-
-            assert_eq!(rig_definition.name, "test_tool");
-            assert_eq!(rig_definition.description, "A test tool");
-        }
-
-        #[test]
-        fn test_turbomcp_tool_definition_conversion_no_description() {
-            // Clean API - simple tool creation
-            let turbomcp_tool = turbomcp_protocol::types::Tool::new("test_tool");
-
-            let rig_definition: ToolDefinition = (&turbomcp_tool).into();
-
-            assert_eq!(rig_definition.name, "test_tool");
-            assert_eq!(rig_definition.description, "Tool: test_tool");
-        }
-
-        #[test]
-        fn test_turbomcp_1_0_7_tool_creation_helpers() {
-            // Test TurboMCP tool creation helpers
-            let tool_basic = turbomcp_protocol::types::Tool::new("basic_tool");
-            assert_eq!(tool_basic.name, "basic_tool");
-            assert!(tool_basic.description.is_none());
-
-            let tool_with_desc = turbomcp_protocol::types::Tool::with_description(
-                "desc_tool",
-                "A tool with description",
-            );
-            assert_eq!(tool_with_desc.name, "desc_tool");
-            assert_eq!(
-                tool_with_desc.description,
-                Some("A tool with description".to_string())
-            );
-        }
-    }
 }

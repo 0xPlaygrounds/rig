@@ -1,150 +1,170 @@
-//! An example of how you can use `turbomcp` with Rig to create an MCP friendly agent.
-//! This example demonstrates TurboMCP integration patterns alongside the existing rmcp integration.
+//! An example demonstrating TurboMCP integration with Rig for LLM agents.
 //!
-//! ## TurboMCP Integration Features
+//! This example shows how to:
+//! - Create a TurboMCP server with tools and resources using macros
+//! - Connect a TurboMCP client to the server via TCP transport
+//! - Integrate TurboMCP tools with a Rig agent
+//! - Make actual tool calls through the agent
 //!
-//! TurboMCP provides an alternative MCP client implementation with:
-//! - Server macros: `#[server]`, `#[tool]`, `#[resource]` for clean server definitions
-//! - Multiple transport options: TCP, HTTP, WebSocket, Unix Socket, STDIO
-//! - SharedClient pattern for simplified async client sharing
-//! - Built-in context injection and observability
-//! - Production features: OAuth 2.1, security headers, performance optimizations
-//!
-//! ## Usage
-//!
-//! This example shows how to integrate TurboMCP tools with Rig agents using the same
-//! pattern as rmcp, demonstrating that TurboMCP can be used as a drop-in alternative.
-//!
-//! The integration uses the `turbomcp_tool()` method which mirrors `rmcp_tool()`.
+//! The server provides a `sum` tool that adds two numbers, along with
+//! sample resources demonstrating the MCP protocol capabilities.
 
 #![cfg(feature = "turbomcp")]
 
-// Minimal imports for the demo
+use std::{sync::Arc, net::SocketAddr};
+use tokio::sync::Mutex;
+use turbomcp::prelude::*;
+use turbomcp_client::{SharedClient, Client};
+use turbomcp_transport::TcpTransport;
 
 use rig::{
     client::{CompletionClient, ProviderClient},
     completion::Prompt,
     providers::openai,
 };
-use turbomcp_client::SharedClient;
+
+/// Request structure for the sum tool
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct StructRequest {
+    pub a: i32,
+    pub b: i32,
+}
+
+/// Simple counter server that provides math tools and sample resources
+#[derive(Clone)]
+pub struct Counter {
+    pub counter: Arc<Mutex<i32>>,
+}
+
+#[server(
+    name = "TurboMCP-Rig-Demo",
+    version = "1.0.0",
+    description = "A simple MCP server with math tools and sample resources"
+)]
+impl Counter {
+    pub fn new() -> Self {
+        Self {
+            counter: Arc::new(Mutex::new(0)),
+        }
+    }
+
+    /// Adds two numbers together
+    #[tool("Calculate the sum of two numbers")]
+    async fn sum(&self, request: StructRequest) -> McpResult<String> {
+        Ok((request.a + request.b).to_string())
+    }
+
+    /// Sample file system resource
+    #[resource("str:////Users/to/some/path/")]
+    async fn resource_cwd(&self) -> McpResult<String> {
+        Ok("/Users/to/some/path/".to_string())
+    }
+
+    /// Sample memo resource
+    #[resource("memo://insights")]
+    async fn resource_memo(&self) -> McpResult<String> {
+        Ok("Business Intelligence Memo\n\nAnalysis has revealed 5 key insights ...".to_string())
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    println!("TurboMCP Integration Example");
-    println!("============================");
-    println!("Demonstrating TurboMCP client integration with Rig");
-    println!();
+    println!("🚀 TurboMCP + Rig Integration Example");
+    println!("=====================================");
 
-    // ============================================================================
-    // SERVER SETUP INFORMATION
-    // ============================================================================
+    let server = Counter::new();
 
-    println!("TurboMCP Server Features:");
-    println!("  • Server macros: #[server], #[tool], #[resource]");
-    println!("  • Multiple transports: TCP, HTTP, WebSocket, Unix Socket, STDIO");
-    println!("  • Built-in context injection and observability");
-    println!("  • Production features: OAuth 2.1, security headers, performance optimizations");
-    println!();
-
-    // ============================================================================
-    // CLIENT SETUP INFORMATION
-    // ============================================================================
-
-    println!("TurboMCP Client Features:");
-    println!("  • Clean transport API: TcpTransport::new_client() + transport.connect()");
-    println!("  • Builder pattern: ClientBuilder::new().with_tools(true).build_sync()");
-    println!("  • SharedClient pattern for simplified async sharing");
-    println!("  • Clone-able client instances for concurrent access");
-    println!();
-
-    // Create a demonstration tool to show Rig integration
-    println!("Creating demonstration tool for Rig integration...");
-
-    let sum_tool = turbomcp_protocol::types::Tool {
-        name: "sum".to_string(),
-        title: Some("Sum Calculator".to_string()),
-        description: Some("Calculate the sum of two numbers".to_string()),
-        input_schema: turbomcp_protocol::types::ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some([
-                ("a".to_string(), serde_json::json!({"type": "number", "description": "First number"})),
-                ("b".to_string(), serde_json::json!({"type": "number", "description": "Second number"}))
-            ].into_iter().collect()),
-            required: Some(vec!["a".to_string(), "b".to_string()]),
-            additional_properties: Some(false),
-        },
-        output_schema: None,
-        annotations: None,
-        meta: None,
-    };
-
-    // ============================================================================
-    // SHARED CLIENT DEMONSTRATION
-    // ============================================================================
-
-    println!("Demonstrating SharedClient pattern...");
-    println!("  • SharedClient.clone() creates lightweight references");
-    println!("  • Enables concurrent access without manual Arc/Mutex handling");
-    println!("  • Simplifies async client sharing patterns");
-    println!();
-
-    // ============================================================================
-    // RIG INTEGRATION DEMONSTRATION
-    // ============================================================================
-
-    println!("Setting up Rig agent with TurboMCP tools...");
-
-    // Create a SharedClient to demonstrate the integration pattern
-    use turbomcp_transport::stdio::StdioTransport;
-    let transport = StdioTransport::new();
-    let client = turbomcp_client::Client::new(transport);
-    let shared_client = SharedClient::new(client);
-
-    // Create OpenAI agent using the same pattern as rmcp integration
-    let openai_client = openai::Client::from_env();
-    let agent = openai_client
-        .agent("gpt-4o")
-        .preamble("You are a helpful assistant who has access to a number of tools from an MCP server designed to be used for incrementing and decrementing a counter.")
-        .turbomcp_tool(sum_tool, shared_client.clone()) // SharedClient can be cloned for sharing
-        .build();
-
-    println!("✓ Rig agent configured with TurboMCP tool");
-    println!("✓ Integration follows same pattern as rmcp_tool()");
-    println!();
-
-    // ============================================================================
-    // AGENT USAGE DEMONSTRATION
-    // ============================================================================
-
-    println!("Testing agent with: 'What is 2+5?'");
-
-    // This will fail gracefully since there's no actual server, but demonstrates the integration
-    match agent.prompt("What is 2+5?").multi_turn(2).await {
-        Ok(res) => {
-            println!("Agent response: {}", res);
+    // Start TurboMCP TCP server
+    println!("🚀 Starting TurboMCP TCP server on localhost:8080...");
+    tokio::spawn({
+        let server = server.clone();
+        async move {
+            loop {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {
+                        println!("Received Ctrl+C, shutting down");
+                        break;
+                    }
+                    result = server.run_tcp("127.0.0.1:8080".parse::<SocketAddr>().unwrap()) => {
+                        match result {
+                            Ok(_) => break,
+                            Err(e) => {
+                                eprintln!("Server error: {e:?}");
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
         }
-        Err(e) => {
-            println!("Expected error (no server connection): {}", e);
-            println!("This demonstrates the integration pattern is working correctly");
-        }
+    });
+
+    // Brief delay for server startup
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    println!("🔌 Connecting TurboMCP client to localhost:8080...");
+
+    // Create TurboMCP TCP client transport
+    let local_addr = "127.0.0.1:0".parse().unwrap(); // Use any available local port
+    let remote_addr = "127.0.0.1:8080".parse().unwrap();
+    let transport = TcpTransport::new_client(local_addr, remote_addr);
+
+    // Create shared client
+    let client = Client::new(transport);
+    let client = SharedClient::new(client);
+
+    // Discover available tools from the server
+    println!("📋 Discovering tools from TurboMCP server...");
+    let tools = client.list_tools().await.map_err(|e| {
+        anyhow::anyhow!("Failed to list tools: {}", e)
+    })?;
+
+    println!("✅ TurboMCP client connected!");
+    println!("   • Server: localhost:8080");
+    println!("   • Tools available: {}", tools.len());
+    for tool in &tools {
+        println!("     - {}: {}", tool.name, tool.description.as_deref().unwrap_or("No description"));
     }
 
-    // ============================================================================
-    // INTEGRATION SUMMARY
-    // ============================================================================
+    // Create Rig agent with OpenAI GPT-4o
+    println!("\n🤖 Setting up Rig agent with TurboMCP tools...");
+    let openai_client = openai::Client::from_env();
 
-    println!();
-    println!("TurboMCP Integration Summary:");
-    println!("  ✓ Server macros: #[server], #[tool], #[resource]");
-    println!("  ✓ Multiple transports: TCP, HTTP, WebSocket, Unix Socket, STDIO");
-    println!("  ✓ SharedClient pattern for simplified async sharing");
-    println!("  ✓ Built-in context injection and observability");
-    println!("  ✓ Rig integration: turbomcp_tool() mirrors rmcp_tool()");
-    println!("  ✓ Production features: OAuth 2.1, security headers, performance optimizations");
-    println!();
-    println!("TurboMCP provides an alternative MCP client implementation");
-    println!("that can be used alongside or instead of rmcp, depending on your needs.");
+    // Build agent with TurboMCP tools
+    let mut agent = openai_client
+        .agent("gpt-4o")
+        .preamble("You are a helpful assistant who has access to tools from an MCP server for mathematical operations.");
+
+    // Add each discovered tool to the agent
+    for tool in &tools {
+        agent = agent.turbomcp_tool(tool.clone(), client.clone());
+        println!("   ✅ Added tool: {}", tool.name);
+    }
+
+    let agent = agent.build();
+    println!("   ✅ Agent configured with {} TurboMCP tools", tools.len());
+
+    // Test the agent with a math query
+    println!("\n🧪 Testing agent: 'What is 2+5?'");
+    let response = agent.prompt("What is 2+5?").await.map_err(|e| {
+        anyhow::anyhow!("Agent query failed: {}", e)
+    })?;
+
+    println!("🤖 Agent response: {}", response);
+
+    println!("\n✅ Example completed successfully!");
+    println!("   • TurboMCP server running with tools and resources");
+    println!("   • Client connected and discovered tools");
+    println!("   • Rig agent integrated with TurboMCP tools");
+    println!("   • Agent successfully executed tool calls");
+
+    println!("\n📝 This example demonstrates:");
+    println!("   • Simple server setup with #[server], #[tool], #[resource] macros");
+    println!("   • Automatic transport management with SharedClient");
+    println!("   • Seamless Rig integration with .turbomcp_tool()");
+    println!("   • End-to-end LLM agent functionality with MCP tools");
+
     Ok(())
 }
