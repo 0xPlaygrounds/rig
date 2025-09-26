@@ -350,6 +350,11 @@ impl TryFrom<message::Message> for Vec<Message> {
                                         image_url: ImageUrl { url, detail },
                                     })
                                 }
+                                DocumentSourceKind::Raw(_) => {
+                                    Err(message::MessageError::ConversionError(
+                                        "Raw files not supported, encode as base64 first".into(),
+                                    ))
+                                }
                                 DocumentSourceKind::Unknown => {
                                     Err(message::MessageError::ConversionError(
                                         "Document has no body".into(),
