@@ -32,17 +32,9 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
                 .decode(blob)
                 .map_err(|e| CompletionError::RequestError(e.into()))?,
             DocumentSourceKind::Raw(bytes) => bytes,
-            DocumentSourceKind::Url(_) => {
+            doc => {
                 return Err(CompletionError::RequestError(
-                    "File URLs not supported".into(),
-                ));
-            }
-            DocumentSourceKind::Unknown => {
-                return Err(CompletionError::RequestError("Document has no body".into()));
-            }
-            _ => {
-                return Err(CompletionError::RequestError(
-                    "Unsupported document kind".into(),
+                    format!("Unsupported document kind: {doc}").into(),
                 ));
             }
         };
