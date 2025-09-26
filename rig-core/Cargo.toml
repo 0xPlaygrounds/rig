@@ -43,6 +43,7 @@ worker = { workspace = true, optional = true }
 rmcp = { version = "0.6", optional = true, features = ["client"] }
 reqwest-eventsource = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
+tracing-futures = { version = "0.2.5", features = ["futures-03"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -66,6 +67,12 @@ rmcp = { version = "0.6", features = [
     "transport-worker",
 ] }
 axum = "0.8.4"
+
+# required for otel
+opentelemetry = "0.30.0"
+opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio"] }
+opentelemetry-otlp = "0.30.0"
+tracing-opentelemetry = "0.31.0"
 
 
 [features]

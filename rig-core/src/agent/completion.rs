@@ -72,19 +72,12 @@ where
     pub(crate) fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
     }
-
-    /// Returns the name of the agent as an owned variable.
-    /// Useful in some cases where having the agent name as an owned variable is required.
-    pub(crate) fn name_owned(&self) -> String {
-        self.name.clone().unwrap_or(UNKNOWN_AGENT_NAME.to_string())
-    }
 }
 
 impl<M> Completion<M> for Agent<M>
 where
     M: CompletionModel,
 {
-    #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
     async fn completion(
         &self,
         prompt: impl Into<Message> + Send,
@@ -228,7 +221,6 @@ impl<M> Prompt for Agent<M>
 where
     M: CompletionModel,
 {
-    #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
     fn prompt(
         &self,
         prompt: impl Into<Message> + Send,
@@ -272,7 +264,6 @@ impl<M> StreamingCompletion<M> for Agent<M>
 where
     M: CompletionModel,
 {
-    #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
     async fn stream_completion(
         &self,
         prompt: impl Into<Message> + Send,
@@ -289,7 +280,6 @@ where
     M: CompletionModel + 'static,
     M::StreamingResponse: GetTokenUsage,
 {
-    #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
     fn stream_prompt(&self, prompt: impl Into<Message> + Send) -> StreamingPromptRequest<M, ()> {
         let arc = Arc::new(self.clone());
         StreamingPromptRequest::new(arc, prompt)

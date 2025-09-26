@@ -2,6 +2,7 @@ use async_stream::stream;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{convert::Infallible, str::FromStr};
+use tracing::{Instrument, info_span};
 
 use super::client::{Client, Usage};
 use crate::completion::GetTokenUsage;
@@ -11,6 +12,7 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     json_utils, message,
     providers::mistral::client::ApiResponse,
+    telemetry::SpanCombinator,
 };
 
 pub const CODESTRAL: &str = "codestral-latest";
@@ -336,6 +338,47 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
+impl crate::telemetry::ProviderResponseExt for CompletionResponse {
+    type OutputMessage = Choice;
+    type Usage = Usage;
+
+    fn get_response_id(&self) -> Option<String> {
+        Some(self.id.clone())
+    }
+
+    fn get_response_model_name(&self) -> Option<String> {
+        Some(self.model.clone())
+    }
+
+    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+        self.choices.clone()
+    }
+
+    fn get_text_response(&self) -> Option<String> {
+        let res = self
+            .choices
+            .iter()
+            .filter_map(|choice| match choice.message {
+                Message::Assistant { ref content, .. } => {
+                    if content.is_empty() {
+                        None
+                    } else {
+                        Some(content.to_string())
+                    }
+                }
+                _ => None,
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        if res.is_empty() { None } else { Some(res) }
+    }
+
+    fn get_usage(&self) -> Option<Self::Usage> {
+        self.usage.clone()
+    }
+}
+
 impl GetTokenUsage for CompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         let api_usage = self.usage.clone()?;
@@ -420,30 +463,53 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let preamble = completion_request.preamble.clone();
         let request = self.create_completion_request(completion_request)?;
-
-        let response = self
-            .client
-            .post("v1/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            let text = response.text().await?;
-            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&text)? {
-                ApiResponse::Ok(response) => {
-                    tracing::debug!(target: "rig",
-                        "Mistral completion token usage: {:?}",
-                        response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
-                    );
-                    response.try_into()
-                }
-                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
-            }
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "mistral",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = &preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            tracing::Span::current()
+        };
+
+        async move {
+            let response = self
+                .client
+                .post("v1/chat/completions")
+                .json(&request)
+                .send()
+                .await?;
+
+            if response.status().is_success() {
+                let text = response.text().await?;
+                match serde_json::from_str::<ApiResponse<CompletionResponse>>(&text)? {
+                    ApiResponse::Ok(response) => {
+                        let span = tracing::Span::current();
+                        span.record_token_usage(&response);
+                        span.record_model_output(&response.choices);
+                        span.record_response_metadata(&response);
+                        response.try_into()
+                    }
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                }
+            } else {
+                Err(CompletionError::ProviderError(response.text().await?))
+            }
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

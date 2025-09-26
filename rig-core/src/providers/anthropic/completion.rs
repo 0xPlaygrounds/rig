@@ -2,10 +2,11 @@
 
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError},
+    completion::{self, CompletionError, GetTokenUsage},
     json_utils,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, Reasoning},
     one_or_many::string_or_one_or_many,
+    telemetry::{ProviderResponseExt, SpanCombinator},
 };
 use std::{convert::Infallible, str::FromStr};
 
@@ -14,6 +15,7 @@ use crate::completion::CompletionRequest;
 use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tracing::{Instrument, info_span};
 
 // ================================================================
 // Anthropic Completion API
@@ -58,7 +60,45 @@ pub struct CompletionResponse {
     pub usage: Usage,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+impl ProviderResponseExt for CompletionResponse {
+    type OutputMessage = Content;
+    type Usage = Usage;
+
+    fn get_response_id(&self) -> Option<String> {
+        Some(self.id.to_owned())
+    }
+
+    fn get_response_model_name(&self) -> Option<String> {
+        Some(self.model.to_owned())
+    }
+
+    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+        self.content.clone()
+    }
+
+    fn get_text_response(&self) -> Option<String> {
+        let res = self
+            .content
+            .iter()
+            .filter_map(|x| {
+                if let Content::Text { text } = x {
+                    Some(text.to_owned())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        if res.is_empty() { None } else { Some(res) }
+    }
+
+    fn get_usage(&self) -> Option<Self::Usage> {
+        Some(self.usage.clone())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub input_tokens: u64,
     pub cache_read_input_tokens: Option<u64>,
@@ -82,6 +122,20 @@ impl std::fmt::Display for Usage {
             },
             self.output_tokens
         )
+    }
+}
+
+impl GetTokenUsage for Usage {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+
+        usage.input_tokens = self.input_tokens
+            + self.cache_creation_input_tokens.unwrap_or_default()
+            + self.cache_read_input_tokens.unwrap_or_default();
+        usage.output_tokens = self.output_tokens;
+        usage.total_tokens = usage.input_tokens + usage.output_tokens;
+
+        Some(usage)
     }
 }
 
@@ -647,6 +701,24 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "anthropic",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
         // Note: Ideally we'd introduce provider-specific Request models to handle the
         // specific requirements of each provider. For now, we just manually check while
         // building the request as a raw JSON document.
@@ -667,6 +739,7 @@ impl completion::CompletionModel for CompletionModel {
             full_history.push(docs);
         }
         full_history.extend(completion_request.chat_history);
+        span.record_model_input(&full_history);
 
         let full_history = full_history
             .into_iter()
@@ -706,29 +779,31 @@ impl completion::CompletionModel for CompletionModel {
             json_utils::merge_inplace(&mut request, params.clone())
         }
 
-        tracing::debug!("Anthropic completion request: {request}");
+        async move {
+            let response = self
+                .client
+                .post("/v1/messages")
+                .json(&request)
+                .send()
+                .await?;
 
-        let response = self
-            .client
-            .post("/v1/messages")
-            .json(&request)
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
-                ApiResponse::Message(completion) => {
-                    tracing::info!(target: "rig",
-                        "Anthropic completion token usage: {}",
-                        completion.usage
-                    );
-                    completion.try_into()
+            if response.status().is_success() {
+                match response.json::<ApiResponse<CompletionResponse>>().await? {
+                    ApiResponse::Message(response) => {
+                        let span = tracing::Span::current();
+                        span.record_model_output(&response.content);
+                        span.record_response_metadata(&response);
+                        span.record_token_usage(&response.usage);
+                        response.try_into()
+                    }
+                    ApiResponse::Error(error) => Err(CompletionError::ProviderError(error.message)),
                 }
-                ApiResponse::Error(error) => Err(CompletionError::ProviderError(error.message)),
+            } else {
+                Err(CompletionError::ProviderError(response.text().await?))
             }
-        } else {
-            Err(CompletionError::ProviderError(response.text().await?))
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

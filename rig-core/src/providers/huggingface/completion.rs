@@ -1,9 +1,7 @@
-use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{Value, json};
-use std::{convert::Infallible, str::FromStr};
-
 use super::client::Client;
+use crate::completion::GetTokenUsage;
 use crate::providers::openai::StreamingCompletionResponse;
+use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -11,6 +9,10 @@ use crate::{
     message::{self},
     one_or_many::string_or_one_or_many,
 };
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::{Value, json};
+use std::{convert::Infallible, str::FromStr};
+use tracing::info_span;
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
@@ -398,7 +400,7 @@ impl TryFrom<Message> for message::Message {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Choice {
     pub finish_reason: String,
     pub index: usize,
@@ -414,7 +416,18 @@ pub struct Usage {
     pub total_tokens: i32,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+impl GetTokenUsage for Usage {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+        usage.input_tokens = self.prompt_tokens as u64;
+        usage.output_tokens = self.completion_tokens as u64;
+        usage.total_tokens = self.total_tokens as u64;
+
+        Some(usage)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     pub created: i32,
     pub id: String,
@@ -423,6 +436,63 @@ pub struct CompletionResponse {
     #[serde(default, deserialize_with = "default_string_on_null")]
     pub system_fingerprint: String,
     pub usage: Usage,
+}
+
+impl crate::telemetry::ProviderResponseExt for CompletionResponse {
+    type OutputMessage = Choice;
+    type Usage = Usage;
+
+    fn get_response_id(&self) -> Option<String> {
+        Some(self.id.clone())
+    }
+
+    fn get_response_model_name(&self) -> Option<String> {
+        Some(self.model.clone())
+    }
+
+    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+        self.choices.clone()
+    }
+
+    fn get_text_response(&self) -> Option<String> {
+        let text_response = self
+            .choices
+            .iter()
+            .filter_map(|x| {
+                let Message::User { ref content } = x.message else {
+                    return None;
+                };
+
+                let text = content
+                    .iter()
+                    .filter_map(|x| {
+                        if let UserContent::Text { text } = x {
+                            Some(text.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<String>>();
+
+                if text.is_empty() {
+                    None
+                } else {
+                    Some(text.join("\n"))
+                }
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        if text_response.is_empty() {
+            None
+        } else {
+            Some(text_response)
+        }
+    }
+
+    fn get_usage(&self) -> Option<Self::Usage> {
+        Some(self.usage.clone())
+    }
 }
 
 fn default_string_on_null<'de, D>(deserializer: D) -> Result<String, D::Error>
@@ -565,7 +635,26 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "huggingface",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
         let request = self.create_request_body(&completion_request)?;
+        span.record_model_input(&request.get("messages"));
 
         let path = self.client.sub_provider.completion_endpoint(&self.model);
 
@@ -583,10 +672,11 @@ impl completion::CompletionModel for CompletionModel {
 
             match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
                 ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "Huggingface completion token usage: {:?}",
-                        format!("{:?}", response.usage)
-                    );
+                    let span = tracing::Span::current();
+                    span.record_token_usage(&response.usage);
+                    span.record_model_output(&response.choices);
+                    span.record_response_metadata(&response);
+
                     response.try_into()
                 }
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.to_string())),

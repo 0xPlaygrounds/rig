@@ -1,8 +1,14 @@
 pub(crate) mod streaming;
 
-use std::{future::IntoFuture, marker::PhantomData};
+use std::{
+    future::IntoFuture,
+    marker::PhantomData,
+    sync::atomic::{AtomicU64, Ordering},
+};
+use tracing::{Instrument, span::Id};
 
 use futures::{FutureExt, StreamExt, future::BoxFuture, stream};
+use tracing::info_span;
 
 use crate::{
     OneOrMany,
@@ -244,18 +250,37 @@ where
     M: CompletionModel,
     P: PromptHook<M>,
 {
-    #[tracing::instrument(skip(self), fields(agent_name = self.agent.name()))]
     async fn send(self) -> Result<PromptResponse, PromptError> {
+        let agent_span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                "invoke_agent",
+                gen_ai.operation.name = "invoke_agent",
+                gen_ai.agent.name = self.agent.name(),
+                gen_ai.system_instructions = self.agent.preamble,
+                gen_ai.prompt = tracing::field::Empty,
+                gen_ai.completion = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
         let agent = self.agent;
         let chat_history = if let Some(history) = self.chat_history {
-            history.push(self.prompt);
+            history.push(self.prompt.to_owned());
             history
         } else {
-            &mut vec![self.prompt]
+            &mut vec![self.prompt.to_owned()]
         };
+
+        if let Some(text) = self.prompt.rag_text() {
+            agent_span.record("gen_ai.prompt", text);
+        }
 
         let mut current_max_depth = 0;
         let mut usage = Usage::new();
+        let current_span_id: AtomicU64 = AtomicU64::new(0);
 
         // We need to do at least 2 loops for 1 roundtrip (user expects normal message)
         let last_prompt = loop {
@@ -282,6 +307,33 @@ where
                 hook.on_completion_call(&prompt, &chat_history[..chat_history.len() - 1])
                     .await;
             }
+            let span = tracing::Span::current();
+            let chat_span = info_span!(
+                target: "rig::agent_chat",
+                parent: &span,
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.system_instructions = self.agent.preamble,
+                gen_ai.provider.name = tracing::field::Empty,
+                gen_ai.request.model = tracing::field::Empty,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            );
+
+            let chat_span = if current_span_id.load(Ordering::SeqCst) != 0 {
+                let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
+                chat_span.follows_from(id).to_owned()
+            } else {
+                chat_span
+            };
+
+            if let Some(id) = chat_span.id() {
+                current_span_id.store(id.into_u64(), Ordering::SeqCst);
+            };
 
             let resp = agent
                 .completion(
@@ -290,6 +342,7 @@ where
                 )
                 .await?
                 .send()
+                .instrument(chat_span.clone())
                 .await?;
 
             usage += resp.usage;
@@ -325,6 +378,10 @@ where
                     tracing::info!("Depth reached: {}/{}", current_max_depth, self.max_depth);
                 }
 
+                agent_span.record("gen_ai.completion", &merged_texts);
+                agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+                agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
+
                 // If there are no tool calls, depth is not relevant, we can just return the merged text response.
                 return Ok(PromptResponse::new(merged_texts, usage));
             }
@@ -334,10 +391,36 @@ where
                 .then(|choice| {
                     let hook1 = hook.clone();
                     let hook2 = hook.clone();
+
+                    let tool_span = info_span!(
+                        "execute_tool",
+                        gen_ai.operation.name = "execute_tool",
+                        gen_ai.tool.type = "function",
+                        gen_ai.tool.name = tracing::field::Empty,
+                        gen_ai.tool.call.id = tracing::field::Empty,
+                        gen_ai.tool.call.arguments = tracing::field::Empty,
+                        gen_ai.tool.call.result = tracing::field::Empty
+                    );
+
+                    let tool_span = if current_span_id.load(Ordering::SeqCst) != 0 {
+                        let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
+                        tool_span.follows_from(id).to_owned()
+                    } else {
+                        tool_span
+                    };
+
+                    if let Some(id) = tool_span.id() {
+                        current_span_id.store(id.into_u64(), Ordering::SeqCst);
+                    };
+
                     async move {
                         if let AssistantContent::ToolCall(tool_call) = choice {
                             let tool_name = &tool_call.function.name;
                             let args = tool_call.function.arguments.to_string();
+                            let tool_span = tracing::Span::current();
+                            tool_span.record("gen_ai.tool.name", tool_name);
+                            tool_span.record("gen_ai.tool.call.id", &tool_call.id);
+                            tool_span.record("gen_ai.tool.call.arguments", &args);
                             if let Some(hook) = hook1 {
                                 hook.on_tool_call(tool_name, &args).await;
                             }
@@ -346,6 +429,10 @@ where
                                 hook.on_tool_result(tool_name, &args, &output.to_string())
                                     .await;
                             }
+                            tool_span.record("gen_ai.tool.call.result", &output);
+                            tracing::info!(
+                                "executed tool {tool_name} with args {args}. result: {output}"
+                            );
                             if let Some(call_id) = tool_call.call_id.clone() {
                                 Ok(UserContent::tool_result_with_call_id(
                                     tool_call.id.clone(),
@@ -364,6 +451,7 @@ where
                             )
                         }
                     }
+                    .instrument(tool_span)
                 })
                 .collect::<Vec<Result<UserContent, ToolSetError>>>()
                 .await

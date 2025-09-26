@@ -1,5 +1,6 @@
 use crate::{
     client::{ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError},
+    completion::GetTokenUsage,
     impl_conversion_traits,
 };
 use serde::{Deserialize, Serialize};
@@ -190,5 +191,17 @@ impl std::fmt::Display for Usage {
             "Prompt tokens: {} Total tokens: {}",
             self.prompt_tokens, self.total_tokens
         )
+    }
+}
+
+impl GetTokenUsage for Usage {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+
+        usage.input_tokens = self.prompt_tokens as u64;
+        usage.output_tokens = self.completion_tokens as u64;
+        usage.total_tokens = self.total_tokens as u64;
+
+        Some(usage)
     }
 }

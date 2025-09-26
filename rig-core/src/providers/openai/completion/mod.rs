@@ -3,14 +3,17 @@
 // ================================================================
 
 use super::{ApiErrorResponse, ApiResponse, Client, streaming::StreamingCompletionResponse};
-use crate::completion::{CompletionError, CompletionRequest};
+use crate::completion::{
+    CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
+};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
+use crate::telemetry::{ProviderResponseExt, SpanCombinator};
 use crate::{OneOrMany, completion, json_utils, message};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use std::convert::Infallible;
 use std::fmt;
+use tracing::{Instrument, info_span};
 
 use std::str::FromStr;
 
@@ -673,7 +676,40 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+impl ProviderResponseExt for CompletionResponse {
+    type OutputMessage = Choice;
+    type Usage = Usage;
+
+    fn get_response_id(&self) -> Option<String> {
+        Some(self.id.to_owned())
+    }
+
+    fn get_response_model_name(&self) -> Option<String> {
+        Some(self.model.to_owned())
+    }
+
+    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+        self.choices.clone()
+    }
+
+    fn get_text_response(&self) -> Option<String> {
+        let Message::User { ref content, .. } = self.choices.last()?.message.clone() else {
+            return None;
+        };
+
+        let UserContent::Text { text } = content.first() else {
+            return None;
+        };
+
+        Some(text)
+    }
+
+    fn get_usage(&self) -> Option<Self::Usage> {
+        self.usage.clone()
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Choice {
     pub index: usize,
     pub message: Message,
@@ -715,6 +751,17 @@ impl fmt::Display for Usage {
     }
 }
 
+impl GetTokenUsage for Usage {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+        usage.input_tokens = self.prompt_tokens as u64;
+        usage.output_tokens = (self.total_tokens - self.prompt_tokens) as u64;
+        usage.total_tokens = self.total_tokens as u64;
+
+        Some(usage)
+    }
+}
+
 #[derive(Clone)]
 pub struct CompletionModel {
     pub(crate) client: Client,
@@ -733,22 +780,40 @@ impl CompletionModel {
     pub fn into_agent_builder(self) -> crate::agent::AgentBuilder<Self> {
         crate::agent::AgentBuilder::new(self)
     }
+}
 
-    pub(crate) fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        // Build up the order of messages (context, chat_history)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CompletionRequest {
+    model: String,
+    messages: Vec<Message>,
+    tools: Vec<ToolDefinition>,
+    tool_choice: String,
+    temperature: Option<f64>,
+    #[serde(flatten)]
+    additional_params: Option<serde_json::Value>,
+}
+
+impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (String, CoreCompletionRequest)) -> Result<Self, Self::Error> {
         let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
+        if let Some(docs) = req.normalized_documents() {
             partial_history.push(docs);
         }
-        partial_history.extend(completion_request.chat_history);
+        let CoreCompletionRequest {
+            preamble,
+            chat_history,
+            tools,
+            temperature,
+            additional_params,
+            ..
+        } = req;
 
-        // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<Message> = completion_request
-            .preamble
-            .map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
+        partial_history.extend(chat_history);
+
+        let mut full_history: Vec<Message> =
+            preamble.map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
 
         // Convert and extend the rest of the history
         full_history.extend(
@@ -761,41 +826,57 @@ impl CompletionModel {
                 .collect::<Vec<_>>(),
         );
 
-        let request = if completion_request.tools.is_empty() {
-            serde_json::json!({
-                "model": self.model,
-                "messages": full_history,
-
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": "auto",
-            })
+        let res = Self {
+            model,
+            messages: full_history,
+            tools: tools
+                .into_iter()
+                .map(ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice: "auto".to_string(),
+            temperature,
+            additional_params,
         };
 
-        // only include temperature if it exists
-        // because some models don't support temperature
-        let request = if let Some(temperature) = completion_request.temperature {
-            json_utils::merge(
-                request,
-                json!({
-                    "temperature": temperature,
-                }),
-            )
-        } else {
-            request
+        Ok(res)
+    }
+}
+
+impl crate::telemetry::ProviderRequestExt for CompletionRequest {
+    type InputMessage = Message;
+
+    fn get_input_messages(&self) -> Vec<Self::InputMessage> {
+        self.messages.clone()
+    }
+
+    fn get_system_prompt(&self) -> Option<String> {
+        let first_message = self.messages.first()?;
+
+        let Message::System { ref content, .. } = first_message.clone() else {
+            return None;
         };
 
-        let request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
+        let SystemContent { text, .. } = content.first();
+
+        Some(text)
+    }
+
+    fn get_prompt(&self) -> Option<String> {
+        let last_message = self.messages.last()?;
+
+        let Message::User { ref content, .. } = last_message.clone() else {
+            return None;
         };
 
-        Ok(request)
+        let UserContent::Text { text } = content.first() else {
+            return None;
+        };
+
+        Some(text)
+    }
+
+    fn get_model_name(&self) -> String {
+        self.model.clone()
     }
 }
 
@@ -806,45 +887,63 @@ impl completion::CompletionModel for CompletionModel {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
-        completion_request: CompletionRequest,
+        completion_request: CoreCompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let request = self.create_completion_request(completion_request)?;
-
-        tracing::debug!(
-            "OpenAI request: {request}",
-            request = serde_json::to_string_pretty(&request).unwrap()
-        );
-
-        let response = self
-            .client
-            .post("/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            let t = response.text().await?;
-            tracing::debug!(target: "rig", "OpenAI completion error: {}", t);
-
-            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
-                ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "OpenAI completion token usage: {:?}",
-                        response.usage.clone().map(|usage| format!("{}", usage.total_tokens)).unwrap_or("N/A".to_string())
-                    );
-                    response.try_into()
-                }
-                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
-            }
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "openai",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            tracing::Span::current()
+        };
+
+        let request = CompletionRequest::try_from((self.model.to_owned(), completion_request))?;
+        span.record_model_input(&request.messages);
+
+        async move {
+            let response = self
+                .client
+                .post("/chat/completions")
+                .json(&request)
+                .send()
+                .await?;
+
+            if response.status().is_success() {
+                let t = response.text().await?;
+                match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
+                    ApiResponse::Ok(response) => {
+                        let span = tracing::Span::current();
+                        span.record_model_output(&response.choices);
+                        span.record_response_metadata(&response);
+                        span.record_token_usage(&response.usage);
+                        tracing::debug!("OpenAI response: {response:?}");
+                        response.try_into()
+                    }
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                }
+            } else {
+                Err(CompletionError::ProviderError(response.text().await?))
+            }
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
-        request: CompletionRequest,
+        request: CoreCompletionRequest,
     ) -> Result<
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
