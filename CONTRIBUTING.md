@@ -31,10 +31,10 @@ This will then auto-link issue 999 (for example) and will automatically close th
 ### Code Contribution Guidelines
 Most non-trivial open source projects often have a set of code contribution guidelines that are highly advised to stick to for the easiest path to a merge. Such policies also exist to ensure that the project is able to remain easy to contribute to.
 
-While we will not strictly enforce any guidelines as such because we want to make it as easy as possible to contribute to Rig, we do have two policies that we advise contributors to stick to:
+While we will not strictly enforce any guidelines as such because we want to make it as easy as possible to contribute to Rig, we do have three policies that we advise contributors to stick to:
 - Use docstrings on any new public items (structs, enums, methods whether free-standing or associated).
 - Ensure that you use full syntax for trait bounds where possible. This makes the code much easier to read.
-- Your code must include relevant tests that pass (if the code does not directly interact with an API model provider).
+- If your PR adds additional functionality to Rig, it must include relevant tests that pass (if the code does not directly interact with an API model provider), or alternatively an example that compiles if the code is user-facing.
 
 As a contributor, you are additionally welcome to use AI assistance for coding. However to make the review process as smooth as possible, it's helpful to keep in mind the following:
 - You as a contributor are responsible for ensuring correctness, maintainability and compliance with project standards. Using AI does not change the quality bar.
