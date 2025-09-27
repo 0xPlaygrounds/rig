@@ -4,7 +4,7 @@ This crate integrates HelixDB into Rig, allowing you to easily use RAG with this
 ## Installation
 To install this crate, run the following command in a Rust project directory which will add `rig-helixdb` as a dependency (requires `rig-core` added for intended usage):
 ```bash
-cargo add rig-surrealdb
+cargo add rig-helixdb
 ```
 
 There's a few different ways you can run HelixDB:
@@ -32,6 +32,3 @@ Finally, use the following command below to run the example:
 ```bash
 cargo run --example vector_search_helixdb --features rig-core/derive
 ```
-
-## Licensing
-Unlike the rest of the crates in this workspace, `rig-helixdb` is licensed as AGPL 3.0 due to using `helix-rs` which also uses AGPL 3.0.
