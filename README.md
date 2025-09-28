@@ -56,10 +56,15 @@ Rig is a Rust library for building scalable, modular, and ergonomic **LLM-powere
 
 More information about this crate can be found in the [official](https://docs.rig.rs) & [crate](https://docs.rs/rig-core/latest/rig/) (API Reference) documentations.
 
-## High-level features
+## Features
+- Agentic workflows that can handle multi-turn streaming and prompting
+- Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
+- 20+ model providers, all under one singular unified interface
+- 10+ vector store integrations, all under one singular unified interface
 - Full support for LLM completion and embedding workflows
-- Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, SQlite, in-memory)
+- Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
+- Full WASM compatibility (core library only)
 
 ## Who is using Rig in production?
 Below is a non-exhaustive list of companies and people who are using Rig in production:
