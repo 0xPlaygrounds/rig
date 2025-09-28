@@ -10,11 +10,17 @@ More information about this crate can be found in the [crate documentation](http
   - [Installation](#installation)
   - [Simple example:](#simple-example)
   - [Integrations](#integrations)
+  - [Who is using Rig in production?](#who-is-using-rig-in-production)
 
-## High-level features
+## Features
+- Agentic workflows that can handle multi-turn streaming and prompting
+- Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
+- 20+ model providers, all under one singular unified interface
+- 10+ vector store integrations, all under one singular unified interface
 - Full support for LLM completion and embedding workflows
-- Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, SQLite, in-memory)
+- Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
+- Full WASM compatibility (core library only)
 
 ## Installation
 ```bash
@@ -84,3 +90,15 @@ The following providers are available as separate companion-crates:
 
 - Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/rig-fastembed)
 - Eternal AI: [`rig-eternalai`](https://github.com/0xPlaygrounds/rig/tree/main/rig-eternalai)
+
+## Who is using Rig in production?
+Below is a non-exhaustive list of companies and people who are using Rig in production:
+- [Dria Compute Node](https://github.com/firstbatchxyz/dkn-compute-node) - a node that serves computation results within the Dria Knowledge Network
+- [The MCP Rust SDK](https://github.com/modelcontextprotocol/rust-sdk ) - the official Model Context Protocol Rust SDK. Has an example for usage with Rig.
+- [Probe](https://github.com/buger/probe) - an AI-friendly, fully local semantic code search tool.
+- [NINE](https://github.com/NethermindEth/nine) - Neural Interconnected Nodes Engine, by [Nethermind.](https://www.nethermind.io/)
+- [rig-onchain-kit](https://github.com/0xPlaygrounds/rig-onchain-kit) - the Rig Onchain Kit. Intended to make interactions between Solana/EVM and Rig much easier to implement.
+- [Linera Protocol](https://github.com/linera-io/linera-protocol) - Decentralized blockchain infrastructure designed for highly scalable, secure, low-latency Web3 applications.
+- [Listen](https://github.com/piotrostr/listen) - A framework aiming to become the go-to framework for AI portfolio management agents. Powers [the Listen app.](https://app.listen-rs.com/)
+
+Are you also using Rig in production? [Open an issue](https://www.github.com/0xPlaygrounds/rig/issues) to have your name added!
