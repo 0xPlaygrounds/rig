@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.18](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.1.17...rig-surrealdb-v0.1.18) - 2025-09-29
+
+### Fixed
+
+- *(rig-944)* surrealdb WHERE clause causes no results ([#821](https://github.com/0xPlaygrounds/rig/pull/821))
+
 ## [0.1.17](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.1.16...rig-surrealdb-v0.1.17) - 2025-09-15
 
 ### Other
