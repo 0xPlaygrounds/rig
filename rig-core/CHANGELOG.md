@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.20.0...rig-core-v0.21.0) - 2025-09-29
+
+### Added
+
+- GenAI SemConv support (otel) ([#850](https://github.com/0xPlaygrounds/rig/pull/850))
+- add streaming support to DynClientBuilder ([#824](https://github.com/0xPlaygrounds/rig/pull/824))
+- *(rig-912)* rework `Chat` trait for multi-turn ([#846](https://github.com/0xPlaygrounds/rig/pull/846))
+- *(rig-795)* support file URLs for audio, video, documents ([#823](https://github.com/0xPlaygrounds/rig/pull/823))
+- *(rig-943)* support thinking for cohere ([#827](https://github.com/0xPlaygrounds/rig/pull/827))
+
+### Fixed
+
+- only youtube videos should accept null mime type (gemini) ([#873](https://github.com/0xPlaygrounds/rig/pull/873))
+- *(rig-970)* file URLs should be able to accept empty media type (Gemini) ([#872](https://github.com/0xPlaygrounds/rig/pull/872))
+- *(rig-970)* youtube video ingestion doesn't work (gemini)
+- fix(rig-962)(deepseek): tool calls not recognised when put behind text content ([#862](https://github.com/0xPlaygrounds/rig/pull/862))
+- fix-853 ([#854](https://github.com/0xPlaygrounds/rig/pull/854))
+- *(rig-956)* DocumentSourceKind fails to serialize with common serializers ([#849](https://github.com/0xPlaygrounds/rig/pull/849))
+- *(rig-957)* huggingface should convert image URLs ([#848](https://github.com/0xPlaygrounds/rig/pull/848))
+- *(rig-950)* openai imagegen doesn't work with gpt-image-1 ([#837](https://github.com/0xPlaygrounds/rig/pull/837))
+- ci lints ([#832](https://github.com/0xPlaygrounds/rig/pull/832))
+
+### Other
+
+- *(rig-969)* update features on README ([#870](https://github.com/0xPlaygrounds/rig/pull/870))
+- *(rig-963)* fix feature regression in AWS bedrock ([#863](https://github.com/0xPlaygrounds/rig/pull/863))
+- fix typo in comment ([#866](https://github.com/0xPlaygrounds/rig/pull/866))
+- parse NDJSON correctly, fixes #825 ([#826](https://github.com/0xPlaygrounds/rig/pull/826))
+- make Reasoning non-exhaustive ([#830](https://github.com/0xPlaygrounds/rig/pull/830))
+
 ## [0.20.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.19.0...rig-core-v0.20.0) - 2025-09-15
 
 ### Added
