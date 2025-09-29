@@ -826,10 +826,26 @@ pub mod gemini_api_types {
                     let mime_type = media_type.map(|media_ty| media_ty.to_mime_type().to_string());
 
                     let part = match data {
-                        DocumentSourceKind::Url(file_uri) => PartKind::FileData(FileData {
-                            mime_type,
-                            file_uri,
-                        }),
+                        DocumentSourceKind::Url(file_uri) => {
+                            if file_uri.starts_with("https://www.youtube.com") {
+                                PartKind::FileData(FileData {
+                                    mime_type,
+                                    file_uri,
+                                })
+                            } else {
+                                if mime_type.is_none() {
+                                    return Err(MessageError::ConversionError(
+                                        "A mime type is required for non-Youtube video file URIs"
+                                            .to_string(),
+                                    ));
+                                }
+
+                                PartKind::FileData(FileData {
+                                    mime_type,
+                                    file_uri,
+                                })
+                            }
+                        }
                         DocumentSourceKind::Base64(data) => {
                             let Some(mime_type) = mime_type else {
                                 return Err(MessageError::ConversionError(
