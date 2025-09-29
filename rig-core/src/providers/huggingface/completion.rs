@@ -210,6 +210,10 @@ impl TryFrom<message::UserContent> for UserContent {
                 let text = String::from_utf8_lossy(raw.as_slice()).into();
                 Ok(UserContent::Text { text })
             }
+            message::UserContent::Document(message::Document {
+                data: message::DocumentSourceKind::Base64(text),
+                ..
+            }) => Ok(UserContent::Text { text }),
             message::UserContent::Image(message::Image { data, .. }) => match data {
                 message::DocumentSourceKind::Url(url) => Ok(UserContent::ImageUrl {
                     image_url: ImageUrl { url },
