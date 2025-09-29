@@ -7,8 +7,9 @@ use crate::{
 
 use super::{CompletionModel, EmbeddingModel};
 use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient, impl_conversion_traits};
+use bytes::Bytes;
+use reqwest_eventsource::{CannotCloneRequestError, EventSource};
 use serde::Deserialize;
-use url::ParseError;
 
 #[derive(Debug, Deserialize)]
 pub struct ApiErrorResponse {
@@ -102,23 +103,35 @@ where
         ClientBuilder::with_client(api_key, reqwest::Client::new()).build()
     }
 
-    pub(crate) fn post<U>(&self, path: &str) -> Result<http_client::Request<U>, ParseError>
+    pub(crate) fn post<U>(&self, path: &str) -> http_client::Result<http_client::Builder>
     where
         U: From<Bytes> + Send,
     {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        Ok(http_client::Request::post(url.as_str())?.bearer_auth(self.api_key.as_str()))
+        let auth_header =
+            http_client::HeaderValue::try_from(format!("Bearer {}", self.api_key.as_str()))
+                .map_err(http::Error::from)?;
+
+        Ok(http_client::Request::post(url).header("Authorization", auth_header))
     }
 
-    pub(crate) fn get(&self, path: &str) -> Result<http_client::Request, ParseError> {
+    pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        Ok(http_client::Request::get(url.as_str())?.bearer_auth(self.api_key.as_str()))
+        let auth_header =
+            http_client::HeaderValue::try_from(format!("Bearer {}", self.api_key.as_str()))
+                .map_err(http::Error::from)?;
+
+        Ok(http_client::Request::get(url).header("Authorization", auth_header))
     }
 
-    pub(crate) async fn send(
+    pub(crate) async fn send<U, V>(
         &self,
-        req: http_client::Request,
-    ) -> Result<http_client::Response, <T as HttpClientExt>::Error> {
+        req: http_client::Request<U>,
+    ) -> http_client::Result<http_client::Response<http_client::LazyBody<V>>>
+    where
+        U: Into<Bytes>,
+        V: From<Bytes> + Send,
+    {
         self.http_client.request(req).await
     }
 
@@ -157,9 +170,15 @@ where
 }
 
 impl Client<reqwest::Client> {
-    pub(crate) async fn eventsource(&self, req: http_client::Request) -> _ {
-        let req: reqwest::Request = req.into();
-        todo!()
+    pub(crate) async fn eventsource<T>(
+        &self,
+        req: reqwest::RequestBuilder,
+    ) -> Result<EventSource, CannotCloneRequestError> {
+        reqwest_eventsource::EventSource::new(req)
+    }
+
+    pub(crate) fn client(&self) -> &reqwest::Client {
+        &self.http_client
     }
 }
 

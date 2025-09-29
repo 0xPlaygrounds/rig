@@ -28,6 +28,7 @@ pub const GEMINI_1_5_PRO_8B: &str = "gemini-1.5-pro-8b";
 pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 
 use self::gemini_api_types::Schema;
+use crate::http_client::HttpClientExt;
 use crate::message::Reasoning;
 use crate::providers::gemini::completion::gemini_api_types::AdditionalParameters;
 use crate::providers::gemini::streaming::StreamingCompletionResponse;
@@ -49,13 +50,13 @@ use super::Client;
 // =================================================================
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T> {
+    pub(crate) client: Client<T>,
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -63,7 +64,7 @@ impl CompletionModel {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl completion::CompletionModel for CompletionModel<reqwest::Client> {
     type Response = GenerateContentResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -72,23 +73,31 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
-        let request = create_request_body(completion_request)?;
+        let body = create_request_body(completion_request)
+            .and_then(|body| serde_json::to_vec(&body).map_err(Into::into))?;
 
         tracing::debug!(
             "Sending completion request to Gemini API {}",
-            serde_json::to_string_pretty(&request)?
+            String::from_utf8_lossy(&body)
         );
 
-        let response = self
+        let request = self
             .client
             .post(&format!("/v1beta/models/{}:generateContent", self.model))
-            .json(&request)
-            .send()
-            .await?;
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        let response = self.client.send::<_, Vec<u8>>(request).await?;
 
         if response.status().is_success() {
-            let response = response.json::<GenerateContentResponse>().await?;
-            match response.usage_metadata {
+            let response_body = response
+                .into_body()
+                .await
+                .map_err(|e| CompletionError::HttpError(e))?;
+
+            let body: GenerateContentResponse = serde_json::from_slice(&response_body)?;
+
+            match body.usage_metadata {
                 Some(ref usage) => tracing::info!(target: "rig",
                 "Gemini completion token usage: {}",
                 usage
@@ -100,10 +109,18 @@ impl completion::CompletionModel for CompletionModel {
 
             tracing::debug!("Received response");
 
-            Ok(completion::CompletionResponse::try_from(response))
+            Ok(completion::CompletionResponse::try_from(body)?)
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
-        }?
+            let text = String::from_utf8_lossy(
+                &response
+                    .into_body()
+                    .await
+                    .map_err(|e| CompletionError::HttpError(e.into()))?,
+            )
+            .into();
+
+            Err(CompletionError::ProviderError(text))
+        }
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -585,7 +602,7 @@ pub mod gemini_api_types {
                     file_uri: url,
                 }),
                 DocumentSourceKind::Base64(data) => PartKind::InlineData(Blob { mime_type, data }),
-                DocumentSourceKind::Unknown => {
+                _ => {
                     return Err(message::MessageError::ConversionError(
                         "Can't convert an unknown document source".to_string(),
                     ));
@@ -678,7 +695,7 @@ pub mod gemini_api_types {
                             DocumentSourceKind::Base64(data) => {
                                 PartKind::InlineData(Blob { data, mime_type })
                             }
-                            DocumentSourceKind::Unknown => {
+                            _ => {
                                 return Err(message::MessageError::ConversionError(
                                     "Document has no body".to_string(),
                                 ));
@@ -714,7 +731,7 @@ pub mod gemini_api_types {
                             mime_type: Some(mime_type),
                             file_uri,
                         }),
-                        DocumentSourceKind::Unknown => {
+                        _ => {
                             return Err(message::MessageError::ConversionError(
                                 "Content has no body".to_string(),
                             ));
@@ -747,7 +764,7 @@ pub mod gemini_api_types {
                         DocumentSourceKind::Base64(data) => {
                             PartKind::InlineData(Blob { mime_type, data })
                         }
-                        DocumentSourceKind::Unknown => {
+                        _ => {
                             return Err(message::MessageError::ConversionError(
                                 "Media type for video is required for Gemini".to_string(),
                             ));

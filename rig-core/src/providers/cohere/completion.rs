@@ -1,7 +1,7 @@
 use crate::{
     OneOrMany,
     completion::{self, CompletionError},
-    http_client::HttpClientExt,
+    http_client::{self, HttpClientExt},
     json_utils,
     message::{self, Reasoning},
 };
@@ -517,10 +517,7 @@ where
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone,
-{
+impl completion::CompletionModel for CompletionModel<reqwest::Client> {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -535,23 +532,21 @@ where
             serde_json::to_string_pretty(&request)?
         );
 
-        let req = self
-            .client
-            .post("/v2/chat")
-            .map_err(|e| CompletionError::HttpError(e.into()))?
-            .with_json(&request);
-
         let response = self
             .client
-            .send(req)
+            .client()
+            .post("/v2/chat")
+            .json(&request)
+            .send()
             .await
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        let text = response
-            .text()
-            .map_err(|e| CompletionError::ResponseError(e.to_string()))?;
+            .map_err(|e| http_client::Error::Instance(e.into()))?;
 
         if response.status().is_success() {
+            let text = response
+                .text()
+                .await
+                .map_err(|e| CompletionError::ResponseError(e.to_string()))?;
+
             tracing::debug!("Cohere response text: {}", text);
 
             let json_response: CompletionResponse = serde_json::from_str(&text)?;
@@ -559,6 +554,10 @@ where
                 json_response.try_into()?;
             Ok(completion)
         } else {
+            let text = response
+                .text()
+                .await
+                .map_err(|e| CompletionError::ResponseError(e.to_string()))?;
             Err(CompletionError::ProviderError(text.to_string()))
         }
     }

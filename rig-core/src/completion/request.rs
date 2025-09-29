@@ -85,7 +85,7 @@ use thiserror::Error;
 pub enum CompletionError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]
-    HttpError(#[from] http_client::HttpClientError),
+    HttpError(#[from] http_client::Error),
 
     /// Json error (e.g.: serialization, deserialization)
     #[error("JsonError: {0}")]

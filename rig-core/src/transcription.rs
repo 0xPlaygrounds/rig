@@ -3,7 +3,7 @@
 //! handling transcription responses, and defining transcription models.
 
 use crate::client::transcription::TranscriptionModelHandle;
-use crate::json_utils;
+use crate::{http_client, json_utils};
 use futures::future::BoxFuture;
 use std::sync::Arc;
 use std::{fs, path::Path};
@@ -15,7 +15,7 @@ use thiserror::Error;
 pub enum TranscriptionError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]
-    HttpError(#[from] reqwest::Error),
+    HttpError(#[from] http_client::Error),
 
     /// Json error (e.g.: serialization, deserialization)
     #[error("JsonError: {0}")]

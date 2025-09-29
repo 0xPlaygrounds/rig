@@ -1,6 +1,6 @@
 //! Everything related to core image generation abstractions in Rig.
 //! Rig allows calling a number of different providers (that support image generation) using the [ImageGenerationModel] trait.
-use crate::client::image_generation::ImageGenerationModelHandle;
+use crate::{client::image_generation::ImageGenerationModelHandle, http_client};
 use futures::future::BoxFuture;
 use serde_json::Value;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use thiserror::Error;
 pub enum ImageGenerationError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]
-    HttpError(#[from] reqwest::Error),
+    HttpError(#[from] http_client::Error),
 
     /// Json error (e.g.: serialization, deserialization)
     #[error("JsonError: {0}")]

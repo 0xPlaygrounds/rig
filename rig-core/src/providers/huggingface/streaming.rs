@@ -5,7 +5,7 @@ use crate::providers::openai::{StreamingCompletionResponse, send_compatible_stre
 use crate::streaming;
 use serde_json::json;
 
-impl CompletionModel {
+impl CompletionModel<reqwest::Client> {
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -26,7 +26,9 @@ impl CompletionModel {
         // HF Inference API uses the model in the path even though its specified in the request body
         let path = self.client.sub_provider.completion_endpoint(&self.model);
 
-        let builder = self.client.post(&path).json(&request);
+        let request = serde_json::to_vec(&request)?;
+
+        let builder = self.client.post_reqwest(&path).body(request);
 
         send_compatible_streaming_request(builder).await
     }

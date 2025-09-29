@@ -53,7 +53,7 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl CompletionModel {
+impl CompletionModel<reqwest::Client> {
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,

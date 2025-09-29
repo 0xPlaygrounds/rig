@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 use std::{convert::Infallible, str::FromStr};
 
 use super::client::Client;
+use crate::http_client::HttpClientExt;
 use crate::providers::openai::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
@@ -496,14 +497,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 }
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T> {
+    pub(crate) client: Client<T>,
     /// Name of the model (e.g: google/gemma-2-2b-it)
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -556,7 +557,7 @@ impl CompletionModel {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl completion::CompletionModel for CompletionModel<reqwest::Client> {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -575,13 +576,23 @@ impl completion::CompletionModel for CompletionModel {
             request
         };
 
-        let response = self.client.post(&path).json(&request).send().await?;
+        let request = serde_json::to_vec(&request)?;
+
+        let request = self
+            .client
+            .post(&path)?
+            .body(request)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        let response = self.client.send(request).await?;
 
         if response.status().is_success() {
-            let t = response.text().await?;
-            tracing::debug!(target: "rig", "Huggingface completion error: {}", t);
+            let bytes: Vec<u8> = response.into_body().await?;
+            let text = String::from_utf8_lossy(&bytes);
 
-            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
+            tracing::debug!(target: "rig", "Huggingface completion error: {}", text);
+
+            match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&bytes)? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "Huggingface completion token usage: {:?}",
@@ -592,10 +603,12 @@ impl completion::CompletionModel for CompletionModel {
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.to_string())),
             }
         } else {
+            let text: Vec<u8> = response.into_body().await?;
+            let text = String::from_utf8_lossy(&text).into();
             Err(CompletionError::ProviderError(format!(
                 "{}: {}",
                 response.status(),
-                response.text().await?
+                text
             )))
         }
     }

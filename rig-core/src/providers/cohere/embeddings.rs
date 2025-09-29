@@ -83,24 +83,32 @@ where
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
 
+        let body = json!({
+            "model": self.model,
+            "texts": documents,
+            "input_type": self.input_type
+        });
+
+        let body = serde_json::to_vec(&body)?;
+
         let req = self
             .client
             .post("/v1/embed")
             .map_err(|e| EmbeddingError::HttpError(e.into()))?
-            .with_json(&json!({
-                "model": self.model,
-                "texts": documents,
-                "input_type": self.input_type,
-            }));
+            .body(body)
+            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
         let response = self
             .client
-            .send(req)
+            .send::<_, Vec<u8>>(req)
             .await
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
         if response.status().is_success() {
-            match response.json::<ApiResponse<EmbeddingResponse>>()? {
+            let body: ApiResponse<EmbeddingResponse> =
+                serde_json::from_slice(response.into_body().await?.as_slice())?;
+
+            match body {
                 ApiResponse::Ok(response) => {
                     match response.meta {
                         Some(meta) => tracing::info!(target: "rig",
@@ -136,12 +144,8 @@ where
                 ApiResponse::Err(error) => Err(EmbeddingError::ProviderError(error.message)),
             }
         } else {
-            Err(EmbeddingError::ProviderError(
-                response
-                    .text()
-                    .map_err(|e| EmbeddingError::HttpError(e.into()))?
-                    .to_string(),
-            ))
+            let text = String::from_utf8_lossy(&response.into_body().await?).into();
+            Err(EmbeddingError::ProviderError(text))
         }
     }
 }

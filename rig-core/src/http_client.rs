@@ -1,25 +1,28 @@
 use bytes::Bytes;
 use futures::stream::{BoxStream, StreamExt};
 pub use http::{HeaderValue, Method, Request, Response, Uri, request::Builder};
+use reqwest::Body;
 use std::future::Future;
 use std::pin::Pin;
 
 #[derive(Debug, thiserror::Error)]
-pub enum HttpClientError {
+pub enum Error {
     #[error("Http error: {0}")]
     Protocol(#[from] http::Error),
     #[error("Http client error: {0}")]
     Instance(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 
-fn instance_error<E: std::error::Error + Send + Sync + 'static>(error: E) -> HttpClientError {
-    HttpClientError::Instance(error.into())
+pub type Result<T> = std::result::Result<T, Error>;
+
+fn instance_error<E: std::error::Error + Send + Sync + 'static>(error: E) -> Error {
+    Error::Instance(error.into())
 }
 
-pub type LazyBytes = Pin<Box<dyn Future<Output = Result<Bytes, HttpClientError>> + Send + 'static>>;
-pub type LazyBody<T> = Pin<Box<dyn Future<Output = Result<T, HttpClientError>> + Send + 'static>>;
+pub type LazyBytes = Pin<Box<dyn Future<Output = Result<Bytes>> + Send + 'static>>;
+pub type LazyBody<T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'static>>;
 
-pub type ByteStream = BoxStream<'static, Result<Bytes, HttpClientError>>;
+pub type ByteStream = BoxStream<'static, Result<Bytes>>;
 pub type StreamingResponse = Response<ByteStream>;
 
 pub struct NoBody;
@@ -30,11 +33,17 @@ impl From<NoBody> for Bytes {
     }
 }
 
+impl From<NoBody> for Body {
+    fn from(_: NoBody) -> Self {
+        reqwest::Body::default()
+    }
+}
+
 pub trait HttpClientExt: Send + Sync {
     fn request<T, U>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>, HttpClientError>> + Send
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + Send
     where
         T: Into<Bytes>,
         U: From<Bytes> + Send;
@@ -42,11 +51,11 @@ pub trait HttpClientExt: Send + Sync {
     fn request_streaming<T>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse, HttpClientError>> + Send
+    ) -> impl Future<Output = Result<StreamingResponse>> + Send
     where
         T: Into<Bytes>;
 
-    async fn get<T>(&self, uri: Uri) -> Result<Response<LazyBody<T>>, HttpClientError>
+    async fn get<T>(&self, uri: Uri) -> Result<Response<LazyBody<T>>>
     where
         T: From<Bytes> + Send,
     {
@@ -58,14 +67,10 @@ pub trait HttpClientExt: Send + Sync {
         self.request(req).await
     }
 
-    async fn post<T, U, V>(
-        &self,
-        uri: Uri,
-        body: T,
-    ) -> Result<Response<LazyBody<V>>, HttpClientError>
+    async fn post<T, U, V>(&self, uri: Uri, body: T) -> Result<Response<LazyBody<V>>>
     where
         U: TryInto<Uri>,
-        <U as TryInto<Uri>>::Error: Into<HttpClientError>,
+        <U as TryInto<Uri>>::Error: Into<Error>,
         T: Into<Bytes>,
         V: From<Bytes> + Send,
     {
@@ -82,7 +87,7 @@ impl HttpClientExt for reqwest::Client {
     fn request<T, U>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>, HttpClientError>> + Send
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + Send
     where
         T: Into<Bytes>,
         U: From<Bytes> + Send,
@@ -110,14 +115,14 @@ impl HttpClientExt for reqwest::Client {
                 Ok(body)
             });
 
-            res.body(body).map_err(HttpClientError::Protocol)
+            res.body(body).map_err(Error::Protocol)
         }
     }
 
     fn request_streaming<T>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse, HttpClientError>> + Send
+    ) -> impl Future<Output = Result<StreamingResponse>> + Send
     where
         T: Into<Bytes>,
     {

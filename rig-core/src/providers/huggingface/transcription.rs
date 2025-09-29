@@ -1,3 +1,4 @@
+use crate::http_client::{self, HttpClientExt};
 use crate::providers::huggingface::Client;
 use crate::providers::huggingface::completion::ApiResponse;
 use crate::transcription;
@@ -30,21 +31,24 @@ impl TryFrom<TranscriptionResponse>
 }
 
 #[derive(Clone)]
-pub struct TranscriptionModel {
-    client: Client,
+pub struct TranscriptionModel<T> {
+    client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
 }
 
-impl TranscriptionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> TranscriptionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
         }
     }
 }
-impl transcription::TranscriptionModel for TranscriptionModel {
+impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+where
+    T: HttpClientExt + Clone,
+{
     type Response = TranscriptionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -63,18 +67,29 @@ impl transcription::TranscriptionModel for TranscriptionModel {
             .client
             .sub_provider
             .transcription_endpoint(&self.model)?;
-        let response = self.client.post(&route).json(&request).send().await?;
+
+        let request = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .post(&route)?
+            .body(request)
+            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
+
+        let response = self.client.send(req).await?;
 
         if response.status().is_success() {
-            match response
-                .json::<ApiResponse<TranscriptionResponse>>()
-                .await?
-            {
+            let body: Vec<u8> = response.into_body().await?;
+            let body: ApiResponse<TranscriptionResponse> = serde_json::from_slice(&body)?;
+            match body {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(err) => Err(TranscriptionError::ProviderError(err.to_string())),
             }
         } else {
-            Err(TranscriptionError::ProviderError(response.text().await?))
+            let text: Vec<u8> = response.into_body().await?;
+            let text = String::from_utf8_lossy(&text).into();
+
+            Err(TranscriptionError::ProviderError(text))
         }
     }
 }

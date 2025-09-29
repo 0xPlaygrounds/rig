@@ -8,7 +8,7 @@ use crate::{
         ClientBuilderError, CompletionClient, ProviderClient, ProviderValue, VerifyClient,
         VerifyError, impl_conversion_traits,
     },
-    http_client::{self, HttpClientError, HttpClientExt},
+    http_client::{self, HttpClientExt},
 };
 
 // ================================================================
@@ -160,7 +160,7 @@ where
     pub async fn send<U, V>(
         &self,
         req: http_client::Request<U>,
-    ) -> Result<http_client::Response<http_client::LazyBody<V>>, http_client::HttpClientError>
+    ) -> Result<http_client::Response<http_client::LazyBody<V>>, http_client::Error>
     where
         U: Into<Bytes>,
         V: From<Bytes> + Send,
@@ -171,7 +171,7 @@ where
     pub async fn send_streaming<U>(
         &self,
         req: Request<U>,
-    ) -> Result<http_client::StreamingResponse, http_client::HttpClientError>
+    ) -> Result<http_client::StreamingResponse, http_client::Error>
     where
         U: Into<Bytes>,
     {
@@ -263,7 +263,7 @@ where
             .http_client
             .request(
                 self.get("/v1/models")
-                    .map_err(|e| http_client::HttpClientError::Protocol(e))?,
+                    .map_err(|e| http_client::Error::Protocol(e))?,
             )
             .await?;
 
@@ -287,7 +287,7 @@ where
                     Ok(())
                 } else {
                     let text: String = String::from_utf8_lossy(&response.into_body().await?).into();
-                    Err(VerifyError::HttpError(HttpClientError::Instance(
+                    Err(VerifyError::HttpError(http_client::Error::Instance(
                         format!("Failed with '{status}': {text}").into(),
                     )))
                 }
