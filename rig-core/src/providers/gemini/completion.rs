@@ -744,9 +744,13 @@ pub mod gemini_api_types {
                 message::UserContent::Document(message::Document {
                     data, media_type, ..
                 }) => {
-                    if let Some(ref media_type) = media_type
-                        && !media_type.is_code()
-                    {
+                    let Some(media_type) = media_type else {
+                        return Err(MessageError::ConversionError(
+                            "A mime type is required for document inputs to Gemini".to_string(),
+                        ));
+                    };
+
+                    if !media_type.is_code() {
                         let mime_type = media_type.to_mime_type().to_string();
 
                         let part = match data {
@@ -784,19 +788,20 @@ pub mod gemini_api_types {
                 message::UserContent::Audio(message::Audio {
                     data, media_type, ..
                 }) => {
-                    let mime_type = media_type.map(|x| x.to_mime_type().to_string());
+                    let Some(media_type) = media_type else {
+                        return Err(MessageError::ConversionError(
+                            "A mime type is required for audio inputs to Gemini".to_string(),
+                        ));
+                    };
+
+                    let mime_type = media_type.to_mime_type().to_string();
 
                     let part = match data {
                         DocumentSourceKind::Base64(data) => {
-                            let Some(mime_type) = mime_type else {
-                                return Err(MessageError::ConversionError(
-                                    "Mime type is required for Base64 encoded strings".to_string(),
-                                ));
-                            };
                             PartKind::InlineData(Blob { data, mime_type })
                         }
                         DocumentSourceKind::Url(file_uri) => PartKind::FileData(FileData {
-                            mime_type,
+                            mime_type: Some(mime_type),
                             file_uri,
                         }),
                         DocumentSourceKind::Raw(_) => {
@@ -835,7 +840,7 @@ pub mod gemini_api_types {
                             } else {
                                 if mime_type.is_none() {
                                     return Err(MessageError::ConversionError(
-                                        "A mime type is required for non-Youtube video file URIs"
+                                        "A mime type is required for non-Youtube video file inputs to Gemini"
                                             .to_string(),
                                     ));
                                 }
