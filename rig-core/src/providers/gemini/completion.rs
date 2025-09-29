@@ -325,7 +325,7 @@ pub mod gemini_api_types {
     use serde_json::{Value, json};
 
     use crate::completion::GetTokenUsage;
-    use crate::message::{DocumentSourceKind, ImageMediaType, MimeType};
+    use crate::message::{DocumentSourceKind, ImageMediaType, MessageError, MimeType};
     use crate::{
         OneOrMany,
         completion::CompletionError,
@@ -824,18 +824,26 @@ pub mod gemini_api_types {
                     additional_params,
                     ..
                 }) => {
-                    let media_type = media_type.ok_or(message::MessageError::ConversionError(
-                        "Media type for video is required for Gemini".to_string(),
-                    ))?;
+                    // let media_type = media_type.ok_or(message::MessageError::ConversionError(
+                    //     "Media type for video is required for Gemini".to_string(),
+                    // ))?;
 
-                    let mime_type = media_type.to_mime_type().to_owned();
+                    // let mime_type = media_type.to_mime_type().to_owned();
+
+                    let mime_type = media_type.map(|media_ty| media_ty.to_mime_type().to_string());
 
                     let part = match data {
                         DocumentSourceKind::Url(file_uri) => PartKind::FileData(FileData {
-                            mime_type: Some(mime_type),
+                            mime_type,
                             file_uri,
                         }),
                         DocumentSourceKind::Base64(data) => {
+                            let Some(mime_type) = mime_type else {
+                                return Err(MessageError::ConversionError(
+                                    "A media type is expected for base64 encoded strings"
+                                        .to_string(),
+                                ));
+                            };
                             PartKind::InlineData(Blob { mime_type, data })
                         }
                         DocumentSourceKind::Raw(_) => {
