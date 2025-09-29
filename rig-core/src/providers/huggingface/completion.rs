@@ -322,6 +322,11 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 let text = String::from_utf8_lossy(raw.as_slice()).into();
                                 Ok(UserContent::Text { text })
                             }
+                            message::UserContent::Document(message::Document {
+                                data: message::DocumentSourceKind::Base64(text), ..
+                            }) => {
+                                Ok(UserContent::Text { text })
+                            }
                             _ => Err(message::MessageError::ConversionError(
                                 "Huggingface inputs only support text and image URLs (both base64-encoded images and regular URLs)".into(),
                             )),
