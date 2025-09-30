@@ -603,12 +603,13 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.to_string())),
             }
         } else {
+            let status = response.status();
             let text: Vec<u8> = response.into_body().await?;
-            let text = String::from_utf8_lossy(&text).into();
+            let text: String = String::from_utf8_lossy(&text).into();
+
             Err(CompletionError::ProviderError(format!(
                 "{}: {}",
-                response.status(),
-                text
+                status, text
             )))
         }
     }

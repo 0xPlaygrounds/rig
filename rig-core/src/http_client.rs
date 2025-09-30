@@ -39,6 +39,11 @@ impl From<NoBody> for Body {
     }
 }
 
+pub async fn text(response: Response<LazyBody<Vec<u8>>>) -> Result<String> {
+    let text = response.into_body().await?;
+    Ok(String::from(String::from_utf8_lossy(&text)))
+}
+
 pub trait HttpClientExt: Send + Sync {
     fn request<T, U>(
         &self,

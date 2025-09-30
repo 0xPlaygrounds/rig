@@ -15,7 +15,7 @@ pub enum VerifyError {
     HttpError(
         #[from]
         #[source]
-        http_client::HttpClientError,
+        http_client::Error,
     ),
 }
 

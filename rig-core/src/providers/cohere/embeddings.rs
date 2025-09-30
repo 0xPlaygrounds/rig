@@ -93,7 +93,7 @@ where
 
         let req = self
             .client
-            .post("/v1/embed")
+            .post::<Vec<u8>>("/v1/embed")
             .map_err(|e| EmbeddingError::HttpError(e.into()))?
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;

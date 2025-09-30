@@ -1,29 +1,44 @@
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 use super::{
     CompletionModel,
     embedding::{EmbeddingModel, MISTRAL_EMBED},
 };
-use crate::client::{
-    ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient, VerifyClient,
-    VerifyError,
+use crate::{
+    client::{CompletionClient, EmbeddingsClient, ProviderClient, VerifyClient, VerifyError},
+    http_client::HttpClientExt,
 };
-use crate::impl_conversion_traits;
+use crate::{http_client, impl_conversion_traits};
+use std::fmt::Debug;
 
 const MISTRAL_API_BASE_URL: &str = "https://api.mistral.ai";
 
-pub struct ClientBuilder<'a> {
+pub struct ClientBuilder<'a, T> {
     api_key: &'a str,
     base_url: &'a str,
-    http_client: Option<reqwest::Client>,
+    http_client: T,
 }
 
-impl<'a> ClientBuilder<'a> {
+impl<'a, T> ClientBuilder<'a, T>
+where
+    T: Default,
+{
     pub fn new(api_key: &'a str) -> Self {
         Self {
             api_key,
             base_url: MISTRAL_API_BASE_URL,
-            http_client: None,
+            http_client: Default::default(),
+        }
+    }
+}
+
+impl<'a, T> ClientBuilder<'a, T> {
+    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
+        ClientBuilder {
+            api_key: self.api_key,
+            base_url: self.base_url,
+            http_client,
         }
     }
 
@@ -32,34 +47,26 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = Some(client);
-        self
-    }
-
-    pub fn build(self) -> Result<Client, ClientBuilderError> {
-        let http_client = if let Some(http_client) = self.http_client {
-            http_client
-        } else {
-            reqwest::Client::builder().build()?
-        };
-
-        Ok(Client {
+    pub fn build(self) -> Client<T> {
+        Client {
             base_url: self.base_url.to_string(),
             api_key: self.api_key.to_string(),
-            http_client,
-        })
+            http_client: self.http_client,
+        }
     }
 }
 
 #[derive(Clone)]
-pub struct Client {
+pub struct Client<T> {
     base_url: String,
     api_key: String,
-    http_client: reqwest::Client,
+    http_client: T,
 }
 
-impl std::fmt::Debug for Client {
+impl<T> std::fmt::Debug for Client<T>
+where
+    T: Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("base_url", &self.base_url)
@@ -69,7 +76,23 @@ impl std::fmt::Debug for Client {
     }
 }
 
-impl Client {
+impl<T> Client<T>
+where
+    T: Default,
+{
+    /// Create a new Mistral client. For more control, use the `builder` method.
+    ///
+    /// # Panics
+    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
+    pub fn new(api_key: &str) -> Client<T> {
+        Self::builder(api_key).build()
+    }
+}
+
+impl<T> Client<T>
+where
+    T: Default,
+{
     /// Create a new Mistral client builder.
     ///
     /// # Example
@@ -80,32 +103,49 @@ impl Client {
     /// let mistral = Client::builder("your-mistral-api-key")
     ///    .build()
     /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, T> {
         ClientBuilder::new(api_key)
-    }
-
-    /// Create a new Mistral client. For more control, use the `builder` method.
-    ///
-    /// # Panics
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key)
-            .build()
-            .expect("Mistral client should build")
-    }
-
-    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url).bearer_auth(&self.api_key)
-    }
-
-    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.get(url).bearer_auth(&self.api_key)
     }
 }
 
-impl ProviderClient for Client {
+impl<T> Client<T>
+where
+    T: HttpClientExt,
+{
+    pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+
+        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
+            .map_err(|e| http_client::Error::Protocol(e.into()))?;
+
+        Ok(http_client::Request::post(url).header("Authorization", auth_header))
+    }
+
+    pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+
+        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
+            .map_err(|e| http_client::Error::Protocol(e.into()))?;
+
+        Ok(http_client::Request::get(url).header("Authorization", auth_header))
+    }
+
+    pub(crate) async fn send<Body, R>(
+        &self,
+        req: http_client::Request<Body>,
+    ) -> http_client::Result<http_client::Response<http_client::LazyBody<R>>>
+    where
+        Body: Into<Bytes>,
+        R: From<Bytes> + Send,
+    {
+        self.http_client.request(req).await
+    }
+}
+
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Debug + Default + Clone + 'static,
+{
     /// Create a new Mistral client from the `MISTRAL_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self
@@ -124,8 +164,11 @@ impl ProviderClient for Client {
     }
 }
 
-impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Debug + Default + Clone + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     /// Create a completion model with the given name.
     ///
@@ -143,8 +186,11 @@ impl CompletionClient for Client {
     }
 }
 
-impl EmbeddingsClient for Client {
-    type EmbeddingModel = EmbeddingModel;
+impl<T> EmbeddingsClient for Client<T>
+where
+    T: HttpClientExt + Debug + Default + Clone + 'static,
+{
+    type EmbeddingModel = EmbeddingModel<T>;
 
     /// Create an embedding model with the given name.
     /// Note: default embedding dimension of 0 will be used if model is not known.
@@ -158,7 +204,7 @@ impl EmbeddingsClient for Client {
     ///
     /// let embedding_model = mistral.embedding_model(mistral::MISTRAL_EMBED);
     /// ```
-    fn embedding_model(&self, model: &str) -> EmbeddingModel {
+    fn embedding_model(&self, model: &str) -> EmbeddingModel<T> {
         let ndims = match model {
             MISTRAL_EMBED => 1024,
             _ => 0,
@@ -171,25 +217,37 @@ impl EmbeddingsClient for Client {
     }
 }
 
-impl VerifyClient for Client {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Debug + Default + Clone + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
-        let response = self.get("/models").send().await?;
+        let req = self
+            .get("/models")?
+            .body(http_client::NoBody)
+            .map_err(|e| VerifyError::HttpError(e.into()))?;
+
+        let response = self.http_client.request(req).await?;
+
         match response.status() {
             reqwest::StatusCode::OK => Ok(()),
             reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
             reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
-                Err(VerifyError::ProviderError(response.text().await?))
+                let text: Vec<u8> = response.into_body().await?;
+                let text = String::from_utf8_lossy(&text).into();
+                Err(VerifyError::ProviderError(text))
             }
             _ => {
-                response.error_for_status()?;
+                // TODO: implement equivalent with `http` crate `StatusCode` type
+                //response.error_for_status()?;
                 Ok(())
             }
         }
     }
 }
 
-impl_conversion_traits!(AsTranscription, AsAudioGeneration, AsImageGeneration for Client);
+impl_conversion_traits!(AsTranscription, AsAudioGeneration, AsImageGeneration for Client<T>);
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Usage {

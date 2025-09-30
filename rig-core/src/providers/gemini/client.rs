@@ -300,7 +300,10 @@ where
 {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
-        let req = self.get("/v1beta/models").body(http_client::NoBody)?;
+        let req = self
+            .get("/v1beta/models")
+            .body(http_client::NoBody)
+            .map_err(|e| VerifyError::HttpError(e.into()))?;
         let response = self.http_client.request::<_, Vec<u8>>(req).await?;
 
         match response.status() {

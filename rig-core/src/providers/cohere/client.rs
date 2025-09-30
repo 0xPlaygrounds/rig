@@ -225,16 +225,25 @@ impl EmbeddingsClient for Client<reqwest::Client> {
 impl VerifyClient for Client<reqwest::Client> {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
-        let response = self.http_client.get("/v1/models").send().await?;
+        let response = self
+            .http_client
+            .get("/v1/models")
+            .send()
+            .await
+            .map_err(|e| VerifyError::HttpError(http_client::Error::Instance(e.into())))?;
 
         match response.status() {
             reqwest::StatusCode::OK => Ok(()),
             reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
             reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
-                Err(VerifyError::ProviderError(response.text().await?))
+                Err(VerifyError::ProviderError(response.text().await.map_err(
+                    |e| VerifyError::HttpError(http_client::Error::Instance(e.into())),
+                )?))
             }
             _ => {
-                response.error_for_status()?;
+                response
+                    .error_for_status()
+                    .map_err(|e| VerifyError::HttpError(http_client::Error::Instance(e.into())))?;
                 Ok(())
             }
         }

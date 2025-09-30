@@ -66,7 +66,7 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl CompletionModel {
+impl CompletionModel<reqwest::Client> {
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -78,7 +78,7 @@ impl CompletionModel {
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
 
-        let builder = self.client.post("/chat/completions").json(&request);
+        let builder = self.client.post_reqwest("/chat/completions").json(&request);
         send_compatible_streaming_request(builder).await
     }
 }

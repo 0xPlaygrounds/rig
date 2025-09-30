@@ -191,7 +191,7 @@ pub enum SummaryPartChunkPart {
     SummaryText { text: String },
 }
 
-impl ResponsesCompletionModel {
+impl ResponsesCompletionModel<reqwest::Client> {
     pub(crate) async fn stream(
         &self,
         completion_request: crate::completion::CompletionRequest,
@@ -202,7 +202,7 @@ impl ResponsesCompletionModel {
 
         tracing::debug!("Input: {}", serde_json::to_string_pretty(&request)?);
 
-        let builder = self.client.post("/responses").json(&request);
+        let builder = self.client.post_reqwest("/responses").json(&request);
         send_compatible_streaming_request(builder).await
     }
 }

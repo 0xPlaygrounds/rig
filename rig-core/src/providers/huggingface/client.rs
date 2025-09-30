@@ -363,19 +363,34 @@ impl ImageGenerationClient for Client<reqwest::Client> {
 impl VerifyClient for Client<reqwest::Client> {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
-        let req = self.get("/api/whoami-v2")?.body(http_client::NoBody)?;
-        let req = reqwest::Request::try_from(req)?;
-        let response: reqwest::Response = self.http_client.execute(req).await?;
+        let req = self
+            .get("/api/whoami-v2")?
+            .body(http_client::NoBody)
+            .map_err(|e| VerifyError::HttpError(e.into()))?;
+
+        let req = reqwest::Request::try_from(req)
+            .map_err(|e| VerifyError::HttpError(http_client::Error::Instance(e.into())))?;
+
+        let response: reqwest::Response = self
+            .http_client
+            .execute(req)
+            .await
+            .map_err(|e| VerifyError::HttpError(http_client::Error::Instance(e.into())))?;
 
         match response.status() {
             reqwest::StatusCode::OK => Ok(()),
             reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
             reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
-                let text = response.text().await?;
+                let text = response
+                    .text()
+                    .await
+                    .map_err(|e| VerifyError::HttpError(http_client::Error::Instance(e.into())))?;
                 Err(VerifyError::ProviderError(text))
             }
             _ => {
-                response.error_for_status()?;
+                response
+                    .error_for_status()
+                    .map_err(|e| VerifyError::HttpError(http_client::Error::Instance(e.into())))?;
                 Ok(())
             }
         }

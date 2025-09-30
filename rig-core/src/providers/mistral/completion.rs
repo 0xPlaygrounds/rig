@@ -5,6 +5,7 @@ use std::{convert::Infallible, str::FromStr};
 
 use super::client::{Client, Usage};
 use crate::completion::GetTokenUsage;
+use crate::http_client::{self, HttpClientExt};
 use crate::streaming::{RawStreamingChoice, StreamingCompletionResponse};
 use crate::{
     OneOrMany,
@@ -250,13 +251,13 @@ impl FromStr for AssistantContent {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T> {
+    pub(crate) client: Client<T>,
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -411,7 +412,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Send + Clone + std::fmt::Debug + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = CompletionResponse;
 
@@ -420,17 +424,20 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let request = self.create_completion_request(completion_request)?;
+        let body = self.create_completion_request(completion_request)?;
+        let body = serde_json::to_vec(&body)?;
 
-        let response = self
+        let request = self
             .client
-            .post("v1/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
+            .post("v1/chat/completions")?
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        let response = self.client.send(request).await?;
 
         if response.status().is_success() {
-            let text = response.text().await?;
+            let text = http_client::text(response).await?;
+
             match serde_json::from_str::<ApiResponse<CompletionResponse>>(&text)? {
                 ApiResponse::Ok(response) => {
                     tracing::debug!(target: "rig",
@@ -442,7 +449,8 @@ impl completion::CompletionModel for CompletionModel {
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
             }
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            let text = http_client::text(response).await?;
+            Err(CompletionError::ProviderError(text))
         }
     }
 
