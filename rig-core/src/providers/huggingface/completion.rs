@@ -203,6 +203,17 @@ impl TryFrom<message::UserContent> for UserContent {
     fn try_from(content: message::UserContent) -> Result<Self, Self::Error> {
         match content {
             message::UserContent::Text(text) => Ok(UserContent::Text { text: text.text }),
+            message::UserContent::Document(message::Document {
+                data: message::DocumentSourceKind::Raw(raw),
+                ..
+            }) => {
+                let text = String::from_utf8_lossy(raw.as_slice()).into();
+                Ok(UserContent::Text { text })
+            }
+            message::UserContent::Document(message::Document {
+                data: message::DocumentSourceKind::Base64(text),
+                ..
+            }) => Ok(UserContent::Text { text }),
             message::UserContent::Image(message::Image { data, .. }) => match data {
                 message::DocumentSourceKind::Url(url) => Ok(UserContent::ImageUrl {
                     image_url: ImageUrl { url },
@@ -304,6 +315,17 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 Ok(UserContent::ImageUrl {
                                     image_url: ImageUrl { url },
                                 })
+                            }
+                            message::UserContent::Document(message::Document {
+                                data: message::DocumentSourceKind::Raw(raw), ..
+                            }) => {
+                                let text = String::from_utf8_lossy(raw.as_slice()).into();
+                                Ok(UserContent::Text { text })
+                            }
+                            message::UserContent::Document(message::Document {
+                                data: message::DocumentSourceKind::Base64(text), ..
+                            }) => {
+                                Ok(UserContent::Text { text })
                             }
                             _ => Err(message::MessageError::ConversionError(
                                 "Huggingface inputs only support text and image URLs (both base64-encoded images and regular URLs)".into(),
