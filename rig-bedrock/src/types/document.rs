@@ -27,20 +27,21 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
             None => Ok(None),
         }?;
 
-        let data = match data {
-            DocumentSourceKind::Base64(blob) => BASE64_STANDARD
-                .decode(blob)
-                .map_err(|e| CompletionError::RequestError(e.into()))?,
-            DocumentSourceKind::Raw(bytes) => bytes,
+        let document_source = match data {
+            DocumentSourceKind::Base64(blob) => {
+                let bytes = BASE64_STANDARD
+                    .decode(blob)
+                    .map_err(|e| CompletionError::RequestError(e.into()))?;
+
+                aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(bytes))
+            }
+            DocumentSourceKind::String(str) => aws_bedrock::DocumentSource::Text(str),
             doc => {
                 return Err(CompletionError::RequestError(
                     format!("Unsupported document kind: {doc}").into(),
                 ));
             }
         };
-
-        let data = aws_smithy_types::Blob::new(data);
-        let document_source = aws_bedrock::DocumentSource::Bytes(data);
 
         let random_string = Uuid::new_v4().simple().to_string();
         let document_name = format!("document-{random_string}");
@@ -66,9 +67,10 @@ impl TryFrom<aws_bedrock::DocumentBlock> for RigDocument {
                 let encoded_data = BASE64_STANDARD.encode(blob.into_inner());
                 Ok(DocumentSourceKind::Base64(encoded_data))
             }
-            _ => Err(CompletionError::ProviderError(
-                "Document source is missing".into(),
-            )),
+            Some(aws_bedrock::DocumentSource::Text(str)) => Ok(DocumentSourceKind::String(str)),
+            doc => Err(CompletionError::ProviderError(format!(
+                "Unsupported document type: {doc:?}"
+            ))),
         }?;
 
         Ok(RigDocument(Document {

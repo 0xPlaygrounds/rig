@@ -241,10 +241,21 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             ..
                         }) => {
                             let (file_data, file_url) = match data {
-                                DocumentSourceKind::Base64(data) => (Some(format!("data:application/pdf;base64,{data}")), None),
+                                DocumentSourceKind::Base64(data) => {
+                                    (Some(format!("data:application/pdf;base64,{data}")), None)
+                                }
                                 DocumentSourceKind::Url(url) => (None, Some(url)),
-                                DocumentSourceKind::Raw(_) => return Err(CompletionError::RequestError("Raw file data not supported, encode as base64 first".into())),
-                                DocumentSourceKind::Unknown => return Err(CompletionError::RequestError("Attempted to create an OpenAI Responses AI file input from unknown variant".into()))
+                                DocumentSourceKind::Raw(_) => {
+                                    return Err(CompletionError::RequestError(
+                                        "Raw file data not supported, encode as base64 first"
+                                            .into(),
+                                    ));
+                                }
+                                doc => {
+                                    return Err(CompletionError::RequestError(
+                                        format!("Unsupported document type: {doc}").into(),
+                                    ));
+                                }
                             };
 
                             items.push(InputItem {
@@ -270,6 +281,16 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 name: None,
                             }),
                         }),
+                        crate::message::UserContent::Document(Document {
+                            data: DocumentSourceKind::String(text),
+                            ..
+                        }) => items.push(InputItem {
+                            role: Some(Role::User),
+                            input: InputContent::Message(Message::User {
+                                content: OneOrMany::one(UserContent::InputText { text }),
+                                name: None,
+                            }),
+                        }),
                         crate::message::UserContent::Image(crate::message::Image {
                             data,
                             media_type,
@@ -286,8 +307,17 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                     format!("data:{media_type};base64,{data}")
                                 }
                                 DocumentSourceKind::Url(url) => url,
-                                DocumentSourceKind::Raw(_) => return Err(CompletionError::RequestError("Raw file data not supported, encode as base64 first".into())),
-                                DocumentSourceKind::Unknown => return Err(CompletionError::RequestError("Attempted to create an OpenAI Responses AI image input from unknown variant".into()))
+                                DocumentSourceKind::Raw(_) => {
+                                    return Err(CompletionError::RequestError(
+                                        "Raw file data not supported, encode as base64 first"
+                                            .into(),
+                                    ));
+                                }
+                                doc => {
+                                    return Err(CompletionError::RequestError(
+                                        format!("Unsupported document type: {doc}").into(),
+                                    ));
+                                }
                             };
                             items.push(InputItem {
                                 role: Some(Role::User),
@@ -1285,8 +1315,17 @@ impl TryFrom<message::Message> for Vec<Message> {
                                         format!("data:{media_type};base64,{data}")
                                     }
                                     DocumentSourceKind::Url(url) => url,
-                                    DocumentSourceKind::Raw(_) => return Err(MessageError::ConversionError("Raw files not supported, encode as base64 first".into())),
-                                    DocumentSourceKind::Unknown => return Err(MessageError::ConversionError("Attempted to convert unknown image type to OpenAI image input".to_string()))
+                                    DocumentSourceKind::Raw(_) => {
+                                        return Err(MessageError::ConversionError(
+                                            "Raw files not supported, encode as base64 first"
+                                                .into(),
+                                        ));
+                                    }
+                                    doc => {
+                                        return Err(MessageError::ConversionError(
+                                            format!("Unsupported document type: {doc}").into(),
+                                        ));
+                                    }
                                 };
 
                                 Ok(UserContent::InputImage {
@@ -1294,12 +1333,27 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     detail: detail.unwrap_or_default(),
                                 })
                             }
-                            message::UserContent::Document(message::Document { media_type: Some(DocumentMediaType::PDF), data, .. }) => {
+                            message::UserContent::Document(message::Document {
+                                media_type: Some(DocumentMediaType::PDF),
+                                data,
+                                ..
+                            }) => {
                                 let (file_data, file_url) = match data {
-                                    DocumentSourceKind::Base64(data) =>  (Some(format!("data:application/pdf;base64,{data}")), None),
+                                    DocumentSourceKind::Base64(data) => {
+                                        (Some(format!("data:application/pdf;base64,{data}")), None)
+                                    }
                                     DocumentSourceKind::Url(url) => (None, Some(url)),
-                                    DocumentSourceKind::Raw(_) => return Err(MessageError::ConversionError("Raw files not supported, encode as base64 first".into())),
-                                    DocumentSourceKind::Unknown => return Err(MessageError::ConversionError("Attempted to convert unknown PDF type to OpenAI image input".to_string()))
+                                    DocumentSourceKind::Raw(_) => {
+                                        return Err(MessageError::ConversionError(
+                                            "Raw files not supported, encode as base64 first"
+                                                .into(),
+                                        ));
+                                    }
+                                    doc => {
+                                        return Err(MessageError::ConversionError(
+                                            format!("Unsupported document type: {doc}").into(),
+                                        ));
+                                    }
                                 };
 
                                 Ok(UserContent::InputFile {
@@ -1308,11 +1362,10 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     filename: Some("document.pdf".into()),
                                 })
                             }
-                            message::UserContent::Document(message::Document { data: DocumentSourceKind::Base64(text), .. }) => {
-                                Ok(UserContent::InputText {
-                                    text
-                                })
-                            }
+                            message::UserContent::Document(message::Document {
+                                data: DocumentSourceKind::Base64(text),
+                                ..
+                            }) => Ok(UserContent::InputText { text }),
                             message::UserContent::Audio(message::Audio {
                                 data: DocumentSourceKind::Base64(data),
                                 media_type,
@@ -1326,8 +1379,10 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     },
                                 },
                             }),
-                            message::UserContent::Audio(_) => Err(MessageError::ConversionError("Audio must be base64 encoded data".into())),
-                            _ => unreachable!()
+                            message::UserContent::Audio(_) => Err(MessageError::ConversionError(
+                                "Audio must be base64 encoded data".into(),
+                            )),
+                            _ => unreachable!(),
                         })
                         .collect::<Result<Vec<_>, _>>()?;
 

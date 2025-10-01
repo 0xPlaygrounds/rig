@@ -211,7 +211,9 @@ impl TryFrom<message::UserContent> for UserContent {
                 Ok(UserContent::Text { text })
             }
             message::UserContent::Document(message::Document {
-                data: message::DocumentSourceKind::Base64(text),
+                data:
+                    message::DocumentSourceKind::Base64(text)
+                    | message::DocumentSourceKind::String(text),
                 ..
             }) => Ok(UserContent::Text { text }),
             message::UserContent::Image(message::Image { data, .. }) => match data {
@@ -323,7 +325,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 Ok(UserContent::Text { text })
                             }
                             message::UserContent::Document(message::Document {
-                                data: message::DocumentSourceKind::Base64(text), ..
+                                data: message::DocumentSourceKind::Base64(text) | message::DocumentSourceKind::String(text), ..
                             }) => {
                                 Ok(UserContent::Text { text })
                             }

@@ -202,6 +202,8 @@ pub enum DocumentSourceKind {
     Base64(String),
     /// Raw bytes
     Raw(Vec<u8>),
+    /// A string (or a string literal).
+    String(String),
     #[default]
     /// An unknown file source (there's nothing there).
     Unknown,
@@ -218,6 +220,10 @@ impl DocumentSourceKind {
 
     pub fn raw(bytes: impl Into<Vec<u8>>) -> Self {
         Self::Raw(bytes.into())
+    }
+
+    pub fn string(input: &str) -> Self {
+        Self::String(input.into())
     }
 
     pub fn unknown() -> Self {
@@ -237,6 +243,7 @@ impl std::fmt::Display for DocumentSourceKind {
         match self {
             Self::Url(string) => write!(f, "{string}"),
             Self::Base64(string) => write!(f, "{string}"),
+            Self::String(string) => write!(f, "{string}"),
             Self::Raw(_) => write!(f, "<binary data>"),
             Self::Unknown => write!(f, "<unknown>"),
         }
@@ -509,9 +516,11 @@ impl UserContent {
     }
 
     /// Helper constructor to make creating user document content easier.
+    /// This creates a document that assumes the data being passed in is a raw string.
     pub fn document(data: impl Into<String>, media_type: Option<DocumentMediaType>) -> Self {
+        let data: String = data.into();
         UserContent::Document(Document {
-            data: DocumentSourceKind::Base64(data.into()),
+            data: DocumentSourceKind::string(&data),
             media_type,
             additional_params: None,
         })

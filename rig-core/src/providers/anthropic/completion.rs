@@ -496,14 +496,14 @@ impl TryFrom<message::Message> for Message {
                                 r#type: SourceType::URL,
                                 media_type: ImageFormat::try_from(media_type)?,
                             },
-                            DocumentSourceKind::Raw(_) => {
-                                return Err(MessageError::ConversionError(
-                                    "Raw files not supported".into(),
-                                ));
-                            }
                             DocumentSourceKind::Unknown => {
                                 return Err(MessageError::ConversionError(
                                     "Image content has no body".into(),
+                                ));
+                            }
+                            doc => {
+                                return Err(MessageError::ConversionError(
+                                    format!("Unsupported document type: {doc:?}").into(),
                                 ));
                             }
                         };

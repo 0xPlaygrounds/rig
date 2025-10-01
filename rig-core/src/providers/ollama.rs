@@ -821,7 +821,9 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                                 }) => images.push(data),
                                 crate::message::UserContent::Document(
                                     crate::message::Document {
-                                        data: DocumentSourceKind::Base64(data),
+                                        data:
+                                            DocumentSourceKind::Base64(data)
+                                            | DocumentSourceKind::String(data),
                                         ..
                                     },
                                 ) => texts.push(data),
