@@ -517,10 +517,15 @@ impl TryFrom<message::Message> for Message {
                             "Document media type is required".to_string(),
                         ))?;
 
-                        let DocumentSourceKind::Base64(data) = data else {
-                            return Err(MessageError::ConversionError(
-                                "Only base64 encoded documents currently supported".into(),
-                            ));
+                        let data = match data {
+                            DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data) => {
+                                data
+                            }
+                            _ => {
+                                return Err(MessageError::ConversionError(
+                                    "Only base64 encoded documents currently supported".into(),
+                                ));
+                            }
                         };
 
                         let source = DocumentSource {
