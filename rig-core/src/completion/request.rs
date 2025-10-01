@@ -65,6 +65,7 @@
 
 use super::message::{AssistantContent, DocumentMediaType};
 use crate::client::completion::CompletionModelHandle;
+use crate::message::ToolChoice;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{OneOrMany, streaming};
 use crate::{
@@ -429,6 +430,8 @@ pub struct CompletionRequest {
     pub temperature: Option<f64>,
     /// The max tokens to be sent to the completion model provider
     pub max_tokens: Option<u64>,
+    /// Whether tools are required to be used by the model provider or not before providing a response.
+    pub tool_choice: Option<ToolChoice>,
     /// Additional provider-specific parameters to be sent to the completion model provider
     pub additional_params: Option<serde_json::Value>,
 }
@@ -516,6 +519,7 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
     tools: Vec<ToolDefinition>,
     temperature: Option<f64>,
     max_tokens: Option<u64>,
+    tool_choice: Option<ToolChoice>,
     additional_params: Option<serde_json::Value>,
 }
 
@@ -530,6 +534,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             tools: Vec::new(),
             temperature: None,
             max_tokens: None,
+            tool_choice: None,
             additional_params: None,
         }
     }
@@ -637,6 +642,12 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         self
     }
 
+    /// Sets the thing.
+    pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
+        self.tool_choice = Some(tool_choice);
+        self
+    }
+
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
         let chat_history = OneOrMany::many([self.chat_history, vec![self.prompt]].concat())
@@ -649,6 +660,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             tools: self.tools,
             temperature: self.temperature,
             max_tokens: self.max_tokens,
+            tool_choice: self.tool_choice,
             additional_params: self.additional_params,
         }
     }
@@ -731,6 +743,7 @@ mod tests {
             tools: Vec::new(),
             temperature: None,
             max_tokens: None,
+            tool_choice: None,
             additional_params: None,
         };
 
@@ -760,6 +773,7 @@ mod tests {
             tools: Vec::new(),
             temperature: None,
             max_tokens: None,
+            tool_choice: None,
             additional_params: None,
         };
 

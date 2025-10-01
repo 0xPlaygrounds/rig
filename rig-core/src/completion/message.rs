@@ -957,6 +957,15 @@ impl From<ToolResultContent> for Message {
     }
 }
 
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolChoice {
+    #[default]
+    Auto,
+    None,
+    Required,
+}
+
 // ================================================================
 // Error types
 // ================================================================

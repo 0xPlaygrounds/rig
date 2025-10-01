@@ -6,7 +6,7 @@ use super::{ApiErrorResponse, ApiResponse, Client, streaming::StreamingCompletio
 use crate::completion::{
     CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
 };
-use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
+use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType, ToolChoice};
 use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{ProviderResponseExt, SpanCombinator};
 use crate::{OneOrMany, completion, json_utils, message};
@@ -787,7 +787,7 @@ pub struct CompletionRequest {
     model: String,
     messages: Vec<Message>,
     tools: Vec<ToolDefinition>,
-    tool_choice: String,
+    tool_choice: Option<ToolChoice>,
     temperature: Option<f64>,
     #[serde(flatten)]
     additional_params: Option<serde_json::Value>,
@@ -807,6 +807,7 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
             tools,
             temperature,
             additional_params,
+            tool_choice,
             ..
         } = req;
 
@@ -833,7 +834,7 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
                 .into_iter()
                 .map(ToolDefinition::from)
                 .collect::<Vec<_>>(),
-            tool_choice: "auto".to_string(),
+            tool_choice: tool_choice,
             temperature,
             additional_params,
         };

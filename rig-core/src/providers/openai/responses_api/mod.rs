@@ -13,7 +13,7 @@ use crate::completion::CompletionError;
 use crate::json_utils;
 use crate::message::{
     AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError,
-    MimeType, Text,
+    MimeType, Text, ToolChoice,
 };
 use crate::one_or_many::string_or_one_or_many;
 
@@ -48,8 +48,10 @@ pub struct CompletionRequest {
     /// The temperature. Set higher (up to a max of 1.0) for more creative responses.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f64>,
-    // TODO: Fix this before opening a PR!
-    // tool_choice: Option<T>,
+    /// Whether the LLM should be forced to use a tool before returning a response.
+    /// If none provided, the default option is "auto".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<ToolChoice>,
     /// The tools you want to use. Currently this is limited to functions, but will be expanded on in future.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ResponsesToolDefinition>,
@@ -643,6 +645,7 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             instructions: req.preamble,
             max_output_tokens: req.max_tokens,
             stream,
+            tool_choice: req.tool_choice,
             tools: req
                 .tools
                 .into_iter()

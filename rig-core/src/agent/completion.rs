@@ -5,6 +5,7 @@ use crate::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
         GetTokenUsage, Message, Prompt, PromptError,
     },
+    message::ToolChoice,
     streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
     tool::ToolSet,
     vector_store::{VectorStoreError, request::VectorSearchRequest},
@@ -62,6 +63,8 @@ where
     pub dynamic_tools: Arc<Vec<(usize, Box<dyn crate::vector_store::VectorStoreIndexDyn>)>>,
     /// Actual tool implementations
     pub tools: Arc<ToolSet>,
+    /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
+    tool_choice: Option<ToolChoice>,
 }
 
 impl<M> Agent<M>

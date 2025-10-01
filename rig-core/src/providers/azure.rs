@@ -963,6 +963,7 @@ mod azure_tests {
                 max_tokens: Some(100),
                 temperature: Some(0.0),
                 tools: vec![],
+                tool_choice: None,
                 additional_params: None,
             })
             .await
