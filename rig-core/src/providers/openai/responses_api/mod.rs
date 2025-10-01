@@ -8,10 +8,13 @@
 //! let model = openai_client.completion_model("gpt-4o").completions_api();
 //! ```
 use super::{Client, responses_api::streaming::StreamingCompletionResponse};
-use super::{ImageUrl, InputAudio, SystemContent};
+use super::{InputAudio, SystemContent};
 use crate::completion::CompletionError;
 use crate::json_utils;
-use crate::message::{AudioMediaType, Document, DocumentSourceKind, MessageError, MimeType, Text};
+use crate::message::{
+    AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError,
+    MimeType, Text,
+};
 use crate::one_or_many::string_or_one_or_many;
 
 use crate::{OneOrMany, completion, message};
@@ -232,6 +235,30 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 });
                             }
                         }
+                        crate::message::UserContent::Document(Document {
+                            data,
+                            media_type: Some(DocumentMediaType::PDF),
+                            ..
+                        }) => {
+                            let (file_data, file_url) = match data {
+                                DocumentSourceKind::Base64(data) => (Some(format!("data:application/pdf;base64,{data}")), None),
+                                DocumentSourceKind::Url(url) => (None, Some(url)),
+                                DocumentSourceKind::Raw(_) => return Err(CompletionError::RequestError("Raw file data not supported, encode as base64 first".into())),
+                                DocumentSourceKind::Unknown => return Err(CompletionError::RequestError("Attempted to create an OpenAI Responses AI file input from unknown variant".into()))
+                            };
+
+                            items.push(InputItem {
+                                role: Some(Role::User),
+                                input: InputContent::Message(Message::User {
+                                    content: OneOrMany::one(UserContent::InputFile {
+                                        file_data,
+                                        file_url,
+                                        filename: Some("document.pdf".to_string()),
+                                    }),
+                                    name: None,
+                                }),
+                            })
+                        }
                         // todo: should we ensure this takes into account file size?
                         crate::message::UserContent::Document(Document {
                             data: DocumentSourceKind::Base64(text),
@@ -266,10 +293,8 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 role: Some(Role::User),
                                 input: InputContent::Message(Message::User {
                                     content: OneOrMany::one(UserContent::InputImage {
-                                        image_url: ImageUrl {
-                                            url,
-                                            detail: detail.unwrap_or_default(),
-                                        },
+                                        image_url: url,
+                                        detail: detail.unwrap_or_default(),
                                     }),
                                     name: None,
                                 }),
@@ -1180,7 +1205,17 @@ pub enum UserContent {
         text: String,
     },
     InputImage {
-        image_url: ImageUrl,
+        image_url: String,
+        #[serde(default)]
+        detail: ImageDetail,
+    },
+    InputFile {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        file_url: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        file_data: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        filename: Option<String>,
     },
     Audio {
         input_audio: InputAudio,
@@ -1255,14 +1290,28 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 };
 
                                 Ok(UserContent::InputImage {
-                                    image_url: ImageUrl {
-                                        url,
-                                        detail: detail.unwrap_or_default(),
-                                    },
+                                    image_url: url,
+                                    detail: detail.unwrap_or_default(),
+                                })
+                            }
+                            message::UserContent::Document(message::Document { media_type: Some(DocumentMediaType::PDF), data, .. }) => {
+                                let (file_data, file_url) = match data {
+                                    DocumentSourceKind::Base64(data) =>  (Some(format!("data:application/pdf;base64,{data}")), None),
+                                    DocumentSourceKind::Url(url) => (None, Some(url)),
+                                    DocumentSourceKind::Raw(_) => return Err(MessageError::ConversionError("Raw files not supported, encode as base64 first".into())),
+                                    DocumentSourceKind::Unknown => return Err(MessageError::ConversionError("Attempted to convert unknown PDF type to OpenAI image input".to_string()))
+                                };
+
+                                Ok(UserContent::InputFile {
+                                    file_url,
+                                    file_data,
+                                    filename: Some("document.pdf".into()),
                                 })
                             }
                             message::UserContent::Document(message::Document { data: DocumentSourceKind::Base64(text), .. }) => {
-                                Ok(UserContent::InputText { text })
+                                Ok(UserContent::InputText {
+                                    text
+                                })
                             }
                             message::UserContent::Audio(message::Audio {
                                 data: DocumentSourceKind::Base64(data),
