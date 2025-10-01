@@ -496,15 +496,15 @@ impl TryFrom<message::Message> for Message {
                                 r#type: SourceType::URL,
                                 media_type: ImageFormat::try_from(media_type)?,
                             },
-                            DocumentSourceKind::Raw(_) => {
-                                return Err(MessageError::ConversionError(
-                                    "Raw files not supported".into(),
-                                ));
-                            }
                             DocumentSourceKind::Unknown => {
                                 return Err(MessageError::ConversionError(
                                     "Image content has no body".into(),
                                 ));
+                            }
+                            doc => {
+                                return Err(MessageError::ConversionError(format!(
+                                    "Unsupported document type: {doc:?}"
+                                )));
                             }
                         };
 
@@ -517,10 +517,15 @@ impl TryFrom<message::Message> for Message {
                             "Document media type is required".to_string(),
                         ))?;
 
-                        let DocumentSourceKind::Base64(data) = data else {
-                            return Err(MessageError::ConversionError(
-                                "Only base64 encoded documents currently supported".into(),
-                            ));
+                        let data = match data {
+                            DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data) => {
+                                data
+                            }
+                            _ => {
+                                return Err(MessageError::ConversionError(
+                                    "Only base64 encoded documents currently supported".into(),
+                                ));
+                            }
                         };
 
                         let source = DocumentSource {
@@ -1080,7 +1085,7 @@ mod tests {
                     }) => {
                         assert_eq!(
                             data,
-                            DocumentSourceKind::Base64("base64_encoded_pdf_data".into())
+                            DocumentSourceKind::String("base64_encoded_pdf_data".into())
                         );
                         assert_eq!(media_type, Some(message::DocumentMediaType::PDF));
                     }

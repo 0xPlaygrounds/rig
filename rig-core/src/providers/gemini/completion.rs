@@ -660,12 +660,14 @@ pub mod gemini_api_types {
                     mime_type: Some(mime_type),
                     file_uri: url,
                 }),
+                DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data) => {
+                    PartKind::InlineData(Blob { mime_type, data })
+                }
                 DocumentSourceKind::Raw(_) => {
                     return Err(message::MessageError::ConversionError(
                         "Raw files not supported, encode as base64 first".into(),
                     ));
                 }
-                DocumentSourceKind::Base64(data) => PartKind::InlineData(Blob { mime_type, data }),
                 DocumentSourceKind::Unknown => {
                     return Err(message::MessageError::ConversionError(
                         "Can't convert an unknown document source".to_string(),
@@ -758,8 +760,8 @@ pub mod gemini_api_types {
                                 mime_type: Some(mime_type),
                                 file_uri,
                             }),
-                            DocumentSourceKind::Base64(data) => {
-                                PartKind::InlineData(Blob { data, mime_type })
+                            DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data) => {
+                                PartKind::InlineData(Blob { mime_type, data })
                             }
                             DocumentSourceKind::Raw(_) => {
                                 return Err(message::MessageError::ConversionError(
@@ -800,10 +802,16 @@ pub mod gemini_api_types {
                         DocumentSourceKind::Base64(data) => {
                             PartKind::InlineData(Blob { data, mime_type })
                         }
+
                         DocumentSourceKind::Url(file_uri) => PartKind::FileData(FileData {
                             mime_type: Some(mime_type),
                             file_uri,
                         }),
+                        DocumentSourceKind::String(_) => {
+                            return Err(message::MessageError::ConversionError(
+                                "Strings cannot be used as audio files!".into(),
+                            ));
+                        }
                         DocumentSourceKind::Raw(_) => {
                             return Err(message::MessageError::ConversionError(
                                 "Raw files not supported, encode as base64 first".into(),
@@ -859,6 +867,11 @@ pub mod gemini_api_types {
                                 ));
                             };
                             PartKind::InlineData(Blob { mime_type, data })
+                        }
+                        DocumentSourceKind::String(_) => {
+                            return Err(message::MessageError::ConversionError(
+                                "Strings cannot be used as audio files!".into(),
+                            ));
                         }
                         DocumentSourceKind::Raw(_) => {
                             return Err(message::MessageError::ConversionError(

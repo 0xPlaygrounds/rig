@@ -357,7 +357,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                             name: None,
                         }),
                         message::UserContent::Document(Document {
-                            data: DocumentSourceKind::Base64(content),
+                            data:
+                                DocumentSourceKind::Base64(content)
+                                | DocumentSourceKind::String(content),
                             ..
                         }) => Some(Message::User {
                             content,

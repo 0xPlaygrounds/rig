@@ -331,7 +331,7 @@ impl CompletionModel {
                 .into_iter()
                 .filter_map(|doc| match doc {
                     UserContent::Document(Document {
-                        data: DocumentSourceKind::Base64(data),
+                        data: DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data),
                         ..
                     }) => Some(data),
                     UserContent::Text(text) => Some(text.text),
