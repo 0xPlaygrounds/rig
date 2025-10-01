@@ -363,9 +363,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                                         "Document has no body".into(),
                                     ))
                                 }
-                                doc => Err(message::MessageError::ConversionError(
-                                    format!("Unsupported document type: {doc:?}").into(),
-                                )),
+                                doc => Err(message::MessageError::ConversionError(format!(
+                                    "Unsupported document type: {doc:?}"
+                                ))),
                             },
                             message::UserContent::Document(message::Document { data, .. }) => {
                                 if let DocumentSourceKind::Base64(text) = data {

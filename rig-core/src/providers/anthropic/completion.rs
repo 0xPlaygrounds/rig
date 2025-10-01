@@ -502,9 +502,9 @@ impl TryFrom<message::Message> for Message {
                                 ));
                             }
                             doc => {
-                                return Err(MessageError::ConversionError(
-                                    format!("Unsupported document type: {doc:?}").into(),
-                                ));
+                                return Err(MessageError::ConversionError(format!(
+                                    "Unsupported document type: {doc:?}"
+                                )));
                             }
                         };
 

@@ -1322,9 +1322,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                                         ));
                                     }
                                     doc => {
-                                        return Err(MessageError::ConversionError(
-                                            format!("Unsupported document type: {doc}").into(),
-                                        ));
+                                        return Err(MessageError::ConversionError(format!(
+                                            "Unsupported document type: {doc}"
+                                        )));
                                     }
                                 };
 
@@ -1350,9 +1350,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                                         ));
                                     }
                                     doc => {
-                                        return Err(MessageError::ConversionError(
-                                            format!("Unsupported document type: {doc}").into(),
-                                        ));
+                                        return Err(MessageError::ConversionError(format!(
+                                            "Unsupported document type: {doc}"
+                                        )));
                                     }
                                 };
 
