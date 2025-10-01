@@ -687,9 +687,35 @@ pub enum ToolChoice {
     #[default]
     Auto,
     Any,
+    None,
     Tool {
         name: String,
     },
+}
+
+impl TryFrom<message::ToolChoice> for ToolChoice {
+    type Error = CompletionError;
+
+    fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
+        let res = match value {
+            message::ToolChoice::Auto => Self::Auto,
+            message::ToolChoice::None => Self::None,
+            message::ToolChoice::Required => Self::Any,
+            message::ToolChoice::Specific { function_names } => {
+                if function_names.len() != 1 {
+                    return Err(CompletionError::ProviderError(
+                        "Only one tool may be specified to be used by Claude".into(),
+                    ));
+                }
+
+                Self::Tool {
+                    name: function_names.first().unwrap().to_string(),
+                }
+            }
+        };
+
+        Ok(res)
+    }
 }
 
 impl completion::CompletionModel for CompletionModel {
@@ -757,6 +783,12 @@ impl completion::CompletionModel for CompletionModel {
             json_utils::merge_inplace(&mut request, json!({ "temperature": temperature }));
         }
 
+        let tool_choice = if let Some(tool_choice) = completion_request.tool_choice {
+            Some(ToolChoice::try_from(tool_choice)?)
+        } else {
+            None
+        };
+
         if !completion_request.tools.is_empty() {
             json_utils::merge_inplace(
                 &mut request,
@@ -770,7 +802,7 @@ impl completion::CompletionModel for CompletionModel {
                             input_schema: tool.parameters,
                         })
                         .collect::<Vec<_>>(),
-                    "tool_choice": ToolChoice::Auto,
+                    "tool_choice": tool_choice,
                 }),
             );
         }

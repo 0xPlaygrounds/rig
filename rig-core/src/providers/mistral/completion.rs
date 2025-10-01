@@ -257,6 +257,33 @@ pub struct CompletionModel {
     pub model: String,
 }
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub enum ToolChoice {
+    #[default]
+    Auto,
+    None,
+    Any,
+}
+
+impl TryFrom<message::ToolChoice> for ToolChoice {
+    type Error = CompletionError;
+
+    fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
+        let res = match value {
+            message::ToolChoice::Auto => Self::Auto,
+            message::ToolChoice::None => Self::None,
+            message::ToolChoice::Required => Self::Any,
+            message::ToolChoice::Specific { .. } => {
+                return Err(CompletionError::ProviderError(
+                    "Mistral doesn't support requiring specific tools to be called".to_string(),
+                ));
+            }
+        };
+
+        Ok(res)
+    }
+}
+
 impl CompletionModel {
     pub fn new(client: Client, model: &str) -> Self {
         Self {
@@ -291,6 +318,11 @@ impl CompletionModel {
                 .collect::<Vec<_>>(),
         );
 
+        let tool_choice = completion_request
+            .tool_choice
+            .map(ToolChoice::try_from)
+            .transpose()?;
+
         let request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
@@ -302,7 +334,7 @@ impl CompletionModel {
                 "model": self.model,
                 "messages": full_history,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": completion_request.tool_choice,
+                "tool_choice": tool_choice,
             })
         };
 

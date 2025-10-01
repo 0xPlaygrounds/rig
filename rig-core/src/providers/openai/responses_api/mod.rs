@@ -7,13 +7,14 @@
 //! let openai_client = rig::providers::openai::Client::from_env();
 //! let model = openai_client.completion_model("gpt-4o").completions_api();
 //! ```
+use super::completion::ToolChoice;
 use super::{Client, responses_api::streaming::StreamingCompletionResponse};
 use super::{InputAudio, SystemContent};
 use crate::completion::CompletionError;
 use crate::json_utils;
 use crate::message::{
     AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError,
-    MimeType, Text, ToolChoice,
+    MimeType, Text,
 };
 use crate::one_or_many::string_or_one_or_many;
 
@@ -639,13 +640,15 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             AdditionalParameters::default()
         };
 
+        let tool_choice = req.tool_choice.map(ToolChoice::try_from).transpose()?;
+
         Ok(Self {
             input,
             model,
             instructions: req.preamble,
             max_output_tokens: req.max_tokens,
             stream,
-            tool_choice: req.tool_choice,
+            tool_choice,
             tools: req
                 .tools
                 .into_iter()

@@ -503,6 +503,12 @@ impl CompletionModel {
                 .collect::<Result<Vec<Message>, _>>()?,
         );
 
+        let tool_choice = completion_request
+            .tool_choice
+            .clone()
+            .map(crate::providers::openai::completion::ToolChoice::try_from)
+            .transpose()?;
+
         let request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
@@ -515,7 +521,7 @@ impl CompletionModel {
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": completion_request.tool_choice,
+                "tool_choice": tool_choice,
             })
         };
 

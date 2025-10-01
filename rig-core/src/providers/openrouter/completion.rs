@@ -123,6 +123,43 @@ pub struct Choice {
     pub finish_reason: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged, rename_all = "snake_case")]
+pub enum ToolChoice {
+    None,
+    Auto,
+    Required,
+    Function(Vec<ToolChoiceFunctionKind>),
+}
+
+impl TryFrom<crate::message::ToolChoice> for ToolChoice {
+    type Error = CompletionError;
+
+    fn try_from(value: crate::message::ToolChoice) -> Result<Self, Self::Error> {
+        let res = match value {
+            crate::message::ToolChoice::None => Self::None,
+            crate::message::ToolChoice::Auto => Self::Auto,
+            crate::message::ToolChoice::Required => Self::Required,
+            crate::message::ToolChoice::Specific { function_names } => {
+                let vec: Vec<ToolChoiceFunctionKind> = function_names
+                    .into_iter()
+                    .map(|name| ToolChoiceFunctionKind::Function { name })
+                    .collect();
+
+                Self::Function(vec)
+            }
+        };
+
+        Ok(res)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "function")]
+pub enum ToolChoiceFunctionKind {
+    Function { name: String },
+}
+
 #[derive(Clone)]
 pub struct CompletionModel {
     pub(crate) client: Client,
@@ -167,11 +204,17 @@ impl CompletionModel {
         // Combine all messages into a single history
         full_history.extend(chat_history);
 
+        let tool_choice = completion_request
+            .tool_choice
+            .map(ToolChoice::try_from)
+            .transpose()?;
+
         let request = json!({
             "model": self.model,
             "messages": full_history,
             "temperature": completion_request.temperature,
-            "tools": completion_request.tools.into_iter().map(crate::providers::openai::completion::ToolDefinition::from).collect::<Vec<_>>()
+            "tools": completion_request.tools.into_iter().map(crate::providers::openai::completion::ToolDefinition::from).collect::<Vec<_>>(),
+            "tool_choice": tool_choice,
         });
 
         let request = if let Some(params) = completion_request.additional_params {

@@ -64,7 +64,7 @@ where
     /// Actual tool implementations
     pub tools: Arc<ToolSet>,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
-    tool_choice: Option<ToolChoice>,
+    pub tool_choice: Option<ToolChoice>,
 }
 
 impl<M> Agent<M>

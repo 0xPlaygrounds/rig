@@ -12,6 +12,7 @@ use crate::{
 use super::client::{Client, together_ai_api_types::ApiResponse};
 use crate::completion::CompletionRequest;
 use crate::streaming::StreamingCompletionResponse;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{Instrument, info_span};
 
@@ -165,6 +166,11 @@ impl CompletionModel {
 
         full_history.extend(chat_history);
 
+        let tool_choice = completion_request
+            .tool_choice
+            .map(ToolChoice::try_from)
+            .transpose()?;
+
         let mut request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
@@ -177,7 +183,7 @@ impl CompletionModel {
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(openai::ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": "auto",
+                "tool_choice": tool_choice,
             })
         };
         request = if let Some(params) = completion_request.additional_params {
@@ -271,4 +277,44 @@ impl completion::CompletionModel for CompletionModel {
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
         CompletionModel::stream(self, request).await
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged, rename_all = "snake_case")]
+pub enum ToolChoice {
+    None,
+    Auto,
+    Function(Vec<ToolChoiceFunctionKind>),
+}
+
+impl TryFrom<crate::message::ToolChoice> for ToolChoice {
+    type Error = CompletionError;
+
+    fn try_from(value: crate::message::ToolChoice) -> Result<Self, Self::Error> {
+        let res = match value {
+            crate::message::ToolChoice::None => Self::None,
+            crate::message::ToolChoice::Auto => Self::Auto,
+            crate::message::ToolChoice::Specific { function_names } => {
+                let vec: Vec<ToolChoiceFunctionKind> = function_names
+                    .into_iter()
+                    .map(|name| ToolChoiceFunctionKind::Function { name })
+                    .collect();
+
+                Self::Function(vec)
+            }
+            choice => {
+                return Err(CompletionError::ProviderError(format!(
+                    "Unsupported tool choice type: {choice:?}"
+                )));
+            }
+        };
+
+        Ok(res)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "function")]
+pub enum ToolChoiceFunctionKind {
+    Function { name: String },
 }

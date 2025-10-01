@@ -437,6 +437,7 @@ impl<'a> DynClientBuilder {
             temperature: None,
             max_tokens: None,
             additional_params: None,
+            tool_choice: None,
             chat_history: crate::OneOrMany::one(prompt.into()),
         };
 
@@ -482,6 +483,7 @@ impl<'a> DynClientBuilder {
             temperature: None,
             max_tokens: None,
             additional_params: None,
+            tool_choice: None,
             chat_history: crate::OneOrMany::many(history)
                 .unwrap_or_else(|_| crate::OneOrMany::one(Message::user(""))),
         };

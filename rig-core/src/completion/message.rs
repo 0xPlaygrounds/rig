@@ -964,6 +964,9 @@ pub enum ToolChoice {
     Auto,
     None,
     Required,
+    Specific {
+        function_names: Vec<String>,
+    },
 }
 
 // ================================================================
