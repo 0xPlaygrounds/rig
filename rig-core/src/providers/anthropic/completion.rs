@@ -1080,7 +1080,7 @@ mod tests {
                     }) => {
                         assert_eq!(
                             data,
-                            DocumentSourceKind::Base64("base64_encoded_pdf_data".into())
+                            DocumentSourceKind::String("base64_encoded_pdf_data".into())
                         );
                         assert_eq!(media_type, Some(message::DocumentMediaType::PDF));
                     }
