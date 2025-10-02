@@ -405,7 +405,7 @@ impl CompletionModel {
 
         let tool_choice = completion_request
             .tool_choice
-            .map(crate::providers::openrouter::ToolChoice::try_from)
+            .map(crate::providers::openai::ToolChoice::try_from)
             .transpose()?;
 
         let request = if completion_request.tools.is_empty() {

@@ -153,6 +153,11 @@ where
         self
     }
 
+    pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
+        self.tool_choice = Some(tool_choice);
+        self
+    }
+
     /// Add some dynamic tools to the agent. On each prompt, `sample` tools from the
     /// dynamic toolset will be inserted in the request.
     pub fn dynamic_tools(
