@@ -1,3 +1,206 @@
+//! Message types for LLM conversations.
+//!
+//! This module provides the core message structures used in conversations with
+//! Large Language Models. Messages are the fundamental building blocks of
+//! interactions, representing both user inputs and assistant responses.
+//!
+//! # Main Components
+//!
+//! - [`Message`]: The primary message type with user and assistant variants
+//! - [`UserContent`]: Content types that can appear in user messages (text, images, audio, etc.)
+//! - [`AssistantContent`]: Content types in assistant responses (text, tool calls, reasoning)
+//! - [`ConvertMessage`]: Trait for converting messages to custom formats
+//!
+//! # Quick Start
+//!
+//! ```
+//! use rig::completion::Message;
+//!
+//! // Create a simple user message
+//! let user_msg = Message::user("What is the capital of France?");
+//!
+//! // Create an assistant response
+//! let assistant_msg = Message::assistant("The capital of France is Paris.");
+//! ```
+//!
+//! # Multimodal Messages
+//!
+//! Messages can contain multiple types of content:
+//!
+//! ```ignore
+//! use rig::completion::message::{Message, UserContent, ImageMediaType, ImageDetail};
+//! use rig::OneOrMany;
+//!
+//! let msg = Message::User {
+//!     content: OneOrMany::many(vec![
+//!         UserContent::text("What's in this image?"),
+//!         UserContent::image_url(
+//!             "https://example.com/image.png",
+//!             Some(ImageMediaType::PNG),
+//!             Some(ImageDetail::High)
+//!         ),
+//!     ])
+//! };
+//! ```
+//!
+//! # Provider Compatibility
+//!
+//! Different LLM providers support different content types and features.
+//! Rig handles conversion between its generic message format and provider-specific
+//! formats automatically, with some potential loss of information for unsupported features.
+//!
+//! # Common Patterns
+//!
+//! ## Building Conversation History
+//!
+//! ```
+//! use rig::completion::Message;
+//!
+//! let conversation = vec![
+//!     Message::user("What's the capital of France?"),
+//!     Message::assistant("The capital of France is Paris."),
+//!     Message::user("What's its population?"),
+//!     Message::assistant("Paris has approximately 2.2 million inhabitants."),
+//! ];
+//! ```
+//!
+//! ## Multimodal Messages
+//!
+//! Combining text with images for vision-capable models:
+//!
+//! ```ignore
+//! use rig::completion::message::{Message, UserContent, ImageMediaType, ImageDetail};
+//! use rig::OneOrMany;
+//!
+//! let msg = Message::User {
+//!     content: OneOrMany::many(vec![
+//!         UserContent::text("Analyze this architecture diagram and explain the data flow:"),
+//!         UserContent::image_url(
+//!             "https://example.com/architecture.png",
+//!             Some(ImageMediaType::PNG),
+//!             Some(ImageDetail::High)
+//!         ),
+//!     ])
+//! };
+//! ```
+//!
+//! ## Working with Tool Results
+//!
+//! ```
+//! use rig::completion::message::{Message, UserContent, ToolResult, ToolResultContent, Text};
+//! use rig::OneOrMany;
+//!
+//! // After the model requests a tool call, provide the result
+//! let tool_result = ToolResult {
+//!     id: "call_123".to_string(),
+//!     call_id: Some("msg_456".to_string()),
+//!     content: OneOrMany::one(ToolResultContent::Text(Text {
+//!         text: "The current temperature is 72°F".to_string(),
+//!     })),
+//! };
+//!
+//! let msg = Message::User {
+//!     content: OneOrMany::one(UserContent::ToolResult(tool_result)),
+//! };
+//! ```
+//!
+//! # Troubleshooting
+//!
+//! ## Common Issues
+//!
+//! ### "Media type required" Error
+//!
+//! When creating images from base64 data, you must specify the media type:
+//!
+//! ```
+//! # use rig::completion::message::UserContent;
+//! // ❌ This may fail during provider conversion
+//! let img = UserContent::image_base64("iVBORw0KGgo...", None, None);
+//! ```
+//!
+//! ```
+//! # use rig::completion::message::{UserContent, ImageMediaType};
+//! // ✅ Correct: always specify media type for base64
+//! let img = UserContent::image_base64(
+//!     "iVBORw0KGgo...",
+//!     Some(ImageMediaType::PNG),
+//!     None
+//! );
+//! ```
+//!
+//! ### Provider Doesn't Support Content Type
+//!
+//! Not all providers support all content types:
+//!
+//! | Content Type | Supported By |
+//! |--------------|--------------|
+//! | Text | All providers |
+//! | Images | GPT-4V, GPT-4o, Claude 3+, Gemini Pro Vision |
+//! | Audio | OpenAI Whisper, specific models |
+//! | Video | Gemini 1.5+, very limited support |
+//! | Tool calls | GPT-4+, Claude 3+, most modern models |
+//!
+//! **Solution**: Check your provider's documentation before using multimedia content.
+//!
+//! ### Large Base64 Images Failing
+//!
+//! Base64-encoded images count heavily toward token limits:
+//!
+//! ```
+//! # use rig::completion::message::{UserContent, ImageMediaType, ImageDetail};
+//! // ❌ Large base64 image (may exceed limits)
+//! // let huge_image = UserContent::image_base64(very_large_base64, ...);
+//!
+//! // ✅ Better: use URL for large images
+//! let img = UserContent::image_url(
+//!     "https://example.com/large-image.png",
+//!     Some(ImageMediaType::PNG),
+//!     Some(ImageDetail::High)
+//! );
+//! ```
+//!
+//! **Tips**:
+//! - Resize images before encoding (768x768 is often sufficient)
+//! - Use URLs for images >1MB
+//! - Use `ImageDetail::Low` for thumbnails or simple images
+//!
+//! ### Builder Pattern Not Chaining
+//!
+//! Make sure to capture the return value from builder methods:
+//!
+//! ```
+//! # use rig::completion::message::Reasoning;
+//! // ❌ This doesn't work (discards the returned value)
+//! let mut reasoning = Reasoning::new("step 1");
+//! reasoning.with_id("id-123".to_string());  // Returns new value, not stored!
+//! // reasoning.id is still None
+//! ```
+//!
+//! ```
+//! # use rig::completion::message::Reasoning;
+//! // ✅ Correct: chain the calls or reassign
+//! let reasoning = Reasoning::new("step 1")
+//!     .with_id("id-123".to_string());  // Proper chaining
+//! assert_eq!(reasoning.id, Some("id-123".to_string()));
+//! ```
+//!
+//! # Performance Tips
+//!
+//! ## Message Size
+//! - Keep conversation history manageable (typically last 10-20 messages)
+//! - Summarize old context rather than sending full history
+//! - Images use 85-765 tokens each depending on size
+//!
+//! ## Content Type Selection
+//! - Prefer URLs over base64 for multimedia (faster, fewer tokens)
+//! - Use `ImageDetail::Low` when high detail isn't needed (saves tokens)
+//! - Remove tool results from history after they've been used
+//!
+//! # See also
+//!
+//! - [`crate::completion::request`] for sending messages to models
+//! - [`crate::providers`] for provider-specific implementations
+
 use std::{convert::Infallible, str::FromStr};
 
 use crate::OneOrMany;
@@ -10,72 +213,448 @@ use super::CompletionError;
 // Message models
 // ================================================================
 
-/// A useful trait to help convert `rig::completion::Message` to your own message type.
+/// A trait for converting [`Message`] to custom message types.
 ///
-/// Particularly useful if you don't want to create a free-standing function as
-/// when trying to use `TryFrom<T>`, you would normally run into the orphan rule as Vec is
-/// technically considered a foreign type (it's owned by stdlib).
+/// This trait provides a clean way to convert Rig's generic message format
+/// into your own custom message types without running into Rust's orphan rule.
+/// Since `Vec` is a foreign type (owned by stdlib), implementing `TryFrom<Message>`
+/// for `Vec<YourType>` would violate the orphan rule. This trait solves that problem.
+///
+/// # When to implement
+///
+/// Implement this trait when:
+/// - You need to integrate Rig with existing message-based systems
+/// - You want to convert between Rig's format and your own message types
+/// - You need custom conversion logic beyond simple type mapping
+///
+/// # Examples
+///
+/// ```
+/// use rig::completion::message::{ConvertMessage, Message, UserContent, AssistantContent};
+/// use rig::OneOrMany;
+///
+/// #[derive(Debug)]
+/// struct MyMessage {
+///     role: String,
+///     content: String,
+/// }
+///
+/// #[derive(Debug)]
+/// struct ConversionError(String);
+///
+/// impl std::fmt::Display for ConversionError {
+///     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+///         write!(f, "Conversion error: {}", self.0)
+///     }
+/// }
+///
+/// impl std::error::Error for ConversionError {}
+///
+/// impl ConvertMessage for MyMessage {
+///     type Error = ConversionError;
+///
+///     fn convert_from_message(message: Message) -> Result<Vec<Self>, Self::Error> {
+///         match message {
+///             Message::User { content } => {
+///                 // Extract text from all text content items
+///                 let mut messages = Vec::new();
+///
+///                 for item in content.iter() {
+///                     if let UserContent::Text(text) = item {
+///                         messages.push(MyMessage {
+///                             role: "user".to_string(),
+///                             content: text.text.clone(),
+///                         });
+///                     }
+///                 }
+///
+///                 if messages.is_empty() {
+///                     return Err(ConversionError("No text content found".to_string()));
+///                 }
+///
+///                 Ok(messages)
+///             }
+///             Message::Assistant { content, .. } => {
+///                 // Extract text from assistant content
+///                 let mut messages = Vec::new();
+///
+///                 for item in content.iter() {
+///                     if let AssistantContent::Text(text) = item {
+///                         messages.push(MyMessage {
+///                             role: "assistant".to_string(),
+///                             content: text.text.clone(),
+///                         });
+///                     }
+///                 }
+///
+///                 if messages.is_empty() {
+///                     return Err(ConversionError("No text content found".to_string()));
+///                 }
+///
+///                 Ok(messages)
+///             }
+///         }
+///     }
+/// }
+///
+/// // Usage
+/// let msg = Message::user("Hello, world!");
+/// let converted = MyMessage::convert_from_message(msg).unwrap();
+/// assert_eq!(converted[0].role, "user");
+/// assert_eq!(converted[0].content, "Hello, world!");
+/// ```
+///
+/// # See also
+///
+/// - [`Message`] for the source message type
+/// - [`From`] and [`TryFrom`] for simpler conversions
 pub trait ConvertMessage: Sized + Send + Sync {
+    /// The error type returned when conversion fails.
     type Error: std::error::Error + Send;
 
+    /// Converts a Rig message into a vector of custom message types.
+    ///
+    /// Returns a vector because a single Rig message may map to multiple
+    /// messages in your format (e.g., separating user content and tool results).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the conversion cannot be performed, such as when
+    /// the message contains content types unsupported by your format.
     fn convert_from_message(message: Message) -> Result<Vec<Self>, Self::Error>;
 }
 
-/// A message represents a run of input (user) and output (assistant).
-/// Each message type (based on it's `role`) can contain a atleast one bit of content such as text,
-///  images, audio, documents, or tool related information. While each message type can contain
-///  multiple content, most often, you'll only see one content type per message
-///  (an image w/ a description, etc).
+/// A message in a conversation between a user and an AI assistant.
 ///
-/// Each provider is responsible with converting the generic message into it's provider specific
-///  type using `From` or `TryFrom` traits. Since not every provider supports every feature, the
-///  conversion can be lossy (providing an image might be discarded for a non-image supporting
-///  provider) though the message being converted back and forth should always be the same.
+/// Messages form the core communication structure in Rig. Each message has a role
+/// (user or assistant) and can contain various types of content such as text, images,
+/// audio, documents, or tool-related information.
+///
+/// While messages can contain multiple content items, most commonly you'll see one
+/// content type per message (e.g., an image with a text description, or just text).
+///
+/// # Provider Compatibility
+///
+/// Each LLM provider converts these generic messages to their provider-specific format
+/// using [`From`] or [`TryFrom`] traits. Since not all providers support all features,
+/// conversion may be lossy (e.g., images might be discarded for non-vision models).
+///
+/// # Conversions
+///
+/// This type implements several convenient conversions:
+///
+/// ```
+/// use rig::completion::Message;
+///
+/// // From string types
+/// let msg: Message = "Hello".into();
+/// let msg: Message = String::from("Hello").into();
+/// ```
+///
+/// # Examples
+///
+/// Creating a simple text message:
+///
+/// ```
+/// use rig::completion::Message;
+///
+/// let msg = Message::user("Hello, world!");
+/// ```
+///
+/// Creating a message with an assistant response:
+///
+/// ```
+/// use rig::completion::Message;
+///
+/// let response = Message::assistant("I'm doing well, thank you!");
+/// ```
+///
+/// # See also
+///
+/// - [`UserContent`] for user message content types
+/// - [`AssistantContent`] for assistant response content types
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
-    /// User message containing one or more content types defined by `UserContent`.
+    /// User message containing one or more content types.
+    ///
+    /// User messages typically contain prompts, questions, or follow-up responses.
+    /// They can include text, images, audio, documents, and tool results.
+    ///
+    /// See [`UserContent`] for all supported content types.
     User { content: OneOrMany<UserContent> },
 
-    /// Assistant message containing one or more content types defined by `AssistantContent`.
+    /// Assistant message containing one or more content types.
+    ///
+    /// Assistant messages contain the AI's responses, which can be text,
+    /// tool calls, or reasoning steps.
+    ///
+    /// The optional `id` field identifies specific response turns in multi-turn
+    /// conversations.
+    ///
+    /// See [`AssistantContent`] for all supported content types.
     Assistant {
         id: Option<String>,
         content: OneOrMany<AssistantContent>,
     },
 }
 
-/// Describes the content of a message, which can be text, a tool result, an image, audio, or
-///  a document. Dependent on provider supporting the content type. Multimedia content is generally
-///  base64 (defined by it's format) encoded but additionally supports urls (for some providers).
+/// Content types that can be included in user messages.
+///
+/// User messages can contain various types of content including text, multimedia
+/// (images, audio, video), documents, and tool execution results. Provider support
+/// for each content type varies.
+///
+/// # Content Type Support
+///
+/// - **Text**: Universally supported by all providers
+/// - **Images**: Supported by vision-capable models (GPT-4V, Claude 3, Gemini Pro Vision, etc.)
+/// - **Audio**: Supported by audio-capable models (Whisper, etc.)
+/// - **Video**: Supported by select multimodal models
+/// - **Documents**: Supported by document-aware models
+/// - **Tool Results**: Supported by function-calling capable models
+///
+/// # Multimedia Encoding
+///
+/// Multimedia content (images, audio, video) can be provided in two formats:
+/// - **Base64-encoded**: Data embedded directly in the message
+/// - **URL**: Reference to externally hosted content (provider support varies)
+///
+/// # Choosing the Right Content Type
+///
+/// - **Text**: Use for all text-based user input. Universal support across all providers.
+/// - **Image**: Use for visual analysis tasks. Requires vision-capable models (GPT-4V, Claude 3+, Gemini Pro Vision).
+///   - URLs are preferred for large images (faster, less token usage)
+///   - Base64 for small images or when URLs aren't available
+/// - **Audio**: Use for transcription or audio analysis. Limited provider support (OpenAI Whisper, etc.).
+/// - **Video**: Use for video understanding. Very limited provider support (Gemini 1.5+).
+/// - **Document**: Use for document analysis (PDFs, etc.). Provider-specific support.
+/// - **ToolResult**: Use only for returning tool execution results to the model in multi-turn conversations.
+///
+/// # Size Limitations
+///
+/// Be aware of size limits:
+/// - **Base64 images**: Typically 20MB max, counts heavily toward token limits (85-765 tokens per image)
+/// - **URLs**: Fetched by provider, usually larger limits
+/// - **Documents**: Provider-specific, often 10-100 pages
+///
+/// # Examples
+///
+/// Creating text content:
+///
+/// ```
+/// use rig::completion::message::UserContent;
+///
+/// let content = UserContent::text("Hello, world!");
+/// ```
+///
+/// Creating image content from a URL (preferred):
+///
+/// ```
+/// use rig::completion::message::{UserContent, ImageMediaType, ImageDetail};
+///
+/// let image = UserContent::image_url(
+///     "https://example.com/image.png",
+///     Some(ImageMediaType::PNG),
+///     Some(ImageDetail::High)
+/// );
+/// ```
+///
+/// Creating image content from base64 data:
+///
+/// ```
+/// use rig::completion::message::{UserContent, ImageMediaType, ImageDetail};
+///
+/// let base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+/// let image = UserContent::image_base64(
+///     base64_data,
+///     Some(ImageMediaType::PNG),
+///     Some(ImageDetail::Low)  // Use Low for small images
+/// );
+/// ```
+///
+/// # Performance Tips
+///
+/// - Prefer URLs over base64 for images when possible (saves tokens and is faster)
+/// - Resize images to appropriate dimensions before sending (768x768 is often sufficient)
+/// - Use `ImageDetail::Low` for thumbnails or simple images (saves ~200 tokens per image)
+/// - For multi-image scenarios, consider whether all images are needed or if quality can be reduced
+///
+/// # See also
+///
+/// - [`Text`] for text content
+/// - [`Image`] for image content
+/// - [`ToolResult`] for tool execution results
+/// - [`Audio`] for audio content
+/// - [`Video`] for video content
+/// - [`Document`] for document content
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum UserContent {
+    /// Plain text content.
     Text(Text),
+
+    /// Result from a tool execution.
     ToolResult(ToolResult),
+
+    /// Image content (base64-encoded or URL).
     Image(Image),
+
+    /// Audio content (base64-encoded or URL).
     Audio(Audio),
+
+    /// Video content (base64-encoded or URL).
     Video(Video),
+
+    /// Document content (base64-encoded or URL).
     Document(Document),
 }
 
-/// Describes responses from a provider which is either text or a tool call.
+/// Content types that can be included in assistant messages.
+///
+/// Assistant responses can contain text, requests to call tools/functions,
+/// or reasoning steps (for models that support chain-of-thought reasoning).
+///
+/// # Examples
+///
+/// Creating text content:
+///
+/// ```
+/// use rig::completion::message::AssistantContent;
+///
+/// let content = AssistantContent::text("The answer is 42.");
+/// ```
+///
+/// # See also
+///
+/// - [`Text`] for text responses
+/// - [`ToolCall`] for function/tool calls
+/// - [`Reasoning`] for chain-of-thought reasoning
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum AssistantContent {
+    /// Plain text response from the assistant.
     Text(Text),
+
+    /// A request to call a tool or function.
     ToolCall(ToolCall),
+
+    /// Chain-of-thought reasoning steps (for reasoning-capable models).
     Reasoning(Reasoning),
 }
 
+/// Chain-of-thought reasoning from an AI model.
+///
+/// Some advanced AI models can provide explicit reasoning steps alongside their
+/// responses, allowing you to understand the model's thought process. This is
+/// particularly useful for complex problem-solving, mathematical proofs, and
+/// transparent decision-making.
+///
+/// # Model Support
+///
+/// As of 2024, reasoning is supported by:
+/// - **OpenAI o1 models** (o1-preview, o1-mini) - Native reasoning support
+/// - **Anthropic Claude 3.5 Sonnet** - With extended thinking mode
+/// - **Google Gemini Pro** - With chain-of-thought prompting
+///
+/// Check your provider's documentation for the latest support and capabilities.
+///
+/// # Use Cases
+///
+/// Reasoning is particularly valuable for:
+/// - **Complex problem-solving**: Multi-step analytical tasks
+/// - **Mathematical proofs**: Step-by-step mathematical reasoning
+/// - **Debugging and troubleshooting**: Understanding decision paths
+/// - **Transparent AI**: Making AI decisions explainable
+/// - **Educational applications**: Showing work and explanations
+///
+/// # Performance Impact
+///
+/// Note that enabling reasoning:
+/// - **Increases latency**: Models think longer before responding (5-30 seconds typical)
+/// - **Increases token usage**: Each reasoning step counts as tokens (can add 500-2000 tokens)
+/// - **May improve accuracy**: Particularly for complex, multi-step tasks
+/// - **Not always necessary**: Simple tasks don't benefit from reasoning overhead
+///
+/// # Invariants
+///
+/// - The `reasoning` vector should not be empty when used in a response
+/// - Each reasoning step should be a complete thought or sentence
+/// - Steps are ordered chronologically (first thought to last)
+///
+/// # Examples
+///
+/// Creating reasoning from a single step:
+///
+/// ```
+/// use rig::completion::message::Reasoning;
+///
+/// let reasoning = Reasoning::new("First, I'll analyze the input data");
+/// assert_eq!(reasoning.reasoning.len(), 1);
+/// ```
+///
+/// Creating reasoning from multiple steps:
+///
+/// ```
+/// use rig::completion::message::Reasoning;
+///
+/// let steps = vec![
+///     "First, analyze the problem structure".to_string(),
+///     "Then, identify the key variables".to_string(),
+///     "Next, apply the relevant formula".to_string(),
+///     "Finally, verify the result".to_string(),
+/// ];
+/// let reasoning = Reasoning::multi(steps);
+/// assert_eq!(reasoning.reasoning.len(), 4);
+/// ```
+///
+/// Using reasoning-capable models:
+///
+/// ```ignore
+/// # use rig::providers::openai;
+/// # use rig::client::completion::CompletionClient;
+/// # use rig::completion::Prompt;
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = openai::Client::new("your-api-key");
+/// // Use a reasoning-capable model
+/// let model = client.completion_model(openai::O1_PREVIEW);
+///
+/// // The model will automatically include reasoning in complex tasks
+/// let response = model.prompt(
+///     "Prove that the square root of 2 is irrational using proof by contradiction"
+/// ).await?;
+///
+/// // Response includes both reasoning steps and final answer
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[non_exhaustive]
 pub struct Reasoning {
+    /// Optional identifier for this reasoning instance.
+    ///
+    /// Used to associate reasoning with specific response turns in
+    /// multi-turn conversations.
     pub id: Option<String>,
+
+    /// The individual reasoning steps.
+    ///
+    /// Each string represents one step in the model's reasoning process.
     pub reasoning: Vec<String>,
 }
 
 impl Reasoning {
-    /// Create a new reasoning item from a single item
+    /// Creates reasoning from a single step.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rig::completion::message::Reasoning;
+    ///
+    /// let reasoning = Reasoning::new("Analyzing the problem requirements");
+    /// assert_eq!(reasoning.reasoning.len(), 1);
+    /// assert!(reasoning.id.is_none());
+    /// ```
     pub fn new(input: &str) -> Self {
         Self {
             id: None,
@@ -83,15 +662,52 @@ impl Reasoning {
         }
     }
 
+    /// Sets an optional ID for this reasoning.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rig::completion::message::Reasoning;
+    ///
+    /// let reasoning = Reasoning::new("Step 1")
+    ///     .optional_id(Some("reasoning-123".to_string()));
+    /// assert_eq!(reasoning.id, Some("reasoning-123".to_string()));
+    /// ```
     pub fn optional_id(mut self, id: Option<String>) -> Self {
         self.id = id;
         self
     }
+
+    /// Sets the ID for this reasoning.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rig::completion::message::Reasoning;
+    ///
+    /// let reasoning = Reasoning::new("Step 1")
+    ///     .with_id("reasoning-456".to_string());
+    /// assert_eq!(reasoning.id, Some("reasoning-456".to_string()));
+    /// ```
     pub fn with_id(mut self, id: String) -> Self {
         self.id = Some(id);
         self
     }
 
+    /// Creates reasoning from multiple steps.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rig::completion::message::Reasoning;
+    ///
+    /// let steps = vec![
+    ///     "First step".to_string(),
+    ///     "Second step".to_string(),
+    /// ];
+    /// let reasoning = Reasoning::multi(steps);
+    /// assert_eq!(reasoning.reasoning.len(), 2);
+    /// ```
     pub fn multi(input: Vec<String>) -> Self {
         Self {
             id: None,
