@@ -152,21 +152,10 @@ where
 
     #[allow(unused_variables)]
     /// Called after the prompt is sent to the model and a response is received.
-    /// This function is for non-streamed responses. Please refer to `on_stream_completion_response_finish` for streamed responses.
     fn on_completion_response(
         &self,
         prompt: &Message,
         response: &crate::completion::CompletionResponse<M::Response>,
-    ) -> impl Future<Output = ()> + Send {
-        async {}
-    }
-
-    #[allow(unused_variables)]
-    /// Called after the model provider has finished streaming a text response from their completion API to the client.
-    fn on_stream_completion_response_finish(
-        &self,
-        prompt: &Message,
-        response: &<M as CompletionModel>::StreamingResponse,
     ) -> impl Future<Output = ()> + Send {
         async {}
     }

@@ -93,7 +93,7 @@ pub enum StreamingError {
 pub struct StreamingPromptRequest<M, P>
 where
     M: CompletionModel,
-    P: PromptHook<M> + 'static,
+    P: StreamingPromptHook<M> + 'static,
 {
     /// The prompt message to send to the model
     prompt: Message,
@@ -112,7 +112,7 @@ impl<M, P> StreamingPromptRequest<M, P>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: Send + GetTokenUsage,
-    P: PromptHook<M>,
+    P: StreamingPromptHook<M>,
 {
     /// Create a new PromptRequest with the given prompt and model
     pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> Self {
@@ -141,7 +141,7 @@ where
     /// Attach a per-request hook for tool call events
     pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2>
     where
-        P2: PromptHook<M>,
+        P2: StreamingPromptHook<M>,
     {
         StreamingPromptRequest {
             prompt: self.prompt,
@@ -260,6 +260,9 @@ where
                                 is_text_response = true;
                             }
                             last_text_response.push_str(&text.text);
+                            if let Some(ref hook) = self.hook {
+                                hook.on_text_delta(&text.text, &last_text_response).await;
+                            }
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
                             did_call_tool = false;
                         },
@@ -394,7 +397,7 @@ impl<M, P> IntoFuture for StreamingPromptRequest<M, P>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: Send,
-    P: PromptHook<M> + 'static,
+    P: StreamingPromptHook<M> + 'static,
 {
     type Output = StreamingResult<M::StreamingResponse>; // what `.await` returns
     type IntoFuture = Pin<Box<dyn futures::Future<Output = Self::Output> + Send>>;
@@ -436,3 +439,59 @@ pub async fn stream_to_stdout<R>(
 
     Ok(final_res)
 }
+
+// dead code allowed because of functions being left empty to allow for users to not have to implement every single function
+/// Trait for per-request hooks to observe tool call events.
+pub trait StreamingPromptHook<M>: Clone + Send + Sync
+where
+    M: CompletionModel,
+{
+    #[allow(unused_variables)]
+    /// Called before the prompt is sent to the model
+    fn on_completion_call(
+        &self,
+        prompt: &Message,
+        history: &[Message],
+    ) -> impl Future<Output = ()> + Send {
+        async {}
+    }
+
+    #[allow(unused_variables)]
+    /// Called when receiving a text delta
+    fn on_text_delta(
+        &self,
+        text_delta: &str,
+        aggregated_text: &str,
+    ) -> impl Future<Output = ()> + Send {
+        async {}
+    }
+
+    #[allow(unused_variables)]
+    /// Called after the model provider has finished streaming a text response from their completion API to the client.
+    fn on_stream_completion_response_finish(
+        &self,
+        prompt: &Message,
+        response: &<M as CompletionModel>::StreamingResponse,
+    ) -> impl Future<Output = ()> + Send {
+        async {}
+    }
+
+    #[allow(unused_variables)]
+    /// Called before a tool is invoked.
+    fn on_tool_call(&self, tool_name: &str, args: &str) -> impl Future<Output = ()> + Send {
+        async {}
+    }
+
+    #[allow(unused_variables)]
+    /// Called after a tool is invoked (and a result has been returned).
+    fn on_tool_result(
+        &self,
+        tool_name: &str,
+        args: &str,
+        result: &str,
+    ) -> impl Future<Output = ()> + Send {
+        async {}
+    }
+}
+
+impl<M> StreamingPromptHook<M> for () where M: CompletionModel {}
