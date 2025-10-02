@@ -20,7 +20,7 @@ use crate::{
     providers::openai,
 };
 use crate::{impl_conversion_traits, message};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
 
@@ -247,6 +247,11 @@ impl CompletionModel {
                 .collect::<Vec<_>>(),
         );
 
+        let tool_choice = completion_request
+            .tool_choice
+            .map(ToolChoice::try_from)
+            .transpose()?;
+
         let request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
@@ -259,7 +264,7 @@ impl CompletionModel {
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(openai::ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": "auto",
+                "tool_choice": tool_choice,
             })
         };
 
@@ -381,5 +386,30 @@ impl completion::CompletionModel for CompletionModel {
         send_compatible_streaming_request(builder)
             .instrument(span)
             .await
+    }
+}
+
+#[derive(Default, Debug, Deserialize, Serialize)]
+pub enum ToolChoice {
+    None,
+    #[default]
+    Auto,
+}
+
+impl TryFrom<message::ToolChoice> for ToolChoice {
+    type Error = CompletionError;
+
+    fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
+        let res = match value {
+            message::ToolChoice::None => Self::None,
+            message::ToolChoice::Auto => Self::Auto,
+            choice => {
+                return Err(CompletionError::ProviderError(format!(
+                    "Unsupported tool choice type: {choice:?}"
+                )));
+            }
+        };
+
+        Ok(res)
     }
 }

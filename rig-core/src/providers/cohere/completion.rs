@@ -2,7 +2,7 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError, GetTokenUsage},
     json_utils,
-    message::{self, Reasoning},
+    message::{self, Reasoning, ToolChoice},
     telemetry::SpanCombinator,
 };
 use std::collections::HashMap;
@@ -560,6 +560,9 @@ impl CompletionModel {
             "documents": completion_request.documents,
             "temperature": completion_request.temperature,
             "tools": completion_request.tools.into_iter().map(Tool::from).collect::<Vec<_>>(),
+            "tool_choice": if let Some(tool_choice) = completion_request.tool_choice && !matches!(tool_choice, ToolChoice::Auto) { tool_choice } else {
+                return Err(CompletionError::RequestError("\"auto\" is not an allowed tool_choice value in the Cohere API".into()))
+            },
         });
 
         if let Some(ref params) = completion_request.additional_params {

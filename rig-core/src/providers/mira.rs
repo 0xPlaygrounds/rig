@@ -315,6 +315,10 @@ impl CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<Value, CompletionError> {
+        if completion_request.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported on Mira AI");
+        }
+
         let mut messages = Vec::new();
 
         // Add preamble as user message if available

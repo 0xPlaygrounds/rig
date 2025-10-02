@@ -273,6 +273,33 @@ impl From<completion::ToolDefinition> for ToolDefinition {
     }
 }
 
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolChoice {
+    #[default]
+    Auto,
+    None,
+    Required,
+}
+
+impl TryFrom<crate::message::ToolChoice> for ToolChoice {
+    type Error = CompletionError;
+    fn try_from(value: crate::message::ToolChoice) -> Result<Self, Self::Error> {
+        let res = match value {
+            message::ToolChoice::Specific { .. } => {
+                return Err(CompletionError::ProviderError(
+                    "Provider doesn't support only using specific tools".to_string(),
+                ));
+            }
+            message::ToolChoice::Auto => Self::Auto,
+            message::ToolChoice::None => Self::None,
+            message::ToolChoice::Required => Self::Required,
+        };
+
+        Ok(res)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Function {
     pub name: String,
@@ -790,7 +817,7 @@ pub struct CompletionRequest {
     model: String,
     messages: Vec<Message>,
     tools: Vec<ToolDefinition>,
-    tool_choice: String,
+    tool_choice: Option<ToolChoice>,
     temperature: Option<f64>,
     #[serde(flatten)]
     additional_params: Option<serde_json::Value>,
@@ -810,6 +837,7 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
             tools,
             temperature,
             additional_params,
+            tool_choice,
             ..
         } = req;
 
@@ -829,6 +857,8 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
                 .collect::<Vec<_>>(),
         );
 
+        let tool_choice = tool_choice.map(ToolChoice::try_from).transpose()?;
+
         let res = Self {
             model,
             messages: full_history,
@@ -836,7 +866,7 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
                 .into_iter()
                 .map(ToolDefinition::from)
                 .collect::<Vec<_>>(),
-            tool_choice: "auto".to_string(),
+            tool_choice,
             temperature,
             additional_params,
         };

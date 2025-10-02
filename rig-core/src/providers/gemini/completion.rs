@@ -29,7 +29,9 @@ pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 
 use self::gemini_api_types::Schema;
 use crate::message::Reasoning;
-use crate::providers::gemini::completion::gemini_api_types::AdditionalParameters;
+use crate::providers::gemini::completion::gemini_api_types::{
+    AdditionalParameters, FunctionCallingMode, ToolConfig,
+};
 use crate::providers::gemini::streaming::StreamingCompletionResponse;
 use crate::telemetry::SpanCombinator;
 use crate::{
@@ -173,6 +175,14 @@ pub(crate) fn create_request_body(
         Some(Tool::try_from(completion_request.tools)?)
     };
 
+    let tool_config = if let Some(cfg) = completion_request.tool_choice {
+        Some(ToolConfig {
+            function_calling_config: Some(FunctionCallingMode::try_from(cfg)?),
+        })
+    } else {
+        None
+    };
+
     let request = GenerateContentRequest {
         contents: full_history
             .into_iter()
@@ -184,7 +194,7 @@ pub(crate) fn create_request_body(
         generation_config: Some(generation_config),
         safety_settings: None,
         tools,
-        tool_config: None,
+        tool_config,
         system_instruction,
         additional_params,
     };
@@ -1511,14 +1521,43 @@ pub mod gemini_api_types {
         pub parameters: Option<Schema>,
     }
 
-    #[derive(Debug, Serialize)]
+    #[derive(Debug, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct ToolConfig {
-        pub schema: Option<Schema>,
+        pub function_calling_config: Option<FunctionCallingMode>,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, Default)]
+    #[serde(tag = "mode", rename_all = "UPPERCASE")]
+    pub enum FunctionCallingMode {
+        #[default]
+        Auto,
+        None,
+        Any {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            allowed_function_names: Option<Vec<String>>,
+        },
+    }
+
+    impl TryFrom<message::ToolChoice> for FunctionCallingMode {
+        type Error = CompletionError;
+        fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
+            let res = match value {
+                message::ToolChoice::Auto => Self::Auto,
+                message::ToolChoice::None => Self::None,
+                message::ToolChoice::Required => Self::Any {
+                    allowed_function_names: None,
+                },
+                message::ToolChoice::Specific { function_names } => Self::Any {
+                    allowed_function_names: Some(function_names),
+                },
+            };
+
+            Ok(res)
+        }
     }
 
     #[derive(Debug, Serialize)]
-    #[serde(rename_all = "camelCase")]
     pub struct CodeExecution {}
 
     #[derive(Debug, Serialize)]
