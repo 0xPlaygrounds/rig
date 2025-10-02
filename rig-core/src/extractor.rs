@@ -87,7 +87,7 @@ where
                 retries = self.retries - i
             );
             let attempt_text = text_message.clone();
-            match self.extract_json(attempt_text).await {
+            match self.extract_json(attempt_text, vec![]).await {
                 Ok(data) => return Ok(data),
                 Err(e) => {
                     tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
@@ -100,8 +100,45 @@ where
         Err(last_error.unwrap_or(ExtractionError::NoData))
     }
 
-    async fn extract_json(&self, text: impl Into<Message> + Send) -> Result<T, ExtractionError> {
-        let response = self.agent.completion(text, vec![]).await?.send().await?;
+    /// Attempts to extract data from the given text with a number of retries.
+    ///
+    /// The function will retry the extraction if the initial attempt fails or
+    /// if the model does not call the `submit` tool.
+    ///
+    /// The number of retries is determined by the `retries` field on the Extractor struct.
+    pub async fn extract_with_chat_history(
+        &self,
+        text: impl Into<Message> + Send,
+        chat_history: Vec<Message>,
+    ) -> Result<T, ExtractionError> {
+        let mut last_error = None;
+        let text_message = text.into();
+
+        for i in 0..=self.retries {
+            tracing::debug!(
+                "Attempting to extract JSON. Retries left: {retries}",
+                retries = self.retries - i
+            );
+            let attempt_text = text_message.clone();
+            match self.extract_json(attempt_text, chat_history.clone()).await {
+                Ok(data) => return Ok(data),
+                Err(e) => {
+                    tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
+                    last_error = Some(e);
+                }
+            }
+        }
+
+        // If the loop finishes without a successful extraction, return the last error encountered.
+        Err(last_error.unwrap_or(ExtractionError::NoData))
+    }
+
+    async fn extract_json(
+        &self,
+        text: impl Into<Message> + Send,
+        messages: Vec<Message>,
+    ) -> Result<T, ExtractionError> {
+        let response = self.agent.completion(text, messages).await?.send().await?;
 
         if !response.choice.iter().any(|x| {
             let AssistantContent::ToolCall(ToolCall {
