@@ -1,6 +1,5 @@
 use crate::{
     OneOrMany,
-    agent::prompt_request::PromptHook,
     completion::GetTokenUsage,
     message::{AssistantContent, Reasoning, ToolResultContent, UserContent},
     streaming::{StreamedAssistantContent, StreamingCompletion},
