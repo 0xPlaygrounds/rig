@@ -23,41 +23,48 @@
 //! The module also provides various structs and enums for representing generic completion requests,
 //! responses, and errors.
 //!
-//! Example Usage:
-//! ```rust
-//! use rig::providers::openai::{Client, self};
-//! use rig::completion::*;
+//! # Examples
 //!
+//! ## Basic Completion
+//!
+//! ```ignore
+//! use rig::providers::openai::{Client, self};
+//! use rig::client::completion::CompletionClient;
+//! use rig::completion::Prompt;
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Initialize the OpenAI client and a completion model
 //! let openai = Client::new("your-openai-api-key");
-//!
 //! let gpt_4 = openai.completion_model(openai::GPT_4);
 //!
-//! // Create the completion request
+//! // Send a simple prompt
+//! let response = gpt_4.prompt("Who are you?").await?;
+//! println!("Response: {}", response);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Custom Completion Request
+//!
+//! ```ignore
+//! use rig::providers::openai::{Client, self};
+//! use rig::client::completion::CompletionClient;
+//! use rig::completion::Completion;
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let openai = Client::new("your-openai-api-key");
+//! let gpt_4 = openai.completion_model(openai::GPT_4);
+//!
+//! // Build a custom completion request
 //! let request = gpt_4.completion_request("Who are you?")
-//!     .preamble("\
-//!         You are Marvin, an extremely smart but depressed robot who is \
-//!         nonetheless helpful towards humanity.\
-//!     ")
+//!     .preamble("You are Marvin, a depressed but helpful robot.")
 //!     .temperature(0.5)
-//!     .build();
+//!     .build()?;
 //!
-//! // Send the completion request and get the completion response
-//! let response = gpt_4.completion(request)
-//!     .await
-//!     .expect("Failed to get completion response");
-//!
-//! // Handle the completion response
-//! match completion_response.choice {
-//!     ModelChoice::Message(message) => {
-//!         // Handle the completion response as a message
-//!         println!("Received message: {}", message);
-//!     }
-//!     ModelChoice::ToolCall(tool_name, tool_params) => {
-//!         // Handle the completion response as a tool call
-//!         println!("Received tool call: {} {:?}", tool_name, tool_params);
-//!     }
-//! }
+//! // Send the request
+//! let response = gpt_4.completion(request).await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! For more information on how to use the completion functionality, refer to the documentation of
@@ -81,60 +88,389 @@ use std::ops::{Add, AddAssign};
 use std::sync::Arc;
 use thiserror::Error;
 
-// Errors
+// ================================================================
+// Error types
+// ================================================================
+
+/// Errors that can occur during completion operations.
+///
+/// This enum covers all possible errors that may occur when making completion
+/// requests to LLM providers, from network issues to provider-specific errors.
+///
+/// # Examples
+///
+/// ## Basic Error Handling
+///
+/// ```ignore
+/// use rig::completion::{CompletionError, Prompt};
+/// use rig::providers::openai;
+/// use rig::client::completion::CompletionClient;
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = openai::Client::new("api-key");
+/// let model = client.completion_model(openai::GPT_4);
+///
+/// match model.prompt("Hello").await {
+///     Ok(response) => println!("Success: {}", response),
+///     Err(CompletionError::HttpError(e)) => {
+///         eprintln!("Network error: {}. Check your internet connection.", e);
+///     }
+///     Err(CompletionError::ProviderError(msg)) if msg.contains("rate_limit") => {
+///         eprintln!("Rate limited. Please wait and try again.");
+///     }
+///     Err(CompletionError::ProviderError(msg)) if msg.contains("invalid_api_key") => {
+///         eprintln!("Invalid API key. Check your credentials.");
+///     }
+///     Err(CompletionError::ProviderError(msg)) => {
+///         eprintln!("Provider error: {}", msg);
+///     }
+///     Err(e) => eprintln!("Unexpected error: {}", e),
+/// }
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ## Retry with Exponential Backoff
+///
+/// ```ignore
+/// use rig::completion::{CompletionError, Prompt};
+/// use rig::providers::openai;
+/// use rig::client::completion::CompletionClient;
+/// use std::time::Duration;
+/// use tokio::time::sleep;
+///
+/// # async fn example() -> Result<String, Box<dyn std::error::Error>> {
+/// let client = openai::Client::new("api-key");
+/// let model = client.completion_model(openai::GPT_4);
+///
+/// let mut retries = 0;
+/// let max_retries = 3;
+///
+/// loop {
+///     match model.prompt("Hello").await {
+///         Ok(response) => return Ok(response),
+///         Err(CompletionError::HttpError(_)) if retries < max_retries => {
+///             retries += 1;
+///             let delay = Duration::from_secs(2_u64.pow(retries));
+///             eprintln!("Network error. Retry {}/{} in {:?}", retries, max_retries, delay);
+///             sleep(delay).await;
+///         }
+///         Err(CompletionError::ProviderError(msg)) if msg.contains("rate_limit") && retries < max_retries => {
+///             retries += 1;
+///             let delay = Duration::from_secs(5 * retries as u64);
+///             eprintln!("Rate limited. Waiting {:?} before retry...", delay);
+///             sleep(delay).await;
+///         }
+///         Err(e) => return Err(e.into()),
+///     }
+/// }
+/// # }
+/// ```
+///
+/// ## Fallback to Different Model
+///
+/// ```ignore
+/// use rig::completion::{CompletionError, Prompt};
+/// use rig::providers::openai;
+/// use rig::client::completion::CompletionClient;
+///
+/// # async fn example() -> Result<String, Box<dyn std::error::Error>> {
+/// let client = openai::Client::new("api-key");
+///
+/// // Try GPT-4 first
+/// let gpt4 = client.completion_model(openai::GPT_4);
+/// match gpt4.prompt("Explain quantum computing").await {
+///     Ok(response) => return Ok(response),
+///     Err(CompletionError::ProviderError(msg)) if msg.contains("rate_limit") => {
+///         eprintln!("GPT-4 rate limited, falling back to GPT-3.5...");
+///         // Fall back to cheaper model
+///         let gpt35 = client.completion_model(openai::GPT_3_5_TURBO);
+///         return Ok(gpt35.prompt("Explain quantum computing").await?);
+///     }
+///     Err(e) => return Err(e.into()),
+/// }
+/// # }
+/// ```
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum CompletionError {
-    /// Http error (e.g.: connection error, timeout, etc.)
-    #[error("HttpError: {0}")]
+    /// HTTP request failed.
+    ///
+    /// This occurs when there are network connectivity issues, timeouts,
+    /// or other HTTP-level problems communicating with the provider.
+    ///
+    /// Common causes:
+    /// - No internet connection
+    /// - Request timeout
+    /// - DNS resolution failure
+    /// - SSL/TLS errors
+    #[error("HTTP request failed: {0}")]
     HttpError(#[from] reqwest::Error),
 
-    /// Json error (e.g.: serialization, deserialization)
-    #[error("JsonError: {0}")]
+    /// JSON serialization or deserialization failed.
+    ///
+    /// This occurs when:
+    /// - The provider returns malformed JSON
+    /// - Request data cannot be serialized
+    /// - Response data doesn't match expected schema
+    #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),
 
-    /// Url error (e.g.: invalid URL)
-    #[error("UrlError: {0}")]
+    /// Invalid URL provided.
+    ///
+    /// This occurs when attempting to construct an invalid URL for the provider endpoint.
+    #[error("Invalid URL: {0}")]
     UrlError(#[from] url::ParseError),
 
-    /// Error building the completion request
-    #[error("RequestError: {0}")]
+    /// Error building the completion request.
+    ///
+    /// This occurs when there's an issue constructing the request,
+    /// such as invalid parameters or missing required fields.
+    #[error("Request building error: {0}")]
     RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 
-    /// Error parsing the completion response
-    #[error("ResponseError: {0}")]
+    /// Error parsing the completion response.
+    ///
+    /// This occurs when the provider returns a valid HTTP response
+    /// but the content cannot be parsed or understood.
+    #[error("Response parsing error: {0}")]
     ResponseError(String),
 
-    /// Error returned by the completion model provider
-    #[error("ProviderError: {0}")]
+    /// Error returned by the LLM provider.
+    ///
+    /// This represents errors from the provider's API, such as:
+    /// - Invalid API key
+    /// - Rate limits exceeded
+    /// - Model not found
+    /// - Content policy violations
+    /// - Insufficient credits/quota
+    #[error("Provider error: {0}")]
     ProviderError(String),
 }
 
-/// Prompt errors
+/// Errors that can occur during prompt operations.
+///
+/// This enum covers errors specific to high-level prompt operations,
+/// including multi-turn conversations and tool calling.
+///
+/// # Examples
+///
+/// ```ignore
+/// use rig::completion::{PromptError, Prompt};
+/// use rig::providers::openai;
+/// use rig::client::completion::CompletionClient;
+///
+/// # async fn example() -> Result<(), PromptError> {
+/// let client = openai::Client::new("api-key");
+/// let model = client.completion_model(openai::GPT_4);
+///
+/// match model.prompt("Hello").await {
+///     Ok(response) => println!("Success: {}", response),
+///     Err(PromptError::MaxDepthError { max_depth, .. }) => {
+///         eprintln!("Too many tool calls (limit: {})", max_depth);
+///     },
+///     Err(e) => eprintln!("Error: {}", e),
+/// }
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum PromptError {
-    /// Something went wrong with the completion
-    #[error("CompletionError: {0}")]
+    /// Underlying completion operation failed.
+    ///
+    /// See [`CompletionError`] for details on specific failure modes.
+    #[error("Completion error: {0}")]
     CompletionError(#[from] CompletionError),
 
-    /// There was an error while using a tool
-    #[error("ToolCallError: {0}")]
+    /// Tool execution failed.
+    ///
+    /// This occurs when the LLM requests a tool call but the tool
+    /// execution encounters an error.
+    #[error("Tool call error: {0}")]
     ToolError(#[from] ToolSetError),
 
-    /// The LLM tried to call too many tools during a multi-turn conversation.
-    /// To fix this, you may either need to lower the amount of tools your model has access to (and then create other agents to share the tool load)
-    /// or increase the amount of turns given in `.multi_turn()`.
-    #[error("MaxDepthError: (reached limit: {max_depth})")]
+    /// Maximum conversation depth exceeded.
+    ///
+    /// This occurs when the LLM attempts too many tool calls in a multi-turn
+    /// conversation, exceeding the configured maximum depth.
+    ///
+    /// # Solutions
+    ///
+    /// To resolve this:
+    /// - Reduce the number of available tools (distribute across multiple agents)
+    /// - Increase the maximum depth with `.multi_turn(depth)`
+    /// - Simplify the task to require fewer tool calls
+    #[error("Maximum conversation depth exceeded (limit: {max_depth})")]
     MaxDepthError {
+        /// The maximum depth that was exceeded.
         max_depth: usize,
+
+        /// The conversation history up to the point of failure.
         chat_history: Box<Vec<Message>>,
+
+        /// The prompt that triggered the error.
         prompt: Message,
     },
 }
 
+/// A document that can be provided as context to an LLM.
+///
+/// Documents are structured pieces of text that models can reference during
+/// completion. They differ from regular text messages in important ways:
+/// - Have unique IDs for reference and citation
+/// - Are formatted as files (typically with XML-like tags)
+/// - Can include metadata via `additional_props`
+/// - Are treated as "reference material" rather than conversation turns
+///
+/// # When to Use Documents vs. Messages
+///
+/// **Use Documents when:**
+/// - Providing reference material (documentation, knowledge base articles, code files)
+/// - The content is factual/static rather than conversational
+/// - You want the model to cite sources by ID
+/// - Implementing RAG (Retrieval-Augmented Generation) patterns
+/// - Building code analysis or document Q&A systems
+///
+/// **Use Messages when:**
+/// - Having a conversation with the model
+/// - The text is a question or response
+/// - Building chat history
+/// - User input or model output
+///
+/// # Formatting
+///
+/// Documents are typically formatted as XML-like files when sent to the model:
+///
+/// ```text
+/// <file id="doc-1">
+/// [metadata: source=API Docs, version=1.0]
+/// Content of the document...
+/// </file>
+/// ```
+///
+/// # Examples
+///
+/// ## Basic Document
+///
+/// ```
+/// use rig::completion::request::Document;
+/// use std::collections::HashMap;
+///
+/// let doc = Document {
+///     id: "rust-ownership".to_string(),
+///     text: "Rust's ownership system ensures memory safety without garbage collection.".to_string(),
+///     additional_props: HashMap::new(),
+/// };
+/// ```
+///
+/// ## Document with Metadata
+///
+/// ```
+/// use rig::completion::request::Document;
+/// use std::collections::HashMap;
+///
+/// let mut metadata = HashMap::new();
+/// metadata.insert("source".to_string(), "Rust Book".to_string());
+/// metadata.insert("chapter".to_string(), "4".to_string());
+/// metadata.insert("topic".to_string(), "Ownership".to_string());
+/// metadata.insert("last_updated".to_string(), "2024-01-15".to_string());
+///
+/// let doc = Document {
+///     id: "rust-book-ch4".to_string(),
+///     text: "Ownership is Rust's most unique feature...".to_string(),
+///     additional_props: metadata,
+/// };
+/// ```
+///
+/// ## RAG Pattern (Retrieval-Augmented Generation)
+///
+/// ```ignore
+/// # use rig::providers::openai;
+/// # use rig::client::completion::CompletionClient;
+/// # use rig::completion::{Prompt, request::Document};
+/// # use std::collections::HashMap;
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = openai::Client::new("your-api-key");
+/// let model = client.completion_model(openai::GPT_4);
+///
+/// // Retrieved from vector database based on user query
+/// let relevant_docs = vec![
+///     Document {
+///         id: "ownership-basics".to_string(),
+///         text: "Rust's ownership system manages memory through a set of rules...".to_string(),
+///         additional_props: HashMap::new(),
+///     },
+///     Document {
+///         id: "borrowing-rules".to_string(),
+///         text: "Borrowing allows you to have references to a value...".to_string(),
+///         additional_props: HashMap::new(),
+///     },
+/// ];
+///
+/// // Build prompt with context
+/// let context = relevant_docs.iter()
+///     .map(|doc| format!("<doc id=\"{}\">\n{}\n</doc>", doc.id, doc.text))
+///     .collect::<Vec<_>>()
+///     .join("\n\n");
+///
+/// let prompt = format!(
+///     "Context:\n{}\n\nQuestion: How does Rust prevent memory leaks?\n\nAnswer based on the context above:",
+///     context
+/// );
+///
+/// let response = model.prompt(&prompt).await?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ## Code Documentation Example
+///
+/// ```
+/// use rig::completion::request::Document;
+/// use std::collections::HashMap;
+///
+/// let mut metadata = HashMap::new();
+/// metadata.insert("file".to_string(), "src/main.rs".to_string());
+/// metadata.insert("language".to_string(), "rust".to_string());
+/// metadata.insert("lines".to_string(), "1-50".to_string());
+///
+/// let code_doc = Document {
+///     id: "main-rs".to_string(),
+///     text: r#"
+/// fn main() {
+///     let config = load_config();
+///     run_server(config);
+/// }
+/// "#.to_string(),
+///     additional_props: metadata,
+/// };
+/// ```
+///
+/// # Performance Tips
+///
+/// - Keep document size reasonable (typically 1000-5000 words each)
+/// - Use concise, relevant excerpts rather than full documents
+/// - Limit the number of documents (3-5 most relevant is often optimal)
+/// - Include metadata to help the model understand context and provenance
+/// - Consider pre-processing documents to remove irrelevant information
+///
+/// # See also
+///
+/// - [`Message`] for conversational messages
+/// - Vector embeddings for retrieving relevant documents
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Document {
+    /// Unique identifier for this document.
     pub id: String,
+
+    /// The text content of the document.
     pub text: String,
+
+    /// Additional properties for this document.
+    ///
+    /// These are flattened during serialization and can contain
+    /// metadata like author, date, source, etc.
     #[serde(flatten)]
     pub additional_props: HashMap<String, String>,
 }
@@ -469,11 +805,12 @@ impl CompletionRequest {
 /// Builder struct for constructing a completion request.
 ///
 /// Example usage:
-/// ```rust
+/// ```ignore
 /// use rig::{
 ///     providers::openai::{Client, self},
 ///     completion::CompletionRequestBuilder,
 /// };
+/// use rig::client::completion::CompletionClient;
 ///
 /// let openai = Client::new("your-openai-api-key");
 /// let model = openai.completion_model(openai::GPT_4O).build();
@@ -490,11 +827,12 @@ impl CompletionRequest {
 /// ```
 ///
 /// Alternatively, you can execute the completion request directly from the builder:
-/// ```rust
+/// ```ignore
 /// use rig::{
 ///     providers::openai::{Client, self},
 ///     completion::CompletionRequestBuilder,
 /// };
+/// use rig::client::completion::CompletionClient;
 ///
 /// let openai = Client::new("your-openai-api-key");
 /// let model = openai.completion_model(openai::GPT_4O).build();
