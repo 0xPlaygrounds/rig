@@ -1,6 +1,6 @@
 //! Everything related to audio generation (ie, Text To Speech).
 //! Rig abstracts over a number of different providers using the [AudioGenerationModel] trait.
-use crate::client::audio_generation::AudioGenerationModelHandle;
+use crate::{client::audio_generation::AudioGenerationModelHandle, http_client};
 use futures::future::BoxFuture;
 use serde_json::Value;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use thiserror::Error;
 pub enum AudioGenerationError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]
-    HttpError(#[from] reqwest::Error),
+    HttpError(#[from] http_client::Error),
 
     /// Json error (e.g.: serialization, deserialization)
     #[error("JsonError: {0}")]

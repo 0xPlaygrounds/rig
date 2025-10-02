@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use futures::stream::{BoxStream, StreamExt};
-pub use http::{HeaderValue, Method, Request, Response, Uri, request::Builder};
+pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
 use reqwest::Body;
 use std::future::Future;
 use std::pin::Pin;

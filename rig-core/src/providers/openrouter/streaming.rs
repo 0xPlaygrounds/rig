@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use crate::{
     completion::GetTokenUsage,
-    json_utils,
+    http_client, json_utils,
     message::{ToolCall, ToolFunction},
     streaming::{self},
 };
@@ -112,7 +112,7 @@ pub struct FinalCompletionResponse {
     pub usage: ResponseUsage,
 }
 
-impl super::CompletionModel {
+impl super::CompletionModel<reqwest::Client> {
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -122,7 +122,7 @@ impl super::CompletionModel {
 
         let request = json_utils::merge(request, json!({"stream": true}));
 
-        let builder = self.client.post("/chat/completions").json(&request);
+        let builder = self.client.reqwest_post("/chat/completions").json(&request);
 
         send_streaming_request(builder).await
     }
@@ -131,13 +131,19 @@ impl super::CompletionModel {
 pub async fn send_streaming_request(
     request_builder: RequestBuilder,
 ) -> Result<streaming::StreamingCompletionResponse<FinalCompletionResponse>, CompletionError> {
-    let response = request_builder.send().await?;
+    let response = request_builder
+        .send()
+        .await
+        .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
 
     if !response.status().is_success() {
         return Err(CompletionError::ProviderError(format!(
             "{}: {}",
             response.status(),
-            response.text().await?
+            response
+                .text()
+                .await
+                .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?
         )));
     }
 
@@ -152,7 +158,7 @@ pub async fn send_streaming_request(
             let chunk = match chunk_result {
                 Ok(c) => c,
                 Err(e) => {
-                    yield Err(CompletionError::from(e));
+                    yield Err(CompletionError::from(http_client::Error::Instance(e.into())));
                     break;
                 }
             };

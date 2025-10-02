@@ -5,7 +5,7 @@ use super::client::{ApiErrorResponse, ApiResponse, Client, Usage};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
-    json_utils,
+    http_client, json_utils,
     providers::openai::Message,
 };
 use serde_json::{Value, json};
@@ -122,14 +122,14 @@ pub struct Choice {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T> {
+    pub(crate) client: Client<T>,
     /// Name of the model (e.g.: deepseek-ai/DeepSeek-R1)
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -182,7 +182,7 @@ impl CompletionModel {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl completion::CompletionModel for CompletionModel<reqwest::Client> {
     type Response = CompletionResponse;
     type StreamingResponse = FinalCompletionResponse;
 
@@ -195,13 +195,19 @@ impl completion::CompletionModel for CompletionModel {
 
         let response = self
             .client
+            .reqwest_client()
             .post("/chat/completions")
             .json(&request)
             .send()
-            .await?;
+            .await
+            .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
 
         if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
+            match response
+                .json::<ApiResponse<CompletionResponse>>()
+                .await
+                .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?
+            {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "OpenRouter completion token usage: {:?}",
@@ -214,7 +220,11 @@ impl completion::CompletionModel for CompletionModel {
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
             }
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            Err(CompletionError::ProviderError(
+                response.text().await.map_err(|e| {
+                    CompletionError::HttpError(http_client::Error::Instance(e.into()))
+                })?,
+            ))
         }
     }
 

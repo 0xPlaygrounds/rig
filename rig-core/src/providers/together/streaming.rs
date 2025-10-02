@@ -9,7 +9,7 @@ use crate::{
     json_utils::merge,
 };
 
-impl CompletionModel {
+impl CompletionModel<reqwest::Client> {
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -19,7 +19,10 @@ impl CompletionModel {
 
         request = merge(request, json!({"stream_tokens": true}));
 
-        let builder = self.client.post("/v1/chat/completions").json(&request);
+        let builder = self
+            .client
+            .reqwest_post("/v1/chat/completions")
+            .json(&request);
 
         send_compatible_streaming_request(builder).await
     }

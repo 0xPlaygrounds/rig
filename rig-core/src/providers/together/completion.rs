@@ -5,7 +5,7 @@
 
 use crate::{
     completion::{self, CompletionError},
-    json_utils,
+    http_client, json_utils,
     providers::openai,
 };
 
@@ -128,13 +128,13 @@ pub const WIZARDLM_13B_V1_2: &str = "WizardLM/WizardLM-13B-V1.2";
 // =================================================================
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T> {
+    pub(crate) client: Client<T>,
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -188,7 +188,7 @@ impl CompletionModel {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl completion::CompletionModel for CompletionModel<reqwest::Client> {
     type Response = openai::CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
@@ -201,16 +201,21 @@ impl completion::CompletionModel for CompletionModel {
 
         let response = self
             .client
-            .post("/v1/chat/completions")
+            .reqwest_post("/v1/chat/completions")
             .json(&request)
             .send()
-            .await?;
+            .await
+            .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
 
         if response.status().is_success() {
-            let t = response.text().await?;
-            tracing::debug!(target: "rig", "Together completion error: {}", t);
+            let text = response
+                .text()
+                .await
+                .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
 
-            match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(&t)? {
+            tracing::debug!(target: "rig", "Together completion error: {}", text);
+
+            match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(&text)? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "Together completion token usage: {:?}",
@@ -221,7 +226,11 @@ impl completion::CompletionModel for CompletionModel {
                 ApiResponse::Error(err) => Err(CompletionError::ProviderError(err.error)),
             }
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            Err(CompletionError::ProviderError(
+                response.text().await.map_err(|e| {
+                    CompletionError::HttpError(http_client::Error::Instance(e.into()))
+                })?,
+            ))
         }
     }
 
