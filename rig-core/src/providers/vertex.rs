@@ -1,5 +1,7 @@
 //! Bindings to the Google Vertex AI API.
 //! This API primarily builds on Gemini, so there is very little change required.
+//!
+//! Relevant documentation: <https://cloud.google.com/vertex-ai/generative-ai/docs/start/quickstart?usertype=apikey>
 
 use crate::{providers::gemini::completion::gemini_api_types::PartKind, streaming};
 use futures::StreamExt;
@@ -19,6 +21,7 @@ use crate::{
     telemetry::SpanCombinator,
 };
 
+/// The Google Vertex AI client.
 #[derive(Clone)]
 pub struct Client {
     api_key: String,
@@ -27,6 +30,7 @@ pub struct Client {
 }
 
 impl Client {
+    /// Create a fluent builder for this struct.
     pub fn builder<'a>(api_key: &'a str) -> ClientBuilder<'a> {
         ClientBuilder::new(api_key)
     }
@@ -64,6 +68,7 @@ impl std::fmt::Debug for Client {
     }
 }
 
+/// A fluent client builder to build [`Client`].
 pub struct ClientBuilder<'a> {
     api_key: &'a str,
     api_endpoint: Option<&'a str>,
@@ -71,6 +76,7 @@ pub struct ClientBuilder<'a> {
 }
 
 impl<'a> ClientBuilder<'a> {
+    /// Create a new instance of `ClientBuilder`.
     pub fn new(api_key: &'a str) -> Self {
         Self {
             api_key,
@@ -79,8 +85,15 @@ impl<'a> ClientBuilder<'a> {
         }
     }
 
+    /// Add a custom HTTP client.
+    /// If not set, the client builder will attempt to use a default `reqwest::Client` on building.
     pub fn http_client(mut self, client: reqwest::Client) -> Self {
         self.client = Some(client);
+        self
+    }
+
+    pub fn api_endpoint(mut self, api_endpoint: &'a str) -> Self {
+        self.api_endpoint = Some(api_endpoint);
         self
     }
 
@@ -149,6 +162,7 @@ impl CompletionClient for Client {
     }
 }
 
+/// A completion model for the Google Vertex AI API.
 #[derive(Clone, Debug)]
 pub struct CompletionModel {
     client: Client,
