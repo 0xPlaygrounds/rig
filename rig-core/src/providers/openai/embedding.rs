@@ -46,7 +46,7 @@ pub struct EmbeddingData {
 }
 
 #[derive(Clone)]
-pub struct EmbeddingModel<T> {
+pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
     pub model: String,
     ndims: usize,
@@ -78,8 +78,7 @@ where
 
         let req = self
             .client
-            .post("/embeddings")
-            .map_err(|e| EmbeddingError::HttpError(e.into()))?
+            .post("/embeddings")?
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 

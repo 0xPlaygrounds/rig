@@ -102,7 +102,7 @@ impl CompletionModel<reqwest::Client> {
 
         let mut event_source = self
             .client
-            .eventsource::<Event>(req)
+            .eventsource(req)
             .await
             .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 

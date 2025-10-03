@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 // ================================================================
 const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
     http_client: T,
@@ -75,7 +75,7 @@ impl<'a, T> ClientBuilder<'a, T> {
 }
 
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
     http_client: T,
@@ -126,18 +126,13 @@ where
     pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(|e| http_client::Error::Protocol(e.into()))?;
-        Ok(http_client::Request::post(url).header("Authorization", auth_header))
+        http_client::with_bearer_auth(http_client::Request::post(url), &self.api_key)
     }
 
     pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(|e| http_client::Error::Protocol(e.into()))?;
-
-        Ok(http_client::Request::get(url).header("Authorization", auth_header))
+        http_client::with_bearer_auth(http_client::Request::get(url), &self.api_key)
     }
 
     pub(crate) async fn send<U, R>(
@@ -145,7 +140,7 @@ where
         req: http_client::Request<U>,
     ) -> http_client::Result<http_client::Response<http_client::LazyBody<R>>>
     where
-        U: Into<Bytes>,
+        U: Into<Bytes> + Send,
         R: From<Bytes> + Send,
     {
         self.http_client.request(req).await
@@ -153,13 +148,6 @@ where
 }
 
 impl Client<reqwest::Client> {
-    pub(crate) async fn send_reqwest(
-        &self,
-        req: reqwest::Request,
-    ) -> reqwest::Result<reqwest::Response> {
-        self.http_client.execute(req).await
-    }
-
     pub(crate) fn post_reqwest(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
@@ -278,8 +266,8 @@ impl ImageGenerationClient for Client<reqwest::Client> {
 }
 
 #[cfg(feature = "audio")]
-impl AudioGenerationClient for Client {
-    type AudioGenerationModel = AudioGenerationModel;
+impl AudioGenerationClient for Client<reqwest::Client> {
+    type AudioGenerationModel = AudioGenerationModel<reqwest::Client>;
     /// Create an audio generation model with the given name.
     ///
     /// # Example

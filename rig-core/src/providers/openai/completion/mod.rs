@@ -712,7 +712,7 @@ impl fmt::Display for Usage {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,

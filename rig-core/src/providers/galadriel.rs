@@ -11,9 +11,7 @@
 //! let gpt4o = client.completion_model(galadriel::GPT_4O);
 //! ```
 use super::openai;
-use crate::client::{
-    ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError,
-};
+use crate::client::{CompletionClient, ProviderClient, VerifyClient, VerifyError};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
 use crate::message::MessageError;
@@ -33,7 +31,7 @@ use serde_json::{Value, json};
 // ================================================================
 const GALADRIEL_API_BASE_URL: &str = "https://api.galadriel.com/v1/verified";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     fine_tune_api_key: Option<&'a str>,
     base_url: &'a str,
@@ -84,7 +82,7 @@ impl<'a, T> ClientBuilder<'a, T> {
     }
 }
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
     fine_tune_api_key: Option<String>,
@@ -139,16 +137,13 @@ where
     pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(http::Error::from)?;
-
-        let mut req = http_client::Request::post(url).header("Authorization", auth_header);
+        let mut req = http_client::Request::post(url);
 
         if let Some(fine_tune_key) = self.fine_tune_api_key.clone() {
             req = req.header("Fine-Tune-Authorization", fine_tune_key);
         }
 
-        Ok(req)
+        http_client::with_bearer_auth(req, &self.api_key)
     }
 
     async fn send<U, R>(
@@ -156,7 +151,7 @@ where
         req: http_client::Request<U>,
     ) -> http_client::Result<http_client::Response<http_client::LazyBody<R>>>
     where
-        U: Into<Bytes>,
+        U: Into<Bytes> + Send,
         R: From<Bytes> + Send,
     {
         self.http_client.request(req).await
@@ -508,7 +503,7 @@ pub struct Function {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,

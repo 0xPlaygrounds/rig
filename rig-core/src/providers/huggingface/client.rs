@@ -108,7 +108,7 @@ impl Display for SubProvider {
     }
 }
 
-pub struct ClientBuilder<T> {
+pub struct ClientBuilder<T = reqwest::Client> {
     api_key: String,
     base_url: String,
     sub_provider: SubProvider,
@@ -172,7 +172,7 @@ impl<T> ClientBuilder<T> {
 }
 
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     default_headers: reqwest::header::HeaderMap,
     api_key: String,
@@ -180,7 +180,7 @@ pub struct Client<T> {
     pub(crate) sub_provider: SubProvider,
 }
 
-impl<T> std::fmt::Debug for Client<T>
+impl<T> Debug for Client<T>
 where
     T: Debug,
 {
@@ -225,10 +225,6 @@ where
 }
 
 impl Client<reqwest::Client> {
-    pub(crate) fn client(&self) -> &reqwest::Client {
-        &self.http_client
-    }
-
     pub(crate) fn post_reqwest(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
@@ -246,31 +242,25 @@ where
     pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(|e| http_client::Error::Protocol(e.into()))?;
-
-        let mut req = http_client::Request::post(url).header("Authorization", auth_header);
+        let mut req = http_client::Request::post(url);
 
         if let Some(hs) = req.headers_mut() {
             *hs = self.default_headers.clone();
         }
 
-        Ok(req)
+        http_client::with_bearer_auth(req, &self.api_key)
     }
 
     pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(|e| http_client::Error::Protocol(e.into()))?;
-
-        let mut req = http_client::Request::get(url).header("Authorization", auth_header);
+        let mut req = http_client::Request::get(url);
 
         if let Some(hs) = req.headers_mut() {
             *hs = self.default_headers.clone();
         }
 
-        Ok(req)
+        http_client::with_bearer_auth(req, &self.api_key)
     }
 
     pub(crate) async fn send<U, V>(
@@ -278,7 +268,7 @@ where
         req: http_client::Request<U>,
     ) -> http_client::Result<http_client::Response<http_client::LazyBody<V>>>
     where
-        U: Into<Bytes>,
+        U: Into<Bytes> + Send,
         V: From<Bytes> + Send,
     {
         self.http_client.request(req).await

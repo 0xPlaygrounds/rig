@@ -15,9 +15,7 @@ use futures::StreamExt;
 use reqwest_eventsource::{Event, RequestBuilderExt};
 use std::collections::HashMap;
 
-use crate::client::{
-    ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError,
-};
+use crate::client::{CompletionClient, ProviderClient, VerifyClient, VerifyError};
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
@@ -27,7 +25,6 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     impl_conversion_traits, json_utils, message,
 };
-use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -38,7 +35,7 @@ use super::openai::StreamingToolCall;
 // ================================================================
 const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
     http_client: T,
@@ -81,7 +78,7 @@ impl<'a, T> ClientBuilder<'a, T> {
 }
 
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     pub base_url: String,
     api_key: String,
     http_client: T,
@@ -138,17 +135,10 @@ where
     ) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(http::Error::from)?;
-
-        Ok(http_client::Request::builder()
-            .method(method)
-            .uri(url)
-            .header("Authorization", auth_header))
-    }
-
-    pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        self.req(http_client::Method::POST, path)
+        http_client::with_bearer_auth(
+            http_client::Request::builder().method(method).uri(url),
+            &self.api_key,
+        )
     }
 
     pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
@@ -160,7 +150,7 @@ where
         req: http_client::Request<U>,
     ) -> http_client::Result<http_client::Response<http_client::LazyBody<R>>>
     where
-        U: Into<Bytes>,
+        U: Into<Bytes> + Send,
         R: From<Bytes> + Send,
     {
         self.http_client.request(req).await
@@ -566,7 +556,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 
 /// The struct implementing the `CompletionModel` trait
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = reqwest::Client> {
     pub client: Client<T>,
     pub model: String,
 }

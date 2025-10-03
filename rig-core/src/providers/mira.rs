@@ -110,7 +110,7 @@ struct ModelInfo {
     id: String,
 }
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
     http_client: T,
@@ -166,7 +166,7 @@ impl<'a, T> ClientBuilder<'a, T> {
 
 #[derive(Clone)]
 /// Client for interacting with the Mira API
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     http_client: T,
     api_key: String,
@@ -222,7 +222,7 @@ where
     pub async fn list_models(&self) -> Result<Vec<String>, MiraError> {
         let req = self.get("/v1/models").and_then(|req| {
             req.body(http_client::NoBody)
-                .map_err(|e| http_client::Error::Protocol(e.into()))
+                .map_err(http_client::Error::Protocol)
         })?;
 
         let response = self.http_client.request(req).await?;
@@ -253,23 +253,13 @@ where
     ) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(http::Error::from)?;
-
-        let mut req = http_client::Builder::new()
-            .method(method)
-            .uri(url)
-            .header("Authorization", auth_header);
+        let mut req = http_client::Builder::new().method(method).uri(url);
 
         if let Some(hs) = req.headers_mut() {
             *hs = self.headers.clone();
         }
 
-        Ok(req)
-    }
-
-    pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        self.req(http_client::Method::POST, path)
+        http_client::with_bearer_auth(req, &self.api_key)
     }
 
     pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {

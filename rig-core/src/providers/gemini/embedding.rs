@@ -17,7 +17,7 @@ pub const EMBEDDING_001: &str = "embedding-001";
 /// `text-embedding-004` embedding model
 pub const EMBEDDING_004: &str = "text-embedding-004";
 #[derive(Clone)]
-pub struct EmbeddingModel<T> {
+pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
     model: String,
     ndims: Option<usize>,

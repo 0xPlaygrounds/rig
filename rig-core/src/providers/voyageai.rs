@@ -1,8 +1,5 @@
-use crate::client::{
-    ClientBuilderError, EmbeddingsClient, ProviderClient, VerifyClient, VerifyError,
-};
+use crate::client::{EmbeddingsClient, ProviderClient, VerifyClient, VerifyError};
 use crate::embeddings::EmbeddingError;
-use crate::http_client::HttpClientExt;
 use crate::{embeddings, http_client, impl_conversion_traits};
 use serde::Deserialize;
 use serde_json::json;
@@ -12,7 +9,7 @@ use serde_json::json;
 // ================================================================
 const OPENAI_API_BASE_URL: &str = "https://api.voyageai.com/v1";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
     http_client: T,
@@ -55,7 +52,7 @@ impl<'a, T> ClientBuilder<'a, T> {
 }
 
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
     http_client: T,
@@ -98,20 +95,6 @@ where
     /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
         Self::builder(api_key).build()
-    }
-}
-
-impl<T> Client<T>
-where
-    T: HttpClientExt,
-{
-    pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(http::Error::from)?;
-
-        Ok(http_client::Request::post(url).header("Authorization", auth_header))
     }
 }
 

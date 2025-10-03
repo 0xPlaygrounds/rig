@@ -39,7 +39,7 @@ use serde_json::{Value, json};
 // ================================================================
 const GROQ_API_BASE_URL: &str = "https://api.groq.com/openai/v1";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
     http_client: T,
@@ -82,7 +82,7 @@ impl<'a, T> ClientBuilder<'a, T> {
 }
 
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
     http_client: T,
@@ -139,17 +139,10 @@ where
     ) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(http::Error::from)?;
-
-        Ok(http_client::Builder::new()
-            .method(method)
-            .uri(url)
-            .header("Authorization", auth_header))
-    }
-
-    fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        self.req(http_client::Method::POST, path)
+        http_client::with_bearer_auth(
+            http_client::Builder::new().method(method).uri(url),
+            &self.api_key,
+        )
     }
 
     fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {

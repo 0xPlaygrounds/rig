@@ -128,7 +128,7 @@ pub const WIZARDLM_13B_V1_2: &str = "WizardLM/WizardLM-13B-V1.2";
 // =================================================================
 
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
 }

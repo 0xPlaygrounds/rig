@@ -3,7 +3,6 @@ use serde_json::{Value, json};
 use std::{convert::Infallible, str::FromStr};
 
 use super::client::Client;
-use crate::http_client::HttpClientExt;
 use crate::providers::openai::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
@@ -497,7 +496,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 }
 
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     /// Name of the model (e.g: google/gemma-2-2b-it)
     pub model: String,

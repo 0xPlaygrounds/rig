@@ -39,8 +39,7 @@
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
 use crate::client::{
-    ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient, VerifyClient,
-    VerifyError,
+    CompletionClient, EmbeddingsClient, ProviderClient, VerifyClient, VerifyError,
 };
 use crate::completion::{GetTokenUsage, Usage};
 use crate::http_client::{self, HttpClientExt};
@@ -62,12 +61,11 @@ use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{convert::TryFrom, str::FromStr};
-use url::Url;
 // ---------- Main Client ----------
 
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     base_url: &'a str,
     http_client: T,
 }
@@ -107,7 +105,7 @@ impl<'a, T> ClientBuilder<'a, T> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     http_client: T,
 }

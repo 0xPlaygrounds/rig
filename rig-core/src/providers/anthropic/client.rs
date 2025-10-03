@@ -1,6 +1,6 @@
 //! Anthropic client api implementation
 use bytes::Bytes;
-use http_client::{Method, Request, Uri};
+use http_client::{Method, Request};
 
 use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
 use crate::{
@@ -16,12 +16,24 @@ use crate::{
 // ================================================================
 const ANTHROPIC_API_BASE_URL: &str = "https://api.anthropic.com";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
     anthropic_version: &'a str,
     anthropic_betas: Option<Vec<&'a str>>,
     http_client: T,
+}
+
+impl<'a> ClientBuilder<'a, reqwest::Client> {
+    pub fn new(api_key: &'a str) -> Self {
+        ClientBuilder {
+            api_key,
+            base_url: ANTHROPIC_API_BASE_URL,
+            anthropic_version: ANTHROPIC_VERSION_LATEST,
+            anthropic_betas: None,
+            http_client: Default::default(),
+        }
+    }
 }
 
 /// Create a new anthropic client using the builder
@@ -38,24 +50,24 @@ pub struct ClientBuilder<'a, T> {
 /// ```
 impl<'a, T> ClientBuilder<'a, T>
 where
-    T: HttpClientExt + Default,
+    T: HttpClientExt,
 {
-    pub fn new(api_key: &'a str) -> Self {
-        ClientBuilder {
-            api_key,
-            base_url: ANTHROPIC_API_BASE_URL,
-            anthropic_version: ANTHROPIC_VERSION_LATEST,
-            anthropic_betas: None,
-            http_client: Default::default(),
-        }
-    }
-
-    pub fn with_client(api_key: &'a str, http_client: T) -> Self {
+    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
         Self {
             api_key,
             base_url: ANTHROPIC_API_BASE_URL,
             anthropic_version: ANTHROPIC_VERSION_LATEST,
             anthropic_betas: None,
+            http_client,
+        }
+    }
+
+    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
+        ClientBuilder {
+            api_key: self.api_key,
+            base_url: self.base_url,
+            anthropic_version: self.anthropic_version,
+            anthropic_betas: self.anthropic_betas,
             http_client,
         }
     }
@@ -109,7 +121,7 @@ where
 }
 
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     /// The base URL
     base_url: String,
     /// The API key
@@ -134,35 +146,16 @@ where
     }
 }
 
-fn build_uri(path: &str) -> Result<Uri, http::Error> {
-    Uri::builder()
-        .scheme("https")
-        .authority("api.anthropic.com")
-        .path_and_query(path)
-        .build()
-}
-
 impl<T> Client<T>
 where
     T: HttpClientExt + Clone + Default,
 {
-    /// Create a new Anthropic client. For more control, use the `builder` method.
-    ///
-    /// # Panics
-    /// - If the API key or version cannot be parsed as a Json value from a String.
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str) -> Self {
-        ClientBuilder::new(api_key)
-            .build()
-            .expect("Anthropic client should build")
-    }
-
     pub async fn send<U, V>(
         &self,
         req: http_client::Request<U>,
     ) -> Result<http_client::Response<http_client::LazyBody<V>>, http_client::Error>
     where
-        U: Into<Bytes>,
+        U: Into<Bytes> + Send,
         V: From<Bytes> + Send,
     {
         self.http_client.request(req).await
@@ -199,10 +192,7 @@ where
         req
     }
 
-    pub(crate) fn get(
-        &self,
-        path: &str,
-    ) -> Result<http_client::Request<http_client::NoBody>, http::Error> {
+    pub(crate) fn get(&self, path: &str) -> http_client::Builder {
         let uri = format!("{}/{}", self.base_url, path).replace("//", "/");
 
         let mut headers = self.default_headers.clone();
@@ -217,14 +207,24 @@ where
             *hs = headers;
         }
 
-        req.body(http_client::NoBody)
+        req
     }
 }
 
-impl<T> ProviderClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
+impl Client<reqwest::Client> {
+    /// Create a new Anthropic client. For more control, use the `builder` method.
+    ///
+    /// # Panics
+    /// - If the API key or version cannot be parsed as a Json value from a String.
+    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
+    pub fn new(api_key: &str) -> Self {
+        ClientBuilder::new(api_key)
+            .build()
+            .expect("Anthropic client should build")
+    }
+}
+
+impl ProviderClient for Client<reqwest::Client> {
     /// Create a new Anthropic client from the `ANTHROPIC_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
@@ -242,30 +242,23 @@ where
     }
 }
 
-impl<T> CompletionClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    type CompletionModel = CompletionModel<T>;
+impl CompletionClient for Client<reqwest::Client> {
+    type CompletionModel = CompletionModel<reqwest::Client>;
 
-    fn completion_model(&self, model: &str) -> CompletionModel<T> {
+    fn completion_model(&self, model: &str) -> CompletionModel<reqwest::Client> {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl<T> VerifyClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
+impl VerifyClient for Client<reqwest::Client> {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
-        let response: http_client::Response<http_client::LazyBody<Vec<u8>>> = self
-            .http_client
-            .request(
-                self.get("/v1/models")
-                    .map_err(|e| http_client::Error::Protocol(e))?,
-            )
-            .await?;
+        let req = self
+            .get("/v1/models")
+            .body(http_client::NoBody)
+            .map_err(http_client::Error::from)?;
+
+        let response = HttpClientExt::request(&self.http_client, req).await?;
 
         match response.status() {
             http::StatusCode::OK => Ok(()),
@@ -273,11 +266,11 @@ where
                 Err(VerifyError::InvalidAuthentication)
             }
             http::StatusCode::INTERNAL_SERVER_ERROR => {
-                let text = String::from_utf8_lossy(&response.into_body().await?).into();
+                let text = http_client::text(response).await?;
                 Err(VerifyError::ProviderError(text))
             }
             status if status.as_u16() == 529 => {
-                let text = String::from_utf8_lossy(&response.into_body().await?).into();
+                let text = http_client::text(response).await?;
                 Err(VerifyError::ProviderError(text))
             }
             _ => {

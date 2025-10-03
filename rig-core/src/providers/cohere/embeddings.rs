@@ -59,7 +59,7 @@ impl std::fmt::Display for BilledUnits {
 }
 
 #[derive(Clone)]
-pub struct EmbeddingModel<T> {
+pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
     pub model: String,
     pub input_type: String,
@@ -93,8 +93,7 @@ where
 
         let req = self
             .client
-            .post::<Vec<u8>>("/v1/embed")
-            .map_err(|e| EmbeddingError::HttpError(e.into()))?
+            .post("/v1/embed")?
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
@@ -102,7 +101,7 @@ where
             .client
             .send::<_, Vec<u8>>(req)
             .await
-            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
+            .map_err(EmbeddingError::HttpError)?;
 
         if response.status().is_success() {
             let body: ApiResponse<EmbeddingResponse> =

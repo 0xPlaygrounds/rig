@@ -10,9 +10,7 @@
 //! ```
 use super::openai::{AssistantContent, send_compatible_streaming_request};
 
-use crate::client::{
-    ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError,
-};
+use crate::client::{CompletionClient, ProviderClient, VerifyClient, VerifyError};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
 use crate::message;
@@ -34,7 +32,7 @@ use serde_json::{Value, json};
 // ================================================================
 const HYPERBOLIC_API_BASE_URL: &str = "https://api.hyperbolic.xyz";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
     http_client: T,
@@ -77,7 +75,7 @@ impl<'a, T> ClientBuilder<'a, T> {
 }
 
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
     http_client: T,
@@ -134,17 +132,10 @@ where
     ) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(http::Error::from)?;
-
-        Ok(http_client::Builder::new()
-            .method(method)
-            .uri(url)
-            .header("Authorization", auth_header))
-    }
-
-    fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        self.req(http_client::Method::POST, path)
+        http_client::with_bearer_auth(
+            http_client::Builder::new().method(method).uri(url),
+            &self.api_key,
+        )
     }
 
     fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
@@ -661,6 +652,7 @@ mod audio_generation {
     use crate::audio_generation;
     use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
     use crate::client::AudioGenerationClient;
+    use crate::http_client;
     use base64::Engine;
     use base64::prelude::BASE64_STANDARD;
     use serde::Deserialize;
@@ -673,7 +665,7 @@ mod audio_generation {
     }
 
     impl<T> AudioGenerationModel<T> {
-        pub(crate) fn new(client: Client<T>, language: &str) -> AudioGenerationModel {
+        pub(crate) fn new(client: Client<T>, language: &str) -> AudioGenerationModel<T> {
             Self {
                 client,
                 language: language.to_string(),
@@ -763,7 +755,7 @@ mod audio_generation {
         ///
         /// let tts = hyperbolic.audio_generation_model("EN");
         /// ```
-        fn audio_generation_model(&self, language: &str) -> AudioGenerationModel {
+        fn audio_generation_model(&self, language: &str) -> AudioGenerationModel<reqwest::Client> {
             AudioGenerationModel::new(self.clone(), language)
         }
     }

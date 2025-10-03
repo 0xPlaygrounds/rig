@@ -22,7 +22,7 @@ const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
 
 #[derive(Clone)]
-pub struct TranscriptionModel<T> {
+pub struct TranscriptionModel<T = reqwest::Client> {
     client: Client<T>,
     /// Name of the model (e.g.: gemini-1.5-flash)
     pub model: String,

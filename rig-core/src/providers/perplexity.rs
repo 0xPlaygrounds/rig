@@ -12,11 +12,10 @@ use crate::{
     OneOrMany,
     client::{VerifyClient, VerifyError},
     completion::{self, CompletionError, MessageError, message},
-    http_client::{self, HttpClientExt},
-    impl_conversion_traits, json_utils,
+    http_client, impl_conversion_traits, json_utils,
 };
 
-use crate::client::{ClientBuilderError, CompletionClient, ProviderClient};
+use crate::client::{CompletionClient, ProviderClient};
 use crate::completion::CompletionRequest;
 use crate::json_utils::merge;
 use crate::providers::openai;
@@ -30,7 +29,7 @@ use serde_json::{Value, json};
 // ================================================================
 const PERPLEXITY_API_BASE_URL: &str = "https://api.perplexity.ai";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
     http_client: T,
@@ -73,7 +72,7 @@ impl<'a, T> ClientBuilder<'a, T> {
 }
 
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
     http_client: T,
@@ -116,19 +115,6 @@ where
     /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
         Self::builder(api_key).build()
-    }
-}
-
-impl<T> Client<T>
-where
-    T: HttpClientExt,
-{
-    pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(http::Error::from)?;
-
-        Ok(http_client::Request::post(url).header("Authorization", auth_header))
     }
 }
 

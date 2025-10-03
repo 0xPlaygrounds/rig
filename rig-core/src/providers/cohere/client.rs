@@ -28,28 +28,24 @@ pub enum ApiResponse<T> {
 // ================================================================
 const COHERE_API_BASE_URL: &str = "https://api.cohere.ai";
 
-pub struct ClientBuilder<'a, T>
-where
-    T: HttpClientExt,
-{
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
     http_client: T,
 }
 
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: HttpClientExt,
-{
+impl<'a> ClientBuilder<'a, reqwest::Client> {
     pub fn new(api_key: &'a str) -> ClientBuilder<'a, reqwest::Client> {
         ClientBuilder {
             api_key,
             base_url: COHERE_API_BASE_URL,
-            http_client: reqwest::Client::new(),
+            http_client: Default::default(),
         }
     }
+}
 
-    pub fn with_client(api_key: &'a str, http_client: T) -> Self {
+impl<'a, T> ClientBuilder<'a, T> {
+    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
         ClientBuilder {
             api_key,
             base_url: COHERE_API_BASE_URL,
@@ -57,7 +53,15 @@ where
         }
     }
 
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
+    pub fn with_client<U>(api_key: &str, http_client: U) -> ClientBuilder<'_, U> {
+        ClientBuilder {
+            api_key,
+            base_url: COHERE_API_BASE_URL,
+            http_client,
+        }
+    }
+
+    pub fn base_url(mut self, base_url: &'a str) -> ClientBuilder<'a, T> {
         self.base_url = base_url;
         self
     }
@@ -72,7 +76,7 @@ where
 }
 
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
     http_client: T,
@@ -91,37 +95,35 @@ where
     }
 }
 
-impl<T> Client<T>
-where
-    T: HttpClientExt + Clone,
-{
+impl Client<reqwest::Client> {
     /// Create a new Cohere client. For more control, use the `builder` method.
     ///
     /// # Panics
     /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str) -> Client<reqwest::Client> {
-        ClientBuilder::with_client(api_key, reqwest::Client::new()).build()
+    pub fn new(api_key: &str) -> Self {
+        ClientBuilder::new(api_key).build()
+    }
+}
+
+impl<T> Client<T>
+where
+    T: HttpClientExt + Clone,
+{
+    fn req(
+        &self,
+        method: http_client::Method,
+        path: &str,
+    ) -> http_client::Result<http_client::Builder> {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+
+        http_client::with_bearer_auth(
+            http_client::Builder::new().method(method).uri(url),
+            &self.api_key,
+        )
     }
 
-    pub(crate) fn post<U>(&self, path: &str) -> http_client::Result<http_client::Builder>
-    where
-        U: From<Bytes> + Send,
-    {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        let auth_header =
-            http_client::HeaderValue::try_from(format!("Bearer {}", self.api_key.as_str()))
-                .map_err(http::Error::from)?;
-
-        Ok(http_client::Request::post(url).header("Authorization", auth_header))
-    }
-
-    pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        let auth_header =
-            http_client::HeaderValue::try_from(format!("Bearer {}", self.api_key.as_str()))
-                .map_err(http::Error::from)?;
-
-        Ok(http_client::Request::get(url).header("Authorization", auth_header))
+    pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
+        self.req(http_client::Method::POST, path)
     }
 
     pub(crate) async fn send<U, V>(
@@ -129,7 +131,7 @@ where
         req: http_client::Request<U>,
     ) -> http_client::Result<http_client::Response<http_client::LazyBody<V>>>
     where
-        U: Into<Bytes>,
+        U: Into<Bytes> + Send,
         V: From<Bytes> + Send,
     {
         self.http_client.request(req).await
@@ -170,7 +172,7 @@ where
 }
 
 impl Client<reqwest::Client> {
-    pub(crate) async fn eventsource<T>(
+    pub(crate) async fn eventsource(
         &self,
         req: reqwest::RequestBuilder,
     ) -> Result<EventSource, CannotCloneRequestError> {

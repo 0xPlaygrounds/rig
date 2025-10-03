@@ -28,7 +28,6 @@ pub const GEMINI_1_5_PRO_8B: &str = "gemini-1.5-pro-8b";
 pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 
 use self::gemini_api_types::Schema;
-use crate::http_client::HttpClientExt;
 use crate::message::Reasoning;
 use crate::providers::gemini::completion::gemini_api_types::AdditionalParameters;
 use crate::providers::gemini::streaming::StreamingCompletionResponse;
@@ -50,7 +49,7 @@ use super::Client;
 // =================================================================
 
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
 }
@@ -93,7 +92,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             let response_body = response
                 .into_body()
                 .await
-                .map_err(|e| CompletionError::HttpError(e))?;
+                .map_err(CompletionError::HttpError)?;
 
             let body: GenerateContentResponse = serde_json::from_slice(&response_body)?;
 
@@ -115,7 +114,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                 &response
                     .into_body()
                     .await
-                    .map_err(|e| CompletionError::HttpError(e.into()))?,
+                    .map_err(CompletionError::HttpError)?,
             )
             .into();
 

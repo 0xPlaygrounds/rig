@@ -31,7 +31,7 @@ pub const GROK_4: &str = "grok-4-0709";
 // =================================================================
 
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
 }

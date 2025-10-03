@@ -15,7 +15,6 @@ use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
-    client::ClientBuilderError,
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
     json_utils,
@@ -33,7 +32,7 @@ use serde_json::json;
 
 const DEFAULT_API_VERSION: &str = "2024-10-21";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     auth: AzureOpenAIAuth,
     api_version: Option<&'a str>,
     azure_endpoint: &'a str,
@@ -89,7 +88,7 @@ impl<'a, T> ClientBuilder<'a, T> {
 }
 
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     api_version: String,
     azure_endpoint: String,
     auth: AzureOpenAIAuth,
@@ -192,23 +191,12 @@ where
         self.post(url)
     }
 
-    #[cfg(feature = "audio")]
-    fn post_audio_generation(&self, deployment_id: &str) -> http_client::Builder {
-        let url = format!(
-            "{}/openai/deployments/{}/audio/speech?api-version={}",
-            self.azure_endpoint, deployment_id, self.api_version
-        )
-        .replace("//", "/");
-
-        self.post(url)
-    }
-
     async fn send<U, R>(
         &self,
         req: http_client::Request<U>,
     ) -> http_client::Result<http_client::Response<http_client::LazyBody<R>>>
     where
-        U: Into<Bytes>,
+        U: Into<Bytes> + Send,
         R: From<Bytes> + Send,
     {
         self.http_client.request(req).await
@@ -220,6 +208,17 @@ impl Client<reqwest::Client> {
         let (key, val) = self.auth.as_header();
 
         self.http_client.post(url).header(key, val)
+    }
+
+    #[cfg(feature = "audio")]
+    fn post_audio_generation(&self, deployment_id: &str) -> reqwest::RequestBuilder {
+        let url = format!(
+            "{}/openai/deployments/{}/audio/speech?api-version={}",
+            self.azure_endpoint, deployment_id, self.api_version
+        )
+        .replace("//", "/");
+
+        self.post_reqwest(url)
     }
 
     fn post_chat_completion(&self, deployment_id: &str) -> reqwest::RequestBuilder {
@@ -436,7 +435,7 @@ impl std::fmt::Display for Usage {
 }
 
 #[derive(Clone)]
-pub struct EmbeddingModel<T> {
+pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
     pub model: String,
     ndims: usize,
@@ -548,7 +547,7 @@ pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
 pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
     /// Name of the model (e.g.: gpt-4o-mini)
     pub model: String,
@@ -683,7 +682,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
 // ================================================================
 
 #[derive(Clone)]
-pub struct TranscriptionModel<T> {
+pub struct TranscriptionModel<T = reqwest::Client> {
     client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
@@ -779,7 +778,7 @@ mod image_generation {
     use serde_json::json;
 
     #[derive(Clone)]
-    pub struct ImageGenerationModel<T> {
+    pub struct ImageGenerationModel<T = reqwest::Client> {
         client: Client<T>,
         pub model: String,
     }
@@ -856,16 +855,16 @@ pub use audio_generation::*;
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 mod audio_generation {
     use super::Client;
-    use crate::audio_generation;
     use crate::audio_generation::{
         AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
     };
     use crate::client::AudioGenerationClient;
+    use crate::{audio_generation, http_client};
     use bytes::Bytes;
     use serde_json::json;
 
     #[derive(Clone)]
-    pub struct AudioGenerationModel<T> {
+    pub struct AudioGenerationModel<T = reqwest::Client> {
         client: Client<T>,
         model: String,
     }
@@ -890,17 +889,24 @@ mod audio_generation {
                 .post_audio_generation("/audio/speech")
                 .json(&request)
                 .send()
-                .await?;
+                .await
+                .map_err(|e| {
+                    AudioGenerationError::HttpError(http_client::Error::Instance(e.into()))
+                })?;
 
             if !response.status().is_success() {
                 return Err(AudioGenerationError::ProviderError(format!(
                     "{}: {}",
                     response.status(),
-                    response.text().await?
+                    response.text().await.map_err(|e| {
+                        AudioGenerationError::HttpError(http_client::Error::Instance(e.into()))
+                    })?
                 )));
             }
 
-            let bytes = response.bytes().await?;
+            let bytes = response.bytes().await.map_err(|e| {
+                AudioGenerationError::HttpError(http_client::Error::Instance(e.into()))
+            })?;
 
             Ok(AudioGenerationResponse {
                 audio: bytes.to_vec(),

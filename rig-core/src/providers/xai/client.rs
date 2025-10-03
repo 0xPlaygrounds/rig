@@ -1,9 +1,6 @@
 use super::completion::CompletionModel;
 use crate::{
-    client::{
-        ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError,
-        impl_conversion_traits,
-    },
+    client::{CompletionClient, ProviderClient, VerifyClient, VerifyError, impl_conversion_traits},
     http_client,
 };
 
@@ -12,7 +9,7 @@ use crate::{
 // ================================================================
 const XAI_BASE_URL: &str = "https://api.x.ai";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
     http_client: T,
@@ -62,7 +59,7 @@ impl<'a, T> ClientBuilder<'a, T> {
 }
 
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
     default_headers: http_client::HeaderMap,
@@ -110,42 +107,6 @@ where
     }
 }
 
-impl<T> Client<T> {
-    fn req(
-        &self,
-        method: http_client::Method,
-        url: &str,
-    ) -> http_client::Result<http_client::Builder> {
-        let mut request = http_client::Builder::new().method(method).uri(url);
-
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", self.api_key))
-            .map_err(|e| http_client::Error::Protocol(e.into()))?;
-
-        if let Some(hs) = request.headers_mut() {
-            *hs = self.default_headers.clone();
-            hs.insert("Authorization", auth_header);
-        }
-
-        Ok(request)
-    }
-
-    pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-
-        tracing::debug!("POST {}", url);
-
-        self.req(http_client::Method::POST, &url)
-    }
-
-    pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-
-        tracing::debug!("GET {}", url);
-
-        self.req(http_client::Method::GET, &url)
-    }
-}
-
 impl Client<reqwest::Client> {
     pub(crate) fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
@@ -161,7 +122,7 @@ impl Client<reqwest::Client> {
     pub(crate) fn reqwest_get(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
-        tracing::debug!("POST {}", url);
+        tracing::debug!("GET {}", url);
 
         self.http_client
             .get(url)

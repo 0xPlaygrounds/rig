@@ -578,7 +578,7 @@ impl TryFrom<Message> for message::Message {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
@@ -720,14 +720,14 @@ where
             .client
             .send::<_, Bytes>(req)
             .await
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
+            .map_err(CompletionError::HttpError)?;
 
         if response.status().is_success() {
             match serde_json::from_slice::<ApiResponse<CompletionResponse>>(
                 response
                     .into_body()
                     .await
-                    .map_err(|e| CompletionError::HttpError(e.into()))?
+                    .map_err(CompletionError::HttpError)?
                     .to_vec()
                     .as_slice(),
             )? {
@@ -750,7 +750,7 @@ where
                 &response
                     .into_body()
                     .await
-                    .map_err(|e| CompletionError::HttpError(e.into()))?,
+                    .map_err(CompletionError::HttpError)?,
             )
             .into();
             Err(CompletionError::ProviderError(text))

@@ -47,7 +47,7 @@ impl TryFrom<ImageGenerationResponse>
 }
 
 #[derive(Clone)]
-pub struct ImageGenerationModel<T> {
+pub struct ImageGenerationModel<T = reqwest::Client> {
     client: Client<T>,
     /// Name of the model (e.g.: dall-e-2)
     pub model: String,

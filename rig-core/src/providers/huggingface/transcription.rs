@@ -1,4 +1,4 @@
-use crate::http_client::{self, HttpClientExt};
+use crate::http_client::HttpClientExt;
 use crate::providers::huggingface::Client;
 use crate::providers::huggingface::completion::ApiResponse;
 use crate::transcription;
@@ -31,7 +31,7 @@ impl TryFrom<TranscriptionResponse>
 }
 
 #[derive(Clone)]
-pub struct TranscriptionModel<T> {
+pub struct TranscriptionModel<T = reqwest::Client> {
     client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,

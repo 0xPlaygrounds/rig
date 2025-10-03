@@ -14,16 +14,13 @@ use std::fmt::Debug;
 
 const MISTRAL_API_BASE_URL: &str = "https://api.mistral.ai";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
     http_client: T,
 }
 
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
+impl<'a> ClientBuilder<'a, reqwest::Client> {
     pub fn new(api_key: &'a str) -> Self {
         Self {
             api_key,
@@ -57,7 +54,7 @@ impl<'a, T> ClientBuilder<'a, T> {
 }
 
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
     http_client: T,
@@ -76,23 +73,15 @@ where
     }
 }
 
-impl<T> Client<T>
-where
-    T: Default,
-{
+impl Client<reqwest::Client> {
     /// Create a new Mistral client. For more control, use the `builder` method.
     ///
     /// # Panics
     /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str) -> Client<T> {
+    pub fn new(api_key: &str) -> Self {
         Self::builder(api_key).build()
     }
-}
 
-impl<T> Client<T>
-where
-    T: Default,
-{
     /// Create a new Mistral client builder.
     ///
     /// # Example
@@ -103,7 +92,7 @@ where
     /// let mistral = Client::builder("your-mistral-api-key")
     ///    .build()
     /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, T> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
         ClientBuilder::new(api_key)
     }
 }
@@ -115,19 +104,13 @@ where
     pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(|e| http_client::Error::Protocol(e.into()))?;
-
-        Ok(http_client::Request::post(url).header("Authorization", auth_header))
+        http_client::with_bearer_auth(http_client::Request::post(url), &self.api_key)
     }
 
     pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(|e| http_client::Error::Protocol(e.into()))?;
-
-        Ok(http_client::Request::get(url).header("Authorization", auth_header))
+        http_client::with_bearer_auth(http_client::Request::get(url), &self.api_key)
     }
 
     pub(crate) async fn send<Body, R>(
@@ -135,17 +118,14 @@ where
         req: http_client::Request<Body>,
     ) -> http_client::Result<http_client::Response<http_client::LazyBody<R>>>
     where
-        Body: Into<Bytes>,
+        Body: Into<Bytes> + Send,
         R: From<Bytes> + Send,
     {
         self.http_client.request(req).await
     }
 }
 
-impl<T> ProviderClient for Client<T>
-where
-    T: HttpClientExt + Debug + Default + Clone + 'static,
-{
+impl ProviderClient for Client<reqwest::Client> {
     /// Create a new Mistral client from the `MISTRAL_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self
@@ -164,11 +144,8 @@ where
     }
 }
 
-impl<T> CompletionClient for Client<T>
-where
-    T: HttpClientExt + Debug + Default + Clone + 'static,
-{
-    type CompletionModel = CompletionModel<T>;
+impl CompletionClient for Client<reqwest::Client> {
+    type CompletionModel = CompletionModel<reqwest::Client>;
 
     /// Create a completion model with the given name.
     ///
@@ -186,11 +163,8 @@ where
     }
 }
 
-impl<T> EmbeddingsClient for Client<T>
-where
-    T: HttpClientExt + Debug + Default + Clone + 'static,
-{
-    type EmbeddingModel = EmbeddingModel<T>;
+impl EmbeddingsClient for Client<reqwest::Client> {
+    type EmbeddingModel = EmbeddingModel<reqwest::Client>;
 
     /// Create an embedding model with the given name.
     /// Note: default embedding dimension of 0 will be used if model is not known.
@@ -204,7 +178,7 @@ where
     ///
     /// let embedding_model = mistral.embedding_model(mistral::MISTRAL_EMBED);
     /// ```
-    fn embedding_model(&self, model: &str) -> EmbeddingModel<T> {
+    fn embedding_model(&self, model: &str) -> Self::EmbeddingModel {
         let ndims = match model {
             MISTRAL_EMBED => 1024,
             _ => 0,
@@ -217,10 +191,7 @@ where
     }
 }
 
-impl<T> VerifyClient for Client<T>
-where
-    T: HttpClientExt + Debug + Default + Clone + 'static,
-{
+impl VerifyClient for Client<reqwest::Client> {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         let req = self
@@ -228,14 +199,13 @@ where
             .body(http_client::NoBody)
             .map_err(|e| VerifyError::HttpError(e.into()))?;
 
-        let response = self.http_client.request(req).await?;
+        let response = HttpClientExt::request(&self.http_client, req).await?;
 
         match response.status() {
             reqwest::StatusCode::OK => Ok(()),
             reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
             reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
-                let text: Vec<u8> = response.into_body().await?;
-                let text = String::from_utf8_lossy(&text).into();
+                let text = http_client::text(response).await?;
                 Err(VerifyError::ProviderError(text))
             }
             _ => {

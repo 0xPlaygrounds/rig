@@ -163,7 +163,7 @@ where
             .client
             .post("/v1/messages")
             .body(body)
-            .map_err(|e| http_client::Error::Protocol(e))?;
+            .map_err(http_client::Error::Protocol)?;
 
         let response: http_client::StreamingResponse = self.client.send_streaming(req).await?;
 

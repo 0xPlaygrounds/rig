@@ -11,7 +11,7 @@ use rig::client::CompletionClient;
 // ================================================================
 const TOGETHER_AI_BASE_URL: &str = "https://api.together.xyz";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
     http_client: T,
@@ -60,7 +60,7 @@ impl<'a, T> ClientBuilder<'a, T> {
     }
 }
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     default_headers: reqwest::header::HeaderMap,
     api_key: String,
@@ -117,15 +117,13 @@ where
 
         tracing::debug!("POST {}", url);
 
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(|e| http_client::Error::Protocol(e.into()))?;
-        let mut req = http_client::Request::post(url).header("Authorization", auth_header);
+        let mut req = http_client::Request::post(url);
 
         if let Some(hs) = req.headers_mut() {
             *hs = self.default_headers.clone();
         }
 
-        Ok(req)
+        http_client::with_bearer_auth(req, &self.api_key)
     }
 
     pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
@@ -133,16 +131,13 @@ where
 
         tracing::debug!("GET {}", url);
 
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(|e| http_client::Error::Protocol(e.into()))?;
-
-        let mut req = http_client::Request::get(url).header("Authorization", auth_header);
+        let mut req = http_client::Request::get(url);
 
         if let Some(hs) = req.headers_mut() {
             *hs = self.default_headers.clone();
         }
 
-        Ok(req)
+        http_client::with_bearer_auth(req, &self.api_key)
     }
 
     pub(crate) async fn send<U, R>(
@@ -150,7 +145,7 @@ where
         req: http_client::Request<U>,
     ) -> http_client::Result<http::Response<http_client::LazyBody<R>>>
     where
-        U: Into<Bytes>,
+        U: Into<Bytes> + Send,
         R: From<Bytes> + Send,
     {
         self.http_client.request(req).await
@@ -158,10 +153,6 @@ where
 }
 
 impl Client<reqwest::Client> {
-    pub(crate) fn reqwest_client(&self) -> &reqwest::Client {
-        &self.http_client
-    }
-
     pub(crate) fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 

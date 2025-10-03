@@ -8,9 +8,7 @@
 //!
 //! let moonshot_model = client.completion_model(moonshot::MOONSHOT_CHAT);
 //! ```
-use crate::client::{
-    ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError,
-};
+use crate::client::{CompletionClient, ProviderClient, VerifyClient, VerifyError};
 use crate::http_client::HttpClientExt;
 use crate::json_utils::merge;
 use crate::providers::openai::send_compatible_streaming_request;
@@ -29,7 +27,7 @@ use serde_json::{Value, json};
 // ================================================================
 const MOONSHOT_API_BASE_URL: &str = "https://api.moonshot.cn/v1";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
     http_client: T,
@@ -72,7 +70,7 @@ impl<'a, T> ClientBuilder<'a, T> {
 }
 
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
     http_client: T,
@@ -129,16 +127,10 @@ where
     ) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
-        let auth_header = http_client::HeaderValue::from_str(&format!("Bearer {}", &self.api_key))
-            .map_err(http::Error::from)?;
-
-        Ok(http_client::Builder::new()
-            .method(method)
-            .uri(url)
-            .header("Authorization", auth_header))
-    }
-    pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        self.req(http_client::Method::POST, path)
+        http_client::with_bearer_auth(
+            http_client::Builder::new().method(method).uri(url),
+            &self.api_key,
+        )
     }
 
     pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
@@ -246,7 +238,7 @@ enum ApiResponse<T> {
 pub const MOONSHOT_CHAT: &str = "moonshot-v1-128k";
 
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
     pub model: String,
 }

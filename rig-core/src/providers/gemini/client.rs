@@ -5,7 +5,6 @@ use crate::client::{
     ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient,
     VerifyClient, VerifyError, impl_conversion_traits,
 };
-use crate::completion;
 use crate::http_client::{self, HttpClientExt};
 use crate::{
     Embed,
@@ -20,7 +19,7 @@ use std::fmt::Debug;
 // ================================================================
 const GEMINI_API_BASE_URL: &str = "https://generativelanguage.googleapis.com";
 
-pub struct ClientBuilder<'a, T> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
     http_client: T,
@@ -78,7 +77,7 @@ where
     }
 }
 #[derive(Clone)]
-pub struct Client<T> {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
     default_headers: reqwest::header::HeaderMap,
@@ -179,7 +178,7 @@ where
         req: http_client::Request<U>,
     ) -> http_client::Result<http_client::Response<http_client::LazyBody<R>>>
     where
-        U: Into<Bytes>,
+        U: Into<Bytes> + Send,
         R: From<Bytes> + Send,
     {
         self.http_client.request(req).await

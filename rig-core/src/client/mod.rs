@@ -327,16 +327,16 @@ mod tests {
         vec![
             ClientConfig {
                 name: "Anthropic",
-                factory_env: Box::new(anthropic::Client::from_env_boxed),
-                factory_val: Box::new(anthropic::Client::from_val_boxed),
+                factory_env: Box::new(anthropic::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(anthropic::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "ANTHROPIC_API_KEY",
                 completion_model: Some(anthropic::CLAUDE_3_5_SONNET),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Cohere",
-                factory_env: Box::new(cohere::Client::from_env_boxed),
-                factory_val: Box::new(cohere::Client::from_val_boxed),
+                factory_env: Box::new(cohere::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(cohere::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "COHERE_API_KEY",
                 completion_model: Some(cohere::COMMAND_R),
                 embeddings_model: Some(cohere::EMBED_ENGLISH_LIGHT_V2),
@@ -344,8 +344,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Gemini",
-                factory_env: Box::new(gemini::Client::from_env_boxed),
-                factory_val: Box::new(gemini::Client::from_val_boxed),
+                factory_env: Box::new(gemini::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(gemini::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "GEMINI_API_KEY",
                 completion_model: Some(gemini::completion::GEMINI_2_0_FLASH),
                 embeddings_model: Some(gemini::embedding::EMBEDDING_001),
@@ -354,8 +354,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Huggingface",
-                factory_env: Box::new(huggingface::Client::from_env_boxed),
-                factory_val: Box::new(huggingface::Client::from_val_boxed),
+                factory_env: Box::new(huggingface::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(huggingface::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "HUGGINGFACE_API_KEY",
                 completion_model: Some(huggingface::PHI_4),
                 transcription_model: Some(huggingface::WHISPER_SMALL),
@@ -364,8 +364,8 @@ mod tests {
             },
             ClientConfig {
                 name: "OpenAI",
-                factory_env: Box::new(openai::Client::from_env_boxed),
-                factory_val: Box::new(openai::Client::from_val_boxed),
+                factory_env: Box::new(openai::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(openai::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "OPENAI_API_KEY",
                 completion_model: Some(openai::GPT_4O),
                 embeddings_model: Some(openai::TEXT_EMBEDDING_ADA_002),
@@ -375,16 +375,16 @@ mod tests {
             },
             ClientConfig {
                 name: "OpenRouter",
-                factory_env: Box::new(openrouter::Client::from_env_boxed),
-                factory_val: Box::new(openrouter::Client::from_val_boxed),
+                factory_env: Box::new(openrouter::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(openrouter::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "OPENROUTER_API_KEY",
                 completion_model: Some(openrouter::CLAUDE_3_7_SONNET),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Together",
-                factory_env: Box::new(together::Client::from_env_boxed),
-                factory_val: Box::new(together::Client::from_val_boxed),
+                factory_env: Box::new(together::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(together::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "TOGETHER_API_KEY",
                 completion_model: Some(together::ALPACA_7B),
                 embeddings_model: Some(together::BERT_BASE_UNCASED),
@@ -392,8 +392,8 @@ mod tests {
             },
             ClientConfig {
                 name: "XAI",
-                factory_env: Box::new(xai::Client::from_env_boxed),
-                factory_val: Box::new(xai::Client::from_val_boxed),
+                factory_env: Box::new(xai::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(xai::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "XAI_API_KEY",
                 completion_model: Some(xai::GROK_3_MINI),
                 embeddings_model: None,
@@ -401,8 +401,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Azure",
-                factory_env: Box::new(azure::Client::from_env_boxed),
-                factory_val: Box::new(azure::Client::from_val_boxed),
+                factory_env: Box::new(azure::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(azure::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "AZURE_API_KEY",
                 completion_model: Some(azure::GPT_4O),
                 embeddings_model: Some(azure::TEXT_EMBEDDING_ADA_002),
@@ -412,24 +412,24 @@ mod tests {
             },
             ClientConfig {
                 name: "Deepseek",
-                factory_env: Box::new(deepseek::Client::from_env_boxed),
-                factory_val: Box::new(deepseek::Client::from_val_boxed),
+                factory_env: Box::new(deepseek::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(deepseek::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "DEEPSEEK_API_KEY",
                 completion_model: Some(deepseek::DEEPSEEK_CHAT),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Galadriel",
-                factory_env: Box::new(galadriel::Client::from_env_boxed),
-                factory_val: Box::new(galadriel::Client::from_val_boxed),
+                factory_env: Box::new(galadriel::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(galadriel::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "GALADRIEL_API_KEY",
                 completion_model: Some(galadriel::GPT_4O),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Groq",
-                factory_env: Box::new(groq::Client::from_env_boxed),
-                factory_val: Box::new(groq::Client::from_val_boxed),
+                factory_env: Box::new(groq::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(groq::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "GROQ_API_KEY",
                 completion_model: Some(groq::MIXTRAL_8X7B_32768),
                 transcription_model: Some(groq::DISTIL_WHISPER_LARGE_V3),
@@ -437,8 +437,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Hyperbolic",
-                factory_env: Box::new(hyperbolic::Client::from_env_boxed),
-                factory_val: Box::new(hyperbolic::Client::from_val_boxed),
+                factory_env: Box::new(hyperbolic::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(hyperbolic::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "HYPERBOLIC_API_KEY",
                 completion_model: Some(hyperbolic::LLAMA_3_1_8B),
                 image_generation_model: Some(hyperbolic::SD1_5),
@@ -447,24 +447,24 @@ mod tests {
             },
             ClientConfig {
                 name: "Mira",
-                factory_env: Box::new(mira::Client::from_env_boxed),
-                factory_val: Box::new(mira::Client::from_val_boxed),
+                factory_env: Box::new(mira::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(mira::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "MIRA_API_KEY",
                 completion_model: Some("gpt-4o"),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Moonshot",
-                factory_env: Box::new(moonshot::Client::from_env_boxed),
-                factory_val: Box::new(moonshot::Client::from_val_boxed),
+                factory_env: Box::new(moonshot::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(moonshot::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "MOONSHOT_API_KEY",
                 completion_model: Some(moonshot::MOONSHOT_CHAT),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Ollama",
-                factory_env: Box::new(ollama::Client::from_env_boxed),
-                factory_val: Box::new(ollama::Client::from_val_boxed),
+                factory_env: Box::new(ollama::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(ollama::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "OLLAMA_ENABLED",
                 completion_model: Some("llama3.1:8b"),
                 embeddings_model: Some(ollama::NOMIC_EMBED_TEXT),
@@ -472,8 +472,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Perplexity",
-                factory_env: Box::new(perplexity::Client::from_env_boxed),
-                factory_val: Box::new(perplexity::Client::from_val_boxed),
+                factory_env: Box::new(perplexity::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(perplexity::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "PERPLEXITY_API_KEY",
                 completion_model: Some(perplexity::SONAR),
                 ..Default::default()

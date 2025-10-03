@@ -122,7 +122,7 @@ pub struct Choice {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     /// Name of the model (e.g.: deepseek-ai/DeepSeek-R1)
     pub model: String,

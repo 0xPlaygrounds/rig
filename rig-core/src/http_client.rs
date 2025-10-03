@@ -44,13 +44,20 @@ pub async fn text(response: Response<LazyBody<Vec<u8>>>) -> Result<String> {
     Ok(String::from(String::from_utf8_lossy(&text)))
 }
 
+pub fn with_bearer_auth(req: Builder, auth: &str) -> Result<Builder> {
+    let auth_header =
+        HeaderValue::from_str(&format!("Bearer {}", auth)).map_err(http::Error::from)?;
+
+    Ok(req.header("Authorization", auth_header))
+}
+
 pub trait HttpClientExt: Send + Sync {
     fn request<T, U>(
         &self,
         req: Request<T>,
     ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + Send
     where
-        T: Into<Bytes>,
+        T: Into<Bytes> + Send,
         U: From<Bytes> + Send;
 
     fn request_streaming<T>(
@@ -60,31 +67,36 @@ pub trait HttpClientExt: Send + Sync {
     where
         T: Into<Bytes>;
 
-    async fn get<T>(&self, uri: Uri) -> Result<Response<LazyBody<T>>>
+    fn get<T>(&self, uri: Uri) -> impl Future<Output = Result<Response<LazyBody<T>>>> + Send
     where
         T: From<Bytes> + Send,
     {
-        let req = Request::builder()
-            .method(Method::GET)
-            .uri(uri)
-            .body(NoBody)?;
+        async {
+            let req = Request::builder()
+                .method(Method::GET)
+                .uri(uri)
+                .body(NoBody)?;
 
-        self.request(req).await
+            self.request(req).await
+        }
     }
 
-    async fn post<T, U, V>(&self, uri: Uri, body: T) -> Result<Response<LazyBody<V>>>
+    fn post<T, R>(
+        &self,
+        uri: Uri,
+        body: T,
+    ) -> impl Future<Output = Result<Response<LazyBody<R>>>> + Send
     where
-        U: TryInto<Uri>,
-        <U as TryInto<Uri>>::Error: Into<Error>,
-        T: Into<Bytes>,
-        V: From<Bytes> + Send,
+        T: Into<Bytes> + Send,
+        R: From<Bytes> + Send,
     {
-        let req = Request::builder()
-            .method(Method::POST)
-            .uri(uri)
-            .body(body.into())?;
-
-        self.request(req).await
+        async {
+            let req = Request::builder()
+                .method(Method::POST)
+                .uri(uri)
+                .body(body)?;
+            self.request(req).await
+        }
     }
 }
 
