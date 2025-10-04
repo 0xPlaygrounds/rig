@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.21.0...rig-core-v0.22.0) - 2025-10-04
+
+### Added
+
+- *(rig-848)* extract JSON with chat history ([#888](https://github.com/0xPlaygrounds/rig/pull/888))
+- *(rig-955)* set up tool choice capability for Extractor ([#884](https://github.com/0xPlaygrounds/rig/pull/884))
+- *(rig-964)* add tool choice to agent ([#883](https://github.com/0xPlaygrounds/rig/pull/883))
+- *(rig-973)* DocumentSourceKind::String ([#882](https://github.com/0xPlaygrounds/rig/pull/882))
+
+### Fixed
+
+- Correct data structure for OpenAI responses images and PDFs ([#880](https://github.com/0xPlaygrounds/rig/pull/880))
+
+### Other
+
+- *(rig-975)* split streaming portion of PromptHook ([#889](https://github.com/0xPlaygrounds/rig/pull/889))
+- *(rig-975)* split streaming portion of PromptHook
+- *(rig-959)* Documents in Huggingface are not converted properly ([#874](https://github.com/0xPlaygrounds/rig/pull/874))
+
 ## [0.21.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.20.0...rig-core-v0.21.0) - 2025-09-29
 
 ### Added
