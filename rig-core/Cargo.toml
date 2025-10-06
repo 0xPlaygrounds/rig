@@ -44,6 +44,7 @@ rmcp = { version = "0.6", optional = true, features = ["client"] }
 reqwest-eventsource = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 tracing-futures = { version = "0.2.5", features = ["futures-03"] }
+serenity = { version = "0.12.4", optional = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -81,6 +82,7 @@ all = ["derive", "pdf", "rayon"]
 audio = []
 image = []
 derive = ["dep:rig-derive"]
+discord-bot = ["dep:serenity"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
