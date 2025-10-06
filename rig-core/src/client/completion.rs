@@ -51,10 +51,10 @@ pub trait CompletionClient: ProviderClient + Clone {
     }
 
     /// Create an extractor builder with the given completion model.
-    fn extractor<T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync>(
-        &self,
-        model: &str,
-    ) -> ExtractorBuilder<Self::CompletionModel, T> {
+    fn extractor<T>(&self, model: &str) -> ExtractorBuilder<Self::CompletionModel, T>
+    where
+        T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+    {
         ExtractorBuilder::new(self.completion_model(model))
     }
 }

@@ -1,237 +1,223 @@
+use crate::{
+    agent::{Agent, MultiTurnStreamItem, Text},
+    completion::{Chat, CompletionError, CompletionModel, PromptError, Usage},
+    message::Message,
+    streaming::{StreamedAssistantContent, StreamingPrompt},
+};
+use futures::StreamExt;
 use std::io::{self, Write};
 
-use futures::StreamExt;
+pub struct NoImplProvided;
 
-use crate::{
-    agent::{Agent, prompt_request::streaming::MultiTurnStreamItem},
-    completion::{Chat, CompletionError, CompletionModel, Message, PromptError},
-    streaming::StreamingPrompt,
-};
-
-/// Type-state representing an empty `agent` field in `ChatbotBuilder`
-pub struct AgentNotSet;
-
-/// Builder pattern for CLI chatbots.
-///
-/// # Example
-/// ```rust
-/// let chatbot = ChatbotBuilder::new().agent(my_agent).show_usage().build();
-///
-/// chatbot.run().await?;
-pub struct ChatbotBuilder<A> {
-    agent: A,
-    multi_turn_depth: usize,
-    show_usage: bool,
-}
-
-impl Default for ChatbotBuilder<AgentNotSet> {
-    fn default() -> Self {
-        ChatbotBuilder {
-            agent: AgentNotSet,
-            multi_turn_depth: 0,
-            show_usage: false,
-        }
-    }
-}
-
-impl ChatbotBuilder<AgentNotSet> {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    /// Sets the agent that will be used to drive the CLI interface
-    pub fn agent<M>(self, agent: Agent<M>) -> ChatbotBuilder<Agent<M>>
-    where
-        M: CompletionModel + 'static,
-    {
-        ChatbotBuilder {
-            agent,
-            multi_turn_depth: self.multi_turn_depth,
-            show_usage: self.show_usage,
-        }
-    }
-}
-
-impl<A> ChatbotBuilder<A> {
-    /// Sets the `show_usage` flag, so that after a request the number of tokens
-    /// in the input and output will be printed
-    pub fn show_usage(self) -> Self {
-        Self {
-            show_usage: true,
-            ..self
-        }
-    }
-
-    /// Sets the maximum depth for multi-turn, i.e. toolcalls
-    pub fn multi_turn_depth(self, multi_turn_depth: usize) -> Self {
-        Self {
-            multi_turn_depth,
-            ..self
-        }
-    }
-}
-
-impl<M> ChatbotBuilder<Agent<M>>
+pub struct ChatImpl<T>(T)
 where
-    M: CompletionModel + 'static,
-{
-    /// Consumes the `ChatbotBuilder`, returning a `Chatbot` which can be run
-    pub fn build(self) -> Chatbot<M> {
-        Chatbot {
-            agent: self.agent,
-            multi_turn_depth: self.multi_turn_depth,
-            show_usage: self.show_usage,
-        }
-    }
-}
+    T: Chat;
 
-/// A CLI chatbot.
-/// Only takes [Agent] types unlike [cli_chatbot] which takes any `impl Chat` type.
-///
-/// # Example
-/// ```rust
-/// let chatbot = ChatbotBuilder::new().agent(my_agent).show_usage().build();
-///
-/// chatbot.run().await?;
-pub struct Chatbot<M>
+pub struct AgentImpl<M>
 where
     M: CompletionModel + 'static,
 {
     agent: Agent<M>,
     multi_turn_depth: usize,
     show_usage: bool,
+    usage: Usage,
 }
 
-impl<M> Chatbot<M>
+pub struct ChatBotBuilder<T>(T);
+
+pub struct ChatBot<T>(T);
+
+/// Trait to abstract message behavior away from cli_chat/`run` loop
+#[allow(private_interfaces)]
+trait CliChat {
+    async fn request(&mut self, prompt: &str, history: Vec<Message>)
+    -> Result<String, PromptError>;
+
+    fn show_usage(&self) -> bool {
+        false
+    }
+
+    fn usage(&self) -> Option<Usage> {
+        None
+    }
+}
+
+impl<T> CliChat for ChatImpl<T>
+where
+    T: Chat,
+{
+    async fn request(
+        &mut self,
+        prompt: &str,
+        history: Vec<Message>,
+    ) -> Result<String, PromptError> {
+        let res = self.0.chat(prompt, history).await?;
+        println!("{res}");
+
+        Ok(res)
+    }
+}
+
+impl<M> CliChat for AgentImpl<M>
 where
     M: CompletionModel + 'static,
 {
-    pub async fn run(self) -> Result<(), PromptError> {
+    async fn request(
+        &mut self,
+        prompt: &str,
+        history: Vec<Message>,
+    ) -> Result<String, PromptError> {
+        let mut response_stream = self
+            .agent
+            .stream_prompt(prompt)
+            .with_history(history)
+            .multi_turn(self.multi_turn_depth)
+            .await;
+
+        let mut acc = String::new();
+
+        loop {
+            let Some(chunk) = response_stream.next().await else {
+                break Ok(acc);
+            };
+
+            match chunk {
+                Ok(MultiTurnStreamItem::StreamItem(StreamedAssistantContent::Text(Text {
+                    text,
+                }))) => {
+                    print!("{}", text);
+                    acc.push_str(&text);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(final_response)) => {
+                    self.usage = final_response.usage();
+                }
+                Err(e) => {
+                    break Err(PromptError::CompletionError(
+                        CompletionError::ResponseError(e.to_string()),
+                    ));
+                }
+                _ => continue,
+            }
+        }
+    }
+
+    fn show_usage(&self) -> bool {
+        self.show_usage
+    }
+
+    fn usage(&self) -> Option<Usage> {
+        Some(self.usage)
+    }
+}
+
+impl Default for ChatBotBuilder<NoImplProvided> {
+    fn default() -> Self {
+        Self(NoImplProvided)
+    }
+}
+
+impl ChatBotBuilder<NoImplProvided> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn agent<M: CompletionModel + 'static>(
+        self,
+        agent: Agent<M>,
+    ) -> ChatBotBuilder<AgentImpl<M>> {
+        ChatBotBuilder(AgentImpl {
+            agent,
+            multi_turn_depth: 1,
+            show_usage: false,
+            usage: Usage::default(),
+        })
+    }
+
+    pub fn chat<T: Chat>(self, chatbot: T) -> ChatBotBuilder<ChatImpl<T>> {
+        ChatBotBuilder(ChatImpl(chatbot))
+    }
+}
+
+impl<T> ChatBotBuilder<ChatImpl<T>>
+where
+    T: Chat,
+{
+    pub fn build(self) -> ChatBot<ChatImpl<T>> {
+        let ChatBotBuilder(chat_impl) = self;
+        ChatBot(chat_impl)
+    }
+}
+
+impl<M> ChatBotBuilder<AgentImpl<M>>
+where
+    M: CompletionModel + 'static,
+{
+    pub fn multi_turn_depth(self, multi_turn_depth: usize) -> Self {
+        ChatBotBuilder(AgentImpl {
+            multi_turn_depth,
+            ..self.0
+        })
+    }
+
+    pub fn show_usage(self) -> Self {
+        ChatBotBuilder(AgentImpl {
+            show_usage: true,
+            ..self.0
+        })
+    }
+
+    pub fn build(self) -> ChatBot<AgentImpl<M>> {
+        ChatBot(self.0)
+    }
+}
+
+#[allow(private_bounds)]
+impl<T> ChatBot<T>
+where
+    T: CliChat,
+{
+    pub async fn run(mut self) -> Result<(), PromptError> {
         let stdin = io::stdin();
         let mut stdout = io::stdout();
-        let mut chat_log = vec![];
-
-        println!("Welcome to the chatbot! Type 'exit' to quit.");
+        let mut history = vec![];
 
         loop {
             print!("> ");
-            // Flush stdout to ensure the prompt appears before input
             stdout.flush().unwrap();
 
             let mut input = String::new();
             match stdin.read_line(&mut input) {
                 Ok(_) => {
-                    // Remove the newline character from the input
                     let input = input.trim();
-
-                    if input.is_empty() {
-                        continue;
-                    }
-
-                    // Check for a command to exit
                     if input == "exit" {
                         break;
                     }
 
-                    tracing::info!("Prompt:\n{}\n", input);
-
-                    let mut usage = None;
-                    let mut response = String::new();
+                    tracing::info!("Prompt:\n{input}\n");
 
                     println!();
                     println!("========================== Response ============================");
 
-                    let mut stream_response = self
-                        .agent
-                        .stream_prompt(input)
-                        .with_history(chat_log.clone())
-                        .multi_turn(self.multi_turn_depth)
-                        .await;
-
-                    while let Some(chunk) = stream_response.next().await {
-                        match chunk {
-                            Ok(MultiTurnStreamItem::Text(s)) => {
-                                let text = s.text.as_str();
-                                print!("{text}");
-                                response.push_str(text);
-                            }
-                            Ok(MultiTurnStreamItem::FinalResponse(r)) => {
-                                if self.show_usage {
-                                    usage = Some(r.usage());
-                                }
-                            }
-
-                            Err(e) => {
-                                return Err(PromptError::CompletionError(
-                                    CompletionError::ResponseError(e.to_string()),
-                                ));
-                            }
-                        }
-                    }
+                    let response = self.0.request(input, history.clone()).await?;
+                    history.push(Message::user(input));
+                    history.push(Message::assistant(response));
 
                     println!("================================================================");
                     println!();
 
-                    // `with_history` does not push to history, we have handle that
-                    chat_log.push(Message::user(input));
-                    chat_log.push(Message::assistant(response.clone()));
-
-                    if let Some(usage) = usage {
-                        println!(
-                            "Input: {} tokens\nOutput: {} tokens",
-                            usage.input_tokens, usage.output_tokens
-                        )
+                    if self.0.show_usage() {
+                        let Usage {
+                            input_tokens,
+                            output_tokens,
+                            ..
+                        } = self.0.usage().unwrap();
+                        println!("Input {input_tokens} tokens\nOutput {output_tokens} tokens");
                     }
-
-                    tracing::info!("Response:\n{}\n", response);
                 }
-                Err(error) => println!("Error reading input: {error}"),
+                Err(e) => println!("Error reading request: {e}"),
             }
         }
 
         Ok(())
     }
-}
-
-/// Utility function to create a simple REPL CLI chatbot from a type that implements the
-/// `Chat` trait.
-///
-/// Where the [Chatbot] type takes an agent, this takes any type that implements the [Chat] trait.
-pub async fn cli_chatbot(chatbot: impl Chat) -> Result<(), PromptError> {
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
-    let mut chat_log = vec![];
-
-    println!("Welcome to the chatbot! Type 'exit' to quit.");
-    loop {
-        print!("> ");
-        // Flush stdout to ensure the prompt appears before input
-        stdout.flush().unwrap();
-
-        let mut input = String::new();
-        match stdin.read_line(&mut input) {
-            Ok(_) => {
-                // Remove the newline character from the input
-                let input = input.trim();
-                // Check for a command to exit
-                if input == "exit" {
-                    break;
-                }
-                tracing::info!("Prompt:\n{}\n", input);
-
-                let response = chatbot.chat(input, chat_log.clone()).await?;
-                chat_log.push(Message::user(input));
-                chat_log.push(Message::assistant(response.clone()));
-
-                println!("========================== Response ============================");
-                println!("{response}");
-                println!("================================================================\n\n");
-
-                tracing::info!("Response:\n{}\n", response);
-            }
-            Err(error) => println!("Error reading input: {error}"),
-        }
-    }
-
-    Ok(())
 }

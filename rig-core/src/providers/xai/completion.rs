@@ -14,6 +14,7 @@ use crate::completion::CompletionRequest;
 use crate::providers::openai;
 use crate::streaming::StreamingCompletionResponse;
 use serde_json::{Value, json};
+use tracing::{Instrument, info_span};
 use xai_api_types::{CompletionResponse, ToolDefinition};
 
 /// xAI completion models as of 2025-06-04
@@ -71,6 +72,11 @@ impl CompletionModel {
         // Chat history and prompt appear in the order they were provided
         full_history.extend(chat_history);
 
+        let tool_choice = completion_request
+            .tool_choice
+            .map(crate::providers::openrouter::ToolChoice::try_from)
+            .transpose()?;
+
         let mut request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
@@ -83,7 +89,7 @@ impl CompletionModel {
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": "auto",
+                "tool_choice": tool_choice,
             })
         };
 
@@ -112,23 +118,53 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let preamble = completion_request.preamble.clone();
         let request = self.create_completion_request(completion_request)?;
+        let request_messages_json_str =
+            serde_json::to_string(&request.get("messages").unwrap()).unwrap();
 
-        let response = self
-            .client
-            .post("/v1/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
-                ApiResponse::Ok(completion) => completion.try_into(),
-                ApiResponse::Error(error) => Err(CompletionError::ProviderError(error.message())),
-            }
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "xai",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = &request_messages_json_str,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            tracing::Span::current()
+        };
+
+        tracing::debug!("xAI completion request: {request_messages_json_str}");
+
+        async move {
+            let response = self
+                .client
+                .post("/v1/chat/completions")
+                .json(&request)
+                .send()
+                .await?;
+
+            if response.status().is_success() {
+                match response.json::<ApiResponse<CompletionResponse>>().await? {
+                    ApiResponse::Ok(completion) => completion.try_into(),
+                    ApiResponse::Error(error) => {
+                        Err(CompletionError::ProviderError(error.message()))
+                    }
+                }
+            } else {
+                Err(CompletionError::ProviderError(response.text().await?))
+            }
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

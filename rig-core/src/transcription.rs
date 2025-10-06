@@ -11,6 +11,7 @@ use thiserror::Error;
 
 // Errors
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum TranscriptionError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]

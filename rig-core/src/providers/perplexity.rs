@@ -23,6 +23,7 @@ use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tracing::{Instrument, info_span};
 
 // ================================================================
 // Main Cohere Client
@@ -278,6 +279,10 @@ impl CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<Value, CompletionError> {
+        if completion_request.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported on Perplexity");
+        }
+
         // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];
         if let Some(docs) = completion_request.normalized_documents() {
@@ -390,29 +395,61 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let preamble = completion_request.preamble.clone();
         let request = self.create_completion_request(completion_request)?;
 
-        let response = self
-            .client
-            .post("/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
-                ApiResponse::Ok(completion) => {
-                    tracing::info!(target: "rig",
-                        "Perplexity completion token usage: {}",
-                        completion.usage
-                    );
-                    Ok(completion.try_into()?)
-                }
-                ApiResponse::Err(error) => Err(CompletionError::ProviderError(error.message)),
-            }
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "perplexity",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
-        }
+            tracing::Span::current()
+        };
+
+        let async_block = async move {
+            let response = self
+                .client
+                .post("/chat/completions")
+                .json(&request)
+                .send()
+                .await?;
+
+            if response.status().is_success() {
+                match response.json::<ApiResponse<CompletionResponse>>().await? {
+                    ApiResponse::Ok(completion) => {
+                        let span = tracing::Span::current();
+                        span.record("gen_ai.usage.input_tokens", completion.usage.prompt_tokens);
+                        span.record(
+                            "gen_ai.usage.output_tokens",
+                            completion.usage.completion_tokens,
+                        );
+                        span.record(
+                            "gen_ai.output.messages",
+                            serde_json::to_string(&completion.choices).unwrap(),
+                        );
+                        span.record("gen_ai.response.id", completion.id.to_string());
+                        span.record("gen_ai.response.model_name", completion.model.to_string());
+                        Ok(completion.try_into()?)
+                    }
+                    ApiResponse::Err(error) => Err(CompletionError::ProviderError(error.message)),
+                }
+            } else {
+                Err(CompletionError::ProviderError(response.text().await?))
+            }
+        };
+
+        async_block.instrument(span).await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -420,13 +457,34 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        let preamble = completion_request.preamble.clone();
         let mut request = self.create_completion_request(completion_request)?;
 
         request = merge(request, json!({"stream": true}));
 
         let builder = self.client.post("/chat/completions").json(&request);
 
-        send_compatible_streaming_request(builder).await
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "perplexity",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+        send_compatible_streaming_request(builder)
+            .instrument(span)
+            .await
     }
 }
 

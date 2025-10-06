@@ -56,10 +56,15 @@ Rig is a Rust library for building scalable, modular, and ergonomic **LLM-powere
 
 More information about this crate can be found in the [official](https://docs.rig.rs) & [crate](https://docs.rs/rig-core/latest/rig/) (API Reference) documentations.
 
-## High-level features
+## Features
+- Agentic workflows that can handle multi-turn streaming and prompting
+- Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
+- 20+ model providers, all under one singular unified interface
+- 10+ vector store integrations, all under one singular unified interface
 - Full support for LLM completion and embedding workflows
-- Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, SQlite, in-memory)
+- Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
+- Full WASM compatibility (core library only)
 
 ## Who is using Rig in production?
 Below is a non-exhaustive list of companies and people who are using Rig in production:
@@ -70,6 +75,7 @@ Below is a non-exhaustive list of companies and people who are using Rig in prod
 - [rig-onchain-kit](https://github.com/0xPlaygrounds/rig-onchain-kit) - the Rig Onchain Kit. Intended to make interactions between Solana/EVM and Rig much easier to implement.
 - [Linera Protocol](https://github.com/linera-io/linera-protocol) - Decentralized blockchain infrastructure designed for highly scalable, secure, low-latency Web3 applications.
 - [Listen](https://github.com/piotrostr/listen) - A framework aiming to become the go-to framework for AI portfolio management agents. Powers [the Listen app.](https://app.listen-rs.com/)
+- [VT Code](https://github.com/vinhnx/vtcode) - VT Code is a Rust-based terminal coding agent with semantic code intelligence via Tree-sitter and ast-grep. VT Code uses `rig` for simplifying LLM calls and implement model picker.
 
 Are you also using Rig in production? [Open an issue](https://www.github.com/0xPlaygrounds/rig/issues) to have your name added!
 

@@ -352,6 +352,9 @@ impl CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<Value, CompletionError> {
+        if completion_request.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported on Hyperbolic");
+        }
         // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];
         if let Some(docs) = completion_request.normalized_documents() {
@@ -409,30 +412,54 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let preamble = completion_request.preamble.clone();
         let request = self.create_completion_request(completion_request)?;
 
-        let response = self
-            .client
-            .post("/v1/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
-                ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "Hyperbolic completion token usage: {:?}",
-                        response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
-                    );
-
-                    response.try_into()
-                }
-                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
-            }
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "hyperbolic",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
-        }
+            tracing::Span::current()
+        };
+
+        let async_block = async move {
+            let response = self
+                .client
+                .post("/v1/chat/completions")
+                .json(&request)
+                .send()
+                .await?;
+
+            if response.status().is_success() {
+                match response.json::<ApiResponse<CompletionResponse>>().await? {
+                    ApiResponse::Ok(response) => {
+                        tracing::info!(target: "rig",
+                            "Hyperbolic completion token usage: {:?}",
+                            response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
+                        );
+
+                        response.try_into()
+                    }
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                }
+            } else {
+                Err(CompletionError::ProviderError(response.text().await?))
+            }
+        };
+
+        async_block.instrument(span).await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -440,7 +467,27 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        let preamble = completion_request.preamble.clone();
         let mut request = self.create_completion_request(completion_request)?;
+
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "hyperbolic",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
 
         merge_inplace(
             &mut request,
@@ -449,7 +496,9 @@ impl completion::CompletionModel for CompletionModel {
 
         let builder = self.client.post("/v1/chat/completions").json(&request);
 
-        send_compatible_streaming_request(builder).await
+        send_compatible_streaming_request(builder)
+            .instrument(span)
+            .await
     }
 }
 
@@ -593,6 +642,7 @@ mod image_generation {
 // ======================================
 #[cfg(feature = "audio")]
 pub use audio_generation::*;
+use tracing::{Instrument, info_span};
 
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]

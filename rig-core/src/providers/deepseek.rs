@@ -9,15 +9,18 @@
 //! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_CHAT);
 //! ```
 
+use async_stream::stream;
 use futures::StreamExt;
+use reqwest_eventsource::{Event, RequestBuilderExt};
 use std::collections::HashMap;
+use tracing::{Instrument, info_span};
 
 use crate::client::{
     ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError,
 };
 use crate::completion::GetTokenUsage;
 use crate::json_utils::merge;
-use crate::message::Document;
+use crate::message::{Document, DocumentSourceKind};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -353,12 +356,15 @@ impl TryFrom<message::Message> for Vec<Message> {
                             content: text.text,
                             name: None,
                         }),
-                        message::UserContent::Document(Document { data, .. }) => {
-                            Some(Message::User {
-                                content: data,
-                                name: None,
-                            })
-                        }
+                        message::UserContent::Document(Document {
+                            data:
+                                DocumentSourceKind::Base64(content)
+                                | DocumentSourceKind::String(content),
+                            ..
+                        }) => Some(Message::User {
+                            content,
+                            name: None,
+                        }),
                         _ => None,
                     })
                     .collect::<Vec<_>>();
@@ -368,6 +374,22 @@ impl TryFrom<message::Message> for Vec<Message> {
             }
             message::Message::Assistant { content, .. } => {
                 let mut messages: Vec<Message> = vec![];
+
+                // extract text
+                let text_content = content
+                    .clone()
+                    .into_iter()
+                    .filter_map(|content| match content {
+                        message::AssistantContent::Text(text) => Some(Message::Assistant {
+                            content: text.text,
+                            name: None,
+                            tool_calls: vec![],
+                        }),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+
+                messages.extend(text_content);
 
                 // extract tool calls
                 let tool_calls = content
@@ -389,21 +411,6 @@ impl TryFrom<message::Message> for Vec<Message> {
                         tool_calls,
                     });
                 }
-
-                // extract text
-                let text_content = content
-                    .into_iter()
-                    .filter_map(|content| match content {
-                        message::AssistantContent::Text(text) => Some(Message::Assistant {
-                            content: text.text,
-                            name: None,
-                            tool_calls: vec![],
-                        }),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-
-                messages.extend(text_content);
 
                 Ok(messages)
             }
@@ -544,6 +551,11 @@ impl CompletionModel {
                 .collect::<Vec<_>>(),
         );
 
+        let tool_choice = completion_request
+            .tool_choice
+            .map(crate::providers::openrouter::ToolChoice::try_from)
+            .transpose()?;
+
         let request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
@@ -556,7 +568,7 @@ impl CompletionModel {
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": "auto",
+                "tool_choice": tool_choice,
             })
         };
 
@@ -582,28 +594,64 @@ impl completion::CompletionModel for CompletionModel {
         completion::CompletionResponse<CompletionResponse>,
         crate::completion::CompletionError,
     > {
+        let preamble = completion_request.preamble.clone();
         let request = self.create_completion_request(completion_request)?;
+
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "deepseek",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
 
         tracing::debug!("DeepSeek completion request: {request:?}");
 
-        let response = self
-            .client
-            .post("/chat/completions")
-            .json(&request)
-            .send()
-            .await?;
+        async move {
+            let response = self
+                .client
+                .post("/chat/completions")
+                .json(&request)
+                .send()
+                .await?;
 
-        if response.status().is_success() {
-            let t = response.text().await?;
-            tracing::debug!(target: "rig", "DeepSeek completion: {}", t);
+            if response.status().is_success() {
+                let t = response.text().await?;
+                tracing::debug!(target: "rig", "DeepSeek completion: {t}");
 
-            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
+                    ApiResponse::Ok(response) => {
+                        let span = tracing::Span::current();
+                        span.record(
+                            "gen_ai.output.messages",
+                            serde_json::to_string(&response.choices).unwrap(),
+                        );
+                        span.record("gen_ai.usage.input_tokens", response.usage.prompt_tokens);
+                        span.record(
+                            "gen_ai.usage.output_tokens",
+                            response.usage.completion_tokens,
+                        );
+                        response.try_into()
+                    }
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                }
+            } else {
+                Err(CompletionError::ProviderError(response.text().await?))
             }
-        } else {
-            Err(CompletionError::ProviderError(response.text().await?))
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -614,6 +662,7 @@ impl completion::CompletionModel for CompletionModel {
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
+        let preamble = completion_request.preamble.clone();
         let mut request = self.create_completion_request(completion_request)?;
 
         request = merge(
@@ -622,7 +671,27 @@ impl completion::CompletionModel for CompletionModel {
         );
 
         let builder = self.client.post("/chat/completions").json(&request);
-        send_compatible_streaming_request(builder).await
+
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "deepseek",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        tracing::Instrument::instrument(send_compatible_streaming_request(builder), span).await
     }
 }
 
@@ -668,150 +737,150 @@ pub async fn send_compatible_streaming_request(
     crate::streaming::StreamingCompletionResponse<StreamingCompletionResponse>,
     CompletionError,
 > {
-    let response = request_builder.send().await?;
+    let span = tracing::Span::current();
+    let mut event_source = request_builder
+        .eventsource()
+        .expect("Cloning request must succeed");
 
-    if !response.status().is_success() {
-        return Err(CompletionError::ProviderError(format!(
-            "{}: {}",
-            response.status(),
-            response.text().await?
-        )));
-    }
-
-    // Handle OpenAI Compatible SSE chunks
-    let inner = Box::pin(async_stream::stream! {
-        let mut stream = response.bytes_stream();
-
+    let stream = Box::pin(stream! {
         let mut final_usage = Usage::new();
-        let mut partial_data = None;
+        let mut text_response = String::new();
         let mut calls: HashMap<usize, (String, String, String)> = HashMap::new();
 
-        while let Some(chunk_result) = stream.next().await {
-            let chunk = match chunk_result {
-                Ok(c) => c,
-                Err(e) => {
-                    yield Err(CompletionError::from(e));
-                    break;
+        while let Some(event_result) = event_source.next().await {
+            match event_result {
+                Ok(Event::Open) => {
+                    tracing::trace!("SSE connection opened");
+                    continue;
                 }
-            };
+                Ok(Event::Message(message)) => {
+                    if message.data.trim().is_empty() || message.data == "[DONE]" {
+                        continue;
+                    }
 
-            let text = match String::from_utf8(chunk.to_vec()) {
-                Ok(t) => t,
-                Err(e) => {
-                    yield Err(CompletionError::ResponseError(e.to_string()));
-                    break;
-                }
-            };
-
-
-            for line in text.lines() {
-                let mut line = line.to_string();
-
-                // If there was a remaining part, concat with current line
-                if partial_data.is_some() {
-                    line = format!("{}{}", partial_data.unwrap(), line);
-                    partial_data = None;
-                }
-                // Otherwise full data line
-                else {
-                    let Some(data) = line.strip_prefix("data:") else {
+                    let parsed = serde_json::from_str::<StreamingCompletionChunk>(&message.data);
+                    let Ok(data) = parsed else {
+                        let err = parsed.unwrap_err();
+                        tracing::debug!("Couldn't parse SSE payload as StreamingCompletionChunk: {:?}", err);
                         continue;
                     };
 
-                    let data = data.trim_start();
+                    if let Some(choice) = data.choices.first() {
+                        let delta = &choice.delta;
 
-                    // Partial data, split somewhere in the middle
-                    if !line.ends_with("}") {
-                        partial_data = Some(data.to_string());
-                    } else {
-                        line = data.to_string();
-                    }
-                }
+                        if !delta.tool_calls.is_empty() {
+                            for tool_call in &delta.tool_calls {
+                                let function = &tool_call.function;
 
-                let data = serde_json::from_str::<StreamingCompletionChunk>(&line);
-
-                let Ok(data) = data else {
-                    let err = data.unwrap_err();
-                    tracing::debug!("Couldn't serialize data as StreamingCompletionChunk: {:?}", err);
-                    continue;
-                };
-
-
-                if let Some(choice) = data.choices.first() {
-                    let delta = &choice.delta;
-
-
-                            if !delta.tool_calls.is_empty() {
-                                for tool_call in &delta.tool_calls {
-                                    let function = tool_call.function.clone();
-                                    // Start of tool call
-                                    // name: Some(String)
-                                    // arguments: None
-                                    if function.name.is_some() && function.arguments.is_empty() {
-                                        let id = tool_call.id.clone().unwrap_or("".to_string());
-
-                                        calls.insert(tool_call.index, (id, function.name.clone().unwrap(), "".to_string()));
-                                    }
-                                    // Part of tool call
-                                    // name: None or Empty String
-                                    // arguments: Some(String)
-                                    else if function.name.clone().is_none_or(|s| s.is_empty()) && !function.arguments.is_empty() {
-                                        let Some((id, name, arguments)) = calls.get(&tool_call.index) else {
-                                            tracing::debug!("Partial tool call received but tool call was never started.");
-                                            continue;
-                                        };
-
-                                        let new_arguments = &function.arguments;
-                                        let arguments = format!("{arguments}{new_arguments}");
-
-                                        calls.insert(tool_call.index, (id.clone(), name.clone(), arguments));
-                                    }
-                                    // Entire tool call
-                                    else {
-                                        let id = tool_call.id.clone().unwrap_or("".to_string());
-                                        let name = function.name.expect("function name should be present for complete tool call");
-                                        let arguments = function.arguments;
-                                        let Ok(arguments) = serde_json::from_str(&arguments) else {
-                                            tracing::debug!("Couldn't serialize '{}' as a json value", arguments);
-                                            continue;
-                                        };
-
-                                        yield Ok(crate::streaming::RawStreamingChoice::ToolCall {id, name, arguments, call_id: None })
+                                // Start of tool call
+                                if function.name.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+                                    && function.arguments.is_empty()
+                                {
+                                    let id = tool_call.id.clone().unwrap_or_default();
+                                    let name = function.name.clone().unwrap();
+                                    calls.insert(tool_call.index, (id, name, String::new()));
+                                }
+                                // Continuation of tool call
+                                else if function.name.as_ref().map(|s| s.is_empty()).unwrap_or(true)
+                                    && !function.arguments.is_empty()
+                                {
+                                    if let Some((id, name, existing_args)) = calls.get(&tool_call.index) {
+                                        let combined = format!("{}{}", existing_args, function.arguments);
+                                        calls.insert(tool_call.index, (id.clone(), name.clone(), combined));
+                                    } else {
+                                        tracing::debug!("Partial tool call received but tool call was never started.");
                                     }
                                 }
-                            }
+                                // Complete tool call
+                                else {
+                                    let id = tool_call.id.clone().unwrap_or_default();
+                                    let name = function.name.clone().unwrap_or_default();
+                                    let arguments_str = function.arguments.clone();
 
-                            if let Some(content) = &delta.reasoning_content {
-                                yield Ok(crate::streaming::RawStreamingChoice::Reasoning { reasoning: content.to_string(), id: None})
-                            }
+                                    let Ok(arguments_json) = serde_json::from_str::<serde_json::Value>(&arguments_str) else {
+                                        tracing::debug!("Couldn't parse tool call args '{}'", arguments_str);
+                                        continue;
+                                    };
 
-                            if let Some(content) = &delta.content {
-                                yield Ok(crate::streaming::RawStreamingChoice::Message(content.clone()))
+                                    yield Ok(crate::streaming::RawStreamingChoice::ToolCall {
+                                        id,
+                                        name,
+                                        arguments: arguments_json,
+                                        call_id: None,
+                                    });
+                                }
                             }
+                        }
 
+                        // DeepSeek-specific reasoning stream
+                        if let Some(content) = &delta.reasoning_content {
+                            yield Ok(crate::streaming::RawStreamingChoice::Reasoning {
+                                reasoning: content.to_string(),
+                                id: None,
+                            });
+                        }
+
+                        if let Some(content) = &delta.content {
+                            text_response += content;
+                            yield Ok(crate::streaming::RawStreamingChoice::Message(content.clone()));
+                        }
+                    }
+
+                    if let Some(usage) = data.usage {
+                        final_usage = usage.clone();
+                    }
                 }
-
-
-                if let Some(usage) = data.usage {
-                    final_usage = usage.clone();
+                Err(reqwest_eventsource::Error::StreamEnded) => {
+                    break;
+                }
+                Err(err) => {
+                    tracing::error!(?err, "SSE error");
+                    yield Err(CompletionError::ResponseError(err.to_string()));
+                    break;
                 }
             }
         }
 
-        for (_, (id, name, arguments)) in calls {
-            let Ok(arguments) = serde_json::from_str(&arguments) else {
+        let mut tool_calls = Vec::new();
+        // Flush accumulated tool calls
+        for (index, (id, name, arguments)) in calls {
+            let Ok(arguments_json) = serde_json::from_str::<serde_json::Value>(&arguments) else {
                 continue;
             };
 
-            yield Ok(crate::streaming::RawStreamingChoice::ToolCall {id, name, arguments, call_id: None });
+            tool_calls.push(ToolCall {
+                id: id.clone(),
+                index,
+                r#type: ToolType::Function,
+                function: Function {
+                    name: name.clone(),
+                    arguments: arguments_json.clone()
+                }
+            });
+            yield Ok(crate::streaming::RawStreamingChoice::ToolCall {
+                id,
+                name,
+                arguments: arguments_json,
+                call_id: None,
+            });
         }
 
-        yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-            usage: final_usage.clone()
-        }))
+        let message = Message::Assistant {
+            content: text_response,
+            name: None,
+            tool_calls
+        };
+
+        span.record("gen_ai.output.messages", serde_json::to_string(&message).unwrap());
+
+        yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
+            StreamingCompletionResponse { usage: final_usage.clone() }
+        ));
     });
 
-    Ok(crate::streaming::StreamingCompletionResponse::stream(inner))
+    Ok(crate::streaming::StreamingCompletionResponse::stream(
+        stream,
+    ))
 }
 
 // ================================================================

@@ -2,56 +2,9 @@ use super::completion::CompletionModel;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::json_utils::merge_inplace;
 use crate::providers::openai::{StreamingCompletionResponse, send_compatible_streaming_request};
-use crate::{json_utils, streaming};
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use std::convert::Infallible;
-use std::str::FromStr;
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all = "lowercase", tag = "type")]
-/// Represents the content sent back in the StreamDelta for an Assistant
-enum AssistantContent {
-    Text { text: String },
-}
-
-// Ensure that string contents can be serialized correctly
-impl FromStr for AssistantContent {
-    type Err = Infallible;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(AssistantContent::Text {
-            text: s.to_string(),
-        })
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
-#[serde(rename_all = "lowercase", tag = "role")]
-enum StreamDelta {
-    Assistant {
-        #[serde(deserialize_with = "json_utils::string_or_vec")]
-        content: Vec<AssistantContent>,
-    },
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
-struct StreamingChoice {
-    index: usize,
-    delta: StreamDelta,
-    logprobs: Value,
-    finish_reason: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
-struct CompletionChunk {
-    id: String,
-    created: i32,
-    model: String,
-    #[serde(default)]
-    system_fingerprint: String,
-    choices: Vec<StreamingChoice>,
-}
+use crate::streaming;
+use serde_json::json;
+use tracing::{Instrument, info_span};
 
 impl CompletionModel {
     pub(crate) async fn stream(
@@ -76,6 +29,26 @@ impl CompletionModel {
 
         let builder = self.client.post(&path).json(&request);
 
-        send_compatible_streaming_request(builder).await
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+            target: "rig::completions",
+            "chat",
+            gen_ai.operation.name = "chat",
+            gen_ai.provider.name = "huggingface",
+            gen_ai.request.model = self.model,
+            gen_ai.response.id = tracing::field::Empty,
+            gen_ai.response.model = self.model,
+            gen_ai.usage.output_tokens = tracing::field::Empty,
+            gen_ai.usage.input_tokens = tracing::field::Empty,
+            gen_ai.input.messages = serde_json::to_string(request.get("messages").expect("Converting request messages to JSON should not fail!")).unwrap(),
+            gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        send_compatible_streaming_request(builder)
+            .instrument(span)
+            .await
     }
 }

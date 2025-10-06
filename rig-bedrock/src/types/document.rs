@@ -1,7 +1,7 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig::{
     completion::CompletionError,
-    message::{ContentFormat, Document},
+    message::{Document, DocumentSourceKind},
 };
 
 pub(crate) use crate::types::media_types::RigDocumentMediaType;
@@ -14,11 +14,12 @@ pub struct RigDocument(pub Document);
 impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
     type Error = CompletionError;
 
-    fn try_from(value: RigDocument) -> Result<Self, Self::Error> {
-        let document_media_type = value
-            .0
-            .media_type
-            .map(|doc| RigDocumentMediaType(doc).try_into());
+    fn try_from(
+        RigDocument(Document {
+            data, media_type, ..
+        }): RigDocument,
+    ) -> Result<Self, Self::Error> {
+        let document_media_type = media_type.map(|doc| RigDocumentMediaType(doc).try_into());
 
         let document_media_type = match document_media_type {
             Some(Ok(document_format)) => Ok(Some(document_format)),
@@ -26,15 +27,26 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
             None => Ok(None),
         }?;
 
-        let document_data = match value.0.format {
-            Some(ContentFormat::Base64) => BASE64_STANDARD
-                .decode(value.0.data)
-                .map_err(|e| CompletionError::ProviderError(e.to_string()))?,
-            _ => value.0.data.as_bytes().to_vec(),
-        };
+        let document_source = match data {
+            DocumentSourceKind::Base64(blob) => {
+                let bytes = BASE64_STANDARD
+                    .decode(blob)
+                    .map_err(|e| CompletionError::RequestError(e.into()))?;
 
-        let data = aws_smithy_types::Blob::new(document_data);
-        let document_source = aws_bedrock::DocumentSource::Bytes(data);
+                aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(bytes))
+            }
+            // NOTE: until [aws-sdk-bedrockruntime DocumentSource bug #1365](https://github.com/awslabs/aws-sdk-rust/issues/1365)
+            // is resolved we will use this as a workaround
+            // DocumentSourceKind::String(str) => aws_bedrock::DocumentSource::Text(str),
+            DocumentSourceKind::String(str) => {
+                aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(str.as_bytes()))
+            }
+            doc => {
+                return Err(CompletionError::RequestError(
+                    format!("Unsupported document kind: {doc}").into(),
+                ));
+            }
+        };
 
         let random_string = Uuid::new_v4().simple().to_string();
         let document_name = format!("document-{random_string}");
@@ -58,16 +70,16 @@ impl TryFrom<aws_bedrock::DocumentBlock> for RigDocument {
         let data = match value.source {
             Some(aws_bedrock::DocumentSource::Bytes(blob)) => {
                 let encoded_data = BASE64_STANDARD.encode(blob.into_inner());
-                Ok(encoded_data)
+                Ok(DocumentSourceKind::Base64(encoded_data))
             }
-            _ => Err(CompletionError::ProviderError(
-                "Document source is missing".into(),
-            )),
+            Some(aws_bedrock::DocumentSource::Text(str)) => Ok(DocumentSourceKind::String(str)),
+            doc => Err(CompletionError::ProviderError(format!(
+                "Unsupported document type: {doc:?}"
+            ))),
         }?;
 
         Ok(RigDocument(Document {
             data,
-            format: Some(ContentFormat::Base64),
             media_type: Some(media_type),
             additional_params: None,
         }))
@@ -80,7 +92,7 @@ mod tests {
     use base64::{Engine, prelude::BASE64_STANDARD};
     use rig::{
         completion::CompletionError,
-        message::{ContentFormat, Document, DocumentMediaType},
+        message::{Document, DocumentMediaType, DocumentSourceKind},
     };
 
     use crate::types::document::RigDocument;
@@ -88,16 +100,27 @@ mod tests {
     #[test]
     fn test_document_to_aws_document() {
         let rig_document = RigDocument(Document {
-            data: "data".into(),
-            format: Some(ContentFormat::String),
+            data: DocumentSourceKind::Base64("data".into()),
             media_type: Some(DocumentMediaType::PDF),
             additional_params: None,
         });
+
         let aws_document: Result<aws_bedrock::DocumentBlock, _> = rig_document.clone().try_into();
         assert!(aws_document.is_ok());
+
         let aws_document = aws_document.unwrap();
         assert_eq!(aws_document.format, aws_bedrock::DocumentFormat::Pdf);
-        let document_data = rig_document.0.data.as_bytes().to_vec();
+
+        let document_data = rig_document
+            .0
+            .data
+            .try_into_inner()
+            .unwrap()
+            .as_bytes()
+            .to_vec();
+
+        let document_data = BASE64_STANDARD.decode(document_data).unwrap();
+
         let aws_document_bytes = aws_document
             .source()
             .unwrap()
@@ -114,13 +137,15 @@ mod tests {
     #[test]
     fn test_base64_document_to_aws_document() {
         let rig_document = RigDocument(Document {
-            data: "data".into(),
-            format: Some(ContentFormat::Base64),
+            data: DocumentSourceKind::Base64("data".into()),
             media_type: Some(DocumentMediaType::PDF),
             additional_params: None,
         });
+
         let aws_document: aws_bedrock::DocumentBlock = rig_document.clone().try_into().unwrap();
-        let document_data = BASE64_STANDARD.decode(rig_document.0.data).unwrap();
+        let document_data = BASE64_STANDARD
+            .decode(rig_document.0.data.try_into_inner().unwrap())
+            .unwrap();
         let aws_document_bytes = aws_document
             .source()
             .unwrap()
@@ -134,8 +159,7 @@ mod tests {
     #[test]
     fn test_unsupported_document_to_aws_document() {
         let rig_document = RigDocument(Document {
-            data: "data".into(),
-            format: Some(ContentFormat::String),
+            data: DocumentSourceKind::Base64("data".into()),
             media_type: Some(DocumentMediaType::Javascript),
             additional_params: None,
         });

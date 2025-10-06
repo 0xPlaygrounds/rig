@@ -5,6 +5,7 @@ use crate::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
         GetTokenUsage, Message, Prompt, PromptError,
     },
+    message::ToolChoice,
     streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
     tool::ToolSet,
     vector_store::{VectorStoreError, request::VectorSearchRequest},
@@ -62,6 +63,8 @@ where
     pub dynamic_tools: Arc<Vec<(usize, Box<dyn crate::vector_store::VectorStoreIndexDyn>)>>,
     /// Actual tool implementations
     pub tools: Arc<ToolSet>,
+    /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
+    pub tool_choice: Option<ToolChoice>,
 }
 
 impl<M> Agent<M>
@@ -72,19 +75,12 @@ where
     pub(crate) fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
     }
-
-    /// Returns the name of the agent as an owned variable.
-    /// Useful in some cases where having the agent name as an owned variable is required.
-    pub(crate) fn name_owned(&self) -> String {
-        self.name.clone().unwrap_or(UNKNOWN_AGENT_NAME.to_string())
-    }
 }
 
 impl<M> Completion<M> for Agent<M>
 where
     M: CompletionModel,
 {
-    #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
     async fn completion(
         &self,
         prompt: impl Into<Message> + Send,
@@ -228,7 +224,6 @@ impl<M> Prompt for Agent<M>
 where
     M: CompletionModel,
 {
-    #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
     fn prompt(
         &self,
         prompt: impl Into<Message> + Send,
@@ -260,11 +255,10 @@ where
     async fn chat(
         &self,
         prompt: impl Into<Message> + Send,
-        chat_history: Vec<Message>,
+        mut chat_history: Vec<Message>,
     ) -> Result<String, PromptError> {
-        let mut cloned_history = chat_history.clone();
         PromptRequest::new(self, prompt)
-            .with_history(&mut cloned_history)
+            .with_history(&mut chat_history)
             .await
     }
 }
@@ -273,7 +267,6 @@ impl<M> StreamingCompletion<M> for Agent<M>
 where
     M: CompletionModel,
 {
-    #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
     async fn stream_completion(
         &self,
         prompt: impl Into<Message> + Send,
@@ -290,7 +283,6 @@ where
     M: CompletionModel + 'static,
     M::StreamingResponse: GetTokenUsage,
 {
-    #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
     fn stream_prompt(&self, prompt: impl Into<Message> + Send) -> StreamingPromptRequest<M, ()> {
         let arc = Arc::new(self.clone());
         StreamingPromptRequest::new(arc, prompt)

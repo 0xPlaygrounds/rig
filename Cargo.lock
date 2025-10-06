@@ -937,9 +937,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-bedrockruntime"
-version = "1.102.0"
+version = "1.104.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e2fce23c31248b7f46d3b346089ab087dd16bbb33b680ddb77a2a36331a1994"
+checksum = "1574d1fad8f4bbf71aeb5dbb16653e7db48463f031ae77fdc161621019364d4a"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1515,7 +1515,7 @@ dependencies = [
  "bitflags 2.9.1",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.10.5",
  "lazy_static",
  "lazycell",
  "log",
@@ -6493,7 +6493,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.53.2",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -7580,6 +7580,80 @@ dependencies = [
 ]
 
 [[package]]
+name = "opentelemetry"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aaf416e4cb72756655126f7dd7bb0af49c674f4c1b9903e80c009e0c37e552e6"
+dependencies = [
+ "futures-core",
+ "futures-sink",
+ "js-sys",
+ "pin-project-lite",
+ "thiserror 2.0.12",
+ "tracing",
+]
+
+[[package]]
+name = "opentelemetry-http"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50f6639e842a97dbea8886e3439710ae463120091e2e064518ba8e716e6ac36d"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "http 1.3.1",
+ "opentelemetry",
+ "reqwest 0.12.20",
+]
+
+[[package]]
+name = "opentelemetry-otlp"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbee664a43e07615731afc539ca60c6d9f1a9425e25ca09c57bc36c87c55852b"
+dependencies = [
+ "http 1.3.1",
+ "opentelemetry",
+ "opentelemetry-http",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "prost",
+ "reqwest 0.12.20",
+ "thiserror 2.0.12",
+ "tracing",
+]
+
+[[package]]
+name = "opentelemetry-proto"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e046fd7660710fe5a05e8748e70d9058dc15c94ba914e7c4faa7c728f0e8ddc"
+dependencies = [
+ "opentelemetry",
+ "opentelemetry_sdk",
+ "prost",
+ "tonic 0.13.1",
+]
+
+[[package]]
+name = "opentelemetry_sdk"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11f644aa9e5e31d11896e024305d7e3c98a88884d9f8919dbf37a9991bc47a4b"
+dependencies = [
+ "futures-channel",
+ "futures-executor",
+ "futures-util",
+ "opentelemetry",
+ "percent-encoding",
+ "rand 0.9.1",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-stream",
+]
+
+[[package]]
 name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8349,7 +8423,7 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
- "tonic",
+ "tonic 0.12.3",
 ]
 
 [[package]]
@@ -8881,6 +8955,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "h2 0.4.10",
@@ -9013,7 +9088,7 @@ checksum = "57397d16646700483b67d2dd6511d79318f9d057fdbd21a4066aeac8b41d310a"
 
 [[package]]
 name = "rig-bedrock"
-version = "0.3.0"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -9021,8 +9096,8 @@ dependencies = [
  "aws-sdk-bedrockruntime",
  "aws-smithy-types",
  "base64 0.22.1",
- "reqwest 0.12.23",
- "rig-core 0.19.0",
+ "reqwest 0.12.20",
+ "rig-core 0.21.0",
  "rig-derive",
  "schemars 1.0.4",
  "serde",
@@ -9059,7 +9134,7 @@ dependencies = [
 
 [[package]]
 name = "rig-core"
-version = "0.19.0"
+version = "0.21.0"
 dependencies = [
  "anyhow",
  "as-any",
@@ -9074,6 +9149,9 @@ dependencies = [
  "hyper-util",
  "lopdf",
  "mime_guess",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
  "ordered-float",
  "quick-xml 0.38.0",
  "rayon",
@@ -9089,6 +9167,8 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tracing",
+ "tracing-futures",
+ "tracing-opentelemetry",
  "tracing-subscriber",
  "url",
  "worker",
@@ -9103,7 +9183,7 @@ dependencies = [
  "indoc",
  "proc-macro2",
  "quote",
- "rig-core 0.19.0",
+ "rig-core 0.21.0",
  "serde",
  "serde_json",
  "syn 2.0.104",
@@ -9113,13 +9193,13 @@ dependencies = [
 
 [[package]]
 name = "rig-eternalai"
-version = "0.3.6"
+version = "0.3.8"
 dependencies = [
  "anyhow",
  "async-stream",
  "ethers",
- "reqwest 0.12.23",
- "rig-core 0.19.0",
+ "reqwest 0.12.20",
+ "rig-core 0.21.0",
  "schemars 1.0.4",
  "serde",
  "serde_json",
@@ -9130,11 +9210,11 @@ dependencies = [
 
 [[package]]
 name = "rig-fastembed"
-version = "0.2.10"
+version = "0.2.12"
 dependencies = [
  "anyhow",
  "fastembed",
- "rig-core 0.19.0",
+ "rig-core 0.21.0",
  "schemars 1.0.4",
  "serde",
  "serde_json",
@@ -9155,7 +9235,7 @@ dependencies = [
 
 [[package]]
 name = "rig-lancedb"
-version = "0.2.21"
+version = "0.2.23"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -9163,7 +9243,7 @@ dependencies = [
  "futures",
  "httpmock",
  "lancedb",
- "rig-core 0.19.0",
+ "rig-core 0.21.0",
  "serde",
  "serde_json",
  "tokio",
@@ -9171,11 +9251,11 @@ dependencies = [
 
 [[package]]
 name = "rig-milvus"
-version = "0.1.10"
+version = "0.1.12"
 dependencies = [
  "anyhow",
- "reqwest 0.12.23",
- "rig-core 0.19.0",
+ "reqwest 0.12.20",
+ "rig-core 0.21.0",
  "serde",
  "serde_json",
  "tokio",
@@ -9185,13 +9265,13 @@ dependencies = [
 
 [[package]]
 name = "rig-mongodb"
-version = "0.2.21"
+version = "0.2.23"
 dependencies = [
  "anyhow",
  "futures",
  "httpmock",
  "mongodb",
- "rig-core 0.19.0",
+ "rig-core 0.21.0",
  "serde",
  "serde_json",
  "testcontainers",
@@ -9202,13 +9282,13 @@ dependencies = [
 
 [[package]]
 name = "rig-neo4j"
-version = "0.3.5"
+version = "0.3.7"
 dependencies = [
  "anyhow",
  "futures",
  "httpmock",
  "neo4rs",
- "rig-core 0.19.0",
+ "rig-core 0.21.0",
  "serde",
  "serde_json",
  "term_size",
@@ -9221,14 +9301,14 @@ dependencies = [
 
 [[package]]
 name = "rig-postgres"
-version = "0.1.19"
+version = "0.1.21"
 dependencies = [
  "anyhow",
  "dotenvy",
  "httpmock",
  "log",
  "pgvector",
- "rig-core 0.19.0",
+ "rig-core 0.21.0",
  "serde",
  "serde_json",
  "sqlx",
@@ -9242,12 +9322,12 @@ dependencies = [
 
 [[package]]
 name = "rig-qdrant"
-version = "0.1.24"
+version = "0.1.26"
 dependencies = [
  "anyhow",
  "httpmock",
  "qdrant-client",
- "rig-core 0.19.0",
+ "rig-core 0.21.0",
  "serde",
  "serde_json",
  "testcontainers",
@@ -9257,13 +9337,13 @@ dependencies = [
 
 [[package]]
 name = "rig-s3vectors"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "aws-config",
  "aws-sdk-s3vectors",
  "aws-smithy-types",
- "rig-core 0.19.0",
+ "rig-core 0.21.0",
  "serde",
  "serde_json",
  "tokio",
@@ -9274,13 +9354,13 @@ dependencies = [
 
 [[package]]
 name = "rig-scylladb"
-version = "0.1.10"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "chrono",
  "futures",
  "httpmock",
- "rig-core 0.19.0",
+ "rig-core 0.21.0",
  "scylla",
  "serde",
  "serde_json",
@@ -9293,12 +9373,12 @@ dependencies = [
 
 [[package]]
 name = "rig-sqlite"
-version = "0.1.21"
+version = "0.1.23"
 dependencies = [
  "anyhow",
  "chrono",
  "httpmock",
- "rig-core 0.19.0",
+ "rig-core 0.21.0",
  "rusqlite",
  "serde",
  "serde_json",
@@ -9312,10 +9392,10 @@ dependencies = [
 
 [[package]]
 name = "rig-surrealdb"
-version = "0.1.16"
+version = "0.1.18"
 dependencies = [
  "anyhow",
- "rig-core 0.19.0",
+ "rig-core 0.21.0",
  "serde",
  "serde_json",
  "surrealdb",
@@ -11931,6 +12011,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "tonic"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e581ba15a835f4d9ea06c55ab1bd4dce26fc53752c69a04aac00703bfb49ba9"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "http 1.3.1",
+ "http-body 1.0.1",
+ "http-body-util",
+ "percent-encoding",
+ "pin-project",
+ "prost",
+ "tokio-stream",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+]
+
+[[package]]
 name = "tower"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12035,6 +12136,8 @@ version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97d095ae15e245a057c8e8451bab9b3ee1e1f68e9ba2b4fbc18d0ac5237835f2"
 dependencies = [
+ "futures",
+ "futures-task",
  "pin-project",
  "tracing",
 ]
@@ -12048,6 +12151,24 @@ dependencies = [
  "log",
  "once_cell",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-opentelemetry"
+version = "0.31.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddcf5959f39507d0d04d6413119c04f33b623f4f951ebcbdddddfad2d0623a9c"
+dependencies = [
+ "js-sys",
+ "once_cell",
+ "opentelemetry",
+ "opentelemetry_sdk",
+ "smallvec",
+ "tracing",
+ "tracing-core",
+ "tracing-log",
+ "tracing-subscriber",
+ "web-time",
 ]
 
 [[package]]
@@ -12756,7 +12877,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

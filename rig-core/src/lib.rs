@@ -126,6 +126,7 @@ pub mod prelude;
 pub mod providers;
 pub mod streaming;
 pub mod tool;
+pub mod tools;
 pub mod transcription;
 pub mod vector_store;
 
@@ -137,3 +138,5 @@ pub use one_or_many::{EmptyListError, OneOrMany};
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use rig_derive::Embed;
+
+pub mod telemetry;

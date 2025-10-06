@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     completion::{CompletionModel, Document},
+    message::ToolChoice,
     tool::{Tool, ToolSet},
     vector_store::VectorStoreIndexDyn,
 };
@@ -59,6 +60,8 @@ where
     temperature: Option<f64>,
     /// Actual tool implementations
     tools: ToolSet,
+    /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
+    tool_choice: Option<ToolChoice>,
 }
 
 impl<M> AgentBuilder<M>
@@ -78,6 +81,7 @@ where
             dynamic_context: vec![],
             dynamic_tools: vec![],
             tools: ToolSet::default(),
+            tool_choice: None,
         }
     }
 
@@ -149,6 +153,11 @@ where
         self
     }
 
+    pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
+        self.tool_choice = Some(tool_choice);
+        self
+    }
+
     /// Add some dynamic tools to the agent. On each prompt, `sample` tools from the
     /// dynamic toolset will be inserted in the request.
     pub fn dynamic_tools(
@@ -191,6 +200,7 @@ where
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
+            tool_choice: self.tool_choice,
             dynamic_context: Arc::new(self.dynamic_context),
             dynamic_tools: Arc::new(self.dynamic_tools),
             tools: Arc::new(self.tools),
