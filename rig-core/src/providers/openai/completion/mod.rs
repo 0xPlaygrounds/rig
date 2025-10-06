@@ -6,7 +6,7 @@ use super::{ApiErrorResponse, ApiResponse, Client, streaming::StreamingCompletio
 use crate::completion::{
     CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
 };
-use crate::http_client::HttpClientExt;
+use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{ProviderResponseExt, SpanCombinator};
@@ -872,44 +872,6 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
         };
 
         Ok(res)
-    }
-}
-
-impl crate::telemetry::ProviderRequestExt for CompletionRequest {
-    type InputMessage = Message;
-
-    fn get_input_messages(&self) -> Vec<Self::InputMessage> {
-        self.messages.clone()
-    }
-
-    fn get_system_prompt(&self) -> Option<String> {
-        let first_message = self.messages.first()?;
-
-        let Message::System { ref content, .. } = first_message.clone() else {
-            return None;
-        };
-
-        let SystemContent { text, .. } = content.first();
-
-        Some(text)
-    }
-
-    fn get_prompt(&self) -> Option<String> {
-        let last_message = self.messages.last()?;
-
-        let Message::User { ref content, .. } = last_message.clone() else {
-            return None;
-        };
-
-        let UserContent::Text { text } = content.first() else {
-            return None;
-        };
-
-        Some(text)
-    }
-
-    fn get_model_name(&self) -> String {
-        self.model.clone()
     }
 }
 

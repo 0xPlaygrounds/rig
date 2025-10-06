@@ -806,11 +806,6 @@ pub mod gemini_api_types {
                                     "Raw files not supported, encode as base64 first".into(),
                                 ));
                             }
-                            DocumentSourceKind::Raw(_) => {
-                                return Err(message::MessageError::ConversionError(
-                                    "Raw files not supported, encode as base64 first".into(),
-                                ));
-                            }
                             _ => {
                                 return Err(message::MessageError::ConversionError(
                                     "Document has no body".to_string(),
