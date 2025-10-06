@@ -118,9 +118,7 @@ impl HttpClientExt for reqwest::Client {
         async move {
             let response = req.send().await.map_err(instance_error)?;
 
-            let mut res = Response::builder()
-                .status(response.status())
-                .version(response.version());
+            let mut res = Response::builder().status(response.status());
 
             if let Some(hs) = res.headers_mut() {
                 *hs = response.headers().clone();
@@ -160,8 +158,10 @@ impl HttpClientExt for reqwest::Client {
                 *hs = response.headers().clone();
             }
 
-            let stream: ByteStream =
-                Box::pin(response.bytes_stream().map(|r| r.map_err(instance_error)));
+            let stream: ByteStream = {
+                use futures::TryStreamExt;
+                Box::pin(response.bytes_stream().map_err(instance_error).boxed())
+            };
 
             Ok(res.body(stream)?)
         }
