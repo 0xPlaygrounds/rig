@@ -56,7 +56,7 @@ async fn main() {
 
     vector_store.insert_documents(documents).await.unwrap();
 
-    let query = "What does \"glarb-glarb\" mean?";
+    let query = "What is a flurbo?";
     let vector_req = VectorSearchRequest::builder()
         .query(query)
         .samples(5)
@@ -70,9 +70,10 @@ async fn main() {
 
     for doc in docs {
         println!(
-            "Vector found with id: {id} and score: {score}",
+            "Vector found with id: {id} and score: {score} and word def: {doc}",
             id = doc.1,
-            score = doc.0
+            score = doc.0,
+            doc = doc.2
         )
     }
 }

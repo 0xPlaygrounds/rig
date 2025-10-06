@@ -65,6 +65,11 @@ where
             json_payload: String,
         }
 
+        #[derive(Serialize, Deserialize, Clone, Debug, Default)]
+        struct QueryOutput {
+            doc: String,
+        }
+
         for (document, embeddings) in documents {
             let json_document: serde_json::Value = serde_json::to_value(&document).unwrap();
             let json_document_as_string = serde_json::to_string(&json_document).unwrap();
@@ -80,8 +85,9 @@ where
                 };
 
                 self.client
-                    .query::<QueryInput, String>("InsertVector", &query)
+                    .query::<QueryInput, QueryOutput>("InsertVector", &query)
                     .await
+                    .inspect_err(|x| println!("Error: {x}"))
                     .map_err(|x| VectorStoreError::DatastoreError(x.to_string().into()))?;
             }
         }
@@ -120,7 +126,8 @@ where
             .map(|x| {
                 let doc: T = serde_json::from_str(&x.json_payload)?;
 
-                Ok((x.score, x.id, doc))
+                // HelixDB gives us the cosine distance, so we need to use `-(cosine_dist - 1)` to get the cosine similarity score.
+                Ok((-(x.score - 1.), x.id, doc))
             })
             .collect::<Result<Vec<_>, VectorStoreError>>()?;
 
@@ -147,10 +154,11 @@ where
             .await
             .unwrap();
 
+        // HelixDB gives us the cosine distance, so we need to use `-(cosine_dist - 1)` to get the cosine similarity score.
         let docs = result
             .vec_docs
             .into_iter()
-            .map(|x| Ok((x.score, x.id)))
+            .map(|x| Ok((-(x.score - 1.), x.id)))
             .collect::<Result<Vec<_>, VectorStoreError>>()?;
 
         Ok(docs)
