@@ -1,0 +1,15 @@
+[project]
+name = "helixdb-cfg"
+queries = "./db/"
+
+[local.dev]
+port = 6969
+build_mode = "debug"
+
+[local.dev.vector_config]
+m = 16
+ef_construction = 128
+ef_search = 768
+db_max_size_gb = 10
+
+[cloud]
