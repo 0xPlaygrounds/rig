@@ -96,6 +96,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         };
 
         let request = create_request_body(completion_request)?;
+        span.record_model_input(&request.contents);
 
         span.record_model_input(&request.contents);
 
@@ -799,6 +800,11 @@ pub mod gemini_api_types {
                             }),
                             DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data) => {
                                 PartKind::InlineData(Blob { mime_type, data })
+                            }
+                            DocumentSourceKind::Raw(_) => {
+                                return Err(message::MessageError::ConversionError(
+                                    "Raw files not supported, encode as base64 first".into(),
+                                ));
                             }
                             DocumentSourceKind::Raw(_) => {
                                 return Err(message::MessageError::ConversionError(
