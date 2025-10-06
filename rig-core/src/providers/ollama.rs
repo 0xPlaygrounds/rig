@@ -63,7 +63,6 @@ use serde_json::{Value, json};
 use std::{convert::TryFrom, str::FromStr};
 use tracing::info_span;
 use tracing_futures::Instrument;
-use url::Url;
 // ---------- Main Client ----------
 
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";

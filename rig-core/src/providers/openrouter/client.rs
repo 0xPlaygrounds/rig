@@ -1,5 +1,5 @@
 use crate::{
-    client::{ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError},
+    client::{CompletionClient, ProviderClient, VerifyClient, VerifyError},
     completion::GetTokenUsage,
     http_client::{self, HttpClientExt},
     impl_conversion_traits,

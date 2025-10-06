@@ -206,7 +206,7 @@ where
 }
 
 impl Client<reqwest::Client> {
-    fn post_reqwest(&self, url: String) -> reqwest::RequestBuilder {
+    fn reqwest_post(&self, url: String) -> reqwest::RequestBuilder {
         let (key, val) = self.auth.as_header();
 
         self.http_client.post(url).header(key, val)
@@ -220,7 +220,7 @@ impl Client<reqwest::Client> {
         )
         .replace("//", "/");
 
-        self.post_reqwest(url)
+        self.reqwest_post(url)
     }
 
     fn post_chat_completion(&self, deployment_id: &str) -> reqwest::RequestBuilder {
@@ -230,7 +230,7 @@ impl Client<reqwest::Client> {
         )
         .replace("//", "/");
 
-        self.post_reqwest(url)
+        self.reqwest_post(url)
     }
 
     fn post_transcription(&self, deployment_id: &str) -> reqwest::RequestBuilder {
@@ -240,7 +240,7 @@ impl Client<reqwest::Client> {
         )
         .replace("//", "/");
 
-        self.post_reqwest(url)
+        self.reqwest_post(url)
     }
 
     #[cfg(feature = "image")]
@@ -251,7 +251,7 @@ impl Client<reqwest::Client> {
         )
         .replace("//", "/");
 
-        self.post_reqwest(url)
+        self.reqwest_post(url)
     }
 }
 
