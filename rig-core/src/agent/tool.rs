@@ -20,15 +20,21 @@ impl<M: CompletionModel> Tool for Agent<M> {
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
+        let description = format!(
+            "
+            Prompt a sub-agent to do a task for you.
+
+            Agent name: {name}
+            Agent description: {description}
+            Agent system prompt: {sysprompt}
+            ",
+            name = self.name(),
+            description = self.description.clone().unwrap_or_default(),
+            sysprompt = self.preamble.clone().unwrap_or_default()
+        );
         ToolDefinition {
             name: <Self as Tool>::name(self),
-            description: format!(
-                "A tool that allows the agent to call another agent by prompting it. The preamble
-                of that agent follows:
-                ---
-                {}",
-                self.preamble.clone().unwrap_or_default()
-            ),
+            description,
             parameters: serde_json::to_value(schema_for!(AgentToolArgs))
                 .expect("converting JSON schema to JSON value should never fail"),
         }

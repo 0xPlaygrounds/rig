@@ -40,6 +40,8 @@ where
 {
     /// Name of the agent used for logging and debugging
     name: Option<String>,
+    /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
+    description: Option<String>,
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     model: M,
     /// System prompt
@@ -71,6 +73,7 @@ where
     pub fn new(model: M) -> Self {
         Self {
             name: None,
+            description: None,
             model,
             preamble: None,
             static_context: vec![],
@@ -88,6 +91,12 @@ where
     /// Set the name of the agent
     pub fn name(mut self, name: &str) -> Self {
         self.name = Some(name.into());
+        self
+    }
+
+    /// Set the description of the agent
+    pub fn description(mut self, description: &str) -> Self {
+        self.description = Some(description.into());
         self
     }
 
@@ -193,6 +202,7 @@ where
     pub fn build(self) -> Agent<M> {
         Agent {
             name: self.name,
+            description: self.description,
             model: Arc::new(self.model),
             preamble: self.preamble,
             static_context: self.static_context,
