@@ -137,8 +137,8 @@ impl ProviderClient for Client {
     fn from_env() -> Self {
         let api_key =
             std::env::var("VERTEX_API_KEY").expect("VERTEX_API_KEY to an existing env var");
-        let api_endpoint = std::env::var("GOOGLE_CLOUD_API_ENDPOINT")
-            .expect("GOOGLE_CLOUD_API_ENDPOINT to an existing env var");
+        let api_endpoint = std::env::var("VERTEX_API_ENDPOINT")
+            .expect("VERTEX_API_ENDPOINT to an existing env var");
         let client = reqwest::Client::new();
 
         Self {
