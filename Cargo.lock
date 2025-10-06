@@ -7589,7 +7589,7 @@ dependencies = [
  "futures-sink",
  "js-sys",
  "pin-project-lite",
- "thiserror 2.0.12",
+ "thiserror 2.0.16",
  "tracing",
 ]
 
@@ -7603,7 +7603,7 @@ dependencies = [
  "bytes",
  "http 1.3.1",
  "opentelemetry",
- "reqwest 0.12.20",
+ "reqwest 0.12.23",
 ]
 
 [[package]]
@@ -7618,8 +7618,8 @@ dependencies = [
  "opentelemetry-proto",
  "opentelemetry_sdk",
  "prost",
- "reqwest 0.12.20",
- "thiserror 2.0.12",
+ "reqwest 0.12.23",
+ "thiserror 2.0.16",
  "tracing",
 ]
 
@@ -7648,7 +7648,7 @@ dependencies = [
  "percent-encoding",
  "rand 0.9.1",
  "serde_json",
- "thiserror 2.0.12",
+ "thiserror 2.0.16",
  "tokio",
  "tokio-stream",
 ]
@@ -9096,7 +9096,7 @@ dependencies = [
  "aws-sdk-bedrockruntime",
  "aws-smithy-types",
  "base64 0.22.1",
- "reqwest 0.12.20",
+ "reqwest 0.12.23",
  "rig-core 0.21.0",
  "rig-derive",
  "schemars 1.0.4",
@@ -9198,7 +9198,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "ethers",
- "reqwest 0.12.20",
+ "reqwest 0.12.23",
  "rig-core 0.21.0",
  "schemars 1.0.4",
  "serde",
@@ -9227,7 +9227,7 @@ name = "rig-helixdb"
 version = "0.1.0"
 dependencies = [
  "helix-rs",
- "rig-core 0.19.0",
+ "rig-core 0.21.0",
  "serde",
  "serde_json",
  "tokio",
@@ -9254,7 +9254,7 @@ name = "rig-milvus"
 version = "0.1.12"
 dependencies = [
  "anyhow",
- "reqwest 0.12.20",
+ "reqwest 0.12.23",
  "rig-core 0.21.0",
  "serde",
  "serde_json",
