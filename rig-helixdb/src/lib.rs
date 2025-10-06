@@ -5,19 +5,33 @@ use rig::{
 };
 use serde::{Deserialize, Serialize};
 
+/// A client for easily carrying out Rig-related vector store operations.
+///
+/// If you are unsure what type to use for the client, `helix_rs::HelixDB` is the typical default.
+///
+/// Usage:
+/// ```rust
+/// let openai_model =
+///     rig::providers::openai::Client::from_env().embedding_model("text-embedding-ada-002");
+///
+/// let helixdb_client = HelixDB::new(None, Some(6969), None);
+/// let vector_store = HelixDBVectorStore::new(helixdb_client, openai_model.clone());
+/// ```
 pub struct HelixDBVectorStore<C, E> {
     client: C,
     model: E,
 }
 
+/// The result of a query. Only used internally as this is a representative type required for the relevant HelixDB query (`VectorSearch`).
 #[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct QueryResult {
+struct QueryResult {
     id: String,
     score: f64,
     doc: String,
     json_payload: String,
 }
 
+/// An input query. Only used internally as this is a representative type required for the relevant HelixDB query (`VectorSearch`).
 #[derive(Deserialize, Serialize, Clone, Debug)]
 struct QueryInput {
     vector: Vec<f64>,
@@ -26,6 +40,7 @@ struct QueryInput {
 }
 
 impl QueryInput {
+    /// Makes a new instance of `QueryInput`.
     pub(crate) fn new(vector: Vec<f64>, limit: u64, threshold: f64) -> Self {
         Self {
             vector,
