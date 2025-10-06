@@ -1,7 +1,9 @@
+use crate::telemetry::SpanCombinator;
 use async_stream::stream;
 use futures::StreamExt;
 use reqwest_eventsource::{Event, RequestBuilderExt};
 use serde::{Deserialize, Serialize};
+use tracing::info_span;
 
 use super::completion::{
     CompletionModel, create_request_body,
@@ -23,6 +25,20 @@ pub struct PartialUsage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thoughts_token_count: Option<i32>,
     pub prompt_token_count: i32,
+}
+
+impl GetTokenUsage for PartialUsage {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+
+        usage.input_tokens = self.prompt_token_count as u64;
+        usage.output_tokens = (self.cached_content_token_count.unwrap_or_default()
+            + self.candidates_token_count.unwrap_or_default()
+            + self.thoughts_token_count.unwrap_or_default()) as u64;
+        usage.total_tokens = usage.input_tokens + usage.output_tokens;
+
+        Some(usage)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -59,7 +75,27 @@ impl CompletionModel<reqwest::Client> {
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "gcp.gemini",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = self.model,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
         let request = create_request_body(completion_request)?;
+
+        span.record_model_input(&request.contents);
 
         tracing::debug!(
             "Sending completion request to Gemini API {}",
@@ -78,6 +114,8 @@ impl CompletionModel<reqwest::Client> {
             .expect("Cloning request must always succeed");
 
         let stream = Box::pin(stream! {
+            let mut text_response = String::new();
+            let mut model_outputs: Vec<Part> = Vec::new();
             while let Some(event_result) = event_source.next().await {
                 match event_result {
                     Ok(Event::Open) => {
@@ -116,12 +154,14 @@ impl CompletionModel<reqwest::Client> {
                                 part: PartKind::Text(text),
                                 ..
                             }) => {
+                                text_response += text;
                                 yield Ok(streaming::RawStreamingChoice::Message(text.clone()));
                             },
                             Some(Part {
                                 part: PartKind::FunctionCall(function_call),
                                 ..
                             }) => {
+                                model_outputs.push(choice.content.parts.first().cloned().expect("This should never fail"));
                                 yield Ok(streaming::RawStreamingChoice::ToolCall {
                                     name: function_call.name.clone(),
                                     id: function_call.name.clone(),
@@ -137,6 +177,12 @@ impl CompletionModel<reqwest::Client> {
 
                         // Check if this is the final response
                         if choice.finish_reason.is_some() {
+                            if !text_response.is_empty() {
+                                model_outputs.push(Part { thought: None, thought_signature: None, part: PartKind::Text(text_response), additional_params: None });
+                            }
+                            let span = tracing::Span::current();
+                            span.record_model_output(&model_outputs);
+                            span.record_token_usage(&data.usage_metadata);
                             yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                                 usage_metadata: data.usage_metadata.unwrap_or_default()
                             }));

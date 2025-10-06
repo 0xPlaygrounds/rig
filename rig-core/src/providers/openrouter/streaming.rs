@@ -1,5 +1,6 @@
 use reqwest_eventsource::{Event, RequestBuilderExt};
 use std::collections::HashMap;
+use tracing::info_span;
 
 use crate::{
     completion::GetTokenUsage,
@@ -118,13 +119,33 @@ impl super::CompletionModel<reqwest::Client> {
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<FinalCompletionResponse>, CompletionError>
     {
+        let preamble = completion_request.preamble.clone();
         let request = self.create_completion_request(completion_request)?;
 
         let request = json_utils::merge(request, json!({"stream": true}));
 
         let builder = self.client.reqwest_post("/chat/completions").json(&request);
 
-        send_streaming_request(builder).await
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "openrouter",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        tracing::Instrument::instrument(send_streaming_request(builder), span).await
     }
 }
 

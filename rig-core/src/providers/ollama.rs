@@ -61,6 +61,9 @@ use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{convert::TryFrom, str::FromStr};
+use tracing::info_span;
+use tracing_futures::Instrument;
+use url::Url;
 // ---------- Main Client ----------
 
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
@@ -469,6 +472,10 @@ impl<T> CompletionModel<T> {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<Value, CompletionError> {
+        if completion_request.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported for Ollama");
+        }
+
         // Build up the order of messages (context, chat_history)
         let mut partial_history = vec![];
         if let Some(docs) = completion_request.normalized_documents() {
@@ -559,36 +566,76 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
-        let request_payload = self.create_completion_request(completion_request)?;
+        let preamble = completion_request.preamble.clone();
+        let request = self.create_completion_request(completion_request)?;
 
-        let response = self
-            .client
-            .reqwest_post("api/chat")
-            .json(&request_payload)
-            .send()
-            .await
-            .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "ollama",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
 
-        if !response.status().is_success() {
-            return Err(CompletionError::ProviderError(
-                response.text().await.map_err(|e| {
-                    CompletionError::HttpError(http_client::Error::Instance(e.into()))
-                })?,
-            ));
-        }
+        let async_block = async move {
+            let response = self
+                .client
+                .reqwest_post("api/chat")
+                .json(&request)
+                .send()
+                .await
+                .map_err(|e| http_client::Error::Instance(e.into()))?;
 
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
+            if !response.status().is_success() {
+                return Err(CompletionError::ProviderError(
+                    response
+                        .text()
+                        .await
+                        .map_err(|e| http_client::Error::Instance(e.into()))?,
+                ));
+            }
 
-        tracing::debug!(target: "rig", "Received response from Ollama: {}", String::from_utf8_lossy(&bytes));
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|e| http_client::Error::Instance(e.into()))?;
 
-        let chat_resp: CompletionResponse = serde_json::from_slice(&bytes)?;
+            tracing::debug!(target: "rig", "Received response from Ollama: {}", String::from_utf8_lossy(&bytes));
 
-        let conv: completion::CompletionResponse<CompletionResponse> = chat_resp.try_into()?;
+            let response: CompletionResponse = serde_json::from_slice(&bytes)?;
+            let span = tracing::Span::current();
+            span.record("gen_ai.response.model_name", &response.model);
+            span.record(
+                "gen_ai.output.messages",
+                serde_json::to_string(&vec![&response.message]).unwrap(),
+            );
+            span.record(
+                "gen_ai.usage.input_tokens",
+                response.prompt_eval_count.unwrap_or_default(),
+            );
+            span.record(
+                "gen_ai.usage.output_tokens",
+                response.eval_count.unwrap_or_default(),
+            );
 
-        Ok(conv)
+            let response: completion::CompletionResponse<CompletionResponse> =
+                response.try_into()?;
+
+            Ok(response)
+        };
+
+        tracing::Instrument::instrument(async_block, span).await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -597,32 +644,54 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
     {
-        let mut request_payload = self.create_completion_request(request)?;
-        merge_inplace(&mut request_payload, json!({"stream": true}));
+        let preamble = request.preamble.clone();
+        let mut request = self.create_completion_request(request)?;
+        merge_inplace(&mut request, json!({"stream": true}));
+
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "ollama",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = self.model,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
 
         let response = self
             .client
             .reqwest_post("api/chat")
-            .json(&request_payload)
+            .json(&request)
             .send()
             .await
-            .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
+            .map_err(|e| http_client::Error::Instance(e.into()))?;
 
         if !response.status().is_success() {
             return Err(CompletionError::ProviderError(
-                response.text().await.map_err(|e| {
-                    CompletionError::HttpError(http_client::Error::Instance(e.into()))
-                })?,
+                response
+                    .text()
+                    .await
+                    .map_err(|e| http_client::Error::Instance(e.into()))?,
             ));
         }
 
         let stream = Box::pin(try_stream! {
+            let span = tracing::Span::current();
             let mut byte_stream = response.bytes_stream();
+            let mut tool_calls_final = Vec::new();
+            let mut text_response = String::new();
 
             while let Some(chunk) = byte_stream.next().await {
-                let bytes = chunk.map_err(|e| {
-                    CompletionError::HttpError(http_client::Error::Instance(e.into()))
-                })?;
+                let bytes = chunk.map_err(|e| http_client::Error::Instance(e.into()))?;
 
                 for line in bytes.split(|&b| b == b'\n') {
                     if line.is_empty() {
@@ -634,6 +703,16 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                     let response: CompletionResponse = serde_json::from_slice(line)?;
 
                     if response.done {
+                        span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
+                        span.record("gen_ai.usage.output_tokens", response.eval_count);
+                        let message = Message::Assistant {
+                            content: text_response.clone(),
+                            thinking: None,
+                            images: None,
+                            name: None,
+                            tool_calls: tool_calls_final.clone()
+                        };
+                        span.record("gen_ai.output.messages", serde_json::to_string(&vec![message]).unwrap());
                         yield RawStreamingChoice::FinalResponse(
                             StreamingCompletionResponse {
                                 total_duration: response.total_duration,
@@ -650,9 +729,11 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
 
                     if let Message::Assistant { content, tool_calls, .. } = response.message {
                         if !content.is_empty() {
+                            text_response += &content;
                             yield RawStreamingChoice::Message(content);
                         }
                         for tool_call in tool_calls {
+                            tool_calls_final.push(tool_call.clone());
                             yield RawStreamingChoice::ToolCall {
                                 id: String::new(),
                                 name: tool_call.function.name,
@@ -663,7 +744,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                     }
                 }
             }
-        });
+        }.instrument(span));
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
@@ -695,7 +776,6 @@ impl From<crate::completion::ToolDefinition> for ToolDefinition {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolCall {
-    // pub id: String,
     #[serde(default, rename = "type")]
     pub r#type: ToolType,
     pub function: Function,
@@ -807,7 +887,9 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                                 }) => images.push(data),
                                 crate::message::UserContent::Document(
                                     crate::message::Document {
-                                        data: DocumentSourceKind::Base64(data),
+                                        data:
+                                            DocumentSourceKind::Base64(data)
+                                            | DocumentSourceKind::String(data),
                                         ..
                                     },
                                 ) => texts.push(data),

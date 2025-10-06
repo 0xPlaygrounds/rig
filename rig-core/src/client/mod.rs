@@ -615,6 +615,7 @@ mod tests {
             temperature: None,
             max_tokens: None,
             additional_params: None,
+            tool_choice: None,
             chat_history: OneOrMany::one(Message::user("What is the capital of France?")),
         });
 

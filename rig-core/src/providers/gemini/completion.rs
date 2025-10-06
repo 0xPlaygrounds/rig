@@ -29,8 +29,11 @@ pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 
 use self::gemini_api_types::Schema;
 use crate::message::Reasoning;
-use crate::providers::gemini::completion::gemini_api_types::AdditionalParameters;
+use crate::providers::gemini::completion::gemini_api_types::{
+    AdditionalParameters, FunctionCallingMode, ToolConfig,
+};
 use crate::providers::gemini::streaming::StreamingCompletionResponse;
+use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -41,6 +44,7 @@ use gemini_api_types::{
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
+use tracing::info_span;
 
 use super::Client;
 
@@ -72,13 +76,35 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
-        let body = create_request_body(completion_request)
-            .and_then(|body| serde_json::to_vec(&body).map_err(Into::into))?;
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "generate_content",
+                gen_ai.operation.name = "generate_content",
+                gen_ai.provider.name = "gcp.gemini",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        let request = create_request_body(completion_request)?;
+
+        span.record_model_input(&request.contents);
 
         tracing::debug!(
             "Sending completion request to Gemini API {}",
-            String::from_utf8_lossy(&body)
+            serde_json::to_string_pretty(&request)?
         );
+
+        let body = serde_json::to_vec(&request)?;
 
         let request = self
             .client
@@ -94,9 +120,9 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                 .await
                 .map_err(CompletionError::HttpError)?;
 
-            let body: GenerateContentResponse = serde_json::from_slice(&response_body)?;
+            let response: GenerateContentResponse = serde_json::from_slice(&response_body)?;
 
-            match body.usage_metadata {
+            match response.usage_metadata {
                 Some(ref usage) => tracing::info!(target: "rig",
                 "Gemini completion token usage: {}",
                 usage
@@ -106,9 +132,17 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                 ),
             }
 
-            tracing::debug!("Received response");
+            let span = tracing::Span::current();
+            span.record_model_output(&response.candidates);
+            span.record_response_metadata(&response);
+            span.record_token_usage(&response.usage_metadata);
 
-            Ok(completion::CompletionResponse::try_from(body)?)
+            tracing::debug!(
+                "Received response from Gemini API: {}",
+                serde_json::to_string_pretty(&response)?
+            );
+
+            response.try_into()
         } else {
             let text = String::from_utf8_lossy(
                 &response
@@ -168,6 +202,14 @@ pub(crate) fn create_request_body(
         Some(Tool::try_from(completion_request.tools)?)
     };
 
+    let tool_config = if let Some(cfg) = completion_request.tool_choice {
+        Some(ToolConfig {
+            function_calling_config: Some(FunctionCallingMode::try_from(cfg)?),
+        })
+    } else {
+        None
+    };
+
     let request = GenerateContentRequest {
         contents: full_history
             .into_iter()
@@ -179,7 +221,7 @@ pub(crate) fn create_request_body(
         generation_config: Some(generation_config),
         safety_settings: None,
         tools,
-        tool_config: None,
+        tool_config,
         system_instruction,
         additional_params,
     };
@@ -310,6 +352,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
 }
 
 pub mod gemini_api_types {
+    use crate::telemetry::ProviderResponseExt;
     use std::{collections::HashMap, convert::Infallible, str::FromStr};
 
     // =================================================================
@@ -318,7 +361,8 @@ pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
-    use crate::message::{DocumentSourceKind, ImageMediaType, MimeType};
+    use crate::completion::GetTokenUsage;
+    use crate::message::{DocumentSourceKind, ImageMediaType, MessageError, MimeType};
     use crate::{
         OneOrMany,
         completion::CompletionError,
@@ -358,6 +402,7 @@ pub mod gemini_api_types {
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct GenerateContentResponse {
+        pub response_id: String,
         /// Candidate responses from the model.
         pub candidates: Vec<ContentCandidate>,
         /// Returns the prompt's feedback related to the content filters.
@@ -367,8 +412,60 @@ pub mod gemini_api_types {
         pub model_version: Option<String>,
     }
 
+    impl ProviderResponseExt for GenerateContentResponse {
+        type OutputMessage = ContentCandidate;
+        type Usage = UsageMetadata;
+
+        fn get_response_id(&self) -> Option<String> {
+            Some(self.response_id.clone())
+        }
+
+        fn get_response_model_name(&self) -> Option<String> {
+            None
+        }
+
+        fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+            self.candidates.clone()
+        }
+
+        fn get_text_response(&self) -> Option<String> {
+            let str = self
+                .candidates
+                .iter()
+                .filter_map(|x| {
+                    if x.content.role.as_ref().is_none_or(|y| y != &Role::Model) {
+                        return None;
+                    }
+
+                    let res = x
+                        .content
+                        .parts
+                        .iter()
+                        .filter_map(|part| {
+                            if let PartKind::Text(ref str) = part.part {
+                                Some(str.to_owned())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<String>>()
+                        .join("\n");
+
+                    Some(res)
+                })
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            if str.is_empty() { None } else { Some(str) }
+        }
+
+        fn get_usage(&self) -> Option<Self::Usage> {
+            self.usage_metadata.clone()
+        }
+    }
+
     /// A response candidate generated from the model.
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct ContentCandidate {
         /// Output only. Generated content returned from the model.
@@ -393,7 +490,7 @@ pub mod gemini_api_types {
         pub index: Option<i32>,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct Content {
         /// Ordered Parts that constitute a single message. Parts may have different MIME types.
         #[serde(default)]
@@ -600,8 +697,15 @@ pub mod gemini_api_types {
                     mime_type: Some(mime_type),
                     file_uri: url,
                 }),
-                DocumentSourceKind::Base64(data) => PartKind::InlineData(Blob { mime_type, data }),
-                _ => {
+                DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data) => {
+                    PartKind::InlineData(Blob { mime_type, data })
+                }
+                DocumentSourceKind::Raw(_) => {
+                    return Err(message::MessageError::ConversionError(
+                        "Raw files not supported, encode as base64 first".into(),
+                    ));
+                }
+                DocumentSourceKind::Unknown => {
                     return Err(message::MessageError::ConversionError(
                         "Can't convert an unknown document source".to_string(),
                     ));
@@ -679,9 +783,11 @@ pub mod gemini_api_types {
                 message::UserContent::Document(message::Document {
                     data, media_type, ..
                 }) => {
-                    let media_type = media_type.ok_or(message::MessageError::ConversionError(
-                        "Media type for document is required for Gemini".to_string(),
-                    ))?;
+                    let Some(media_type) = media_type else {
+                        return Err(MessageError::ConversionError(
+                            "A mime type is required for document inputs to Gemini".to_string(),
+                        ));
+                    };
 
                     if !media_type.is_code() {
                         let mime_type = media_type.to_mime_type().to_string();
@@ -691,8 +797,13 @@ pub mod gemini_api_types {
                                 mime_type: Some(mime_type),
                                 file_uri,
                             }),
-                            DocumentSourceKind::Base64(data) => {
-                                PartKind::InlineData(Blob { data, mime_type })
+                            DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data) => {
+                                PartKind::InlineData(Blob { mime_type, data })
+                            }
+                            DocumentSourceKind::Raw(_) => {
+                                return Err(message::MessageError::ConversionError(
+                                    "Raw files not supported, encode as base64 first".into(),
+                                ));
                             }
                             _ => {
                                 return Err(message::MessageError::ConversionError(
@@ -716,9 +827,11 @@ pub mod gemini_api_types {
                 message::UserContent::Audio(message::Audio {
                     data, media_type, ..
                 }) => {
-                    let media_type = media_type.ok_or(message::MessageError::ConversionError(
-                        "Media type for audio is required for Gemini".to_string(),
-                    ))?;
+                    let Some(media_type) = media_type else {
+                        return Err(MessageError::ConversionError(
+                            "A mime type is required for audio inputs to Gemini".to_string(),
+                        ));
+                    };
 
                     let mime_type = media_type.to_mime_type().to_string();
 
@@ -726,11 +839,22 @@ pub mod gemini_api_types {
                         DocumentSourceKind::Base64(data) => {
                             PartKind::InlineData(Blob { data, mime_type })
                         }
+
                         DocumentSourceKind::Url(file_uri) => PartKind::FileData(FileData {
                             mime_type: Some(mime_type),
                             file_uri,
                         }),
-                        _ => {
+                        DocumentSourceKind::String(_) => {
+                            return Err(message::MessageError::ConversionError(
+                                "Strings cannot be used as audio files!".into(),
+                            ));
+                        }
+                        DocumentSourceKind::Raw(_) => {
+                            return Err(message::MessageError::ConversionError(
+                                "Raw files not supported, encode as base64 first".into(),
+                            ));
+                        }
+                        DocumentSourceKind::Unknown => {
                             return Err(message::MessageError::ConversionError(
                                 "Content has no body".to_string(),
                             ));
@@ -749,21 +873,49 @@ pub mod gemini_api_types {
                     additional_params,
                     ..
                 }) => {
-                    let media_type = media_type.ok_or(message::MessageError::ConversionError(
-                        "Media type for video is required for Gemini".to_string(),
-                    ))?;
-
-                    let mime_type = media_type.to_mime_type().to_owned();
+                    let mime_type = media_type.map(|media_ty| media_ty.to_mime_type().to_string());
 
                     let part = match data {
-                        DocumentSourceKind::Url(file_uri) => PartKind::FileData(FileData {
-                            mime_type: Some(mime_type),
-                            file_uri,
-                        }),
+                        DocumentSourceKind::Url(file_uri) => {
+                            if file_uri.starts_with("https://www.youtube.com") {
+                                PartKind::FileData(FileData {
+                                    mime_type,
+                                    file_uri,
+                                })
+                            } else {
+                                if mime_type.is_none() {
+                                    return Err(MessageError::ConversionError(
+                                        "A mime type is required for non-Youtube video file inputs to Gemini"
+                                            .to_string(),
+                                    ));
+                                }
+
+                                PartKind::FileData(FileData {
+                                    mime_type,
+                                    file_uri,
+                                })
+                            }
+                        }
                         DocumentSourceKind::Base64(data) => {
+                            let Some(mime_type) = mime_type else {
+                                return Err(MessageError::ConversionError(
+                                    "A media type is expected for base64 encoded strings"
+                                        .to_string(),
+                                ));
+                            };
                             PartKind::InlineData(Blob { mime_type, data })
                         }
-                        _ => {
+                        DocumentSourceKind::String(_) => {
+                            return Err(message::MessageError::ConversionError(
+                                "Strings cannot be used as audio files!".into(),
+                            ));
+                        }
+                        DocumentSourceKind::Raw(_) => {
+                            return Err(message::MessageError::ConversionError(
+                                "Raw file data not supported, encode as base64 first".into(),
+                            ));
+                        }
+                        DocumentSourceKind::Unknown => {
                             return Err(message::MessageError::ConversionError(
                                 "Media type for video is required for Gemini".to_string(),
                             ));
@@ -946,6 +1098,21 @@ pub mod gemini_api_types {
         }
     }
 
+    impl GetTokenUsage for UsageMetadata {
+        fn token_usage(&self) -> Option<crate::completion::Usage> {
+            let mut usage = crate::completion::Usage::new();
+
+            usage.input_tokens = self.prompt_token_count as u64;
+            usage.output_tokens = (self.cached_content_token_count.unwrap_or_default()
+                + self.candidates_token_count.unwrap_or_default()
+                + self.thoughts_token_count.unwrap_or_default())
+                as u64;
+            usage.total_tokens = usage.input_tokens + usage.output_tokens;
+
+            Some(usage)
+        }
+    }
+
     /// A set of the feedback metadata the prompt specified in [GenerateContentRequest.contents](GenerateContentRequest).
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -972,7 +1139,7 @@ pub mod gemini_api_types {
         ProhibitedContent,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum FinishReason {
         /// Default value. This value is unused.
@@ -999,13 +1166,13 @@ pub mod gemini_api_types {
         MalformedFunctionCall,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct CitationMetadata {
         pub citation_sources: Vec<CitationSource>,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct CitationSource {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1018,19 +1185,19 @@ pub mod gemini_api_types {
         pub license: Option<String>,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct LogprobsResult {
         pub top_candidate: Vec<TopCandidate>,
         pub chosen_candidate: Vec<LogProbCandidate>,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct TopCandidate {
         pub candidates: Vec<LogProbCandidate>,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct LogProbCandidate {
         pub token: String,
@@ -1381,14 +1548,43 @@ pub mod gemini_api_types {
         pub parameters: Option<Schema>,
     }
 
-    #[derive(Debug, Serialize)]
+    #[derive(Debug, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct ToolConfig {
-        pub schema: Option<Schema>,
+        pub function_calling_config: Option<FunctionCallingMode>,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, Default)]
+    #[serde(tag = "mode", rename_all = "UPPERCASE")]
+    pub enum FunctionCallingMode {
+        #[default]
+        Auto,
+        None,
+        Any {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            allowed_function_names: Option<Vec<String>>,
+        },
+    }
+
+    impl TryFrom<message::ToolChoice> for FunctionCallingMode {
+        type Error = CompletionError;
+        fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
+            let res = match value {
+                message::ToolChoice::Auto => Self::Auto,
+                message::ToolChoice::None => Self::None,
+                message::ToolChoice::Required => Self::Any {
+                    allowed_function_names: None,
+                },
+                message::ToolChoice::Specific { function_names } => Self::Any {
+                    allowed_function_names: Some(function_names),
+                },
+            };
+
+            Ok(res)
+        }
     }
 
     #[derive(Debug, Serialize)]
-    #[serde(rename_all = "camelCase")]
     pub struct CodeExecution {}
 
     #[derive(Debug, Serialize)]

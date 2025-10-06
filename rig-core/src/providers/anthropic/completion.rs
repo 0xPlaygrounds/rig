@@ -2,11 +2,12 @@
 
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError},
+    completion::{self, CompletionError, GetTokenUsage},
     http_client::HttpClientExt,
     json_utils,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, Reasoning},
     one_or_many::string_or_one_or_many,
+    telemetry::{ProviderResponseExt, SpanCombinator},
 };
 use std::{convert::Infallible, str::FromStr};
 
@@ -16,6 +17,7 @@ use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tracing::{Instrument, info_span};
 
 // ================================================================
 // Anthropic Completion API
@@ -60,7 +62,45 @@ pub struct CompletionResponse {
     pub usage: Usage,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+impl ProviderResponseExt for CompletionResponse {
+    type OutputMessage = Content;
+    type Usage = Usage;
+
+    fn get_response_id(&self) -> Option<String> {
+        Some(self.id.to_owned())
+    }
+
+    fn get_response_model_name(&self) -> Option<String> {
+        Some(self.model.to_owned())
+    }
+
+    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+        self.content.clone()
+    }
+
+    fn get_text_response(&self) -> Option<String> {
+        let res = self
+            .content
+            .iter()
+            .filter_map(|x| {
+                if let Content::Text { text } = x {
+                    Some(text.to_owned())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        if res.is_empty() { None } else { Some(res) }
+    }
+
+    fn get_usage(&self) -> Option<Self::Usage> {
+        Some(self.usage.clone())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub input_tokens: u64,
     pub cache_read_input_tokens: Option<u64>,
@@ -84,6 +124,20 @@ impl std::fmt::Display for Usage {
             },
             self.output_tokens
         )
+    }
+}
+
+impl GetTokenUsage for Usage {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+
+        usage.input_tokens = self.input_tokens
+            + self.cache_creation_input_tokens.unwrap_or_default()
+            + self.cache_read_input_tokens.unwrap_or_default();
+        usage.output_tokens = self.output_tokens;
+        usage.total_tokens = usage.input_tokens + usage.output_tokens;
+
+        Some(usage)
     }
 }
 
@@ -307,7 +361,10 @@ impl TryFrom<message::ContentFormat> for SourceType {
     fn try_from(format: message::ContentFormat) -> Result<Self, Self::Error> {
         match format {
             message::ContentFormat::Base64 => Ok(SourceType::BASE64),
-            message::ContentFormat::String => Ok(SourceType::URL),
+            message::ContentFormat::Url => Ok(SourceType::URL),
+            message::ContentFormat::String => Err(MessageError::ConversionError(
+                "ContentFormat::String is deprecated, use ContentFormat::Url for URLs".into(),
+            )),
         }
     }
 }
@@ -316,7 +373,7 @@ impl From<SourceType> for message::ContentFormat {
     fn from(source_type: SourceType) -> Self {
         match source_type {
             SourceType::BASE64 => message::ContentFormat::Base64,
-            SourceType::URL => message::ContentFormat::String,
+            SourceType::URL => message::ContentFormat::Url,
         }
     }
 }
@@ -446,6 +503,11 @@ impl TryFrom<message::Message> for Message {
                                     "Image content has no body".into(),
                                 ));
                             }
+                            doc => {
+                                return Err(MessageError::ConversionError(format!(
+                                    "Unsupported document type: {doc:?}"
+                                )));
+                            }
                         };
 
                         Ok(Content::Image { source })
@@ -457,10 +519,15 @@ impl TryFrom<message::Message> for Message {
                             "Document media type is required".to_string(),
                         ))?;
 
-                        let DocumentSourceKind::Base64(data) = data else {
-                            return Err(MessageError::ConversionError(
-                                "Only base64 encoded documents currently supported".into(),
-                            ));
+                        let data = match data {
+                            DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data) => {
+                                data
+                            }
+                            _ => {
+                                return Err(MessageError::ConversionError(
+                                    "Only base64 encoded documents currently supported".into(),
+                                ));
+                            }
                         };
 
                         let source = DocumentSource {
@@ -630,11 +697,35 @@ pub enum ToolChoice {
     #[default]
     Auto,
     Any,
+    None,
     Tool {
         name: String,
     },
 }
+impl TryFrom<message::ToolChoice> for ToolChoice {
+    type Error = CompletionError;
 
+    fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
+        let res = match value {
+            message::ToolChoice::Auto => Self::Auto,
+            message::ToolChoice::None => Self::None,
+            message::ToolChoice::Required => Self::Any,
+            message::ToolChoice::Specific { function_names } => {
+                if function_names.len() != 1 {
+                    return Err(CompletionError::ProviderError(
+                        "Only one tool may be specified to be used by Claude".into(),
+                    ));
+                }
+
+                Self::Tool {
+                    name: function_names.first().unwrap().to_string(),
+                }
+            }
+        };
+
+        Ok(res)
+    }
+}
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
     T: HttpClientExt + Clone + Default,
@@ -647,6 +738,24 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "anthropic",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
         // Note: Ideally we'd introduce provider-specific Request models to handle the
         // specific requirements of each provider. For now, we just manually check while
         // building the request as a raw JSON document.
@@ -667,6 +776,7 @@ where
             full_history.push(docs);
         }
         full_history.extend(completion_request.chat_history);
+        span.record_model_input(&full_history);
 
         let full_history = full_history
             .into_iter()
@@ -684,6 +794,12 @@ where
             json_utils::merge_inplace(&mut request, json!({ "temperature": temperature }));
         }
 
+        let tool_choice = if let Some(tool_choice) = completion_request.tool_choice {
+            Some(ToolChoice::try_from(tool_choice)?)
+        } else {
+            None
+        };
+
         if !completion_request.tools.is_empty() {
             json_utils::merge_inplace(
                 &mut request,
@@ -697,7 +813,7 @@ where
                             input_schema: tool.parameters,
                         })
                         .collect::<Vec<_>>(),
-                    "tool_choice": ToolChoice::Auto,
+                    "tool_choice": tool_choice,
                 }),
             );
         }
@@ -706,55 +822,54 @@ where
             json_utils::merge_inplace(&mut request, params.clone())
         }
 
-        tracing::debug!("Anthropic completion request: {request}");
+        async move {
+            let request: Vec<u8> = serde_json::to_vec(&request)?;
 
-        let request: Vec<u8> = serde_json::to_vec(&request)?;
+            let req = self
+                .client
+                .post("/v1/messages")
+                .body(request)
+                .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let req = self
-            .client
-            .post("/v1/messages")
-            .body(request)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
+            let response = self
+                .client
+                .send::<_, Bytes>(req)
+                .await
+                .map_err(CompletionError::HttpError)?;
 
-        let response = self
-            .client
-            .send::<_, Bytes>(req)
-            .await
-            .map_err(CompletionError::HttpError)?;
-
-        if response.status().is_success() {
-            match serde_json::from_slice::<ApiResponse<CompletionResponse>>(
-                response
-                    .into_body()
-                    .await
-                    .map_err(CompletionError::HttpError)?
-                    .to_vec()
-                    .as_slice(),
-            )? {
-                ApiResponse::Message(completion) => {
-                    let completion: Result<completion::CompletionResponse<CompletionResponse>, _> =
-                        completion.try_into();
-
-                    tracing::info!(
-                        target: "rig",
-                        "Anthropic completion token usage: {:?}",
-                        completion
-                    );
-
-                    completion
+            if response.status().is_success() {
+                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(
+                    response
+                        .into_body()
+                        .await
+                        .map_err(CompletionError::HttpError)?
+                        .to_vec()
+                        .as_slice(),
+                )? {
+                    ApiResponse::Message(completion) => {
+                        let span = tracing::Span::current();
+                        span.record_model_output(&completion.content);
+                        span.record_response_metadata(&completion);
+                        span.record_token_usage(&completion.usage);
+                        completion.try_into()
+                    }
+                    ApiResponse::Error(ApiErrorResponse { message }) => {
+                        Err(CompletionError::ResponseError(message))
+                    }
                 }
-                ApiResponse::Error(error) => Err(CompletionError::ProviderError(error.message)),
+            } else {
+                let text: String = String::from_utf8_lossy(
+                    &response
+                        .into_body()
+                        .await
+                        .map_err(CompletionError::HttpError)?,
+                )
+                .into();
+                Err(CompletionError::ProviderError(text))
             }
-        } else {
-            let text: String = String::from_utf8_lossy(
-                &response
-                    .into_body()
-                    .await
-                    .map_err(CompletionError::HttpError)?,
-            )
-            .into();
-            Err(CompletionError::ProviderError(text))
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -1031,7 +1146,7 @@ mod tests {
                     }) => {
                         assert_eq!(
                             data,
-                            DocumentSourceKind::Base64("base64_encoded_pdf_data".into())
+                            DocumentSourceKind::String("base64_encoded_pdf_data".into())
                         );
                         assert_eq!(media_type, Some(message::DocumentMediaType::PDF));
                     }
@@ -1085,5 +1200,31 @@ mod tests {
         assert_eq!(user_message, original_user_message);
         assert_eq!(assistant_message, original_assistant_message);
         assert_eq!(tool_message, original_tool_message);
+    }
+
+    #[test]
+    fn test_content_format_conversion() {
+        use crate::completion::message::ContentFormat;
+
+        let source_type: SourceType = ContentFormat::Url.try_into().unwrap();
+        assert_eq!(source_type, SourceType::URL);
+
+        let content_format: ContentFormat = SourceType::URL.into();
+        assert_eq!(content_format, ContentFormat::Url);
+
+        let source_type: SourceType = ContentFormat::Base64.try_into().unwrap();
+        assert_eq!(source_type, SourceType::BASE64);
+
+        let content_format: ContentFormat = SourceType::BASE64.into();
+        assert_eq!(content_format, ContentFormat::Base64);
+
+        let result: Result<SourceType, _> = ContentFormat::String.try_into();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("ContentFormat::String is deprecated")
+        );
     }
 }

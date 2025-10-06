@@ -19,8 +19,9 @@ use crate::{
     providers::openai,
 };
 use crate::{http_client, impl_conversion_traits, message};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tracing::{Instrument, info_span};
 
 // ================================================================
 // Main Moonshot Client
@@ -280,6 +281,11 @@ impl<T> CompletionModel<T> {
                 .collect::<Vec<_>>(),
         );
 
+        let tool_choice = completion_request
+            .tool_choice
+            .map(ToolChoice::try_from)
+            .transpose()?;
+
         let request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
@@ -292,7 +298,7 @@ impl<T> CompletionModel<T> {
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(openai::ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": "auto",
+                "tool_choice": tool_choice,
             })
         };
 
@@ -315,40 +321,75 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
+        let preamble = completion_request.preamble.clone();
         let request = self.create_completion_request(completion_request)?;
 
-        let response = self
-            .client
-            .reqwest_post("/chat/completions")
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
-
-        if response.status().is_success() {
-            let t = response
-                .text()
-                .await
-                .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
-            tracing::debug!(target: "rig", "MoonShot completion error: {}", t);
-
-            match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(&t)? {
-                ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "MoonShot completion token usage: {:?}",
-                        response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
-                    );
-                    response.try_into()
-                }
-                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.error.message)),
-            }
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "moonshot",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
         } else {
-            Err(CompletionError::ProviderError(
-                response.text().await.map_err(|e| {
-                    CompletionError::HttpError(http_client::Error::Instance(e.into()))
-                })?,
-            ))
-        }
+            tracing::Span::current()
+        };
+
+        let async_block = async move {
+            let response = self
+                .client
+                .reqwest_post("/chat/completions")
+                .json(&request)
+                .send()
+                .await
+                .map_err(|e| http_client::Error::Instance(e.into()))?;
+
+            if response.status().is_success() {
+                let t = response
+                    .text()
+                    .await
+                    .map_err(|e| http_client::Error::Instance(e.into()))?;
+                tracing::debug!(target: "rig::completions", "MoonShot completion response: {t}");
+
+                match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(&t)? {
+                    ApiResponse::Ok(response) => {
+                        let span = tracing::Span::current();
+                        span.record("gen_ai.response.id", response.id.clone());
+                        span.record("gen_ai.response.model_name", response.model.clone());
+                        span.record(
+                            "gen_ai.output.messages",
+                            serde_json::to_string(&response.choices).unwrap(),
+                        );
+                        if let Some(ref usage) = response.usage {
+                            span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
+                            span.record(
+                                "gen_ai.usage.output_tokens",
+                                usage.total_tokens - usage.prompt_tokens,
+                            );
+                        }
+                        response.try_into()
+                    }
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.error.message)),
+                }
+            } else {
+                Err(CompletionError::ProviderError(
+                    response
+                        .text()
+                        .await
+                        .map_err(|e| http_client::Error::Instance(e.into()))?,
+                ))
+            }
+        };
+
+        async_block.instrument(span).await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -356,7 +397,27 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         &self,
         request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        let preamble = request.preamble.clone();
         let mut request = self.create_completion_request(request)?;
+
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "moonshot",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
 
         request = merge(
             request,
@@ -365,6 +426,33 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
 
         let builder = self.client.reqwest_post("/chat/completions").json(&request);
 
-        send_compatible_streaming_request(builder).await
+        send_compatible_streaming_request(builder)
+            .instrument(span)
+            .await
+    }
+}
+
+#[derive(Default, Debug, Deserialize, Serialize)]
+pub enum ToolChoice {
+    None,
+    #[default]
+    Auto,
+}
+
+impl TryFrom<message::ToolChoice> for ToolChoice {
+    type Error = CompletionError;
+
+    fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
+        let res = match value {
+            message::ToolChoice::None => Self::None,
+            message::ToolChoice::Auto => Self::Auto,
+            choice => {
+                return Err(CompletionError::ProviderError(format!(
+                    "Unsupported tool choice type: {choice:?}"
+                )));
+            }
+        };
+
+        Ok(res)
     }
 }

@@ -2,14 +2,17 @@ use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tracing::info_span;
+use tracing_futures::Instrument;
 
 use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefinition, Usage};
 use super::decoders::sse::from_response as sse_from_response;
+use crate::OneOrMany;
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
-use crate::streaming;
-use crate::streaming::{RawStreamingChoice, StreamingResult};
+use crate::streaming::{self, RawStreamingChoice, StreamingResult};
+use crate::telemetry::SpanCombinator;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -69,6 +72,17 @@ pub struct PartialUsage {
     pub input_tokens: Option<usize>,
 }
 
+impl GetTokenUsage for PartialUsage {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+
+        usage.input_tokens = self.input_tokens.unwrap_or_default() as u64;
+        usage.output_tokens = self.output_tokens as u64;
+        usage.total_tokens = usage.input_tokens + usage.output_tokens;
+        Some(usage)
+    }
+}
+
 #[derive(Default)]
 struct ToolCallState {
     name: String,
@@ -102,6 +116,24 @@ where
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "anthropic",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = self.model,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
         let max_tokens = if let Some(tokens) = completion_request.max_tokens {
             tokens
         } else if let Some(tokens) = self.default_max_tokens {
@@ -117,6 +149,7 @@ where
             full_history.push(docs);
         }
         full_history.extend(completion_request.chat_history);
+        span.record_model_input(&full_history);
 
         let full_history = full_history
             .into_iter()
@@ -192,6 +225,8 @@ where
             let mut sse_stream = Box::pin(stream);
             let mut input_tokens = 0;
 
+            let mut text_content = String::new();
+
             while let Some(sse_result) = sse_stream.next().await {
                 match sse_result {
                     Ok(sse) => {
@@ -201,14 +236,27 @@ where
                                 match &event {
                                     StreamingEvent::MessageStart { message } => {
                                         input_tokens = message.usage.input_tokens;
+
+                                        let span = tracing::Span::current();
+                                        span.record("gen_ai.response.id", &message.id);
+                                        span.record("gen_ai.response.model_name", &message.model);
                                     },
                                     StreamingEvent::MessageDelta { delta, usage } => {
                                         if delta.stop_reason.is_some() {
+                                            let usage = PartialUsage {
+                                                 output_tokens: usage.output_tokens,
+                                                 input_tokens: Some(input_tokens.try_into().expect("Failed to convert input_tokens to usize")),
+                                            };
+
+                                            let span = tracing::Span::current();
+                                            span.record_token_usage(&usage);
+                                            span.record_model_output(&Message {
+                                                role: super::completion::Role::Assistant,
+                                                content: OneOrMany::one(Content::Text { text: text_content.clone() })}
+                                            );
+
                                             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                                                usage: PartialUsage {
-                                                    output_tokens: usage.output_tokens,
-                                                    input_tokens: Some(input_tokens.try_into().expect("Failed to convert input_tokens to usize")),
-                                                }
+                                                usage
                                             }))
                                         }
                                     }
@@ -216,6 +264,9 @@ where
                                 }
 
                                 if let Some(result) = handle_event(&event, &mut current_tool_call) {
+                                    if let Ok(RawStreamingChoice::Message(ref text)) = result {
+                                        text_content += text;
+                                    }
                                     yield result;
                                 }
                             },
@@ -234,7 +285,7 @@ where
                     }
                 }
             }
-        });
+        }.instrument(span));
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))
     }

@@ -7,17 +7,23 @@
 //! let openai_client = rig::providers::openai::Client::from_env();
 //! let model = openai_client.completion_model("gpt-4o").completions_api();
 //! ```
+use super::completion::ToolChoice;
 use super::{Client, responses_api::streaming::StreamingCompletionResponse};
-use super::{ImageUrl, InputAudio, SystemContent};
+use super::{InputAudio, SystemContent};
 use crate::completion::CompletionError;
+use crate::http_client;
 use crate::http_client::HttpClientExt;
-use crate::message::{AudioMediaType, Document, DocumentSourceKind, MessageError, MimeType, Text};
+use crate::json_utils;
+use crate::message::{
+    AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError,
+    MimeType, Text,
+};
 use crate::one_or_many::string_or_one_or_many;
-use crate::{http_client, json_utils};
 
 use crate::{OneOrMany, completion, message};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use tracing::{Instrument, info_span};
 
 use std::convert::Infallible;
 use std::ops::Add;
@@ -45,8 +51,10 @@ pub struct CompletionRequest {
     /// The temperature. Set higher (up to a max of 1.0) for more creative responses.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f64>,
-    // TODO: Fix this before opening a PR!
-    // tool_choice: Option<T>,
+    /// Whether the LLM should be forced to use a tool before returning a response.
+    /// If none provided, the default option is "auto".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<ToolChoice>,
     /// The tools you want to use. Currently this is limited to functions, but will be expanded on in future.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ResponsesToolDefinition>,
@@ -232,9 +240,54 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 });
                             }
                         }
+                        crate::message::UserContent::Document(Document {
+                            data,
+                            media_type: Some(DocumentMediaType::PDF),
+                            ..
+                        }) => {
+                            let (file_data, file_url) = match data {
+                                DocumentSourceKind::Base64(data) => {
+                                    (Some(format!("data:application/pdf;base64,{data}")), None)
+                                }
+                                DocumentSourceKind::Url(url) => (None, Some(url)),
+                                DocumentSourceKind::Raw(_) => {
+                                    return Err(CompletionError::RequestError(
+                                        "Raw file data not supported, encode as base64 first"
+                                            .into(),
+                                    ));
+                                }
+                                doc => {
+                                    return Err(CompletionError::RequestError(
+                                        format!("Unsupported document type: {doc}").into(),
+                                    ));
+                                }
+                            };
+
+                            items.push(InputItem {
+                                role: Some(Role::User),
+                                input: InputContent::Message(Message::User {
+                                    content: OneOrMany::one(UserContent::InputFile {
+                                        file_data,
+                                        file_url,
+                                        filename: Some("document.pdf".to_string()),
+                                    }),
+                                    name: None,
+                                }),
+                            })
+                        }
                         // todo: should we ensure this takes into account file size?
                         crate::message::UserContent::Document(Document {
                             data: DocumentSourceKind::Base64(text),
+                            ..
+                        }) => items.push(InputItem {
+                            role: Some(Role::User),
+                            input: InputContent::Message(Message::User {
+                                content: OneOrMany::one(UserContent::InputText { text }),
+                                name: None,
+                            }),
+                        }),
+                        crate::message::UserContent::Document(Document {
+                            data: DocumentSourceKind::String(text),
                             ..
                         }) => items.push(InputItem {
                             role: Some(Role::User),
@@ -259,16 +312,24 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                     format!("data:{media_type};base64,{data}")
                                 }
                                 DocumentSourceKind::Url(url) => url,
-                                DocumentSourceKind::Unknown => return Err(CompletionError::RequestError("Attempted to create an OpenAI Responses AI image input from unknown variant".into()))
+                                DocumentSourceKind::Raw(_) => {
+                                    return Err(CompletionError::RequestError(
+                                        "Raw file data not supported, encode as base64 first"
+                                            .into(),
+                                    ));
+                                }
+                                doc => {
+                                    return Err(CompletionError::RequestError(
+                                        format!("Unsupported document type: {doc}").into(),
+                                    ));
+                                }
                             };
                             items.push(InputItem {
                                 role: Some(Role::User),
                                 input: InputContent::Message(Message::User {
                                     content: OneOrMany::one(UserContent::InputImage {
-                                        image_url: ImageUrl {
-                                            url,
-                                            detail: detail.unwrap_or_default(),
-                                        },
+                                        image_url: url,
+                                        detail: detail.unwrap_or_default(),
                                     }),
                                     name: None,
                                 }),
@@ -611,12 +672,15 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             AdditionalParameters::default()
         };
 
+        let tool_choice = req.tool_choice.map(ToolChoice::try_from).transpose()?;
+
         Ok(Self {
             input,
             model,
             instructions: req.preamble,
             max_output_tokens: req.max_tokens,
             stream,
+            tool_choice,
             tools: req
                 .tools
                 .into_iter()
@@ -980,10 +1044,33 @@ impl completion::CompletionModel for ResponsesCompletionModel<reqwest::Client> {
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
-        let body = self.create_completion_request(completion_request)?;
-        tracing::debug!("OpenAI input: {}", serde_json::to_string_pretty(&body)?);
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = tracing::field::Empty,
+                gen_ai.request.model = tracing::field::Empty,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
 
-        let body = serde_json::to_vec(&body)?;
+        span.record("gen_ai.provider.name", "openai");
+        span.record("gen_ai.request.model", &self.model);
+        let request = self.create_completion_request(completion_request)?;
+        span.record(
+            "gen_ai.input.messages",
+            serde_json::to_string(&request.input)
+                .expect("openai request to successfully turn into a JSON value"),
+        );
+        let body = serde_json::to_vec(&request)?;
 
         let req = self
             .client
@@ -991,18 +1078,33 @@ impl completion::CompletionModel for ResponsesCompletionModel<reqwest::Client> {
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let response = self.client.send(req).await?;
+        async move {
+            let response = self.client.send(req).await?;
 
-        if response.status().is_success() {
-            let text = http_client::text(response).await?;
-            tracing::debug!(target: "rig", "OpenAI response: {}", text);
-
-            let response = serde_json::from_str::<Self::Response>(&text)?;
-            response.try_into()
-        } else {
-            let text = http_client::text(response).await?;
-            Err(CompletionError::ProviderError(text))
+            if response.status().is_success() {
+                let t = http_client::text(response).await?;
+                let response = serde_json::from_str::<Self::Response>(&t)?;
+                let span = tracing::Span::current();
+                span.record(
+                    "gen_ai.output.messages",
+                    serde_json::to_string(&response.output).unwrap(),
+                );
+                span.record("gen_ai.response.id", &response.id);
+                span.record("gen_ai.response.model", &response.model);
+                if let Some(ref usage) = response.usage {
+                    span.record("gen_ai.usage.output_tokens", usage.output_tokens);
+                    span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+                }
+                // We need to call the event here to get the span to actually send anything
+                tracing::info!("API successfully called");
+                response.try_into()
+            } else {
+                let text = http_client::text(response).await?;
+                Err(CompletionError::ProviderError(text))
+            }
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -1146,7 +1248,17 @@ pub enum UserContent {
         text: String,
     },
     InputImage {
-        image_url: ImageUrl,
+        image_url: String,
+        #[serde(default)]
+        detail: ImageDetail,
+    },
+    InputFile {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        file_url: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        file_data: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        filename: Option<String>,
     },
     Audio {
         input_audio: InputAudio,
@@ -1216,19 +1328,57 @@ impl TryFrom<message::Message> for Vec<Message> {
                                         format!("data:{media_type};base64,{data}")
                                     }
                                     DocumentSourceKind::Url(url) => url,
-                                    DocumentSourceKind::Unknown => return Err(MessageError::ConversionError("Attempted to convert unknown image type to OpenAI image input".to_string()))
+                                    DocumentSourceKind::Raw(_) => {
+                                        return Err(MessageError::ConversionError(
+                                            "Raw files not supported, encode as base64 first"
+                                                .into(),
+                                        ));
+                                    }
+                                    doc => {
+                                        return Err(MessageError::ConversionError(format!(
+                                            "Unsupported document type: {doc}"
+                                        )));
+                                    }
                                 };
 
                                 Ok(UserContent::InputImage {
-                                    image_url: ImageUrl {
-                                        url,
-                                        detail: detail.unwrap_or_default(),
-                                    },
+                                    image_url: url,
+                                    detail: detail.unwrap_or_default(),
                                 })
                             }
-                            message::UserContent::Document(message::Document { data: DocumentSourceKind::Base64(text), .. }) => {
-                                Ok(UserContent::InputText { text })
+                            message::UserContent::Document(message::Document {
+                                media_type: Some(DocumentMediaType::PDF),
+                                data,
+                                ..
+                            }) => {
+                                let (file_data, file_url) = match data {
+                                    DocumentSourceKind::Base64(data) => {
+                                        (Some(format!("data:application/pdf;base64,{data}")), None)
+                                    }
+                                    DocumentSourceKind::Url(url) => (None, Some(url)),
+                                    DocumentSourceKind::Raw(_) => {
+                                        return Err(MessageError::ConversionError(
+                                            "Raw files not supported, encode as base64 first"
+                                                .into(),
+                                        ));
+                                    }
+                                    doc => {
+                                        return Err(MessageError::ConversionError(format!(
+                                            "Unsupported document type: {doc}"
+                                        )));
+                                    }
+                                };
+
+                                Ok(UserContent::InputFile {
+                                    file_url,
+                                    file_data,
+                                    filename: Some("document.pdf".into()),
+                                })
                             }
+                            message::UserContent::Document(message::Document {
+                                data: DocumentSourceKind::Base64(text),
+                                ..
+                            }) => Ok(UserContent::InputText { text }),
                             message::UserContent::Audio(message::Audio {
                                 data: DocumentSourceKind::Base64(data),
                                 media_type,
@@ -1242,8 +1392,10 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     },
                                 },
                             }),
-                            message::UserContent::Audio(_) => Err(MessageError::ConversionError("Audio must be base64 encoded data".into())),
-                            _ => unreachable!()
+                            message::UserContent::Audio(_) => Err(MessageError::ConversionError(
+                                "Audio must be base64 encoded data".into(),
+                            )),
+                            _ => unreachable!(),
                         })
                         .collect::<Result<Vec<_>, _>>()?;
 

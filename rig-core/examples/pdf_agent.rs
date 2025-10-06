@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rig::cli_chatbot::ChatbotBuilder;
+use rig::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::{
     Embed, embeddings::EmbeddingsBuilder, loaders::PdfFileLoader, providers::openai,
@@ -96,7 +96,7 @@ async fn main() -> Result<()> {
     println!("Starting CLI chatbot...");
 
     // Start interactive CLI
-    let chatbot = ChatbotBuilder::new()
+    let chatbot = ChatBotBuilder::new()
         .agent(rag_agent)
         .multi_turn_depth(10)
         .build();

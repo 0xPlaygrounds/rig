@@ -2,7 +2,7 @@ use anyhow::Result;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use rig::prelude::*;
 use rig::{
-    cli_chatbot::ChatbotBuilder,
+    cli_chatbot::ChatBotBuilder,
     completion::ToolDefinition,
     providers::openai::{Client, GPT_4O},
     tool::Tool,
@@ -361,7 +361,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Build a CLI chatbot from the agent, with multi-turn enabled
-    let chatbot = ChatbotBuilder::new()
+    let chatbot = ChatBotBuilder::new()
         .agent(echochambers_agent)
         .multi_turn_depth(10)
         .build();

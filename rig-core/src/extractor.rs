@@ -37,7 +37,7 @@ use serde_json::json;
 use crate::{
     agent::{Agent, AgentBuilder},
     completion::{Completion, CompletionError, CompletionModel, ToolDefinition},
-    message::{AssistantContent, Message, ToolCall, ToolFunction},
+    message::{AssistantContent, Message, ToolCall, ToolChoice, ToolFunction},
     tool::Tool,
 };
 
@@ -87,7 +87,7 @@ where
                 retries = self.retries - i
             );
             let attempt_text = text_message.clone();
-            match self.extract_json(attempt_text).await {
+            match self.extract_json(attempt_text, vec![]).await {
                 Ok(data) => return Ok(data),
                 Err(e) => {
                     tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
@@ -100,8 +100,45 @@ where
         Err(last_error.unwrap_or(ExtractionError::NoData))
     }
 
-    async fn extract_json(&self, text: impl Into<Message> + Send) -> Result<T, ExtractionError> {
-        let response = self.agent.completion(text, vec![]).await?.send().await?;
+    /// Attempts to extract data from the given text with a number of retries.
+    ///
+    /// The function will retry the extraction if the initial attempt fails or
+    /// if the model does not call the `submit` tool.
+    ///
+    /// The number of retries is determined by the `retries` field on the Extractor struct.
+    pub async fn extract_with_chat_history(
+        &self,
+        text: impl Into<Message> + Send,
+        chat_history: Vec<Message>,
+    ) -> Result<T, ExtractionError> {
+        let mut last_error = None;
+        let text_message = text.into();
+
+        for i in 0..=self.retries {
+            tracing::debug!(
+                "Attempting to extract JSON. Retries left: {retries}",
+                retries = self.retries - i
+            );
+            let attempt_text = text_message.clone();
+            match self.extract_json(attempt_text, chat_history.clone()).await {
+                Ok(data) => return Ok(data),
+                Err(e) => {
+                    tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
+                    last_error = Some(e);
+                }
+            }
+        }
+
+        // If the loop finishes without a successful extraction, return the last error encountered.
+        Err(last_error.unwrap_or(ExtractionError::NoData))
+    }
+
+    async fn extract_json(
+        &self,
+        text: impl Into<Message> + Send,
+        messages: Vec<Message>,
+    ) -> Result<T, ExtractionError> {
+        let response = self.agent.completion(text, messages).await?.send().await?;
 
         if !response.choice.iter().any(|x| {
             let AssistantContent::ToolCall(ToolCall {
@@ -189,7 +226,8 @@ where
                     Use the `submit` function to submit the structured data.\n\
                     Be sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.
                 ")
-                .tool(SubmitTool::<T> {_t: PhantomData}),
+                .tool(SubmitTool::<T> {_t: PhantomData})
+                .tool_choice(ToolChoice::Required),
             retries: None,
             _t: PhantomData,
         }
@@ -223,6 +261,12 @@ where
     /// Set the maximum number of retries for the extractor.
     pub fn retries(mut self, retries: u64) -> Self {
         self.retries = Some(retries);
+        self
+    }
+
+    /// Set the `tool_choice` option for the inner Agent.
+    pub fn tool_choice(mut self, choice: ToolChoice) -> Self {
+        self.agent_builder = self.agent_builder.tool_choice(choice);
         self
     }
 

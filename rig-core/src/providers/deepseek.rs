@@ -14,6 +14,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 use reqwest_eventsource::{Event, RequestBuilderExt};
 use std::collections::HashMap;
+use tracing::{Instrument, info_span};
 
 use crate::client::{CompletionClient, ProviderClient, VerifyClient, VerifyError};
 use crate::completion::GetTokenUsage;
@@ -400,7 +401,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                             name: None,
                         }),
                         message::UserContent::Document(Document {
-                            data: DocumentSourceKind::Base64(content),
+                            data:
+                                DocumentSourceKind::Base64(content)
+                                | DocumentSourceKind::String(content),
                             ..
                         }) => Some(Message::User {
                             content,
@@ -415,6 +418,22 @@ impl TryFrom<message::Message> for Vec<Message> {
             }
             message::Message::Assistant { content, .. } => {
                 let mut messages: Vec<Message> = vec![];
+
+                // extract text
+                let text_content = content
+                    .clone()
+                    .into_iter()
+                    .filter_map(|content| match content {
+                        message::AssistantContent::Text(text) => Some(Message::Assistant {
+                            content: text.text,
+                            name: None,
+                            tool_calls: vec![],
+                        }),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+
+                messages.extend(text_content);
 
                 // extract tool calls
                 let tool_calls = content
@@ -436,21 +455,6 @@ impl TryFrom<message::Message> for Vec<Message> {
                         tool_calls,
                     });
                 }
-
-                // extract text
-                let text_content = content
-                    .into_iter()
-                    .filter_map(|content| match content {
-                        message::AssistantContent::Text(text) => Some(Message::Assistant {
-                            content: text.text,
-                            name: None,
-                            tool_calls: vec![],
-                        }),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-
-                messages.extend(text_content);
 
                 Ok(messages)
             }
@@ -591,6 +595,11 @@ impl<T> CompletionModel<T> {
                 .collect::<Vec<_>>(),
         );
 
+        let tool_choice = completion_request
+            .tool_choice
+            .map(crate::providers::openrouter::ToolChoice::try_from)
+            .transpose()?;
+
         let request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
@@ -603,7 +612,7 @@ impl<T> CompletionModel<T> {
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": "auto",
+                "tool_choice": tool_choice,
             })
         };
 
@@ -629,37 +638,74 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         completion::CompletionResponse<CompletionResponse>,
         crate::completion::CompletionError,
     > {
+        let preamble = completion_request.preamble.clone();
         let request = self.create_completion_request(completion_request)?;
+
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "deepseek",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
 
         tracing::debug!("DeepSeek completion request: {request:?}");
 
-        let response = self
-            .client
-            .reqwest_post("/chat/completions")
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| http_client::Error::Instance(e.into()))?;
-
-        if response.status().is_success() {
-            let t: String = response
-                .text()
+        async move {
+            let response = self
+                .client
+                .reqwest_post("/chat/completions")
+                .json(&request)
+                .send()
                 .await
                 .map_err(|e| http_client::Error::Instance(e.into()))?;
-            tracing::debug!(target: "rig", "DeepSeek completion: {}", t);
 
-            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
-            }
-        } else {
-            Err(CompletionError::ProviderError(
-                response
+            if response.status().is_success() {
+                let t = response
                     .text()
                     .await
-                    .map_err(|e| http_client::Error::Instance(e.into()))?,
-            ))
+                    .map_err(|e| http_client::Error::Instance(e.into()))?;
+
+                tracing::debug!(target: "rig", "DeepSeek completion: {t}");
+
+                match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
+                    ApiResponse::Ok(response) => {
+                        let span = tracing::Span::current();
+                        span.record(
+                            "gen_ai.output.messages",
+                            serde_json::to_string(&response.choices).unwrap(),
+                        );
+                        span.record("gen_ai.usage.input_tokens", response.usage.prompt_tokens);
+                        span.record(
+                            "gen_ai.usage.output_tokens",
+                            response.usage.completion_tokens,
+                        );
+                        response.try_into()
+                    }
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                }
+            } else {
+                Err(CompletionError::ProviderError(
+                    response
+                        .text()
+                        .await
+                        .map_err(|e| http_client::Error::Instance(e.into()))?,
+                ))
+            }
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -670,6 +716,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
+        let preamble = completion_request.preamble.clone();
         let mut request = self.create_completion_request(completion_request)?;
 
         request = merge(
@@ -678,7 +725,27 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         );
 
         let builder = self.client.reqwest_post("/chat/completions").json(&request);
-        send_compatible_streaming_request(builder).await
+
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "deepseek",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        tracing::Instrument::instrument(send_compatible_streaming_request(builder), span).await
     }
 }
 
@@ -724,12 +791,14 @@ pub async fn send_compatible_streaming_request(
     crate::streaming::StreamingCompletionResponse<StreamingCompletionResponse>,
     CompletionError,
 > {
+    let span = tracing::Span::current();
     let mut event_source = request_builder
         .eventsource()
         .expect("Cloning request must succeed");
 
     let stream = Box::pin(stream! {
         let mut final_usage = Usage::new();
+        let mut text_response = String::new();
         let mut calls: HashMap<usize, (String, String, String)> = HashMap::new();
 
         while let Some(event_result) = event_source.next().await {
@@ -806,6 +875,7 @@ pub async fn send_compatible_streaming_request(
                         }
 
                         if let Some(content) = &delta.content {
+                            text_response += content;
                             yield Ok(crate::streaming::RawStreamingChoice::Message(content.clone()));
                         }
                     }
@@ -825,11 +895,22 @@ pub async fn send_compatible_streaming_request(
             }
         }
 
+        let mut tool_calls = Vec::new();
         // Flush accumulated tool calls
-        for (_, (id, name, arguments)) in calls {
+        for (index, (id, name, arguments)) in calls {
             let Ok(arguments_json) = serde_json::from_str::<serde_json::Value>(&arguments) else {
                 continue;
             };
+
+            tool_calls.push(ToolCall {
+                id: id.clone(),
+                index,
+                r#type: ToolType::Function,
+                function: Function {
+                    name: name.clone(),
+                    arguments: arguments_json.clone()
+                }
+            });
             yield Ok(crate::streaming::RawStreamingChoice::ToolCall {
                 id,
                 name,
@@ -837,6 +918,14 @@ pub async fn send_compatible_streaming_request(
                 call_id: None,
             });
         }
+
+        let message = Message::Assistant {
+            content: text_response,
+            name: None,
+            tool_calls
+        };
+
+        span.record("gen_ai.output.messages", serde_json::to_string(&message).unwrap());
 
         yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse { usage: final_usage.clone() }

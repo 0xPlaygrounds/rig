@@ -25,6 +25,7 @@ use crate::{
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tracing::{Instrument, info_span};
 
 // ================================================================
 // Main Galadriel Client
@@ -549,6 +550,12 @@ where
                 .collect::<Result<Vec<Message>, _>>()?,
         );
 
+        let tool_choice = completion_request
+            .tool_choice
+            .clone()
+            .map(crate::providers::openai::completion::ToolChoice::try_from)
+            .transpose()?;
+
         let request = if completion_request.tools.is_empty() {
             json!({
                 "model": self.model,
@@ -561,7 +568,7 @@ where
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": "auto",
+                "tool_choice": tool_choice,
             })
         };
 
@@ -584,8 +591,9 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let body = self.create_completion_request(completion_request)?;
-        let body = serde_json::to_vec(&body)?;
+        let preamble = completion_request.preamble.clone();
+        let request = self.create_completion_request(completion_request)?;
+        let body = serde_json::to_vec(&request)?;
 
         let req = self
             .client
@@ -593,27 +601,60 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             .body(body)
             .map_err(http_client::Error::from)?;
 
-        let response = self.client.send(req).await?;
-
-        if response.status().is_success() {
-            let text = http_client::text(response).await?;
-
-            tracing::debug!(target: "rig", "Galadriel completion error: {}", text);
-
-            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&text)? {
-                ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "Galadriel completion token usage: {:?}",
-                        response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
-                    );
-                    response.try_into()
-                }
-                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
-            }
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "galadriel",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
         } else {
-            let text = http_client::text(response).await?;
-            Err(CompletionError::ProviderError(text))
+            tracing::Span::current()
+        };
+
+        async move {
+            let response = self.client.send(req).await?;
+
+            if response.status().is_success() {
+                let t = http_client::text(response).await?;
+                tracing::debug!(target: "rig::completions", "Galadriel completion response: {t}");
+
+                match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
+                    ApiResponse::Ok(response) => {
+                        let span = tracing::Span::current();
+                        span.record("gen_ai.response.id", response.id.clone());
+                        span.record("gen_ai.response.model_name", response.model.clone());
+                        span.record(
+                            "gen_ai.output.messages",
+                            serde_json::to_string(&response.choices).unwrap(),
+                        );
+                        if let Some(ref usage) = response.usage {
+                            span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
+                            span.record(
+                                "gen_ai.usage.output_tokens",
+                                usage.total_tokens - usage.prompt_tokens,
+                            );
+                        }
+                        response.try_into()
+                    }
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                }
+            } else {
+                let text = http_client::text(response).await?;
+
+                Err(CompletionError::ProviderError(text))
+            }
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -621,6 +662,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         &self,
         request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        let preamble = request.preamble.clone();
         let mut request = self.create_completion_request(request)?;
 
         request = merge(
@@ -630,6 +672,27 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
 
         let builder = self.client.reqwest_post("/chat/completions").json(&request);
 
-        send_compatible_streaming_request(builder).await
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "galadriel",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        send_compatible_streaming_request(builder)
+            .instrument(span)
+            .await
     }
 }

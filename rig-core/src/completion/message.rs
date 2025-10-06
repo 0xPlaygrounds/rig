@@ -200,6 +200,10 @@ pub enum DocumentSourceKind {
     Url(String),
     /// A base-64 encoded string.
     Base64(String),
+    /// Raw bytes
+    Raw(Vec<u8>),
+    /// A string (or a string literal).
+    String(String),
     #[default]
     /// An unknown file source (there's nothing there).
     Unknown,
@@ -212,6 +216,14 @@ impl DocumentSourceKind {
 
     pub fn base64(base64_string: &str) -> Self {
         Self::Base64(base64_string.to_string())
+    }
+
+    pub fn raw(bytes: impl Into<Vec<u8>>) -> Self {
+        Self::Raw(bytes.into())
+    }
+
+    pub fn string(input: &str) -> Self {
+        Self::String(input.into())
     }
 
     pub fn unknown() -> Self {
@@ -231,6 +243,8 @@ impl std::fmt::Display for DocumentSourceKind {
         match self {
             Self::Url(string) => write!(f, "{string}"),
             Self::Base64(string) => write!(f, "{string}"),
+            Self::String(string) => write!(f, "{string}"),
+            Self::Raw(_) => write!(f, "<binary data>"),
             Self::Unknown => write!(f, "<unknown>"),
         }
     }
@@ -273,6 +287,7 @@ pub enum ContentFormat {
     #[default]
     Base64,
     String,
+    Url,
 }
 
 /// Helper enum that tracks the media type of the content.
@@ -445,6 +460,20 @@ impl UserContent {
         })
     }
 
+    /// Helper constructor to make creating user image content from raw unencoded bytes easier.
+    pub fn image_raw(
+        data: impl Into<Vec<u8>>,
+        media_type: Option<ImageMediaType>,
+        detail: Option<ImageDetail>,
+    ) -> Self {
+        UserContent::Image(Image {
+            data: DocumentSourceKind::Raw(data.into()),
+            media_type,
+            detail,
+            ..Default::default()
+        })
+    }
+
     /// Helper constructor to make creating user image content easier.
     pub fn image_url(
         url: impl Into<String>,
@@ -468,7 +497,16 @@ impl UserContent {
         })
     }
 
-    /// Helper to create an audio resource froma URL
+    /// Helper constructor to make creating user audio content from raw unencoded bytes easier.
+    pub fn audio_raw(data: impl Into<Vec<u8>>, media_type: Option<AudioMediaType>) -> Self {
+        UserContent::Audio(Audio {
+            data: DocumentSourceKind::Raw(data.into()),
+            media_type,
+            ..Default::default()
+        })
+    }
+
+    /// Helper to create an audio resource from a URL
     pub fn audio_url(url: impl Into<String>, media_type: Option<AudioMediaType>) -> Self {
         UserContent::Audio(Audio {
             data: DocumentSourceKind::Url(url.into()),
@@ -478,14 +516,26 @@ impl UserContent {
     }
 
     /// Helper constructor to make creating user document content easier.
+    /// This creates a document that assumes the data being passed in is a raw string.
     pub fn document(data: impl Into<String>, media_type: Option<DocumentMediaType>) -> Self {
+        let data: String = data.into();
         UserContent::Document(Document {
-            data: DocumentSourceKind::Base64(data.into()),
+            data: DocumentSourceKind::string(&data),
             media_type,
             additional_params: None,
         })
     }
 
+    /// Helper to create a document from raw unencoded bytes
+    pub fn document_raw(data: impl Into<Vec<u8>>, media_type: Option<DocumentMediaType>) -> Self {
+        UserContent::Document(Document {
+            data: DocumentSourceKind::Raw(data.into()),
+            media_type,
+            ..Default::default()
+        })
+    }
+
+    /// Helper to create a document from a URL
     pub fn document_url(url: impl Into<String>, media_type: Option<DocumentMediaType>) -> Self {
         UserContent::Document(Document {
             data: DocumentSourceKind::Url(url.into()),
@@ -573,6 +623,20 @@ impl ToolResultContent {
             media_type,
             detail,
             additional_params: None,
+        })
+    }
+
+    /// Helper constructor to make tool result images from a base64-encoded string.
+    pub fn image_raw(
+        data: impl Into<Vec<u8>>,
+        media_type: Option<ImageMediaType>,
+        detail: Option<ImageDetail>,
+    ) -> Self {
+        ToolResultContent::Image(Image {
+            data: DocumentSourceKind::Raw(data.into()),
+            media_type,
+            detail,
+            ..Default::default()
         })
     }
 
@@ -900,6 +964,18 @@ impl From<ToolResultContent> for Message {
             })),
         }
     }
+}
+
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolChoice {
+    #[default]
+    Auto,
+    None,
+    Required,
+    Specific {
+        function_names: Vec<String>,
+    },
 }
 
 // ================================================================

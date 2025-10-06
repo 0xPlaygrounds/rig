@@ -11,6 +11,7 @@
 
 use super::openai::{TranscriptionResponse, send_compatible_streaming_request};
 
+use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
 use crate::streaming::StreamingCompletionResponse;
@@ -19,6 +20,7 @@ use crate::{
     embeddings::{self, EmbeddingError},
     json_utils,
     providers::openai,
+    telemetry::SpanCombinator,
     transcription::{self, TranscriptionError},
 };
 use bytes::Bytes;
@@ -424,6 +426,18 @@ pub struct Usage {
     pub total_tokens: usize,
 }
 
+impl GetTokenUsage for Usage {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+
+        usage.input_tokens = self.prompt_tokens as u64;
+        usage.total_tokens = self.total_tokens as u64;
+        usage.output_tokens = usage.total_tokens - usage.input_tokens;
+
+        Some(usage)
+    }
+}
+
 impl std::fmt::Display for Usage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -619,41 +633,66 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "azure.openai",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
         let request = self.create_completion_request(completion_request)?;
+        span.record_model_input(
+            &request
+                .get("messages")
+                .expect("Converting JSON should not fail"),
+        );
 
-        let response = self
-            .client
-            .post_chat_completion(&self.model)
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
-
-        if response.status().is_success() {
-            let t = response
-                .text()
+        async move {
+            let response = self
+                .client
+                .post_chat_completion(&self.model)
+                .json(&request)
+                .send()
                 .await
                 .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
 
-            tracing::debug!(target: "rig", "Azure completion error: {}", t);
-
-            match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(&t)? {
-                ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "Azure completion token usage: {:?}",
-                        response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
-                    );
-                    response.try_into()
-                }
-                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
-            }
-        } else {
-            Err(CompletionError::ProviderError(
-                response.text().await.map_err(|e| {
+            if response.status().is_success() {
+                let t = response.text().await.map_err(|e| {
                     CompletionError::HttpError(http_client::Error::Instance(e.into()))
-                })?,
-            ))
+                })?;
+                tracing::debug!(target: "rig", "Azure completion error: {}", t);
+
+                match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(&t)? {
+                    ApiResponse::Ok(response) => {
+                        let span = tracing::Span::current();
+                        span.record_model_output(&response.choices);
+                        span.record_response_metadata(&response);
+                        span.record_token_usage(&response.usage);
+                        response.try_into()
+                    }
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                }
+            } else {
+                Err(CompletionError::ProviderError(
+                    response.text().await.map_err(|e| {
+                        CompletionError::HttpError(http_client::Error::Instance(e.into()))
+                    })?,
+                ))
+            }
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -661,6 +700,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         &self,
         request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        let preamble = request.preamble.clone();
         let mut request = self.create_completion_request(request)?;
 
         request = merge(
@@ -673,7 +713,27 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             .post_chat_completion(self.model.as_str())
             .json(&request);
 
-        send_compatible_streaming_request(builder).await
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "azure.openai",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = &preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        tracing_futures::Instrument::instrument(send_compatible_streaming_request(builder), span)
+            .await
     }
 }
 
@@ -767,6 +827,7 @@ impl transcription::TranscriptionModel for TranscriptionModel<reqwest::Client> {
 // ================================================================
 #[cfg(feature = "image")]
 pub use image_generation::*;
+use tracing::{Instrument, info_span};
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod image_generation {
@@ -974,6 +1035,7 @@ mod azure_tests {
                 max_tokens: Some(100),
                 temperature: Some(0.0),
                 tools: vec![],
+                tool_choice: None,
                 additional_params: None,
             })
             .await

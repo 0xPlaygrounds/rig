@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     completion::{CompletionModel, Document},
+    message::ToolChoice,
     tool::{Tool, ToolSet},
     vector_store::VectorStoreIndexDyn,
 };
@@ -39,6 +40,8 @@ where
 {
     /// Name of the agent used for logging and debugging
     name: Option<String>,
+    /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
+    description: Option<String>,
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     model: M,
     /// System prompt
@@ -59,6 +62,8 @@ where
     temperature: Option<f64>,
     /// Actual tool implementations
     tools: ToolSet,
+    /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
+    tool_choice: Option<ToolChoice>,
 }
 
 impl<M> AgentBuilder<M>
@@ -68,6 +73,7 @@ where
     pub fn new(model: M) -> Self {
         Self {
             name: None,
+            description: None,
             model,
             preamble: None,
             static_context: vec![],
@@ -78,12 +84,19 @@ where
             dynamic_context: vec![],
             dynamic_tools: vec![],
             tools: ToolSet::default(),
+            tool_choice: None,
         }
     }
 
     /// Set the name of the agent
     pub fn name(mut self, name: &str) -> Self {
         self.name = Some(name.into());
+        self
+    }
+
+    /// Set the description of the agent
+    pub fn description(mut self, description: &str) -> Self {
+        self.description = Some(description.into());
         self
     }
 
@@ -149,6 +162,11 @@ where
         self
     }
 
+    pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
+        self.tool_choice = Some(tool_choice);
+        self
+    }
+
     /// Add some dynamic tools to the agent. On each prompt, `sample` tools from the
     /// dynamic toolset will be inserted in the request.
     pub fn dynamic_tools(
@@ -184,6 +202,7 @@ where
     pub fn build(self) -> Agent<M> {
         Agent {
             name: self.name,
+            description: self.description,
             model: Arc::new(self.model),
             preamble: self.preamble,
             static_context: self.static_context,
@@ -191,6 +210,7 @@ where
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
+            tool_choice: self.tool_choice,
             dynamic_context: Arc::new(self.dynamic_context),
             dynamic_tools: Arc::new(self.dynamic_tools),
             tools: Arc::new(self.tools),
