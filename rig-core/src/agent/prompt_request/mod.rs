@@ -3,7 +3,10 @@ pub(crate) mod streaming;
 use std::{
     future::IntoFuture,
     marker::PhantomData,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
 };
 use tracing::{Instrument, span::Id};
 
@@ -12,7 +15,7 @@ use tracing::info_span;
 
 use crate::{
     OneOrMany,
-    completion::{Completion, CompletionError, CompletionModel, Message, PromptError, Usage},
+    completion::{Completion, CompletionModel, Message, PromptError, Usage},
     message::{AssistantContent, UserContent},
     tool::ToolSetError,
 };
@@ -134,6 +137,28 @@ where
     }
 }
 
+pub struct CancelSignal(Arc<AtomicBool>);
+
+impl CancelSignal {
+    fn new() -> Self {
+        Self(Arc::new(AtomicBool::new(false)))
+    }
+
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+impl Clone for CancelSignal {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
 // dead code allowed because of functions being left empty to allow for users to not have to implement every single function
 /// Trait for per-request hooks to observe tool call events.
 pub trait PromptHook<M>: Clone + Send + Sync
@@ -146,6 +171,7 @@ where
         &self,
         prompt: &Message,
         history: &[Message],
+        cancel_sig: CancelSignal,
     ) -> impl Future<Output = ()> + Send {
         async {}
     }
@@ -156,13 +182,19 @@ where
         &self,
         prompt: &Message,
         response: &crate::completion::CompletionResponse<M::Response>,
+        cancel_sig: CancelSignal,
     ) -> impl Future<Output = ()> + Send {
         async {}
     }
 
     #[allow(unused_variables)]
     /// Called before a tool is invoked.
-    fn on_tool_call(&self, tool_name: &str, args: &str) -> impl Future<Output = ()> + Send {
+    fn on_tool_call(
+        &self,
+        tool_name: &str,
+        args: &str,
+        cancel_sig: CancelSignal,
+    ) -> impl Future<Output = ()> + Send {
         async {}
     }
 
@@ -173,6 +205,7 @@ where
         tool_name: &str,
         args: &str,
         result: &str,
+        cancel_sig: CancelSignal,
     ) -> impl Future<Output = ()> + Send {
         async {}
     }
@@ -267,6 +300,8 @@ where
             agent_span.record("gen_ai.prompt", text);
         }
 
+        let cancel_sig = CancelSignal::new();
+
         let mut current_max_depth = 0;
         let mut usage = Usage::new();
         let current_span_id: AtomicU64 = AtomicU64::new(0);
@@ -293,8 +328,15 @@ where
             }
 
             if let Some(ref hook) = self.hook {
-                hook.on_completion_call(&prompt, &chat_history[..chat_history.len() - 1])
-                    .await;
+                hook.on_completion_call(
+                    &prompt,
+                    &chat_history[..chat_history.len() - 1],
+                    cancel_sig.clone(),
+                )
+                .await;
+                if cancel_sig.is_cancelled() {
+                    return Err(PromptError::prompt_cancelled(chat_history.to_vec()));
+                }
             }
             let span = tracing::Span::current();
             let chat_span = info_span!(
@@ -337,7 +379,11 @@ where
             usage += resp.usage;
 
             if let Some(ref hook) = self.hook {
-                hook.on_completion_response(&prompt, &resp).await;
+                hook.on_completion_response(&prompt, &resp, cancel_sig.clone())
+                    .await;
+                if cancel_sig.is_cancelled() {
+                    return Err(PromptError::prompt_cancelled(chat_history.to_vec()));
+                }
             }
 
             let (tool_calls, texts): (Vec<_>, Vec<_>) = resp
@@ -381,6 +427,9 @@ where
                     let hook1 = hook.clone();
                     let hook2 = hook.clone();
 
+                    let cancel_sig1 = cancel_sig.clone();
+                    let cancel_sig2 = cancel_sig.clone();
+
                     let tool_span = info_span!(
                         "execute_tool",
                         gen_ai.operation.name = "execute_tool",
@@ -411,12 +460,25 @@ where
                             tool_span.record("gen_ai.tool.call.id", &tool_call.id);
                             tool_span.record("gen_ai.tool.call.arguments", &args);
                             if let Some(hook) = hook1 {
-                                hook.on_tool_call(tool_name, &args).await;
+                                hook.on_tool_call(tool_name, &args, cancel_sig1.clone())
+                                    .await;
+                                if cancel_sig1.is_cancelled() {
+                                    return Err(ToolSetError::Interrupted);
+                                }
                             }
                             let output = agent.tools.call(tool_name, args.clone()).await?;
                             if let Some(hook) = hook2 {
-                                hook.on_tool_result(tool_name, &args, &output.to_string())
-                                    .await;
+                                hook.on_tool_result(
+                                    tool_name,
+                                    &args,
+                                    &output.to_string(),
+                                    cancel_sig2.clone(),
+                                )
+                                .await;
+
+                                if cancel_sig2.is_cancelled() {
+                                    return Err(ToolSetError::Interrupted);
+                                }
                             }
                             tool_span.record("gen_ai.tool.call.result", &output);
                             tracing::info!(
@@ -446,7 +508,13 @@ where
                 .await
                 .into_iter()
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
+                .map_err(|e| {
+                    if matches!(e, ToolSetError::Interrupted) {
+                        PromptError::prompt_cancelled(chat_history.to_vec())
+                    } else {
+                        e.into()
+                    }
+                })?;
 
             chat_history.push(Message::User {
                 content: OneOrMany::many(tool_content).expect("There is atleast one tool call"),

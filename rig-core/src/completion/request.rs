@@ -129,6 +129,18 @@ pub enum PromptError {
         chat_history: Box<Vec<Message>>,
         prompt: Message,
     },
+
+    /// A prompting loop was cancelled.
+    #[error("PromptCancelled")]
+    PromptCancelled { chat_history: Box<Vec<Message>> },
+}
+
+impl PromptError {
+    pub(crate) fn prompt_cancelled(chat_history: Vec<Message>) -> Self {
+        Self::PromptCancelled {
+            chat_history: Box::new(chat_history),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
