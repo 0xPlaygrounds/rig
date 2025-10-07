@@ -2,7 +2,7 @@ use crate::agent::AgentBuilder;
 use crate::client::{AsCompletion, ProviderClient};
 use crate::completion::{
     CompletionError, CompletionModel, CompletionModelDyn, CompletionRequest, CompletionResponse,
-    GetTokenUsage,
+    GetTokenUsage, Usage,
 };
 use crate::extractor::ExtractorBuilder;
 use crate::streaming::StreamingCompletionResponse;
@@ -59,6 +59,18 @@ pub trait CompletionClient: ProviderClient + Clone {
     }
 }
 
+/// The final streaming response from a dynamic client.
+#[derive(Debug, Deserialize, Clone, Serialize)]
+pub struct FinalCompletionResponse {
+    pub usage: Option<Usage>,
+}
+
+impl GetTokenUsage for FinalCompletionResponse {
+    fn token_usage(&self) -> Option<Usage> {
+        self.usage
+    }
+}
+
 /// Wraps a CompletionModel in a dyn-compatible way for AgentBuilder.
 #[derive(Clone)]
 pub struct CompletionModelHandle<'a> {
@@ -67,7 +79,7 @@ pub struct CompletionModelHandle<'a> {
 
 impl CompletionModel for CompletionModelHandle<'_> {
     type Response = ();
-    type StreamingResponse = ();
+    type StreamingResponse = FinalCompletionResponse;
 
     fn completion(
         &self,

@@ -390,7 +390,7 @@ impl<'a> DynClientBuilder {
         provider: &str,
         model: &str,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         let client = self.build(provider)?;
         let completion = client
             .as_completion()
@@ -420,7 +420,7 @@ impl<'a> DynClientBuilder {
         provider: &str,
         model: &str,
         prompt: impl Into<Message> + Send,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         let client = self.build(provider)?;
         let completion = client
             .as_completion()
@@ -463,7 +463,7 @@ impl<'a> DynClientBuilder {
         model: &str,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         let client = self.build(provider)?;
         let completion = client
             .as_completion()
@@ -528,7 +528,7 @@ impl<'builder> ProviderModelId<'builder, '_> {
     pub async fn stream_completion(
         self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         self.builder
             .stream_completion(self.provider, self.model, request)
             .await
@@ -544,7 +544,7 @@ impl<'builder> ProviderModelId<'builder, '_> {
     pub async fn stream_prompt(
         self,
         prompt: impl Into<Message> + Send,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         self.builder
             .stream_prompt(self.provider, self.model, prompt)
             .await
@@ -562,7 +562,7 @@ impl<'builder> ProviderModelId<'builder, '_> {
         self,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         self.builder
             .stream_chat(self.provider, self.model, prompt, chat_history)
             .await
@@ -643,7 +643,7 @@ mod audio {
     }
 }
 use crate::agent::AgentBuilder;
-use crate::client::completion::CompletionModelHandle;
+use crate::client::completion::{CompletionModelHandle, FinalCompletionResponse};
 #[cfg(feature = "audio")]
 pub use audio::*;
 use rig::providers::mistral;

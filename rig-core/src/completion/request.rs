@@ -64,7 +64,7 @@
 //! the individual traits, structs, and enums defined in this module.
 
 use super::message::{AssistantContent, DocumentMediaType};
-use crate::client::completion::CompletionModelHandle;
+use crate::client::completion::{CompletionModelHandle, FinalCompletionResponse};
 use crate::message::ToolChoice;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{OneOrMany, streaming};
@@ -356,7 +356,7 @@ pub trait CompletionModelDyn: Send + Sync {
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> BoxFuture<'_, Result<StreamingCompletionResponse<()>, CompletionError>>;
+    ) -> BoxFuture<'_, Result<StreamingCompletionResponse<FinalCompletionResponse>, CompletionError>>;
 
     fn completion_request(
         &self,
@@ -387,7 +387,8 @@ where
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> BoxFuture<'_, Result<StreamingCompletionResponse<()>, CompletionError>> {
+    ) -> BoxFuture<'_, Result<StreamingCompletionResponse<FinalCompletionResponse>, CompletionError>>
+    {
         Box::pin(async move {
             let resp = self.stream(request).await?;
             let inner = resp.inner;

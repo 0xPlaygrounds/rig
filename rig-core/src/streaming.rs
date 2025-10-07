@@ -11,6 +11,7 @@
 use crate::OneOrMany;
 use crate::agent::Agent;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
+use crate::client::completion::FinalCompletionResponse;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
     Message, Usage,
@@ -309,12 +310,12 @@ pub trait StreamingCompletion<M: CompletionModel> {
     ) -> impl Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>;
 }
 
-pub(crate) struct StreamingResultDyn<R: Clone + Unpin> {
+pub(crate) struct StreamingResultDyn<R: Clone + Unpin + GetTokenUsage> {
     pub(crate) inner: StreamingResult<R>,
 }
 
-impl<R: Clone + Unpin> Stream for StreamingResultDyn<R> {
-    type Item = Result<RawStreamingChoice<()>, CompletionError>;
+impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
+    type Item = Result<RawStreamingChoice<FinalCompletionResponse>, CompletionError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();
@@ -324,9 +325,11 @@ impl<R: Clone + Unpin> Stream for StreamingResultDyn<R> {
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
             Poll::Ready(Some(Ok(chunk))) => match chunk {
-                RawStreamingChoice::FinalResponse(_) => {
-                    Poll::Ready(Some(Ok(RawStreamingChoice::FinalResponse(()))))
-                }
+                RawStreamingChoice::FinalResponse(res) => Poll::Ready(Some(Ok(
+                    RawStreamingChoice::FinalResponse(FinalCompletionResponse {
+                        usage: res.token_usage(),
+                    }),
+                ))),
                 RawStreamingChoice::Message(m) => {
                     Poll::Ready(Some(Ok(RawStreamingChoice::Message(m))))
                 }
