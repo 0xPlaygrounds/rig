@@ -1,10 +1,12 @@
+//! Integration for deploying your Rig agents (and more) as Discord bots.
+//! This feature is not WASM-compatible (and as such, is incompatible with the `worker` feature).
 use crate::OneOrMany;
 use crate::agent::Agent;
 use crate::completion::{AssistantContent, CompletionModel, request::Chat};
 use crate::message::{Message as RigMessage, UserContent};
 use serenity::all::{
-    Command, CommandInteraction, CommandOptionType, Context, CreateCommand, CreateCommandOption,
-    CreateThread, EventHandler, GatewayIntents, Interaction, Message, Ready, async_trait,
+    Command, CommandInteraction, Context, CreateCommand, CreateThread, EventHandler,
+    GatewayIntents, Interaction, Message, Ready, async_trait,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -38,15 +40,11 @@ where
     async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
 
-        let register_prompt_cmd = CreateCommand::new("prompt")
-            .description("Prompt the bot")
-            .add_option(
-                CreateCommandOption::new(CommandOptionType::String, "prompt", "The prompt to send")
-                    .required(true),
-            );
+        let register_cmd =
+            CreateCommand::new("new").description("Start a new chat session with the bot");
 
         // Register slash command globally
-        let command = Command::create_global_command(&ctx.http, register_prompt_cmd).await;
+        let command = Command::create_global_command(&ctx.http, register_cmd).await;
 
         match command {
             Ok(cmd) => println!("Registered global command: {}", cmd.name),
@@ -80,7 +78,7 @@ where
     M: CompletionModel + Send + Sync + 'static,
 {
     async fn handle_command(&self, ctx: &Context, command: &CommandInteraction) {
-        if command.data.name.as_str() == "prompt" {
+        if command.data.name.as_str() == "new" {
             // Defer the response to prevent timeout
             if let Err(e) = command.defer(&ctx.http).await {
                 eprintln!("Failed to defer command: {}", e);
@@ -216,14 +214,21 @@ where
     }
 }
 
+/// A trait for turning a type into a `serenity` client.
+///
 pub trait DiscordExt {
     fn into_discord_bot(
         self,
         token: &str,
     ) -> impl std::future::Future<Output = serenity::Client> + Send;
+
     fn into_discord_bot_from_env(
         self,
-    ) -> impl std::future::Future<Output = serenity::Client> + Send;
+    ) -> impl std::future::Future<Output = serenity::Client> + Send {
+        let token = std::env::var("DISCORD_BOT_TOKEN")
+            .expect("DISCORD_BOT_TOKEN should exist as an env var");
+        DiscordExt::into_discord_bot(self, &token).await
+    }
 }
 
 impl<M> DiscordExt for Agent<M>
@@ -244,11 +249,5 @@ where
             .event_handler(handler)
             .await
             .expect("Failed to create Discord client")
-    }
-
-    async fn into_discord_bot_from_env(self) -> serenity::Client {
-        let token = std::env::var("DISCORD_BOT_TOKEN")
-            .expect("DISCORD_BOT_TOKEN should exist as an env var");
-        DiscordExt::into_discord_bot(self, &token).await
     }
 }
