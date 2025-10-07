@@ -216,7 +216,10 @@ where
 
 /// A trait for turning a type into a `serenity` client.
 ///
-pub trait DiscordExt {
+pub trait DiscordExt: Sized + Send + Sync
+where
+    Self: 'static,
+{
     fn into_discord_bot(
         self,
         token: &str,
@@ -227,7 +230,8 @@ pub trait DiscordExt {
     ) -> impl std::future::Future<Output = serenity::Client> + Send {
         let token = std::env::var("DISCORD_BOT_TOKEN")
             .expect("DISCORD_BOT_TOKEN should exist as an env var");
-        DiscordExt::into_discord_bot(self, &token).await
+
+        async move { DiscordExt::into_discord_bot(self, &token).await }
     }
 }
 
