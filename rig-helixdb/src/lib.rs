@@ -138,6 +138,7 @@ where
         let docs = result
             .vec_docs
             .into_iter()
+            .filter(|x| -(x.score - 1.) >= req.threshold().unwrap_or_default())
             .map(|x| {
                 let doc: T = serde_json::from_str(&x.json_payload)?;
 
@@ -173,6 +174,7 @@ where
         let docs = result
             .vec_docs
             .into_iter()
+            .filter(|x| -(x.score - 1.) >= req.threshold().unwrap_or_default())
             .map(|x| Ok((-(x.score - 1.), x.id)))
             .collect::<Result<Vec<_>, VectorStoreError>>()?;
 
