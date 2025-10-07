@@ -156,9 +156,9 @@ where
     ) -> Result<http_client::Response<http_client::LazyBody<V>>, http_client::Error>
     where
         U: Into<Bytes> + Send,
-        V: From<Bytes> + Send,
+        V: From<Bytes> + Send + 'static,
     {
-        self.http_client.request(req).await
+        self.http_client.send(req).await
     }
 
     pub async fn send_streaming<U>(
@@ -168,7 +168,7 @@ where
     where
         U: Into<Bytes>,
     {
-        self.http_client.request_streaming(req).await
+        self.http_client.send_streaming(req).await
     }
 
     pub(crate) fn post(&self, path: &str) -> http_client::Builder {
@@ -258,7 +258,7 @@ impl VerifyClient for Client<reqwest::Client> {
             .body(http_client::NoBody)
             .map_err(http_client::Error::from)?;
 
-        let response = HttpClientExt::request(&self.http_client, req).await?;
+        let response = HttpClientExt::send(&self.http_client, req).await?;
 
         match response.status() {
             http::StatusCode::OK => Ok(()),

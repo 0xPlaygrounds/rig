@@ -132,9 +132,9 @@ where
     ) -> http_client::Result<http_client::Response<http_client::LazyBody<V>>>
     where
         U: Into<Bytes> + Send,
-        V: From<Bytes> + Send,
+        V: From<Bytes> + Send + 'static,
     {
-        self.http_client.request(req).await
+        self.http_client.send(req).await
     }
 
     pub fn embeddings<D: Embed>(

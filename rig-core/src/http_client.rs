@@ -5,6 +5,16 @@ use reqwest::Body;
 use std::future::Future;
 use std::pin::Pin;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub trait RigSend: Send {}
+#[cfg(target_arch = "wasm32")]
+pub trait RigSend {}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl<T: Send> RigSend for T {}
+#[cfg(target_arch = "wasm32")]
+impl<T> RigSend for T {}
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Http error: {0}")]
@@ -52,15 +62,17 @@ pub fn with_bearer_auth(req: Builder, auth: &str) -> Result<Builder> {
 }
 
 pub trait HttpClientExt: Send + Sync {
-    fn request<T, U>(
+    fn send<T, U>(
         &self,
         req: Request<T>,
     ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + Send
     where
-        T: Into<Bytes> + Send,
-        U: From<Bytes> + Send;
+        T: Into<Bytes>,
+        T: RigSend,
+        U: From<Bytes>,
+        U: RigSend + 'static;
 
-    fn request_streaming<T>(
+    fn send_streaming<T>(
         &self,
         req: Request<T>,
     ) -> impl Future<Output = Result<StreamingResponse>> + Send
@@ -69,7 +81,7 @@ pub trait HttpClientExt: Send + Sync {
 
     fn get<T>(&self, uri: Uri) -> impl Future<Output = Result<Response<LazyBody<T>>>> + Send
     where
-        T: From<Bytes> + Send,
+        T: From<Bytes> + Send + 'static,
     {
         async {
             let req = Request::builder()
@@ -77,7 +89,7 @@ pub trait HttpClientExt: Send + Sync {
                 .uri(uri)
                 .body(NoBody)?;
 
-            self.request(req).await
+            self.send(req).await
         }
     }
 
@@ -88,20 +100,20 @@ pub trait HttpClientExt: Send + Sync {
     ) -> impl Future<Output = Result<Response<LazyBody<R>>>> + Send
     where
         T: Into<Bytes> + Send,
-        R: From<Bytes> + Send,
+        R: From<Bytes> + Send + 'static,
     {
         async {
             let req = Request::builder()
                 .method(Method::POST)
                 .uri(uri)
                 .body(body)?;
-            self.request(req).await
+            self.send(req).await
         }
     }
 }
 
 impl HttpClientExt for reqwest::Client {
-    fn request<T, U>(
+    fn send<T, U>(
         &self,
         req: Request<T>,
     ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + Send
@@ -134,7 +146,7 @@ impl HttpClientExt for reqwest::Client {
         }
     }
 
-    fn request_streaming<T>(
+    fn send_streaming<T>(
         &self,
         req: Request<T>,
     ) -> impl Future<Output = Result<StreamingResponse>> + Send

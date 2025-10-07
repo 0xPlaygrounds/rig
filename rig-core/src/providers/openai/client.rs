@@ -126,11 +126,15 @@ where
     pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
 
+        dbg!(&url);
+
         http_client::with_bearer_auth(http_client::Request::post(url), &self.api_key)
     }
 
     pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+
+        dbg!(&url);
 
         http_client::with_bearer_auth(http_client::Request::get(url), &self.api_key)
     }
@@ -141,9 +145,9 @@ where
     ) -> http_client::Result<http_client::Response<http_client::LazyBody<R>>>
     where
         U: Into<Bytes> + Send,
-        R: From<Bytes> + Send,
+        R: From<Bytes> + Send + 'static,
     {
-        self.http_client.request(req).await
+        self.http_client.send(req).await
     }
 }
 

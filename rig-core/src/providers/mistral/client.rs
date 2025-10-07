@@ -119,9 +119,9 @@ where
     ) -> http_client::Result<http_client::Response<http_client::LazyBody<R>>>
     where
         Body: Into<Bytes> + Send,
-        R: From<Bytes> + Send,
+        R: From<Bytes> + Send + 'static,
     {
-        self.http_client.request(req).await
+        self.http_client.send(req).await
     }
 }
 
@@ -199,7 +199,7 @@ impl VerifyClient for Client<reqwest::Client> {
             .body(http_client::NoBody)
             .map_err(|e| VerifyError::HttpError(e.into()))?;
 
-        let response = HttpClientExt::request(&self.http_client, req).await?;
+        let response = HttpClientExt::send(&self.http_client, req).await?;
 
         match response.status() {
             reqwest::StatusCode::OK => Ok(()),

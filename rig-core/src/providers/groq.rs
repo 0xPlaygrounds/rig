@@ -223,7 +223,7 @@ impl VerifyClient for Client<reqwest::Client> {
             .body(http_client::NoBody)
             .map_err(http_client::Error::from)?;
 
-        let response = HttpClientExt::request(&self.http_client, req).await?;
+        let response = HttpClientExt::send(&self.http_client, req).await?;
 
         match response.status() {
             reqwest::StatusCode::OK => Ok(()),

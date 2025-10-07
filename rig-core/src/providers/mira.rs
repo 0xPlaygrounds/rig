@@ -225,7 +225,7 @@ where
                 .map_err(http_client::Error::Protocol)
         })?;
 
-        let response = self.http_client.request(req).await?;
+        let response = self.http_client.send(req).await?;
 
         let status = response.status();
 
@@ -310,7 +310,7 @@ impl VerifyClient for Client<reqwest::Client> {
             .body(http_client::NoBody)
             .map_err(http_client::Error::from)?;
 
-        let response = HttpClientExt::request(&self.http_client, req).await?;
+        let response = HttpClientExt::send(&self.http_client, req).await?;
 
         match response.status() {
             reqwest::StatusCode::OK => Ok(()),

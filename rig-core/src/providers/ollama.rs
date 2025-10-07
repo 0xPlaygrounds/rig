@@ -218,7 +218,7 @@ impl VerifyClient for Client<reqwest::Client> {
             .body(http_client::NoBody)
             .map_err(http_client::Error::from)?;
 
-        let response = HttpClientExt::request(&self.http_client, req).await?;
+        let response = HttpClientExt::send(&self.http_client, req).await?;
 
         match response.status() {
             reqwest::StatusCode::OK => Ok(()),
@@ -331,7 +331,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel<reqwest::Client> {
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
-        let response = HttpClientExt::request(&self.client.http_client, req).await?;
+        let response = HttpClientExt::send(&self.client.http_client, req).await?;
 
         if !response.status().is_success() {
             let text = http_client::text(response).await?;

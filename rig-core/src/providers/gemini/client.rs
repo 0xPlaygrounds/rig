@@ -179,9 +179,9 @@ where
     ) -> http_client::Result<http_client::Response<http_client::LazyBody<R>>>
     where
         U: Into<Bytes> + Send,
-        R: From<Bytes> + Send,
+        R: From<Bytes> + Send + 'static,
     {
-        self.http_client.request(req).await
+        self.http_client.send(req).await
     }
 }
 
@@ -303,14 +303,14 @@ where
             .get("/v1beta/models")
             .body(http_client::NoBody)
             .map_err(|e| VerifyError::HttpError(e.into()))?;
-        let response = self.http_client.request::<_, Vec<u8>>(req).await?;
+        let response = self.http_client.send::<_, Vec<u8>>(req).await?;
 
         match response.status() {
             reqwest::StatusCode::OK => Ok(()),
             reqwest::StatusCode::FORBIDDEN => Err(VerifyError::InvalidAuthentication),
             reqwest::StatusCode::INTERNAL_SERVER_ERROR
             | reqwest::StatusCode::SERVICE_UNAVAILABLE => {
-                let text = String::from_utf8_lossy(&response.into_body().await?).into();
+                let text = http_client::text(response).await?;
                 Err(VerifyError::ProviderError(text))
             }
             _ => {
