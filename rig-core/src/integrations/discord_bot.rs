@@ -1,31 +1,22 @@
 use crate::OneOrMany;
 use crate::agent::Agent;
-use crate::agent::Text;
-use crate::completion::CompletionModel;
-use crate::completion::request::Chat;
-use crate::message::Message as RigMessage;
+use crate::completion::{AssistantContent, CompletionModel, request::Chat};
+use crate::message::{Message as RigMessage, UserContent};
 use serenity::all::{
-    Command, CommandInteraction, Context, CreateCommand, CreateInteractionResponse,
-    CreateInteractionResponseMessage, CreateThread, EventHandler, GatewayIntents, Interaction,
-    Message, Ready, async_trait,
+    Command, CommandInteraction, CommandOptionType, Context, CreateCommand, CreateCommandOption,
+    CreateThread, EventHandler, GatewayIntents, Interaction, Message, Ready, async_trait,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 // Bot state containing the agent and conversation histories
-struct BotState<M>
-where
-    M: CompletionModel,
-{
+struct BotState<M: CompletionModel> {
     agent: Agent<M>,
     conversations: Arc<RwLock<HashMap<u64, Vec<RigMessage>>>>,
 }
 
-impl<M> BotState<M>
-where
-    M: CompletionModel,
-{
+impl<M: CompletionModel> BotState<M> {
     fn new(agent: Agent<M>) -> Self {
         Self {
             agent,
@@ -35,10 +26,7 @@ where
 }
 
 // Event handler for the Discord bot
-struct Handler<M>
-where
-    M: CompletionModel,
-{
+struct Handler<M: CompletionModel> {
     state: Arc<BotState<M>>,
 }
 
@@ -50,12 +38,19 @@ where
     async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
 
-        // Register slash commands
-        let command = CreateCommand::new("prompt")
-            .description("Start a new conversation thread with the AI agent");
+        let register_prompt_cmd = CreateCommand::new("prompt")
+            .description("Prompt the bot")
+            .add_option(
+                CreateCommandOption::new(CommandOptionType::String, "prompt", "The prompt to send")
+                    .required(true),
+            );
 
-        if let Err(e) = Command::create_global_command(&ctx.http, command).await {
-            eprintln!("Failed to create command: {}", e);
+        // Register slash command globally
+        let command = Command::create_global_command(&ctx.http, register_prompt_cmd).await;
+
+        match command {
+            Ok(cmd) => println!("Registered global command: {}", cmd.name),
+            Err(e) => eprintln!("Failed to register command: {}", e),
         }
     }
 
@@ -109,13 +104,10 @@ where
                 Err(e) => {
                     eprintln!("Failed to create thread: {}", e);
                     let _ = command
-                        .create_response(
+                        .edit_response(
                             &ctx.http,
-                            CreateInteractionResponse::Message(
-                                CreateInteractionResponseMessage::new()
-                                    .content("Failed to create thread. Please try again.")
-                                    .ephemeral(true),
-                            ),
+                            serenity::all::EditInteractionResponse::new()
+                                .content("Failed to create thread. Please try again."),
                         )
                         .await;
                     return;
@@ -164,9 +156,7 @@ where
             let mut conversations = self.state.conversations.write().await;
             if let Some(history) = conversations.get_mut(&thread_id) {
                 history.push(RigMessage::User {
-                    content: OneOrMany::one(crate::message::UserContent::Text(Text {
-                        text: msg.content.clone(),
-                    })),
+                    content: OneOrMany::one(UserContent::text(msg.content.clone())),
                 });
             }
         }
@@ -204,9 +194,7 @@ where
             let mut conversations = self.state.conversations.write().await;
             if let Some(history) = conversations.get_mut(&thread_id) {
                 history.push(RigMessage::Assistant {
-                    content: OneOrMany::one(crate::message::AssistantContent::text(
-                        msg.content.clone(),
-                    )),
+                    content: OneOrMany::one(AssistantContent::text(msg.content.clone())),
                     id: None,
                 });
             }
@@ -229,8 +217,13 @@ where
 }
 
 pub trait DiscordExt {
-    fn into_discord_bot(self, token: &str) -> impl Future<Output = serenity::Client> + Send;
-    fn into_discord_bot_from_env(self) -> impl Future<Output = serenity::Client> + Send;
+    fn into_discord_bot(
+        self,
+        token: &str,
+    ) -> impl std::future::Future<Output = serenity::Client> + Send;
+    fn into_discord_bot_from_env(
+        self,
+    ) -> impl std::future::Future<Output = serenity::Client> + Send;
 }
 
 impl<M> DiscordExt for Agent<M>

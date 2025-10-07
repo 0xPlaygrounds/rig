@@ -159,3 +159,7 @@ required-features = ["rmcp"]
 
 [[example]]
 name = "request_hook"
+
+[[example]]
+name = "discord_bot"
+required-features = ["discord-bot"]
