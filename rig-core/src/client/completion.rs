@@ -1,8 +1,9 @@
 use crate::agent::AgentBuilder;
+use crate::client::builder::FinalCompletionResponse;
 use crate::client::{AsCompletion, ProviderClient};
 use crate::completion::{
     CompletionError, CompletionModel, CompletionModelDyn, CompletionRequest, CompletionResponse,
-    GetTokenUsage, Usage,
+    GetTokenUsage,
 };
 use crate::extractor::ExtractorBuilder;
 use crate::streaming::StreamingCompletionResponse;
@@ -56,18 +57,6 @@ pub trait CompletionClient: ProviderClient + Clone {
         T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
     {
         ExtractorBuilder::new(self.completion_model(model))
-    }
-}
-
-/// The final streaming response from a dynamic client.
-#[derive(Debug, Deserialize, Clone, Serialize)]
-pub struct FinalCompletionResponse {
-    pub usage: Option<Usage>,
-}
-
-impl GetTokenUsage for FinalCompletionResponse {
-    fn token_usage(&self) -> Option<Usage> {
-        self.usage
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::agent::Agent;
 use crate::client::ProviderClient;
-use crate::completion::{CompletionRequest, Message};
+use crate::completion::{CompletionRequest, GetTokenUsage, Message, Usage};
 use crate::embeddings::embedding::EmbeddingModelDyn;
 use crate::providers::{
     anthropic, azure, cohere, deepseek, galadriel, gemini, groq, huggingface, hyperbolic, mira,
@@ -9,6 +9,7 @@ use crate::providers::{
 use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::TranscriptionModelDyn;
 use rig::completion::CompletionModelDyn;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use thiserror::Error;
@@ -495,6 +496,18 @@ impl<'a> DynClientBuilder {
     }
 }
 
+/// The final streaming response from a dynamic client.
+#[derive(Debug, Deserialize, Clone, Serialize)]
+pub struct FinalCompletionResponse {
+    pub usage: Option<Usage>,
+}
+
+impl GetTokenUsage for FinalCompletionResponse {
+    fn token_usage(&self) -> Option<Usage> {
+        self.usage
+    }
+}
+
 pub struct ProviderModelId<'builder, 'id> {
     builder: &'builder DynClientBuilder,
     provider: &'id str,
@@ -643,7 +656,7 @@ mod audio {
     }
 }
 use crate::agent::AgentBuilder;
-use crate::client::completion::{CompletionModelHandle, FinalCompletionResponse};
+use crate::client::completion::CompletionModelHandle;
 #[cfg(feature = "audio")]
 pub use audio::*;
 use rig::providers::mistral;
