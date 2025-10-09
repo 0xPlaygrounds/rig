@@ -8,7 +8,7 @@ use serde_json::json;
 use crate::{
     embeddings::{self, EmbeddingError},
     http_client::HttpClientExt,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::WasmCompatSend,
 };
 
 use super::{Client, client::ApiResponse};

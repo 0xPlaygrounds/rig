@@ -7,7 +7,7 @@ use std::{
 };
 use tracing::{Instrument, span::Id};
 
-use futures::{FutureExt, StreamExt, future::BoxFuture, stream};
+use futures::{StreamExt, stream};
 use tracing::info_span;
 
 use crate::{

@@ -74,7 +74,6 @@ use crate::{
     message::{Message, UserContent},
     tool::ToolSetError,
 };
-use futures::future::BoxFuture;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

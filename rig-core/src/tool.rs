@@ -9,7 +9,7 @@
 //! The [ToolSet] struct is a collection of tools that can be used by an [Agent](crate::agent::Agent)
 //! and optionally RAGged.
 
-use std::{collections::HashMap, pin::Pin};
+use std::collections::HashMap;
 
 use futures::Future;
 use serde::{Deserialize, Serialize};
@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use crate::{
     completion::{self, ToolDefinition},
     embeddings::{embed::EmbedError, tool::ToolSchema},
-    if_not_wasm, if_wasm,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 

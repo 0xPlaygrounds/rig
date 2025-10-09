@@ -1,4 +1,3 @@
-use futures::future::BoxFuture;
 pub use request::VectorSearchRequest;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};

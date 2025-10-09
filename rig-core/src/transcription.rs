@@ -5,7 +5,6 @@
 use crate::client::transcription::TranscriptionModelHandle;
 use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 use crate::{http_client, json_utils};
-use futures::future::BoxFuture;
 use std::sync::Arc;
 use std::{fs, path::Path};
 use thiserror::Error;

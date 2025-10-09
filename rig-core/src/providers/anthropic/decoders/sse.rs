@@ -5,7 +5,7 @@ use crate::{
 
 use super::line::{self, LineDecoder};
 use bytes::Bytes;
-use futures::{Stream, StreamExt, stream::BoxStream};
+use futures::{Stream, StreamExt};
 use std::{fmt::Debug, pin::Pin};
 use thiserror::Error;
 
