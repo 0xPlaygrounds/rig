@@ -129,7 +129,7 @@ impl CompletionModel<reqwest::Client> {
             .await
             .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 
-        let stream = Box::pin(stream! {
+        let stream = stream! {
             let mut current_tool_call: Option<(String, String, String)> = None;
             let mut text_response = String::new();
             let mut tool_calls = Vec::new();
@@ -242,8 +242,10 @@ impl CompletionModel<reqwest::Client> {
             }
 
             event_source.close();
-        }.instrument(span));
+        }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(stream))
+        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+            stream,
+        )))
     }
 }

@@ -796,7 +796,7 @@ pub async fn send_compatible_streaming_request(
         .eventsource()
         .expect("Cloning request must succeed");
 
-    let stream = Box::pin(stream! {
+    let stream = stream! {
         let mut final_usage = Usage::new();
         let mut text_response = String::new();
         let mut calls: HashMap<usize, (String, String, String)> = HashMap::new();
@@ -930,10 +930,10 @@ pub async fn send_compatible_streaming_request(
         yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse { usage: final_usage.clone() }
         ));
-    });
+    };
 
     Ok(crate::streaming::StreamingCompletionResponse::stream(
-        stream,
+        Box::pin(stream),
     ))
 }
 

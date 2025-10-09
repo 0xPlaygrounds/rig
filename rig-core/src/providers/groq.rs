@@ -729,7 +729,7 @@ pub async fn send_compatible_streaming_request(
         .eventsource()
         .expect("Cloning request must succeed");
 
-    let stream = Box::pin(stream! {
+    let stream = stream! {
         let span = tracing::Span::current();
         let mut final_usage = Usage {
             prompt_tokens: 0,
@@ -873,9 +873,9 @@ pub async fn send_compatible_streaming_request(
         yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse { usage: final_usage.clone() }
         ));
-    }.instrument(span));
+    }.instrument(span);
 
     Ok(crate::streaming::StreamingCompletionResponse::stream(
-        stream,
+        Box::pin(stream),
     ))
 }

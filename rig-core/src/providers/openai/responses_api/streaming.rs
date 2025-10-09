@@ -230,7 +230,7 @@ impl ResponsesCompletionModel<reqwest::Client> {
             .eventsource()
             .expect("Cloning request must always succeed");
 
-        let stream = Box::pin(stream! {
+        let stream = stream! {
             let mut final_usage = ResponsesUsage::new();
 
             let mut tool_calls: Vec<RawStreamingChoice<StreamingCompletionResponse>> = Vec::new();
@@ -331,8 +331,10 @@ impl ResponsesCompletionModel<reqwest::Client> {
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                 usage: final_usage.clone()
             }));
-        }.instrument(span));
+        }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(stream))
+        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+            stream,
+        )))
     }
 }

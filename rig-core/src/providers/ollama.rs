@@ -683,7 +683,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             ));
         }
 
-        let stream = Box::pin(try_stream! {
+        let stream = try_stream! {
             let span = tracing::Span::current();
             let mut byte_stream = response.bytes_stream();
             let mut tool_calls_final = Vec::new();
@@ -743,9 +743,11 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                     }
                 }
             }
-        }.instrument(span));
+        }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(stream))
+        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+            stream,
+        )))
     }
 }
 

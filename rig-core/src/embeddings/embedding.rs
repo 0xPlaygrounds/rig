@@ -6,15 +6,9 @@
 //! Finally, the module defines the [EmbeddingError] enum, which represents various errors that
 //! can occur during embedding generation or processing.
 
-use crate::{http_client, if_not_wasm, if_wasm, wasm_compat::*};
+use crate::wasm_compat::WasmBoxedFuture;
+use crate::{http_client, wasm_compat::*};
 use serde::{Deserialize, Serialize};
-if_wasm! {
-    use futures::future::LocalBoxFuture;
-}
-
-if_not_wasm! {
-    use futures::future::BoxFuture;
-}
 
 #[derive(Debug, thiserror::Error)]
 pub enum EmbeddingError {
@@ -77,94 +71,43 @@ pub trait EmbeddingModel: Clone + WasmCompatSend + WasmCompatSync {
     }
 }
 
-if_wasm! {
-    pub trait EmbeddingModelDyn: WasmCompatSend + WasmCompatSync {
-        fn max_documents(&self) -> usize;
-        fn ndims(&self) -> usize;
-        fn embed_text<'a>(
-            &'a self,
-            text: &'a str,
-        ) -> LocalBoxFuture<'a, Result<Embedding, EmbeddingError>>;
-        fn embed_texts(
-            &self,
-            texts: Vec<String>,
-        ) -> LocalBoxFuture<'_, Result<Vec<Embedding>, EmbeddingError>>;
-    }
-
+pub trait EmbeddingModelDyn: WasmCompatSend + WasmCompatSync {
+    fn max_documents(&self) -> usize;
+    fn ndims(&self) -> usize;
+    fn embed_text<'a>(
+        &'a self,
+        text: &'a str,
+    ) -> WasmBoxedFuture<'a, Result<Embedding, EmbeddingError>>;
+    fn embed_texts(
+        &self,
+        texts: Vec<String>,
+    ) -> WasmBoxedFuture<'_, Result<Vec<Embedding>, EmbeddingError>>;
 }
 
-if_wasm! {
-    impl<T> EmbeddingModelDyn for T
-    where
-        T: EmbeddingModel + WasmCompatSend + WasmCompatSync,
-    {
-        fn max_documents(&self) -> usize {
-            T::MAX_DOCUMENTS
-        }
-
-        fn ndims(&self) -> usize {
-            self.ndims()
-        }
-
-        fn embed_text<'a>(
-            &'a self,
-            text: &'a str,
-        ) -> LocalBoxFuture<'a, Result<Embedding, EmbeddingError>> {
-            Box::pin(self.embed_text(text))
-        }
-
-        fn embed_texts(
-            &self,
-            texts: Vec<String>,
-        ) -> LocalBoxFuture<'_, Result<Vec<Embedding>, EmbeddingError>> {
-            Box::pin(self.embed_texts(texts.into_iter().collect::<Vec<_>>()))
-        }
-    }
-}
-
-if_not_wasm! {
-    pub trait EmbeddingModelDyn: WasmCompatSend + WasmCompatSync {
-        fn max_documents(&self) -> usize;
-        fn ndims(&self) -> usize;
-        fn embed_text<'a>(
-            &'a self,
-            text: &'a str,
-        ) -> LocalBoxFuture<'a, Result<Embedding, EmbeddingError>>;
-        fn embed_texts(
-            &self,
-            texts: Vec<String>,
-        ) -> BoxFuture<'_, Result<Vec<Embedding>, EmbeddingError>>;
+impl<T> EmbeddingModelDyn for T
+where
+    T: EmbeddingModel + WasmCompatSend + WasmCompatSync,
+{
+    fn max_documents(&self) -> usize {
+        T::MAX_DOCUMENTS
     }
 
+    fn ndims(&self) -> usize {
+        self.ndims()
+    }
 
-}
+    fn embed_text<'a>(
+        &'a self,
+        text: &'a str,
+    ) -> WasmBoxedFuture<'a, Result<Embedding, EmbeddingError>> {
+        Box::pin(self.embed_text(text))
+    }
 
-if_not_wasm! {
-    impl<T> EmbeddingModelDyn for T
-    where
-        T: EmbeddingModel + WasmCompatSend + WasmCompatSync,
-    {
-        fn max_documents(&self) -> usize {
-            T::MAX_DOCUMENTS
-        }
-
-        fn ndims(&self) -> usize {
-            self.ndims()
-        }
-
-        fn embed_text<'a>(
-            &'a self,
-            text: &'a str,
-        ) -> LocalBoxFuture<'a, Result<Embedding, EmbeddingError>> {
-            Box::pin(self.embed_text(text))
-        }
-
-        fn embed_texts(
-            &self,
-            texts: Vec<String>,
-        ) -> LocalBoxFuture<'_, Result<Vec<Embedding>, EmbeddingError>> {
-            Box::pin(self.embed_texts(texts.into_iter().collect::<Vec<_>>()))
-        }
+    fn embed_texts(
+        &self,
+        texts: Vec<String>,
+    ) -> WasmBoxedFuture<'_, Result<Vec<Embedding>, EmbeddingError>> {
+        Box::pin(self.embed_texts(texts.into_iter().collect::<Vec<_>>()))
     }
 }
 

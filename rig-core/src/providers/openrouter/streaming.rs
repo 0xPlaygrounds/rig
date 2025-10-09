@@ -169,7 +169,7 @@ pub async fn send_streaming_request(
     }
 
     // Handle OpenAI Compatible SSE chunks
-    let stream = Box::pin(stream! {
+    let stream = stream! {
         let mut stream = response.bytes_stream();
         let mut tool_calls = HashMap::new();
         let mut partial_line = String::new();
@@ -346,9 +346,11 @@ pub async fn send_streaming_request(
             usage: final_usage.unwrap_or_default()
         }))
 
-    });
+    };
 
-    Ok(streaming::StreamingCompletionResponse::stream(stream))
+    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+        stream,
+    )))
 }
 
 pub async fn send_streaming_request1(
@@ -358,7 +360,7 @@ pub async fn send_streaming_request1(
         .eventsource()
         .expect("Cloning request must always succeed");
 
-    let stream = Box::pin(stream! {
+    let stream = stream! {
         // Accumulate tool calls by index while streaming
         let mut tool_calls: HashMap<usize, ToolCall> = HashMap::new();
         let mut final_usage = None;
@@ -509,7 +511,9 @@ pub async fn send_streaming_request1(
         yield Ok(streaming::RawStreamingChoice::FinalResponse(FinalCompletionResponse {
             usage: final_usage.unwrap_or_default(),
         }));
-    });
+    };
 
-    Ok(streaming::StreamingCompletionResponse::stream(stream))
+    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+        stream,
+    )))
 }

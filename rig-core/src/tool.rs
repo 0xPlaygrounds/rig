@@ -449,7 +449,7 @@ impl ToolSet {
     }
 
     /// Call a tool with the given name and arguments
-    pub async fn call<'a>(&'a self, toolname: &str, args: String) -> Result<String, ToolSetError> {
+    pub async fn call(&self, toolname: &str, args: String) -> Result<String, ToolSetError> {
         if let Some(tool) = self.tools.get(toolname) {
             tracing::info!(target: "rig",
                 "Calling tool {toolname} with args:\n{}",

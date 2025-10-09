@@ -1,13 +1,15 @@
-use crate::{
-    if_not_wasm, if_wasm,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
-};
-
 use super::line::{self, LineDecoder};
+use crate::{if_not_wasm, if_wasm};
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
-use std::{fmt::Debug, pin::Pin};
+use std::fmt::Debug;
 use thiserror::Error;
+if_not_wasm! {
+    use futures::stream::BoxStream;
+}
+if_wasm! {
+    use std::pin::Pin;
+}
 
 #[derive(Debug, Error)]
 pub enum SSEDecoderError {
@@ -192,7 +194,7 @@ if_wasm! {
         stream: Pin<Box<dyn Stream<Item = Result<Bytes, E>> + 'a>>,
     ) -> impl Stream<Item = Result<ServerSentEvent, SSEDecoderError>>
     where
-        E: std::fmt::Display + WasmCompatSend + WasmCompatSync + 'static
+        E: std::fmt::Display + 'static
     {
         iter_sse_messages(stream.map(|result| match result {
             Ok(bytes) => Ok(bytes.to_vec()),
@@ -206,7 +208,7 @@ if_not_wasm! {
         stream: BoxStream<'a, Result<Bytes, E>>,
     ) -> impl Stream<Item = Result<ServerSentEvent, SSEDecoderError>>
     where
-        E: Into<Box<dyn std::error::Error + Send + Sync>>,
+        E: Into<Box<dyn std::error::Error + Send + Sync>>
     {
         iter_sse_messages(stream.map(|result| match result {
             Ok(bytes) => Ok(bytes.to_vec()),

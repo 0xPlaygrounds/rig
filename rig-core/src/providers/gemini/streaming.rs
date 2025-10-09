@@ -113,7 +113,7 @@ impl CompletionModel<reqwest::Client> {
             .eventsource()
             .expect("Cloning request must always succeed");
 
-        let stream = Box::pin(stream! {
+        let stream = stream! {
             let mut text_response = String::new();
             let mut model_outputs: Vec<Part> = Vec::new();
             while let Some(event_result) = event_source.next().await {
@@ -202,8 +202,10 @@ impl CompletionModel<reqwest::Client> {
 
             // Ensure event source is closed when stream ends
             event_source.close();
-        });
+        };
 
-        Ok(streaming::StreamingCompletionResponse::stream(stream))
+        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+            stream,
+        )))
     }
 }

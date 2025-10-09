@@ -208,7 +208,7 @@ where
                     break;
                 };
 
-                let chunk = chunk?;
+                let chunk: Vec<u8> = chunk?.into();
 
                 let str = String::from_utf8_lossy(&chunk);
 

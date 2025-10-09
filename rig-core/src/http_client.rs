@@ -1,11 +1,16 @@
+use crate::if_wasm;
 use bytes::Bytes;
 #[cfg(not(target_family = "wasm"))]
 use futures::stream::BoxStream;
+#[cfg(target_family = "wasm")]
 use futures::stream::Stream;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
 use reqwest::Body;
 use std::future::Future;
-use std::pin::Pin;
+
+if_wasm! {
+    use std::pin::Pin;
+}
 
 use crate::wasm_compat::*;
 

@@ -21,7 +21,7 @@ impl<T> WasmCompatSync for T where T: Sync {}
 impl<T> WasmCompatSync for T {}
 
 #[cfg(not(target_family = "wasm"))]
-pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T>> + Send + 'a>;
+pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 #[cfg(target_family = "wasm")]
 pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
@@ -29,7 +29,7 @@ pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 #[macro_export]
 macro_rules! if_wasm {
     ($($tokens:tt)*) => {
-        #[cfg(target_family = "wasm")]
+        #[cfg(target_arch = "wasm32")]
         $($tokens)*
 
     };
@@ -38,7 +38,7 @@ macro_rules! if_wasm {
 #[macro_export]
 macro_rules! if_not_wasm {
     ($($tokens:tt)*) => {
-        #[cfg(not(target_family = "wasm"))]
+        #[cfg(not(target_arch = "wasm32"))]
         $($tokens)*
 
     };

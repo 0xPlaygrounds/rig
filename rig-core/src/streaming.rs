@@ -16,13 +16,10 @@ use crate::completion::{
     Message, Usage,
 };
 use crate::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::wasm_compat::WasmBoxedFuture;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::boxed::Box;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
@@ -91,7 +88,8 @@ where
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub type StreamingResult<R> = WasmBoxedFuture<Result<RawStreamingChoice<R>, CompletionError>>;
+pub type StreamingResult<R> =
+    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
 
 #[cfg(target_arch = "wasm32")]
 pub type StreamingResult<R> =

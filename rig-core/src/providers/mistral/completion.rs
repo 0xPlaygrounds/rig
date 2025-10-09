@@ -559,7 +559,7 @@ where
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
         let resp = self.completion(request).await?;
 
-        let stream = Box::pin(stream! {
+        let stream = stream! {
             for c in resp.choice.clone() {
                 match c {
                     message::AssistantContent::Text(t) => {
@@ -580,9 +580,9 @@ where
             }
 
             yield Ok(RawStreamingChoice::FinalResponse(resp.raw_response.clone()));
-        });
+        };
 
-        Ok(StreamingCompletionResponse::stream(stream))
+        Ok(StreamingCompletionResponse::stream(Box::pin(stream)))
     }
 }
 

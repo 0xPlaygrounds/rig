@@ -99,7 +99,7 @@ pub enum CompletionError {
     #[cfg(not(target_family = "wasm"))]
     /// Error building the completion request
     #[error("RequestError: {0}")]
-    RequestError(#[from] Box<dyn std::error::Error + Send + 'static>),
+    RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 
     #[cfg(target_family = "wasm")]
     /// Error building the completion request
@@ -399,11 +399,11 @@ where
             let resp = self.stream(request).await?;
             let inner = resp.inner;
 
-            let stream = Box::pin(streaming::StreamingResultDyn {
+            let stream = streaming::StreamingResultDyn {
                 inner: Box::pin(inner),
-            });
+            };
 
-            Ok(StreamingCompletionResponse::stream(stream))
+            Ok(StreamingCompletionResponse::stream(Box::pin(stream)))
         })
     }
 
