@@ -189,9 +189,9 @@ pub mod rmcp {
     use crate::completion::ToolDefinition;
     use crate::tool::ToolDyn;
     use crate::tool::ToolError;
+    use crate::wasm_compat::WasmBoxedFuture;
     use rmcp::model::RawContent;
     use std::borrow::Cow;
-    use wasm_compat::WasmBoxedFuture;
 
     pub struct McpTool {
         definition: rmcp::model::Tool,
