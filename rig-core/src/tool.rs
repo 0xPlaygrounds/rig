@@ -242,7 +242,7 @@ pub mod rmcp {
             self.definition.name.to_string()
         }
 
-        fn definition(&self, _prompt: String) -> WasmBoxedFuture<ToolDefinition> {
+        fn definition(&self, _prompt: String) -> WasmBoxedFuture<'_, ToolDefinition> {
             Box::pin(async move {
                 ToolDefinition {
                     name: self.definition.name.to_string(),
@@ -258,7 +258,7 @@ pub mod rmcp {
             })
         }
 
-        fn call(&self, args: String) -> WasmBoxedFuture<Result<String, ToolError>> {
+        fn call(&self, args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
             let name = self.definition.name.clone();
             let arguments = serde_json::from_str(&args).unwrap_or_default();
 
