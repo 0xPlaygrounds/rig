@@ -191,7 +191,7 @@ pub mod rmcp {
     use crate::tool::ToolError;
     use rmcp::model::RawContent;
     use std::borrow::Cow;
-    use std::pin::Pin;
+    use wasm_compat::WasmBoxedFuture;
 
     pub struct McpTool {
         definition: rmcp::model::Tool,
