@@ -130,8 +130,12 @@ where
 
 impl Client<reqwest::Client> {
     pub(crate) fn post_sse(&self, path: &str) -> reqwest::RequestBuilder {
-        let url =
-            format!("{}/{}?alt=sse&key={}", self.base_url, path, self.api_key).replace("//", "/");
+        let url = format!(
+            "{}/{}?alt=sse&key={}",
+            self.base_url,
+            path.trim_start_matches('/'),
+            self.api_key
+        );
 
         tracing::debug!("POST {}/{}?alt=sse&key={}", self.base_url, path, "****");
 
@@ -147,7 +151,12 @@ where
 {
     pub(crate) fn post(&self, path: &str) -> http_client::Builder {
         // API key gets inserted as query param - no need to add bearer auth or headers
-        let url = format!("{}/{}?key={}", self.base_url, path, self.api_key).replace("//", "/");
+        let url = format!(
+            "{}/{}?key={}",
+            self.base_url,
+            path.trim_start_matches('/'),
+            self.api_key
+        );
 
         tracing::debug!("POST {}/{}?key={}", self.base_url, path, "****");
         let mut req = http_client::Request::post(url);
@@ -161,7 +170,12 @@ where
 
     pub(crate) fn get(&self, path: &str) -> http_client::Builder {
         // API key gets inserted as query param - no need to add bearer auth or headers
-        let url = format!("{}/{}?key={}", self.base_url, path, self.api_key).replace("//", "/");
+        let url = format!(
+            "{}/{}?key={}",
+            self.base_url,
+            path.trim_start_matches('/'),
+            self.api_key
+        );
 
         tracing::debug!("GET {}/{}?key={}", self.base_url, path, "****");
 

@@ -136,7 +136,7 @@ where
     T: HttpClientExt,
 {
     pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
 
         let mut req = http_client::Request::post(url);
 
@@ -161,7 +161,7 @@ where
 
 impl Client<reqwest::Client> {
     fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
         let mut req = self.http_client.post(url).bearer_auth(&self.api_key);
 
         if let Some(fine_tune_key) = self.fine_tune_api_key.clone() {

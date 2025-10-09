@@ -82,7 +82,7 @@ impl Client<reqwest::Client> {
     }
 
     pub(crate) fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
 
         self.http_client.post(url).bearer_auth(&self.api_key)
     }
@@ -117,7 +117,7 @@ where
 
 impl<T> Client<T> {
     pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
 
         http_client::with_bearer_auth(http_client::Request::get(url), &self.api_key)
     }

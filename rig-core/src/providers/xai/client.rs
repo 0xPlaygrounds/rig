@@ -109,7 +109,7 @@ where
 
 impl Client<reqwest::Client> {
     pub(crate) fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
 
         tracing::debug!("POST {}", url);
 
@@ -120,7 +120,7 @@ impl Client<reqwest::Client> {
     }
 
     pub(crate) fn reqwest_get(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
 
         tracing::debug!("GET {}", url);
 

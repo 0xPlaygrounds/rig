@@ -119,7 +119,7 @@ impl Client {
     }
 
     pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
         self.http_client.post(url).bearer_auth(&self.api_key)
     }
 

@@ -251,7 +251,7 @@ where
         method: http_client::Method,
         path: &str,
     ) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
 
         let mut req = http_client::Builder::new().method(method).uri(url);
 
@@ -269,7 +269,7 @@ where
 
 impl Client<reqwest::Client> {
     fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
 
         self.http_client
             .post(url)

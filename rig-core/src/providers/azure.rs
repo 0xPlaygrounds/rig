@@ -186,9 +186,10 @@ where
     fn post_embedding(&self, deployment_id: &str) -> http_client::Builder {
         let url = format!(
             "{}/openai/deployments/{}/embeddings?api-version={}",
-            self.azure_endpoint, deployment_id, self.api_version
-        )
-        .replace("//", "/");
+            self.azure_endpoint,
+            deployment_id.trim_start_matches('/'),
+            self.api_version
+        );
 
         self.post(url)
     }

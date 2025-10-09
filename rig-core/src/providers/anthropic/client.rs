@@ -172,7 +172,7 @@ where
     }
 
     pub(crate) fn post(&self, path: &str) -> http_client::Builder {
-        let uri = format!("{}/{}", ANTHROPIC_API_BASE_URL, path).replace("//", "/");
+        let uri = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
 
         let mut headers = self.default_headers.clone();
 
@@ -193,7 +193,7 @@ where
     }
 
     pub(crate) fn get(&self, path: &str) -> http_client::Builder {
-        let uri = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let uri = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
 
         let mut headers = self.default_headers.clone();
         headers.insert(

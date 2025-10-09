@@ -115,7 +115,7 @@ where
         method: http_client::Method,
         path: &str,
     ) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
 
         http_client::with_bearer_auth(
             http_client::Builder::new().method(method).uri(url),
