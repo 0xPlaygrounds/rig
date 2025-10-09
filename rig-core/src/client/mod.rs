@@ -34,7 +34,14 @@ pub enum ClientBuilderError {
 /// All conversion traits must be implemented, they are automatically
 /// implemented if the respective client trait is implemented.
 pub trait ProviderClient:
-    AsCompletion + AsTranscription + AsEmbeddings + AsImageGeneration + AsAudioGeneration + Debug
+    AsCompletion
+    + AsTranscription
+    + AsEmbeddings
+    + AsImageGeneration
+    + AsAudioGeneration
+    + Send
+    + Sync
+    + Debug
 {
     /// Create a client from the process's environment.
     /// Panics if an environment is improperly configured.
