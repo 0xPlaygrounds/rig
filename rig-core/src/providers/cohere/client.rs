@@ -3,6 +3,7 @@ use crate::{
     client::{VerifyClient, VerifyError},
     embeddings::EmbeddingsBuilder,
     http_client::{self, HttpClientExt},
+    wasm_compat::*,
 };
 
 use super::{CompletionModel, EmbeddingModel};
@@ -107,7 +108,7 @@ impl Client<reqwest::Client> {
 
 impl<T> Client<T>
 where
-    T: HttpClientExt + Clone,
+    T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     fn req(
         &self,

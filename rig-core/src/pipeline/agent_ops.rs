@@ -5,6 +5,7 @@ use crate::{
     extractor::{ExtractionError, Extractor},
     message::Message,
     vector_store::{self, request::VectorSearchRequest},
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
 use super::Op;
@@ -33,8 +34,8 @@ where
 impl<I, In, T> Op for Lookup<I, In, T>
 where
     I: vector_store::VectorStoreIndex,
-    In: Into<String> + Send + Sync,
-    T: Send + Sync + for<'a> serde::Deserialize<'a>,
+    In: Into<String> + WasmCompatSend + WasmCompatSync,
+    T: WasmCompatSend + WasmCompatSync + for<'a> serde::Deserialize<'a>,
 {
     type Input = In;
     type Output = Result<Vec<(f64, String, T)>, vector_store::VectorStoreError>;
@@ -60,8 +61,8 @@ where
 pub fn lookup<I, In, T>(index: I, n: usize) -> Lookup<I, In, T>
 where
     I: vector_store::VectorStoreIndex,
-    In: Into<String> + Send + Sync,
-    T: Send + Sync + for<'a> serde::Deserialize<'a>,
+    In: Into<String> + WasmCompatSend + WasmCompatSync,
+    T: WasmCompatSend + WasmCompatSync + for<'a> serde::Deserialize<'a>,
 {
     Lookup::new(index, n)
 }
@@ -82,13 +83,16 @@ impl<P, In> Prompt<P, In> {
 
 impl<P, In> Op for Prompt<P, In>
 where
-    P: completion::Prompt + Send + Sync,
-    In: Into<String> + Send + Sync,
+    P: completion::Prompt + WasmCompatSend + WasmCompatSync,
+    In: Into<String> + WasmCompatSend + WasmCompatSync,
 {
     type Input = In;
     type Output = Result<String, completion::PromptError>;
 
-    fn call(&self, input: Self::Input) -> impl std::future::Future<Output = Self::Output> + Send {
+    fn call(
+        &self,
+        input: Self::Input,
+    ) -> impl std::future::Future<Output = Self::Output> + WasmCompatSend {
         self.prompt.prompt(input.into()).into_future()
     }
 }
@@ -99,7 +103,7 @@ where
 pub fn prompt<P, In>(model: P) -> Prompt<P, In>
 where
     P: completion::Prompt,
-    In: Into<String> + Send + Sync,
+    In: Into<String> + WasmCompatSend + WasmCompatSync,
 {
     Prompt::new(model)
 }
@@ -107,7 +111,7 @@ where
 pub struct Extract<M, Input, Output>
 where
     M: CompletionModel,
-    Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
+    Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + WasmCompatSend + WasmCompatSync,
 {
     extractor: Extractor<M, Output>,
     _in: std::marker::PhantomData<Input>,
@@ -116,7 +120,7 @@ where
 impl<M, Input, Output> Extract<M, Input, Output>
 where
     M: CompletionModel,
-    Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
+    Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + WasmCompatSend + WasmCompatSync,
 {
     pub(crate) fn new(extractor: Extractor<M, Output>) -> Self {
         Self {
@@ -129,8 +133,8 @@ where
 impl<M, Input, Output> Op for Extract<M, Input, Output>
 where
     M: CompletionModel,
-    Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
-    Input: Into<Message> + Send + Sync,
+    Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + WasmCompatSend + WasmCompatSync,
+    Input: Into<Message> + WasmCompatSend + WasmCompatSync,
 {
     type Input = Input;
     type Output = Result<Output, ExtractionError>;
@@ -146,8 +150,8 @@ where
 pub fn extract<M, Input, Output>(extractor: Extractor<M, Output>) -> Extract<M, Input, Output>
 where
     M: CompletionModel,
-    Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + Send + Sync,
-    Input: Into<String> + Send + Sync,
+    Output: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + WasmCompatSend + WasmCompatSync,
+    Input: Into<String> + WasmCompatSend + WasmCompatSync,
 {
     Extract::new(extractor)
 }
@@ -179,7 +183,7 @@ pub mod tests {
     pub struct MockIndex;
 
     impl VectorStoreIndex for MockIndex {
-        async fn top_n<T: for<'a> serde::Deserialize<'a> + std::marker::Send>(
+        async fn top_n<T: for<'a> serde::Deserialize<'a> + WasmCompatSend>(
             &self,
             _req: VectorSearchRequest,
         ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

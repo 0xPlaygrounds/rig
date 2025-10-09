@@ -10,6 +10,7 @@ use crate::{
         Blob, Content, GenerateContentRequest, GenerationConfig, Part, PartKind, Role,
     },
     transcription::{self, TranscriptionError},
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
 use super::{Client, completion::gemini_api_types::GenerateContentResponse};
@@ -39,7 +40,7 @@ impl<T> TranscriptionModel<T> {
 
 impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
 where
-    T: HttpClientExt + Send + Sync + Clone,
+    T: HttpClientExt + WasmCompatSend + WasmCompatSync + Clone,
 {
     type Response = GenerateContentResponse;
 

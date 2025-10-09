@@ -15,6 +15,7 @@ use crate::{
     completion::{Completion, CompletionError, CompletionModel, Message, PromptError, Usage},
     message::{AssistantContent, UserContent},
     tool::ToolSetError,
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
 use super::Agent;
@@ -136,7 +137,7 @@ where
 
 // dead code allowed because of functions being left empty to allow for users to not have to implement every single function
 /// Trait for per-request hooks to observe tool call events.
-pub trait PromptHook<M>: Clone + Send + Sync
+pub trait PromptHook<M>: Clone + WasmCompatSend + WasmCompatSync
 where
     M: CompletionModel,
 {
@@ -146,7 +147,7 @@ where
         &self,
         prompt: &Message,
         history: &[Message],
-    ) -> impl Future<Output = ()> + Send {
+    ) -> impl Future<Output = ()> + WasmCompatSend {
         async {}
     }
 
@@ -156,13 +157,17 @@ where
         &self,
         prompt: &Message,
         response: &crate::completion::CompletionResponse<M::Response>,
-    ) -> impl Future<Output = ()> + Send {
+    ) -> impl Future<Output = ()> + WasmCompatSend {
         async {}
     }
 
     #[allow(unused_variables)]
     /// Called before a tool is invoked.
-    fn on_tool_call(&self, tool_name: &str, args: &str) -> impl Future<Output = ()> + Send {
+    fn on_tool_call(
+        &self,
+        tool_name: &str,
+        args: &str,
+    ) -> impl Future<Output = ()> + WasmCompatSend {
         async {}
     }
 
@@ -173,7 +178,7 @@ where
         tool_name: &str,
         args: &str,
         result: &str,
-    ) -> impl Future<Output = ()> + Send {
+    ) -> impl Future<Output = ()> + WasmCompatSend {
         async {}
     }
 }
@@ -189,10 +194,10 @@ where
     P: PromptHook<M> + 'static,
 {
     type Output = Result<String, PromptError>;
-    type IntoFuture = BoxFuture<'a, Self::Output>; // This future should not outlive the agent
+    type IntoFuture = WasmBoxedFuture<'a, Self::Output>; // This future should not outlive the agent
 
     fn into_future(self) -> Self::IntoFuture {
-        self.send().boxed()
+        Box::pin(self.send())
     }
 }
 
@@ -202,10 +207,10 @@ where
     P: PromptHook<M> + 'static,
 {
     type Output = Result<PromptResponse, PromptError>;
-    type IntoFuture = BoxFuture<'a, Self::Output>; // This future should not outlive the agent
+    type IntoFuture = WasmBoxedFuture<'a, Self::Output>; // This future should not outlive the agent
 
     fn into_future(self) -> Self::IntoFuture {
-        self.send().boxed()
+        Box::pin(self.send())
     }
 }
 

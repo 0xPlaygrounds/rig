@@ -8,6 +8,7 @@ use serde_json::json;
 use crate::{
     embeddings::{self, EmbeddingError},
     http_client::HttpClientExt,
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
 use super::{Client, client::ApiResponse};
@@ -35,7 +36,7 @@ impl<T> EmbeddingModel<T> {
 
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
-    T: Send + Sync + Clone + HttpClientExt,
+    T: Clone + HttpClientExt,
 {
     const MAX_DOCUMENTS: usize = 1024;
 
@@ -50,7 +51,7 @@ where
     #[cfg_attr(feature = "worker", worker::send)]
     async fn embed_texts(
         &self,
-        documents: impl IntoIterator<Item = String> + Send,
+        documents: impl IntoIterator<Item = String> + WasmCompatSend,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
 

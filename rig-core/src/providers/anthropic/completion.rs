@@ -8,6 +8,7 @@ use crate::{
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, Reasoning},
     one_or_many::string_or_one_or_many,
     telemetry::{ProviderResponseExt, SpanCombinator},
+    wasm_compat::*,
 };
 use std::{convert::Infallible, str::FromStr};
 
@@ -645,7 +646,10 @@ impl TryFrom<Message> for message::Message {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
+pub struct CompletionModel<T = reqwest::Client>
+where
+    T: WasmCompatSend,
+{
     pub(crate) client: Client<T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
@@ -728,7 +732,7 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
 }
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default,
+    T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;

@@ -1,38 +1,48 @@
 use bytes::Bytes;
-use futures::stream::{BoxStream, StreamExt};
+#[cfg(not(target_family = "wasm"))]
+use futures::stream::BoxStream;
+use futures::stream::Stream;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
 use reqwest::Body;
 use std::future::Future;
 use std::pin::Pin;
 
-#[cfg(not(target_arch = "wasm32"))]
-pub trait RigSend: Send {}
-#[cfg(target_arch = "wasm32")]
-pub trait RigSend {}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl<T: Send> RigSend for T {}
-#[cfg(target_arch = "wasm32")]
-impl<T> RigSend for T {}
+use crate::wasm_compat::*;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Http error: {0}")]
     Protocol(#[from] http::Error),
+    #[cfg(not(target_family = "wasm"))]
     #[error("Http client error: {0}")]
     Instance(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
+
+    #[cfg(target_family = "wasm")]
+    #[error("Http client error: {0}")]
+    Instance(#[from] Box<dyn std::error::Error + 'static>),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[cfg(not(target_family = "wasm"))]
 fn instance_error<E: std::error::Error + Send + Sync + 'static>(error: E) -> Error {
     Error::Instance(error.into())
 }
 
-pub type LazyBytes = Pin<Box<dyn Future<Output = Result<Bytes>> + Send + 'static>>;
-pub type LazyBody<T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'static>>;
+#[cfg(target_family = "wasm")]
+fn instance_error<E: std::error::Error + 'static>(error: E) -> Error {
+    Error::Instance(error.into())
+}
 
+pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
+pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
+
+#[cfg(not(target_family = "wasm"))]
 pub type ByteStream = BoxStream<'static, Result<Bytes>>;
+
+#[cfg(target_family = "wasm")]
+pub type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes>> + 'static>>;
+
 pub type StreamingResponse = Response<ByteStream>;
 
 pub struct NoBody;
@@ -61,65 +71,33 @@ pub fn with_bearer_auth(req: Builder, auth: &str) -> Result<Builder> {
     Ok(req.header("Authorization", auth_header))
 }
 
-pub trait HttpClientExt: Send + Sync {
+pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
     fn send<T, U>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + Send
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
     where
         T: Into<Bytes>,
-        T: RigSend,
+        T: WasmCompatSend,
         U: From<Bytes>,
-        U: RigSend + 'static;
+        U: WasmCompatSend + 'static;
 
     fn send_streaming<T>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + Send
+    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend + 'static
     where
         T: Into<Bytes>;
-
-    fn get<T>(&self, uri: Uri) -> impl Future<Output = Result<Response<LazyBody<T>>>> + Send
-    where
-        T: From<Bytes> + Send + 'static,
-    {
-        async {
-            let req = Request::builder()
-                .method(Method::GET)
-                .uri(uri)
-                .body(NoBody)?;
-
-            self.send(req).await
-        }
-    }
-
-    fn post<T, R>(
-        &self,
-        uri: Uri,
-        body: T,
-    ) -> impl Future<Output = Result<Response<LazyBody<R>>>> + Send
-    where
-        T: Into<Bytes> + Send,
-        R: From<Bytes> + Send + 'static,
-    {
-        async {
-            let req = Request::builder()
-                .method(Method::POST)
-                .uri(uri)
-                .body(body)?;
-            self.send(req).await
-        }
-    }
 }
 
 impl HttpClientExt for reqwest::Client {
     fn send<T, U>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + Send
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
     where
         T: Into<Bytes>,
-        U: From<Bytes> + Send,
+        U: From<Bytes> + WasmCompatSend,
     {
         let (parts, body) = req.into_parts();
         let req = self
@@ -136,8 +114,12 @@ impl HttpClientExt for reqwest::Client {
                 *hs = response.headers().clone();
             }
 
-            let body: LazyBody<U> = Box::pin(async move {
-                let bytes = response.bytes().await.map_err(instance_error)?;
+            let body: LazyBody<U> = Box::pin(async {
+                let bytes = response
+                    .bytes()
+                    .await
+                    .map_err(|e| Error::Instance(e.into()))?;
+
                 let body = U::from(bytes);
                 Ok(body)
             });
@@ -149,7 +131,7 @@ impl HttpClientExt for reqwest::Client {
     fn send_streaming<T>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + Send
+    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend + 'static
     where
         T: Into<Bytes>,
     {
@@ -162,9 +144,13 @@ impl HttpClientExt for reqwest::Client {
         async move {
             let response: reqwest::Response = req.send().await.map_err(instance_error)?;
 
+            #[cfg(not(target_family = "wasm"))]
             let mut res = Response::builder()
                 .status(response.status())
                 .version(response.version());
+
+            #[cfg(target_family = "wasm")]
+            let mut res = Response::builder().status(response.status());
 
             if let Some(hs) = res.headers_mut() {
                 *hs = response.headers().clone();
@@ -172,7 +158,7 @@ impl HttpClientExt for reqwest::Client {
 
             let stream: ByteStream = {
                 use futures::TryStreamExt;
-                Box::pin(response.bytes_stream().map_err(instance_error).boxed())
+                Box::pin(response.bytes_stream().map_err(instance_error))
             };
 
             Ok(res.body(stream)?)

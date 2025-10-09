@@ -3,6 +3,7 @@ use super::{Client, client::ApiResponse};
 use crate::{
     embeddings::{self, EmbeddingError},
     http_client::HttpClientExt,
+    wasm_compat::*,
 };
 
 use serde::Deserialize;
@@ -68,7 +69,7 @@ pub struct EmbeddingModel<T = reqwest::Client> {
 
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
-    T: HttpClientExt + Clone,
+    T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     const MAX_DOCUMENTS: usize = 96;
 

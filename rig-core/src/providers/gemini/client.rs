@@ -6,6 +6,7 @@ use crate::client::{
     VerifyClient, VerifyError, impl_conversion_traits,
 };
 use crate::http_client::{self, HttpClientExt};
+use crate::wasm_compat::*;
 use crate::{
     Embed,
     embeddings::{self},
@@ -294,7 +295,7 @@ where
 
 impl<T> VerifyClient for Client<T>
 where
-    T: HttpClientExt + Clone + Debug + Default + 'static,
+    T: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
     Client<T>: CompletionClient,
 {
     #[cfg_attr(feature = "worker", worker::send)]

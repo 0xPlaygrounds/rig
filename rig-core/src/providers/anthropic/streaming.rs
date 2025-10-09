@@ -198,7 +198,7 @@ where
             .body(body)
             .map_err(http_client::Error::Protocol)?;
 
-        let response: http_client::StreamingResponse = self.client.send_streaming(req).await?;
+        let response = self.client.send_streaming(req).await?;
 
         if !response.status().is_success() {
             let mut stream = response.into_body();

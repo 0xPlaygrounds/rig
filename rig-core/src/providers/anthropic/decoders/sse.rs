@@ -1,7 +1,12 @@
+use crate::{
+    if_not_wasm, if_wasm,
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
+};
+
 use super::line::{self, LineDecoder};
 use bytes::Bytes;
 use futures::{Stream, StreamExt, stream::BoxStream};
-use std::fmt::Debug;
+use std::{fmt::Debug, pin::Pin};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -182,14 +187,30 @@ fn extract_sse_chunk(buffer: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
     Some((chunk, remaining))
 }
 
-pub fn from_response<'a, E>(
-    stream: BoxStream<'a, Result<Bytes, E>>,
-) -> impl Stream<Item = Result<ServerSentEvent, SSEDecoderError>>
-where
-    E: Into<Box<dyn std::error::Error + Send + Sync>>,
-{
-    iter_sse_messages(stream.map(|result| match result {
-        Ok(bytes) => Ok(bytes.to_vec()),
-        Err(e) => Err(std::io::Error::other(e)),
-    }))
+if_wasm! {
+    pub fn from_response<'a, E>(
+        stream: Pin<Box<dyn Stream<Item = Result<Bytes, E>> + 'a>>,
+    ) -> impl Stream<Item = Result<ServerSentEvent, SSEDecoderError>>
+    where
+        E: std::fmt::Display + WasmCompatSend + WasmCompatSync + 'static
+    {
+        iter_sse_messages(stream.map(|result| match result {
+            Ok(bytes) => Ok(bytes.to_vec()),
+            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
+        }))
+    }
+}
+
+if_not_wasm! {
+    pub fn from_response<'a, E>(
+        stream: BoxStream<'a, Result<Bytes, E>>,
+    ) -> impl Stream<Item = Result<ServerSentEvent, SSEDecoderError>>
+    where
+        E: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        iter_sse_messages(stream.map(|result| match result {
+            Ok(bytes) => Ok(bytes.to_vec()),
+            Err(e) => Err(std::io::Error::other(e)),
+        }))
+    }
 }
