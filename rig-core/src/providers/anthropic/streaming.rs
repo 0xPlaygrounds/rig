@@ -195,6 +195,7 @@ where
         let req = self
             .client
             .post("/v1/messages")
+            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::Protocol)?;
 

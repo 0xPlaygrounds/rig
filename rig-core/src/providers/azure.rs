@@ -480,6 +480,7 @@ where
         let req = self
             .client
             .post_embedding(&self.model)
+            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
@@ -712,6 +713,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         let builder = self
             .client
             .post_chat_completion(self.model.as_str())
+            .header("Content-Type", "application/json")
             .json(&request);
 
         let span = if tracing::Span::current().is_disabled() {
@@ -796,6 +798,7 @@ impl transcription::TranscriptionModel for TranscriptionModel<reqwest::Client> {
         let response = self
             .client
             .post_transcription(&self.model)
+            .header("Content-Type", "application/json")
             .multipart(body)
             .send()
             .await
@@ -863,6 +866,7 @@ mod image_generation {
             let response = self
                 .client
                 .post_image_generation(&self.model)
+                .header("Content-Type", "application/json")
                 .json(&request)
                 .send()
                 .await
@@ -949,6 +953,7 @@ mod audio_generation {
             let response = self
                 .client
                 .post_audio_generation("/audio/speech")
+                .header("Content-Type", "application/json")
                 .json(&request)
                 .send()
                 .await

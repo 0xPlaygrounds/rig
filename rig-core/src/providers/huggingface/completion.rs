@@ -699,6 +699,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         let request = self
             .client
             .post(&path)?
+            .header("Content-Type", "application/json")
             .body(request)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 

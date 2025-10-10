@@ -74,6 +74,7 @@ where
         let req = self
             .client
             .post(&route)?
+            .header("Content-Type", "application/json")
             .body(request)
             .map_err(|e| TranscriptionError::HttpError(e.into()))?;
 
