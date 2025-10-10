@@ -81,6 +81,7 @@ async fn vector_search_test() {
                     "My boss says I zindle too much, what does that mean?"
                 ],
                 "model": "text-embedding-ada-002",
+                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
