@@ -94,6 +94,7 @@ where
         let request = self
             .client
             .post("/images/generations")?
+            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
 

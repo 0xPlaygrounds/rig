@@ -328,6 +328,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel<reqwest::Client> {
         let req = self
             .client
             .post("api/embed")
+            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 

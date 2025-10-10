@@ -948,6 +948,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         };
 
         let request = CompletionRequest::try_from((self.model.to_owned(), completion_request))?;
+
         span.record_model_input(&request.messages);
 
         let body = serde_json::to_vec(&request)?;
@@ -955,6 +956,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         let req = self
             .client
             .post("/chat/completions")?
+            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
