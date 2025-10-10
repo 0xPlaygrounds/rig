@@ -67,7 +67,7 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl CompletionModel {
+impl CompletionModel<reqwest::Client> {
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -83,7 +83,10 @@ impl CompletionModel {
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
 
-        let builder = self.client.post("/chat/completions").json(&request_as_json);
+        let builder = self
+            .client
+            .post_reqwest("/chat/completions")
+            .json(&request_as_json);
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -116,7 +119,7 @@ pub async fn send_compatible_streaming_request(
         .eventsource()
         .expect("Cloning request must always succeed");
 
-    let stream = Box::pin(stream! {
+    let stream = stream! {
         let span = tracing::Span::current();
         let mut final_usage = Usage::new();
 
@@ -263,7 +266,9 @@ pub async fn send_compatible_streaming_request(
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
             usage: final_usage.clone()
         }));
-    }.instrument(span));
+    }.instrument(span);
 
-    Ok(streaming::StreamingCompletionResponse::stream(stream))
+    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+        stream,
+    )))
 }

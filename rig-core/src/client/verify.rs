@@ -1,5 +1,8 @@
-use crate::client::{AsVerify, ProviderClient};
-use futures::future::BoxFuture;
+use crate::{
+    client::{AsVerify, ProviderClient},
+    http_client,
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
+};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -12,7 +15,7 @@ pub enum VerifyError {
     HttpError(
         #[from]
         #[source]
-        reqwest::Error,
+        http_client::Error,
     ),
 }
 
@@ -20,19 +23,19 @@ pub enum VerifyError {
 /// Clone is required for conversions between client types.
 pub trait VerifyClient: ProviderClient + Clone {
     /// Verify the configuration.
-    fn verify(&self) -> impl Future<Output = Result<(), VerifyError>> + Send;
+    fn verify(&self) -> impl Future<Output = Result<(), VerifyError>> + WasmCompatSend;
 }
 
 pub trait VerifyClientDyn: ProviderClient {
     /// Verify the configuration.
-    fn verify(&self) -> BoxFuture<'_, Result<(), VerifyError>>;
+    fn verify(&self) -> WasmBoxedFuture<'_, Result<(), VerifyError>>;
 }
 
 impl<T> VerifyClientDyn for T
 where
     T: VerifyClient,
 {
-    fn verify(&self) -> BoxFuture<'_, Result<(), VerifyError>> {
+    fn verify(&self) -> WasmBoxedFuture<'_, Result<(), VerifyError>> {
         Box::pin(self.verify())
     }
 }

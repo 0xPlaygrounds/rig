@@ -7,7 +7,7 @@ use crate::streaming::StreamingCompletionResponse;
 use serde_json::json;
 use tracing::{Instrument, info_span};
 
-impl CompletionModel {
+impl CompletionModel<reqwest::Client> {
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -18,7 +18,10 @@ impl CompletionModel {
 
         request = merge(request, json!({"stream": true}));
 
-        let builder = self.client.post("/v1/chat/completions").json(&request);
+        let builder = self
+            .client
+            .reqwest_post("/v1/chat/completions")
+            .json(&request);
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(

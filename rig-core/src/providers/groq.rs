@@ -14,10 +14,9 @@ use tracing::info_span;
 use tracing_futures::Instrument;
 
 use super::openai::{CompletionResponse, StreamingToolCall, TranscriptionResponse, Usage};
-use crate::client::{
-    ClientBuilderError, CompletionClient, TranscriptionClient, VerifyClient, VerifyError,
-};
+use crate::client::{CompletionClient, TranscriptionClient, VerifyClient, VerifyError};
 use crate::completion::GetTokenUsage;
+use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
 use crate::providers::openai::{AssistantContent, Function, ToolType};
 use async_stream::stream;
@@ -43,54 +42,59 @@ use serde_json::{Value, json};
 // ================================================================
 const GROQ_API_BASE_URL: &str = "https://api.groq.com/openai/v1";
 
-pub struct ClientBuilder<'a> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
-    http_client: Option<reqwest::Client>,
+    http_client: T,
 }
 
-impl<'a> ClientBuilder<'a> {
+impl<'a, T> ClientBuilder<'a, T>
+where
+    T: Default,
+{
     pub fn new(api_key: &'a str) -> Self {
         Self {
             api_key,
             base_url: GROQ_API_BASE_URL,
-            http_client: None,
+            http_client: Default::default(),
         }
     }
+}
 
+impl<'a, T> ClientBuilder<'a, T> {
     pub fn base_url(mut self, base_url: &'a str) -> Self {
         self.base_url = base_url;
         self
     }
 
-    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = Some(client);
-        self
+    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
+        ClientBuilder {
+            api_key: self.api_key,
+            base_url: self.base_url,
+            http_client,
+        }
     }
 
-    pub fn build(self) -> Result<Client, ClientBuilderError> {
-        let http_client = if let Some(http_client) = self.http_client {
-            http_client
-        } else {
-            reqwest::Client::builder().build()?
-        };
-
-        Ok(Client {
+    pub fn build(self) -> Client<T> {
+        Client {
             base_url: self.base_url.to_string(),
             api_key: self.api_key.to_string(),
-            http_client,
-        })
+            http_client: self.http_client,
+        }
     }
 }
 
 #[derive(Clone)]
-pub struct Client {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
-    http_client: reqwest::Client,
+    http_client: T,
 }
 
-impl std::fmt::Debug for Client {
+impl<T> std::fmt::Debug for Client<T>
+where
+    T: std::fmt::Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("base_url", &self.base_url)
@@ -100,7 +104,10 @@ impl std::fmt::Debug for Client {
     }
 }
 
-impl Client {
+impl<T> Client<T>
+where
+    T: Default,
+{
     /// Create a new Groq client builder.
     ///
     /// # Example
@@ -111,7 +118,7 @@ impl Client {
     /// let groq = Client::builder("your-groq-api-key")
     ///    .build()
     /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, T> {
         ClientBuilder::new(api_key)
     }
 
@@ -120,23 +127,41 @@ impl Client {
     /// # Panics
     /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key)
-            .build()
-            .expect("Groq client should build")
-    }
-
-    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url).bearer_auth(&self.api_key)
-    }
-
-    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.get(url).bearer_auth(&self.api_key)
+        Self::builder(api_key).build()
     }
 }
 
-impl ProviderClient for Client {
+impl<T> Client<T>
+where
+    T: HttpClientExt,
+{
+    fn req(
+        &self,
+        method: http_client::Method,
+        path: &str,
+    ) -> http_client::Result<http_client::Builder> {
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+
+        http_client::with_bearer_auth(
+            http_client::Builder::new().method(method).uri(url),
+            &self.api_key,
+        )
+    }
+
+    fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
+        self.req(http_client::Method::GET, path)
+    }
+}
+
+impl Client<reqwest::Client> {
+    fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+
+        self.http_client.post(url).bearer_auth(&self.api_key)
+    }
+}
+
+impl ProviderClient for Client<reqwest::Client> {
     /// Create a new Groq client from the `GROQ_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
@@ -152,8 +177,8 @@ impl ProviderClient for Client {
     }
 }
 
-impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
+impl CompletionClient for Client<reqwest::Client> {
+    type CompletionModel = CompletionModel<reqwest::Client>;
 
     /// Create a completion model with the given name.
     ///
@@ -166,13 +191,13 @@ impl CompletionClient for Client {
     ///
     /// let gpt4 = groq.completion_model(groq::GPT_4);
     /// ```
-    fn completion_model(&self, model: &str) -> CompletionModel {
+    fn completion_model(&self, model: &str) -> CompletionModel<reqwest::Client> {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl TranscriptionClient for Client {
-    type TranscriptionModel = TranscriptionModel;
+impl TranscriptionClient for Client<reqwest::Client> {
+    type TranscriptionModel = TranscriptionModel<reqwest::Client>;
 
     /// Create a transcription model with the given name.
     ///
@@ -185,25 +210,32 @@ impl TranscriptionClient for Client {
     ///
     /// let gpt4 = groq.transcription_model(groq::WHISPER_LARGE_V3);
     /// ```
-    fn transcription_model(&self, model: &str) -> TranscriptionModel {
+    fn transcription_model(&self, model: &str) -> TranscriptionModel<reqwest::Client> {
         TranscriptionModel::new(self.clone(), model)
     }
 }
 
-impl VerifyClient for Client {
+impl VerifyClient for Client<reqwest::Client> {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
-        let response = self.get("/models").send().await?;
+        let req = self
+            .get("/models")?
+            .body(http_client::NoBody)
+            .map_err(http_client::Error::from)?;
+
+        let response = HttpClientExt::send(&self.http_client, req).await?;
+
         match response.status() {
             reqwest::StatusCode::OK => Ok(()),
             reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
             reqwest::StatusCode::INTERNAL_SERVER_ERROR
             | reqwest::StatusCode::SERVICE_UNAVAILABLE
             | reqwest::StatusCode::BAD_GATEWAY => {
-                Err(VerifyError::ProviderError(response.text().await?))
+                let text = http_client::text(response).await?;
+                Err(VerifyError::ProviderError(text))
             }
             _ => {
-                response.error_for_status()?;
+                //response.error_for_status()?;
                 Ok(())
             }
         }
@@ -213,7 +245,7 @@ impl VerifyClient for Client {
 impl_conversion_traits!(
     AsEmbeddings,
     AsImageGeneration,
-    AsAudioGeneration for Client
+    AsAudioGeneration for Client<T>
 );
 
 #[derive(Debug, Deserialize)]
@@ -358,14 +390,14 @@ pub const LLAMA_3_8B_8192: &str = "llama3-8b-8192";
 pub const MIXTRAL_8X7B_32768: &str = "mixtral-8x7b-32768";
 
 #[derive(Clone, Debug)]
-pub struct CompletionModel {
-    client: Client,
+pub struct CompletionModel<T> {
+    client: Client<T>,
     /// Name of the model (e.g.: deepseek-r1-distill-llama-70b)
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -435,7 +467,7 @@ impl CompletionModel {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl completion::CompletionModel for CompletionModel<reqwest::Client> {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -469,13 +501,18 @@ impl completion::CompletionModel for CompletionModel {
         let async_block = async move {
             let response = self
                 .client
-                .post("/chat/completions")
+                .reqwest_post("/chat/completions")
                 .json(&request)
                 .send()
-                .await?;
+                .await
+                .map_err(|e| http_client::Error::Instance(e.into()))?;
 
             if response.status().is_success() {
-                match response.json::<ApiResponse<CompletionResponse>>().await? {
+                match response
+                    .json::<ApiResponse<CompletionResponse>>()
+                    .await
+                    .map_err(|e| http_client::Error::Instance(e.into()))?
+                {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record("gen_ai.response.id", response.id.clone());
@@ -496,7 +533,12 @@ impl completion::CompletionModel for CompletionModel {
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
                 }
             } else {
-                Err(CompletionError::ProviderError(response.text().await?))
+                Err(CompletionError::ProviderError(
+                    response
+                        .text()
+                        .await
+                        .map_err(|e| http_client::Error::Instance(e.into()))?,
+                ))
             }
         };
 
@@ -519,7 +561,7 @@ impl completion::CompletionModel for CompletionModel {
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
 
-        let builder = self.client.post("/chat/completions").json(&request);
+        let builder = self.client.reqwest_post("/chat/completions").json(&request);
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -552,21 +594,21 @@ pub const WHISPER_LARGE_V3_TURBO: &str = "whisper-large-v3-turbo";
 pub const DISTIL_WHISPER_LARGE_V3: &str = "distil-whisper-large-v3-en";
 
 #[derive(Clone)]
-pub struct TranscriptionModel {
-    client: Client,
+pub struct TranscriptionModel<T> {
+    client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
 }
 
-impl TranscriptionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> TranscriptionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
         }
     }
 }
-impl transcription::TranscriptionModel for TranscriptionModel {
+impl transcription::TranscriptionModel for TranscriptionModel<reqwest::Client> {
     type Response = TranscriptionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -606,23 +648,30 @@ impl transcription::TranscriptionModel for TranscriptionModel {
 
         let response = self
             .client
-            .post("audio/transcriptions")
+            .reqwest_post("audio/transcriptions")
             .multipart(body)
             .send()
-            .await?;
+            .await
+            .map_err(|e| TranscriptionError::HttpError(http_client::Error::Instance(e.into())))?;
 
         if response.status().is_success() {
             match response
                 .json::<ApiResponse<TranscriptionResponse>>()
-                .await?
-            {
+                .await
+                .map_err(|e| {
+                    TranscriptionError::HttpError(http_client::Error::Instance(e.into()))
+                })? {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(api_error_response) => Err(TranscriptionError::ProviderError(
                     api_error_response.message,
                 )),
             }
         } else {
-            Err(TranscriptionError::ProviderError(response.text().await?))
+            Err(TranscriptionError::ProviderError(
+                response.text().await.map_err(|e| {
+                    TranscriptionError::HttpError(http_client::Error::Instance(e.into()))
+                })?,
+            ))
         }
     }
 }
@@ -680,7 +729,7 @@ pub async fn send_compatible_streaming_request(
         .eventsource()
         .expect("Cloning request must succeed");
 
-    let stream = Box::pin(stream! {
+    let stream = stream! {
         let span = tracing::Span::current();
         let mut final_usage = Usage {
             prompt_tokens: 0,
@@ -824,9 +873,9 @@ pub async fn send_compatible_streaming_request(
         yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse { usage: final_usage.clone() }
         ));
-    }.instrument(span));
+    }.instrument(span);
 
     Ok(crate::streaming::StreamingCompletionResponse::stream(
-        stream,
+        Box::pin(stream),
     ))
 }

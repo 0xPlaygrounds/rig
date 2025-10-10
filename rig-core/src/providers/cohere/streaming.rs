@@ -8,7 +8,7 @@ use crate::telemetry::SpanCombinator;
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
-use reqwest_eventsource::{Event, RequestBuilderExt};
+use reqwest_eventsource::Event;
 use serde::{Deserialize, Serialize};
 use tracing::info_span;
 use tracing_futures::Instrument;
@@ -89,7 +89,7 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl CompletionModel {
+impl CompletionModel<reqwest::Client> {
     pub(crate) async fn stream(
         &self,
         request: CompletionRequest,
@@ -121,14 +121,15 @@ impl CompletionModel {
             serde_json::to_string_pretty(&request)?
         );
 
+        let req = self.client.client().post("/v2/chat").json(&request);
+
         let mut event_source = self
             .client
-            .post("/v2/chat")
-            .json(&request)
-            .eventsource()
+            .eventsource(req)
+            .await
             .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 
-        let stream = Box::pin(stream! {
+        let stream = stream! {
             let mut current_tool_call: Option<(String, String, String)> = None;
             let mut text_response = String::new();
             let mut tool_calls = Vec::new();
@@ -241,8 +242,10 @@ impl CompletionModel {
             }
 
             event_source.close();
-        }.instrument(span));
+        }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(stream))
+        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+            stream,
+        )))
     }
 }

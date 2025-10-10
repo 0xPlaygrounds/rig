@@ -139,8 +139,7 @@ async fn vector_search_test() {
     // Initialize OpenAI client
     let openai_client = openai::Client::builder("TEST")
         .base_url(&server.base_url())
-        .build()
-        .unwrap();
+        .build();
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);

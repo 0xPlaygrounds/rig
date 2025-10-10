@@ -5,7 +5,7 @@
 
 use crate::{
     completion::{self, CompletionError},
-    json_utils,
+    http_client, json_utils,
     providers::openai::Message,
 };
 
@@ -32,12 +32,12 @@ pub const GROK_4: &str = "grok-4-0709";
 // =================================================================
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T = reqwest::Client> {
+    pub(crate) client: Client<T>,
     pub model: String,
 }
 
-impl CompletionModel {
+impl<T> CompletionModel<T> {
     pub(crate) fn create_completion_request(
         &self,
         completion_request: completion::CompletionRequest,
@@ -101,7 +101,8 @@ impl CompletionModel {
 
         Ok(request)
     }
-    pub fn new(client: Client, model: &str) -> Self {
+
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -109,7 +110,7 @@ impl CompletionModel {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl completion::CompletionModel for CompletionModel<reqwest::Client> {
     type Response = CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
@@ -147,20 +148,30 @@ impl completion::CompletionModel for CompletionModel {
         async move {
             let response = self
                 .client
-                .post("/v1/chat/completions")
+                .reqwest_post("/v1/chat/completions")
                 .json(&request)
                 .send()
-                .await?;
+                .await
+                .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
 
             if response.status().is_success() {
-                match response.json::<ApiResponse<CompletionResponse>>().await? {
+                match response
+                    .json::<ApiResponse<CompletionResponse>>()
+                    .await
+                    .map_err(|e| {
+                        CompletionError::HttpError(http_client::Error::Instance(e.into()))
+                    })? {
                     ApiResponse::Ok(completion) => completion.try_into(),
                     ApiResponse::Error(error) => {
                         Err(CompletionError::ProviderError(error.message()))
                     }
                 }
             } else {
-                Err(CompletionError::ProviderError(response.text().await?))
+                Err(CompletionError::ProviderError(
+                    response.text().await.map_err(|e| {
+                        CompletionError::HttpError(http_client::Error::Instance(e.into()))
+                    })?,
+                ))
             }
         }
         .instrument(span)
