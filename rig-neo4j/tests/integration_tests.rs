@@ -102,6 +102,7 @@ async fn vector_search_test() {
                     "What is a glarb?",
                 ],
                 "model": "text-embedding-ada-002",
+                "dimensions": 1536
             }));
         then.status(200)
             .header("content-type", "application/json")

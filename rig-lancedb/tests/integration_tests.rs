@@ -35,6 +35,7 @@ async fn vector_search_test() {
             .json_body(json!({
                 "input": req_data,
                 "model": "text-embedding-ada-002",
+                "dimensions": 1536
             }));
 
         let mut resp_data = vec![
