@@ -31,7 +31,7 @@ async fn vector_search_test() {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
             .header("Authorization", "Bearer TEST")
-            .header("content-type", "application/json")
+            .header("Content-Type", "application/json")
             .json_body(json!({
                 "input": req_data,
                 "model": "text-embedding-ada-002",
@@ -77,7 +77,7 @@ async fn vector_search_test() {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
             .header("Authorization", "Bearer TEST")
-            .header("content-type", "application/json")
+            .header("Content-Type", "application/json")
             .json_body(json!({
                 "input": [
                     "My boss says I zindle too much, what does that mean?"

@@ -185,7 +185,7 @@ async fn insert_documents_test() {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
             .header("Authorization", "Bearer TEST")
-            .header("content-type", "application/json")
+            .header("Content-Type", "application/json")
             .json_body(json!({
                 "input": [
                     "Test document 1",
