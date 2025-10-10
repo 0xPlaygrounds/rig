@@ -51,6 +51,7 @@ async fn vector_search_test() {
                     "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
                 ],
                 "model": "text-embedding-ada-002",
+                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -90,6 +91,7 @@ async fn vector_search_test() {
                     "What is a linglingdong?"
                 ],
                 "model": "text-embedding-ada-002",
+                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -185,7 +187,6 @@ async fn insert_documents_test() {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
             .header("Authorization", "Bearer TEST")
-            .header("Content-Type", "application/json")
             .json_body(json!({
                 "input": [
                     "Test document 1",
