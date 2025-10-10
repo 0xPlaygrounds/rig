@@ -16,10 +16,10 @@ use crate::completion::{
     Message, Usage,
 };
 use crate::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::boxed::Box;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
@@ -277,24 +277,27 @@ where
 pub trait StreamingPrompt<M, R>
 where
     M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: Send,
+    <M as CompletionModel>::StreamingResponse: WasmCompatSend,
     R: Clone + Unpin + GetTokenUsage,
 {
     /// Stream a simple prompt to the model
-    fn stream_prompt(&self, prompt: impl Into<Message> + Send) -> StreamingPromptRequest<M, ()>;
+    fn stream_prompt(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+    ) -> StreamingPromptRequest<M, ()>;
 }
 
 /// Trait for high-level streaming chat interface
-pub trait StreamingChat<M, R>: Send + Sync
+pub trait StreamingChat<M, R>: WasmCompatSend + WasmCompatSync
 where
     M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: Send,
+    <M as CompletionModel>::StreamingResponse: WasmCompatSend,
     R: Clone + Unpin + GetTokenUsage,
 {
     /// Stream a chat with history to the model
     fn stream_chat(
         &self,
-        prompt: impl Into<Message> + Send,
+        prompt: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> StreamingPromptRequest<M, ()>;
 }
@@ -304,7 +307,7 @@ pub trait StreamingCompletion<M: CompletionModel> {
     /// Generate a streaming completion from a request
     fn stream_completion(
         &self,
-        prompt: impl Into<Message> + Send,
+        prompt: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> impl Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>;
 }
@@ -351,7 +354,7 @@ impl<R: Clone + Unpin> Stream for StreamingResultDyn<R> {
 
 /// helper function to stream a completion request to stdout
 pub async fn stream_to_stdout<M>(
-    agent: &Agent<M>,
+    agent: &'static Agent<M>,
     stream: &mut StreamingCompletionResponse<M::StreamingResponse>,
 ) -> Result<(), std::io::Error>
 where

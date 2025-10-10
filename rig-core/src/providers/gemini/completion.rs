@@ -53,13 +53,13 @@ use super::Client;
 // =================================================================
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T = reqwest::Client> {
+    pub(crate) client: Client<T>,
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -67,7 +67,7 @@ impl CompletionModel {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl completion::CompletionModel for CompletionModel<reqwest::Client> {
     type Response = GenerateContentResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -98,20 +98,40 @@ impl completion::CompletionModel for CompletionModel {
         let request = create_request_body(completion_request)?;
         span.record_model_input(&request.contents);
 
+        span.record_model_input(&request.contents);
+
         tracing::debug!(
             "Sending completion request to Gemini API {}",
             serde_json::to_string_pretty(&request)?
         );
 
-        let response = self
+        let body = serde_json::to_vec(&request)?;
+
+        let request = self
             .client
             .post(&format!("/v1beta/models/{}:generateContent", self.model))
-            .json(&request)
-            .send()
-            .await?;
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        let response = self.client.send::<_, Vec<u8>>(request).await?;
 
         if response.status().is_success() {
-            let response = response.json::<GenerateContentResponse>().await?;
+            let response_body = response
+                .into_body()
+                .await
+                .map_err(CompletionError::HttpError)?;
+
+            let response: GenerateContentResponse = serde_json::from_slice(&response_body)?;
+
+            match response.usage_metadata {
+                Some(ref usage) => tracing::info!(target: "rig",
+                "Gemini completion token usage: {}",
+                usage
+                ),
+                None => tracing::info!(target: "rig",
+                    "Gemini completion token usage: n/a",
+                ),
+            }
 
             let span = tracing::Span::current();
             span.record_model_output(&response.candidates);
@@ -120,13 +140,21 @@ impl completion::CompletionModel for CompletionModel {
 
             tracing::debug!(
                 "Received response from Gemini API: {}",
-                serde_json::to_string_pretty(&request)?
+                serde_json::to_string_pretty(&response)?
             );
 
-            Ok(completion::CompletionResponse::try_from(response))
+            response.try_into()
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
-        }?
+            let text = String::from_utf8_lossy(
+                &response
+                    .into_body()
+                    .await
+                    .map_err(CompletionError::HttpError)?,
+            )
+            .into();
+
+            Err(CompletionError::ProviderError(text))
+        }
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -778,7 +806,7 @@ pub mod gemini_api_types {
                                     "Raw files not supported, encode as base64 first".into(),
                                 ));
                             }
-                            DocumentSourceKind::Unknown => {
+                            _ => {
                                 return Err(message::MessageError::ConversionError(
                                     "Document has no body".to_string(),
                                 ));

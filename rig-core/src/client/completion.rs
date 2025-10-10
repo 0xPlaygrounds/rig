@@ -6,6 +6,7 @@ use crate::completion::{
 };
 use crate::extractor::ExtractorBuilder;
 use crate::streaming::StreamingCompletionResponse;
+use crate::wasm_compat::WasmCompatSend;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
@@ -72,7 +73,7 @@ impl CompletionModel for CompletionModelHandle<'_> {
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> impl Future<Output = Result<CompletionResponse<Self::Response>, CompletionError>> + Send
+    ) -> impl Future<Output = Result<CompletionResponse<Self::Response>, CompletionError>> + WasmCompatSend
     {
         self.inner.completion(request)
     }
@@ -82,7 +83,7 @@ impl CompletionModel for CompletionModelHandle<'_> {
         request: CompletionRequest,
     ) -> impl Future<
         Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
-    > + Send {
+    > + WasmCompatSend {
         self.inner.stream(request)
     }
 }
