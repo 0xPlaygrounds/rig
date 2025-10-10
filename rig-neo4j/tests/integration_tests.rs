@@ -53,6 +53,7 @@ async fn vector_search_test() {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
             .header("Authorization", "Bearer TEST")
+            .header("content-type", "application/json")
             .json_body(json!({
                 "input": [
                     "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
@@ -95,6 +96,7 @@ async fn vector_search_test() {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
             .header("Authorization", "Bearer TEST")
+            .header("content-type", "application/json")
             .json_body(json!({
                 "input": [
                     "What is a glarb?",
