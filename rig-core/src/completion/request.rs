@@ -64,6 +64,7 @@
 //! the individual traits, structs, and enums defined in this module.
 
 use super::message::{AssistantContent, DocumentMediaType};
+use crate::client::builder::FinalCompletionResponse;
 use crate::client::completion::CompletionModelHandle;
 use crate::message::ToolChoice;
 use crate::streaming::StreamingCompletionResponse;
