@@ -392,6 +392,10 @@ pub enum ToolSetError {
     // TODO: Revisit this
     #[error("JsonError: {0}")]
     JsonError(#[from] serde_json::Error),
+
+    /// Tool call was interrupted. Primarily useful for agent multi-step/turn prompting.
+    #[error("Tool call interrupted")]
+    Interrupted,
 }
 
 /// A struct that holds a set of tools
