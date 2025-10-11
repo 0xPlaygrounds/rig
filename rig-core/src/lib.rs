@@ -110,7 +110,6 @@ pub mod agent;
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
-pub mod cli_chatbot;
 pub mod client;
 pub mod completion;
 pub mod embeddings;
@@ -119,6 +118,7 @@ pub mod http_client;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
+pub mod integrations;
 pub(crate) mod json_utils;
 pub mod loaders;
 pub mod one_or_many;
