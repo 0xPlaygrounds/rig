@@ -9357,6 +9357,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-vertex"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "reqwest 0.12.23",
+ "rig-core 0.21.0",
+ "schemars 1.0.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rig-wasm"
 version = "0.1.0"
 dependencies = [
