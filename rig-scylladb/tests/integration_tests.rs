@@ -75,8 +75,7 @@ async fn vector_search_test() {
     let openai_mock = create_openai_mock_service().await;
     let openai_client = rig::providers::openai::Client::builder("TEST")
         .base_url(&openai_mock.base_url())
-        .build()
-        .unwrap();
+        .build();
 
     let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
 
@@ -226,6 +225,7 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
                     "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
                 ],
                 "model": "text-embedding-ada-002",
+                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -264,6 +264,7 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
             .json_body(json!({
                 "input": ["Test definition"],
                 "model": "text-embedding-ada-002",
+                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -292,6 +293,7 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
             .json_body(json!({
                 "input": ["What is a glarb?"],
                 "model": "text-embedding-ada-002",
+                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -319,6 +321,7 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
             .json_body(json!({
                 "input": ["What is a linglingdong?"],
                 "model": "text-embedding-ada-002",
+                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -348,8 +351,7 @@ async fn test_mock_server_setup() {
     let server = create_openai_mock_service().await;
     let openai_client = rig::providers::openai::Client::builder("TEST")
         .base_url(&server.base_url())
-        .build()
-        .unwrap();
+        .build();
     let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
 
     // Test that we can create embeddings with the mock

@@ -1,7 +1,8 @@
-use crate::image_generation;
+use crate::http_client::HttpClientExt;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge_inplace;
 use crate::providers::openai::{ApiResponse, Client};
+use crate::{http_client, image_generation};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde::Deserialize;
@@ -46,14 +47,14 @@ impl TryFrom<ImageGenerationResponse>
 }
 
 #[derive(Clone)]
-pub struct ImageGenerationModel {
-    client: Client,
+pub struct ImageGenerationModel<T = reqwest::Client> {
+    client: Client<T>,
     /// Name of the model (e.g.: dall-e-2)
     pub model: String,
 }
 
-impl ImageGenerationModel {
-    pub(crate) fn new(client: Client, model: &str) -> Self {
+impl<T> ImageGenerationModel<T> {
+    pub(crate) fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -61,7 +62,10 @@ impl ImageGenerationModel {
     }
 }
 
-impl image_generation::ImageGenerationModel for ImageGenerationModel {
+impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     type Response = ImageGenerationResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -85,24 +89,30 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
             );
         }
 
-        let response = self
+        let body = serde_json::to_vec(&request)?;
+
+        let request = self
             .client
-            .post("/images/generations")
-            .json(&request)
-            .send()
-            .await?;
+            .post("/images/generations")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
+
+        let response = self.client.send(request).await?;
 
         if !response.status().is_success() {
+            let status = response.status();
+            let text = http_client::text(response).await?;
+
             return Err(ImageGenerationError::ProviderError(format!(
                 "{}: {}",
-                response.status(),
-                response.text().await?
+                status, text,
             )));
         }
 
-        let t = response.text().await?;
+        let text = http_client::text(response).await?;
 
-        match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&t)? {
+        match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&text)? {
             ApiResponse::Ok(response) => response.try_into(),
             ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
         }

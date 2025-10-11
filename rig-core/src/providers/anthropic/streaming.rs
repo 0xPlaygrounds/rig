@@ -9,6 +9,7 @@ use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefin
 use super::decoders::sse::from_response as sse_from_response;
 use crate::OneOrMany;
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
 use crate::streaming::{self, RawStreamingChoice, StreamingResult};
 use crate::telemetry::SpanCombinator;
@@ -106,7 +107,10 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl CompletionModel {
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default,
+{
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -152,7 +156,7 @@ impl CompletionModel {
             .map(Message::try_from)
             .collect::<Result<Vec<Message>, _>>()?;
 
-        let mut request = json!({
+        let mut body = json!({
             "model": self.model,
             "messages": full_history,
             "max_tokens": max_tokens,
@@ -161,12 +165,12 @@ impl CompletionModel {
         });
 
         if let Some(temperature) = completion_request.temperature {
-            merge_inplace(&mut request, json!({ "temperature": temperature }));
+            merge_inplace(&mut body, json!({ "temperature": temperature }));
         }
 
         if !completion_request.tools.is_empty() {
             merge_inplace(
-                &mut request,
+                &mut body,
                 json!({
                     "tools": completion_request
                         .tools
@@ -183,26 +187,43 @@ impl CompletionModel {
         }
 
         if let Some(ref params) = completion_request.additional_params {
-            merge_inplace(&mut request, params.clone())
+            merge_inplace(&mut body, params.clone())
         }
 
-        let response = self
+        let body: Vec<u8> = serde_json::to_vec(&body)?;
+
+        let req = self
             .client
             .post("/v1/messages")
-            .json(&request)
-            .send()
-            .await?;
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(http_client::Error::Protocol)?;
+
+        let response = self.client.send_streaming(req).await?;
 
         if !response.status().is_success() {
-            return Err(CompletionError::ProviderError(response.text().await?));
+            let mut stream = response.into_body();
+            let mut text = String::with_capacity(1024);
+            loop {
+                let Some(chunk) = stream.next().await else {
+                    break;
+                };
+
+                let chunk: Vec<u8> = chunk?.into();
+
+                let str = String::from_utf8_lossy(&chunk);
+
+                text.push_str(&str)
+            }
+            return Err(CompletionError::ProviderError(text));
         }
 
-        // Use our SSE decoder to directly handle Server-Sent Events format
-        let sse_stream = sse_from_response(response);
+        let stream = sse_from_response(response.into_body());
 
+        // Use our SSE decoder to directly handle Server-Sent Events format
         let stream: StreamingResult<StreamingCompletionResponse> = Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
-            let mut sse_stream = Box::pin(sse_stream);
+            let mut sse_stream = Box::pin(stream);
             let mut input_tokens = 0;
 
             let mut text_content = String::new();
@@ -303,7 +324,7 @@ fn handle_event(
             _ => None,
         },
         StreamingEvent::ContentBlockStop { .. } => {
-            if let Some(tool_call) = current_tool_call.take() {
+            if let Some(tool_call) = Option::take(current_tool_call) {
                 let json_str = if tool_call.input_json.is_empty() {
                     "{}"
                 } else {

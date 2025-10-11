@@ -114,6 +114,7 @@ pub mod client;
 pub mod completion;
 pub mod embeddings;
 pub mod extractor;
+pub mod http_client;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
@@ -129,6 +130,7 @@ pub mod tool;
 pub mod tools;
 pub mod transcription;
 pub mod vector_store;
+pub mod wasm_compat;
 
 // Re-export commonly used types and traits
 pub use completion::message;

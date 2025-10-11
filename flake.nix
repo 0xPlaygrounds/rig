@@ -21,21 +21,27 @@
       let 
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs {
-            inherit system overlays;
-          };
+          inherit system overlays;
+        };
+        rustToolchain = pkgs.rust-bin.stable."1.90.0".default.override {
+          targets = [ "wasm32-unknown-unknown" ];
+        };
       in
       { 
         devShells.default = with pkgs; mkShell {
           buildInputs = [
             pkg-config
             cmake
+            just
 
             openssl
             sqlite
             postgresql
             protobuf
 
-            rust-bin.stable."1.90.0".default
+            rustToolchain
+            wasm-bindgen-cli
+            wasm-pack
           ];
 
           OPENSSL_DEV = openssl.dev;

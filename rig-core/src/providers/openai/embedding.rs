@@ -1,6 +1,7 @@
 use super::{ApiErrorResponse, ApiResponse, Client, completion::Usage};
-use crate::embeddings;
 use crate::embeddings::EmbeddingError;
+use crate::http_client::HttpClientExt;
+use crate::{embeddings, http_client};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -45,13 +46,16 @@ pub struct EmbeddingData {
 }
 
 #[derive(Clone)]
-pub struct EmbeddingModel {
-    client: Client,
+pub struct EmbeddingModel<T = reqwest::Client> {
+    client: Client<T>,
     pub model: String,
     ndims: usize,
 }
 
-impl embeddings::EmbeddingModel for EmbeddingModel {
+impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Send + 'static,
+{
     const MAX_DOCUMENTS: usize = 1024;
 
     fn ndims(&self) -> usize {
@@ -65,18 +69,31 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
 
-        let response = self
+        let mut body = json!({
+            "model": self.model,
+            "input": documents,
+        });
+
+        if self.ndims > 0 {
+            body["dimensions"] = json!(self.ndims);
+        }
+
+        let body = serde_json::to_vec(&body)?;
+
+        let req = self
             .client
-            .post("/embeddings")
-            .json(&json!({
-                "model": self.model,
-                "input": documents,
-            }))
-            .send()
-            .await?;
+            .post("/embeddings")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
+
+        let response = self.client.send(req).await?;
 
         if response.status().is_success() {
-            match response.json::<ApiResponse<EmbeddingResponse>>().await? {
+            let body: Vec<u8> = response.into_body().await?;
+            let body: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&body)?;
+
+            match body {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "OpenAI embedding token usage: {:?}",
@@ -102,13 +119,14 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
             }
         } else {
-            Err(EmbeddingError::ProviderError(response.text().await?))
+            let text = http_client::text(response).await?;
+            Err(EmbeddingError::ProviderError(text))
         }
     }
 }
 
-impl EmbeddingModel {
-    pub fn new(client: Client, model: &str, ndims: usize) -> Self {
+impl<T> EmbeddingModel<T> {
+    pub fn new(client: Client<T>, model: &str, ndims: usize) -> Self {
         Self {
             client,
             model: model.to_string(),

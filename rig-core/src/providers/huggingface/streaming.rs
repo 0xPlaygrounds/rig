@@ -6,7 +6,7 @@ use crate::streaming;
 use serde_json::json;
 use tracing::{Instrument, info_span};
 
-impl CompletionModel {
+impl CompletionModel<reqwest::Client> {
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -27,7 +27,13 @@ impl CompletionModel {
         // HF Inference API uses the model in the path even though its specified in the request body
         let path = self.client.sub_provider.completion_endpoint(&self.model);
 
-        let builder = self.client.post(&path).json(&request);
+        let body = serde_json::to_vec(&request)?;
+
+        let builder = self
+            .client
+            .post_reqwest(&path)
+            .header("Content-Type", "application/json")
+            .body(body);
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -40,7 +46,7 @@ impl CompletionModel {
             gen_ai.response.model = self.model,
             gen_ai.usage.output_tokens = tracing::field::Empty,
             gen_ai.usage.input_tokens = tracing::field::Empty,
-            gen_ai.input.messages = serde_json::to_string(request.get("messages").expect("Converting request messages to JSON should not fail!")).unwrap(),
+            gen_ai.input.messages = serde_json::to_string(&request["messages"]).unwrap(),
             gen_ai.output.messages = tracing::field::Empty,
             )
         } else {

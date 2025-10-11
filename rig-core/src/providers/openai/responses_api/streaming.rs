@@ -191,7 +191,7 @@ pub enum SummaryPartChunkPart {
     SummaryText { text: String },
 }
 
-impl ResponsesCompletionModel {
+impl ResponsesCompletionModel<reqwest::Client> {
     pub(crate) async fn stream(
         &self,
         completion_request: crate::completion::CompletionRequest,
@@ -200,7 +200,7 @@ impl ResponsesCompletionModel {
         let mut request = self.create_completion_request(completion_request)?;
         request.stream = Some(true);
 
-        let request_builder = self.client.post("/responses").json(&request);
+        let request_builder = self.client.post_reqwest("/responses").json(&request);
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -230,7 +230,7 @@ impl ResponsesCompletionModel {
             .eventsource()
             .expect("Cloning request must always succeed");
 
-        let stream = Box::pin(stream! {
+        let stream = stream! {
             let mut final_usage = ResponsesUsage::new();
 
             let mut tool_calls: Vec<RawStreamingChoice<StreamingCompletionResponse>> = Vec::new();
@@ -331,8 +331,10 @@ impl ResponsesCompletionModel {
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                 usage: final_usage.clone()
             }));
-        }.instrument(span));
+        }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(stream))
+        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+            stream,
+        )))
     }
 }
