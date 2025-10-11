@@ -20,9 +20,9 @@ anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 [[example]]
-name = "vector_search"
+name = "vector_search_fastembed"
 required-features = ["rig-core/derive"]
 
 [[example]]
-name = "vector_search_local"
+name = "vector_search_fastembed_local"
 required-features = ["rig-core/derive"]
