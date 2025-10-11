@@ -64,7 +64,7 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 /// # Example
 /// ```rust
 /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
-/// use rig::{providers::openai, vector_store::VectorStoreIndex, client::{ProviderClient, EmbeddingsClient}};
+/// use rig::{providers::openai, vector_store::{VectorStoreIndex, VectorSearchRequest}, client::{ProviderClient, EmbeddingsClient}};
 ///
 /// # tokio_test::block_on(async {
 /// #[derive(serde::Deserialize, serde::Serialize, Debug)]
@@ -89,9 +89,15 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 /// )
 /// .await?;
 ///
+/// let req = VectorSearchRequest::builder()
+///     .query("My boss says I zindle too much, what does that mean?")
+///     .samples(1)
+///     .build()
+///     .unwrap();
+///
 /// // Query the index
 /// let definitions = index
-///     .top_n::<WordDefinition>("My boss says I zindle too much, what does that mean?", 1)
+///     .top_n::<WordDefinition>(req)
 ///     .await?;
 /// # Ok::<_, anyhow::Error>(())
 /// # }).unwrap()

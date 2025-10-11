@@ -1,3 +1,4 @@
+use crate::http_client;
 use crate::providers::openai::{ApiResponse, Client};
 use crate::transcription;
 use crate::transcription::TranscriptionError;
@@ -28,14 +29,14 @@ impl TryFrom<TranscriptionResponse>
 }
 
 #[derive(Clone)]
-pub struct TranscriptionModel {
-    client: Client,
+pub struct TranscriptionModel<T = reqwest::Client> {
+    client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
 }
 
-impl TranscriptionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> TranscriptionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -43,7 +44,7 @@ impl TranscriptionModel {
     }
 }
 
-impl transcription::TranscriptionModel for TranscriptionModel {
+impl transcription::TranscriptionModel for TranscriptionModel<reqwest::Client> {
     type Response = TranscriptionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -83,23 +84,30 @@ impl transcription::TranscriptionModel for TranscriptionModel {
 
         let response = self
             .client
-            .post("audio/transcriptions")
+            .post_reqwest("audio/transcriptions")
             .multipart(body)
             .send()
-            .await?;
+            .await
+            .map_err(|e| TranscriptionError::HttpError(http_client::Error::Instance(e.into())))?;
 
         if response.status().is_success() {
             match response
                 .json::<ApiResponse<TranscriptionResponse>>()
-                .await?
-            {
+                .await
+                .map_err(|e| {
+                    TranscriptionError::HttpError(http_client::Error::Instance(e.into()))
+                })? {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(api_error_response) => Err(TranscriptionError::ProviderError(
                     api_error_response.message,
                 )),
             }
         } else {
-            Err(TranscriptionError::ProviderError(response.text().await?))
+            Err(TranscriptionError::ProviderError(
+                response.text().await.map_err(|e| {
+                    TranscriptionError::HttpError(http_client::Error::Instance(e.into()))
+                })?,
+            ))
         }
     }
 }

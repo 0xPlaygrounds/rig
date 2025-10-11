@@ -9,6 +9,7 @@ use crate::{
     streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
     tool::ToolSet,
     vector_store::{VectorStoreError, request::VectorSearchRequest},
+    wasm_compat::WasmCompatSend,
 };
 use futures::{StreamExt, TryStreamExt, stream};
 use std::{collections::HashMap, sync::Arc};
@@ -43,6 +44,8 @@ where
 {
     /// Name of the agent used for logging and debugging
     pub name: Option<String>,
+    /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
+    pub description: Option<String>,
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
     pub model: Arc<M>,
     /// System prompt
@@ -83,7 +86,7 @@ where
 {
     async fn completion(
         &self,
-        prompt: impl Into<Message> + Send,
+        prompt: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         let prompt = prompt.into();
@@ -226,7 +229,7 @@ where
 {
     fn prompt(
         &self,
-        prompt: impl Into<Message> + Send,
+        prompt: impl Into<Message> + WasmCompatSend,
     ) -> PromptRequest<'_, prompt_request::Standard, M, ()> {
         PromptRequest::new(self, prompt)
     }
@@ -240,7 +243,7 @@ where
     #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
     fn prompt(
         &self,
-        prompt: impl Into<Message> + Send,
+        prompt: impl Into<Message> + WasmCompatSend,
     ) -> PromptRequest<'_, prompt_request::Standard, M, ()> {
         PromptRequest::new(*self, prompt)
     }
@@ -254,7 +257,7 @@ where
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
     async fn chat(
         &self,
-        prompt: impl Into<Message> + Send,
+        prompt: impl Into<Message> + WasmCompatSend,
         mut chat_history: Vec<Message>,
     ) -> Result<String, PromptError> {
         PromptRequest::new(self, prompt)
@@ -269,7 +272,7 @@ where
 {
     async fn stream_completion(
         &self,
-        prompt: impl Into<Message> + Send,
+        prompt: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         // Reuse the existing completion implementation to build the request
@@ -283,7 +286,10 @@ where
     M: CompletionModel + 'static,
     M::StreamingResponse: GetTokenUsage,
 {
-    fn stream_prompt(&self, prompt: impl Into<Message> + Send) -> StreamingPromptRequest<M, ()> {
+    fn stream_prompt(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+    ) -> StreamingPromptRequest<M, ()> {
         let arc = Arc::new(self.clone());
         StreamingPromptRequest::new(arc, prompt)
     }
@@ -296,7 +302,7 @@ where
 {
     fn stream_chat(
         &self,
-        prompt: impl Into<Message> + Send,
+        prompt: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> StreamingPromptRequest<M, ()> {
         let arc = Arc::new(self.clone());

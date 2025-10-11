@@ -3,6 +3,7 @@ use crate::{
     completion::GetTokenUsage,
     message::{AssistantContent, Reasoning, ToolResultContent, UserContent},
     streaming::{StreamedAssistantContent, StreamingCompletion},
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -110,7 +111,7 @@ where
 impl<M, P> StreamingPromptRequest<M, P>
 where
     M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: Send + GetTokenUsage,
+    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
     P: StreamingPromptHook<M>,
 {
     /// Create a new PromptRequest with the given prompt and model
@@ -395,11 +396,11 @@ where
 impl<M, P> IntoFuture for StreamingPromptRequest<M, P>
 where
     M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: Send,
+    <M as CompletionModel>::StreamingResponse: WasmCompatSend,
     P: StreamingPromptHook<M> + 'static,
 {
     type Output = StreamingResult<M::StreamingResponse>; // what `.await` returns
-    type IntoFuture = Pin<Box<dyn futures::Future<Output = Self::Output> + Send>>;
+    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
         // Wrap send() in a future, because send() returns a stream immediately

@@ -1,7 +1,10 @@
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::embeddings::{self, EmbeddingError};
+use crate::{
+    embeddings::{self, EmbeddingError},
+    http_client::{self, HttpClientExt},
+};
 
 use super::client::{ApiResponse, Client, Usage};
 
@@ -13,14 +16,14 @@ pub const MISTRAL_EMBED: &str = "mistral-embed";
 pub const MAX_DOCUMENTS: usize = 1024;
 
 #[derive(Clone)]
-pub struct EmbeddingModel {
-    client: Client,
+pub struct EmbeddingModel<T = reqwest::Client> {
+    client: Client<T>,
     pub model: String,
     ndims: usize,
 }
 
-impl EmbeddingModel {
-    pub fn new(client: Client, model: &str, ndims: usize) -> Self {
+impl<T> EmbeddingModel<T> {
+    pub fn new(client: Client<T>, model: &str, ndims: usize) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -29,7 +32,10 @@ impl EmbeddingModel {
     }
 }
 
-impl embeddings::EmbeddingModel for EmbeddingModel {
+impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+where
+    T: HttpClientExt + Clone,
+{
     const MAX_DOCUMENTS: usize = MAX_DOCUMENTS;
     fn ndims(&self) -> usize {
         self.ndims
@@ -42,18 +48,25 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
 
-        let response = self
+        let body = serde_json::to_vec(&json!({
+            "model": self.model,
+            "input": documents
+        }))?;
+
+        let req = self
             .client
-            .post("v1/embeddings")
-            .json(&json!({
-                "model": self.model,
-                "input": documents,
-            }))
-            .send()
-            .await?;
+            .post("v1/embeddings")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
+
+        let response = self.client.send(req).await?;
 
         if response.status().is_success() {
-            match response.json::<ApiResponse<EmbeddingResponse>>().await? {
+            let body: Vec<u8> = response.into_body().await?;
+            let body: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&body)?;
+
+            match body {
                 ApiResponse::Ok(response) => {
                     tracing::debug!(target: "rig",
                         "Mistral embedding token usage: {}",
@@ -79,7 +92,8 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
             }
         } else {
-            Err(EmbeddingError::ProviderError(response.text().await?))
+            let text = http_client::text(response).await?;
+            Err(EmbeddingError::ProviderError(text))
         }
     }
 }

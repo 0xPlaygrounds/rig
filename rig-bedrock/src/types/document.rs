@@ -35,7 +35,12 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
 
                 aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(bytes))
             }
-            DocumentSourceKind::String(str) => aws_bedrock::DocumentSource::Text(str),
+            // NOTE: until [aws-sdk-bedrockruntime DocumentSource bug #1365](https://github.com/awslabs/aws-sdk-rust/issues/1365)
+            // is resolved we will use this as a workaround
+            // DocumentSourceKind::String(str) => aws_bedrock::DocumentSource::Text(str),
+            DocumentSourceKind::String(str) => {
+                aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(str.as_bytes()))
+            }
             doc => {
                 return Err(CompletionError::RequestError(
                     format!("Unsupported document kind: {doc}").into(),
