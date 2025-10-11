@@ -3,6 +3,7 @@ use super::audio_generation::AudioGenerationModel;
 use super::embedding::{
     EmbeddingModel, TEXT_EMBEDDING_3_LARGE, TEXT_EMBEDDING_3_SMALL, TEXT_EMBEDDING_ADA_002,
 };
+use std::fmt::Debug;
 
 #[cfg(feature = "image")]
 use super::image_generation::ImageGenerationModel;
@@ -10,10 +11,11 @@ use super::transcription::TranscriptionModel;
 
 use crate::{
     client::{
-        ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient,
-        TranscriptionClient, VerifyClient, VerifyError,
+        CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient, VerifyClient,
+        VerifyError,
     },
     extractor::ExtractorBuilder,
+    http_client::{self, HttpClientExt},
     providers::openai::CompletionModel,
 };
 
@@ -22,6 +24,7 @@ use crate::client::AudioGenerationClient;
 #[cfg(feature = "image")]
 use crate::client::ImageGenerationClient;
 
+use bytes::Bytes;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -30,54 +33,58 @@ use serde::{Deserialize, Serialize};
 // ================================================================
 const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
 
-pub struct ClientBuilder<'a> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
-    http_client: Option<reqwest::Client>,
+    http_client: T,
 }
 
-impl<'a> ClientBuilder<'a> {
+impl<'a, T> ClientBuilder<'a, T>
+where
+    T: Default,
+{
     pub fn new(api_key: &'a str) -> Self {
         Self {
             api_key,
             base_url: OPENAI_API_BASE_URL,
-            http_client: None,
+            http_client: Default::default(),
         }
     }
+}
 
+impl<'a, T> ClientBuilder<'a, T> {
     pub fn base_url(mut self, base_url: &'a str) -> Self {
         self.base_url = base_url;
         self
     }
 
-    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = Some(client);
-        self
+    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
+        ClientBuilder {
+            api_key: self.api_key,
+            base_url: self.base_url,
+            http_client,
+        }
     }
-
-    pub fn build(self) -> Result<Client, ClientBuilderError> {
-        let http_client = if let Some(http_client) = self.http_client {
-            http_client
-        } else {
-            reqwest::Client::builder().build()?
-        };
-
-        Ok(Client {
+    pub fn build(self) -> Client<T> {
+        Client {
             base_url: self.base_url.to_string(),
             api_key: self.api_key.to_string(),
-            http_client,
-        })
+            http_client: self.http_client,
+        }
     }
 }
 
 #[derive(Clone)]
-pub struct Client {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
-    http_client: reqwest::Client,
+    http_client: T,
 }
 
-impl std::fmt::Debug for Client {
+impl<T> Debug for Client<T>
+where
+    T: Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("base_url", &self.base_url)
@@ -87,7 +94,10 @@ impl std::fmt::Debug for Client {
     }
 }
 
-impl Client {
+impl<T> Client<T>
+where
+    T: Default,
+{
     /// Create a new OpenAI client builder.
     ///
     /// # Example
@@ -98,42 +108,69 @@ impl Client {
     /// let openai_client = Client::builder("your-open-ai-api-key")
     ///    .build()
     /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, T> {
         ClientBuilder::new(api_key)
     }
 
     /// Create a new OpenAI client. For more control, use the `builder` method.
     ///
-    /// # Panics
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key)
-            .build()
-            .expect("OpenAI client should build")
+        Self::builder(api_key).build()
+    }
+}
+
+impl<T> Client<T>
+where
+    T: HttpClientExt,
+{
+    pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+
+        http_client::with_bearer_auth(http_client::Request::post(url), &self.api_key)
     }
 
-    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+    pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+
+        http_client::with_bearer_auth(http_client::Request::get(url), &self.api_key)
+    }
+
+    pub(crate) async fn send<U, R>(
+        &self,
+        req: http_client::Request<U>,
+    ) -> http_client::Result<http_client::Response<http_client::LazyBody<R>>>
+    where
+        U: Into<Bytes> + Send,
+        R: From<Bytes> + Send + 'static,
+    {
+        self.http_client.send(req).await
+    }
+}
+
+impl Client<reqwest::Client> {
+    pub(crate) fn post_reqwest(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+
         self.http_client.post(url).bearer_auth(&self.api_key)
-    }
-
-    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.get(url).bearer_auth(&self.api_key)
     }
 
     /// Create an extractor builder with the given completion model.
     /// Intended for use exclusively with the Chat Completions API.
     /// Useful for using extractors with Chat Completion compliant APIs.
-    pub fn extractor_completions_api<T>(&self, model: &str) -> ExtractorBuilder<CompletionModel, T>
+    pub fn extractor_completions_api<U>(
+        &self,
+        model: &str,
+    ) -> ExtractorBuilder<CompletionModel<reqwest::Client>, U>
     where
-        T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+        U: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
     {
         ExtractorBuilder::new(self.completion_model(model).completions_api())
     }
 }
 
-impl ProviderClient for Client {
+impl Client<reqwest::Client> {}
+
+impl ProviderClient for Client<reqwest::Client> {
     /// Create a new OpenAI client from the `OPENAI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
@@ -141,7 +178,7 @@ impl ProviderClient for Client {
         let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
 
         match base_url {
-            Some(url) => Self::builder(&api_key).base_url(&url).build().unwrap(),
+            Some(url) => Self::builder(&api_key).base_url(&url).build(),
             None => Self::new(&api_key),
         }
     }
@@ -154,8 +191,8 @@ impl ProviderClient for Client {
     }
 }
 
-impl CompletionClient for Client {
-    type CompletionModel = super::responses_api::ResponsesCompletionModel;
+impl CompletionClient for Client<reqwest::Client> {
+    type CompletionModel = super::responses_api::ResponsesCompletionModel<reqwest::Client>;
     /// Create a completion model with the given name.
     ///
     /// # Example
@@ -167,13 +204,16 @@ impl CompletionClient for Client {
     ///
     /// let gpt4 = openai.completion_model(openai::GPT_4);
     /// ```
-    fn completion_model(&self, model: &str) -> super::responses_api::ResponsesCompletionModel {
+    fn completion_model(
+        &self,
+        model: &str,
+    ) -> super::responses_api::ResponsesCompletionModel<reqwest::Client> {
         super::responses_api::ResponsesCompletionModel::new(self.clone(), model)
     }
 }
 
-impl EmbeddingsClient for Client {
-    type EmbeddingModel = EmbeddingModel;
+impl EmbeddingsClient for Client<reqwest::Client> {
+    type EmbeddingModel = EmbeddingModel<reqwest::Client>;
     fn embedding_model(&self, model: &str) -> Self::EmbeddingModel {
         let ndims = match model {
             TEXT_EMBEDDING_3_LARGE => 3072,
@@ -188,8 +228,8 @@ impl EmbeddingsClient for Client {
     }
 }
 
-impl TranscriptionClient for Client {
-    type TranscriptionModel = TranscriptionModel;
+impl TranscriptionClient for Client<reqwest::Client> {
+    type TranscriptionModel = TranscriptionModel<reqwest::Client>;
     /// Create a transcription model with the given name.
     ///
     /// # Example
@@ -201,14 +241,14 @@ impl TranscriptionClient for Client {
     ///
     /// let gpt4 = openai.transcription_model(openai::WHISPER_1);
     /// ```
-    fn transcription_model(&self, model: &str) -> TranscriptionModel {
+    fn transcription_model(&self, model: &str) -> TranscriptionModel<reqwest::Client> {
         TranscriptionModel::new(self.clone(), model)
     }
 }
 
 #[cfg(feature = "image")]
-impl ImageGenerationClient for Client {
-    type ImageGenerationModel = ImageGenerationModel;
+impl ImageGenerationClient for Client<reqwest::Client> {
+    type ImageGenerationModel = ImageGenerationModel<reqwest::Client>;
     /// Create an image generation model with the given name.
     ///
     /// # Example
@@ -226,8 +266,8 @@ impl ImageGenerationClient for Client {
 }
 
 #[cfg(feature = "audio")]
-impl AudioGenerationClient for Client {
-    type AudioGenerationModel = AudioGenerationModel;
+impl AudioGenerationClient for Client<reqwest::Client> {
+    type AudioGenerationModel = AudioGenerationModel<reqwest::Client>;
     /// Create an audio generation model with the given name.
     ///
     /// # Example
@@ -244,18 +284,25 @@ impl AudioGenerationClient for Client {
     }
 }
 
-impl VerifyClient for Client {
+impl VerifyClient for Client<reqwest::Client> {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
-        let response = self.get("/models").send().await?;
+        let req = self
+            .get("/models")?
+            .body(http_client::NoBody)
+            .map_err(|e| VerifyError::HttpError(e.into()))?;
+
+        let response = self.send(req).await?;
+
         match response.status() {
             reqwest::StatusCode::OK => Ok(()),
             reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
             reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
-                Err(VerifyError::ProviderError(response.text().await?))
+                let text = http_client::text(response).await?;
+                Err(VerifyError::ProviderError(text))
             }
             _ => {
-                response.error_for_status()?;
+                //response.error_for_status()?;
                 Ok(())
             }
         }

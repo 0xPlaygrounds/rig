@@ -5,10 +5,12 @@ use mime_guess;
 use serde_json::{Map, Value};
 
 use crate::{
+    http_client::HttpClientExt,
     providers::gemini::completion::gemini_api_types::{
         Blob, Content, GenerateContentRequest, GenerationConfig, Part, PartKind, Role,
     },
     transcription::{self, TranscriptionError},
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
 use super::{Client, completion::gemini_api_types::GenerateContentResponse};
@@ -21,14 +23,14 @@ const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
 
 #[derive(Clone)]
-pub struct TranscriptionModel {
-    client: Client,
+pub struct TranscriptionModel<T = reqwest::Client> {
+    client: Client<T>,
     /// Name of the model (e.g.: gemini-1.5-flash)
     pub model: String,
 }
 
-impl TranscriptionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> TranscriptionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -36,7 +38,10 @@ impl TranscriptionModel {
     }
 }
 
-impl transcription::TranscriptionModel for TranscriptionModel {
+impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+where
+    T: HttpClientExt + WasmCompatSend + WasmCompatSync + Clone,
+{
     type Response = GenerateContentResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -96,16 +101,21 @@ impl transcription::TranscriptionModel for TranscriptionModel {
             serde_json::to_string_pretty(&request)?
         );
 
-        let response = self
+        let body = serde_json::to_vec(&request)?;
+        let req = self
             .client
             .post(&format!("/v1beta/models/{}:generateContent", self.model))
-            .json(&request)
-            .send()
-            .await?;
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
+
+        let response = self.client.send::<_, Vec<u8>>(req).await?;
 
         if response.status().is_success() {
-            let response = response.json::<GenerateContentResponse>().await?;
-            match response.usage_metadata {
+            let body: GenerateContentResponse =
+                serde_json::from_slice(&response.into_body().await?)?;
+
+            match body.usage_metadata {
                 Some(ref usage) => tracing::info!(target: "rig",
                 "Gemini completion token usage: {}",
                 usage
@@ -117,10 +127,11 @@ impl transcription::TranscriptionModel for TranscriptionModel {
 
             tracing::debug!("Received response");
 
-            Ok(transcription::TranscriptionResponse::try_from(response))
+            Ok(transcription::TranscriptionResponse::try_from(body)?)
         } else {
-            Err(TranscriptionError::ProviderError(response.text().await?))
-        }?
+            let text = String::from_utf8_lossy(&response.into_body().await?).into();
+            Err(TranscriptionError::ProviderError(text))
+        }
     }
 }
 

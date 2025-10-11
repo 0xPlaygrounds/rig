@@ -10,7 +10,7 @@ use std::{
 };
 use tracing::{Instrument, span::Id};
 
-use futures::{FutureExt, StreamExt, future::BoxFuture, stream};
+use futures::{StreamExt, stream};
 use tracing::info_span;
 
 use crate::{
@@ -18,6 +18,7 @@ use crate::{
     completion::{Completion, CompletionModel, Message, PromptError, Usage},
     message::{AssistantContent, UserContent},
     tool::ToolSetError,
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
 use super::Agent;
@@ -161,7 +162,7 @@ impl Clone for CancelSignal {
 
 // dead code allowed because of functions being left empty to allow for users to not have to implement every single function
 /// Trait for per-request hooks to observe tool call events.
-pub trait PromptHook<M>: Clone + Send + Sync
+pub trait PromptHook<M>: Clone + WasmCompatSend + WasmCompatSync
 where
     M: CompletionModel,
 {
@@ -172,7 +173,7 @@ where
         prompt: &Message,
         history: &[Message],
         cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + Send {
+    ) -> impl Future<Output = ()> + WasmCompatSend {
         async {}
     }
 
@@ -183,7 +184,7 @@ where
         prompt: &Message,
         response: &crate::completion::CompletionResponse<M::Response>,
         cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + Send {
+    ) -> impl Future<Output = ()> + WasmCompatSend {
         async {}
     }
 
@@ -194,7 +195,7 @@ where
         tool_name: &str,
         args: &str,
         cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + Send {
+    ) -> impl Future<Output = ()> + WasmCompatSend {
         async {}
     }
 
@@ -206,7 +207,7 @@ where
         args: &str,
         result: &str,
         cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + Send {
+    ) -> impl Future<Output = ()> + WasmCompatSend {
         async {}
     }
 }
@@ -222,10 +223,10 @@ where
     P: PromptHook<M> + 'static,
 {
     type Output = Result<String, PromptError>;
-    type IntoFuture = BoxFuture<'a, Self::Output>; // This future should not outlive the agent
+    type IntoFuture = WasmBoxedFuture<'a, Self::Output>; // This future should not outlive the agent
 
     fn into_future(self) -> Self::IntoFuture {
-        self.send().boxed()
+        Box::pin(self.send())
     }
 }
 
@@ -235,10 +236,10 @@ where
     P: PromptHook<M> + 'static,
 {
     type Output = Result<PromptResponse, PromptError>;
-    type IntoFuture = BoxFuture<'a, Self::Output>; // This future should not outlive the agent
+    type IntoFuture = WasmBoxedFuture<'a, Self::Output>; // This future should not outlive the agent
 
     fn into_future(self) -> Self::IntoFuture {
-        self.send().boxed()
+        Box::pin(self.send())
     }
 }
 

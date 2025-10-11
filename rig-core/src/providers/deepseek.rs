@@ -10,15 +10,15 @@
 //! ```
 
 use async_stream::stream;
+use bytes::Bytes;
 use futures::StreamExt;
 use reqwest_eventsource::{Event, RequestBuilderExt};
 use std::collections::HashMap;
 use tracing::{Instrument, info_span};
 
-use crate::client::{
-    ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError,
-};
+use crate::client::{CompletionClient, ProviderClient, VerifyClient, VerifyError};
 use crate::completion::GetTokenUsage;
+use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
 use crate::message::{Document, DocumentSourceKind};
 use crate::{
@@ -26,7 +26,6 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     impl_conversion_traits, json_utils, message,
 };
-use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -37,54 +36,59 @@ use super::openai::StreamingToolCall;
 // ================================================================
 const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com";
 
-pub struct ClientBuilder<'a> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
-    http_client: Option<reqwest::Client>,
+    http_client: T,
 }
 
-impl<'a> ClientBuilder<'a> {
+impl<'a, T> ClientBuilder<'a, T>
+where
+    T: Default,
+{
     pub fn new(api_key: &'a str) -> Self {
         Self {
             api_key,
             base_url: DEEPSEEK_API_BASE_URL,
-            http_client: None,
+            http_client: Default::default(),
         }
     }
+}
 
+impl<'a, T> ClientBuilder<'a, T> {
     pub fn base_url(mut self, base_url: &'a str) -> Self {
         self.base_url = base_url;
         self
     }
 
-    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = Some(client);
-        self
+    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
+        ClientBuilder {
+            api_key: self.api_key,
+            base_url: self.base_url,
+            http_client,
+        }
     }
 
-    pub fn build(self) -> Result<Client, ClientBuilderError> {
-        let http_client = if let Some(http_client) = self.http_client {
-            http_client
-        } else {
-            reqwest::Client::builder().build()?
-        };
-
-        Ok(Client {
+    pub fn build(self) -> Client<T> {
+        Client {
             base_url: self.base_url.to_string(),
             api_key: self.api_key.to_string(),
-            http_client,
-        })
+            http_client: self.http_client,
+        }
     }
 }
 
 #[derive(Clone)]
-pub struct Client {
+pub struct Client<T = reqwest::Client> {
     pub base_url: String,
     api_key: String,
-    http_client: HttpClient,
+    http_client: T,
 }
 
-impl std::fmt::Debug for Client {
+impl<T> std::fmt::Debug for Client<T>
+where
+    T: std::fmt::Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("base_url", &self.base_url)
@@ -94,7 +98,10 @@ impl std::fmt::Debug for Client {
     }
 }
 
-impl Client {
+impl<T> Client<T>
+where
+    T: Default,
+{
     /// Create a new DeepSeek client builder.
     ///
     /// # Example
@@ -105,7 +112,7 @@ impl Client {
     /// let deepseek = Client::builder("your-deepseek-api-key")
     ///    .build()
     /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, T> {
         ClientBuilder::new(api_key)
     }
 
@@ -114,23 +121,52 @@ impl Client {
     /// # Panics
     /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key)
-            .build()
-            .expect("DeepSeek client should build")
-    }
-
-    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url).bearer_auth(&self.api_key)
-    }
-
-    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.get(url).bearer_auth(&self.api_key)
+        Self::builder(api_key).build()
     }
 }
 
-impl ProviderClient for Client {
+impl<T> Client<T>
+where
+    T: HttpClientExt,
+{
+    fn req(
+        &self,
+        method: http_client::Method,
+        path: &str,
+    ) -> http_client::Result<http_client::Builder> {
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+
+        http_client::with_bearer_auth(
+            http_client::Request::builder().method(method).uri(url),
+            &self.api_key,
+        )
+    }
+
+    pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
+        self.req(http_client::Method::GET, path)
+    }
+
+    async fn send<U, R>(
+        &self,
+        req: http_client::Request<U>,
+    ) -> http_client::Result<http_client::Response<http_client::LazyBody<R>>>
+    where
+        U: Into<Bytes> + Send,
+        R: From<Bytes> + Send + 'static,
+    {
+        self.http_client.send(req).await
+    }
+}
+
+impl Client<reqwest::Client> {
+    fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+
+        self.http_client.post(url).bearer_auth(&self.api_key)
+    }
+}
+
+impl ProviderClient for Client<reqwest::Client> {
     // If you prefer the environment variable approach:
     fn from_env() -> Self {
         let api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY not set");
@@ -145,11 +181,11 @@ impl ProviderClient for Client {
     }
 }
 
-impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
+impl CompletionClient for Client<reqwest::Client> {
+    type CompletionModel = CompletionModel<reqwest::Client>;
 
     /// Creates a DeepSeek completion model with the given `model_name`.
-    fn completion_model(&self, model_name: &str) -> CompletionModel {
+    fn completion_model(&self, model_name: &str) -> CompletionModel<reqwest::Client> {
         CompletionModel {
             client: self.clone(),
             model: model_name.to_string(),
@@ -157,19 +193,27 @@ impl CompletionClient for Client {
     }
 }
 
-impl VerifyClient for Client {
+impl VerifyClient for Client<reqwest::Client> {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
-        let response = self.get("/user/balance").send().await?;
+        let req = self
+            .get("/user/balance")?
+            .body(http_client::NoBody)
+            .map_err(http_client::Error::from)?;
+
+        let response = self.send(req).await?;
+
         match response.status() {
             reqwest::StatusCode::OK => Ok(()),
             reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
             reqwest::StatusCode::INTERNAL_SERVER_ERROR
             | reqwest::StatusCode::SERVICE_UNAVAILABLE => {
-                Err(VerifyError::ProviderError(response.text().await?))
+                let text = http_client::text(response).await?;
+                Err(VerifyError::ProviderError(text))
             }
             _ => {
-                response.error_for_status()?;
+                // TODO: `HttpClientExt` equivalent
+                //response.error_for_status()?;
                 Ok(())
             }
         }
@@ -180,7 +224,7 @@ impl_conversion_traits!(
     AsEmbeddings,
     AsTranscription,
     AsImageGeneration,
-    AsAudioGeneration for Client
+    AsAudioGeneration for Client<T>
 );
 
 #[derive(Debug, Deserialize)]
@@ -516,12 +560,12 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 
 /// The struct implementing the `CompletionModel` trait
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub client: Client,
+pub struct CompletionModel<T = reqwest::Client> {
+    pub client: Client<T>,
     pub model: String,
 }
 
-impl CompletionModel {
+impl<T> CompletionModel<T> {
     fn create_completion_request(
         &self,
         completion_request: CompletionRequest,
@@ -582,7 +626,7 @@ impl CompletionModel {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl completion::CompletionModel for CompletionModel<reqwest::Client> {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -621,13 +665,18 @@ impl completion::CompletionModel for CompletionModel {
         async move {
             let response = self
                 .client
-                .post("/chat/completions")
+                .reqwest_post("/chat/completions")
                 .json(&request)
                 .send()
-                .await?;
+                .await
+                .map_err(|e| http_client::Error::Instance(e.into()))?;
 
             if response.status().is_success() {
-                let t = response.text().await?;
+                let t = response
+                    .text()
+                    .await
+                    .map_err(|e| http_client::Error::Instance(e.into()))?;
+
                 tracing::debug!(target: "rig", "DeepSeek completion: {t}");
 
                 match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
@@ -647,7 +696,12 @@ impl completion::CompletionModel for CompletionModel {
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
                 }
             } else {
-                Err(CompletionError::ProviderError(response.text().await?))
+                Err(CompletionError::ProviderError(
+                    response
+                        .text()
+                        .await
+                        .map_err(|e| http_client::Error::Instance(e.into()))?,
+                ))
             }
         }
         .instrument(span)
@@ -670,7 +724,7 @@ impl completion::CompletionModel for CompletionModel {
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
 
-        let builder = self.client.post("/chat/completions").json(&request);
+        let builder = self.client.reqwest_post("/chat/completions").json(&request);
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -742,7 +796,7 @@ pub async fn send_compatible_streaming_request(
         .eventsource()
         .expect("Cloning request must succeed");
 
-    let stream = Box::pin(stream! {
+    let stream = stream! {
         let mut final_usage = Usage::new();
         let mut text_response = String::new();
         let mut calls: HashMap<usize, (String, String, String)> = HashMap::new();
@@ -876,10 +930,10 @@ pub async fn send_compatible_streaming_request(
         yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse { usage: final_usage.clone() }
         ));
-    });
+    };
 
     Ok(crate::streaming::StreamingCompletionResponse::stream(
-        stream,
+        Box::pin(stream),
     ))
 }
 

@@ -11,6 +11,8 @@ use super::completion::ToolChoice;
 use super::{Client, responses_api::streaming::StreamingCompletionResponse};
 use super::{InputAudio, SystemContent};
 use crate::completion::CompletionError;
+use crate::http_client;
+use crate::http_client::HttpClientExt;
 use crate::json_utils;
 use crate::message::{
     AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError,
@@ -692,16 +694,19 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
 
 /// The completion model struct for OpenAI's response API.
 #[derive(Clone)]
-pub struct ResponsesCompletionModel {
+pub struct ResponsesCompletionModel<T = reqwest::Client> {
     /// The OpenAI client
-    pub(crate) client: Client,
+    pub(crate) client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
 }
 
-impl ResponsesCompletionModel {
+impl<T> ResponsesCompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
+{
     /// Creates a new [`ResponsesCompletionModel`].
-    pub fn new(client: Client, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -709,7 +714,7 @@ impl ResponsesCompletionModel {
     }
 
     /// Use the Completions API instead of Responses.
-    pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel {
+    pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel<T> {
         crate::providers::openai::completion::CompletionModel::new(self.client, &self.model)
     }
 
@@ -1030,7 +1035,7 @@ pub enum OutputRole {
     Assistant,
 }
 
-impl completion::CompletionModel for ResponsesCompletionModel {
+impl completion::CompletionModel for ResponsesCompletionModel<reqwest::Client> {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -1065,18 +1070,20 @@ impl completion::CompletionModel for ResponsesCompletionModel {
             serde_json::to_string(&request.input)
                 .expect("openai request to successfully turn into a JSON value"),
         );
-        let request_json = serde_json::to_value(request.clone())?;
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .post("/responses")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         async move {
-            let response = self
-                .client
-                .post("/responses")
-                .json(&request_json)
-                .send()
-                .await?;
+            let response = self.client.send(req).await?;
 
             if response.status().is_success() {
-                let t = response.text().await?;
+                let t = http_client::text(response).await?;
                 let response = serde_json::from_str::<Self::Response>(&t)?;
                 let span = tracing::Span::current();
                 span.record(
@@ -1093,7 +1100,8 @@ impl completion::CompletionModel for ResponsesCompletionModel {
                 tracing::info!("API successfully called");
                 response.try_into()
             } else {
-                Err(CompletionError::ProviderError(response.text().await?))
+                let text = http_client::text(response).await?;
+                Err(CompletionError::ProviderError(text))
             }
         }
         .instrument(span)
@@ -1108,7 +1116,7 @@ impl completion::CompletionModel for ResponsesCompletionModel {
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        Self::stream(self, request).await
+        ResponsesCompletionModel::stream(self, request).await
     }
 }
 

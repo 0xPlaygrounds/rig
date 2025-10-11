@@ -6,6 +6,7 @@ use super::{ApiErrorResponse, ApiResponse, Client, streaming::StreamingCompletio
 use crate::completion::{
     CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
 };
+use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{ProviderResponseExt, SpanCombinator};
@@ -793,22 +794,21 @@ impl GetTokenUsage for Usage {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T = reqwest::Client> {
+    pub(crate) client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt + Default + std::fmt::Debug + Clone + 'static,
+{
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
         }
-    }
-
-    pub fn into_agent_builder(self) -> crate::agent::AgentBuilder<Self> {
-        crate::agent::AgentBuilder::new(self)
     }
 }
 
@@ -913,7 +913,13 @@ impl crate::telemetry::ProviderRequestExt for CompletionRequest {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl CompletionModel<reqwest::Client> {
+    pub fn into_agent_builder(self) -> crate::agent::AgentBuilder<Self> {
+        crate::agent::AgentBuilder::new(self)
+    }
+}
+
+impl completion::CompletionModel for CompletionModel<reqwest::Client> {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -942,19 +948,25 @@ impl completion::CompletionModel for CompletionModel {
         };
 
         let request = CompletionRequest::try_from((self.model.to_owned(), completion_request))?;
+
         span.record_model_input(&request.messages);
 
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .post("/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
         async move {
-            let response = self
-                .client
-                .post("/chat/completions")
-                .json(&request)
-                .send()
-                .await?;
+            let response = self.client.send(req).await?;
 
             if response.status().is_success() {
-                let t = response.text().await?;
-                match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
+                let text = http_client::text(response).await?;
+
+                match serde_json::from_str::<ApiResponse<CompletionResponse>>(&text)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_model_output(&response.choices);
@@ -966,7 +978,8 @@ impl completion::CompletionModel for CompletionModel {
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
                 }
             } else {
-                Err(CompletionError::ProviderError(response.text().await?))
+                let text = http_client::text(response).await?;
+                Err(CompletionError::ProviderError(text))
             }
         }
         .instrument(span)

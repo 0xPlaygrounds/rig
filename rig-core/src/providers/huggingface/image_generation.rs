@@ -1,4 +1,5 @@
 use super::Client;
+use crate::http_client::HttpClientExt;
 use crate::image_generation;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
 use serde_json::json;
@@ -26,13 +27,13 @@ impl TryFrom<ImageGenerationResponse>
 }
 
 #[derive(Clone)]
-pub struct ImageGenerationModel {
-    client: Client,
+pub struct ImageGenerationModel<T = reqwest::Client> {
+    client: Client<T>,
     pub model: String,
 }
 
-impl ImageGenerationModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> ImageGenerationModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         ImageGenerationModel {
             client,
             model: model.to_string(),
@@ -40,7 +41,10 @@ impl ImageGenerationModel {
     }
 }
 
-impl image_generation::ImageGenerationModel for ImageGenerationModel {
+impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
+where
+    T: HttpClientExt + Send + Clone + 'static,
+{
     type Response = ImageGenerationResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -62,17 +66,29 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
             .sub_provider
             .image_generation_endpoint(&self.model)?;
 
-        let response = self.client.post(&route).json(&request).send().await?;
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .post(&route)?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
+
+        let response = self.client.send(req).await?;
 
         if !response.status().is_success() {
+            let status = response.status();
+            let text: Vec<u8> = response.into_body().await?;
+            let text: String = String::from_utf8_lossy(&text).into();
+
             return Err(ImageGenerationError::ProviderError(format!(
                 "{}: {}",
-                response.status(),
-                response.text().await?
+                status, text
             )));
         }
 
-        let data = response.bytes().await?.to_vec();
+        let data: Vec<u8> = response.into_body().await?;
 
         ImageGenerationResponse { data }.try_into()
     }
