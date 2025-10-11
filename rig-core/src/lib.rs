@@ -114,6 +114,7 @@ pub mod cli_chatbot;
 pub mod client;
 pub mod completion;
 pub mod embeddings;
+pub mod evals;
 pub mod extractor;
 pub mod http_client;
 #[cfg(feature = "image")]
