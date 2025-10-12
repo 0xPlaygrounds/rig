@@ -1,9 +1,14 @@
 use std::{collections::HashMap, sync::Arc};
 
+use tokio::sync::RwLock;
+
 use crate::{
     completion::{CompletionModel, Document},
     message::ToolChoice,
-    tool::{Tool, ToolSet},
+    tool::{
+        Tool, ToolSet,
+        server::{ToolServer, ToolServerHandle},
+    },
     vector_store::VectorStoreIndexDyn,
 };
 
@@ -62,6 +67,8 @@ where
     temperature: Option<f64>,
     /// Actual tool implementations
     tools: ToolSet,
+    /// Tool server handle
+    tool_server_handle: Option<ToolServerHandle>,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     tool_choice: Option<ToolChoice>,
 }
@@ -84,6 +91,7 @@ where
             dynamic_context: vec![],
             dynamic_tools: vec![],
             tools: ToolSet::default(),
+            tool_server_handle: None,
             tool_choice: None,
         }
     }
@@ -137,6 +145,11 @@ where
         let toolname = tool.name();
         self.tools.add_tool(tool);
         self.static_tools.push(toolname);
+        self
+    }
+
+    pub fn tool_server_handle(mut self, handle: ToolServerHandle) -> Self {
+        self.tool_server_handle = Some(handle);
         self
     }
 
@@ -200,20 +213,24 @@ where
 
     /// Build the agent
     pub fn build(self) -> Agent<M> {
+        let tools = ToolServer::new()
+            .static_tool_names(self.static_tools)
+            .add_tools(self.tools)
+            .add_dynamic_tools(self.dynamic_tools)
+            .run();
+
         Agent {
             name: self.name,
             description: self.description,
             model: Arc::new(self.model),
             preamble: self.preamble,
             static_context: self.static_context,
-            static_tools: self.static_tools,
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
             tool_choice: self.tool_choice,
-            dynamic_context: Arc::new(self.dynamic_context),
-            dynamic_tools: Arc::new(self.dynamic_tools),
-            tools: Arc::new(self.tools),
+            dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
+            tools,
         }
     }
 }

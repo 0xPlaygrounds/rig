@@ -282,15 +282,18 @@ where
                                 let tool_span = tracing::Span::current();
                                 if let Some(ref hook) = self.hook {
                                     hook.on_tool_call(&tool_call.function.name, &tool_call.function.arguments.to_string()).await;
-                                }
+                                };
 
                                 tool_span.record("gen_ai.tool.name", &tool_call.function.name);
                                 tool_span.record("gen_ai.tool.call.arguments", tool_call.function.arguments.to_string());
 
                                 let tool_result = match
-                                agent.tools.call(&tool_call.function.name, tool_call.function.arguments.to_string()).await {
+                                agent.tools.call_tool(&tool_call.function.name, &tool_call.function.arguments.to_string()).await {
                                     Ok(thing) => thing,
-                                    Err(e) => e.to_string()
+                                    Err(e) => {
+                                        tracing::warn!("Error while calling tool: {e}");
+                                        e.to_string()
+                                    }
                                 };
 
                                 tool_span.record("gen_ai.tool.call.result", &tool_result);

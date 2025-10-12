@@ -198,7 +198,7 @@ if_wasm! {
     {
         iter_sse_messages(stream.map(|result| match result {
             Ok(bytes) => Ok(bytes.to_vec()),
-            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
+            Err(e) => Err(std::io::Error::other(e.to_string())),
         }))
     }
 }

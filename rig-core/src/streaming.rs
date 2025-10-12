@@ -375,12 +375,12 @@ where
             Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
                 let res = agent
                     .tools
-                    .call(
+                    .call_tool(
                         &tool_call.function.name,
-                        tool_call.function.arguments.to_string(),
+                        &tool_call.function.arguments.to_string(),
                     )
                     .await
-                    .map_err(|e| std::io::Error::other(e.to_string()))?;
+                    .map_err(|x| std::io::Error::other(x.to_string()))?;
                 println!("\nResult: {res}");
             }
             Ok(StreamedAssistantContent::Final(res)) => {
