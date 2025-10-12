@@ -62,10 +62,10 @@ impl ToolServer {
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     #[cfg(feature = "rmcp")]
     pub fn rmcp_tool(mut self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
-        use crate::tool::rmcp::RmcpTool;
+        use crate::tool::rmcp::McpTool;
         let toolname = tool.name.clone();
         self.toolset
-            .add_tool(RmcpTool::from_mcp_server(tool, client));
+            .add_tool(McpTool::from_mcp_server(tool, client));
         self.static_tool_names.push(toolname.to_string());
         self
     }
