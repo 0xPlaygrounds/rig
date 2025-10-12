@@ -5,9 +5,8 @@ use futures::stream::BoxStream;
 #[cfg(target_family = "wasm")]
 use futures::stream::Stream;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
-use rama::http::dep::http_body_util::BodyExt;
 use reqwest::Body;
-use std::{future::Future, pin::Pin};
+use std::future::Future;
 
 if_wasm! {
     use std::pin::Pin;
@@ -200,6 +199,7 @@ where
         T: Into<Bytes>,
         U: From<Bytes> + WasmCompatSend,
     {
+        use rama::http::dep::http_body_util::BodyExt;
         let client = self.clone();
         use rama::Service;
         let (parts, body) = req.into_parts();
@@ -250,6 +250,7 @@ where
     where
         T: Into<Bytes>,
     {
+        use rama::http::dep::http_body_util::BodyExt;
         let client = self.clone();
         use futures::StreamExt;
         use rama::Service;
@@ -288,7 +289,7 @@ where
 
             let stream = response.into_body().into_data_stream();
 
-            let boxed_stream: Pin<
+            let boxed_stream: std::pin::Pin<
                 Box<dyn futures::Stream<Item = core::result::Result<Bytes, Error>> + Send>,
             > = Box::pin(stream.map(|result| result.map_err(Error::Instance)));
             res.body(boxed_stream)
