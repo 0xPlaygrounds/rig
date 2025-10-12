@@ -1,5 +1,6 @@
 use crate::{
     OneOrMany,
+    agent::CancelSignal,
     completion::GetTokenUsage,
     message::{AssistantContent, Reasoning, ToolResultContent, UserContent},
     streaming::{StreamedAssistantContent, StreamingCompletion},
@@ -191,6 +192,8 @@ where
 
         let mut aggregated_usage = crate::completion::Usage::new();
 
+        let cancel_signal = CancelSignal::new();
+
         Box::pin(async_stream::stream! {
             let _guard = agent_span.enter();
             let mut current_prompt = prompt.clone();
@@ -218,8 +221,12 @@ where
                     let prompt = reader.last().cloned().expect("there should always be at least one message in the chat history");
                     let chat_history_except_last = reader[..reader.len() - 1].to_vec();
 
-                    hook.on_completion_call(&prompt, &chat_history_except_last)
+                    hook.on_completion_call(&prompt, &chat_history_except_last, cancel_signal.clone())
                     .await;
+
+                    if cancel_signal.is_cancelled() {
+                        yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec()).into()));
+                    }
                 }
 
                 let chat_stream_span = info_span!(
@@ -261,7 +268,10 @@ where
                             }
                             last_text_response.push_str(&text.text);
                             if let Some(ref hook) = self.hook {
-                                hook.on_text_delta(&text.text, &last_text_response).await;
+                                hook.on_text_delta(&text.text, &last_text_response, cancel_signal.clone()).await;
+                                if cancel_signal.is_cancelled() {
+                                    yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec()).into()));
+                                }
                             }
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
                             did_call_tool = false;
@@ -278,10 +288,13 @@ where
                                 gen_ai.tool.call.result = tracing::field::Empty
                             );
 
-                            async {
+                            let res = async {
                                 let tool_span = tracing::Span::current();
                                 if let Some(ref hook) = self.hook {
-                                    hook.on_tool_call(&tool_call.function.name, &tool_call.function.arguments.to_string()).await;
+                                    hook.on_tool_call(&tool_call.function.name, &tool_call.function.arguments.to_string(), cancel_signal.clone()).await;
+                                    if cancel_signal.is_cancelled() {
+                                        return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec()).into()));
+                                    }
                                 }
 
                                 tool_span.record("gen_ai.tool.name", &tool_call.function.name);
@@ -296,8 +309,12 @@ where
                                 tool_span.record("gen_ai.tool.call.result", &tool_result);
 
                                 if let Some(ref hook) = self.hook {
-                                    hook.on_tool_result(&tool_call.function.name, &tool_call.function.arguments.to_string(), &tool_result.to_string())
+                                    hook.on_tool_result(&tool_call.function.name, &tool_call.function.arguments.to_string(), &tool_result.to_string(), cancel_signal.clone())
                                     .await;
+
+                                    if cancel_signal.is_cancelled() {
+                                        return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec()).into()));
+                                    }
                                 }
 
                                 let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
@@ -306,8 +323,13 @@ where
                                 tool_results.push((tool_call.id, tool_call.call_id, tool_result));
 
                                 did_call_tool = true;
+                                Ok(())
                                 // break;
-                            }.instrument(tool_span).await
+                            }.instrument(tool_span).await;
+
+                            if let Err(e) = res {
+                                yield Err(e);
+                            }
                         },
                         Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id })) => {
                             chat_history.write().await.push(rig::message::Message::Assistant {
@@ -323,8 +345,13 @@ where
                             if let Some(usage) = final_resp.token_usage() { aggregated_usage += usage; };
                             if is_text_response {
                                 if let Some(ref hook) = self.hook {
-                                    hook.on_stream_completion_response_finish(&prompt, &final_resp).await;
+                                    hook.on_stream_completion_response_finish(&prompt, &final_resp, cancel_signal.clone()).await;
+
+                                    if cancel_signal.is_cancelled() {
+                                        yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec()).into()));
+                                    }
                                 }
+
                                 tracing::Span::current().record("gen_ai.completion", &last_text_response);
                                 yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Final(final_resp)));
                                 is_text_response = false;
@@ -452,6 +479,7 @@ where
         &self,
         prompt: &Message,
         history: &[Message],
+        cancel_sig: CancelSignal,
     ) -> impl Future<Output = ()> + Send {
         async {}
     }
@@ -462,6 +490,7 @@ where
         &self,
         text_delta: &str,
         aggregated_text: &str,
+        cancel_sig: CancelSignal,
     ) -> impl Future<Output = ()> + Send {
         async {}
     }
@@ -472,13 +501,19 @@ where
         &self,
         prompt: &Message,
         response: &<M as CompletionModel>::StreamingResponse,
+        cancel_sig: CancelSignal,
     ) -> impl Future<Output = ()> + Send {
         async {}
     }
 
     #[allow(unused_variables)]
     /// Called before a tool is invoked.
-    fn on_tool_call(&self, tool_name: &str, args: &str) -> impl Future<Output = ()> + Send {
+    fn on_tool_call(
+        &self,
+        tool_name: &str,
+        args: &str,
+        cancel_sig: CancelSignal,
+    ) -> impl Future<Output = ()> + Send {
         async {}
     }
 
@@ -489,6 +524,7 @@ where
         tool_name: &str,
         args: &str,
         result: &str,
+        cancel_sig: CancelSignal,
     ) -> impl Future<Output = ()> + Send {
         async {}
     }
