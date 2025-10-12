@@ -467,7 +467,7 @@ where
                                     return Err(ToolSetError::Interrupted);
                                 }
                             }
-                            let output = match agent.tools.call_tool(&tool_name, &args).await {
+                            let output = match agent.tools.call_tool(tool_name, &args).await {
                                 Ok(res) => res,
                                 Err(e) => {
                                     tracing::warn!("Error while executing tool: {e}");

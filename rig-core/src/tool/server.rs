@@ -62,9 +62,11 @@ impl ToolServer {
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     #[cfg(feature = "rmcp")]
     pub fn rmcp_tool(mut self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
+        use crate::tool::rmcp::RmcpTool;
         let toolname = tool.name.clone();
-        self.tools.add_tool(RmcpTool::from_mcp_server(tool, client));
-        self.static_tools.push(toolname.to_string());
+        self.toolset
+            .add_tool(RmcpTool::from_mcp_server(tool, client));
+        self.static_tool_names.push(toolname.to_string());
         self
     }
 
@@ -168,7 +170,7 @@ impl ToolServer {
                         .try_fold(vec![], |mut acc, docs| async {
                             for doc in docs {
                                 if let Some(tool) = self.toolset.get(&doc) {
-                                    acc.push(tool.definition(text.clone().into()).await)
+                                    acc.push(tool.definition(text.clone()).await)
                                 } else {
                                     tracing::warn!("Tool implementation not found in toolset: {}", doc);
                                 }
@@ -183,7 +185,7 @@ impl ToolServer {
 
         for toolname in static_tool_names {
             if let Some(tool) = self.toolset.get(&toolname) {
-                tools.push(tool.definition(String::new().into()).await)
+                tools.push(tool.definition(String::new()).await)
             } else {
                 tracing::warn!("Tool implementation not found in toolset: {}", toolname);
             }
