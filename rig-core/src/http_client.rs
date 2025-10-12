@@ -5,8 +5,9 @@ use futures::stream::BoxStream;
 #[cfg(target_family = "wasm")]
 use futures::stream::Stream;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
+use rama::http::dep::http_body_util::BodyExt;
 use reqwest::Body;
-use std::future::Future;
+use std::{future::Future, pin::Pin};
 
 if_wasm! {
     use std::pin::Pin;
@@ -167,6 +168,131 @@ impl HttpClientExt for reqwest::Client {
             };
 
             Ok(res.body(stream)?)
+        }
+    }
+}
+
+#[cfg(feature = "rama")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rama")))]
+impl<ModifiedBody, ConnResponse> HttpClientExt
+    for rama::http::client::EasyHttpWebClient<
+        (),
+        rama::http::Body,
+        rama::net::client::EstablishedClientConnection<ConnResponse, (), Request<ModifiedBody>>,
+    >
+where
+    ModifiedBody: rama::http::dep::http_body::Body<Data: Send + 'static, Error: Into<rama::error::BoxError>>
+        + Unpin
+        + Send
+        + 'static,
+    ConnResponse: rama::Service<
+            (),
+            Request<ModifiedBody>,
+            Response = rama::http::Response,
+            Error = rama::error::BoxError,
+        >,
+{
+    fn send<T, U>(
+        &self,
+        req: Request<T>,
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        T: Into<Bytes>,
+        U: From<Bytes> + WasmCompatSend,
+    {
+        let client = self.clone();
+        use rama::Service;
+        let (parts, body) = req.into_parts();
+
+        let mut request = rama::http::Request::builder()
+            .uri(parts.uri)
+            .method(parts.method);
+
+        for (key, val) in parts.headers {
+            request = request.header(key.unwrap(), val);
+        }
+
+        let bytes: Bytes = body.into();
+        let body = rama::http::Body::from(bytes);
+
+        let req = request.body(body).unwrap();
+
+        async move {
+            let response = client
+                .serve(rama::Context::new((), rama::rt::Executor::new()), req)
+                .await
+                .map_err(instance_error)?;
+
+            let mut res = Response::builder()
+                .status(response.status())
+                .version(response.version());
+
+            if let Some(hs) = res.headers_mut() {
+                *hs = response.headers().clone();
+            }
+
+            let body: LazyBody<U> = Box::pin(async move {
+                let bytes = response.into_body();
+                let bytes = bytes.collect().await.unwrap().to_bytes();
+
+                let body = U::from(bytes);
+                Ok(body)
+            });
+
+            res.body(body).map_err(Error::Protocol)
+        }
+    }
+
+    fn send_streaming<T>(
+        &self,
+        req: Request<T>,
+    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend + 'static
+    where
+        T: Into<Bytes>,
+    {
+        let client = self.clone();
+        use futures::StreamExt;
+        use rama::Service;
+        let (parts, body) = req.into_parts();
+
+        let mut request = rama::http::Request::builder()
+            .uri(parts.uri)
+            .method(parts.method);
+
+        for (key, val) in parts.headers {
+            request = request.header(key.unwrap(), val);
+        }
+
+        let bytes: Bytes = body.into();
+        let body = rama::http::Body::from(bytes);
+
+        let req = request.body(body).unwrap();
+
+        async move {
+            let response = client
+                .serve(rama::Context::new((), rama::rt::Executor::new()), req)
+                .await
+                .unwrap();
+
+            #[cfg(not(target_family = "wasm"))]
+            let mut res = Response::builder()
+                .status(response.status())
+                .version(response.version());
+
+            #[cfg(target_family = "wasm")]
+            let mut res = Response::builder().status(response.status());
+
+            if let Some(hs) = res.headers_mut() {
+                *hs = response.headers().clone();
+            }
+
+            let stream = response.into_body().into_data_stream();
+
+            let boxed_stream: Pin<
+                Box<dyn futures::Stream<Item = core::result::Result<Bytes, Error>> + Send>,
+            > = Box::pin(stream.map(|result| result.map_err(Error::Instance)));
+            res.body(boxed_stream)
+                .map_err(|_| Error::Instance("failed to build response".into()))
         }
     }
 }
