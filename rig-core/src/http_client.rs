@@ -199,7 +199,6 @@ where
         T: Into<Bytes>,
         U: From<Bytes> + WasmCompatSend,
     {
-        use rama::http::dep::http_body_util::BodyExt;
         let client = self.clone();
         use rama::Service;
         let (parts, body) = req.into_parts();
@@ -250,7 +249,6 @@ where
     where
         T: Into<Bytes>,
     {
-        use rama::http::dep::http_body_util::BodyExt;
         let client = self.clone();
         use futures::StreamExt;
         use rama::Service;
