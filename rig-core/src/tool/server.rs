@@ -111,6 +111,7 @@ impl ToolServer {
 
         match data {
             ToolServerRequestMessageKind::AddTool(tool) => {
+                self.static_tool_names.push(tool.name());
                 self.toolset.add_tool_boxed(tool);
                 callback_channel
                     .send(ToolServerResponse::ToolAdded)
@@ -123,6 +124,7 @@ impl ToolServer {
                     .unwrap();
             }
             ToolServerRequestMessageKind::RemoveTool { tool_name } => {
+                self.static_tool_names.retain(|x| *x != tool_name);
                 self.toolset.delete_tool(&tool_name);
                 callback_channel
                     .send(ToolServerResponse::ToolDeleted)
@@ -407,5 +409,15 @@ mod tests {
         let res = handle.get_tool_defs(None).await.unwrap();
 
         assert_eq!(res.len(), 1);
+
+        let json_args_as_string =
+            serde_json::to_string(&serde_json::json!({"x": 2, "y": 5})).unwrap();
+        let res = handle.call_tool("add", &json_args_as_string).await.unwrap();
+        assert_eq!(res, "7");
+
+        handle.remove_tool("add").await.unwrap();
+        let res = handle.get_tool_defs(None).await.unwrap();
+
+        assert_eq!(res.len(), 0);
     }
 }
