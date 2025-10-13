@@ -23,6 +23,15 @@ tokio = { workspace = true }
 anyhow = { workspace = true }
 httpmock = { workspace = true }
 
+[features]
+default = []
+bedrock = ["lancedb/bedrock"]
+fp16kernels = ["lancedb/fp16kernels"]
+openai = ["lancedb/openai"]
+polars = ["lancedb/polars"]
+remote = ["lancedb/remote"]
+sentence-transformers = ["lancedb/sentence-transformers"]
+
 [[example]]
 name = "vector_search_local_ann"
 required-features = ["rig-core/derive"]
