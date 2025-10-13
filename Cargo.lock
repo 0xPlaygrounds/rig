@@ -9210,6 +9210,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "epub",
+ "fastrand",
  "futures",
  "glob",
  "http 1.3.1",
