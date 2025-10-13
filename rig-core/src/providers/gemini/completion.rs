@@ -110,6 +110,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         let request = self
             .client
             .post(&format!("/v1beta/models/{}:generateContent", self.model))
+            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
@@ -1434,27 +1435,133 @@ pub mod gemini_api_types {
         }
     }
 
+    /// Helper function to extract the type string from a JSON value.
+    /// Handles both direct string types and array types (returns the first element).
+    fn extract_type(type_value: &Value) -> Option<String> {
+        if type_value.is_string() {
+            type_value.as_str().map(String::from)
+        } else if type_value.is_array() {
+            type_value
+                .as_array()
+                .and_then(|arr| arr.first())
+                .and_then(|v| v.as_str().map(String::from))
+        } else {
+            None
+        }
+    }
+
+    /// Helper function to extract type from anyOf, oneOf, or allOf schemas.
+    /// Returns the type of the first non-null schema found.
+    fn extract_type_from_composition(composition: &Value) -> Option<String> {
+        composition.as_array().and_then(|arr| {
+            arr.iter().find_map(|schema| {
+                if let Some(obj) = schema.as_object() {
+                    // Skip null types
+                    if let Some(type_val) = obj.get("type")
+                        && let Some(type_str) = type_val.as_str()
+                        && type_str == "null"
+                    {
+                        return None;
+                    }
+                    // Extract type from this schema
+                    obj.get("type").and_then(extract_type).or_else(|| {
+                        if obj.contains_key("properties") {
+                            Some("object".to_string())
+                        } else {
+                            None
+                        }
+                    })
+                } else {
+                    None
+                }
+            })
+        })
+    }
+
+    /// Helper function to extract the first non-null schema from anyOf, oneOf, or allOf.
+    /// Returns the schema object that should be used for properties, required, etc.
+    fn extract_schema_from_composition(
+        composition: &Value,
+    ) -> Option<serde_json::Map<String, Value>> {
+        composition.as_array().and_then(|arr| {
+            arr.iter().find_map(|schema| {
+                if let Some(obj) = schema.as_object()
+                    && let Some(type_val) = obj.get("type")
+                    && let Some(type_str) = type_val.as_str()
+                {
+                    if type_str == "null" {
+                        return None;
+                    }
+                    Some(obj.clone())
+                } else {
+                    None
+                }
+            })
+        })
+    }
+
+    /// Helper function to infer the type of a schema object.
+    /// Checks for explicit type, then anyOf/oneOf/allOf, then infers from properties.
+    fn infer_type(obj: &serde_json::Map<String, Value>) -> String {
+        // First, try direct type field
+        if let Some(type_val) = obj.get("type")
+            && let Some(type_str) = extract_type(type_val)
+        {
+            return type_str;
+        }
+
+        // Then try anyOf, oneOf, allOf (in that order)
+        if let Some(any_of) = obj.get("anyOf")
+            && let Some(type_str) = extract_type_from_composition(any_of)
+        {
+            return type_str;
+        }
+
+        if let Some(one_of) = obj.get("oneOf")
+            && let Some(type_str) = extract_type_from_composition(one_of)
+        {
+            return type_str;
+        }
+
+        if let Some(all_of) = obj.get("allOf")
+            && let Some(type_str) = extract_type_from_composition(all_of)
+        {
+            return type_str;
+        }
+
+        // Finally, infer object type if properties are present
+        if obj.contains_key("properties") {
+            "object".to_string()
+        } else {
+            String::new()
+        }
+    }
+
     impl TryFrom<Value> for Schema {
         type Error = CompletionError;
 
         fn try_from(value: Value) -> Result<Self, Self::Error> {
             let flattened_val = flatten_schema(value)?;
             if let Some(obj) = flattened_val.as_object() {
+                // Determine which object to use for extracting properties and required fields.
+                // If this object has anyOf/oneOf/allOf, we need to extract properties from the composition.
+                let props_source = if obj.get("properties").is_none() {
+                    if let Some(any_of) = obj.get("anyOf") {
+                        extract_schema_from_composition(any_of)
+                    } else if let Some(one_of) = obj.get("oneOf") {
+                        extract_schema_from_composition(one_of)
+                    } else if let Some(all_of) = obj.get("allOf") {
+                        extract_schema_from_composition(all_of)
+                    } else {
+                        None
+                    }
+                    .unwrap_or(obj.clone())
+                } else {
+                    obj.clone()
+                };
+
                 Ok(Schema {
-                    r#type: obj
-                        .get("type")
-                        .and_then(|v| {
-                            if v.is_string() {
-                                v.as_str().map(String::from)
-                            } else if v.is_array() {
-                                v.as_array()
-                                    .and_then(|arr| arr.first())
-                                    .and_then(|v| v.as_str().map(String::from))
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or_default(),
+                    r#type: infer_type(obj),
                     format: obj.get("format").and_then(|v| v.as_str()).map(String::from),
                     description: obj
                         .get("description")
@@ -1474,7 +1581,7 @@ pub mod gemini_api_types {
                         .get("minItems")
                         .and_then(|v| v.as_i64())
                         .map(|v| v as i32),
-                    properties: obj
+                    properties: props_source
                         .get("properties")
                         .and_then(|v| v.as_object())
                         .map(|map| {
@@ -1484,14 +1591,18 @@ pub mod gemini_api_types {
                                 })
                                 .collect()
                         }),
-                    required: obj.get("required").and_then(|v| v.as_array()).map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str().map(String::from))
-                            .collect()
-                    }),
+                    required: props_source
+                        .get("required")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(String::from))
+                                .collect()
+                        }),
                     items: obj
                         .get("items")
-                        .map(|v| Box::new(v.clone().try_into().unwrap())),
+                        .and_then(|v| v.clone().try_into().ok())
+                        .map(Box::new),
                 })
             } else {
                 Err(CompletionError::ResponseError(

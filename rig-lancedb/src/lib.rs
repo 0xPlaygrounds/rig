@@ -4,7 +4,10 @@ use lancedb::{
 };
 use rig::{
     embeddings::embedding::EmbeddingModel,
-    vector_store::{VectorStoreError, VectorStoreIndex, request::VectorSearchRequest},
+    vector_store::{
+        VectorStoreError, VectorStoreIndex,
+        request::{SearchFilter, VectorSearchRequest},
+    },
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -114,6 +117,65 @@ pub enum SearchType {
     Approximate,
 }
 
+/// An eDSL for filtering expressions, is rendered as a `WHERE` clause
+#[derive(Debug, Clone)]
+pub struct LanceDBFilter(String);
+
+impl SearchFilter for LanceDBFilter {
+    type Value = serde_json::Value;
+
+    fn eq(key: String, value: Self::Value) -> Self {
+        Self(format!("{key} = {}", escape_value(value)))
+    }
+
+    fn gt(key: String, value: Self::Value) -> Self {
+        Self(format!("{key} > {}", escape_value(value)))
+    }
+
+    fn lt(key: String, value: Self::Value) -> Self {
+        Self(format!("{key} < {}", escape_value(value)))
+    }
+
+    fn and(self, rhs: Self) -> Self {
+        Self(format!("({}) AND ({})", self.0, rhs.0))
+    }
+
+    fn or(self, rhs: Self) -> Self {
+        Self(format!("({}) OR ({})", self.0, rhs.0))
+    }
+
+    fn not(self) -> Self {
+        Self(format!("NOT ({})", self.0))
+    }
+}
+
+fn escape_value(value: serde_json::Value) -> String {
+    use serde_json::Value::*;
+
+    match value {
+        Null => "NULL".into(),
+        Bool(b) => b.to_string(),
+        Number(n) => n.to_string(),
+        String(s) => format!("'{}'", s.replace("'", "''")),
+        Array(xs) => format!(
+            "({})",
+            xs.into_iter()
+                .map(escape_value)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        // FIXME: This means we should use i.e. a LanceDbValue or similar to prevent users from
+        // constructing objects
+        Object(_) => panic!("Objects are not supported in LanceDB filter expression"),
+    }
+}
+
+impl LanceDBFilter {
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
 /// Parameters used to perform a vector search on a LanceDb table.
 /// # Example
 /// ```
@@ -183,6 +245,8 @@ impl<M> VectorStoreIndex for LanceDbVectorIndex<M>
 where
     M: EmbeddingModel + Sync + Send,
 {
+    type Filter = LanceDBFilter;
+
     /// Implement the `top_n` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
     /// # Example
     /// ```
@@ -202,11 +266,11 @@ where
     /// ```
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<LanceDBFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_text(req.query()).await?;
 
-        let query = self
+        let mut query = self
             .table
             .vector_search(prompt_embedding.vec.clone())
             .map_err(lancedb_to_rig_error)?
@@ -219,6 +283,10 @@ where
                     .map_err(lancedb_to_rig_error)?
                     .filter_embeddings(),
             ));
+
+        if let Some(filter) = req.filter() {
+            query = query.only_if(filter.clone().into_inner())
+        }
 
         self.build_query(query)
             .execute_query()
@@ -260,11 +328,11 @@ where
     /// ```
     async fn top_n_ids(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<LanceDBFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_text(req.query()).await?;
 
-        let query = self
+        let mut query = self
             .table
             .query()
             .select(lancedb::query::Select::Columns(vec![self.id_field.clone()]))
@@ -272,6 +340,10 @@ where
             .map_err(lancedb_to_rig_error)?
             .distance_range(None, req.threshold().map(|x| x as f32))
             .limit(req.samples() as usize);
+
+        if let Some(filter) = req.filter() {
+            query = query.only_if(filter.clone().into_inner())
+        }
 
         self.build_query(query)
             .execute_query()

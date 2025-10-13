@@ -9,15 +9,15 @@ use std::env;
 
 use rig::{
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::{VectorStoreIndex, request::VectorSearchRequest},
+    vector_store::{
+        VectorStoreIndex,
+        request::{SearchFilter, VectorSearchRequest},
+    },
 };
 
 use neo4rs::*;
 use rig::client::EmbeddingsClient;
-use rig_neo4j::{
-    Neo4jClient, ToBoltType,
-    vector_index::{IndexConfig, SearchParams},
-};
+use rig_neo4j::{Neo4jClient, ToBoltType, vector_index::IndexConfig};
 use serde::{Deserialize, Serialize};
 
 #[path = "./display/lib.rs"]
@@ -109,18 +109,13 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // ❗IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client
-        .get_index(
-            model,
-            INDEX_NAME,
-            SearchParams::new(Some("node.year > 1990".to_string())),
-        )
-        .await?;
+    let index = neo4j_client.get_index(model, INDEX_NAME).await?;
 
     let query = "a historical movie on quebec";
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(5)
+        .filter(SearchFilter::gt("node.year".into(), 1990.into()))
         .build()?;
 
     // Query the index

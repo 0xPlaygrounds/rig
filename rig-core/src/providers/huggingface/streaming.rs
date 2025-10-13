@@ -29,7 +29,11 @@ impl CompletionModel<reqwest::Client> {
 
         let body = serde_json::to_vec(&request)?;
 
-        let builder = self.client.post_reqwest(&path).body(body);
+        let builder = self
+            .client
+            .post_reqwest(&path)
+            .header("Content-Type", "application/json")
+            .body(body);
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(

@@ -1071,10 +1071,15 @@ impl completion::CompletionModel for ResponsesCompletionModel<reqwest::Client> {
                 .expect("openai request to successfully turn into a JSON value"),
         );
         let body = serde_json::to_vec(&request)?;
+        tracing::debug!(
+            "OpenAI Responses API input: {request}",
+            request = serde_json::to_string_pretty(&request).unwrap()
+        );
 
         let req = self
             .client
             .post("/responses")?
+            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 

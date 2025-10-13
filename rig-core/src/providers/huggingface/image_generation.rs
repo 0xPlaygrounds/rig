@@ -71,6 +71,7 @@ where
         let req = self
             .client
             .post(&route)?
+            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
 

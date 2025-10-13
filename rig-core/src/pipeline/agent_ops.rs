@@ -4,7 +4,10 @@ use crate::{
     completion::{self, CompletionModel},
     extractor::{ExtractionError, Extractor},
     message::Message,
-    vector_store::{self, request::VectorSearchRequest},
+    vector_store::{
+        self,
+        request::{Filter, VectorSearchRequest},
+    },
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
@@ -183,6 +186,8 @@ pub mod tests {
     pub struct MockIndex;
 
     impl VectorStoreIndex for MockIndex {
+        type Filter = Filter<serde_json::Value>;
+
         async fn top_n<T: for<'a> serde::Deserialize<'a> + WasmCompatSend>(
             &self,
             _req: VectorSearchRequest,

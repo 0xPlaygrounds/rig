@@ -25,6 +25,7 @@ impl CompletionModel<reqwest::Client> {
         let builder = self
             .client
             .reqwest_post("/v1/chat/completions")
+            .header("Content-Type", "application/json")
             .json(&request);
 
         let span = if tracing::Span::current().is_disabled() {

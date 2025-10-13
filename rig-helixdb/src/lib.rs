@@ -1,7 +1,7 @@
 use helix_rs::HelixDBClient;
 use rig::{
     embeddings::EmbeddingModel,
-    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex},
+    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex, request::Filter},
 };
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +21,8 @@ pub struct HelixDBVectorStore<C, E> {
     client: C,
     model: E,
 }
+
+pub type HelixDBFilter = Filter<serde_json::Value>;
 
 /// The result of a query. Only used internally as this is a representative type required for the relevant HelixDB query (`VectorSearch`).
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -86,7 +88,7 @@ where
         }
 
         for (document, embeddings) in documents {
-            let json_document: serde_json::Value = serde_json::to_value(&document).unwrap();
+            let json_document = serde_json::to_value(&document).unwrap();
             let json_document_as_string = serde_json::to_string(&json_document).unwrap();
 
             for embedding in embeddings {
@@ -115,9 +117,11 @@ where
     C: HelixDBClient + Send + Sync,
     E: EmbeddingModel + Send + Sync,
 {
+    type Filter = HelixDBFilter;
+
     async fn top_n<T: for<'a> serde::Deserialize<'a> + Send>(
         &self,
-        req: rig::vector_store::VectorSearchRequest,
+        req: rig::vector_store::VectorSearchRequest<HelixDBFilter>,
     ) -> Result<Vec<(f64, String, T)>, rig::vector_store::VectorStoreError> {
         let vector = self.model.embed_text(req.query()).await?.vec;
 
@@ -138,7 +142,24 @@ where
         let docs = result
             .vec_docs
             .into_iter()
-            .filter(|x| -(x.score - 1.) >= req.threshold().unwrap_or_default())
+            .filter(|x| {
+                let is_threshold = req
+                    .threshold()
+                    .map(|t| -(x.score - 1.) >= t)
+                    .unwrap_or(true);
+
+                is_threshold
+                    && req
+                        .filter()
+                        .clone()
+                        .zip(serde_json::from_str(&x.json_payload).ok())
+                        .map(
+                            |(filter, payload): (Filter<serde_json::Value>, serde_json::Value)| {
+                                filter.satisfies(&payload)
+                            },
+                        )
+                        .unwrap_or(true)
+            })
             .map(|x| {
                 let doc: T = serde_json::from_str(&x.json_payload)?;
 
@@ -152,7 +173,7 @@ where
 
     async fn top_n_ids(
         &self,
-        req: rig::vector_store::VectorSearchRequest,
+        req: rig::vector_store::VectorSearchRequest<HelixDBFilter>,
     ) -> Result<Vec<(f64, String)>, rig::vector_store::VectorStoreError> {
         let vector = self.model.embed_text(req.query()).await?.vec;
 

@@ -124,7 +124,11 @@ impl super::CompletionModel<reqwest::Client> {
 
         let request = json_utils::merge(request, json!({"stream": true}));
 
-        let builder = self.client.reqwest_post("/chat/completions").json(&request);
+        let builder = self
+            .client
+            .reqwest_post("/chat/completions")
+            .header("Content-Type", "application/json")
+            .json(&request);
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(

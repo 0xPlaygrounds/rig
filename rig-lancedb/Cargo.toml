@@ -1,6 +1,6 @@
 [package]
 name = "rig-lancedb"
-version = "0.2.23"
+version = "0.2.24"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -9,7 +9,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
 lancedb = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.21.0" }
+rig-core = { path = "../rig-core", version = "0.22.0", default-features = false }
 arrow-array = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
@@ -22,6 +22,11 @@ deranged = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 httpmock = { workspace = true }
+
+[features]
+default = ["rig-tls"]
+rig-tls = ["rig-core/reqwest-tls"]
+rig-rustls = ["rig-core/reqwest-rustls"]
 
 [[example]]
 name = "vector_search_local_ann"

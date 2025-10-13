@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.21.0...rig-core-v0.22.0) - 2025-10-14
+
+### Added
+
+- *(rig-937)* evals ([#905](https://github.com/0xPlaygrounds/rig/pull/905))
+- *(rig-986)* tool servers ([#916](https://github.com/0xPlaygrounds/rig/pull/916))
+- *(rig-988)* cancel streaming prompts from prompt hook ([#918](https://github.com/0xPlaygrounds/rig/pull/918))
+- *(rig-990)* allow configuring optional lancedb features ([#923](https://github.com/0xPlaygrounds/rig/pull/923))
+- return usage when streaming completions from a dynamic client ([#903](https://github.com/0xPlaygrounds/rig/pull/903))
+- *(rig-979)* discord bot integration ([#900](https://github.com/0xPlaygrounds/rig/pull/900))
+- *(rig-935)* support cancelling multi-turn prompt loop from hook ([#904](https://github.com/0xPlaygrounds/rig/pull/904))
+- *(rig-951)* generic HTTP client ([#875](https://github.com/0xPlaygrounds/rig/pull/875))
+- *(rig-977)* add description field to Agent, update tool impl ([#895](https://github.com/0xPlaygrounds/rig/pull/895))
+- *(rig-848)* extract JSON with chat history ([#888](https://github.com/0xPlaygrounds/rig/pull/888))
+- *(rig-955)* set up tool choice capability for Extractor ([#884](https://github.com/0xPlaygrounds/rig/pull/884))
+- *(rig-964)* add tool choice to agent ([#883](https://github.com/0xPlaygrounds/rig/pull/883))
+- *(rig-973)* DocumentSourceKind::String ([#882](https://github.com/0xPlaygrounds/rig/pull/882))
+
+### Fixed
+
+- *(rig-991)* nested struct conversion to Gemini OpenAPI type schema ([#926](https://github.com/0xPlaygrounds/rig/pull/926))
+- *(rig-982)* embedding_model_with_ndims() doesn't pass dimensions parameter to OpenAI API
+- *(rig-983)* http request fail due to no content type header set ([#909](https://github.com/0xPlaygrounds/rig/pull/909))
+- Correct data structure for OpenAI responses images and PDFs ([#880](https://github.com/0xPlaygrounds/rig/pull/880))
+
+### Other
+
+- *(rig-975)* split streaming portion of PromptHook ([#889](https://github.com/0xPlaygrounds/rig/pull/889))
+- *(rig-975)* split streaming portion of PromptHook
+- *(rig-959)* Documents in Huggingface are not converted properly ([#874](https://github.com/0xPlaygrounds/rig/pull/874))
+
 ## [0.21.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.20.0...rig-core-v0.21.0) - 2025-09-29
 
 ### Added

@@ -1,6 +1,6 @@
 [package]
 name = "rig-fastembed"
-version = "0.2.12"
+version = "0.2.13"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -8,7 +8,7 @@ description = "Rig vector store index integration for Fastembed. https://github.
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.21.0" }
+rig-core = { path = "../rig-core", version = "0.22.0" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
@@ -20,9 +20,9 @@ anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 [[example]]
-name = "vector_search"
+name = "vector_search_fastembed"
 required-features = ["rig-core/derive"]
 
 [[example]]
-name = "vector_search_local"
+name = "vector_search_fastembed_local"
 required-features = ["rig-core/derive"]

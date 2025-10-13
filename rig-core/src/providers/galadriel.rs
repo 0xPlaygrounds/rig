@@ -598,6 +598,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         let req = self
             .client
             .post("/chat/completions")?
+            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
@@ -670,7 +671,11 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
 
-        let builder = self.client.reqwest_post("/chat/completions").json(&request);
+        let builder = self
+            .client
+            .reqwest_post("/chat/completions")
+            .header("Content-Type", "application/json")
+            .json(&request);
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(

@@ -69,16 +69,21 @@ where
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
 
-        let body = json!({
+        let mut body = json!({
             "model": self.model,
             "input": documents,
         });
+
+        if self.ndims > 0 {
+            body["dimensions"] = json!(self.ndims);
+        }
 
         let body = serde_json::to_vec(&body)?;
 
         let req = self
             .client
             .post("/embeddings")?
+            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 

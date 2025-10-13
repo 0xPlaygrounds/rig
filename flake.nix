@@ -23,9 +23,7 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
-        rustToolchain = pkgs.rust-bin.stable."1.90.0".default.override {
-          targets = [ "wasm32-unknown-unknown" ];
-        };
+        rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
       in
       { 
         devShells.default = with pkgs; mkShell {

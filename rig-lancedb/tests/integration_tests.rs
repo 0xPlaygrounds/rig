@@ -31,9 +31,11 @@ async fn vector_search_test() {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
             .header("Authorization", "Bearer TEST")
+            .header("Content-Type", "application/json")
             .json_body(json!({
                 "input": req_data,
                 "model": "text-embedding-ada-002",
+                "dimensions": 1536
             }));
 
         let mut resp_data = vec![
@@ -76,11 +78,13 @@ async fn vector_search_test() {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
             .header("Authorization", "Bearer TEST")
+            .header("Content-Type", "application/json")
             .json_body(json!({
                 "input": [
                     "My boss says I zindle too much, what does that mean?"
                 ],
                 "model": "text-embedding-ada-002",
+                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")

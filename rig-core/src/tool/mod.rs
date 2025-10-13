@@ -9,6 +9,7 @@
 //! The [ToolSet] struct is a collection of tools that can be used by an [Agent](crate::agent::Agent)
 //! and optionally RAGged.
 
+pub mod server;
 use std::collections::HashMap;
 
 use futures::Future;
@@ -386,12 +387,17 @@ pub enum ToolSetError {
     #[error("ToolCallError: {0}")]
     ToolCallError(#[from] ToolError),
 
+    /// Could not find a tool
     #[error("ToolNotFoundError: {0}")]
     ToolNotFoundError(String),
 
     // TODO: Revisit this
     #[error("JsonError: {0}")]
     JsonError(#[from] serde_json::Error),
+
+    /// Tool call was interrupted. Primarily useful for agent multi-step/turn prompting.
+    #[error("Tool call interrupted")]
+    Interrupted,
 }
 
 /// A struct that holds a set of tools
@@ -424,6 +430,11 @@ impl ToolSet {
     pub fn add_tool(&mut self, tool: impl ToolDyn + 'static) {
         self.tools
             .insert(tool.name(), ToolType::Simple(Box::new(tool)));
+    }
+
+    /// Adds a boxed tool to the toolset. Useful for situations when dynamic dispatch is required.
+    pub fn add_tool_boxed(&mut self, tool: Box<dyn ToolDyn>) {
+        self.tools.insert(tool.name(), ToolType::Simple(tool));
     }
 
     pub fn delete_tool(&mut self, tool_name: &str) {

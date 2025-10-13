@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.8](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.3.7...rig-neo4j-v0.3.8) - 2025-10-14
+
+### Added
+
+- *(rig-951)* generic HTTP client ([#875](https://github.com/0xPlaygrounds/rig/pull/875))
+
+### Fixed
+
+- trying to fix test regressions part 2 ([#913](https://github.com/0xPlaygrounds/rig/pull/913))
+- test regression ([#912](https://github.com/0xPlaygrounds/rig/pull/912))
+
 ## [0.3.7](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.3.6...rig-neo4j-v0.3.7) - 2025-09-29
 
 ### Other
