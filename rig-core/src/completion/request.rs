@@ -364,7 +364,10 @@ pub trait CompletionModelDyn: WasmCompatSend + WasmCompatSync {
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> WasmBoxedFuture<'_, Result<StreamingCompletionResponse<()>, CompletionError>>;
+    ) -> WasmBoxedFuture<
+        '_,
+        Result<StreamingCompletionResponse<FinalCompletionResponse>, CompletionError>,
+    >;
 
     fn completion_request(
         &self,
@@ -395,7 +398,10 @@ where
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> WasmBoxedFuture<'_, Result<StreamingCompletionResponse<()>, CompletionError>> {
+    ) -> WasmBoxedFuture<
+        '_,
+        Result<StreamingCompletionResponse<FinalCompletionResponse>, CompletionError>,
+    > {
         Box::pin(async move {
             let resp = self.stream(request).await?;
             let inner = resp.inner;
