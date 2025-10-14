@@ -1457,12 +1457,11 @@ pub mod gemini_api_types {
             arr.iter().find_map(|schema| {
                 if let Some(obj) = schema.as_object() {
                     // Skip null types
-                    if let Some(type_val) = obj.get("type") {
-                        if let Some(type_str) = type_val.as_str() {
-                            if type_str == "null" {
-                                return None;
-                            }
-                        }
+                    if let Some(type_val) = obj.get("type")
+                        && let Some(type_str) = type_val.as_str()
+                        && type_str == "null"
+                    {
+                        return None;
                     }
                     // Extract type from this schema
                     obj.get("type").and_then(extract_type).or_else(|| {
@@ -1486,14 +1485,12 @@ pub mod gemini_api_types {
     ) -> Option<serde_json::Map<String, Value>> {
         composition.as_array().and_then(|arr| {
             arr.iter().find_map(|schema| {
-                if let Some(obj) = schema.as_object() {
-                    // Skip null types
-                    if let Some(type_val) = obj.get("type") {
-                        if let Some(type_str) = type_val.as_str() {
-                            if type_str == "null" {
-                                return None;
-                            }
-                        }
+                if let Some(obj) = schema.as_object()
+                    && let Some(type_val) = obj.get("type")
+                    && let Some(type_str) = type_val.as_str()
+                {
+                    if type_str == "null" {
+                        return None;
                     }
                     Some(obj.clone())
                 } else {
@@ -1507,27 +1504,29 @@ pub mod gemini_api_types {
     /// Checks for explicit type, then anyOf/oneOf/allOf, then infers from properties.
     fn infer_type(obj: &serde_json::Map<String, Value>) -> String {
         // First, try direct type field
-        if let Some(type_val) = obj.get("type") {
-            if let Some(type_str) = extract_type(type_val) {
-                return type_str;
-            }
+        if let Some(type_val) = obj.get("type")
+            && let Some(type_str) = extract_type(type_val)
+        {
+            return type_str;
         }
 
         // Then try anyOf, oneOf, allOf (in that order)
-        if let Some(any_of) = obj.get("anyOf") {
-            if let Some(type_str) = extract_type_from_composition(any_of) {
-                return type_str;
-            }
+        if let Some(any_of) = obj.get("anyOf")
+            && let Some(type_str) = extract_type_from_composition(any_of)
+        {
+            return type_str;
         }
-        if let Some(one_of) = obj.get("oneOf") {
-            if let Some(type_str) = extract_type_from_composition(one_of) {
-                return type_str;
-            }
+
+        if let Some(one_of) = obj.get("oneOf")
+            && let Some(type_str) = extract_type_from_composition(one_of)
+        {
+            return type_str;
         }
-        if let Some(all_of) = obj.get("allOf") {
-            if let Some(type_str) = extract_type_from_composition(all_of) {
-                return type_str;
-            }
+
+        if let Some(all_of) = obj.get("allOf")
+            && let Some(type_str) = extract_type_from_composition(all_of)
+        {
+            return type_str;
         }
 
         // Finally, infer object type if properties are present
@@ -1548,14 +1547,11 @@ pub mod gemini_api_types {
                 // If this object has anyOf/oneOf/allOf, we need to extract properties from the composition.
                 let props_source = if obj.get("properties").is_none() {
                     if let Some(any_of) = obj.get("anyOf") {
-                        let schema = extract_schema_from_composition(any_of);
-                        schema
+                        extract_schema_from_composition(any_of)
                     } else if let Some(one_of) = obj.get("oneOf") {
-                        let schema = extract_schema_from_composition(one_of);
-                        schema
+                        extract_schema_from_composition(one_of)
                     } else if let Some(all_of) = obj.get("allOf") {
-                        let schema = extract_schema_from_composition(all_of);
-                        schema
+                        extract_schema_from_composition(all_of)
                     } else {
                         None
                     }
