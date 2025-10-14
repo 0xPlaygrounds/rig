@@ -114,6 +114,9 @@ pub mod cli_chatbot;
 pub mod client;
 pub mod completion;
 pub mod embeddings;
+
+#[cfg(feature = "experimental")]
+#[cfg_attr(docsrs, doc(cfg(feature = "experimental")))]
 pub mod evals;
 pub mod extractor;
 #[cfg(feature = "image")]
