@@ -68,6 +68,7 @@ use crate::client::builder::FinalCompletionResponse;
 use crate::client::completion::CompletionModelHandle;
 use crate::message::ToolChoice;
 use crate::streaming::StreamingCompletionResponse;
+use crate::tool::server::ToolServerError;
 use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, http_client, streaming};
 use crate::{
@@ -127,6 +128,10 @@ pub enum PromptError {
     #[error("ToolCallError: {0}")]
     ToolError(#[from] ToolSetError),
 
+    /// There was an issue while executing a tool on a tool server
+    #[error("ToolServerError: {0}")]
+    ToolServerError(#[from] ToolServerError),
+
     /// The LLM tried to call too many tools during a multi-turn conversation.
     /// To fix this, you may either need to lower the amount of tools your model has access to (and then create other agents to share the tool load)
     /// or increase the amount of turns given in `.multi_turn()`.
@@ -180,7 +185,7 @@ impl std::fmt::Display for Document {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolDefinition {
     pub name: String,
     pub description: String,

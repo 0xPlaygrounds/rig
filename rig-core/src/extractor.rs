@@ -35,7 +35,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{
-    agent::{Agent, AgentBuilder},
+    agent::{Agent, AgentBuilder, AgentBuilderSimple},
     completion::{Completion, CompletionError, CompletionModel, ToolDefinition},
     message::{AssistantContent, Message, ToolCall, ToolChoice, ToolFunction},
     tool::Tool,
@@ -211,7 +211,7 @@ where
     M: CompletionModel,
     T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
-    agent_builder: AgentBuilder<M>,
+    agent_builder: AgentBuilderSimple<M>,
     _t: PhantomData<T>,
     retries: Option<u64>,
 }
