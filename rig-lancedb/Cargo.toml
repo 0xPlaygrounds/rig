@@ -9,7 +9,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
 lancedb = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.21.0" }
+rig-core = { path = "../rig-core", version = "0.21.0", default-features = false }
 arrow-array = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
@@ -24,13 +24,9 @@ anyhow = { workspace = true }
 httpmock = { workspace = true }
 
 [features]
-default = []
-bedrock = ["lancedb/bedrock"]
-fp16kernels = ["lancedb/fp16kernels"]
-openai = ["lancedb/openai"]
-polars = ["lancedb/polars"]
-remote = ["lancedb/remote"]
-sentence-transformers = ["lancedb/sentence-transformers"]
+default = ["rig-tls"]
+rig-tls = ["rig-core/reqwest-tls"]
+rig-rustls = ["rig-core/reqwest-rustls"]
 
 [[example]]
 name = "vector_search_local_ann"
