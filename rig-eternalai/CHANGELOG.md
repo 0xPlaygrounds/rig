@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.9](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.3.8...rig-eternalai-v0.3.9) - 2025-10-14
+
+### Added
+
+- *(rig-951)* generic HTTP client ([#875](https://github.com/0xPlaygrounds/rig/pull/875))
+
 ## [0.3.8](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.3.7...rig-eternalai-v0.3.8) - 2025-09-29
 
 ### Other
