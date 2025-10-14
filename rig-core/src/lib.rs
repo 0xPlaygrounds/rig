@@ -113,6 +113,10 @@ pub mod audio_generation;
 pub mod client;
 pub mod completion;
 pub mod embeddings;
+
+#[cfg(feature = "experimental")]
+#[cfg_attr(docsrs, doc(cfg(feature = "experimental")))]
+pub mod evals;
 pub mod extractor;
 pub mod http_client;
 #[cfg(feature = "image")]
