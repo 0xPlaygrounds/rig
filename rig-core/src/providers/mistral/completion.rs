@@ -6,6 +6,7 @@ use tracing::{Instrument, info_span};
 
 use super::client::{Client, Usage};
 use crate::completion::GetTokenUsage;
+use crate::http_client::{self, HttpClientExt};
 use crate::streaming::{RawStreamingChoice, StreamingCompletionResponse};
 use crate::{
     OneOrMany,
@@ -252,8 +253,8 @@ impl FromStr for AssistantContent {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T = reqwest::Client> {
+    pub(crate) client: Client<T>,
     pub model: String,
 }
 
@@ -284,8 +285,8 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
     }
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -486,7 +487,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Send + Clone + std::fmt::Debug + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = CompletionResponse;
 
@@ -497,6 +501,8 @@ impl completion::CompletionModel for CompletionModel {
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
         let request = self.create_completion_request(completion_request)?;
+        let body = serde_json::to_vec(&request)?;
+
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -516,16 +522,18 @@ impl completion::CompletionModel for CompletionModel {
             tracing::Span::current()
         };
 
+        let request = self
+            .client
+            .post("v1/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
         async move {
-            let response = self
-                .client
-                .post("v1/chat/completions")
-                .json(&request)
-                .send()
-                .await?;
+            let response = self.client.send(request).await?;
 
             if response.status().is_success() {
-                let text = response.text().await?;
+                let text = http_client::text(response).await?;
                 match serde_json::from_str::<ApiResponse<CompletionResponse>>(&text)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
@@ -537,7 +545,8 @@ impl completion::CompletionModel for CompletionModel {
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
                 }
             } else {
-                Err(CompletionError::ProviderError(response.text().await?))
+                let text = http_client::text(response).await?;
+                Err(CompletionError::ProviderError(text))
             }
         }
         .instrument(span)
@@ -551,7 +560,7 @@ impl completion::CompletionModel for CompletionModel {
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
         let resp = self.completion(request).await?;
 
-        let stream = Box::pin(stream! {
+        let stream = stream! {
             for c in resp.choice.clone() {
                 match c {
                     message::AssistantContent::Text(t) => {
@@ -572,9 +581,9 @@ impl completion::CompletionModel for CompletionModel {
             }
 
             yield Ok(RawStreamingChoice::FinalResponse(resp.raw_response.clone()));
-        });
+        };
 
-        Ok(StreamingCompletionResponse::stream(stream))
+        Ok(StreamingCompletionResponse::stream(Box::pin(stream)))
     }
 }
 

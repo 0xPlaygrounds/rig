@@ -1,24 +1,28 @@
-use std::future::Future;
-
+use crate::wasm_compat::*;
 #[allow(unused_imports)] // Needed since this is used in a macro rule
 use futures::join;
 use futures::stream;
+use std::future::Future;
 
 // ================================================================
 // Core Op trait
 // ================================================================
-pub trait Op: Send + Sync {
-    type Input: Send + Sync;
-    type Output: Send + Sync;
+pub trait Op: WasmCompatSend + WasmCompatSync {
+    type Input: WasmCompatSend + WasmCompatSync;
+    type Output: WasmCompatSend + WasmCompatSync;
 
-    fn call(&self, input: Self::Input) -> impl Future<Output = Self::Output> + Send;
+    fn call(&self, input: Self::Input) -> impl Future<Output = Self::Output> + WasmCompatSend;
 
     /// Execute the current pipeline with the given inputs. `n` is the number of concurrent
     /// inputs that will be processed concurrently.
-    fn batch_call<I>(&self, n: usize, input: I) -> impl Future<Output = Vec<Self::Output>> + Send
+    fn batch_call<I>(
+        &self,
+        n: usize,
+        input: I,
+    ) -> impl Future<Output = Vec<Self::Output>> + WasmCompatSend
     where
-        I: IntoIterator<Item = Self::Input> + Send,
-        I::IntoIter: Send,
+        I: IntoIterator<Item = Self::Input> + WasmCompatSend,
+        I::IntoIter: WasmCompatSend,
         Self: Sized,
     {
         use futures::stream::StreamExt;
@@ -47,8 +51,8 @@ pub trait Op: Send + Sync {
     /// ```
     fn map<F, Input>(self, f: F) -> Sequential<Self, Map<F, Self::Output>>
     where
-        F: Fn(Self::Output) -> Input + Send + Sync,
-        Input: Send + Sync,
+        F: Fn(Self::Output) -> Input + WasmCompatSend + WasmCompatSync,
+        Input: WasmCompatSend + WasmCompatSync,
         Self: Sized,
     {
         Sequential::new(self, Map::new(f))
@@ -73,9 +77,9 @@ pub trait Op: Send + Sync {
     /// ```
     fn then<F, Fut>(self, f: F) -> Sequential<Self, Then<F, Fut::Output>>
     where
-        F: Fn(Self::Output) -> Fut + Send + Sync,
-        Fut: Future + Send + Sync,
-        Fut::Output: Send + Sync,
+        F: Fn(Self::Output) -> Fut + Send + WasmCompatSync,
+        Fut: Future + WasmCompatSend + WasmCompatSync,
+        Fut::Output: WasmCompatSend + WasmCompatSync,
         Self: Sized,
     {
         Sequential::new(self, Then::new(f))
@@ -135,7 +139,7 @@ pub trait Op: Send + Sync {
     ) -> Sequential<Self, Lookup<I, Self::Output, Input>>
     where
         I: vector_store::VectorStoreIndex,
-        Input: Send + Sync + for<'a> serde::Deserialize<'a>,
+        Input: WasmCompatSend + WasmCompatSync + for<'a> serde::Deserialize<'a>,
         Self::Output: Into<String>,
         Self: Sized,
     {
@@ -208,9 +212,8 @@ where
     }
 }
 
-use crate::{completion, vector_store};
-
 use super::agent_ops::{Lookup, Prompt};
+use crate::{completion, vector_store};
 
 // ================================================================
 // Core Op implementations
@@ -231,9 +234,9 @@ impl<F, Input> Map<F, Input> {
 
 impl<F, Input, Output> Op for Map<F, Input>
 where
-    F: Fn(Input) -> Output + Send + Sync,
-    Input: Send + Sync,
-    Output: Send + Sync,
+    F: Fn(Input) -> Output + WasmCompatSend + WasmCompatSync,
+    Input: WasmCompatSend + WasmCompatSync,
+    Output: WasmCompatSend + WasmCompatSync,
 {
     type Input = Input;
     type Output = Output;
@@ -246,9 +249,9 @@ where
 
 pub fn map<F, Input, Output>(f: F) -> Map<F, Input>
 where
-    F: Fn(Input) -> Output + Send + Sync,
-    Input: Send + Sync,
-    Output: Send + Sync,
+    F: Fn(Input) -> Output + WasmCompatSend + WasmCompatSync,
+    Input: WasmCompatSend + WasmCompatSync,
+    Output: WasmCompatSend + WasmCompatSync,
 {
     Map::new(f)
 }
@@ -267,7 +270,7 @@ impl<T> Passthrough<T> {
 
 impl<T> Op for Passthrough<T>
 where
-    T: Send + Sync,
+    T: WasmCompatSend + WasmCompatSync,
 {
     type Input = T;
     type Output = T;
@@ -279,7 +282,7 @@ where
 
 pub fn passthrough<T>() -> Passthrough<T>
 where
-    T: Send + Sync,
+    T: WasmCompatSend + WasmCompatSync,
 {
     Passthrough::new()
 }
@@ -300,10 +303,10 @@ impl<F, Input> Then<F, Input> {
 
 impl<F, Input, Fut> Op for Then<F, Input>
 where
-    F: Fn(Input) -> Fut + Send + Sync,
-    Input: Send + Sync,
-    Fut: Future + Send,
-    Fut::Output: Send + Sync,
+    F: Fn(Input) -> Fut + WasmCompatSend + WasmCompatSync,
+    Input: WasmCompatSend + WasmCompatSync,
+    Fut: Future + WasmCompatSend,
+    Fut::Output: WasmCompatSend + WasmCompatSync,
 {
     type Input = Input;
     type Output = Fut::Output;
@@ -316,10 +319,10 @@ where
 
 pub fn then<F, Input, Fut>(f: F) -> Then<F, Input>
 where
-    F: Fn(Input) -> Fut + Send + Sync,
-    Input: Send + Sync,
-    Fut: Future + Send,
-    Fut::Output: Send + Sync,
+    F: Fn(Input) -> Fut + WasmCompatSend + WasmCompatSync,
+    Input: WasmCompatSend + WasmCompatSync,
+    Fut: Future + WasmCompatSend,
+    Fut::Output: WasmCompatSend + WasmCompatSync,
 {
     Then::new(f)
 }

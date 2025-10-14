@@ -64,16 +64,18 @@
 //! the individual traits, structs, and enums defined in this module.
 
 use super::message::{AssistantContent, DocumentMediaType};
+use crate::client::builder::FinalCompletionResponse;
 use crate::client::completion::CompletionModelHandle;
 use crate::message::ToolChoice;
 use crate::streaming::StreamingCompletionResponse;
-use crate::{OneOrMany, streaming};
+use crate::tool::server::ToolServerError;
+use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
+use crate::{OneOrMany, http_client, streaming};
 use crate::{
     json_utils,
     message::{Message, UserContent},
     tool::ToolSetError,
 };
-use futures::future::BoxFuture;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -86,7 +88,7 @@ use thiserror::Error;
 pub enum CompletionError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]
-    HttpError(#[from] reqwest::Error),
+    HttpError(#[from] http_client::Error),
 
     /// Json error (e.g.: serialization, deserialization)
     #[error("JsonError: {0}")]
@@ -96,9 +98,15 @@ pub enum CompletionError {
     #[error("UrlError: {0}")]
     UrlError(#[from] url::ParseError),
 
+    #[cfg(not(target_family = "wasm"))]
     /// Error building the completion request
     #[error("RequestError: {0}")]
     RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
+
+    #[cfg(target_family = "wasm")]
+    /// Error building the completion request
+    #[error("RequestError: {0}")]
+    RequestError(#[from] Box<dyn std::error::Error + 'static>),
 
     /// Error parsing the completion response
     #[error("ResponseError: {0}")]
@@ -120,6 +128,10 @@ pub enum PromptError {
     #[error("ToolCallError: {0}")]
     ToolError(#[from] ToolSetError),
 
+    /// There was an issue while executing a tool on a tool server
+    #[error("ToolServerError: {0}")]
+    ToolServerError(#[from] ToolServerError),
+
     /// The LLM tried to call too many tools during a multi-turn conversation.
     /// To fix this, you may either need to lower the amount of tools your model has access to (and then create other agents to share the tool load)
     /// or increase the amount of turns given in `.multi_turn()`.
@@ -129,6 +141,18 @@ pub enum PromptError {
         chat_history: Box<Vec<Message>>,
         prompt: Message,
     },
+
+    /// A prompting loop was cancelled.
+    #[error("PromptCancelled")]
+    PromptCancelled { chat_history: Box<Vec<Message>> },
+}
+
+impl PromptError {
+    pub(crate) fn prompt_cancelled(chat_history: Vec<Message>) -> Self {
+        Self::PromptCancelled {
+            chat_history: Box::new(chat_history),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -161,7 +185,7 @@ impl std::fmt::Display for Document {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolDefinition {
     pub name: String,
     pub description: String,
@@ -172,7 +196,7 @@ pub struct ToolDefinition {
 // Implementations
 // ================================================================
 /// Trait defining a high-level LLM simple prompt interface (i.e.: prompt in, response out).
-pub trait Prompt: Send + Sync {
+pub trait Prompt: WasmCompatSend + WasmCompatSync {
     /// Send a simple prompt to the underlying completion model.
     ///
     /// If the completion model's response is a message, then it is returned as a string.
@@ -183,12 +207,12 @@ pub trait Prompt: Send + Sync {
     /// If the tool does not exist, or the tool call fails, then an error is returned.
     fn prompt(
         &self,
-        prompt: impl Into<Message> + Send,
-    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: Send>;
+        prompt: impl Into<Message> + WasmCompatSend,
+    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: WasmCompatSend>;
 }
 
 /// Trait defining a high-level LLM chat interface (i.e.: prompt and chat history in, response out).
-pub trait Chat: Send + Sync {
+pub trait Chat: WasmCompatSend + WasmCompatSync {
     /// Send a prompt with optional chat history to the underlying completion model.
     ///
     /// If the completion model's response is a message, then it is returned as a string.
@@ -199,9 +223,9 @@ pub trait Chat: Send + Sync {
     /// If the tool does not exist, or the tool call fails, then an error is returned.
     fn chat(
         &self,
-        prompt: impl Into<Message> + Send,
+        prompt: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
-    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: Send>;
+    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: WasmCompatSend>;
 }
 
 /// Trait defining a low-level LLM completion interface
@@ -219,9 +243,10 @@ pub trait Completion<M: CompletionModel> {
     /// contain the `preamble` provided when creating the agent.
     fn completion(
         &self,
-        prompt: impl Into<Message> + Send,
+        prompt: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>> + Send;
+    ) -> impl std::future::Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>
+    + WasmCompatSend;
 }
 
 /// General completion response struct that contains the high-level completion choice
@@ -315,14 +340,14 @@ impl AddAssign for Usage {
 /// Trait defining a completion model that can be used to generate completion responses.
 /// This trait is meant to be implemented by the user to define a custom completion model,
 /// either from a third party provider (e.g.: OpenAI) or a local model.
-pub trait CompletionModel: Clone + Send + Sync {
+pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
     /// The raw response type returned by the underlying completion model.
-    type Response: Send + Sync + Serialize + DeserializeOwned;
+    type Response: WasmCompatSend + WasmCompatSync + Serialize + DeserializeOwned;
     /// The raw response type returned by the underlying completion model when streaming.
     type StreamingResponse: Clone
         + Unpin
-        + Send
-        + Sync
+        + WasmCompatSend
+        + WasmCompatSync
         + Serialize
         + DeserializeOwned
         + GetTokenUsage;
@@ -333,30 +358,33 @@ pub trait CompletionModel: Clone + Send + Sync {
         request: CompletionRequest,
     ) -> impl std::future::Future<
         Output = Result<CompletionResponse<Self::Response>, CompletionError>,
-    > + Send;
+    > + WasmCompatSend;
 
     fn stream(
         &self,
         request: CompletionRequest,
     ) -> impl std::future::Future<
         Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
-    > + Send;
+    > + WasmCompatSend;
 
     /// Generates a completion request builder for the given `prompt`.
     fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
         CompletionRequestBuilder::new(self.clone(), prompt)
     }
 }
-pub trait CompletionModelDyn: Send + Sync {
+pub trait CompletionModelDyn: WasmCompatSend + WasmCompatSync {
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> BoxFuture<'_, Result<CompletionResponse<()>, CompletionError>>;
+    ) -> WasmBoxedFuture<'_, Result<CompletionResponse<()>, CompletionError>>;
 
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> BoxFuture<'_, Result<StreamingCompletionResponse<()>, CompletionError>>;
+    ) -> WasmBoxedFuture<
+        '_,
+        Result<StreamingCompletionResponse<FinalCompletionResponse>, CompletionError>,
+    >;
 
     fn completion_request(
         &self,
@@ -372,7 +400,7 @@ where
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> BoxFuture<'_, Result<CompletionResponse<()>, CompletionError>> {
+    ) -> WasmBoxedFuture<'_, Result<CompletionResponse<()>, CompletionError>> {
         Box::pin(async move {
             self.completion(request)
                 .await
@@ -387,16 +415,19 @@ where
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> BoxFuture<'_, Result<StreamingCompletionResponse<()>, CompletionError>> {
+    ) -> WasmBoxedFuture<
+        '_,
+        Result<StreamingCompletionResponse<FinalCompletionResponse>, CompletionError>,
+    > {
         Box::pin(async move {
             let resp = self.stream(request).await?;
             let inner = resp.inner;
 
-            let stream = Box::pin(streaming::StreamingResultDyn {
+            let stream = streaming::StreamingResultDyn {
                 inner: Box::pin(inner),
-            });
+            };
 
-            Ok(StreamingCompletionResponse::stream(stream))
+            Ok(StreamingCompletionResponse::stream(Box::pin(stream)))
         })
     }
 

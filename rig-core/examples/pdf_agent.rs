@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rig::cli_chatbot::ChatBotBuilder;
+use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::{
     Embed, embeddings::EmbeddingsBuilder, loaders::PdfFileLoader, providers::openai,
@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
     // Initialize Ollama client
     let client = openai::Client::builder("ollama")
         .base_url("http://localhost:11434/v1")
-        .build()?;
+        .build();
 
     // Load PDFs using Rig's built-in PDF loader
     let documents_dir = std::env::current_dir()?.join("rig-core/examples/documents");

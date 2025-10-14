@@ -19,6 +19,7 @@ use rig::completion::GetTokenUsage;
 use rig::completion::{CompletionError, CompletionRequest};
 use rig::embeddings::{EmbeddingError, EmbeddingsBuilder};
 use rig::extractor::ExtractorBuilder;
+use rig::http_client;
 use rig::message;
 use rig::message::AssistantContent;
 use rig::providers::openai::{self, Message};
@@ -118,7 +119,7 @@ impl Client {
     }
 
     pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
         self.http_client.post(url).bearer_auth(&self.api_key)
     }
 
@@ -317,10 +318,15 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 "input": documents,
             }))
             .send()
-            .await?;
+            .await
+            .map_err(|e| EmbeddingError::HttpError(http_client::Error::Instance(e.into())))?;
 
         if response.status().is_success() {
-            match response.json::<ApiResponse<EmbeddingResponse>>().await? {
+            match response
+                .json::<ApiResponse<EmbeddingResponse>>()
+                .await
+                .map_err(|e| EmbeddingError::HttpError(http_client::Error::Instance(e.into())))?
+            {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "EternalAI embedding token usage: {}",
@@ -346,7 +352,11 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
             }
         } else {
-            Err(EmbeddingError::ProviderError(response.text().await?))
+            Err(EmbeddingError::ProviderError(
+                response.text().await.map_err(|e| {
+                    EmbeddingError::HttpError(http_client::Error::Instance(e.into()))
+                })?,
+            ))
         }
     }
 }
@@ -631,10 +641,15 @@ impl completion::CompletionModel for CompletionModel {
                 },
             )
             .send()
-            .await?;
+            .await
+            .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
 
         if response.status().is_success() {
-            match response.json::<ApiResponse<CompletionResponse>>().await? {
+            match response
+                .json::<ApiResponse<CompletionResponse>>()
+                .await
+                .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?
+            {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "EternalAI completion token usage: {:?}",
@@ -654,7 +669,11 @@ impl completion::CompletionModel for CompletionModel {
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
             }
         } else {
-            Err(CompletionError::ProviderError(response.text().await?))
+            Err(CompletionError::ProviderError(
+                response.text().await.map_err(|e| {
+                    CompletionError::HttpError(http_client::Error::Instance(e.into()))
+                })?,
+            ))
         }
     }
 

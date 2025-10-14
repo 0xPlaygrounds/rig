@@ -3,16 +3,19 @@
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, GetTokenUsage},
+    http_client::HttpClientExt,
     json_utils,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, Reasoning},
     one_or_many::string_or_one_or_many,
     telemetry::{ProviderResponseExt, SpanCombinator},
+    wasm_compat::*,
 };
 use std::{convert::Infallible, str::FromStr};
 
 use super::client::Client;
 use crate::completion::CompletionRequest;
 use crate::providers::anthropic::streaming::StreamingCompletionResponse;
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{Instrument, info_span};
@@ -643,14 +646,20 @@ impl TryFrom<Message> for message::Message {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T = reqwest::Client>
+where
+    T: WasmCompatSend,
+{
+    pub(crate) client: Client<T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt,
+{
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -697,7 +706,6 @@ pub enum ToolChoice {
         name: String,
     },
 }
-
 impl TryFrom<message::ToolChoice> for ToolChoice {
     type Error = CompletionError;
 
@@ -722,8 +730,10 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
         Ok(res)
     }
 }
-
-impl completion::CompletionModel for CompletionModel {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -817,26 +827,50 @@ impl completion::CompletionModel for CompletionModel {
         }
 
         async move {
-            let response = self
+            let request: Vec<u8> = serde_json::to_vec(&request)?;
+
+            let req = self
                 .client
                 .post("/v1/messages")
-                .json(&request)
-                .send()
-                .await?;
+                .header("Content-Type", "application/json")
+                .body(request)
+                .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+            let response = self
+                .client
+                .send::<_, Bytes>(req)
+                .await
+                .map_err(CompletionError::HttpError)?;
 
             if response.status().is_success() {
-                match response.json::<ApiResponse<CompletionResponse>>().await? {
-                    ApiResponse::Message(response) => {
+                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(
+                    response
+                        .into_body()
+                        .await
+                        .map_err(CompletionError::HttpError)?
+                        .to_vec()
+                        .as_slice(),
+                )? {
+                    ApiResponse::Message(completion) => {
                         let span = tracing::Span::current();
-                        span.record_model_output(&response.content);
-                        span.record_response_metadata(&response);
-                        span.record_token_usage(&response.usage);
-                        response.try_into()
+                        span.record_model_output(&completion.content);
+                        span.record_response_metadata(&completion);
+                        span.record_token_usage(&completion.usage);
+                        completion.try_into()
                     }
-                    ApiResponse::Error(error) => Err(CompletionError::ProviderError(error.message)),
+                    ApiResponse::Error(ApiErrorResponse { message }) => {
+                        Err(CompletionError::ResponseError(message))
+                    }
                 }
             } else {
-                Err(CompletionError::ProviderError(response.text().await?))
+                let text: String = String::from_utf8_lossy(
+                    &response
+                        .into_body()
+                        .await
+                        .map_err(CompletionError::HttpError)?,
+                )
+                .into();
+                Err(CompletionError::ProviderError(text))
             }
         }
         .instrument(span)

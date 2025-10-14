@@ -79,6 +79,7 @@ async fn vector_search_test() {
                     "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
                 ],
                 "model": "text-embedding-ada-002",
+                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -118,6 +119,7 @@ async fn vector_search_test() {
                     "What is a linglingdong?"
                 ],
                 "model": "text-embedding-ada-002",
+                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -142,8 +144,7 @@ async fn vector_search_test() {
     // Initialize OpenAI client
     let openai_client = openai::Client::builder("TEST")
         .base_url(&server.base_url())
-        .build()
-        .unwrap();
+        .build();
     // let openai_client = openai::Client::from_env();
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);

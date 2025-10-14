@@ -5,7 +5,11 @@
 
 use serde_json::json;
 
-use crate::embeddings::{self, EmbeddingError};
+use crate::{
+    embeddings::{self, EmbeddingError},
+    http_client::HttpClientExt,
+    wasm_compat::WasmCompatSend,
+};
 
 use super::{Client, client::ApiResponse};
 
@@ -14,14 +18,14 @@ pub const EMBEDDING_001: &str = "embedding-001";
 /// `text-embedding-004` embedding model
 pub const EMBEDDING_004: &str = "text-embedding-004";
 #[derive(Clone)]
-pub struct EmbeddingModel {
-    client: Client,
+pub struct EmbeddingModel<T = reqwest::Client> {
+    client: Client<T>,
     model: String,
     ndims: Option<usize>,
 }
 
-impl EmbeddingModel {
-    pub fn new(client: Client, model: &str, ndims: Option<usize>) -> Self {
+impl<T> EmbeddingModel<T> {
+    pub fn new(client: Client<T>, model: &str, ndims: Option<usize>) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -30,7 +34,10 @@ impl EmbeddingModel {
     }
 }
 
-impl embeddings::EmbeddingModel for EmbeddingModel {
+impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+where
+    T: Clone + HttpClientExt,
+{
     const MAX_DOCUMENTS: usize = 1024;
 
     fn ndims(&self) -> usize {
@@ -44,7 +51,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn embed_texts(
         &self,
-        documents: impl IntoIterator<Item = String> + Send,
+        documents: impl IntoIterator<Item = String> + WasmCompatSend,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
 
@@ -68,15 +75,17 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 
         tracing::info!("{}", serde_json::to_string_pretty(&request_body).unwrap());
 
-        let response = self
+        let request_body = serde_json::to_vec(&request_body)?;
+        let req = self
             .client
             .post(&format!("/v1beta/models/{}:batchEmbedContents", self.model))
-            .json(&request_body)
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<ApiResponse<gemini_api_types::EmbeddingResponse>>()
-            .await?;
+            .header("Content-Type", "application/json")
+            .body(request_body)
+            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
+        let response = self.client.send::<_, Vec<u8>>(req).await?;
+
+        let response: ApiResponse<gemini_api_types::EmbeddingResponse> =
+            serde_json::from_slice(&response.into_body().await?)?;
 
         match response {
             ApiResponse::Ok(response) => {

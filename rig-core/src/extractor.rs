@@ -35,10 +35,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{
-    agent::{Agent, AgentBuilder},
+    agent::{Agent, AgentBuilder, AgentBuilderSimple},
     completion::{Completion, CompletionError, CompletionModel, ToolDefinition},
     message::{AssistantContent, Message, ToolCall, ToolChoice, ToolFunction},
     tool::Tool,
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
 const SUBMIT_TOOL_NAME: &str = "submit";
@@ -59,7 +60,7 @@ pub enum ExtractionError {
 pub struct Extractor<M, T>
 where
     M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync,
+    T: JsonSchema + for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync,
 {
     agent: Agent<M>,
     _t: PhantomData<T>,
@@ -69,7 +70,7 @@ where
 impl<M, T> Extractor<M, T>
 where
     M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync,
+    T: JsonSchema + for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync,
 {
     /// Attempts to extract data from the given text with a number of retries.
     ///
@@ -77,7 +78,10 @@ where
     /// if the model does not call the `submit` tool.
     ///
     /// The number of retries is determined by the `retries` field on the Extractor struct.
-    pub async fn extract(&self, text: impl Into<Message> + Send) -> Result<T, ExtractionError> {
+    pub async fn extract(
+        &self,
+        text: impl Into<Message> + WasmCompatSend,
+    ) -> Result<T, ExtractionError> {
         let mut last_error = None;
         let text_message = text.into();
 
@@ -108,7 +112,7 @@ where
     /// The number of retries is determined by the `retries` field on the Extractor struct.
     pub async fn extract_with_chat_history(
         &self,
-        text: impl Into<Message> + Send,
+        text: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<T, ExtractionError> {
         let mut last_error = None;
@@ -135,7 +139,7 @@ where
 
     async fn extract_json(
         &self,
-        text: impl Into<Message> + Send,
+        text: impl Into<Message> + WasmCompatSend,
         messages: Vec<Message>,
     ) -> Result<T, ExtractionError> {
         let response = self.agent.completion(text, messages).await?.send().await?;
@@ -205,9 +209,9 @@ where
 pub struct ExtractorBuilder<M, T>
 where
     M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync + 'static,
+    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
-    agent_builder: AgentBuilder<M>,
+    agent_builder: AgentBuilderSimple<M>,
     _t: PhantomData<T>,
     retries: Option<u64>,
 }
@@ -215,7 +219,7 @@ where
 impl<M, T> ExtractorBuilder<M, T>
 where
     M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync + 'static,
+    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub fn new(model: M) -> Self {
         Self {
@@ -283,7 +287,7 @@ where
 #[derive(Deserialize, Serialize)]
 struct SubmitTool<T>
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
 {
     _t: PhantomData<T>,
 }
@@ -294,7 +298,7 @@ struct SubmitError;
 
 impl<T> Tool for SubmitTool<T>
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
 {
     const NAME: &'static str = SUBMIT_TOOL_NAME;
     type Error = SubmitError;

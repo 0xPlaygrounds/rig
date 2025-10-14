@@ -1,6 +1,6 @@
 use crate::agent::Agent;
 use crate::client::ProviderClient;
-use crate::completion::{CompletionRequest, Message};
+use crate::completion::{CompletionRequest, GetTokenUsage, Message, Usage};
 use crate::embeddings::embedding::EmbeddingModelDyn;
 use crate::providers::{
     anthropic, azure, cohere, deepseek, galadriel, gemini, groq, huggingface, hyperbolic, mira,
@@ -9,6 +9,7 @@ use crate::providers::{
 use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::TranscriptionModelDyn;
 use rig::completion::CompletionModelDyn;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use thiserror::Error;
@@ -80,93 +81,93 @@ impl<'a> DynClientBuilder {
         .register_all(vec![
             ClientFactory::new(
                 DefaultProviders::ANTHROPIC,
-                anthropic::Client::from_env_boxed,
-                anthropic::Client::from_val_boxed,
+                anthropic::Client::<reqwest::Client>::from_env_boxed,
+                anthropic::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::COHERE,
-                cohere::Client::from_env_boxed,
-                cohere::Client::from_val_boxed,
+                cohere::Client::<reqwest::Client>::from_env_boxed,
+                cohere::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::GEMINI,
-                gemini::Client::from_env_boxed,
-                gemini::Client::from_val_boxed,
+                gemini::Client::<reqwest::Client>::from_env_boxed,
+                gemini::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::HUGGINGFACE,
-                huggingface::Client::from_env_boxed,
-                huggingface::Client::from_val_boxed,
+                huggingface::Client::<reqwest::Client>::from_env_boxed,
+                huggingface::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::OPENAI,
-                openai::Client::from_env_boxed,
-                openai::Client::from_val_boxed,
+                openai::Client::<reqwest::Client>::from_env_boxed,
+                openai::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::OPENROUTER,
-                openrouter::Client::from_env_boxed,
-                openrouter::Client::from_val_boxed,
+                openrouter::Client::<reqwest::Client>::from_env_boxed,
+                openrouter::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::TOGETHER,
-                together::Client::from_env_boxed,
-                together::Client::from_val_boxed,
+                together::Client::<reqwest::Client>::from_env_boxed,
+                together::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::XAI,
-                xai::Client::from_env_boxed,
-                xai::Client::from_val_boxed,
+                xai::Client::<reqwest::Client>::from_env_boxed,
+                xai::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::AZURE,
-                azure::Client::from_env_boxed,
-                azure::Client::from_val_boxed,
+                azure::Client::<reqwest::Client>::from_env_boxed,
+                azure::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::DEEPSEEK,
-                deepseek::Client::from_env_boxed,
-                deepseek::Client::from_val_boxed,
+                deepseek::Client::<reqwest::Client>::from_env_boxed,
+                deepseek::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::GALADRIEL,
-                galadriel::Client::from_env_boxed,
-                galadriel::Client::from_val_boxed,
+                galadriel::Client::<reqwest::Client>::from_env_boxed,
+                galadriel::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::GROQ,
-                groq::Client::from_env_boxed,
-                groq::Client::from_val_boxed,
+                groq::Client::<reqwest::Client>::from_env_boxed,
+                groq::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::HYPERBOLIC,
-                hyperbolic::Client::from_env_boxed,
-                hyperbolic::Client::from_val_boxed,
+                hyperbolic::Client::<reqwest::Client>::from_env_boxed,
+                hyperbolic::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::MOONSHOT,
-                moonshot::Client::from_env_boxed,
-                moonshot::Client::from_val_boxed,
+                moonshot::Client::<reqwest::Client>::from_env_boxed,
+                moonshot::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::MIRA,
-                mira::Client::from_env_boxed,
-                mira::Client::from_val_boxed,
+                mira::Client::<reqwest::Client>::from_env_boxed,
+                mira::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::MISTRAL,
-                mistral::Client::from_env_boxed,
-                mistral::Client::from_val_boxed,
+                mistral::Client::<reqwest::Client>::from_env_boxed,
+                mistral::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::OLLAMA,
-                ollama::Client::from_env_boxed,
-                ollama::Client::from_val_boxed,
+                ollama::Client::<reqwest::Client>::from_env_boxed,
+                ollama::Client::<reqwest::Client>::from_val_boxed,
             ),
             ClientFactory::new(
                 DefaultProviders::PERPLEXITY,
-                perplexity::Client::from_env_boxed,
-                perplexity::Client::from_val_boxed,
+                perplexity::Client::<reqwest::Client>::from_env_boxed,
+                perplexity::Client::<reqwest::Client>::from_val_boxed,
             ),
         ])
     }
@@ -390,7 +391,7 @@ impl<'a> DynClientBuilder {
         provider: &str,
         model: &str,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         let client = self.build(provider)?;
         let completion = client
             .as_completion()
@@ -420,7 +421,7 @@ impl<'a> DynClientBuilder {
         provider: &str,
         model: &str,
         prompt: impl Into<Message> + Send,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         let client = self.build(provider)?;
         let completion = client
             .as_completion()
@@ -463,7 +464,7 @@ impl<'a> DynClientBuilder {
         model: &str,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         let client = self.build(provider)?;
         let completion = client
             .as_completion()
@@ -492,6 +493,18 @@ impl<'a> DynClientBuilder {
             .stream(request)
             .await
             .map_err(|e| ClientBuildError::FactoryError(e.to_string()))
+    }
+}
+
+/// The final streaming response from a dynamic client.
+#[derive(Debug, Deserialize, Clone, Serialize)]
+pub struct FinalCompletionResponse {
+    pub usage: Option<Usage>,
+}
+
+impl GetTokenUsage for FinalCompletionResponse {
+    fn token_usage(&self) -> Option<Usage> {
+        self.usage
     }
 }
 
@@ -528,7 +541,7 @@ impl<'builder> ProviderModelId<'builder, '_> {
     pub async fn stream_completion(
         self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         self.builder
             .stream_completion(self.provider, self.model, request)
             .await
@@ -544,7 +557,7 @@ impl<'builder> ProviderModelId<'builder, '_> {
     pub async fn stream_prompt(
         self,
         prompt: impl Into<Message> + Send,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         self.builder
             .stream_prompt(self.provider, self.model, prompt)
             .await
@@ -562,7 +575,7 @@ impl<'builder> ProviderModelId<'builder, '_> {
         self,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         self.builder
             .stream_chat(self.provider, self.model, prompt, chat_history)
             .await

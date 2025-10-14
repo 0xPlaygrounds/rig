@@ -9,7 +9,8 @@
 //! The [ToolSet] struct is a collection of tools that can be used by an [Agent](crate::agent::Agent)
 //! and optionally RAGged.
 
-use std::{collections::HashMap, pin::Pin};
+pub mod server;
+use std::collections::HashMap;
 
 use futures::Future;
 use serde::{Deserialize, Serialize};
@@ -17,13 +18,20 @@ use serde::{Deserialize, Serialize};
 use crate::{
     completion::{self, ToolDefinition},
     embeddings::{embed::EmbedError, tool::ToolSchema},
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
 #[derive(Debug, thiserror::Error)]
 pub enum ToolError {
+    #[cfg(not(target_family = "wasm"))]
     /// Error returned by the tool
     #[error("ToolCallError: {0}")]
     ToolCallError(#[from] Box<dyn std::error::Error + Send + Sync>),
+
+    #[cfg(target_family = "wasm")]
+    /// Error returned by the tool
+    #[error("ToolCallError: {0}")]
+    ToolCallError(#[from] Box<dyn std::error::Error>),
 
     #[error("JsonError: {0}")]
     JsonError(#[from] serde_json::Error),
@@ -84,14 +92,14 @@ pub enum ToolError {
 ///     }
 /// }
 /// ```
-pub trait Tool: Sized + Send + Sync {
+pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// The name of the tool. This name should be unique.
     const NAME: &'static str;
 
     /// The error type of the tool.
-    type Error: std::error::Error + Send + Sync + 'static;
+    type Error: std::error::Error + WasmCompatSend + WasmCompatSync + 'static;
     /// The arguments type of the tool.
-    type Args: for<'a> Deserialize<'a> + Send + Sync;
+    type Args: for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync;
     /// The output type of the tool.
     type Output: Serialize;
 
@@ -102,7 +110,10 @@ pub trait Tool: Sized + Send + Sync {
 
     /// A method returning the tool definition. The user prompt can be used to
     /// tailor the definition to the specific use case.
-    fn definition(&self, _prompt: String) -> impl Future<Output = ToolDefinition> + Send + Sync;
+    fn definition(
+        &self,
+        _prompt: String,
+    ) -> impl Future<Output = ToolDefinition> + WasmCompatSend + WasmCompatSync;
 
     /// The tool execution method.
     /// Both the arguments and return value are a String since these values are meant to
@@ -110,12 +121,12 @@ pub trait Tool: Sized + Send + Sync {
     fn call(
         &self,
         args: Self::Args,
-    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send;
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend;
 }
 
 /// Trait that represents an LLM tool that can be stored in a vector store and RAGged
 pub trait ToolEmbedding: Tool {
-    type InitError: std::error::Error + Send + Sync + 'static;
+    type InitError: std::error::Error + WasmCompatSend + WasmCompatSync + 'static;
 
     /// Type of the tool' context. This context will be saved and loaded from the
     /// vector store when ragging the tool.
@@ -126,7 +137,7 @@ pub trait ToolEmbedding: Tool {
     /// Type of the tool's state. This state will be passed to the tool when initializing it.
     /// This state can be used to pass runtime arguments to the tool such as clients,
     /// API keys and other configuration.
-    type State: Send;
+    type State: WasmCompatSend;
 
     /// A method returning the documents that will be used as embeddings for the tool.
     /// This allows for a tool to be retrieved from multiple embedding "directions".
@@ -141,18 +152,12 @@ pub trait ToolEmbedding: Tool {
 }
 
 /// Wrapper trait to allow for dynamic dispatch of simple tools
-pub trait ToolDyn: Send + Sync {
+pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     fn name(&self) -> String;
 
-    fn definition(
-        &self,
-        prompt: String,
-    ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + Sync + '_>>;
+    fn definition<'a>(&'a self, prompt: String) -> WasmBoxedFuture<'a, ToolDefinition>;
 
-    fn call(
-        &self,
-        args: String,
-    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>>;
+    fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>>;
 }
 
 impl<T: Tool> ToolDyn for T {
@@ -160,17 +165,11 @@ impl<T: Tool> ToolDyn for T {
         self.name()
     }
 
-    fn definition(
-        &self,
-        prompt: String,
-    ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + Sync + '_>> {
+    fn definition<'a>(&'a self, prompt: String) -> WasmBoxedFuture<'a, ToolDefinition> {
         Box::pin(<Self as Tool>::definition(self, prompt))
     }
 
-    fn call(
-        &self,
-        args: String,
-    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
+    fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         Box::pin(async move {
             match serde_json::from_str(&args) {
                 Ok(args) => <Self as Tool>::call(self, args)
@@ -191,9 +190,9 @@ pub mod rmcp {
     use crate::completion::ToolDefinition;
     use crate::tool::ToolDyn;
     use crate::tool::ToolError;
+    use crate::wasm_compat::WasmBoxedFuture;
     use rmcp::model::RawContent;
     use std::borrow::Cow;
-    use std::pin::Pin;
 
     pub struct McpTool {
         definition: rmcp::model::Tool,
@@ -244,10 +243,7 @@ pub mod rmcp {
             self.definition.name.to_string()
         }
 
-        fn definition(
-            &self,
-            _prompt: String,
-        ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + Sync + '_>> {
+        fn definition(&self, _prompt: String) -> WasmBoxedFuture<'_, ToolDefinition> {
             Box::pin(async move {
                 ToolDefinition {
                     name: self.definition.name.to_string(),
@@ -263,10 +259,7 @@ pub mod rmcp {
             })
         }
 
-        fn call(
-            &self,
-            args: String,
-        ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
+        fn call(&self, args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
             let name = self.definition.name.clone();
             let arguments = serde_json::from_str(&args).unwrap_or_default();
 
@@ -349,7 +342,7 @@ pub trait ToolEmbeddingDyn: ToolDyn {
 
 impl<T> ToolEmbeddingDyn for T
 where
-    T: ToolEmbedding,
+    T: ToolEmbedding + 'static,
 {
     fn context(&self) -> serde_json::Result<serde_json::Value> {
         serde_json::to_value(self.context())
@@ -394,12 +387,17 @@ pub enum ToolSetError {
     #[error("ToolCallError: {0}")]
     ToolCallError(#[from] ToolError),
 
+    /// Could not find a tool
     #[error("ToolNotFoundError: {0}")]
     ToolNotFoundError(String),
 
     // TODO: Revisit this
     #[error("JsonError: {0}")]
     JsonError(#[from] serde_json::Error),
+
+    /// Tool call was interrupted. Primarily useful for agent multi-step/turn prompting.
+    #[error("Tool call interrupted")]
+    Interrupted,
 }
 
 /// A struct that holds a set of tools
@@ -432,6 +430,11 @@ impl ToolSet {
     pub fn add_tool(&mut self, tool: impl ToolDyn + 'static) {
         self.tools
             .insert(tool.name(), ToolType::Simple(Box::new(tool)));
+    }
+
+    /// Adds a boxed tool to the toolset. Useful for situations when dynamic dispatch is required.
+    pub fn add_tool_boxed(&mut self, tool: Box<dyn ToolDyn>) {
+        self.tools.insert(tool.name(), ToolType::Simple(tool));
     }
 
     pub fn delete_tool(&mut self, tool_name: &str) {

@@ -260,11 +260,8 @@ async fn main() -> anyhow::Result<()> {
     let openai_client = openai::Client::from_env();
     let agent = openai_client
         .agent("gpt-4o")
-        .preamble("You are a helpful assistant who has access to a number of tools from an MCP server designed to be used for incrementing and decrementing a counter.");
-
-    let agent = tools
-        .into_iter()
-        .fold(agent, |agent, tool| agent.rmcp_tool(tool, client.clone()))
+        .preamble("You are a helpful assistant who has access to a number of tools from an MCP server designed to be used for incrementing and decrementing a counter.")
+        .rmcp_tools(tools, client.peer().to_owned())
         .build();
 
     let res = agent.prompt("What is 2+5?").multi_turn(2).await.unwrap();

@@ -4,7 +4,7 @@ use tracing::info_span;
 
 use crate::{
     completion::GetTokenUsage,
-    json_utils,
+    http_client, json_utils,
     message::{ToolCall, ToolFunction},
     streaming::{self},
 };
@@ -113,7 +113,7 @@ pub struct FinalCompletionResponse {
     pub usage: ResponseUsage,
 }
 
-impl super::CompletionModel {
+impl super::CompletionModel<reqwest::Client> {
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -124,7 +124,11 @@ impl super::CompletionModel {
 
         let request = json_utils::merge(request, json!({"stream": true}));
 
-        let builder = self.client.post("/chat/completions").json(&request);
+        let builder = self
+            .client
+            .reqwest_post("/chat/completions")
+            .header("Content-Type", "application/json")
+            .json(&request);
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -152,18 +156,24 @@ impl super::CompletionModel {
 pub async fn send_streaming_request(
     request_builder: RequestBuilder,
 ) -> Result<streaming::StreamingCompletionResponse<FinalCompletionResponse>, CompletionError> {
-    let response = request_builder.send().await?;
+    let response = request_builder
+        .send()
+        .await
+        .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
 
     if !response.status().is_success() {
         return Err(CompletionError::ProviderError(format!(
             "{}: {}",
             response.status(),
-            response.text().await?
+            response
+                .text()
+                .await
+                .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?
         )));
     }
 
     // Handle OpenAI Compatible SSE chunks
-    let stream = Box::pin(stream! {
+    let stream = stream! {
         let mut stream = response.bytes_stream();
         let mut tool_calls = HashMap::new();
         let mut partial_line = String::new();
@@ -173,7 +183,7 @@ pub async fn send_streaming_request(
             let chunk = match chunk_result {
                 Ok(c) => c,
                 Err(e) => {
-                    yield Err(CompletionError::from(e));
+                    yield Err(CompletionError::from(http_client::Error::Instance(e.into())));
                     break;
                 }
             };
@@ -340,9 +350,11 @@ pub async fn send_streaming_request(
             usage: final_usage.unwrap_or_default()
         }))
 
-    });
+    };
 
-    Ok(streaming::StreamingCompletionResponse::stream(stream))
+    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+        stream,
+    )))
 }
 
 pub async fn send_streaming_request1(
@@ -352,7 +364,7 @@ pub async fn send_streaming_request1(
         .eventsource()
         .expect("Cloning request must always succeed");
 
-    let stream = Box::pin(stream! {
+    let stream = stream! {
         // Accumulate tool calls by index while streaming
         let mut tool_calls: HashMap<usize, ToolCall> = HashMap::new();
         let mut final_usage = None;
@@ -503,7 +515,9 @@ pub async fn send_streaming_request1(
         yield Ok(streaming::RawStreamingChoice::FinalResponse(FinalCompletionResponse {
             usage: final_usage.unwrap_or_default(),
         }));
-    });
+    };
 
-    Ok(streaming::StreamingCompletionResponse::stream(stream))
+    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+        stream,
+    )))
 }
