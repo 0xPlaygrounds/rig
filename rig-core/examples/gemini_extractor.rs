@@ -1,7 +1,7 @@
 use rig::client::{CompletionClient, ProviderClient};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig, ThinkingConfig,
+    AdditionalParameters, GenerationConfig,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
