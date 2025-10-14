@@ -62,7 +62,7 @@ where
     pub max_tokens: Option<u64>,
     /// Additional parameters to be passed to the model
     pub additional_params: Option<serde_json::Value>,
-    pub tools: ToolServerHandle,
+    pub tool_server_handle: ToolServerHandle,
     /// List of vector store, with the sample number
     pub dynamic_context: DynamicContextStore,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
@@ -146,7 +146,7 @@ where
                     .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
 
                 let tooldefs = self
-                    .tools
+                    .tool_server_handle
                     .get_tool_defs(Some(text.to_string()))
                     .await
                     .map_err(|_| {
@@ -158,9 +158,13 @@ where
                     .tools(tooldefs)
             }
             None => {
-                let tooldefs = self.tools.get_tool_defs(None).await.map_err(|_| {
-                    CompletionError::RequestError("Failed to get tool definitions".into())
-                })?;
+                let tooldefs = self
+                    .tool_server_handle
+                    .get_tool_defs(None)
+                    .await
+                    .map_err(|_| {
+                        CompletionError::RequestError("Failed to get tool definitions".into())
+                    })?;
 
                 completion_request.tools(tooldefs)
             }

@@ -377,7 +377,7 @@ where
             }
             Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
                 let res = agent
-                    .tools
+                    .tool_server_handle
                     .call_tool(
                         &tool_call.function.name,
                         &tool_call.function.arguments.to_string(),
