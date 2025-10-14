@@ -57,6 +57,8 @@ pub struct MessageStart {
 pub enum ContentDelta {
     TextDelta { text: String },
     InputJsonDelta { partial_json: String },
+    ThinkingDelta { thinking: String },
+    SignatureDelta { signature: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -310,6 +312,14 @@ fn handle_event(
                 }
                 None
             }
+            ContentDelta::ThinkingDelta { thinking } => Some(Ok(RawStreamingChoice::Reasoning {
+                id: None,
+                reasoning: thinking.clone(),
+            })),
+            ContentDelta::SignatureDelta { .. } => {
+                // Signature is used for verification of thinking blocks, we can ignore it
+                None
+            }
         },
         StreamingEvent::ContentBlockStart { content_block, .. } => match content_block {
             Content::ToolUse { id, name, .. } => {
@@ -349,5 +359,185 @@ fn handle_event(
         | StreamingEvent::MessageStop
         | StreamingEvent::Ping
         | StreamingEvent::Unknown => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_thinking_delta_deserialization() {
+        let json = r#"{"type": "thinking_delta", "thinking": "Let me think about this..."}"#;
+        let delta: ContentDelta = serde_json::from_str(json).unwrap();
+
+        match delta {
+            ContentDelta::ThinkingDelta { thinking } => {
+                assert_eq!(thinking, "Let me think about this...");
+            }
+            _ => panic!("Expected ThinkingDelta variant"),
+        }
+    }
+
+    #[test]
+    fn test_signature_delta_deserialization() {
+        let json = r#"{"type": "signature_delta", "signature": "abc123def456"}"#;
+        let delta: ContentDelta = serde_json::from_str(json).unwrap();
+
+        match delta {
+            ContentDelta::SignatureDelta { signature } => {
+                assert_eq!(signature, "abc123def456");
+            }
+            _ => panic!("Expected SignatureDelta variant"),
+        }
+    }
+
+    #[test]
+    fn test_thinking_delta_streaming_event_deserialization() {
+        let json = r#"{
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {
+                "type": "thinking_delta",
+                "thinking": "First, I need to understand the problem."
+            }
+        }"#;
+
+        let event: StreamingEvent = serde_json::from_str(json).unwrap();
+
+        match event {
+            StreamingEvent::ContentBlockDelta { index, delta } => {
+                assert_eq!(index, 0);
+                match delta {
+                    ContentDelta::ThinkingDelta { thinking } => {
+                        assert_eq!(thinking, "First, I need to understand the problem.");
+                    }
+                    _ => panic!("Expected ThinkingDelta"),
+                }
+            }
+            _ => panic!("Expected ContentBlockDelta event"),
+        }
+    }
+
+    #[test]
+    fn test_signature_delta_streaming_event_deserialization() {
+        let json = r#"{
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {
+                "type": "signature_delta",
+                "signature": "ErUBCkYICBgCIkCaGbqC85F4"
+            }
+        }"#;
+
+        let event: StreamingEvent = serde_json::from_str(json).unwrap();
+
+        match event {
+            StreamingEvent::ContentBlockDelta { index, delta } => {
+                assert_eq!(index, 0);
+                match delta {
+                    ContentDelta::SignatureDelta { signature } => {
+                        assert_eq!(signature, "ErUBCkYICBgCIkCaGbqC85F4");
+                    }
+                    _ => panic!("Expected SignatureDelta"),
+                }
+            }
+            _ => panic!("Expected ContentBlockDelta event"),
+        }
+    }
+
+    #[test]
+    fn test_handle_thinking_delta_event() {
+        let event = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::ThinkingDelta {
+                thinking: "Analyzing the request...".to_string(),
+            },
+        };
+
+        let mut tool_call_state = None;
+        let result = handle_event(&event, &mut tool_call_state);
+
+        assert!(result.is_some());
+        let choice = result.unwrap().unwrap();
+
+        match choice {
+            RawStreamingChoice::Reasoning { id, reasoning } => {
+                assert_eq!(id, None);
+                assert_eq!(reasoning, "Analyzing the request...");
+            }
+            _ => panic!("Expected Reasoning choice"),
+        }
+    }
+
+    #[test]
+    fn test_handle_signature_delta_event() {
+        let event = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::SignatureDelta {
+                signature: "test_signature".to_string(),
+            },
+        };
+
+        let mut tool_call_state = None;
+        let result = handle_event(&event, &mut tool_call_state);
+
+        // SignatureDelta should be ignored (returns None)
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_handle_text_delta_event() {
+        let event = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::TextDelta {
+                text: "Hello, world!".to_string(),
+            },
+        };
+
+        let mut tool_call_state = None;
+        let result = handle_event(&event, &mut tool_call_state);
+
+        assert!(result.is_some());
+        let choice = result.unwrap().unwrap();
+
+        match choice {
+            RawStreamingChoice::Message(text) => {
+                assert_eq!(text, "Hello, world!");
+            }
+            _ => panic!("Expected Message choice"),
+        }
+    }
+
+    #[test]
+    fn test_thinking_delta_does_not_interfere_with_tool_calls() {
+        // Thinking deltas should still be processed even if a tool call is in progress
+        let event = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::ThinkingDelta {
+                thinking: "Thinking while tool is active...".to_string(),
+            },
+        };
+
+        let mut tool_call_state = Some(ToolCallState {
+            name: "test_tool".to_string(),
+            id: "tool_123".to_string(),
+            input_json: String::new(),
+        });
+
+        let result = handle_event(&event, &mut tool_call_state);
+
+        assert!(result.is_some());
+        let choice = result.unwrap().unwrap();
+
+        match choice {
+            RawStreamingChoice::Reasoning { reasoning, .. } => {
+                assert_eq!(reasoning, "Thinking while tool is active...");
+            }
+            _ => panic!("Expected Reasoning choice"),
+        }
+
+        // Tool call state should remain unchanged
+        assert!(tool_call_state.is_some());
     }
 }
