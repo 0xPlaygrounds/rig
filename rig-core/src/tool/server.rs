@@ -20,15 +20,13 @@ pub struct ToolServer {
     toolset: ToolSet,
 }
 
-impl Default for ToolServer
-{
+impl Default for ToolServer {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ToolServer
-{
+impl ToolServer {
     pub fn new() -> Self {
         Self {
             static_tool_names: Vec::new(),
