@@ -112,7 +112,7 @@ pub(crate) mod prompt_request;
 mod tool;
 
 pub use crate::message::Text;
-pub use builder::AgentBuilder;
+pub use builder::{AgentBuilder, AgentBuilderSimple};
 pub use completion::Agent;
 pub use prompt_request::PromptHook;
 pub use prompt_request::streaming::{

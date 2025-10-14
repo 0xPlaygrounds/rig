@@ -1,4 +1,5 @@
 use crate::agent::AgentBuilder;
+use crate::client::builder::FinalCompletionResponse;
 use crate::client::{AsCompletion, ProviderClient};
 use crate::completion::{
     CompletionError, CompletionModel, CompletionModelDyn, CompletionRequest, CompletionResponse,
@@ -68,7 +69,7 @@ pub struct CompletionModelHandle<'a> {
 
 impl CompletionModel for CompletionModelHandle<'_> {
     type Response = ();
-    type StreamingResponse = ();
+    type StreamingResponse = FinalCompletionResponse;
 
     fn completion(
         &self,

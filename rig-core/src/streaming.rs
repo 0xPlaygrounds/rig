@@ -11,6 +11,7 @@
 use crate::OneOrMany;
 use crate::agent::Agent;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
+use crate::client::builder::FinalCompletionResponse;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
     Message, Usage,
@@ -312,12 +313,12 @@ pub trait StreamingCompletion<M: CompletionModel> {
     ) -> impl Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>;
 }
 
-pub(crate) struct StreamingResultDyn<R: Clone + Unpin> {
+pub(crate) struct StreamingResultDyn<R: Clone + Unpin + GetTokenUsage> {
     pub(crate) inner: StreamingResult<R>,
 }
 
-impl<R: Clone + Unpin> Stream for StreamingResultDyn<R> {
-    type Item = Result<RawStreamingChoice<()>, CompletionError>;
+impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
+    type Item = Result<RawStreamingChoice<FinalCompletionResponse>, CompletionError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();
@@ -327,9 +328,11 @@ impl<R: Clone + Unpin> Stream for StreamingResultDyn<R> {
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
             Poll::Ready(Some(Ok(chunk))) => match chunk {
-                RawStreamingChoice::FinalResponse(_) => {
-                    Poll::Ready(Some(Ok(RawStreamingChoice::FinalResponse(()))))
-                }
+                RawStreamingChoice::FinalResponse(res) => Poll::Ready(Some(Ok(
+                    RawStreamingChoice::FinalResponse(FinalCompletionResponse {
+                        usage: res.token_usage(),
+                    }),
+                ))),
                 RawStreamingChoice::Message(m) => {
                     Poll::Ready(Some(Ok(RawStreamingChoice::Message(m))))
                 }
@@ -374,13 +377,13 @@ where
             }
             Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
                 let res = agent
-                    .tools
-                    .call(
+                    .tool_server_handle
+                    .call_tool(
                         &tool_call.function.name,
-                        tool_call.function.arguments.to_string(),
+                        &tool_call.function.arguments.to_string(),
                     )
                     .await
-                    .map_err(|e| std::io::Error::other(e.to_string()))?;
+                    .map_err(|x| std::io::Error::other(x.to_string()))?;
                 println!("\nResult: {res}");
             }
             Ok(StreamedAssistantContent::Final(res)) => {
