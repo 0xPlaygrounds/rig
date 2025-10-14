@@ -1,5 +1,8 @@
 use rig::client::{CompletionClient, ProviderClient};
 use rig::providers::gemini;
+use rig::providers::gemini::completion::gemini_api_types::{
+    AdditionalParameters, GenerationConfig,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +14,12 @@ struct Person {
     /// The person's last name, if provided (null otherwise)
     pub last_name: Option<String>,
     /// The person's job, if provided (null otherwise)
-    pub job: Option<String>,
+    pub job: Option<FooString>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema, Serialize)]
+pub struct FooString {
+    string: String,
 }
 
 #[tokio::main]
@@ -21,12 +29,16 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
+    let gen_cfg = GenerationConfig::default();
+    let cfg = AdditionalParameters::default().with_config(gen_cfg);
+
     // Create Gemini client
     let client = gemini::Client::from_env();
 
     // Create extractor
     let data_extractor = client
-        .extractor::<Person>(gemini::completion::GEMINI_2_0_FLASH)
+        .extractor::<Person>("gemini-2.0-flash")
+        .additional_params(serde_json::to_value(cfg).unwrap())
         .build();
 
     let person = data_extractor
