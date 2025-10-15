@@ -173,7 +173,7 @@ impl CompletionModel {
 
 impl completion::CompletionModel for CompletionModel {
     type Response = AwsConverseOutput;
-    type StreamingResponse = ();
+    type StreamingResponse = crate::streaming::BedrockStreamingResponse;
 
     async fn completion(
         &self,
