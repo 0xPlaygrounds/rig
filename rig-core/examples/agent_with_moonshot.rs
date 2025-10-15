@@ -25,6 +25,8 @@ fn partial_agent_moonshot() -> AgentBuilder<CompletionModel> {
 async fn basic_moonshot() -> Result<(), anyhow::Error> {
     let comedian_agent = partial_agent_moonshot()
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
+        .temperature(0.5)
+        .max_tokens(1024)
         .build();
 
     // Prompt the agent and print the response
