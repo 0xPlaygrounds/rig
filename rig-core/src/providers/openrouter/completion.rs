@@ -260,8 +260,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         async move {
             let response = self
                 .client
-                .reqwest_client()
-                .post("/chat/completions")
+                .reqwest_post("/chat/completions")
                 .json(&request)
                 .send()
                 .await

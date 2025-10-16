@@ -77,10 +77,6 @@ where
 }
 
 impl Client<reqwest::Client> {
-    pub(crate) fn reqwest_client(&self) -> &reqwest::Client {
-        &self.http_client
-    }
-
     pub(crate) fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
 
