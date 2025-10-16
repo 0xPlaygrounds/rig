@@ -27,12 +27,28 @@
 //!     .await
 //!     .expect("Failed to extract data from text");
 //! ```
-
-use std::marker::PhantomData;
+//! # Hooks and Validation
+//!
+//! For advanced observability and validation, use the hook system:
+//!
+//! ```rust
+//! use rig::extractor::{ExtractorWithHooks, ExtractorHook, ExtractorValidatorHook};
+//!
+//! // Create hooks and validators
+//! let hooks: Vec<Box<dyn ExtractorHook>> = vec![Box::new(LoggingHook)];
+//! let validators: Vec<Box<dyn ExtractorValidatorHook<Person>>> = vec![Box::new(AgeValidator)];
+//!
+//! // Use with any extractor - must import ExtractorWithHooks trait
+//! let result = extractor.extract_with_hooks(text, hooks, validators).await?;
+//!
 
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
+use std::boxed::Box;
+use std::future::Future;
+use std::marker::PhantomData;
+use std::pin::Pin;
 
 use crate::{
     agent::{Agent, AgentBuilder, AgentBuilderSimple},
@@ -54,6 +70,271 @@ pub enum ExtractionError {
 
     #[error("CompletionError: {0}")]
     CompletionError(#[from] CompletionError),
+
+    #[error("ValidationError: {0}")]
+    ValidationError(String),
+}
+/// A trait for observing and reacting to extraction lifecycle events.
+///
+/// `ExtractorHook` provides a way to monitor the extraction process at key points,
+/// enabling observability, logging, metrics collection, and debugging capabilities.
+/// Hooks are called during extraction attempts and can be used to track progress,
+/// measure performance, or implement custom monitoring logic.
+/// To use hooks with extractors, import [`ExtractorWithHooks`] and call
+/// extract_with_hooks
+///
+/// # Lifecycle Events
+///
+/// The hook methods are called in the following order during each extraction attempt:
+/// 1. [`before_extract`] - Called before starting an extraction attempt
+/// 2. [`after_parse`] - Called after successfully parsing JSON from the model response
+/// 3. [`on_success`] OR [`on_error`] - Called when the attempt succeeds or fails
+///
+/// # Thread Safety
+///
+/// Implementations must be `Send + Sync + 'static` to be used across async boundaries
+/// and stored in collections.
+///
+/// # Example
+///
+/// ```rust
+/// use std::sync::{Arc, Mutex};
+/// use std::pin::Pin;
+/// use std::boxed::Box;
+/// use std::future::Future;
+/// use rig::extractor::ExtractorWithHooks;
+///
+/// #[derive(Clone)]
+/// struct LoggingHook {
+///     events: Arc<Mutex<Vec<String>>>,
+/// }
+///
+/// impl ExtractorHook for LoggingHook {
+///     fn before_extract(&self, attempt: u64, text: &Message) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+///         let events = Arc::clone(&self.events);
+///         Box::pin(async move {
+///             events.lock().unwrap().push(format!("Starting attempt {}", attempt));
+///         })
+///     }
+///
+///     fn after_parse(&self, attempt: u64, data: &Value) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+///         let events = Arc::clone(&self.events);
+///         Box::pin(async move {
+///             events.lock().unwrap().push(format!("Parsed data on attempt {}", attempt));
+///         })
+///     }
+///
+///     fn on_error(&self, attempt: u64, error: &ExtractionError) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+///         let events = Arc::clone(&self.events);
+///         let error_msg = error.to_string();
+///         Box::pin(async move {
+///             events.lock().unwrap().push(format!("Error on attempt {}: {}", attempt, error_msg));
+///         })
+///     }
+///
+///     fn on_success(&self, attempt: u64, data: &Value) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+///         let events = Arc::clone(&self.events);
+///         Box::pin(async move {
+///             events.lock().unwrap().push(format!("Success on attempt {}", attempt));
+///         })
+///     }
+/// }
+///
+/// let hooks: Vec<Box<dyn ExtractorHook>> = vec![
+///     Box::new(LoggingHook { events: Arc::new(Mutex::new(Vec::new())) }),
+/// ];
+///
+/// let validators: Vec<Box<dyn ExtractorValidatorHook<Person>>> = vec![
+///     Box::new(AgeValidator { min_age: 18, max_age: 120 }),
+/// ];
+///
+/// let result = extractor.extract_with_hooks(text, hooks, validators).await?;
+/// ```
+///
+/// [`before_extract`]: ExtractorHook::before_extract
+/// [`after_parse`]: ExtractorHook::after_parse
+/// [`on_success`]: ExtractorHook::on_success
+/// [`on_error`]: ExtractorHook::on_error
+pub trait ExtractorHook: Send + Sync + 'static {
+    /// Called before each extraction attempt begins.
+    ///
+    /// This method is invoked at the start of each extraction attempt, before any
+    /// communication with the language model. It provides an opportunity to perform
+    /// setup operations, start timers, increment counters, or log the beginning
+    /// of an extraction attempt.
+    fn before_extract(
+        &self,
+        attempt: u64,
+        text: &Message,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+
+    /// Called after successfully parsing JSON from the model response.
+    ///
+    /// This method is invoked when the language model has returned a response
+    /// and the JSON has been successfully parsed, but before any validation occurs.
+    /// It's useful for inspecting the raw extracted data or logging successful
+    /// parsing events.
+    fn after_parse(
+        &self,
+        attempt: u64,
+        data: &Value,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+
+    /// Called when an extraction attempt fails.
+    ///
+    /// This method is invoked whenever an extraction attempt fails, whether due to
+    /// model errors, parsing failures, validation errors, or other issues. It provides
+    /// an opportunity to log errors, update failure metrics, or perform cleanup.
+    fn on_error(
+        &self,
+        attempt: u64,
+        error: &ExtractionError,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+
+    /// Called when extraction succeeds completely.
+    ///
+    /// This method is invoked when an extraction attempt succeeds, meaning the model
+    /// response was parsed successfully and all validation passed. It's called after
+    /// all processing is complete and represents the final success of the extraction.
+    fn on_success(
+        &self,
+        attempt: u64,
+        data: &Value,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+}
+
+/// A trait for implementing custom validation logic on extracted data.
+///
+/// `ExtractorValidatorHook` allows you to define custom validation rules that are
+/// applied to extracted data after JSON parsing but before the extraction is considered
+/// successful. When validation fails, the extraction attempt is retried (if retries are
+/// configured), giving the language model an opportunity to self-correct based on
+/// the validation error feedback.
+///
+/// Validators are type-specific and work with the concrete extracted data structure,
+/// enabling precise business rule validation, data quality checks, and domain-specific
+/// constraints that go beyond basic JSON schema validation.
+///
+/// # Validation Flow
+///
+/// 1. Model extracts data and JSON is parsed successfully
+/// 2. Each validator's [`validate`] method is called in sequence
+/// 3. If any validator returns an error, the extraction attempt fails and may retry
+/// 4. If all validators pass, the extraction succeeds
+///
+/// # Error Handling
+///
+/// Validation errors are converted to [`ExtractionError::ValidationError`] and fed back
+/// into the retry loop, allowing the model to attempt self-correction on subsequent tries.
+///
+/// # Example
+/// To use validators with extractors, import [`ExtractorWithHooks`] and call
+/// extract_with_hooks
+/// ```rust
+/// use std::pin::Pin;
+/// use std::boxed::Box;
+/// use std::future::Future;
+/// use rig::extractor::ExtractorWithHooks;
+///
+/// #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+/// struct Person {
+///     name: String,
+///     age: u8,
+///     email: Option<String>,
+/// }
+///
+/// #[derive(Clone)]
+/// struct AgeValidator {
+///     min_age: u8,
+///     max_age: u8,
+/// }
+///
+/// impl ExtractorValidatorHook<Person> for AgeValidator {
+///     fn validate(&self, person: &Person) -> Pin<Box<dyn Future<Output = Result<(), ExtractionError>> + Send + '_>> {
+///         let min_age = self.min_age;
+///         let max_age = self.max_age;
+///         let age = person.age;
+///         Box::pin(async move {
+///             if age < min_age {
+///                 return Err(ExtractionError::ValidationError(
+///                     format!("Age {} is below minimum of {}", age, min_age)
+///                 ));
+///             }
+///             if age > max_age {
+///                 return Err(ExtractionError::ValidationError(
+///                     format!("Age {} exceeds maximum of {}", age, max_age)
+///                 ));
+///             }
+///             Ok(())
+///         })
+///     }
+/// }
+/// ```
+/// You can chain multiple validators together. They are executed in order, and the first
+/// validation failure will cause the extraction attempt to fail:
+///
+/// ```rust
+/// let validators: Vec<Box<dyn ExtractorValidatorHook<Person>>> = vec![
+///     Box::new(AgeValidator { min_age: 18, max_age: 120 }),
+///     Box::new(EmailValidator),
+///     Box::new(BusinessRuleValidator),
+/// ];
+///
+/// let result = extractor.extract_with_hooks(text, vec![], validators).await?;
+/// ```
+///
+/// [`validate`]: ExtractorValidatorHook::validate
+pub trait ExtractorValidatorHook<T>: Send + Sync
+where
+    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync,
+{
+    /// Validates the extracted data according to custom business rules.
+    fn validate(
+        &self,
+        data: &T,
+    ) -> Pin<Box<dyn Future<Output = Result<(), ExtractionError>> + Send + '_>>;
+}
+
+/// Extension trait that adds hook and validation capabilities to extractors.
+///
+/// `ExtractorWithHooks` extends any extractor with advanced observability and validation
+/// features through the [`extract_with_hooks`] method.
+///
+/// # Usage
+///
+/// To use this functionality, you must import the trait:
+///
+/// ```rust
+/// use rig::extractor::ExtractorWithHooks;
+///
+/// let hooks: Vec<Box<dyn ExtractorHook>> = vec![
+///     Box::new(LoggingHook::new()),
+/// ];
+///
+/// let validators: Vec<Box<dyn ExtractorValidatorHook<Person>>> = vec![
+///     Box::new(AgeValidator { min_age: 18, max_age: 120 }),
+/// ];
+///
+/// let result = extractor.extract_with_hooks(text, hooks, validators).await?;
+/// ```
+///
+/// [`extract_with_hooks`]: ExtractorWithHooks::extract_with_hooks
+pub trait ExtractorWithHooks<T>
+where
+    T: JsonSchema + for<'a> Deserialize<'a> + Send + Sync,
+{
+    /// Extracts structured data with observability hooks and custom validation.
+    ///
+    /// This method extends the basic extraction functionality with lifecycle hooks
+    /// for monitoring and custom validators for data quality assurance. It provides
+    /// the same extraction capabilities as [`Extractor::extract`] but with additional
+    /// observability and validation features.
+    fn extract_with_hooks(
+        &self,
+        text: impl Into<Message> + Send,
+        hooks: Vec<Box<dyn ExtractorHook>>,
+        validators: Vec<Box<dyn ExtractorValidatorHook<T>>>,
+    ) -> Pin<Box<dyn Future<Output = Result<T, ExtractionError>> + Send + '_>>;
 }
 
 /// Extractor for structured data from text
@@ -65,6 +346,63 @@ where
     agent: Agent<M>,
     _t: PhantomData<T>,
     retries: u64,
+}
+
+impl<M, T> ExtractorWithHooks<T> for Extractor<M, T>
+where
+    M: CompletionModel,
+    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+{
+    /// This implementation creates the complete extraction lifecycle with
+    /// observability and validation. It manages the retry loop, coordinates
+    /// hook calls, and ensures validators are executed in the correct sequence.
+    fn extract_with_hooks(
+        &self,
+        text: impl Into<Message> + Send,
+        hooks: Vec<Box<dyn ExtractorHook>>,
+        validators: Vec<Box<dyn ExtractorValidatorHook<T>>>,
+    ) -> Pin<Box<dyn Future<Output = Result<T, ExtractionError>> + Send + '_>> {
+        let text_msg = text.into();
+
+        Box::pin(async move {
+            let mut last_error = None;
+
+            for i in 0..=self.retries {
+                tracing::debug!(
+                    "Attempting to extract Json. Retries left:{retries}",
+                    retries = self.retries - i
+                );
+
+                for hook in &hooks {
+                    hook.before_extract(i, &text_msg).await;
+                }
+                let attempt_t = text_msg.clone();
+                match self
+                    .extract_validated_json(attempt_t, i, &hooks, &validators)
+                    .await
+                {
+                    Ok(data) => {
+                        let data_value =
+                            serde_json::to_value(&data).unwrap_or(serde_json::Value::Null);
+                        for hook in &hooks {
+                            hook.on_success(i, &data_value).await;
+                        }
+                        return Ok(data);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Attempt number {i} to extract Json failed: {e:?}. Retrying..."
+                        );
+                        for hook in &hooks {
+                            hook.on_error(i, &e).await;
+                        }
+                        last_error = Some(e);
+                    }
+                }
+            }
+            Err(last_error.unwrap_or(ExtractionError::NoData))
+        })
+    }
 }
 
 impl<M, T> Extractor<M, T>
@@ -196,6 +534,49 @@ where
         Ok(serde_json::from_value(raw_data)?)
     }
 
+    async fn extract_validated_json(
+        &self,
+        text: impl Into<Message> + Send,
+        attempt: u64,
+        hooks: &[Box<dyn ExtractorHook>],
+        validators: &[Box<dyn ExtractorValidatorHook<T>>],
+    ) -> Result<T, ExtractionError> {
+        let response = self.agent.completion(text, vec![]).await?.send().await?;
+
+        let args = response
+            .choice
+            .into_iter()
+            .filter_map(|content| {
+                if let AssistantContent::ToolCall(ToolCall {
+                    function: ToolFunction { arguments, name },
+                    ..
+                }) = content
+                {
+                    if name == SUBMIT_TOOL_NAME {
+                        Some(arguments)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        let raw_data = args.into_iter().next().ok_or(ExtractionError::NoData)?;
+
+        for hook in hooks {
+            hook.after_parse(attempt, &raw_data).await;
+        }
+
+        let parsed_data: T = serde_json::from_value(raw_data.clone())?;
+
+        for validator in validators {
+            if let Err(val_error) = validator.validate(&parsed_data).await {
+                return Err(ExtractionError::ValidationError(val_error.to_string()));
+            }
+        }
+        Ok(parsed_data)
+    }
     pub async fn get_inner(&self) -> &Agent<M> {
         &self.agent
     }
