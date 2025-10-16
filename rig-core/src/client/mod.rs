@@ -1,6 +1,329 @@
-//! This module provides traits for defining and creating provider clients.
-//! Clients are used to create models for completion, embeddings, etc.
-//! Dyn-compatible traits have been provided to allow for more provider-agnostic code.
+//! Provider client traits and utilities for LLM integration.
+//!
+//! This module defines the core abstractions for creating and managing provider clients
+//! that interface with different LLM services (OpenAI, Anthropic, Cohere, etc.). It provides
+//! both static and dynamic dispatch mechanisms for working with multiple providers.
+//!
+//! # Architecture
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────┐
+//! │           ProviderClient (Base Trait)               │
+//! │  Conversion: AsCompletion, AsEmbeddings, etc.       │
+//! └────────────┬────────────────────────────────────────┘
+//!              │
+//!              ├─> CompletionClient     (text generation)
+//!              ├─> EmbeddingsClient     (vector embeddings)
+//!              ├─> TranscriptionClient  (audio to text)
+//!              ├─> ImageGenerationClient (text to image)
+//!              └─> AudioGenerationClient (text to speech)
+//! ```
+//!
+//! # Quick Start
+//!
+//! ## Using a Static Client
+//!
+//! ```no_run
+//! use rig::prelude::*;
+//! use rig::providers::openai::{Client, self};
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! // Create an OpenAI client
+//! let client = Client::new("your-api-key");
+//!
+//! // Create a completion model
+//! let model = client.completion_model(openai::GPT_4O);
+//!
+//! // Generate a completion
+//! let response = model
+//!     .completion_request("What is the capital of France?")
+//!     .send()
+//!     .await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Using a Dynamic Client Builder
+//!
+//! ```no_run
+//! use rig::client::builder::DynClientBuilder;
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! // Create a dynamic client builder
+//! let builder = DynClientBuilder::new();
+//!
+//! // Build agents for different providers
+//! let openai_agent = builder.agent("openai", "gpt-4o")?
+//!     .preamble("You are a helpful assistant")
+//!     .build();
+//!
+//! let anthropic_agent = builder.agent("anthropic", "claude-3-7-sonnet")?
+//!     .preamble("You are a helpful assistant")
+//!     .build();
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Main Components
+//!
+//! ## Core Traits
+//!
+//! - [`ProviderClient`] - Base trait for all provider clients
+//!   - **Use when:** Implementing a new LLM provider integration
+//!
+//! ## Capability Traits
+//!
+//! - [`CompletionClient`] - Text generation capabilities
+//!   - **Use when:** You need to generate text completions or build agents
+//!
+//! - [`EmbeddingsClient`] - Vector embedding capabilities
+//!   - **Use when:** You need to convert text to vector embeddings for search or similarity
+//!
+//! - [`TranscriptionClient`] - Audio transcription capabilities
+//!   - **Use when:** You need to convert audio to text
+//!
+//! - [`ImageGenerationClient`] - Image generation capabilities (feature: `image`)
+//!   - **Use when:** You need to generate images from text prompts
+//!
+//! - [`AudioGenerationClient`] - Audio generation capabilities (feature: `audio`)
+//!   - **Use when:** You need to generate audio from text (text-to-speech)
+//!
+//! ## Dynamic Client Builder
+//!
+//! - [`builder::DynClientBuilder`] - Dynamic client factory for multiple providers
+//!   - **Use when:** You need to support multiple providers at runtime
+//!
+//! # Common Patterns
+//!
+//! ## Pattern 1: Single Provider with Static Dispatch
+//!
+//! ```no_run
+//! use rig::prelude::*;
+//! use rig::providers::openai::{Client, self};
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = Client::new("api-key");
+//! let agent = client.agent(openai::GPT_4O)
+//!     .preamble("You are a helpful assistant")
+//!     .build();
+//!
+//! let response = agent.prompt("Hello!").await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Pattern 2: Multiple Providers with Dynamic Dispatch
+//!
+//! ```no_run
+//! use rig::client::builder::DynClientBuilder;
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let builder = DynClientBuilder::new();
+//!
+//! // User selects provider at runtime
+//! let provider = "openai";
+//! let model = "gpt-4o";
+//!
+//! let agent = builder.agent(provider, model)?
+//!     .preamble("You are a helpful assistant")
+//!     .build();
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Pattern 3: Provider Capability Detection
+//!
+//! ```no_run
+//! use rig::client::{ProviderClient, AsCompletion, AsEmbeddings};
+//! use rig::providers::openai::Client;
+//!
+//! # fn example() {
+//! let client = Client::from_env();
+//!
+//! // Check if provider supports completions
+//! if let Some(completion_client) = client.as_completion() {
+//!     let model = completion_client.completion_model("gpt-4o");
+//!     // Use model...
+//! }
+//!
+//! // Check if provider supports embeddings
+//! if let Some(embeddings_client) = client.as_embeddings() {
+//!     let model = embeddings_client.embedding_model("text-embedding-3-large");
+//!     // Use model...
+//! }
+//! # }
+//! ```
+//!
+//! ## Pattern 4: Creating Provider from Environment
+//!
+//! ```no_run
+//! use rig::client::ProviderClient;
+//! use rig::providers::openai::Client;
+//!
+//! # fn example() {
+//! // Reads API key from OPENAI_API_KEY environment variable
+//! let client = Client::from_env();
+//! # }
+//! ```
+//!
+//! # Performance Characteristics
+//!
+//! - **Client creation**: Lightweight, typically O(1) memory allocation for configuration
+//! - **Model cloning**: Inexpensive due to internal `Arc` usage (reference counting only)
+//! - **Static vs Dynamic Dispatch**:
+//!   - Static dispatch (using concrete types): Zero runtime overhead
+//!   - Dynamic dispatch (trait objects): Small vtable lookup overhead
+//!   - Use static dispatch when working with a single provider
+//!   - Use dynamic dispatch when provider selection happens at runtime
+//!
+//! For most applications, the network latency of API calls (100-1000ms) far exceeds
+//! any client-side overhead
+//!
+//! # Implementing a New Provider
+//!
+//! ```rust
+//! use rig::client::{ProviderClient, ProviderValue, CompletionClient};
+//! use rig::completion::CompletionModel;
+//! # use std::fmt::Debug;
+//!
+//! // Step 1: Define your client struct
+//! #[derive(Clone, Debug)]
+//! struct MyProvider {
+//!     api_key: String,
+//!     base_url: String,
+//! }
+//!
+//! // Step 2: Implement ProviderClient
+//! impl ProviderClient for MyProvider {
+//!     fn from_env() -> Self {
+//!         Self {
+//!             api_key: std::env::var("MY_API_KEY")
+//!                 .expect("MY_API_KEY environment variable not set"),
+//!             base_url: std::env::var("MY_BASE_URL")
+//!                 .unwrap_or_else(|_| "https://api.myprovider.com".to_string()),
+//!         }
+//!     }
+//!
+//!     fn from_val(input: ProviderValue) -> Self {
+//!         match input {
+//!             ProviderValue::Simple(api_key) => Self {
+//!                 api_key,
+//!                 base_url: "https://api.myprovider.com".to_string(),
+//!             },
+//!             ProviderValue::ApiKeyWithOptionalKey(api_key, Some(base_url)) => Self {
+//!                 api_key,
+//!                 base_url,
+//!             },
+//!             _ => panic!("Invalid ProviderValue for MyProvider"),
+//!         }
+//!     }
+//! }
+//!
+//! // Step 3: Implement capability traits (e.g., CompletionClient)
+//! // impl CompletionClient for MyProvider { ... }
+//!
+//! // Step 4: Register the capabilities
+//! // rig::impl_conversion_traits!(AsCompletion for MyProvider);
+//! ```
+//!
+//! # Troubleshooting
+//!
+//! ## Provider Not Found
+//!
+//! ```compile_fail
+//! // ❌ BAD: Provider not registered
+//! let builder = DynClientBuilder::empty();
+//! let agent = builder.agent("openai", "gpt-4o")?; // Error: UnknownProvider
+//! ```
+//!
+//! ```no_run
+//! // ✅ GOOD: Use default registry or register manually
+//! use rig::client::builder::DynClientBuilder;
+//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let builder = DynClientBuilder::new(); // Includes all providers
+//! let agent = builder.agent("openai", "gpt-4o")?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Unsupported Feature for Provider
+//!
+//! Not all providers support all features. Check the provider capability table below.
+//!
+//! ### Provider Capabilities
+//!
+//! | Provider   | Completions | Embeddings | Transcription | Image Gen | Audio Gen |
+//! |------------|-------------|------------|---------------|-----------|-----------|
+//! | OpenAI     | ✅          | ✅         | ✅            | ✅        | ✅        |
+//! | Anthropic  | ✅          | ❌         | ❌            | ❌        | ❌        |
+//! | Cohere     | ✅          | ✅         | ❌            | ❌        | ❌        |
+//! | Gemini     | ✅          | ✅         | ✅            | ❌        | ❌        |
+//! | Azure      | ✅          | ✅         | ✅            | ✅        | ✅        |
+//! | Together   | ✅          | ✅         | ❌            | ❌        | ❌        |
+//!
+//! ### Handling Unsupported Features
+//!
+//! ```no_run
+//! use rig::client::builder::{DynClientBuilder, ClientBuildError};
+//!
+//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let builder = DynClientBuilder::new();
+//!
+//! // Attempt to use embeddings with a provider
+//! match builder.embeddings("anthropic", "any-model") {
+//!     Ok(model) => {
+//!         // Use embeddings
+//!     },
+//!     Err(ClientBuildError::UnsupportedFeature(provider, feature)) => {
+//!         eprintln!("{} doesn't support {}", provider, feature);
+//!         // Fallback to a provider that supports embeddings
+//!         let model = builder.embeddings("openai", "text-embedding-3-large")?;
+//!     },
+//!     Err(e) => return Err(e.into()),
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Feature Flags
+//!
+//! The client module supports optional features for additional functionality:
+//!
+//! ## `image` - Image Generation Support
+//!
+//! Enables [`ImageGenerationClient`] and image generation capabilities:
+//!
+//! ```toml
+//! [dependencies]
+//! rig-core = { version = "0.x", features = ["image"] }
+//! ```
+//!
+//! ## `audio` - Audio Generation Support
+//!
+//! Enables [`AudioGenerationClient`] for text-to-speech:
+//!
+//! ```toml
+//! [dependencies]
+//! rig-core = { version = "0.x", features = ["audio"] }
+//! ```
+//!
+//! ## `derive` - Derive Macros
+//!
+//! Enables the `#[derive(ProviderClient)]` macro for automatic trait implementation:
+//!
+//! ```toml
+//! [dependencies]
+//! rig-core = { version = "0.x", features = ["derive"] }
+//! ```
+//!
+//! Without these features, the corresponding traits and functionality are not available.
+//!
+//! # See Also
+//!
+//! - [`crate::completion`] - Text completion functionality
+//! - [`crate::embeddings`] - Vector embedding functionality
+//! - [`crate::agent`] - High-level agent abstraction
+//! - [`crate::providers`] - Available provider implementations
 
 pub mod audio_generation;
 pub mod builder;
@@ -15,34 +338,121 @@ pub use rig_derive::ProviderClient;
 use std::fmt::Debug;
 use thiserror::Error;
 
+/// Errors that can occur when building a client.
+///
+/// This enum represents errors that may arise during client construction,
+/// such as HTTP configuration errors or invalid property values.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ClientBuilderError {
+    /// An error occurred in the HTTP client (reqwest).
+    ///
+    /// This typically indicates issues with network configuration,
+    /// TLS setup, or invalid URLs.
     #[error("reqwest error: {0}")]
     HttpError(
         #[from]
         #[source]
         reqwest::Error,
     ),
+
+    /// An invalid property value was provided during client construction.
+    ///
+    /// # Examples
+    ///
+    /// This error may be returned when:
+    /// - An API key format is invalid
+    /// - A required configuration field is missing
+    /// - A property value is outside acceptable bounds
     #[error("invalid property: {0}")]
     InvalidProperty(&'static str),
 }
 
-/// The base ProviderClient trait, facilitates conversion between client types
-/// and creating a client from the environment.
+/// Base trait for all LLM provider clients.
 ///
-/// All conversion traits must be implemented, they are automatically
-/// implemented if the respective client trait is implemented.
+/// This trait defines the common interface that all provider clients must implement.
+/// It includes methods for creating clients from environment variables or explicit values,
+/// and provides automatic conversion to capability-specific clients through the
+/// `As*` conversion traits.
+///
+/// # Implementing ProviderClient
+///
+/// When implementing a new provider, you must:
+/// 1. Implement [`ProviderClient`] with `from_env()` and `from_val()`
+/// 2. Implement capability traits as needed ([`CompletionClient`], [`EmbeddingsClient`], etc.)
+/// 3. Use the [`impl_conversion_traits!`] macro to register capabilities
+///
+/// # Examples
+///
+/// ```rust
+/// use rig::client::{ProviderClient, ProviderValue};
+/// # use std::fmt::Debug;
+///
+/// #[derive(Clone, Debug)]
+/// struct MyProvider {
+///     api_key: String,
+/// }
+///
+/// impl ProviderClient for MyProvider {
+///     fn from_env() -> Self {
+///         Self {
+///             api_key: std::env::var("MY_API_KEY")
+///                 .expect("MY_API_KEY environment variable not set"),
+///         }
+///     }
+///
+///     fn from_val(input: ProviderValue) -> Self {
+///         match input {
+///             ProviderValue::Simple(api_key) => Self { api_key },
+///             _ => panic!("Expected simple API key"),
+///         }
+///     }
+/// }
+/// ```
+///
+/// # Panics
+///
+/// The `from_env()` and `from_env_boxed()` methods panic if the environment
+/// is improperly configured (e.g., required environment variables are missing).
 pub trait ProviderClient:
     AsCompletion + AsTranscription + AsEmbeddings + AsImageGeneration + AsAudioGeneration + Debug
 {
-    /// Create a client from the process's environment.
-    /// Panics if an environment is improperly configured.
+    /// Creates a client from the process environment variables.
+    ///
+    /// This method reads configuration (typically API keys) from environment variables.
+    /// Each provider defines its own required environment variables.
+    ///
+    /// # Panics
+    ///
+    /// Panics if required environment variables are not set or have invalid values.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use rig::client::ProviderClient;
+    /// use rig::providers::openai::Client;
+    ///
+    /// // Reads from OPENAI_API_KEY environment variable
+    /// let client = Client::from_env();
+    /// ```
     fn from_env() -> Self
     where
         Self: Sized;
 
-    /// A helper method to box the client.
+    /// Wraps this client in a `Box<dyn ProviderClient>`.
+    ///
+    /// This is a convenience method for converting a concrete client type
+    /// into a trait object for dynamic dispatch.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use rig::client::ProviderClient;
+    /// use rig::providers::openai::Client;
+    ///
+    /// let client = Client::from_env().boxed();
+    /// // client is now Box<dyn ProviderClient>
+    /// ```
     fn boxed(self) -> Box<dyn ProviderClient>
     where
         Self: Sized + 'static,
@@ -50,8 +460,23 @@ pub trait ProviderClient:
         Box::new(self)
     }
 
-    /// Create a boxed client from the process's environment.
-    /// Panics if an environment is improperly configured.
+    /// Creates a boxed client from the process environment variables.
+    ///
+    /// This is equivalent to `Self::from_env().boxed()` but more convenient.
+    ///
+    /// # Panics
+    ///
+    /// Panics if required environment variables are not set or have invalid values.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use rig::client::ProviderClient;
+    /// use rig::providers::openai::Client;
+    ///
+    /// let client = Client::from_env_boxed();
+    /// // client is Box<dyn ProviderClient>
+    /// ```
     fn from_env_boxed<'a>() -> Box<dyn ProviderClient + 'a>
     where
         Self: Sized,
@@ -60,12 +485,36 @@ pub trait ProviderClient:
         Box::new(Self::from_env())
     }
 
+    /// Creates a client from a provider-specific value.
+    ///
+    /// This method allows creating clients with explicit configuration values
+    /// rather than reading from environment variables.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use rig::client::{ProviderClient, ProviderValue};
+    /// use rig::providers::openai::Client;
+    ///
+    /// let client = Client::from_val(ProviderValue::Simple("api-key".to_string()));
+    /// ```
     fn from_val(input: ProviderValue) -> Self
     where
         Self: Sized;
 
-    /// Create a boxed client from the process's environment.
-    /// Panics if an environment is improperly configured.
+    /// Creates a boxed client from a provider-specific value.
+    ///
+    /// This is equivalent to `Self::from_val(input).boxed()` but more convenient.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use rig::client::{ProviderClient, ProviderValue};
+    /// use rig::providers::openai::Client;
+    ///
+    /// let client = Client::from_val_boxed(ProviderValue::Simple("api-key".to_string()));
+    /// // client is Box<dyn ProviderClient>
+    /// ```
     fn from_val_boxed<'a>(input: ProviderValue) -> Box<dyn ProviderClient + 'a>
     where
         Self: Sized,
@@ -75,10 +524,56 @@ pub trait ProviderClient:
     }
 }
 
+/// Configuration values for creating provider clients.
+///
+/// This enum supports different provider authentication schemes,
+/// allowing flexibility in how clients are configured.
+///
+/// # Examples
+///
+/// ```rust
+/// use rig::client::ProviderValue;
+///
+/// // Simple API key
+/// let simple = ProviderValue::Simple("sk-abc123".to_string());
+///
+/// // API key with optional organization ID (e.g., OpenAI)
+/// let with_org = ProviderValue::ApiKeyWithOptionalKey(
+///     "sk-abc123".to_string(),
+///     Some("org-xyz".to_string())
+/// );
+///
+/// // API key with version and header (e.g., Azure)
+/// let azure = ProviderValue::ApiKeyWithVersionAndHeader(
+///     "api-key".to_string(),
+///     "2024-01-01".to_string(),
+///     "api-key".to_string()
+/// );
+/// ```
 #[derive(Clone)]
 pub enum ProviderValue {
+    /// Simple API key authentication.
+    ///
+    /// This is the most common authentication method, used by providers
+    /// that only require a single API key.
     Simple(String),
+
+    /// API key with an optional secondary key.
+    ///
+    /// Used by providers that support optional organization IDs or
+    /// project keys (e.g., OpenAI with organization ID).
+    ///
+    /// # Format
+    /// `(api_key, optional_key)`
     ApiKeyWithOptionalKey(String, Option<String>),
+
+    /// API key with version and header name.
+    ///
+    /// Used by providers that require API versioning and custom
+    /// header names (e.g., Azure OpenAI).
+    ///
+    /// # Format
+    /// `(api_key, version, header_name)`
     ApiKeyWithVersionAndHeader(String, String, String),
 }
 
@@ -119,45 +614,182 @@ where
     }
 }
 
-/// Attempt to convert a ProviderClient to a CompletionClient
+/// Trait for converting a [`ProviderClient`] to a [`CompletionClient`].
+///
+/// This trait enables capability detection and conversion for text completion features.
+/// It is automatically implemented for types that implement [`CompletionClientDyn`].
+///
+/// # Examples
+///
+/// ```no_run
+/// use rig::client::{ProviderClient, AsCompletion};
+/// use rig::providers::openai::Client;
+///
+/// let client = Client::from_env();
+///
+/// if let Some(completion_client) = client.as_completion() {
+///     let model = completion_client.completion_model("gpt-4o");
+///     // Use the completion model...
+/// }
+/// ```
 pub trait AsCompletion {
+    /// Attempts to convert this client to a completion client.
+    ///
+    /// Returns `Some` if the provider supports completion features,
+    /// `None` otherwise.
     fn as_completion(&self) -> Option<Box<dyn CompletionClientDyn>> {
         None
     }
 }
 
-/// Attempt to convert a ProviderClient to a TranscriptionClient
+/// Trait for converting a [`ProviderClient`] to a [`TranscriptionClient`].
+///
+/// This trait enables capability detection and conversion for audio transcription features.
+/// It is automatically implemented for types that implement [`TranscriptionClientDyn`].
+///
+/// # Examples
+///
+/// ```no_run
+/// use rig::client::{ProviderClient, AsTranscription};
+/// use rig::providers::openai::Client;
+///
+/// let client = Client::from_env();
+///
+/// if let Some(transcription_client) = client.as_transcription() {
+///     let model = transcription_client.transcription_model("whisper-1");
+///     // Use the transcription model...
+/// }
+/// ```
 pub trait AsTranscription {
+    /// Attempts to convert this client to a transcription client.
+    ///
+    /// Returns `Some` if the provider supports transcription features,
+    /// `None` otherwise.
     fn as_transcription(&self) -> Option<Box<dyn TranscriptionClientDyn>> {
         None
     }
 }
 
-/// Attempt to convert a ProviderClient to a EmbeddingsClient
+/// Trait for converting a [`ProviderClient`] to an [`EmbeddingsClient`].
+///
+/// This trait enables capability detection and conversion for vector embedding features.
+/// It is automatically implemented for types that implement [`EmbeddingsClientDyn`].
+///
+/// # Examples
+///
+/// ```no_run
+/// use rig::client::{ProviderClient, AsEmbeddings};
+/// use rig::providers::openai::Client;
+///
+/// let client = Client::from_env();
+///
+/// if let Some(embeddings_client) = client.as_embeddings() {
+///     let model = embeddings_client.embedding_model("text-embedding-3-large");
+///     // Use the embedding model...
+/// }
+/// ```
 pub trait AsEmbeddings {
+    /// Attempts to convert this client to an embeddings client.
+    ///
+    /// Returns `Some` if the provider supports embedding features,
+    /// `None` otherwise.
     fn as_embeddings(&self) -> Option<Box<dyn EmbeddingsClientDyn>> {
         None
     }
 }
 
-/// Attempt to convert a ProviderClient to a AudioGenerationClient
+/// Trait for converting a [`ProviderClient`] to an [`AudioGenerationClient`].
+///
+/// This trait enables capability detection and conversion for audio generation (TTS) features.
+/// It is automatically implemented for types that implement [`AudioGenerationClientDyn`].
+/// Only available with the `audio` feature enabled.
+///
+/// # Examples
+///
+/// ```no_run
+/// # #[cfg(feature = "audio")]
+/// # {
+/// use rig::client::{ProviderClient, AsAudioGeneration};
+/// use rig::providers::openai::Client;
+///
+/// let client = Client::from_env();
+///
+/// if let Some(audio_client) = client.as_audio_generation() {
+///     let model = audio_client.audio_generation_model("tts-1");
+///     // Use the audio generation model...
+/// }
+/// # }
+/// ```
 pub trait AsAudioGeneration {
+    /// Attempts to convert this client to an audio generation client.
+    ///
+    /// Returns `Some` if the provider supports audio generation features,
+    /// `None` otherwise. Only available with the `audio` feature enabled.
     #[cfg(feature = "audio")]
     fn as_audio_generation(&self) -> Option<Box<dyn AudioGenerationClientDyn>> {
         None
     }
 }
 
-/// Attempt to convert a ProviderClient to a ImageGenerationClient
+/// Trait for converting a [`ProviderClient`] to an [`ImageGenerationClient`].
+///
+/// This trait enables capability detection and conversion for image generation features.
+/// It is automatically implemented for types that implement [`ImageGenerationClientDyn`].
+/// Only available with the `image` feature enabled.
+///
+/// # Examples
+///
+/// ```no_run
+/// # #[cfg(feature = "image")]
+/// # {
+/// use rig::client::{ProviderClient, AsImageGeneration};
+/// use rig::providers::openai::Client;
+///
+/// let client = Client::from_env();
+///
+/// if let Some(image_client) = client.as_image_generation() {
+///     let model = image_client.image_generation_model("dall-e-3");
+///     // Use the image generation model...
+/// }
+/// # }
+/// ```
 pub trait AsImageGeneration {
+    /// Attempts to convert this client to an image generation client.
+    ///
+    /// Returns `Some` if the provider supports image generation features,
+    /// `None` otherwise. Only available with the `image` feature enabled.
     #[cfg(feature = "image")]
     fn as_image_generation(&self) -> Option<Box<dyn ImageGenerationClientDyn>> {
         None
     }
 }
 
-/// Attempt to convert a ProviderClient to a VerifyClient
+/// Trait for converting a [`ProviderClient`] to a [`VerifyClient`].
+///
+/// This trait enables capability detection and conversion for client verification features.
+/// It is automatically implemented for types that implement [`VerifyClientDyn`].
+///
+/// # Examples
+///
+/// ```no_run
+/// use rig::client::{ProviderClient, AsVerify};
+/// use rig::providers::openai::Client;
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = Client::from_env();
+///
+/// if let Some(verify_client) = client.as_verify() {
+///     verify_client.verify().await?;
+///     println!("Client configuration is valid");
+/// }
+/// # Ok(())
+/// # }
+/// ```
 pub trait AsVerify {
+    /// Attempts to convert this client to a verify client.
+    ///
+    /// Returns `Some` if the provider supports verification features,
+    /// `None` otherwise.
     fn as_verify(&self) -> Option<Box<dyn VerifyClientDyn>> {
         None
     }
@@ -169,14 +801,116 @@ impl<T: ProviderClient> AsAudioGeneration for T {}
 #[cfg(not(feature = "image"))]
 impl<T: ProviderClient> AsImageGeneration for T {}
 
-/// Implements the conversion traits for a given struct
-/// ```rust
-/// pub struct Client;
-/// impl ProviderClient for Client {
-///     ...
-/// }
-/// impl_conversion_traits!(AsCompletion, AsEmbeddings for Client);
+/// Registers capability traits for a provider client.
+///
+/// This macro automatically implements the conversion traits ([`AsCompletion`],
+/// [`AsEmbeddings`], etc.) for your provider client type, enabling capability
+/// detection and dynamic dispatch through the [`ProviderClient`] trait.
+///
+/// # When to Use
+///
+/// Use this macro after implementing [`ProviderClient`] and the specific
+/// capability traits (like [`CompletionClient`], [`EmbeddingsClient`]) for
+/// your provider. This macro wires up the automatic conversions that allow
+/// your client to work with the dynamic client builder and capability detection.
+///
+/// # What This Does
+///
+/// For each trait listed, this macro implements the empty conversion trait,
+/// which signals to the Rig system that your client supports that capability.
+/// The actual conversion logic is provided by blanket implementations.
+///
+/// # Syntax
+///
+/// ```text
+/// impl_conversion_traits!(Trait1, Trait2, ... for YourType);
 /// ```
+///
+/// # Examples
+///
+/// ## Complete Provider Implementation
+///
+/// ```rust
+/// use rig::client::{ProviderClient, ProviderValue, CompletionClient};
+/// use rig::completion::CompletionModel;
+/// # use std::fmt::Debug;
+///
+/// // 1. Define your client
+/// #[derive(Clone, Debug)]
+/// pub struct MyClient {
+///     api_key: String,
+/// }
+///
+/// // 2. Implement ProviderClient
+/// impl ProviderClient for MyClient {
+///     fn from_env() -> Self {
+///         Self {
+///             api_key: std::env::var("MY_API_KEY")
+///                 .expect("MY_API_KEY not set"),
+///         }
+///     }
+///
+///     fn from_val(input: ProviderValue) -> Self {
+///         match input {
+///             ProviderValue::Simple(key) => Self { api_key: key },
+///             _ => panic!("Invalid value"),
+///         }
+///     }
+/// }
+///
+/// // 3. Implement capability traits
+/// // impl CompletionClient for MyClient {
+/// //     type CompletionModel = MyCompletionModel;
+/// //     fn completion_model(&self, model: &str) -> Self::CompletionModel {
+/// //         MyCompletionModel { /* ... */ }
+/// //     }
+/// // }
+///
+/// // 4. Register the capabilities with this macro
+/// rig::impl_conversion_traits!(AsCompletion for MyClient);
+/// ```
+///
+/// ## Multiple Capabilities
+///
+/// ```rust
+/// # use rig::client::{ProviderClient, ProviderValue};
+/// # use std::fmt::Debug;
+/// # #[derive(Clone, Debug)]
+/// # pub struct MultiClient;
+/// # impl ProviderClient for MultiClient {
+/// #     fn from_env() -> Self { MultiClient }
+/// #     fn from_val(_: ProviderValue) -> Self { MultiClient }
+/// # }
+/// // Register multiple capabilities at once
+/// rig::impl_conversion_traits!(AsCompletion, AsEmbeddings, AsTranscription for MultiClient);
+/// ```
+///
+/// ## With Feature Gates
+///
+/// ```rust
+/// # use rig::client::{ProviderClient, ProviderValue};
+/// # use std::fmt::Debug;
+/// # #[derive(Clone, Debug)]
+/// # pub struct MyClient;
+/// # impl ProviderClient for MyClient {
+/// #     fn from_env() -> Self { MyClient }
+/// #     fn from_val(_: ProviderValue) -> Self { MyClient }
+/// # }
+/// // The macro automatically handles feature gates for image/audio
+/// rig::impl_conversion_traits!(
+///     AsCompletion,
+///     AsEmbeddings,
+///     AsImageGeneration,  // Only available with "image" feature
+///     AsAudioGeneration   // Only available with "audio" feature
+///     for MyClient
+/// );
+/// ```
+///
+/// # See Also
+///
+/// - [`ProviderClient`] - The base trait to implement first
+/// - [`CompletionClient`], [`EmbeddingsClient`] - Capability traits to implement
+/// - [`AsCompletion`], [`AsEmbeddings`] - Conversion traits this macro implements
 #[macro_export]
 macro_rules! impl_conversion_traits {
     ($( $trait_:ident ),* for $struct_:ident ) => {
