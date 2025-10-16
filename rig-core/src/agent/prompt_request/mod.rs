@@ -1,5 +1,7 @@
 pub mod streaming;
 
+pub use streaming::StreamingPromptHook;
+
 use std::{
     future::IntoFuture,
     marker::PhantomData,
