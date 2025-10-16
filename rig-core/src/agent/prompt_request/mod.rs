@@ -1,4 +1,4 @@
-pub(crate) mod streaming;
+pub mod streaming;
 
 use std::{
     future::IntoFuture,
