@@ -8,6 +8,8 @@
 //! - [StreamingCompletion]: Defines a low-level streaming LLM completion interface
 //!
 
+pub mod sse;
+
 use crate::OneOrMany;
 use crate::agent::Agent;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;

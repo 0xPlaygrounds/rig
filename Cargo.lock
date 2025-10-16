@@ -9345,6 +9345,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "epub",
+ "eventsource-stream",
  "futures",
  "glob",
  "http 1.3.1",

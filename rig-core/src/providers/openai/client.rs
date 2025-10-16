@@ -78,7 +78,7 @@ impl<'a, T> ClientBuilder<'a, T> {
 pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
-    http_client: T,
+    pub(crate) http_client: T,
 }
 
 impl<T> Debug for Client<T>
