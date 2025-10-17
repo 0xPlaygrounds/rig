@@ -92,6 +92,12 @@ struct ToolCallState {
     input_json: String,
 }
 
+#[derive(Default)]
+struct ThinkingState {
+    thinking: String,
+    signature: String,
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 pub struct StreamingCompletionResponse {
     pub usage: PartialUsage,
@@ -225,6 +231,7 @@ where
         // Use our SSE decoder to directly handle Server-Sent Events format
         let stream: StreamingResult<StreamingCompletionResponse> = Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
+            let mut current_thinking: Option<ThinkingState> = None;
             let mut sse_stream = Box::pin(stream);
             let mut input_tokens = 0;
 
@@ -266,7 +273,7 @@ where
                                     _ => {}
                                 }
 
-                                if let Some(result) = handle_event(&event, &mut current_tool_call) {
+                                if let Some(result) = handle_event(&event, &mut current_tool_call, &mut current_thinking) {
                                     if let Ok(RawStreamingChoice::Message(ref text)) = result {
                                         text_content += text;
                                     }
@@ -297,6 +304,7 @@ where
 fn handle_event(
     event: &StreamingEvent,
     current_tool_call: &mut Option<ToolCallState>,
+    current_thinking: &mut Option<ThinkingState>,
 ) -> Option<Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>> {
     match event {
         StreamingEvent::ContentBlockDelta { delta, .. } => match delta {
@@ -312,12 +320,31 @@ fn handle_event(
                 }
                 None
             }
-            ContentDelta::ThinkingDelta { thinking } => Some(Ok(RawStreamingChoice::Reasoning {
-                id: None,
-                reasoning: thinking.clone(),
-            })),
-            ContentDelta::SignatureDelta { .. } => {
-                // Signature is used for verification of thinking blocks, we can ignore it
+            ContentDelta::ThinkingDelta { thinking } => {
+                if current_thinking.is_none() {
+                    *current_thinking = Some(ThinkingState::default());
+                }
+
+                if let Some(state) = current_thinking {
+                    state.thinking.push_str(thinking);
+                }
+
+                Some(Ok(RawStreamingChoice::Reasoning {
+                    id: None,
+                    reasoning: thinking.clone(),
+                    signature: None,
+                }))
+            }
+            ContentDelta::SignatureDelta { signature } => {
+                if current_thinking.is_none() {
+                    *current_thinking = Some(ThinkingState::default());
+                }
+
+                if let Some(state) = current_thinking {
+                    state.signature.push_str(signature);
+                }
+
+                // Don't yield signature chunks, they will be included in the final Reasoning
                 None
             }
         },
@@ -330,10 +357,30 @@ fn handle_event(
                 });
                 None
             }
+            Content::Thinking { .. } => {
+                *current_thinking = Some(ThinkingState::default());
+                None
+            }
             // Handle other content types - they don't need special handling
             _ => None,
         },
         StreamingEvent::ContentBlockStop { .. } => {
+            if let Some(thinking_state) = Option::take(current_thinking)
+                && !thinking_state.thinking.is_empty()
+            {
+                let signature = if thinking_state.signature.is_empty() {
+                    None
+                } else {
+                    Some(thinking_state.signature)
+                };
+
+                return Some(Ok(RawStreamingChoice::Reasoning {
+                    id: None,
+                    reasoning: thinking_state.thinking,
+                    signature,
+                }));
+            }
+
             if let Some(tool_call) = Option::take(current_tool_call) {
                 let json_str = if tool_call.input_json.is_empty() {
                     "{}"
@@ -456,18 +503,23 @@ mod tests {
         };
 
         let mut tool_call_state = None;
-        let result = handle_event(&event, &mut tool_call_state);
+        let mut thinking_state = None;
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
 
         assert!(result.is_some());
         let choice = result.unwrap().unwrap();
 
         match choice {
-            RawStreamingChoice::Reasoning { id, reasoning } => {
+            RawStreamingChoice::Reasoning { id, reasoning, .. } => {
                 assert_eq!(id, None);
                 assert_eq!(reasoning, "Analyzing the request...");
             }
             _ => panic!("Expected Reasoning choice"),
         }
+
+        // Verify thinking state was updated
+        assert!(thinking_state.is_some());
+        assert_eq!(thinking_state.unwrap().thinking, "Analyzing the request...");
     }
 
     #[test]
@@ -480,10 +532,15 @@ mod tests {
         };
 
         let mut tool_call_state = None;
-        let result = handle_event(&event, &mut tool_call_state);
+        let mut thinking_state = None;
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
 
-        // SignatureDelta should be ignored (returns None)
+        // SignatureDelta should not yield anything (returns None)
         assert!(result.is_none());
+
+        // But signature should be captured in thinking state
+        assert!(thinking_state.is_some());
+        assert_eq!(thinking_state.unwrap().signature, "test_signature");
     }
 
     #[test]
@@ -496,7 +553,8 @@ mod tests {
         };
 
         let mut tool_call_state = None;
-        let result = handle_event(&event, &mut tool_call_state);
+        let mut thinking_state = None;
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
 
         assert!(result.is_some());
         let choice = result.unwrap().unwrap();
@@ -524,8 +582,9 @@ mod tests {
             id: "tool_123".to_string(),
             input_json: String::new(),
         });
+        let mut thinking_state = None;
 
-        let result = handle_event(&event, &mut tool_call_state);
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
 
         assert!(result.is_some());
         let choice = result.unwrap().unwrap();
