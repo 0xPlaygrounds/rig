@@ -72,6 +72,8 @@ pub enum AssistantContent {
 pub struct Reasoning {
     pub id: Option<String>,
     pub reasoning: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
 }
 
 impl Reasoning {
@@ -80,6 +82,7 @@ impl Reasoning {
         Self {
             id: None,
             reasoning: vec![input.to_string()],
+            signature: None,
         }
     }
 
@@ -92,10 +95,16 @@ impl Reasoning {
         self
     }
 
+    pub fn with_signature(mut self, signature: Option<String>) -> Self {
+        self.signature = signature;
+        self
+    }
+
     pub fn multi(input: Vec<String>) -> Self {
         Self {
             id: None,
             reasoning: input,
+            signature: None,
         }
     }
 }

@@ -81,6 +81,7 @@ where
     Reasoning {
         id: Option<String>,
         reasoning: String,
+        signature: Option<String>,
     },
 
     /// The final response object, must be yielded if you want the
@@ -218,13 +219,18 @@ where
                     stream.text = format!("{}{}", stream.text, text.clone());
                     Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
                 }
-                RawStreamingChoice::Reasoning { id, reasoning } => {
+                RawStreamingChoice::Reasoning {
+                    id,
+                    reasoning,
+                    signature,
+                } => {
                     // Forward the streaming tokens to the outer stream
                     // and concat the text together
                     stream.reasoning = format!("{}{}", stream.reasoning, reasoning.clone());
                     Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(Reasoning {
                         id,
                         reasoning: vec![stream.reasoning.clone()],
+                        signature,
                     }))))
                 }
                 RawStreamingChoice::ToolCall {
@@ -336,9 +342,15 @@ impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
                 RawStreamingChoice::Message(m) => {
                     Poll::Ready(Some(Ok(RawStreamingChoice::Message(m))))
                 }
-                RawStreamingChoice::Reasoning { id, reasoning } => {
-                    Poll::Ready(Some(Ok(RawStreamingChoice::Reasoning { id, reasoning })))
-                }
+                RawStreamingChoice::Reasoning {
+                    id,
+                    reasoning,
+                    signature,
+                } => Poll::Ready(Some(Ok(RawStreamingChoice::Reasoning {
+                    id,
+                    reasoning,
+                    signature,
+                }))),
                 RawStreamingChoice::ToolCall {
                     id,
                     name,
