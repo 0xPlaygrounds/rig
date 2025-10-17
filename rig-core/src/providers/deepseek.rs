@@ -871,6 +871,7 @@ pub async fn send_compatible_streaming_request(
                             yield Ok(crate::streaming::RawStreamingChoice::Reasoning {
                                 reasoning: content.to_string(),
                                 id: None,
+                                signature: None,
                             });
                         }
 

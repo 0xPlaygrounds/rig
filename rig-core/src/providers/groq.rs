@@ -762,7 +762,8 @@ pub async fn send_compatible_streaming_request(
                             StreamingDelta::Reasoning { reasoning } => {
                                 yield Ok(crate::streaming::RawStreamingChoice::Reasoning {
                                     id: None,
-                                    reasoning: reasoning.to_string()
+                                    reasoning: reasoning.to_string(),
+                                    signature: None,
                                 });
                             }
 

@@ -148,7 +148,7 @@ impl CompletionModel<reqwest::Client> {
                                 thought: Some(true),
                                 ..
                             }) => {
-                                yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: text.clone(), id: None });
+                                yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: text.clone(), id: None, signature: None });
                             },
                             Some(Part {
                                 part: PartKind::Text(text),

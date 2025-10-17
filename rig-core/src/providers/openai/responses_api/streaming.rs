@@ -275,7 +275,7 @@ impl ResponsesCompletionModel<reqwest::Client> {
                                                 })
                                                 .collect::<Vec<String>>()
                                                 .join("\n");
-                                            yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning, id: Some(id.to_string()) })
+                                            yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning, id: Some(id.to_string()), signature: None })
                                         }
                                         _ => continue
                                     }

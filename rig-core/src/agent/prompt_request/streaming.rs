@@ -334,14 +334,14 @@ where
                                 yield Err(e);
                             }
                         },
-                        Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id })) => {
+                        Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id, signature })) => {
                             chat_history.write().await.push(rig::message::Message::Assistant {
                                 id: None,
                                 content: OneOrMany::one(AssistantContent::Reasoning(Reasoning {
-                                    reasoning: reasoning.clone(), id: id.clone()
+                                    reasoning: reasoning.clone(), id: id.clone(), signature: signature.clone()
                                 }))
                             });
-                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id })));
+                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id, signature })));
                             did_call_tool = false;
                         },
                         Ok(StreamedAssistantContent::Final(final_resp)) => {
