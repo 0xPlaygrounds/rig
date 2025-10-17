@@ -321,17 +321,14 @@ fn handle_event(
                 None
             }
             ContentDelta::ThinkingDelta { thinking } => {
-                // Initialize thinking state if not present
                 if current_thinking.is_none() {
                     *current_thinking = Some(ThinkingState::default());
                 }
 
-                // Accumulate thinking text
                 if let Some(state) = current_thinking {
                     state.thinking.push_str(thinking);
                 }
 
-                // Stream the thinking chunk
                 Some(Ok(RawStreamingChoice::Reasoning {
                     id: None,
                     reasoning: thinking.clone(),
@@ -339,12 +336,10 @@ fn handle_event(
                 }))
             }
             ContentDelta::SignatureDelta { signature } => {
-                // Initialize thinking state if not present
                 if current_thinking.is_none() {
                     *current_thinking = Some(ThinkingState::default());
                 }
 
-                // Accumulate signature
                 if let Some(state) = current_thinking {
                     state.signature.push_str(signature);
                 }
@@ -363,7 +358,6 @@ fn handle_event(
                 None
             }
             Content::Thinking { .. } => {
-                // Start a new thinking block
                 *current_thinking = Some(ThinkingState::default());
                 None
             }
@@ -371,27 +365,22 @@ fn handle_event(
             _ => None,
         },
         StreamingEvent::ContentBlockStop { .. } => {
-            // Check if we have a complete thinking block to yield
-            if let Some(thinking_state) = Option::take(current_thinking) {
-                // Only yield if we have actual thinking content
-                if !thinking_state.thinking.is_empty() {
-                    let signature = if thinking_state.signature.is_empty() {
-                        None
-                    } else {
-                        Some(thinking_state.signature)
-                    };
+            if let Some(thinking_state) = Option::take(current_thinking)
+                && !thinking_state.thinking.is_empty()
+            {
+                let signature = if thinking_state.signature.is_empty() {
+                    None
+                } else {
+                    Some(thinking_state.signature)
+                };
 
-                    // Emit a final Reasoning event with the signature
-                    // This allows consumers to capture the signature for later use
-                    return Some(Ok(RawStreamingChoice::Reasoning {
-                        id: None,
-                        reasoning: thinking_state.thinking,
-                        signature,
-                    }));
-                }
+                return Some(Ok(RawStreamingChoice::Reasoning {
+                    id: None,
+                    reasoning: thinking_state.thinking,
+                    signature,
+                }));
             }
 
-            // Check if we have a complete tool call
             if let Some(tool_call) = Option::take(current_tool_call) {
                 let json_str = if tool_call.input_json.is_empty() {
                     "{}"

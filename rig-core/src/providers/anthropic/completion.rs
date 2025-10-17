@@ -831,9 +831,8 @@ where
         async move {
             let request: Vec<u8> = serde_json::to_vec(&request)?;
 
-            // DEBUG: Log the request JSON to see what's being sent
             if let Ok(json_str) = String::from_utf8(request.clone()) {
-                eprintln!("[RIG DEBUG] Request JSON:\n{}", json_str);
+                tracing::debug!("Request body:\n{}", json_str);
             }
 
             let req = self
