@@ -95,6 +95,17 @@ impl TryFrom<aws_bedrock::ContentBlock> for RigAssistantContent {
                     AwsDocument(call.input).into(),
                 ),
             )),
+            aws_bedrock::ContentBlock::ReasoningContent(reasoning_block) => match reasoning_block {
+                aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text) => {
+                    Ok(RigAssistantContent(AssistantContent::Reasoning(
+                        rig::message::Reasoning::new(&reasoning_text.text)
+                            .with_signature(reasoning_text.signature),
+                    )))
+                }
+                _ => Err(CompletionError::ProviderError(
+                    "AWS Bedrock returned unsupported ReasoningContentBlock variant".into(),
+                )),
+            },
             _ => Err(CompletionError::ProviderError(
                 "AWS Bedrock returned unsupported ContentBlock".into(),
             )),
@@ -119,10 +130,24 @@ impl TryFrom<RigAssistantContent> for aws_bedrock::ContentBlock {
                         .map_err(|e| CompletionError::ProviderError(e.to_string()))?,
                 ))
             }
-            AssistantContent::Reasoning(_) => {
-                unimplemented!(
-                    "Reasoning is currently unimplemented on AWS Bedrock (as far as we know). If you need this, please open a ticket!"
-                )
+            AssistantContent::Reasoning(reasoning) => {
+                let mut reasoning_block =
+                    aws_bedrock::ReasoningTextBlock::builder().text(reasoning.reasoning.join(""));
+
+                if let Some(sig) = &reasoning.signature {
+                    reasoning_block = reasoning_block.signature(sig.clone());
+                }
+
+                let reasoning_text_block = reasoning_block.build().map_err(|e| {
+                    CompletionError::ProviderError(format!(
+                        "Failed to build reasoning block: {}",
+                        e
+                    ))
+                })?;
+
+                Ok(aws_bedrock::ContentBlock::ReasoningContent(
+                    aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text_block),
+                ))
             }
         }
     }
@@ -176,5 +201,120 @@ mod tests {
             rig_assistant_content.unwrap().0,
             AssistantContent::Text("text".into())
         );
+    }
+
+    #[test]
+    fn aws_reasoning_content_to_assistant_content_without_signature() {
+        // Test conversion from AWS ReasoningContent to Rig AssistantContent without signature
+        let reasoning_text_block = aws_bedrock::ReasoningTextBlock::builder()
+            .text("This is my reasoning")
+            .build()
+            .unwrap();
+
+        let content_block = aws_bedrock::ContentBlock::ReasoningContent(
+            aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text_block),
+        );
+
+        let rig_assistant_content: Result<RigAssistantContent, _> = content_block.try_into();
+        assert!(rig_assistant_content.is_ok());
+
+        match rig_assistant_content.unwrap().0 {
+            AssistantContent::Reasoning(reasoning) => {
+                assert_eq!(reasoning.reasoning, vec!["This is my reasoning"]);
+                assert_eq!(reasoning.signature, None);
+            }
+            _ => panic!("Expected AssistantContent::Reasoning"),
+        }
+    }
+
+    #[test]
+    fn aws_reasoning_content_to_assistant_content_with_signature() {
+        // Test conversion from AWS ReasoningContent to Rig AssistantContent with signature
+        let reasoning_text_block = aws_bedrock::ReasoningTextBlock::builder()
+            .text("This is my reasoning with signature")
+            .signature("test_signature_123")
+            .build()
+            .unwrap();
+
+        let content_block = aws_bedrock::ContentBlock::ReasoningContent(
+            aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text_block),
+        );
+
+        let rig_assistant_content: Result<RigAssistantContent, _> = content_block.try_into();
+        assert!(rig_assistant_content.is_ok());
+
+        match rig_assistant_content.unwrap().0 {
+            AssistantContent::Reasoning(reasoning) => {
+                assert_eq!(
+                    reasoning.reasoning,
+                    vec!["This is my reasoning with signature"]
+                );
+                assert_eq!(reasoning.signature, Some("test_signature_123".to_string()));
+            }
+            _ => panic!("Expected AssistantContent::Reasoning"),
+        }
+    }
+
+    #[test]
+    fn rig_reasoning_to_aws_content_block_without_signature() {
+        // Test conversion from Rig Reasoning to AWS ContentBlock without signature
+        let reasoning = rig::message::Reasoning::new("My reasoning content");
+        let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
+
+        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
+        assert!(aws_content_block.is_ok());
+
+        match aws_content_block.unwrap() {
+            aws_bedrock::ContentBlock::ReasoningContent(
+                aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text),
+            ) => {
+                assert_eq!(reasoning_text.text, "My reasoning content");
+                assert_eq!(reasoning_text.signature, None);
+            }
+            _ => panic!("Expected ContentBlock::ReasoningContent"),
+        }
+    }
+
+    #[test]
+    fn rig_reasoning_to_aws_content_block_with_signature() {
+        // Test conversion from Rig Reasoning to AWS ContentBlock with signature
+        let reasoning = rig::message::Reasoning::new("My reasoning content")
+            .with_signature(Some("sig_abc_123".to_string()));
+        let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
+
+        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
+        assert!(aws_content_block.is_ok());
+
+        match aws_content_block.unwrap() {
+            aws_bedrock::ContentBlock::ReasoningContent(
+                aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text),
+            ) => {
+                assert_eq!(reasoning_text.text, "My reasoning content");
+                assert_eq!(reasoning_text.signature, Some("sig_abc_123".to_string()));
+            }
+            _ => panic!("Expected ContentBlock::ReasoningContent"),
+        }
+    }
+
+    #[test]
+    fn rig_reasoning_with_multiple_strings_to_aws_content_block() {
+        // Test that multiple reasoning strings are joined correctly
+        let mut reasoning = rig::message::Reasoning::new("First part");
+        reasoning.reasoning.push(" Second part".to_string());
+        reasoning.reasoning.push(" Third part".to_string());
+
+        let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
+
+        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
+        assert!(aws_content_block.is_ok());
+
+        match aws_content_block.unwrap() {
+            aws_bedrock::ContentBlock::ReasoningContent(
+                aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text),
+            ) => {
+                assert_eq!(reasoning_text.text, "First part Second part Third part");
+            }
+            _ => panic!("Expected ContentBlock::ReasoningContent"),
+        }
     }
 }
