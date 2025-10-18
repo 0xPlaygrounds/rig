@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.3...rig-bedrock-v0.3.4) - 2025-10-18
+
+### Added
+
+- *(bedrock)* Implement usage ([#934](https://github.com/0xPlaygrounds/rig/pull/934))
+
 ## [0.3.3](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.2...rig-bedrock-v0.3.3) - 2025-10-14
 
 ### Added

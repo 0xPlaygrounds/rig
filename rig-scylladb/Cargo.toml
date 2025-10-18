@@ -1,6 +1,6 @@
 [package]
 name = "rig-scylladb"
-version = "0.1.13"
+version = "0.1.14"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -8,7 +8,7 @@ description = "ScyllaDB vector store index integration for Rig. High-performance
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.22.0", features = ["derive"] }
+rig-core = { path = "../rig-core", version = "0.23.0", features = ["derive"] }
 serde_json = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 scylla = { workspace = true }

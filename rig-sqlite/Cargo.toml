@@ -1,6 +1,6 @@
 [package]
 name = "rig-sqlite"
-version = "0.1.24"
+version = "0.1.25"
 edition = { workspace = true }
 description = "SQLite-based vector store implementation for the rig framework"
 license = "MIT"
@@ -9,7 +9,7 @@ license = "MIT"
 doctest = false
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.22.0", features = ["derive"] }
+rig-core = { path = "../rig-core", version = "0.23.0", features = ["derive"] }
 rusqlite = { workspace = true, features = ["bundled"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

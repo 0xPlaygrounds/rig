@@ -1,6 +1,6 @@
 [package]
 name = "rig-helixdb"
-version = "0.1.1"
+version = "0.1.2"
 edition.workspace = true
 license = "MIT"
 readme = "README.md"
@@ -11,7 +11,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 helix-rs = "0.1.9"
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-rig-core = { path = "../rig-core", version = "0.22.0" }
+rig-core = { path = "../rig-core", version = "0.23.0" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

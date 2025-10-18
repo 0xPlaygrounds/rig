@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.22.0...rig-core-v0.23.0) - 2025-10-18
+
+### Added
+
+- *(ollama)* thinking ([#948](https://github.com/0xPlaygrounds/rig/pull/948))
+- *(anthropic)* Expose the reasoning signature ([#945](https://github.com/0xPlaygrounds/rig/pull/945))
+
+### Fixed
+
+- *(openrouter)* use reqwest_post helper to construct full URL ([#943](https://github.com/0xPlaygrounds/rig/pull/943))
+- *(rig-995)* include max tokens in Moonshot API request ([#935](https://github.com/0xPlaygrounds/rig/pull/935))
+
+### Other
+
+- make streaming prompt module pub ([#944](https://github.com/0xPlaygrounds/rig/pull/944))
+- *(rig-993)* re-import all items from embeddings module in rig::embeddings ([#936](https://github.com/0xPlaygrounds/rig/pull/936))
+
 ## [0.22.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.21.0...rig-core-v0.22.0) - 2025-10-14
 
 ### Added

@@ -1,13 +1,13 @@
 [package]
 name = "rig-surrealdb"
-version = "0.1.19"
+version = "0.1.20"
 edition = { workspace = true }
 description = "SurrealDB vector store implementation for the rig framework"
 license = "MIT"
 
 [dependencies]
 surrealdb = { workspace = true, features = ["protocol-ws", "kv-mem"] }
-rig-core = { path = "../rig-core", version = "0.22.0", features = ["derive"] }
+rig-core = { path = "../rig-core", version = "0.23.0", features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
