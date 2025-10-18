@@ -1,6 +1,6 @@
 [package]
 name = "rig-qdrant"
-version = "0.1.27"
+version = "0.1.28"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -8,7 +8,7 @@ description = "Rig vector store index integration for Qdrant. https://qdrant.tec
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.22.0" }
+rig-core = { path = "../rig-core", version = "0.23.0" }
 serde_json = { workspace = true }
 serde = { workspace = true }
 qdrant-client = { workspace = true }

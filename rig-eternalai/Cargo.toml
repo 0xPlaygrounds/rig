@@ -1,6 +1,6 @@
 [package]
 name = "rig-eternalai"
-version = "0.3.9"
+version = "0.3.10"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -8,7 +8,7 @@ description = "EternalAI model provider Rig integration."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.22.0" }
+rig-core = { path = "../rig-core", version = "0.23.0" }
 ethers = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
