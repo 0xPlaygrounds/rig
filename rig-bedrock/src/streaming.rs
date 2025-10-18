@@ -36,6 +36,12 @@ struct ToolCallState {
     input_json: String,
 }
 
+#[derive(Default)]
+struct ReasoningState {
+    content: String,
+    signature: Option<String>,
+}
+
 impl CompletionModel {
     pub(crate) async fn stream(
         &self,
@@ -65,6 +71,7 @@ impl CompletionModel {
 
         let stream = Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
+            let mut current_reasoning: Option<ReasoningState> = None;
             let mut stream = response.stream;
             while let Ok(Some(output)) = stream.recv().await {
                 match output {
@@ -81,6 +88,37 @@ impl CompletionModel {
                                     tool_call.input_json.push_str(tool.input());
                                 }
                             },
+                            aws_bedrock::ContentBlockDelta::ReasoningContent(reasoning) => {
+                                match reasoning {
+                                    aws_bedrock::ReasoningContentBlockDelta::Text(text) => {
+                                        if current_reasoning.is_none() {
+                                            current_reasoning = Some(ReasoningState::default());
+                                        }
+
+                                        if let Some(ref mut state) = current_reasoning {
+                                            state.content.push_str(text.as_str());
+                                        }
+
+                                        if !text.is_empty() {
+                                            yield Ok(RawStreamingChoice::Reasoning {
+                                                reasoning: text.clone(),
+                                                id: None,
+                                                signature: None,
+                                            })
+                                        }
+                                    },
+                                    aws_bedrock::ReasoningContentBlockDelta::Signature(signature) => {
+                                        if current_reasoning.is_none() {
+                                            current_reasoning = Some(ReasoningState::default());
+                                        }
+
+                                        if let Some(ref mut state) = current_reasoning {
+                                            state.signature = Some(signature.clone());
+                                        }
+                                    },
+                                    _ => {}
+                                }
+                            },
                             _ => {}
                         }
                     },
@@ -95,6 +133,16 @@ impl CompletionModel {
                             },
                             _ => yield Err(CompletionError::ProviderError("Stream is empty".into()))
                         }
+                    },
+                    aws_bedrock::ConverseStreamOutput::ContentBlockStop(_event) => {
+                        if let Some(reasoning_state) = current_reasoning.take()
+                            && !reasoning_state.content.is_empty() {
+                                yield Ok(RawStreamingChoice::Reasoning {
+                                    reasoning: reasoning_state.content,
+                                    id: None,
+                                    signature: reasoning_state.signature,
+                                })
+                            }
                     },
                     aws_bedrock::ConverseStreamOutput::MessageStop(message_stop_event) => {
                         match message_stop_event.stop_reason {
@@ -242,5 +290,75 @@ mod tests {
         assert_eq!(usage.input_tokens, 200);
         assert_eq!(usage.output_tokens, 75);
         assert_eq!(usage.total_tokens, 275);
+    }
+
+    #[test]
+    fn test_reasoning_state_default() {
+        // Test that ReasoningState defaults are correct
+        let state = ReasoningState::default();
+        assert_eq!(state.content, "");
+        assert_eq!(state.signature, None);
+    }
+
+    #[test]
+    fn test_reasoning_state_accumulate_content() {
+        // Test accumulating content in ReasoningState
+        let mut state = ReasoningState::default();
+        state.content.push_str("First chunk");
+        state.content.push_str(" Second chunk");
+        state.content.push_str(" Third chunk");
+
+        assert_eq!(state.content, "First chunk Second chunk Third chunk");
+        assert_eq!(state.signature, None);
+    }
+
+    #[test]
+    fn test_reasoning_state_with_signature() {
+        // Test ReasoningState with signature
+        let mut state = ReasoningState::default();
+        state.content.push_str("Reasoning content");
+        state.signature = Some("test_signature_456".to_string());
+
+        assert_eq!(state.content, "Reasoning content");
+        assert_eq!(state.signature, Some("test_signature_456".to_string()));
+    }
+
+    #[test]
+    fn test_reasoning_state_empty_content() {
+        // Test that ReasoningState can have empty content
+        let state = ReasoningState {
+            signature: Some("signature_only".to_string()),
+            ..Default::default()
+        };
+
+        assert_eq!(state.content, "");
+        assert!(state.signature.is_some());
+    }
+
+    #[test]
+    fn test_tool_call_state_default() {
+        // Test that ToolCallState defaults are correct
+        let state = ToolCallState::default();
+        assert_eq!(state.name, "");
+        assert_eq!(state.id, "");
+        assert_eq!(state.input_json, "");
+    }
+
+    #[test]
+    fn test_tool_call_state_accumulate_json() {
+        // Test accumulating JSON input in ToolCallState
+        let mut state = ToolCallState {
+            name: "my_tool".to_string(),
+            id: "tool_123".to_string(),
+            input_json: String::new(),
+        };
+
+        state.input_json.push_str("{\"arg1\":");
+        state.input_json.push_str("\"value1\"");
+        state.input_json.push('}');
+
+        assert_eq!(state.name, "my_tool");
+        assert_eq!(state.id, "tool_123");
+        assert_eq!(state.input_json, "{\"arg1\":\"value1\"}");
     }
 }
