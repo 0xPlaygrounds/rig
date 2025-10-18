@@ -13,6 +13,7 @@ use crate::{
 
 pub mod in_memory_store;
 pub mod request;
+pub mod lsh;
 
 #[derive(Debug, thiserror::Error)]
 pub enum VectorStoreError {
@@ -181,5 +182,22 @@ where
                 document,
             })
             .collect())
+    }
+}
+
+// enum for index strategy
+#[derive(Clone, Debug)]
+pub enum IndexStrategy {
+    BruteForce,
+
+    LSH {
+        num_tables: usize,
+        num_hyperplanes: usize
+    }
+}
+
+impl Default for IndexStrategy {
+    fn default() -> Self {
+        Self::BruteForce
     }
 }

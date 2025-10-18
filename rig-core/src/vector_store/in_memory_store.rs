@@ -7,11 +7,13 @@ use std::{
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 
-use super::{VectorStoreError, VectorStoreIndex, request::VectorSearchRequest};
+use super::{VectorStoreError, VectorStoreIndex, request::VectorSearchRequest, IndexStrategy};
 use crate::{
     OneOrMany,
     embeddings::{Embedding, EmbeddingModel, distance::VectorDistance},
 };
+
+use super::lsh::LSHIndex;
 
 /// [InMemoryVectorStore] is a simple in-memory vector store that stores embeddings
 /// in-memory using a HashMap.
@@ -21,13 +23,19 @@ pub struct InMemoryVectorStore<D: Serialize> {
     /// Hashmap key is the document id.
     /// Hashmap value is a tuple of the serializable document and its corresponding embeddings.
     embeddings: HashMap<String, (D, OneOrMany<Embedding>)>,
+
+    index_strategy: IndexStrategy,
+
+    lsh_index: Option<LSHIndex>
 }
 
 impl<D: Serialize + Eq> InMemoryVectorStore<D> {
+
+
     /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings.
     /// Ids are automatically generated have will have the form `"doc{n}"` where `n`
     /// is the index of the document.
-    pub fn from_documents(documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>) -> Self {
+    pub fn from_documents(documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>, index_strategy: IndexStrategy) -> Self {
         let mut store = HashMap::new();
         documents
             .into_iter()
@@ -36,19 +44,34 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
                 store.insert(format!("doc{i}"), (doc, embeddings));
             });
 
-        Self { embeddings: store }
+        let mut vector_store = Self { embeddings: store, index_strategy: index_strategy.clone(), lsh_index: None };
+        
+        // Initialize LSH index if needed
+        if let IndexStrategy::LSH { num_tables, num_hyperplanes } = index_strategy {
+            vector_store.initialize_lsh_index(num_tables, num_hyperplanes);
+        }
+
+        vector_store
     }
 
     /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings with ids.
     pub fn from_documents_with_ids(
         documents: impl IntoIterator<Item = (impl ToString, D, OneOrMany<Embedding>)>,
+        index_strategy: IndexStrategy,
     ) -> Self {
         let mut store = HashMap::new();
         documents.into_iter().for_each(|(i, doc, embeddings)| {
             store.insert(i.to_string(), (doc, embeddings));
         });
 
-        Self { embeddings: store }
+        let mut vector_store = Self { embeddings: store, index_strategy: index_strategy.clone(), lsh_index: None };
+        
+        // Initialize LSH index if needed
+        if let IndexStrategy::LSH { num_tables, num_hyperplanes } = index_strategy {
+            vector_store.initialize_lsh_index(num_tables, num_hyperplanes);
+        }
+
+        vector_store
     }
 
     /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings.
@@ -56,18 +79,36 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     pub fn from_documents_with_id_f(
         documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>,
         f: fn(&D) -> String,
+        index_strategy: IndexStrategy,
     ) -> Self {
         let mut store = HashMap::new();
         documents.into_iter().for_each(|(doc, embeddings)| {
             store.insert(f(&doc), (doc, embeddings));
         });
 
-        Self { embeddings: store }
+        let mut vector_store = Self { embeddings: store, index_strategy: index_strategy.clone(), lsh_index: None };
+        
+        // Initialize LSH index if needed
+        if let IndexStrategy::LSH { num_tables, num_hyperplanes } = index_strategy {
+            vector_store.initialize_lsh_index(num_tables, num_hyperplanes);
+        }
+
+        vector_store
     }
 
     /// Implement vector search on [InMemoryVectorStore].
     /// To be used by implementations of [VectorStoreIndex::top_n] and [VectorStoreIndex::top_n_ids] methods.
     fn vector_search(&self, prompt_embedding: &Embedding, n: usize) -> EmbeddingRanking<'_, D> {
+        match &self.index_strategy {
+            IndexStrategy::BruteForce => self.vector_search_brute_force(prompt_embedding, n),
+            IndexStrategy::LSH { num_tables, num_hyperplanes } => {
+                self.vector_search_lsh(prompt_embedding, n, *num_tables, *num_hyperplanes)
+            }
+        }
+    }
+
+    /// Brute force vector search - checks all documents
+    fn vector_search_brute_force(&self, prompt_embedding: &Embedding, n: usize) -> EmbeddingRanking<'_, D> {
         // Sort documents by best embedding distance
         let mut docs = BinaryHeap::new();
 
@@ -104,6 +145,92 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         docs
     }
 
+    /// LSH-based vector search - uses LSH to find candidates then computes exact distances
+    fn vector_search_lsh(&self, prompt_embedding: &Embedding, n: usize, _num_tables: usize, _num_hyperplanes: usize) -> EmbeddingRanking<'_, D> {
+        // If we don't have an LSH index yet, fall back to brute force
+        if self.lsh_index.is_none() {
+            tracing::warn!("LSH index not initialized, falling back to brute force search");
+            return self.vector_search_brute_force(prompt_embedding, n);
+        }
+
+        let lsh_index = self.lsh_index.as_ref().unwrap();
+        let candidates = lsh_index.query(&prompt_embedding.vec);
+        
+        // Sort documents by best embedding distance, but only check candidates
+        let mut docs = BinaryHeap::new();
+
+        // Collect all matching documents with their scores first
+        let mut scored_docs = Vec::new();
+        
+        for candidate_id in candidates {
+            if let Some((doc, embeddings)) = self.embeddings.get(&candidate_id) {
+                // Get the best context for the document given the prompt
+                if let Some((distance, embed_doc)) = embeddings
+                    .iter()
+                    .map(|embedding| {
+                        (
+                            OrderedFloat(embedding.cosine_similarity(prompt_embedding, false)),
+                            &embedding.document,
+                        )
+                    })
+                    .max_by(|a, b| a.0.cmp(&b.0))
+                {
+                    scored_docs.push((distance, candidate_id, doc, embed_doc));
+                }
+            }
+        }
+
+        // Sort by distance and take top n
+        scored_docs.sort_by(|a, b| b.0.cmp(&a.0)); // Sort in descending order (highest similarity first)
+        scored_docs.truncate(n);
+
+        // Convert to BinaryHeap format using the original HashMap keys
+        for (distance, candidate_id, doc, embed_doc) in scored_docs {
+            if let Some((id_ref, _)) = self.embeddings.iter().find(|(k, _)| **k == candidate_id) {
+                docs.push(Reverse(RankingItem(distance, id_ref, doc, embed_doc)));
+            }
+        }
+
+        // Log selected tools with their distances
+        tracing::info!(target: "rig",
+            "Selected documents (LSH): {}",
+            docs.iter()
+                .map(|Reverse(RankingItem(distance, id, _, _))| format!("{id} ({distance})"))
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
+
+        docs
+    }
+
+    /// Initialize LSH index from existing embeddings
+    fn initialize_lsh_index(&mut self, num_tables: usize, num_hyperplanes: usize) {
+        if self.embeddings.is_empty() {
+            return;
+        }
+
+        // Get the dimension from the first embedding
+        let first_embedding = self.embeddings.values().next()
+            .and_then(|(_, embeddings)| embeddings.iter().next())
+            .map(|e| e.vec.len())
+            .unwrap_or(0);
+
+        if first_embedding == 0 {
+            return;
+        }
+
+        let mut lsh_index = LSHIndex::new(first_embedding, num_tables, num_hyperplanes);
+
+        // Insert all existing embeddings into the LSH index
+        for (id, (_, embeddings)) in self.embeddings.iter() {
+            for embedding in embeddings.iter() {
+                lsh_index.insert(id.clone(), &embedding.vec);
+            }
+        }
+
+        self.lsh_index = Some(lsh_index);
+    }
+
     /// Add documents and their corresponding embeddings to the store.
     /// Ids are automatically generated have will have the form `"doc{n}"` where `n`
     /// is the index of the document.
@@ -116,8 +243,15 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             .into_iter()
             .enumerate()
             .for_each(|(index, (doc, embeddings))| {
-                self.embeddings
-                    .insert(format!("doc{}", index + current_index), (doc, embeddings));
+                let id = format!("doc{}", index + current_index);
+                self.embeddings.insert(id.clone(), (doc, embeddings.clone()));
+                
+                // Update LSH index if it exists
+                if let Some(ref mut lsh_index) = self.lsh_index {
+                    for embedding in embeddings.iter() {
+                        lsh_index.insert(id.clone(), &embedding.vec);
+                    }
+                }
             });
     }
 
@@ -127,7 +261,15 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         documents: impl IntoIterator<Item = (impl ToString, D, OneOrMany<Embedding>)>,
     ) {
         documents.into_iter().for_each(|(id, doc, embeddings)| {
-            self.embeddings.insert(id.to_string(), (doc, embeddings));
+            let id_str = id.to_string();
+            self.embeddings.insert(id_str.clone(), (doc, embeddings.clone()));
+            
+            // Update LSH index if it exists
+            if let Some(ref mut lsh_index) = self.lsh_index {
+                for embedding in embeddings.iter() {
+                    lsh_index.insert(id_str.clone(), &embedding.vec);
+                }
+            }
         });
     }
 
@@ -140,7 +282,14 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     ) {
         for (doc, embeddings) in documents {
             let id = f(&doc);
-            self.embeddings.insert(id, (doc, embeddings));
+            self.embeddings.insert(id.clone(), (doc, embeddings.clone()));
+            
+            // Update LSH index if it exists
+            if let Some(ref mut lsh_index) = self.lsh_index {
+                for embedding in embeddings.iter() {
+                    lsh_index.insert(id.clone(), &embedding.vec);
+                }
+            }
         }
     }
 
@@ -267,7 +416,7 @@ mod tests {
 
     use crate::{OneOrMany, embeddings::embedding::Embedding};
 
-    use super::{InMemoryVectorStore, RankingItem};
+    use super::{InMemoryVectorStore, RankingItem, IndexStrategy};
 
     #[test]
     fn test_auto_ids() {
@@ -293,7 +442,7 @@ mod tests {
                     vec: vec![0.3, 0.7, 0.1],
                 }),
             ),
-        ]);
+        ], IndexStrategy::LSH { num_tables: 5, num_hyperplanes: 10 });
 
         vector_store.add_documents(vec![
             (
@@ -399,7 +548,7 @@ mod tests {
                     vec: vec![0.3, 0.7, 0.1],
                 }),
             ),
-        ]);
+        ], IndexStrategy::LSH { num_tables: 5, num_hyperplanes: 10 });
 
         let ranking = vector_store.vector_search(
             &Embedding {
@@ -476,7 +625,7 @@ mod tests {
                 ])
                 .unwrap(),
             ),
-        ]);
+        ], IndexStrategy::LSH { num_tables: 5, num_hyperplanes: 10 });
 
         let ranking = vector_store.vector_search(
             &Embedding {
