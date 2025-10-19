@@ -291,12 +291,14 @@ impl<T> CompletionModel<T> {
                 "model": self.model,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
+                "max_tokens": completion_request.max_tokens,
             })
         } else {
             json!({
                 "model": self.model,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
+                "max_tokens": completion_request.max_tokens,
                 "tools": completion_request.tools.into_iter().map(openai::ToolDefinition::from).collect::<Vec<_>>(),
                 "tool_choice": tool_choice,
             })
@@ -323,6 +325,11 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
         let request = self.create_completion_request(completion_request)?;
+
+        println!(
+            "Moonshot API input: {request}",
+            request = serde_json::to_string_pretty(&request).unwrap()
+        );
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(

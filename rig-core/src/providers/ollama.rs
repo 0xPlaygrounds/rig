@@ -689,6 +689,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             let mut byte_stream = response.bytes_stream();
             let mut tool_calls_final = Vec::new();
             let mut text_response = String::new();
+            let mut thinking_response = String::new();
 
             while let Some(chunk) = byte_stream.next().await {
                 let bytes = chunk.map_err(|e| http_client::Error::Instance(e.into()))?;
@@ -707,7 +708,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                         span.record("gen_ai.usage.output_tokens", response.eval_count);
                         let message = Message::Assistant {
                             content: text_response.clone(),
-                            thinking: None,
+                            thinking: if thinking_response.is_empty() { None } else { Some(thinking_response.clone()) },
                             images: None,
                             name: None,
                             tool_calls: tool_calls_final.clone()
@@ -727,11 +728,22 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                         break;
                     }
 
-                    if let Message::Assistant { content, tool_calls, .. } = response.message {
+                    if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
+                        if let Some(thinking_content) = thinking
+                            && !thinking_content.is_empty() {
+                            thinking_response += &thinking_content;
+                            yield RawStreamingChoice::Reasoning {
+                                reasoning: thinking_content,
+                                id: None,
+                                signature: None,
+                            };
+                        }
+
                         if !content.is_empty() {
                             text_response += &content;
                             yield RawStreamingChoice::Message(content);
                         }
+
                         for tool_call in tool_calls {
                             tool_calls_final.push(tool_call.clone());
                             yield RawStreamingChoice::ToolCall {
@@ -1210,5 +1222,238 @@ mod tests {
         // Check JSON fields in parameters.
         let params = &ollama_tool.function.parameters;
         assert_eq!(params["properties"]["location"]["type"], "string");
+    }
+
+    // Test deserialization of chat response with thinking content
+    #[tokio::test]
+    async fn test_chat_completion_with_thinking() {
+        let sample_response = json!({
+            "model": "qwen-thinking",
+            "created_at": "2023-08-04T19:22:45.499127Z",
+            "message": {
+                "role": "assistant",
+                "content": "The answer is 42.",
+                "thinking": "Let me think about this carefully. The question asks for the meaning of life...",
+                "images": null,
+                "tool_calls": []
+            },
+            "done": true,
+            "total_duration": 8000000000u64,
+            "load_duration": 6000000u64,
+            "prompt_eval_count": 61u64,
+            "prompt_eval_duration": 400000000u64,
+            "eval_count": 468u64,
+            "eval_duration": 7700000000u64
+        });
+
+        let chat_resp: CompletionResponse =
+            serde_json::from_value(sample_response).expect("Failed to deserialize");
+
+        // Verify thinking field is present
+        if let Message::Assistant {
+            thinking, content, ..
+        } = &chat_resp.message
+        {
+            assert_eq!(
+                thinking.as_ref().unwrap(),
+                "Let me think about this carefully. The question asks for the meaning of life..."
+            );
+            assert_eq!(content, "The answer is 42.");
+        } else {
+            panic!("Expected Assistant message");
+        }
+    }
+
+    // Test deserialization of chat response without thinking content
+    #[tokio::test]
+    async fn test_chat_completion_without_thinking() {
+        let sample_response = json!({
+            "model": "llama3.2",
+            "created_at": "2023-08-04T19:22:45.499127Z",
+            "message": {
+                "role": "assistant",
+                "content": "Hello!",
+                "images": null,
+                "tool_calls": []
+            },
+            "done": true,
+            "total_duration": 8000000000u64,
+            "load_duration": 6000000u64,
+            "prompt_eval_count": 10u64,
+            "prompt_eval_duration": 400000000u64,
+            "eval_count": 5u64,
+            "eval_duration": 7700000000u64
+        });
+
+        let chat_resp: CompletionResponse =
+            serde_json::from_value(sample_response).expect("Failed to deserialize");
+
+        // Verify thinking field is None when not provided
+        if let Message::Assistant {
+            thinking, content, ..
+        } = &chat_resp.message
+        {
+            assert!(thinking.is_none());
+            assert_eq!(content, "Hello!");
+        } else {
+            panic!("Expected Assistant message");
+        }
+    }
+
+    // Test deserialization of streaming response with thinking content
+    #[test]
+    fn test_streaming_response_with_thinking() {
+        let sample_chunk = json!({
+            "model": "qwen-thinking",
+            "created_at": "2023-08-04T19:22:45.499127Z",
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "thinking": "Analyzing the problem...",
+                "images": null,
+                "tool_calls": []
+            },
+            "done": false
+        });
+
+        let chunk: CompletionResponse =
+            serde_json::from_value(sample_chunk).expect("Failed to deserialize");
+
+        if let Message::Assistant {
+            thinking, content, ..
+        } = &chunk.message
+        {
+            assert_eq!(thinking.as_ref().unwrap(), "Analyzing the problem...");
+            assert_eq!(content, "");
+        } else {
+            panic!("Expected Assistant message");
+        }
+    }
+
+    // Test message conversion with thinking content
+    #[test]
+    fn test_message_conversion_with_thinking() {
+        // Create an internal message with reasoning content
+        let reasoning_content = crate::message::Reasoning {
+            id: None,
+            reasoning: vec!["Step 1: Consider the problem".to_string()],
+            signature: None,
+        };
+
+        let internal_msg = crate::message::Message::Assistant {
+            id: None,
+            content: crate::OneOrMany::many(vec![
+                crate::message::AssistantContent::Reasoning(reasoning_content),
+                crate::message::AssistantContent::Text(crate::message::Text {
+                    text: "The answer is X".to_string(),
+                }),
+            ])
+            .unwrap(),
+        };
+
+        // Convert to provider Message
+        let provider_msgs: Vec<Message> = internal_msg.try_into().unwrap();
+        assert_eq!(provider_msgs.len(), 1);
+
+        if let Message::Assistant {
+            thinking, content, ..
+        } = &provider_msgs[0]
+        {
+            assert_eq!(thinking.as_ref().unwrap(), "Step 1: Consider the problem");
+            assert_eq!(content, "The answer is X");
+        } else {
+            panic!("Expected Assistant message with thinking");
+        }
+    }
+
+    // Test empty thinking content is handled correctly
+    #[test]
+    fn test_empty_thinking_content() {
+        let sample_response = json!({
+            "model": "llama3.2",
+            "created_at": "2023-08-04T19:22:45.499127Z",
+            "message": {
+                "role": "assistant",
+                "content": "Response",
+                "thinking": "",
+                "images": null,
+                "tool_calls": []
+            },
+            "done": true,
+            "total_duration": 8000000000u64,
+            "load_duration": 6000000u64,
+            "prompt_eval_count": 10u64,
+            "prompt_eval_duration": 400000000u64,
+            "eval_count": 5u64,
+            "eval_duration": 7700000000u64
+        });
+
+        let chat_resp: CompletionResponse =
+            serde_json::from_value(sample_response).expect("Failed to deserialize");
+
+        if let Message::Assistant {
+            thinking, content, ..
+        } = &chat_resp.message
+        {
+            // Empty string should still deserialize as Some("")
+            assert_eq!(thinking.as_ref().unwrap(), "");
+            assert_eq!(content, "Response");
+        } else {
+            panic!("Expected Assistant message");
+        }
+    }
+
+    // Test thinking with tool calls
+    #[test]
+    fn test_thinking_with_tool_calls() {
+        let sample_response = json!({
+            "model": "qwen-thinking",
+            "created_at": "2023-08-04T19:22:45.499127Z",
+            "message": {
+                "role": "assistant",
+                "content": "Let me check the weather.",
+                "thinking": "User wants weather info, I should use the weather tool",
+                "images": null,
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": {
+                                "location": "San Francisco"
+                            }
+                        }
+                    }
+                ]
+            },
+            "done": true,
+            "total_duration": 8000000000u64,
+            "load_duration": 6000000u64,
+            "prompt_eval_count": 30u64,
+            "prompt_eval_duration": 400000000u64,
+            "eval_count": 50u64,
+            "eval_duration": 7700000000u64
+        });
+
+        let chat_resp: CompletionResponse =
+            serde_json::from_value(sample_response).expect("Failed to deserialize");
+
+        if let Message::Assistant {
+            thinking,
+            content,
+            tool_calls,
+            ..
+        } = &chat_resp.message
+        {
+            assert_eq!(
+                thinking.as_ref().unwrap(),
+                "User wants weather info, I should use the weather tool"
+            );
+            assert_eq!(content, "Let me check the weather.");
+            assert_eq!(tool_calls.len(), 1);
+            assert_eq!(tool_calls[0].function.name, "get_weather");
+        } else {
+            panic!("Expected Assistant message with thinking and tool calls");
+        }
     }
 }

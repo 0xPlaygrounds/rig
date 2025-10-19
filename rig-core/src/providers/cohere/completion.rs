@@ -160,6 +160,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     completion::AssistantContent::Reasoning(Reasoning {
                         id: None,
                         reasoning: vec![thinking],
+                        signature: None,
                     })
                 }
             }))
@@ -458,6 +459,7 @@ impl TryFrom<Message> for message::Message {
                             message::AssistantContent::Reasoning(Reasoning {
                                 id: None,
                                 reasoning: vec![thinking],
+                                signature: None,
                             })
                         }
                     })

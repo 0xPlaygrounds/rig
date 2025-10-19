@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.24](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.23...rig-lancedb-v0.2.24) - 2025-10-14
+
+### Added
+
+- *(rig-990)* allow configuring optional lancedb features ([#923](https://github.com/0xPlaygrounds/rig/pull/923))
+- *(rig-951)* generic HTTP client ([#875](https://github.com/0xPlaygrounds/rig/pull/875))
+
+### Fixed
+
+- trying to fix test regressions part 2 ([#913](https://github.com/0xPlaygrounds/rig/pull/913))
+- test regression ([#912](https://github.com/0xPlaygrounds/rig/pull/912))
+
 ## [0.2.23](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.22...rig-lancedb-v0.2.23) - 2025-09-29
 
 ### Other

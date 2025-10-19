@@ -1,6 +1,6 @@
 use crate::agent::Agent;
 use crate::client::ProviderClient;
-use crate::completion::{CompletionRequest, Message};
+use crate::completion::{CompletionRequest, GetTokenUsage, Message, Usage};
 use crate::embeddings::embedding::EmbeddingModelDyn;
 use crate::providers::{
     anthropic, azure, cohere, deepseek, galadriel, gemini, groq, huggingface, hyperbolic, mira,
@@ -9,6 +9,7 @@ use crate::providers::{
 use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::TranscriptionModelDyn;
 use rig::completion::CompletionModelDyn;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use thiserror::Error;
@@ -390,7 +391,7 @@ impl<'a> DynClientBuilder {
         provider: &str,
         model: &str,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         let client = self.build(provider)?;
         let completion = client
             .as_completion()
@@ -420,7 +421,7 @@ impl<'a> DynClientBuilder {
         provider: &str,
         model: &str,
         prompt: impl Into<Message> + Send,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         let client = self.build(provider)?;
         let completion = client
             .as_completion()
@@ -463,7 +464,7 @@ impl<'a> DynClientBuilder {
         model: &str,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         let client = self.build(provider)?;
         let completion = client
             .as_completion()
@@ -492,6 +493,18 @@ impl<'a> DynClientBuilder {
             .stream(request)
             .await
             .map_err(|e| ClientBuildError::FactoryError(e.to_string()))
+    }
+}
+
+/// The final streaming response from a dynamic client.
+#[derive(Debug, Deserialize, Clone, Serialize)]
+pub struct FinalCompletionResponse {
+    pub usage: Option<Usage>,
+}
+
+impl GetTokenUsage for FinalCompletionResponse {
+    fn token_usage(&self) -> Option<Usage> {
+        self.usage
     }
 }
 
@@ -528,7 +541,7 @@ impl<'builder> ProviderModelId<'builder, '_> {
     pub async fn stream_completion(
         self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         self.builder
             .stream_completion(self.provider, self.model, request)
             .await
@@ -544,7 +557,7 @@ impl<'builder> ProviderModelId<'builder, '_> {
     pub async fn stream_prompt(
         self,
         prompt: impl Into<Message> + Send,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         self.builder
             .stream_prompt(self.provider, self.model, prompt)
             .await
@@ -562,7 +575,7 @@ impl<'builder> ProviderModelId<'builder, '_> {
         self,
         prompt: impl Into<Message> + Send,
         chat_history: Vec<Message>,
-    ) -> Result<StreamingCompletionResponse<()>, ClientBuildError> {
+    ) -> Result<StreamingCompletionResponse<FinalCompletionResponse>, ClientBuildError> {
         self.builder
             .stream_chat(self.provider, self.model, prompt, chat_history)
             .await

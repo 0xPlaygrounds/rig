@@ -1,4 +1,6 @@
-pub(crate) mod streaming;
+pub mod streaming;
+
+pub use streaming::StreamingPromptHook;
 
 use std::{
     future::IntoFuture,
@@ -467,7 +469,14 @@ where
                                     return Err(ToolSetError::Interrupted);
                                 }
                             }
-                            let output = agent.tools.call(tool_name, args.clone()).await?;
+                            let output =
+                                match agent.tool_server_handle.call_tool(tool_name, &args).await {
+                                    Ok(res) => res,
+                                    Err(e) => {
+                                        tracing::warn!("Error while executing tool: {e}");
+                                        e.to_string()
+                                    }
+                                };
                             if let Some(hook) = hook2 {
                                 hook.on_tool_result(
                                     tool_name,

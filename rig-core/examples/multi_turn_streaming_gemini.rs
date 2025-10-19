@@ -1,5 +1,6 @@
 use futures::{Stream, StreamExt};
 use rig::providers::gemini;
+use rig::tool::ToolError;
 use rig::{
     OneOrMany,
     agent::Agent,
@@ -98,7 +99,8 @@ where
                     },
                     Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
                         let tool_result =
-                            agent.tools.call(&tool_call.function.name, tool_call.function.arguments.to_string()).await?;
+                            agent.tool_server_handle.call_tool(&tool_call.function.name, &tool_call.function.arguments.to_string()).await
+                            .map_err(|x| StreamingError::Tool(ToolSetError::ToolCallError(ToolError::ToolCallError(x.into()))))?;
 
                         let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
 

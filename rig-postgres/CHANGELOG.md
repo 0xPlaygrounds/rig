@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.22](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.21...rig-postgres-v0.1.22) - 2025-10-14
+
+### Added
+
+- *(rig-951)* generic HTTP client ([#875](https://github.com/0xPlaygrounds/rig/pull/875))
+
+### Fixed
+
+- trying to fix test regressions part 2 ([#913](https://github.com/0xPlaygrounds/rig/pull/913))
+
 ## [0.1.21](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.20...rig-postgres-v0.1.21) - 2025-09-29
 
 ### Other
