@@ -1,7 +1,10 @@
 use rig::prelude::*;
 use rig::{
-    Embed, completion::Prompt, embeddings::EmbeddingsBuilder, providers::ollama::Client,
-    vector_store::in_memory_store::InMemoryVectorStore,
+    Embed,
+    completion::Prompt,
+    embeddings::EmbeddingsBuilder,
+    providers::ollama::Client,
+    vector_store::{IndexStrategy, in_memory_store::InMemoryVectorStore},
 };
 use serde::Serialize;
 
@@ -60,7 +63,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Create vector store with the embeddings
-    let vector_store = InMemoryVectorStore::from_documents(embeddings);
+    let vector_store = InMemoryVectorStore::from_documents(embeddings, IndexStrategy::BruteForce);
 
     // Create vector store index
     let index = vector_store.index(embedding_model);

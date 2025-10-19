@@ -7,7 +7,7 @@ use std::{
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 
-use super::{VectorStoreError, VectorStoreIndex, request::VectorSearchRequest, IndexStrategy};
+use super::{IndexStrategy, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest};
 use crate::{
     OneOrMany,
     embeddings::{Embedding, EmbeddingModel, distance::VectorDistance},
@@ -26,16 +26,17 @@ pub struct InMemoryVectorStore<D: Serialize> {
 
     index_strategy: IndexStrategy,
 
-    lsh_index: Option<LSHIndex>
+    lsh_index: Option<LSHIndex>,
 }
 
 impl<D: Serialize + Eq> InMemoryVectorStore<D> {
-
-
     /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings.
     /// Ids are automatically generated have will have the form `"doc{n}"` where `n`
     /// is the index of the document.
-    pub fn from_documents(documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>, index_strategy: IndexStrategy) -> Self {
+    pub fn from_documents(
+        documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>,
+        index_strategy: IndexStrategy,
+    ) -> Self {
         let mut store = HashMap::new();
         documents
             .into_iter()
@@ -44,10 +45,18 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
                 store.insert(format!("doc{i}"), (doc, embeddings));
             });
 
-        let mut vector_store = Self { embeddings: store, index_strategy: index_strategy.clone(), lsh_index: None };
-        
+        let mut vector_store = Self {
+            embeddings: store,
+            index_strategy: index_strategy.clone(),
+            lsh_index: None,
+        };
+
         // Initialize LSH index if needed
-        if let IndexStrategy::LSH { num_tables, num_hyperplanes } = index_strategy {
+        if let IndexStrategy::LSH {
+            num_tables,
+            num_hyperplanes,
+        } = index_strategy
+        {
             vector_store.initialize_lsh_index(num_tables, num_hyperplanes);
         }
 
@@ -64,10 +73,18 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             store.insert(i.to_string(), (doc, embeddings));
         });
 
-        let mut vector_store = Self { embeddings: store, index_strategy: index_strategy.clone(), lsh_index: None };
-        
+        let mut vector_store = Self {
+            embeddings: store,
+            index_strategy: index_strategy.clone(),
+            lsh_index: None,
+        };
+
         // Initialize LSH index if needed
-        if let IndexStrategy::LSH { num_tables, num_hyperplanes } = index_strategy {
+        if let IndexStrategy::LSH {
+            num_tables,
+            num_hyperplanes,
+        } = index_strategy
+        {
             vector_store.initialize_lsh_index(num_tables, num_hyperplanes);
         }
 
@@ -86,10 +103,18 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             store.insert(f(&doc), (doc, embeddings));
         });
 
-        let mut vector_store = Self { embeddings: store, index_strategy: index_strategy.clone(), lsh_index: None };
-        
+        let mut vector_store = Self {
+            embeddings: store,
+            index_strategy: index_strategy.clone(),
+            lsh_index: None,
+        };
+
         // Initialize LSH index if needed
-        if let IndexStrategy::LSH { num_tables, num_hyperplanes } = index_strategy {
+        if let IndexStrategy::LSH {
+            num_tables,
+            num_hyperplanes,
+        } = index_strategy
+        {
             vector_store.initialize_lsh_index(num_tables, num_hyperplanes);
         }
 
@@ -101,14 +126,19 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     fn vector_search(&self, prompt_embedding: &Embedding, n: usize) -> EmbeddingRanking<'_, D> {
         match &self.index_strategy {
             IndexStrategy::BruteForce => self.vector_search_brute_force(prompt_embedding, n),
-            IndexStrategy::LSH { num_tables, num_hyperplanes } => {
-                self.vector_search_lsh(prompt_embedding, n, *num_tables, *num_hyperplanes)
-            }
+            IndexStrategy::LSH {
+                num_tables,
+                num_hyperplanes,
+            } => self.vector_search_lsh(prompt_embedding, n, *num_tables, *num_hyperplanes),
         }
     }
 
     /// Brute force vector search - checks all documents
-    fn vector_search_brute_force(&self, prompt_embedding: &Embedding, n: usize) -> EmbeddingRanking<'_, D> {
+    fn vector_search_brute_force(
+        &self,
+        prompt_embedding: &Embedding,
+        n: usize,
+    ) -> EmbeddingRanking<'_, D> {
         // Sort documents by best embedding distance
         let mut docs = BinaryHeap::new();
 
@@ -146,7 +176,13 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     }
 
     /// LSH-based vector search - uses LSH to find candidates then computes exact distances
-    fn vector_search_lsh(&self, prompt_embedding: &Embedding, n: usize, _num_tables: usize, _num_hyperplanes: usize) -> EmbeddingRanking<'_, D> {
+    fn vector_search_lsh(
+        &self,
+        prompt_embedding: &Embedding,
+        n: usize,
+        _num_tables: usize,
+        _num_hyperplanes: usize,
+    ) -> EmbeddingRanking<'_, D> {
         // If we don't have an LSH index yet, fall back to brute force
         if self.lsh_index.is_none() {
             tracing::warn!("LSH index not initialized, falling back to brute force search");
@@ -155,13 +191,13 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
 
         let lsh_index = self.lsh_index.as_ref().unwrap();
         let candidates = lsh_index.query(&prompt_embedding.vec);
-        
+
         // Sort documents by best embedding distance, but only check candidates
         let mut docs = BinaryHeap::new();
 
         // Collect all matching documents with their scores first
         let mut scored_docs = Vec::new();
-        
+
         for candidate_id in candidates {
             if let Some((doc, embeddings)) = self.embeddings.get(&candidate_id) {
                 // Get the best context for the document given the prompt
@@ -210,7 +246,10 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         }
 
         // Get the dimension from the first embedding
-        let first_embedding = self.embeddings.values().next()
+        let first_embedding = self
+            .embeddings
+            .values()
+            .next()
             .and_then(|(_, embeddings)| embeddings.iter().next())
             .map(|e| e.vec.len())
             .unwrap_or(0);
@@ -244,8 +283,9 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             .enumerate()
             .for_each(|(index, (doc, embeddings))| {
                 let id = format!("doc{}", index + current_index);
-                self.embeddings.insert(id.clone(), (doc, embeddings.clone()));
-                
+                self.embeddings
+                    .insert(id.clone(), (doc, embeddings.clone()));
+
                 // Update LSH index if it exists
                 if let Some(ref mut lsh_index) = self.lsh_index {
                     for embedding in embeddings.iter() {
@@ -262,8 +302,9 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     ) {
         documents.into_iter().for_each(|(id, doc, embeddings)| {
             let id_str = id.to_string();
-            self.embeddings.insert(id_str.clone(), (doc, embeddings.clone()));
-            
+            self.embeddings
+                .insert(id_str.clone(), (doc, embeddings.clone()));
+
             // Update LSH index if it exists
             if let Some(ref mut lsh_index) = self.lsh_index {
                 for embedding in embeddings.iter() {
@@ -282,8 +323,9 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     ) {
         for (doc, embeddings) in documents {
             let id = f(&doc);
-            self.embeddings.insert(id.clone(), (doc, embeddings.clone()));
-            
+            self.embeddings
+                .insert(id.clone(), (doc, embeddings.clone()));
+
             // Update LSH index if it exists
             if let Some(ref mut lsh_index) = self.lsh_index {
                 for embedding in embeddings.iter() {
@@ -416,33 +458,39 @@ mod tests {
 
     use crate::{OneOrMany, embeddings::embedding::Embedding};
 
-    use super::{InMemoryVectorStore, RankingItem, IndexStrategy};
+    use super::{InMemoryVectorStore, IndexStrategy, RankingItem};
 
     #[test]
     fn test_auto_ids() {
-        let mut vector_store = InMemoryVectorStore::from_documents(vec![
-            (
-                "glarb-garb",
-                OneOrMany::one(Embedding {
-                    document: "glarb-garb".to_string(),
-                    vec: vec![0.1, 0.1, 0.5],
-                }),
-            ),
-            (
-                "marble-marble",
-                OneOrMany::one(Embedding {
-                    document: "marble-marble".to_string(),
-                    vec: vec![0.7, -0.3, 0.0],
-                }),
-            ),
-            (
-                "flumb-flumb",
-                OneOrMany::one(Embedding {
-                    document: "flumb-flumb".to_string(),
-                    vec: vec![0.3, 0.7, 0.1],
-                }),
-            ),
-        ], IndexStrategy::LSH { num_tables: 5, num_hyperplanes: 10 });
+        let mut vector_store = InMemoryVectorStore::from_documents(
+            vec![
+                (
+                    "glarb-garb",
+                    OneOrMany::one(Embedding {
+                        document: "glarb-garb".to_string(),
+                        vec: vec![0.1, 0.1, 0.5],
+                    }),
+                ),
+                (
+                    "marble-marble",
+                    OneOrMany::one(Embedding {
+                        document: "marble-marble".to_string(),
+                        vec: vec![0.7, -0.3, 0.0],
+                    }),
+                ),
+                (
+                    "flumb-flumb",
+                    OneOrMany::one(Embedding {
+                        document: "flumb-flumb".to_string(),
+                        vec: vec![0.3, 0.7, 0.1],
+                    }),
+                ),
+            ],
+            IndexStrategy::LSH {
+                num_tables: 5,
+                num_hyperplanes: 10,
+            },
+        );
 
         vector_store.add_documents(vec![
             (
@@ -523,32 +571,38 @@ mod tests {
 
     #[test]
     fn test_single_embedding() {
-        let vector_store = InMemoryVectorStore::from_documents_with_ids(vec![
-            (
-                "doc1",
-                "glarb-garb",
-                OneOrMany::one(Embedding {
-                    document: "glarb-garb".to_string(),
-                    vec: vec![0.1, 0.1, 0.5],
-                }),
-            ),
-            (
-                "doc2",
-                "marble-marble",
-                OneOrMany::one(Embedding {
-                    document: "marble-marble".to_string(),
-                    vec: vec![0.7, -0.3, 0.0],
-                }),
-            ),
-            (
-                "doc3",
-                "flumb-flumb",
-                OneOrMany::one(Embedding {
-                    document: "flumb-flumb".to_string(),
-                    vec: vec![0.3, 0.7, 0.1],
-                }),
-            ),
-        ], IndexStrategy::LSH { num_tables: 5, num_hyperplanes: 10 });
+        let vector_store = InMemoryVectorStore::from_documents_with_ids(
+            vec![
+                (
+                    "doc1",
+                    "glarb-garb",
+                    OneOrMany::one(Embedding {
+                        document: "glarb-garb".to_string(),
+                        vec: vec![0.1, 0.1, 0.5],
+                    }),
+                ),
+                (
+                    "doc2",
+                    "marble-marble",
+                    OneOrMany::one(Embedding {
+                        document: "marble-marble".to_string(),
+                        vec: vec![0.7, -0.3, 0.0],
+                    }),
+                ),
+                (
+                    "doc3",
+                    "flumb-flumb",
+                    OneOrMany::one(Embedding {
+                        document: "flumb-flumb".to_string(),
+                        vec: vec![0.3, 0.7, 0.1],
+                    }),
+                ),
+            ],
+            IndexStrategy::LSH {
+                num_tables: 5,
+                num_hyperplanes: 10,
+            },
+        );
 
         let ranking = vector_store.vector_search(
             &Embedding {
@@ -579,53 +633,59 @@ mod tests {
 
     #[test]
     fn test_multiple_embeddings() {
-        let vector_store = InMemoryVectorStore::from_documents_with_ids(vec![
-            (
-                "doc1",
-                "glarb-garb",
-                OneOrMany::many(vec![
-                    Embedding {
-                        document: "glarb-garb".to_string(),
-                        vec: vec![0.1, 0.1, 0.5],
-                    },
-                    Embedding {
-                        document: "don't-choose-me".to_string(),
-                        vec: vec![-0.5, 0.9, 0.1],
-                    },
-                ])
-                .unwrap(),
-            ),
-            (
-                "doc2",
-                "marble-marble",
-                OneOrMany::many(vec![
-                    Embedding {
-                        document: "marble-marble".to_string(),
-                        vec: vec![0.7, -0.3, 0.0],
-                    },
-                    Embedding {
-                        document: "sandwich".to_string(),
-                        vec: vec![0.5, 0.5, -0.7],
-                    },
-                ])
-                .unwrap(),
-            ),
-            (
-                "doc3",
-                "flumb-flumb",
-                OneOrMany::many(vec![
-                    Embedding {
-                        document: "flumb-flumb".to_string(),
-                        vec: vec![0.3, 0.7, 0.1],
-                    },
-                    Embedding {
-                        document: "banana".to_string(),
-                        vec: vec![0.1, -0.5, -0.5],
-                    },
-                ])
-                .unwrap(),
-            ),
-        ], IndexStrategy::LSH { num_tables: 5, num_hyperplanes: 10 });
+        let vector_store = InMemoryVectorStore::from_documents_with_ids(
+            vec![
+                (
+                    "doc1",
+                    "glarb-garb",
+                    OneOrMany::many(vec![
+                        Embedding {
+                            document: "glarb-garb".to_string(),
+                            vec: vec![0.1, 0.1, 0.5],
+                        },
+                        Embedding {
+                            document: "don't-choose-me".to_string(),
+                            vec: vec![-0.5, 0.9, 0.1],
+                        },
+                    ])
+                    .unwrap(),
+                ),
+                (
+                    "doc2",
+                    "marble-marble",
+                    OneOrMany::many(vec![
+                        Embedding {
+                            document: "marble-marble".to_string(),
+                            vec: vec![0.7, -0.3, 0.0],
+                        },
+                        Embedding {
+                            document: "sandwich".to_string(),
+                            vec: vec![0.5, 0.5, -0.7],
+                        },
+                    ])
+                    .unwrap(),
+                ),
+                (
+                    "doc3",
+                    "flumb-flumb",
+                    OneOrMany::many(vec![
+                        Embedding {
+                            document: "flumb-flumb".to_string(),
+                            vec: vec![0.3, 0.7, 0.1],
+                        },
+                        Embedding {
+                            document: "banana".to_string(),
+                            vec: vec![0.1, -0.5, -0.5],
+                        },
+                    ])
+                    .unwrap(),
+                ),
+            ],
+            IndexStrategy::LSH {
+                num_tables: 5,
+                num_hyperplanes: 10,
+            },
+        );
 
         let ranking = vector_store.vector_search(
             &Embedding {

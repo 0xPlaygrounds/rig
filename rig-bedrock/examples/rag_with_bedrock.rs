@@ -2,8 +2,10 @@ use std::vec;
 
 use rig::client::{CompletionClient, EmbeddingsClient, ProviderClient};
 use rig::{
-    Embed, completion::Prompt, embeddings::EmbeddingsBuilder,
-    vector_store::in_memory_store::InMemoryVectorStore,
+    Embed,
+    completion::Prompt,
+    embeddings::EmbeddingsBuilder,
+    vector_store::{IndexStrategy, in_memory_store::InMemoryVectorStore},
 };
 use rig_bedrock::client::Client;
 use rig_bedrock::{completion::AMAZON_NOVA_LITE, embedding::AMAZON_TITAN_EMBED_TEXT_V2_0};
@@ -63,7 +65,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Create vector store with the embeddings
-    let vector_store = InMemoryVectorStore::from_documents(embeddings);
+    let vector_store = InMemoryVectorStore::from_documents(embeddings, IndexStrategy::BruteForce);
 
     // Create vector store index
     let index = vector_store.index(embedding_model);

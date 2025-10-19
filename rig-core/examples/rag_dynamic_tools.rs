@@ -5,7 +5,7 @@ use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     tool::{Tool, ToolEmbedding, ToolSet},
-    vector_store::in_memory_store::InMemoryVectorStore,
+    vector_store::{IndexStrategy, in_memory_store::InMemoryVectorStore},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -141,8 +141,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Create vector store with the embeddings
-    let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |tool| tool.name.clone());
+    let vector_store = InMemoryVectorStore::from_documents_with_id_f(
+        embeddings,
+        |tool| tool.name.clone(),
+        IndexStrategy::BruteForce,
+    );
 
     // Create vector store index
     let index = vector_store.index(embedding_model);
