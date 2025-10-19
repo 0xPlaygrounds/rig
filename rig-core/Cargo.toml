@@ -80,7 +80,7 @@ tracing-opentelemetry = "0.31.0"
 
 
 [features]
-default = ["reqwest-tls", "audio", "image"]
+default = ["reqwest-tls"]
 all = ["derive", "pdf", "rayon"]
 audio = []
 image = []
