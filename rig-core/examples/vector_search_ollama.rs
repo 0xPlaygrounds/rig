@@ -4,7 +4,7 @@ use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
     providers,
-    vector_store::{VectorStoreIndex, in_memory_store::InMemoryVectorStore},
+    vector_store::{IndexStrategy, VectorStoreIndex, in_memory_store::InMemoryVectorStore},
 };
 
 use serde::{Deserialize, Serialize};
@@ -58,8 +58,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Create vector store with the embeddings
-    let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
+    let vector_store = InMemoryVectorStore::from_documents_with_id_f(
+        embeddings,
+        |doc| doc.id.clone(),
+        IndexStrategy::BruteForce,
+    );
 
     // Create vector store index
     let index = vector_store.index(embedding_model);

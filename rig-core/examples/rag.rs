@@ -1,8 +1,11 @@
 use rig::prelude::*;
 use rig::providers::openai::client::Client;
 use rig::{
-    Embed, completion::Prompt, embeddings::EmbeddingsBuilder,
-    providers::openai::TEXT_EMBEDDING_ADA_002, vector_store::in_memory_store::InMemoryVectorStore,
+    Embed,
+    completion::Prompt,
+    embeddings::EmbeddingsBuilder,
+    providers::openai::TEXT_EMBEDDING_ADA_002,
+    vector_store::{IndexStrategy, in_memory_store::InMemoryVectorStore},
 };
 use serde::Serialize;
 use std::vec;
@@ -62,8 +65,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Create vector store with the embeddings
-    let vector_store = InMemoryVectorStore::from_documents(embeddings);
-
+    let vector_store = InMemoryVectorStore::from_documents(embeddings, IndexStrategy::BruteForce);
     // Create vector store index
     let index = vector_store.index(embedding_model);
     let rag_agent = openai_client.agent("gpt-4")

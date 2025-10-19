@@ -6,7 +6,7 @@ use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     tool::{Tool, ToolEmbedding, ToolSet},
-    vector_store::in_memory_store::InMemoryVectorStore,
+    vector_store::{IndexStrategy, in_memory_store::InMemoryVectorStore},
 };
 
 use serde::{Deserialize, Serialize};
@@ -249,8 +249,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |tool| tool.name.clone());
+    let vector_store = InMemoryVectorStore::from_documents_with_id_f(
+        embeddings,
+        |tool| tool.name.clone(),
+        IndexStrategy::BruteForce,
+    );
     let index = vector_store.index(embedding_model);
 
     // Create RAG agent with a single context prompt and a dynamic tool source

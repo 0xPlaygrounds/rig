@@ -6,7 +6,8 @@ use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
     vector_store::{
-        VectorStoreIndex, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
+        IndexStrategy, VectorStoreIndex, in_memory_store::InMemoryVectorStore,
+        request::VectorSearchRequest,
     },
 };
 use rig_fastembed::EmbeddingModel;
@@ -90,8 +91,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Create vector store
-    let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
+    let vector_store = InMemoryVectorStore::from_documents_with_id_f(
+        embeddings,
+        |doc| doc.id.clone(),
+        IndexStrategy::BruteForce,
+    );
     let index = vector_store.index(embedding_model);
 
     let query =
