@@ -6,7 +6,9 @@ use futures::stream::BoxStream;
 use futures::stream::Stream;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
 use reqwest::Body;
-use std::future::Future;
+
+pub mod retry;
+pub mod sse;
 
 if_wasm! {
     use std::pin::Pin;
@@ -139,15 +141,22 @@ impl HttpClientExt for reqwest::Client {
     ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend + 'static
     where
         T: Into<Bytes>,
+        Self: 'static,
     {
         let (parts, body) = req.into_parts();
+
         let req = self
             .request(parts.method, parts.uri.to_string())
             .headers(parts.headers)
-            .body(body.into());
+            .body(body.into())
+            .build()
+            .map_err(|x| Error::Instance(x.into()))
+            .unwrap();
+
+        let client = self.clone();
 
         async move {
-            let response: reqwest::Response = req.send().await.map_err(instance_error)?;
+            let response: reqwest::Response = client.execute(req).await.map_err(instance_error)?;
 
             #[cfg(not(target_family = "wasm"))]
             let mut res = Response::builder()
