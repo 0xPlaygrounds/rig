@@ -1,9 +1,8 @@
-use crate::if_wasm;
+use std::pin::Pin;
+
+use crate::{http_client::sse::BoxedStream, if_wasm};
 use bytes::Bytes;
-#[cfg(not(target_family = "wasm"))]
-use futures::stream::BoxStream;
-#[cfg(target_family = "wasm")]
-use futures::stream::Stream;
+use http::StatusCode;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
 use reqwest::Body;
 
@@ -20,6 +19,12 @@ use crate::wasm_compat::*;
 pub enum Error {
     #[error("Http error: {0}")]
     Protocol(#[from] http::Error),
+    #[error("Invalid status code: {0}")]
+    InvalidStatusCode(StatusCode),
+    #[error("Stream ended")]
+    StreamEnded,
+    #[error("Invalid content type was returned: {0:?}")]
+    InvalidContentType(HeaderValue),
     #[cfg(not(target_family = "wasm"))]
     #[error("Http client error: {0}")]
     Instance(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
@@ -44,13 +49,7 @@ fn instance_error<E: std::error::Error + 'static>(error: E) -> Error {
 pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
 pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
 
-#[cfg(not(target_family = "wasm"))]
-pub type ByteStream = BoxStream<'static, Result<Bytes>>;
-
-#[cfg(target_family = "wasm")]
-pub type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes>> + 'static>>;
-
-pub type StreamingResponse = Response<ByteStream>;
+pub type StreamingResponse<T> = Response<T>;
 
 pub struct NoBody;
 
@@ -92,7 +91,7 @@ pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
     fn send_streaming<T>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend + 'static
+    ) -> impl Future<Output = Result<StreamingResponse<BoxedStream>>> + WasmCompatSend
     where
         T: Into<Bytes>;
 }
@@ -138,10 +137,9 @@ impl HttpClientExt for reqwest::Client {
     fn send_streaming<T>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend + 'static
+    ) -> impl Future<Output = Result<StreamingResponse<BoxedStream>>> + WasmCompatSend
     where
         T: Into<Bytes>,
-        Self: 'static,
     {
         let (parts, body) = req.into_parts();
 
@@ -170,12 +168,16 @@ impl HttpClientExt for reqwest::Client {
                 *hs = response.headers().clone();
             }
 
-            let stream: ByteStream = {
-                use futures::TryStreamExt;
-                Box::pin(response.bytes_stream().map_err(instance_error))
-            };
+            use futures::StreamExt;
 
-            Ok(res.body(stream)?)
+            let mapped_stream: Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>> =
+                Box::pin(
+                    response
+                        .bytes_stream()
+                        .map(|chunk| chunk.map_err(|e| Error::Instance(Box::new(e)))),
+                );
+
+            res.body(mapped_stream).map_err(Error::Protocol)
         }
     }
 }
