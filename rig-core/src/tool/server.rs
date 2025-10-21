@@ -4,10 +4,7 @@ use tokio::sync::mpsc::{Sender, error::SendError};
 use crate::{
     completion::{CompletionError, ToolDefinition},
     tool::{Tool, ToolDyn, ToolError, ToolSet, ToolSetError},
-    vector_store::{
-        VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn,
-        request::Filter,
-    },
+    vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
 
 pub struct ToolServer {
@@ -162,7 +159,7 @@ impl ToolServer {
         let mut tools = if let Some(text) = text {
             stream::iter(self.dynamic_tools.iter())
                         .then(|(num_sample, index)| async {
-                            let req = 
+                            let req =
                                 VectorSearchRequest::builder()
                                     .query(text.clone())
                                     .samples(*num_sample as u64)

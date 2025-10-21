@@ -13,7 +13,7 @@ use rig::{
     providers::openai,
 };
 use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
-use rig_neo4j::{Neo4jClient, ToBoltType, vector_index::SearchParams};
+use rig_neo4j::{Neo4jClient, ToBoltType};
 
 const BOLT_PORT: u16 = 7687;
 const HTTP_PORT: u16 = 7474;

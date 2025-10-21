@@ -72,8 +72,7 @@
 //!
 //!     let index = client.get_index(
 //!         model,
-//!         "moviePlotsEmbedding",
-//!         SearchParams::default()
+//!         "moviePlotsEmbedding"
 //!     ).await.unwrap();
 //!
 //!     #[derive(Debug, Deserialize)]

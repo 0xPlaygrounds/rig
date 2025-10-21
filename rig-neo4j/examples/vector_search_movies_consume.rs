@@ -15,7 +15,7 @@
 //! how to add embeddings to an existing `recommendations` database.
 use neo4rs::ConfigBuilder;
 use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
-use rig_neo4j::{Neo4jClient, vector_index::SearchParams};
+use rig_neo4j::Neo4jClient;
 
 use std::env;
 

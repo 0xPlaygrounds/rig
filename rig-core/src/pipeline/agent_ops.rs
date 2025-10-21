@@ -4,10 +4,7 @@ use crate::{
     completion::{self, CompletionModel},
     extractor::{ExtractionError, Extractor},
     message::Message,
-    vector_store::{
-        self,
-        request::{Filter, VectorSearchRequest},
-    },
+    vector_store::{self, request::VectorSearchRequest},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
@@ -164,7 +161,7 @@ pub mod tests {
     use super::*;
     use crate::message;
     use completion::{Prompt, PromptError};
-    use vector_store::{VectorStoreError, VectorStoreIndex};
+    use vector_store::{VectorStoreError, VectorStoreIndex, request::Filter};
 
     pub struct MockModel;
 

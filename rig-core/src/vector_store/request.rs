@@ -159,9 +159,9 @@ impl Filter<serde_json::Value> {
                     .and_then(|(l, r)| l.partial_cmp(&r))
                     .or(l.as_i64().zip(r.as_i64()).map(|(l, r)| l.cmp(&r)))
                     .or(l.as_u64().zip(r.as_u64()).map(|(l, r)| l.cmp(&r))),
-                (String(l), String(r)) => Some(l.cmp(&r)),
+                (String(l), String(r)) => Some(l.cmp(r)),
                 (Null, Null) => Some(std::cmp::Ordering::Equal),
-                (Bool(l), Bool(r)) => Some(l.cmp(&r)),
+                (Bool(l), Bool(r)) => Some(l.cmp(r)),
                 _ => None,
             }
         }
