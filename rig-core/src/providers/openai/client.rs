@@ -15,7 +15,7 @@ use crate::{
         VerifyError,
     },
     extractor::ExtractorBuilder,
-    http_client::{self, HttpClientExt},
+    http_client::{self, HttpClientExt, with_bearer_auth},
     providers::openai::CompletionModel,
 };
 
@@ -25,6 +25,7 @@ use crate::client::AudioGenerationClient;
 use crate::client::ImageGenerationClient;
 
 use bytes::Bytes;
+use http::Method;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -147,11 +148,18 @@ where
     }
 }
 
-impl Client<reqwest::Client> {
-    pub(crate) fn post_reqwest(&self, path: &str) -> reqwest::RequestBuilder {
+impl<T> Client<T>
+where
+    Self: HttpClientExt,
+{
+    pub(crate) fn post(&self, path: &str) -> http::request::Builder {
         let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
 
-        self.http_client.post(url).bearer_auth(&self.api_key)
+        with_bearer_auth(
+            http::request::Builder::new().uri(url).method(Method::POST),
+            &self.api_key,
+        )
+        .unwrap()
     }
 
     /// Create an extractor builder with the given completion model.
@@ -168,9 +176,10 @@ impl Client<reqwest::Client> {
     }
 }
 
-impl Client<reqwest::Client> {}
-
-impl ProviderClient for Client<reqwest::Client> {
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default,
+{
     /// Create a new OpenAI client from the `OPENAI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
@@ -178,7 +187,10 @@ impl ProviderClient for Client<reqwest::Client> {
         let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
 
         match base_url {
-            Some(url) => Self::builder(&api_key).base_url(&url).build(),
+            Some(url) => Self::builder(&api_key)
+                .base_url(&url)
+                .with_client(T::default())
+                .build(),
             None => Self::new(&api_key),
         }
     }
@@ -191,8 +203,11 @@ impl ProviderClient for Client<reqwest::Client> {
     }
 }
 
-impl CompletionClient for Client<reqwest::Client> {
-    type CompletionModel = super::responses_api::ResponsesCompletionModel<reqwest::Client>;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + std::fmt::Debug + Clone + Default + 'static,
+{
+    type CompletionModel = super::responses_api::ResponsesCompletionModel<T>;
     /// Create a completion model with the given name.
     ///
     /// # Example
@@ -204,16 +219,16 @@ impl CompletionClient for Client<reqwest::Client> {
     ///
     /// let gpt4 = openai.completion_model(openai::GPT_4);
     /// ```
-    fn completion_model(
-        &self,
-        model: &str,
-    ) -> super::responses_api::ResponsesCompletionModel<reqwest::Client> {
+    fn completion_model(&self, model: &str) -> Self::CompletionModel {
         super::responses_api::ResponsesCompletionModel::new(self.clone(), model)
     }
 }
 
-impl EmbeddingsClient for Client<reqwest::Client> {
-    type EmbeddingModel = EmbeddingModel<reqwest::Client>;
+impl<T> EmbeddingsClient for Client<T>
+where
+    T: HttpClientExt + std::fmt::Debug + Clone + Default + 'static,
+{
+    type EmbeddingModel = EmbeddingModel<T>;
     fn embedding_model(&self, model: &str) -> Self::EmbeddingModel {
         let ndims = match model {
             TEXT_EMBEDDING_3_LARGE => 3072,
@@ -228,8 +243,11 @@ impl EmbeddingsClient for Client<reqwest::Client> {
     }
 }
 
-impl TranscriptionClient for Client<reqwest::Client> {
-    type TranscriptionModel = TranscriptionModel<reqwest::Client>;
+impl<T> TranscriptionClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    type TranscriptionModel = TranscriptionModel<T>;
     /// Create a transcription model with the given name.
     ///
     /// # Example
@@ -241,14 +259,17 @@ impl TranscriptionClient for Client<reqwest::Client> {
     ///
     /// let gpt4 = openai.transcription_model(openai::WHISPER_1);
     /// ```
-    fn transcription_model(&self, model: &str) -> TranscriptionModel<reqwest::Client> {
+    fn transcription_model(&self, model: &str) -> Self::TranscriptionModel {
         TranscriptionModel::new(self.clone(), model)
     }
 }
 
 #[cfg(feature = "image")]
-impl ImageGenerationClient for Client<reqwest::Client> {
-    type ImageGenerationModel = ImageGenerationModel<reqwest::Client>;
+impl<T> ImageGenerationClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    type ImageGenerationModel = ImageGenerationModel<T>;
     /// Create an image generation model with the given name.
     ///
     /// # Example
@@ -266,8 +287,11 @@ impl ImageGenerationClient for Client<reqwest::Client> {
 }
 
 #[cfg(feature = "audio")]
-impl AudioGenerationClient for Client<reqwest::Client> {
-    type AudioGenerationModel = AudioGenerationModel<reqwest::Client>;
+impl<T> AudioGenerationClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    type AudioGenerationModel = AudioGenerationModel<T>;
     /// Create an audio generation model with the given name.
     ///
     /// # Example

@@ -1,6 +1,6 @@
 //! Anthropic client api implementation
 use bytes::Bytes;
-use http_client::{Method, Request};
+use http_client::Method;
 
 use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
 use crate::{
@@ -127,7 +127,7 @@ pub struct Client<T = reqwest::Client> {
     /// The API key
     api_key: String,
     /// The underlying HTTP client
-    http_client: T,
+    pub http_client: T,
     /// Default headers that will be automatically added to any given request with this client (API key, Anthropic Version and any betas that have been added)
     default_headers: reqwest::header::HeaderMap,
 }
@@ -159,16 +159,6 @@ where
         V: From<Bytes> + Send + 'static,
     {
         self.http_client.send(req).await
-    }
-
-    pub async fn send_streaming<U>(
-        &self,
-        req: Request<U>,
-    ) -> Result<http_client::StreamingResponse, http_client::Error>
-    where
-        U: Into<Bytes>,
-    {
-        self.http_client.send_streaming(req).await
     }
 
     pub(crate) fn post(&self, path: &str) -> http_client::Builder {

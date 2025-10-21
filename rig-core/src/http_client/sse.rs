@@ -1,4 +1,7 @@
-//! A generic SSE implementation.
+//! An SSE implementation that leverages [`crate::http_client::HttpClientExt`] to allow streaming with automatic retry handling for any implementor of HttpClientExt.
+//!
+//! Primarily intended for internal usage. However if you also wish to implement generic HTTP streaming for your custom completion model,
+//! you may find this helpful.
 
 use std::{
     pin::Pin,
@@ -79,17 +82,26 @@ pin_project! {
     }
 }
 
-impl<HttpClient, RequestBody, ResponseBody>
-    GenericEventSource<HttpClient, RequestBody, ResponseBody>
+impl<HttpClient, RequestBody>
+    GenericEventSource<
+        HttpClient,
+        RequestBody,
+        Pin<Box<dyn WasmCompatSendStream<InnerItem = StreamResult<Bytes>>>>,
+    >
 where
-    HttpClient: HttpClientExt,
-    RequestBody: Into<Bytes>,
-    ResponseBody: WasmCompatSendStream<InnerItem = StreamResult<Bytes>>,
+    HttpClient: HttpClientExt + Clone + 'static,
+    RequestBody: Into<Bytes> + Clone + Send + 'static,
 {
     pub fn new(client: HttpClient, req: Request<RequestBody>) -> Self {
+        let client_clone = client.clone();
+        let mut req_clone = req.clone();
+        req_clone
+            .headers_mut()
+            .insert("Accept", HeaderValue::from_static("text/event-stream"));
+        let res_fut = Box::pin(async move { client_clone.clone().send_streaming(req_clone).await });
         Self {
             client,
-            next_response: None,
+            next_response: Some(res_fut),
             cur_stream: None,
             req,
             delay: None,
@@ -121,6 +133,7 @@ where
         }
     }
 }
+
 impl<'a, HttpClient, RequestBody>
     GenericEventSourceProjection<'a, HttpClient, RequestBody, BoxedStream>
 where
@@ -165,7 +178,10 @@ where
     fn handle_error(&mut self, error: &super::Error) {
         self.clear_fetch();
         if let Some(retry_delay) = self.retry_policy.retry(error, *self.last_retry) {
-            let retry_num = self.last_retry.map(|retry| retry.0).unwrap_or(1);
+            let retry_num = self
+                .last_retry
+                .map(|retry| retry.0.saturating_add(1))
+                .unwrap_or(1);
             *self.last_retry = Some((retry_num, retry_delay));
             self.delay.replace(Delay::new(retry_delay));
         } else {

@@ -2,13 +2,13 @@
 //! Please see the `openai_streaming` or `openai_streaming_with_tools` example for more practical usage.
 use crate::completion::{CompletionError, GetTokenUsage};
 use crate::http_client::HttpClientExt;
+use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::openai::responses_api::{
     ReasoningSummary, ResponsesCompletionModel, ResponsesUsage,
 };
 use crate::streaming;
 use crate::streaming::RawStreamingChoice;
 use async_stream::stream;
-use eventsource_stream::{Event, Eventsource};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info_span};
@@ -240,12 +240,7 @@ where
         // Build the request with proper headers for SSE
         let client = self.clone().client.http_client;
 
-        let mut event_source = client
-            .send_streaming(req)
-            .await
-            .unwrap()
-            .body()
-            .eventsource();
+        let mut event_source = GenericEventSource::new(client, req);
 
         let stream = stream! {
             let mut final_usage = ResponsesUsage::new();
@@ -256,12 +251,12 @@ where
 
             while let Some(event_result) = event_source.next().await {
                 match event_result {
-                    // Ok(evt) => {
-                    //     tracing::trace!("SSE connection opened");
-                    //     tracing::info!("OpenAI stream started");
-                    //     continue;
-                    // }
-                    Ok(evt) => {
+                    Ok(Event::Open) => {
+                        tracing::trace!("SSE connection opened");
+                        tracing::info!("OpenAI stream started");
+                        continue;
+                    }
+                    Ok(Event::Message(evt)) => {
                         // Skip heartbeat messages or empty data
                         if evt.data.trim().is_empty() {
                             continue;
@@ -323,9 +318,9 @@ where
                             }
                         }
                     }
-                    // Err(reqwest_eventsource::Error::StreamEnded) => {
-                    //     break;
-                    // }
+                    Err(crate::http_client::Error::StreamEnded) => {
+                        event_source.close();
+                    }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
                         yield Err(CompletionError::ResponseError(error.to_string()));

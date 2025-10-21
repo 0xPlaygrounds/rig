@@ -9,7 +9,6 @@ use crate::{
 use super::{CompletionModel, EmbeddingModel};
 use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient, impl_conversion_traits};
 use bytes::Bytes;
-use reqwest_eventsource::{CannotCloneRequestError, EventSource};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -110,7 +109,7 @@ impl<T> Client<T>
 where
     T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    fn req(
+    pub(crate) fn req(
         &self,
         method: http_client::Method,
         path: &str,
@@ -125,6 +124,10 @@ where
 
     pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
         self.req(http_client::Method::POST, path)
+    }
+
+    pub fn http_client(&self) -> T {
+        self.http_client.clone()
     }
 
     pub(crate) async fn send<U, V>(
@@ -169,19 +172,6 @@ where
         ndims: usize,
     ) -> EmbeddingModel<T> {
         EmbeddingModel::new(self.clone(), model, input_type, ndims)
-    }
-}
-
-impl Client<reqwest::Client> {
-    pub(crate) async fn eventsource(
-        &self,
-        req: reqwest::RequestBuilder,
-    ) -> Result<EventSource, CannotCloneRequestError> {
-        reqwest_eventsource::EventSource::new(req)
-    }
-
-    pub(crate) fn client(&self) -> &reqwest::Client {
-        &self.http_client
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::http_client;
+use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai::{ApiResponse, Client};
 use crate::transcription;
 use crate::transcription::TranscriptionError;
@@ -44,7 +44,10 @@ impl<T> TranscriptionModel<T> {
     }
 }
 
-impl transcription::TranscriptionModel for TranscriptionModel<reqwest::Client> {
+impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     type Response = TranscriptionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
