@@ -158,6 +158,7 @@ where
     ) -> (String, Vec<serde_json::Value>) {
         self.search_query(true, req)
     }
+
     fn search_query_only_ids(
         &self,
         req: &VectorSearchRequest<PgSearchFilter>,
@@ -172,18 +173,25 @@ where
     ) -> (String, Vec<serde_json::Value>) {
         let document = if with_document { ", document" } else { "" };
 
-        let (where_clause, params) = match (req.threshold(), req.filter()) {
-            (Some(thresh), Some(filt)) => PgSearchFilter::gt("distance".into(), thresh.into())
-                .and(filt.clone())
-                .into_clause(),
-            (Some(thresh), _) => PgSearchFilter::gt("distance".into(), thresh.into()).into_clause(),
-            (_, Some(filt)) => filt.clone().into_clause(),
-            _ => (String::new(), vec![]),
+        let thresh = req
+            .threshold()
+            .map(|t| PgSearchFilter::gt("distance".into(), t.into()));
+        let filter = match (thresh, req.filter()) {
+            (Some(thresh), Some(filt)) => Some(thresh.and(filt.clone())),
+            (Some(thresh), _) => Some(thresh),
+            (_, Some(filt)) => Some(filt.clone()),
+            _ => None,
+        };
+        let (where_clause, params) = match filter {
+            Some(f) => {
+                let (expr, params) = f.into_clause();
+                (String::from("WHERE") + &expr, params)
+            }
+            None => (Default::default(), Default::default()),
         };
 
         let mut counter = 3;
         let mut buf = String::with_capacity(where_clause.len() * 2);
-        buf.push_str("WHERE");
 
         for c in where_clause.chars() {
             buf.push(c);
