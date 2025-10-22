@@ -182,6 +182,14 @@ async fn vector_search_test() {
 async fn query_syntax() {
     use rusqlite::Connection;
 
+    // Initialize the `sqlite-vec`extension
+    // See: https://alexgarcia.xyz/sqlite-vec/rust.html
+    unsafe {
+        sqlite3_auto_extension(Some(std::mem::transmute::<*const (), SqliteExtensionFn>(
+            sqlite3_vec_init as *const (),
+        )));
+    }
+
     let conn = Connection::open("vector_store.db").expect("Could not initialize SQLite connection");
 
     let req = VectorSearchRequest::builder()
