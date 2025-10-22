@@ -87,13 +87,9 @@ where
             }
         }
 
-        let boundary = format!("multipart/form-data; boundary={}", body.boundary());
-
         let req = self
             .client
             .post("/audio/transcriptions")?
-            .header("Content-Type", boundary.as_str())
-            .header("Transfer-Encoding", "chunked")
             .body(body)
             .unwrap();
 

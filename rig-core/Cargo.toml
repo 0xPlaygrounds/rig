@@ -49,6 +49,7 @@ eventsource-stream = "0.2.3"
 pin-project-lite = "0.2.16"
 futures-timer = "3.0.3"
 http-body-util = "0.1.3"
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }

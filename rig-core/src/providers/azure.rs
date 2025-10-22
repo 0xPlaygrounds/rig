@@ -825,13 +825,9 @@ where
             }
         }
 
-        let boundary = body.boundary();
-
         let req = self
             .client
             .post_transcription(&self.model)
-            .header("Content-Type", boundary)
-            .header("Transfer-Encoding", "chunked")
             .body(body)
             .map_err(|e| TranscriptionError::HttpError(e.into()))?;
 
