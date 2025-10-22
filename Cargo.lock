@@ -9361,7 +9361,6 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "url",
- "uuid 1.18.1",
  "worker",
 ]
 

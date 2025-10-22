@@ -267,7 +267,7 @@ where
 
 impl<T> ProviderClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     /// Create a new Azure OpenAI client from the `AZURE_API_KEY` or `AZURE_TOKEN`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
     fn from_env() -> Self {
@@ -302,7 +302,7 @@ where
 
 impl<T> CompletionClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     type CompletionModel = CompletionModel<T>;
 
@@ -324,7 +324,7 @@ where
 
 impl<T> EmbeddingsClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     type EmbeddingModel = EmbeddingModel<T>;
 
@@ -368,7 +368,7 @@ where
 
 impl<T> TranscriptionClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     type TranscriptionModel = TranscriptionModel<T>;
 
@@ -922,7 +922,7 @@ mod image_generation {
 
     impl<T> ImageGenerationClient for Client<T>
     where
-        T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+        T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
     {
         type ImageGenerationModel = ImageGenerationModel<T>;
 

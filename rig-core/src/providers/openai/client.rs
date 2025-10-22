@@ -130,7 +130,7 @@ impl Client<reqwest::Client> {
 
 impl<T> Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
@@ -172,7 +172,7 @@ where
 
 impl<T> ProviderClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     /// Create a new OpenAI client from the `OPENAI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
@@ -197,7 +197,7 @@ where
 
 impl<T> CompletionClient for Client<T>
 where
-    T: HttpClientExt + std::fmt::Debug + Clone + Default + 'static,
+    T: HttpClientExt + std::fmt::Debug + Clone + Default + Send + 'static,
 {
     type CompletionModel = super::responses_api::ResponsesCompletionModel<T>;
     /// Create a completion model with the given name.
@@ -218,7 +218,7 @@ where
 
 impl<T> EmbeddingsClient for Client<T>
 where
-    T: HttpClientExt + std::fmt::Debug + Clone + Default + 'static,
+    T: HttpClientExt + std::fmt::Debug + Clone + Default + Send + 'static,
 {
     type EmbeddingModel = EmbeddingModel<T>;
     fn embedding_model(&self, model: &str) -> Self::EmbeddingModel {
@@ -237,7 +237,7 @@ where
 
 impl<T> TranscriptionClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     type TranscriptionModel = TranscriptionModel<T>;
     /// Create a transcription model with the given name.
@@ -259,7 +259,7 @@ where
 #[cfg(feature = "image")]
 impl<T> ImageGenerationClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     type ImageGenerationModel = ImageGenerationModel<T>;
     /// Create an image generation model with the given name.
@@ -281,7 +281,7 @@ where
 #[cfg(feature = "audio")]
 impl<T> AudioGenerationClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Send + Default + 'static,
 {
     type AudioGenerationModel = AudioGenerationModel<T>;
     /// Create an audio generation model with the given name.
@@ -302,7 +302,7 @@ where
 
 impl<T> VerifyClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Send + Default + 'static,
 {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {

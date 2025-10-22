@@ -1,8 +1,6 @@
+use bytes::Bytes;
 use std::pin::Pin;
 
-#[cfg(not(target_arch = "wasm32"))]
-use bytes::Bytes;
-#[cfg(not(target_arch = "wasm32"))]
 use futures::Stream;
 
 #[cfg(not(target_arch = "wasm32"))]

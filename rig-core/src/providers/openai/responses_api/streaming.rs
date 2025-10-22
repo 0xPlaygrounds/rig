@@ -193,7 +193,7 @@ pub enum SummaryPartChunkPart {
 
 impl<T> ResponsesCompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
 {
     pub(crate) async fn stream(
         &self,

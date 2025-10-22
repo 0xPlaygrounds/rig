@@ -48,7 +48,7 @@ impl<T> TranscriptionModel<T> {
 
 impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     type Response = TranscriptionResponse;
 

@@ -195,7 +195,7 @@ impl Client<reqwest::Client> {
 
 impl<T> ProviderClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
 {
     /// Create a new Google Gemini client from the `GEMINI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
@@ -214,7 +214,7 @@ where
 
 impl<T> CompletionClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
 {
     type CompletionModel = CompletionModel<T>;
 
@@ -291,7 +291,7 @@ where
 
 impl<T> TranscriptionClient for Client<T>
 where
-    T: HttpClientExt + Clone + Debug + Default + 'static,
+    T: HttpClientExt + Clone + Debug + Default + WasmCompatSend + 'static,
     Client<T>: CompletionClient,
 {
     type TranscriptionModel = TranscriptionModel<T>;

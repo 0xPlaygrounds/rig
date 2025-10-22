@@ -1,6 +1,4 @@
-use std::pin::Pin;
-
-use crate::{http_client::sse::BoxedStream, if_wasm};
+use crate::http_client::sse::BoxedStream;
 use bytes::Bytes;
 use http::StatusCode;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
@@ -9,9 +7,7 @@ use reqwest::{Body, multipart::Form};
 pub mod retry;
 pub mod sse;
 
-if_wasm! {
-    use std::pin::Pin;
-}
+use std::pin::Pin;
 
 use crate::wasm_compat::*;
 

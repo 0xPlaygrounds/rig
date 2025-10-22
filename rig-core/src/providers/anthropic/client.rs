@@ -9,6 +9,7 @@ use crate::{
         VerifyError, impl_conversion_traits,
     },
     http_client::{self, HttpClientExt},
+    wasm_compat::WasmCompatSend,
 };
 
 // ================================================================
@@ -247,7 +248,7 @@ where
 
 impl<T> CompletionClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
 {
     type CompletionModel = CompletionModel<T>;
 

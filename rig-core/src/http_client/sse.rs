@@ -17,7 +17,6 @@ use futures::{future::BoxFuture, stream::BoxStream};
 #[cfg(target_arch = "wasm32")]
 use futures::{future::LocalBoxFuture, stream::LocalBoxStream};
 use futures_timer::Delay;
-#[cfg(not(target_arch = "wasm32"))]
 use http::Response;
 use http::{HeaderName, HeaderValue, Request, StatusCode};
 use mime_guess::mime;
@@ -41,10 +40,9 @@ type ResponseFuture<T> = BoxFuture<'static, Result<Response<T>, super::Error>>;
 type ResponseFuture<T> = LocalBoxFuture<'static, Result<Response<T>, super::Error>>;
 
 #[cfg(not(target_arch = "wasm32"))]
-type EventStream =
-    BoxStream<'static, Result<eventsource_stream::Event, EventStreamError<super::Error>>>;
+type EventStream = BoxStream<'static, Result<MessageEvent, EventStreamError<super::Error>>>;
 #[cfg(target_arch = "wasm32")]
-type EventStream = LocalBoxStream<'static, Result<MessageEvent, EventStreamError<ReqwestError>>>;
+type EventStream = LocalBoxStream<'static, Result<MessageEvent, EventStreamError<super::Error>>>;
 type BoxedRetry = Box<dyn RetryPolicy + Send + Unpin + 'static>;
 
 /// The ready state of a [`GenericEventSource`]

@@ -1037,7 +1037,7 @@ pub enum OutputRole {
 
 impl<T> completion::CompletionModel for ResponsesCompletionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;

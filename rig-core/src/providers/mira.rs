@@ -265,7 +265,7 @@ impl Client<reqwest::Client> {
 
 impl<T> ProviderClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     /// Create a new Mira client from the `MIRA_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
@@ -284,7 +284,7 @@ where
 
 impl<T> CompletionClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     type CompletionModel = CompletionModel<T>;
 
@@ -296,7 +296,7 @@ where
 
 impl<T> VerifyClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {

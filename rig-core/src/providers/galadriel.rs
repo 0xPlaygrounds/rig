@@ -136,7 +136,7 @@ impl Client<reqwest::Client> {
 
 impl<T> ProviderClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     /// Create a new Galadriel client from the `GALADRIEL_API_KEY` environment variable,
     /// and optionally from the `GALADRIEL_FINE_TUNE_API_KEY` environment variable.
@@ -166,7 +166,7 @@ where
 
 impl<T> CompletionClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     type CompletionModel = CompletionModel<T>;
 
@@ -188,7 +188,7 @@ where
 
 impl<T> VerifyClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {

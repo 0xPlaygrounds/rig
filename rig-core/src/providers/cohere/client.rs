@@ -189,7 +189,7 @@ where
 
 impl<T> ProviderClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
 {
     /// Create a new Cohere client from the `COHERE_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
@@ -208,7 +208,7 @@ where
 
 impl<T> CompletionClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
 {
     type CompletionModel = CompletionModel<T>;
 
@@ -219,7 +219,7 @@ where
 
 impl<T> EmbeddingsClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
 {
     type EmbeddingModel = EmbeddingModel<T>;
 
@@ -238,7 +238,7 @@ where
 
 impl<T> VerifyClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
 {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
