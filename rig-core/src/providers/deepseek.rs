@@ -879,6 +879,7 @@ where
                             yield Ok(crate::streaming::RawStreamingChoice::Reasoning {
                                 reasoning: content.to_string(),
                                 id: None,
+                                signature: None,
                             });
                         }
 

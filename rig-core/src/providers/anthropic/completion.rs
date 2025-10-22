@@ -432,12 +432,14 @@ impl From<message::AssistantContent> for Content {
                     input: function.arguments,
                 }
             }
-            message::AssistantContent::Reasoning(Reasoning { reasoning, id }) => {
-                Content::Thinking {
-                    thinking: reasoning.first().cloned().unwrap_or(String::new()),
-                    signature: id,
-                }
-            }
+            message::AssistantContent::Reasoning(Reasoning {
+                reasoning,
+                signature,
+                ..
+            }) => Content::Thinking {
+                thinking: reasoning.first().cloned().unwrap_or(String::new()),
+                signature,
+            },
         }
     }
 }
@@ -568,7 +570,7 @@ impl TryFrom<Content> for message::AssistantContent {
                 thinking,
                 signature,
             } => message::AssistantContent::Reasoning(
-                Reasoning::new(&thinking).optional_id(signature),
+                Reasoning::new(&thinking).with_signature(signature),
             ),
             _ => {
                 return Err(MessageError::ConversionError(
@@ -828,6 +830,10 @@ where
 
         async move {
             let request: Vec<u8> = serde_json::to_vec(&request)?;
+
+            if let Ok(json_str) = String::from_utf8(request.clone()) {
+                tracing::debug!("Request body:\n{}", json_str);
+            }
 
             let req = self
                 .client

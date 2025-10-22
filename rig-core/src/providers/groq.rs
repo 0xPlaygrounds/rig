@@ -783,7 +783,8 @@ where
                             StreamingDelta::Reasoning { reasoning } => {
                                 yield Ok(crate::streaming::RawStreamingChoice::Reasoning {
                                     id: None,
-                                    reasoning: reasoning.to_string()
+                                    reasoning: reasoning.to_string(),
+                                    signature: None,
                                 });
                             }
 

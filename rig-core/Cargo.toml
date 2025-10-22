@@ -129,7 +129,6 @@ required-features = ["derive"]
 
 [[example]]
 name = "agent_with_moonshot"
-required-features = ["derive"]
 
 [[example]]
 name = "pdf_agent"

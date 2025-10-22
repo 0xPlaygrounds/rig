@@ -381,7 +381,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             });
                         }
                         crate::message::AssistantContent::Reasoning(
-                            crate::message::Reasoning { id, reasoning },
+                            crate::message::Reasoning { id, reasoning, .. },
                         ) => {
                             items.push(InputItem {
                                 role: None,
@@ -1074,6 +1074,10 @@ where
                 .expect("openai request to successfully turn into a JSON value"),
         );
         let body = serde_json::to_vec(&request)?;
+        tracing::debug!(
+            "OpenAI Responses API input: {request}",
+            request = serde_json::to_string_pretty(&request).unwrap()
+        );
 
         let req = self
             .client
@@ -1449,6 +1453,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                     crate::message::AssistantContent::Reasoning(crate::message::Reasoning {
                         id,
                         reasoning,
+                        ..
                     }) => Ok(vec![Message::Assistant {
                         content: OneOrMany::one(AssistantContentType::Reasoning(OpenAIReasoning {
                             id: id.expect("An OpenAI-generated ID is required when using OpenAI reasoning items"),
