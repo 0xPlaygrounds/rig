@@ -3,9 +3,6 @@
 use super::Error;
 use std::time::Duration;
 
-#[cfg(doc)]
-use crate::event_source::{Event, EventSource};
-
 /// Describes how an [`EventSource`] should retry on receiving an [`enum@Error`]
 pub trait RetryPolicy {
     /// Submit a new retry delay based on the [`enum@Error`], last retry number and duration, if

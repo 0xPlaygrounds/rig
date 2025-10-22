@@ -22,8 +22,6 @@ use http::{HeaderName, HeaderValue, Request, StatusCode};
 use mime_guess::mime;
 use pin_project_lite::pin_project;
 
-// #[cfg(not(target_arch = "wasm32"))]
-// use crate::http_client::LazyBody;
 use crate::{
     http_client::{
         HttpClientExt, Result as StreamResult, instance_error,
