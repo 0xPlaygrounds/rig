@@ -3,13 +3,12 @@
 use super::Error;
 use std::time::Duration;
 
-/// Describes how an [`EventSource`] should retry on receiving an [`enum@Error`]
 pub trait RetryPolicy {
     /// Submit a new retry delay based on the [`enum@Error`], last retry number and duration, if
     /// available. A policy may also return `None` if it does not want to retry
     fn retry(&self, error: &Error, last_retry: Option<(usize, Duration)>) -> Option<Duration>;
 
-    /// Set a new reconnection time if received from an [`Event`]
+    /// Set a new reconnection time if received from an event
     fn set_reconnection_time(&mut self, duration: Duration);
 }
 
@@ -112,7 +111,7 @@ impl RetryPolicy for Never {
     fn set_reconnection_time(&mut self, _duration: Duration) {}
 }
 
-/// The default [`RetryPolicy`] when initializing an [`EventSource`]
+/// The default [`RetryPolicy`] when initializing an event source
 pub const DEFAULT_RETRY: ExponentialBackoff = ExponentialBackoff::new(
     Duration::from_millis(300),
     2.,

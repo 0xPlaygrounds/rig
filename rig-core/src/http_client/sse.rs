@@ -186,7 +186,7 @@ where
     }
 }
 
-/// Events created by the [`EventSource`]
+/// Events created by the [`GenericEventSource`]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Event {
     /// The event fired when the connection is opened
