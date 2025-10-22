@@ -10,6 +10,7 @@ use rig::{
 };
 use rig_sqlite::{
     Column, ColumnValue, SqliteSearchFilter, SqliteVectorStore, SqliteVectorStoreTable,
+    build_where_clause,
 };
 use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use sqlite_vec::sqlite3_vec_init;
@@ -168,13 +169,33 @@ async fn vector_search_test() {
     let req = VectorSearchRequest::builder()
         .samples(samples)
         .query(query)
-        .filter(SqliteSearchFilter::eq("id".into(), &"doc1").not())
+        .filter(SqliteSearchFilter::eq("id".into(), "doc1".into()).not())
         .build()
         .expect("VectorSearchRequest should not fail to build here");
 
     // Query the index
     let results = index.top_n::<serde_json::Value>(req).await.expect("");
     assert!(results.is_empty());
+}
+
+#[tokio::test]
+async fn query_syntax() {
+    use rusqlite::Connection;
+
+    let conn = Connection::open("vector_store.db").expect("Could not initialize SQLite connection");
+
+    let req = VectorSearchRequest::builder()
+        .samples(1)
+        .query("nothing")
+        .build()
+        .expect("Query should build");
+
+    let (where_clause, _) = build_where_clause(&req, vec![0.0]).expect("Filter should compile");
+
+    conn.prepare(&format!(
+        "SELECT * FROM documents_embeddings as e {where_clause}"
+    ))
+    .expect("QUERY SYNTAX NOT VALID");
 }
 
 async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, OneOrMany<Embedding>)> {

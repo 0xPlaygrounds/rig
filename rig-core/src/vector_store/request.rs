@@ -65,6 +65,10 @@ pub enum FilterError {
     MissingField(String),
     #[error("'{0}' must {1}")]
     Must(String, String),
+    // NOTE: @FayCarsons - string because `serde_json::Error` is not `Clone`
+    // and we need this to be `Clone`
+    #[error("Filter serialization failed: {0}")]
+    Serialization(String),
 }
 
 pub trait SearchFilter {

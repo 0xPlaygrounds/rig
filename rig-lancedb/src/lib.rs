@@ -6,7 +6,7 @@ use rig::{
     embeddings::embedding::EmbeddingModel,
     vector_store::{
         VectorStoreError, VectorStoreIndex,
-        request::{SearchFilter, VectorSearchRequest},
+        request::{FilterError, SearchFilter, VectorSearchRequest},
     },
 };
 use serde::Deserialize;
@@ -119,59 +119,66 @@ pub enum SearchType {
 
 /// An eDSL for filtering expressions, is rendered as a `WHERE` clause
 #[derive(Debug, Clone)]
-pub struct LanceDBFilter(String);
+pub struct LanceDBFilter(Result<String, FilterError>);
+
+fn zip_result(
+    l: Result<String, FilterError>,
+    r: Result<String, FilterError>,
+) -> Result<(String, String), FilterError> {
+    l.and_then(|l| r.map(|r| (l, r)))
+}
 
 impl SearchFilter for LanceDBFilter {
     type Value = serde_json::Value;
 
     fn eq(key: String, value: Self::Value) -> Self {
-        Self(format!("{key} = {}", escape_value(value)))
+        Self(escape_value(value).map(|s| format!("{key} = {s}")))
     }
 
     fn gt(key: String, value: Self::Value) -> Self {
-        Self(format!("{key} > {}", escape_value(value)))
+        Self(escape_value(value).map(|s| format!("{key} > {s}")))
     }
 
     fn lt(key: String, value: Self::Value) -> Self {
-        Self(format!("{key} < {}", escape_value(value)))
+        Self(escape_value(value).map(|s| format!("{key} < {s}")))
     }
 
     fn and(self, rhs: Self) -> Self {
-        Self(format!("({}) AND ({})", self.0, rhs.0))
+        Self(zip_result(self.0, rhs.0).map(|(l, r)| format!("({l}) AND ({r})")))
     }
 
     fn or(self, rhs: Self) -> Self {
-        Self(format!("({}) OR ({})", self.0, rhs.0))
+        Self(zip_result(self.0, rhs.0).map(|(l, r)| format!("({l}) OR ({r})")))
     }
 
     fn not(self) -> Self {
-        Self(format!("NOT ({})", self.0))
+        Self(self.0.map(|s| format!("NOT ({s})")))
     }
 }
 
-fn escape_value(value: serde_json::Value) -> String {
+fn escape_value(value: serde_json::Value) -> Result<String, FilterError> {
     use serde_json::Value::*;
 
     match value {
-        Null => "NULL".into(),
-        Bool(b) => b.to_string(),
-        Number(n) => n.to_string(),
-        String(s) => format!("'{}'", s.replace("'", "''")),
-        Array(xs) => format!(
+        Null => Ok("NULL".into()),
+        Bool(b) => Ok(b.to_string()),
+        Number(n) => Ok(n.to_string()),
+        String(s) => Ok(format!("'{}'", s.replace("'", "''"))),
+        Array(xs) => Ok(format!(
             "({})",
             xs.into_iter()
                 .map(escape_value)
-                .collect::<Vec<_>>()
+                .collect::<Result<Vec<_>, _>>()?
                 .join(", ")
-        ),
-        // FIXME: This means we should use i.e. a LanceDbValue or similar to prevent users from
-        // constructing objects
-        Object(_) => panic!("Objects are not supported in LanceDB filter expression"),
+        )),
+        Object(_) => Err(FilterError::TypeError(
+            "objects not supported in SQLite backend".into(),
+        )),
     }
 }
 
 impl LanceDBFilter {
-    pub fn into_inner(self) -> String {
+    pub fn into_inner(self) -> Result<String, FilterError> {
         self.0
     }
 }
@@ -285,7 +292,7 @@ where
             ));
 
         if let Some(filter) = req.filter() {
-            query = query.only_if(filter.clone().into_inner())
+            query = query.only_if(filter.clone().into_inner()?)
         }
 
         self.build_query(query)
@@ -342,7 +349,7 @@ where
             .limit(req.samples() as usize);
 
         if let Some(filter) = req.filter() {
-            query = query.only_if(filter.clone().into_inner())
+            query = query.only_if(filter.clone().into_inner()?)
         }
 
         self.build_query(query)

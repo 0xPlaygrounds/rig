@@ -1,8 +1,8 @@
 use rig::OneOrMany;
 use rig::embeddings::{Embedding, EmbeddingModel};
-use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
 use rig::vector_store::{VectorStoreError, VectorStoreIndex};
-use rusqlite::ToSql;
+use rusqlite::types::Value;
 use serde::Deserialize;
 use std::marker::PhantomData;
 use tokio_rusqlite::Connection;
@@ -243,11 +243,11 @@ where
 #[derive(Clone)]
 pub struct SqliteSearchFilter {
     condition: String,
-    params: Vec<&'static (dyn ToSql + Send + Sync)>,
+    params: Vec<serde_json::Value>,
 }
 
 impl SearchFilter for SqliteSearchFilter {
-    type Value = &'static (dyn ToSql + Send + Sync);
+    type Value = serde_json::Value;
 
     fn eq(key: String, value: Self::Value) -> Self {
         Self {
@@ -289,6 +289,47 @@ impl SearchFilter for SqliteSearchFilter {
             condition: format!("NOT ({})", self.condition),
             params: self.params,
         }
+    }
+}
+
+impl SqliteSearchFilter {
+    fn compile_params(self) -> Result<Vec<Value>, FilterError> {
+        let mut params = Vec::with_capacity(self.params.len());
+
+        fn convert(value: serde_json::Value) -> Result<Value, FilterError> {
+            use serde_json::Value::*;
+
+            match value {
+                Null => Ok(Value::Null),
+                Bool(b) => Ok(Value::Integer(b as i64)),
+                String(s) => Ok(Value::Text(s)),
+                Number(n) => Ok(if let Some(float) = n.as_f64() {
+                    Value::Real(float)
+                } else if let Some(int) = n.as_i64() {
+                    Value::Integer(int)
+                } else {
+                    unreachable!()
+                }),
+                Array(arr) => {
+                    let blob = serde_json::to_vec(&arr)
+                        .map_err(|e| FilterError::Serialization(e.to_string()))?;
+
+                    Ok(Value::Blob(blob))
+                }
+                Object(obj) => {
+                    let blob = serde_json::to_vec(&obj)
+                        .map_err(|e| FilterError::Serialization(e.to_string()))?;
+
+                    Ok(Value::Blob(blob))
+                }
+            }
+        }
+
+        for param in self.params.into_iter() {
+            params.push(convert(param)?)
+        }
+
+        Ok(params)
     }
 }
 
@@ -396,6 +437,36 @@ where
     }
 }
 
+pub fn build_where_clause(
+    req: &VectorSearchRequest<SqliteSearchFilter>,
+    query_vec: Vec<f32>,
+) -> Result<(String, Vec<Value>), FilterError> {
+    let thresh = req.threshold().unwrap_or(0.);
+    let thresh = SqliteSearchFilter::gt("e.distance".into(), thresh.into());
+
+    let filter = req
+        .filter()
+        .as_ref()
+        .cloned()
+        .map(|filter| thresh.clone().and(filter))
+        .unwrap_or(thresh);
+
+    let where_clause = format!(
+        "WHERE e.embedding MATCH ? AND k = ? AND {}",
+        filter.condition
+    );
+
+    let query_vec = query_vec.into_iter().flat_map(f32::to_le_bytes).collect();
+    let query_vec = Value::Blob(query_vec);
+    let samples = req.samples() as u32;
+
+    let mut params = vec![query_vec, samples.into()];
+    let filter_params = filter.clone().compile_params()?;
+    params.extend(filter_params);
+
+    Ok((where_clause, params))
+}
+
 impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorStoreIndex
     for SqliteVectorIndex<E, T>
 {
@@ -417,33 +488,15 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
         let columns = T::schema();
         let column_names: Vec<&str> = columns.iter().map(|column| column.name).collect();
 
+        // Build SELECT statement with all columns
+        let select_cols = column_names.join(", ");
+
+        let (where_clause, params) = build_where_clause(&req, query_vec)?;
+
         let rows = self
             .store
             .conn
             .call(move |conn| {
-                // Build SELECT statement with all columns
-                let select_cols = column_names.join(", ");
-
-                let where_clause = if let Some(filter) = req.filter() {
-                    format!(
-                        "WHERE e.embedding MATCH ? AND k = ? AND e.distance >= ? AND {}",
-                        filter.condition
-                    )
-                } else {
-                    "WHERE e.embedding MATCH ? AND k = ? AND e.distance >= ?".to_string()
-                };
-
-                let query_vec = &query_vec.as_bytes();
-                let samples = &(req.samples() as u32);
-                let threshold = &req.threshold().unwrap_or(0.);
-
-                let mut params: Vec<&(dyn ToSql + Send + Sync)> =
-                    vec![query_vec, samples, threshold];
-
-                if let Some(filter) = req.filter() {
-                    params.extend(filter.params.clone());
-                }
-
                 let mut stmt = conn.prepare(&format!(
                     "SELECT d.{select_cols}, e.distance
                     FROM {table_name}_embeddings e
@@ -500,36 +553,15 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
             req.samples() as usize
         );
         let embedding = self.embedding_model.embed_text(req.query()).await?;
-        let query_vec: Vec<u8> = serialize_embedding(&embedding)
-            .into_iter()
-            .flat_map(f32::to_le_bytes)
-            .collect();
+        let query_vec = serialize_embedding(&embedding);
         let table_name = T::name();
+
+        let (where_clause, params) = build_where_clause(&req, query_vec)?;
 
         let results = self
             .store
             .conn
             .call(move |conn| {
-                let where_clause = if let Some(filt) = req.filter() {
-                    format!(
-                        "WHERE e.embedding MATCH ? AND k = ? and e.distance >= ? AND {}",
-                        filt.condition
-                    )
-                } else {
-                    "WHERE e.embedding MATCH ?1 AND k = ?2 and e.distance >= ?3".into()
-                };
-
-                let samples = &(req.samples() as u32);
-                let threshold = &req.threshold().unwrap_or(0.);
-
-                let mut params: Vec<&dyn ToSql> = vec![&query_vec, samples, threshold];
-
-                if let Some(filter) = req.filter() {
-                    for p in filter.params.clone() {
-                        params.push(p)
-                    }
-                }
-
                 let mut stmt = conn.prepare(&format!(
                     "SELECT d.id, e.distance
                      FROM {table_name}_embeddings e
