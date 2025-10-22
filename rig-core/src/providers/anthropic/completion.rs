@@ -807,21 +807,25 @@ where
         };
 
         if !completion_request.tools.is_empty() {
-            json_utils::merge_inplace(
-                &mut request,
-                json!({
-                    "tools": completion_request
-                        .tools
-                        .into_iter()
-                        .map(|tool| ToolDefinition {
-                            name: tool.name,
-                            description: Some(tool.description),
-                            input_schema: tool.parameters,
-                        })
-                        .collect::<Vec<_>>(),
-                    "tool_choice": tool_choice,
-                }),
-            );
+            let mut tools_json = json!({
+                "tools": completion_request
+                    .tools
+                    .into_iter()
+                    .map(|tool| ToolDefinition {
+                        name: tool.name,
+                        description: Some(tool.description),
+                        input_schema: tool.parameters,
+                    })
+                    .collect::<Vec<_>>(),
+            });
+
+            // Only include tool_choice if it's explicitly set (not None)
+            // When omitted, Anthropic defaults to "auto"
+            if let Some(tc) = tool_choice {
+                tools_json["tool_choice"] = serde_json::to_value(tc)?;
+            }
+
+            json_utils::merge_inplace(&mut request, tools_json);
         }
 
         if let Some(ref params) = completion_request.additional_params {
