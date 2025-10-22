@@ -1,4 +1,4 @@
-use rig::client::{EmbeddingsClient, ProviderClient};
+use rig::client::EmbeddingsClient;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,

@@ -4,7 +4,7 @@ use rig::tool::ToolError;
 use rig::{
     OneOrMany,
     agent::Agent,
-    client::{CompletionClient, ProviderClient},
+    client::CompletionClient,
     completion::{self, CompletionError, CompletionModel, PromptError, ToolDefinition},
     message::{AssistantContent, Message, Text, ToolResultContent, UserContent},
     streaming::{StreamedAssistantContent, StreamingCompletion},

@@ -54,7 +54,7 @@ pub struct EmbeddingModel<T = reqwest::Client> {
 
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Send + 'static,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     const MAX_DOCUMENTS: usize = 1024;
 
@@ -87,7 +87,7 @@ where
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
-        let response = self.client.send(req).await?;
+        let response = self.client.http_client.send(req).await?;
 
         if response.status().is_success() {
             let body: Vec<u8> = response.into_body().await?;

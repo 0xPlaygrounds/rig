@@ -26,7 +26,7 @@ impl<T> AudioGenerationModel<T> {
 
 impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
 where
-    T: HttpClientExt + Clone,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
     type Response = Bytes;
 

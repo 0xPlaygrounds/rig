@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatchIterator;
 use fixture::{as_record_batch, schema, words};
-use rig::client::{EmbeddingsClient, ProviderClient};
+use rig::client::EmbeddingsClient;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},

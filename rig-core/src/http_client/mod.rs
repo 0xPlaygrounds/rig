@@ -4,7 +4,7 @@ use crate::{http_client::sse::BoxedStream, if_wasm};
 use bytes::Bytes;
 use http::StatusCode;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
-use reqwest::Body;
+use reqwest::{Body, multipart::Form};
 
 pub mod retry;
 pub mod sse;
@@ -37,7 +37,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(not(target_family = "wasm"))]
-fn instance_error<E: std::error::Error + Send + Sync + 'static>(error: E) -> Error {
+pub(crate) fn instance_error<E: std::error::Error + Send + Sync + 'static>(error: E) -> Error {
     Error::Instance(error.into())
 }
 
@@ -77,7 +77,9 @@ pub fn with_bearer_auth(req: Builder, auth: &str) -> Result<Builder> {
     Ok(req.header("Authorization", auth_header))
 }
 
+/// A helper trait to make generic requests (both regular and SSE) possible.
 pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
+    /// Send a HTTP request, get a response back (as bytes). Response must be able to be turned back into Bytes.
     fn send<T, U>(
         &self,
         req: Request<T>,
@@ -88,6 +90,16 @@ pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
         U: From<Bytes>,
         U: WasmCompatSend + 'static;
 
+    /// Send a HTTP request with a multipart body, get a response back (as bytes). Response must be able to be turned back into Bytes (although usually for the response, you will probably want to specify Bytes anyway).
+    fn send_multipart<U>(
+        &self,
+        req: Request<Form>,
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        U: From<Bytes>,
+        U: WasmCompatSend + 'static;
+
+    /// Send a HTTP request, get a streamed response back (as a stream of [`bytes::Bytes`].)
     fn send_streaming<T>(
         &self,
         req: Request<T>,
@@ -110,6 +122,43 @@ impl HttpClientExt for reqwest::Client {
             .request(parts.method, parts.uri.to_string())
             .headers(parts.headers)
             .body(body.into());
+
+        async move {
+            let response = req.send().await.map_err(instance_error)?;
+
+            let mut res = Response::builder().status(response.status());
+
+            if let Some(hs) = res.headers_mut() {
+                *hs = response.headers().clone();
+            }
+
+            let body: LazyBody<U> = Box::pin(async {
+                let bytes = response
+                    .bytes()
+                    .await
+                    .map_err(|e| Error::Instance(e.into()))?;
+
+                let body = U::from(bytes);
+                Ok(body)
+            });
+
+            res.body(body).map_err(Error::Protocol)
+        }
+    }
+
+    fn send_multipart<U>(
+        &self,
+        req: Request<Form>,
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        U: From<Bytes>,
+        U: WasmCompatSend + 'static,
+    {
+        let (parts, body) = req.into_parts();
+        let req = self
+            .request(parts.method, parts.uri.to_string())
+            .headers(parts.headers)
+            .multipart(body);
 
         async move {
             let response = req.send().await.map_err(instance_error)?;

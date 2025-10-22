@@ -15,7 +15,7 @@ use crate::{
         VerifyError,
     },
     extractor::ExtractorBuilder,
-    http_client::{self, HttpClientExt, with_bearer_auth},
+    http_client::{self, HttpClientExt},
     providers::openai::CompletionModel,
 };
 
@@ -25,7 +25,6 @@ use crate::client::AudioGenerationClient;
 use crate::client::ImageGenerationClient;
 
 use bytes::Bytes;
-use http::Method;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +53,14 @@ where
 }
 
 impl<'a, T> ClientBuilder<'a, T> {
+    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
+        ClientBuilder {
+            api_key,
+            base_url: OPENAI_API_BASE_URL,
+            http_client,
+        }
+    }
+
     pub fn base_url(mut self, base_url: &'a str) -> Self {
         self.base_url = base_url;
         self
@@ -95,10 +102,7 @@ where
     }
 }
 
-impl<T> Client<T>
-where
-    T: Default,
-{
+impl Client<reqwest::Client> {
     /// Create a new OpenAI client builder.
     ///
     /// # Example
@@ -109,7 +113,7 @@ where
     /// let openai_client = Client::builder("your-open-ai-api-key")
     ///    .build()
     /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, T> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
         ClientBuilder::new(api_key)
     }
 
@@ -118,11 +122,15 @@ where
     pub fn new(api_key: &str) -> Self {
         Self::builder(api_key).build()
     }
+
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
+    }
 }
 
 impl<T> Client<T>
 where
-    T: HttpClientExt,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
     pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
@@ -146,21 +154,6 @@ where
     {
         self.http_client.send(req).await
     }
-}
-
-impl<T> Client<T>
-where
-    Self: HttpClientExt,
-{
-    pub(crate) fn post(&self, path: &str) -> http::request::Builder {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
-
-        with_bearer_auth(
-            http::request::Builder::new().uri(url).method(Method::POST),
-            &self.api_key,
-        )
-        .unwrap()
-    }
 
     /// Create an extractor builder with the given completion model.
     /// Intended for use exclusively with the Chat Completions API.
@@ -168,9 +161,10 @@ where
     pub fn extractor_completions_api<U>(
         &self,
         model: &str,
-    ) -> ExtractorBuilder<CompletionModel<reqwest::Client>, U>
+    ) -> ExtractorBuilder<CompletionModel<T>, U>
     where
         U: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+        CompletionModel<T>: crate::completion::CompletionModel,
     {
         ExtractorBuilder::new(self.completion_model(model).completions_api())
     }
@@ -178,7 +172,7 @@ where
 
 impl<T> ProviderClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default,
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
     /// Create a new OpenAI client from the `OPENAI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
@@ -187,11 +181,8 @@ where
         let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
 
         match base_url {
-            Some(url) => Self::builder(&api_key)
-                .base_url(&url)
-                .with_client(T::default())
-                .build(),
-            None => Self::new(&api_key),
+            Some(url) => ClientBuilder::<T>::new(&api_key).base_url(&url).build(),
+            None => ClientBuilder::<T>::new(&api_key).build(),
         }
     }
 
@@ -199,7 +190,8 @@ where
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+
+        ClientBuilder::<T>::new(&api_key).build()
     }
 }
 
@@ -308,7 +300,10 @@ where
     }
 }
 
-impl VerifyClient for Client<reqwest::Client> {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         let req = self

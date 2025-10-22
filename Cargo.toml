@@ -87,7 +87,6 @@ tracing-subscriber = "0.3.19"
 uuid = "1.17.0"
 worker = "0.6"
 zerocopy = "0.8.26"
-reqwest-eventsource = "0.6.0"
 
 [workspace.metadata.cargo-autoinherit]
 # Skip cargo-autoinherit for these packages

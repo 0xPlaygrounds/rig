@@ -39,7 +39,7 @@ async fn hf_inference(api_key: &str) -> Result<(), anyhow::Error> {
 }
 
 async fn together(api_key: &str) -> Result<(), anyhow::Error> {
-    let agent = huggingface::ClientBuilder::new(api_key)
+    let agent = huggingface::ClientBuilder::<reqwest::Client>::new(api_key)
         .sub_provider(huggingface::SubProvider::Together)
         .build()?
         .agent("deepseek-ai/DeepSeek-R1")

@@ -1,4 +1,4 @@
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::CompletionClient;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,

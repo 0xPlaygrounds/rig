@@ -3,11 +3,7 @@ use std::sync::Arc;
 
 use rmcp::ServiceExt;
 
-use rig::{
-    client::{CompletionClient, ProviderClient},
-    completion::Prompt,
-    providers::openai,
-};
+use rig::{client::CompletionClient, completion::Prompt, providers::openai};
 use rmcp::{
     RoleServer, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},

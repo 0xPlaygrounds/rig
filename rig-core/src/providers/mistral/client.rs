@@ -20,7 +20,10 @@ pub struct ClientBuilder<'a, T = reqwest::Client> {
     http_client: T,
 }
 
-impl<'a> ClientBuilder<'a, reqwest::Client> {
+impl<'a, T> ClientBuilder<'a, T>
+where
+    T: Default,
+{
     pub fn new(api_key: &'a str) -> Self {
         Self {
             api_key,
@@ -31,6 +34,14 @@ impl<'a> ClientBuilder<'a, reqwest::Client> {
 }
 
 impl<'a, T> ClientBuilder<'a, T> {
+    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
+        Self {
+            api_key,
+            base_url: MISTRAL_API_BASE_URL,
+            http_client,
+        }
+    }
+
     pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
         ClientBuilder {
             api_key: self.api_key,
@@ -92,8 +103,12 @@ impl Client<reqwest::Client> {
     /// let mistral = Client::builder("your-mistral-api-key")
     ///    .build()
     /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
         ClientBuilder::new(api_key)
+    }
+
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
     }
 }
 
@@ -125,7 +140,10 @@ where
     }
 }
 
-impl ProviderClient for Client<reqwest::Client> {
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     /// Create a new Mistral client from the `MISTRAL_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self
@@ -133,19 +151,22 @@ impl ProviderClient for Client<reqwest::Client> {
         Self: Sized,
     {
         let api_key = std::env::var("MISTRAL_API_KEY").expect("MISTRAL_API_KEY not set");
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 }
 
-impl CompletionClient for Client<reqwest::Client> {
-    type CompletionModel = CompletionModel<reqwest::Client>;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     /// Create a completion model with the given name.
     ///
@@ -163,8 +184,11 @@ impl CompletionClient for Client<reqwest::Client> {
     }
 }
 
-impl EmbeddingsClient for Client<reqwest::Client> {
-    type EmbeddingModel = EmbeddingModel<reqwest::Client>;
+impl<T> EmbeddingsClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    type EmbeddingModel = EmbeddingModel<T>;
 
     /// Create an embedding model with the given name.
     /// Note: default embedding dimension of 0 will be used if model is not known.
@@ -191,7 +215,10 @@ impl EmbeddingsClient for Client<reqwest::Client> {
     }
 }
 
-impl VerifyClient for Client<reqwest::Client> {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         let req = self

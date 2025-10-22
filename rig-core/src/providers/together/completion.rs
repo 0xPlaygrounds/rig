@@ -5,13 +5,15 @@
 
 use crate::{
     completion::{self, CompletionError},
-    http_client, json_utils,
+    http_client::HttpClientExt,
+    json_utils,
     providers::openai,
 };
 
 use super::client::{Client, together_ai_api_types::ApiResponse};
 use crate::completion::CompletionRequest;
 use crate::streaming::StreamingCompletionResponse;
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{Instrument, info_span};
@@ -195,7 +197,10 @@ impl<T> CompletionModel<T> {
     }
 }
 
-impl completion::CompletionModel for CompletionModel<reqwest::Client> {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     type Response = openai::CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
@@ -230,22 +235,22 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
 
         tracing::debug!(target: "rig::completion", "TogetherAI completion request: {messages_as_json_string}");
 
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .post("/v1/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|x| CompletionError::HttpError(x.into()))?;
+
         async move {
-            let response = self
-                .client
-                .reqwest_post("/v1/chat/completions")
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
+            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let status = response.status();
+            let response_body = response.into_body().into_future().await?.to_vec();
 
-            if response.status().is_success() {
-                let t = response.text().await.map_err(|e| {
-                    CompletionError::HttpError(http_client::Error::Instance(e.into()))
-                })?;
-                tracing::debug!(target: "rig::completion", "TogetherAI completion response: {t}");
-
-                match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(&t)? {
+            if status.is_success() {
+                match serde_json::from_slice::<ApiResponse<openai::CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record(
@@ -261,15 +266,14 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                                 usage.total_tokens - usage.prompt_tokens,
                             );
                         }
+                        tracing::debug!(target: "rig::completion", "TogetherAI completion response: {}", serde_json::to_string_pretty(&response)?);
                         response.try_into()
                     }
                     ApiResponse::Error(err) => Err(CompletionError::ProviderError(err.error)),
                 }
             } else {
                 Err(CompletionError::ProviderError(
-                    response.text().await.map_err(|e| {
-                        CompletionError::HttpError(http_client::Error::Instance(e.into()))
-                    })?,
+                    String::from_utf8_lossy(&response_body).to_string()
                 ))
             }
         }
