@@ -1,18 +1,13 @@
 use std::sync::Arc;
 
 pub use fastembed::EmbeddingModel as FastembedModel;
-use fastembed::{
-    InitOptionsUserDefined, ModelInfo, TextEmbedding, UserDefinedEmbeddingModel,
-};
+use fastembed::{InitOptionsUserDefined, ModelInfo, TextEmbedding, UserDefinedEmbeddingModel};
 use rig::embeddings::{self, EmbeddingError};
 
 #[cfg(feature = "hf-hub")]
-use rig::{
-    Embed,
-    embeddings::EmbeddingsBuilder,
-};
-#[cfg(feature = "hf-hub")]
 use fastembed::InitOptions;
+#[cfg(feature = "hf-hub")]
+use rig::{Embed, embeddings::EmbeddingsBuilder};
 
 /// The `rig-fastembed` client.
 ///
