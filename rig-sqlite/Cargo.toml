@@ -9,7 +9,7 @@ license = "MIT"
 doctest = false
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.22.0", features = ["derive"] }
+rig-core = { path = "../rig-core", version = "0.22.0", default-features = false, features = ["derive"] }
 rusqlite = { workspace = true, features = ["bundled"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

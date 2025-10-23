@@ -2,12 +2,17 @@ use std::sync::Arc;
 
 pub use fastembed::EmbeddingModel as FastembedModel;
 use fastembed::{
-    InitOptions, InitOptionsUserDefined, ModelInfo, TextEmbedding, UserDefinedEmbeddingModel,
+    InitOptionsUserDefined, ModelInfo, TextEmbedding, UserDefinedEmbeddingModel,
 };
+use rig::embeddings::{self, EmbeddingError};
+
+#[cfg(feature = "hf-hub")]
 use rig::{
     Embed,
-    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
+    embeddings::EmbeddingsBuilder,
 };
+#[cfg(feature = "hf-hub")]
+use fastembed::InitOptions;
 
 /// The `rig-fastembed` client.
 ///
@@ -40,6 +45,7 @@ impl Client {
     ///
     /// let embedding_model = fastembed_client.embedding_model(&FastembedModel::AllMiniLML6V2Q);
     /// ```
+    #[cfg(feature = "hf-hub")]
     pub fn embedding_model(&self, model: &FastembedModel) -> EmbeddingModel {
         let ndims = TextEmbedding::get_model_info(model).unwrap().dim;
 
@@ -62,6 +68,7 @@ impl Client {
     ///     .await
     ///     .expect("Failed to embed documents");
     /// ```
+    #[cfg(feature = "hf-hub")]
     pub fn embeddings<D: Embed>(
         &self,
         model: &fastembed::EmbeddingModel,
@@ -78,6 +85,7 @@ pub struct EmbeddingModel {
 }
 
 impl EmbeddingModel {
+    #[cfg(feature = "hf-hub")]
     pub fn new(model: &fastembed::EmbeddingModel, ndims: usize) -> Self {
         let embedder = Arc::new(
             TextEmbedding::try_new(
