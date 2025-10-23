@@ -20,9 +20,11 @@ anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 [features]
-default = ["hf-hub"]
+default = ["hf-hub", "ort-download-binaries", "hf-hub-native-tls"]
 
 hf-hub = ["fastembed/hf-hub"]
+ort-download-binaries = ["fastembed/ort-download-binaries"]
+hf-hub-native-tls = ["fastembed/hf-hub-native-tls"]
 
 [[example]]
 name = "vector_search_fastembed"
