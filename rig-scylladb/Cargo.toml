@@ -8,7 +8,7 @@ description = "ScyllaDB vector store index integration for Rig. High-performance
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.22.0", features = ["derive"] }
+rig-core = { path = "../rig-core", version = "0.22.0", default-features = false, features = ["derive"] }
 serde_json = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 scylla = { workspace = true }
