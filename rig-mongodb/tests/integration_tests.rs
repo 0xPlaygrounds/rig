@@ -193,7 +193,6 @@ async fn insert_documents_test() {
                     "Test document 2"
                 ],
                 "model": "text-embedding-ada-002",
-                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
