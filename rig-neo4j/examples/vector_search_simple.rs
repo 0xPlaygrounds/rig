@@ -17,7 +17,7 @@ use rig::{
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
     vector_store::VectorStoreIndex as _,
 };
-use rig_neo4j::{Neo4jClient, ToBoltType, vector_index::SearchParams};
+use rig_neo4j::{Neo4jClient, ToBoltType};
 
 #[derive(Embed, Clone, Debug)]
 pub struct Word {
@@ -114,9 +114,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client
-        .get_index(model, "vector_index", SearchParams::default())
-        .await?;
+    let index = neo4j_client.get_index(model, "vector_index").await?;
 
     // The struct that will represent a node in the database. Used to deserialize the results of the query (passed to the `top_n` methods)
     // ❗IMPORTANT: The field names must match the property names in the database

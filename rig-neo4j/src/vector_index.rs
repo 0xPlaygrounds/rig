@@ -7,11 +7,14 @@
 use neo4rs::{Graph, Query};
 use rig::{
     embeddings::{Embedding, EmbeddingModel},
-    vector_store::{VectorStoreError, VectorStoreIndex, request::VectorSearchRequest},
+    vector_store::{
+        VectorStoreError, VectorStoreIndex,
+        request::{SearchFilter, VectorSearchRequest},
+    },
 };
 use serde::{Deserialize, Serialize, de::Error};
 
-use crate::Neo4jClient;
+use crate::{Neo4jClient, Neo4jSearchFilter};
 
 pub struct Neo4jVectorIndex<M>
 where
@@ -19,7 +22,6 @@ where
 {
     graph: Graph,
     embedding_model: M,
-    search_params: SearchParams,
     index_config: IndexConfig,
 }
 
@@ -108,17 +110,11 @@ impl<M> Neo4jVectorIndex<M>
 where
     M: EmbeddingModel,
 {
-    pub fn new(
-        graph: Graph,
-        embedding_model: M,
-        index_config: IndexConfig,
-        search_params: SearchParams,
-    ) -> Self {
+    pub fn new(graph: Graph, embedding_model: M, index_config: IndexConfig) -> Self {
         Self {
             graph,
             embedding_model,
             index_config,
-            search_params,
         }
     }
 
@@ -136,24 +132,15 @@ where
         &self,
         prompt_embedding: Embedding,
         return_node: bool,
-        n: usize,
-        threshold: Option<f64>,
+        req: &VectorSearchRequest<Neo4jSearchFilter>,
     ) -> Query {
-        let where_clause = match &self.search_params.post_vector_search_filter {
-            Some(filter) => {
-                if let Some(threshold) = threshold {
-                    format!("WHERE {filter} AND distance >= {threshold}")
-                } else {
-                    "WHERE {filter} ".to_string()
-                }
-            }
-            None => {
-                if let Some(threshold) = threshold {
-                    format!("WHERE  distance >= {threshold}")
-                } else {
-                    "".to_string()
-                }
-            }
+        let where_clause = match (req.threshold(), req.filter()) {
+            (Some(thresh), Some(filt)) => Neo4jSearchFilter::gt("distance".into(), thresh.into())
+                .and(filt.clone())
+                .render(),
+            (Some(thresh), _) => Neo4jSearchFilter::gt("distance".into(), thresh.into()).render(),
+            (_, Some(filt)) => filt.clone().render(),
+            _ => String::new(),
         };
 
         // Propertiy containing the embedding vectors are excluded from the returned node
@@ -179,7 +166,7 @@ where
 
         Query::new(query)
             .param("queryVector", prompt_embedding.vec)
-            .param("num_candidates", n as i64)
+            .param("num_candidates", req.samples() as i64)
             .param("index_name", self.index_config.index_name.clone())
     }
 }
@@ -228,6 +215,8 @@ impl<M> VectorStoreIndex for Neo4jVectorIndex<M>
 where
     M: EmbeddingModel + std::marker::Sync + Send,
 {
+    type Filter = Neo4jSearchFilter;
+
     /// Get the top n nodes and scores matching the query.
     ///
     /// #### Generic Type Parameters
@@ -244,15 +233,10 @@ where
     ///
     async fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<Neo4jSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let prompt_embedding = self.embedding_model.embed_text(req.query()).await?;
-        let query = self.build_vector_search_query(
-            prompt_embedding,
-            true,
-            req.samples() as usize,
-            req.threshold(),
-        );
+        let query = self.build_vector_search_query(prompt_embedding, true, &req);
 
         let rows = Neo4jClient::execute_and_collect::<RowResultNode<T>>(&self.graph, query).await?;
 
@@ -268,16 +252,11 @@ where
     /// the full nodes and embeddings to the client.
     async fn top_n_ids(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<Neo4jSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         let prompt_embedding = self.embedding_model.embed_text(req.query()).await?;
 
-        let query = self.build_vector_search_query(
-            prompt_embedding,
-            true,
-            req.samples() as usize,
-            req.threshold(),
-        );
+        let query = self.build_vector_search_query(prompt_embedding, true, &req);
 
         let rows = Neo4jClient::execute_and_collect::<RowResult>(&self.graph, query).await?;
 

@@ -11,6 +11,7 @@ use super::{VectorStoreError, VectorStoreIndex, request::VectorSearchRequest};
 use crate::{
     OneOrMany,
     embeddings::{Embedding, EmbeddingModel, distance::VectorDistance},
+    vector_store::request::Filter,
 };
 
 /// [InMemoryVectorStore] is a simple in-memory vector store that stores embeddings
@@ -219,6 +220,8 @@ impl<M: EmbeddingModel, D: Serialize> InMemoryVectorIndex<M, D> {
 impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
     for InMemoryVectorIndex<M, D>
 {
+    type Filter = Filter<serde_json::Value>;
+
     async fn top_n<T: for<'a> Deserialize<'a>>(
         &self,
         req: VectorSearchRequest,

@@ -2,15 +2,21 @@ use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        request::{SearchFilter, VectorSearchRequest},
     },
 };
 use scylla::{
     client::{Compression, session::Session, session_builder::SessionBuilder},
     statement::prepared::PreparedStatement,
+    value::CqlValue,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    hash::{DefaultHasher, Hash, Hasher},
+    sync::{Arc, RwLock},
+};
 use uuid::Uuid;
 
 /// Represents a vector store implementation using ScyllaDB as the backend.
@@ -31,6 +37,74 @@ pub struct ScyllaDbVectorStore<M: EmbeddingModel> {
     insert_stmt: PreparedStatement,
     search_stmt: PreparedStatement,
     get_by_id_stmt: PreparedStatement,
+    /// Cache for statements which cannot be prepared AOT
+    cache: Arc<RwLock<HashMap<u64, PreparedStatement>>>,
+}
+
+/// TODO: Write tests for this !
+#[derive(Clone, Debug)]
+pub struct ScyllaSearchFilter {
+    condition: String,
+    params: Vec<CqlValue>,
+}
+
+impl std::hash::Hash for ScyllaSearchFilter {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.condition.hash(state)
+    }
+}
+
+impl SearchFilter for ScyllaSearchFilter {
+    type Value = CqlValue;
+
+    fn eq(key: String, value: Self::Value) -> Self {
+        Self {
+            condition: format!("{key} = ?"),
+            params: vec![value],
+        }
+    }
+
+    fn gt(key: String, value: Self::Value) -> Self {
+        Self {
+            condition: format!("{key} > ?"),
+            params: vec![value],
+        }
+    }
+
+    fn lt(key: String, value: Self::Value) -> Self {
+        Self {
+            condition: format!("{key} < ?"),
+            params: vec![value],
+        }
+    }
+
+    fn and(self, rhs: Self) -> Self {
+        Self {
+            condition: format!("({}) AND ({})", self.condition, rhs.condition),
+            params: self.params.into_iter().chain(rhs.params).collect(),
+        }
+    }
+
+    fn or(self, rhs: Self) -> Self {
+        Self {
+            condition: format!("({}) OR ({})", self.condition, rhs.condition),
+            params: self.params.into_iter().chain(rhs.params).collect(),
+        }
+    }
+}
+
+impl ScyllaSearchFilter {
+    fn params(&self) -> &[CqlValue] {
+        self.params.as_slice()
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self {
+            condition: format!("NOT ({})", self.condition),
+            ..self
+        }
+    }
 }
 
 impl<M> ScyllaDbVectorStore<M>
@@ -113,6 +187,7 @@ where
             insert_stmt,
             search_stmt,
             get_by_id_stmt,
+            cache: Default::default(),
         })
     }
 
@@ -182,6 +257,49 @@ where
         let embedding = self.model.embed_text(query).await?;
         Ok(embedding.vec.iter().map(|&x| x as f32).collect())
     }
+
+    async fn get_filter_statement_or_default(
+        &self,
+        req: &VectorSearchRequest<ScyllaSearchFilter>,
+    ) -> Result<PreparedStatement, VectorStoreError> {
+        if let Some(filter) = req.filter() {
+            let mut hasher = DefaultHasher::new();
+            filter.hash(&mut hasher);
+            let filter_hash = hasher.finish();
+
+            let statement = if let Some(cached) = self
+                .cache
+                .read()
+                .ok()
+                .and_then(|cache| cache.get(&filter_hash).cloned())
+            {
+                cached
+            } else {
+                let query = format!(
+                    "SELECT id, vector, metadata, created_at FROM {}.{} WHERE {} ALLOW FILTERING",
+                    self.keyspace, self.table, filter.condition
+                );
+
+                let prepared = self
+                    .session
+                    .prepare(query)
+                    .await
+                    .map_err(|e| VectorStoreError::DatastoreError(e.into()))?;
+
+                let mut cache = self.cache.write().map_err(|e| {
+                    VectorStoreError::DatastoreError(
+                        format!("Error writing statement cache: {e}").into(),
+                    )
+                })?;
+                cache.insert(filter_hash, prepared.clone());
+                prepared
+            };
+
+            Ok(statement)
+        } else {
+            Ok(self.search_stmt.clone())
+        }
+    }
 }
 
 impl<Model> InsertDocuments for ScyllaDbVectorStore<Model>
@@ -227,6 +345,8 @@ impl<M> VectorStoreIndex for ScyllaDbVectorStore<M>
 where
     M: EmbeddingModel + std::marker::Sync + Send,
 {
+    type Filter = ScyllaSearchFilter;
+
     /// Search for the top `n` nearest neighbors to the given query.
     /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
     ///
@@ -235,14 +355,21 @@ where
     /// vector search capabilities with ANN (Approximate Nearest Neighbor) algorithms.
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<ScyllaSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let query_vector = self.generate_query_vector(req.query()).await?;
+
+        let statement = self.get_filter_statement_or_default(&req).await?;
+        let params = req
+            .filter()
+            .as_ref()
+            .map(ScyllaSearchFilter::params)
+            .unwrap_or([].as_slice());
 
         // Fetch all vectors (this will be optimized once ScyllaDB vector search is available)
         let results = self
             .session
-            .execute_unpaged(&self.search_stmt, &[])
+            .execute_unpaged(&statement, params)
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
@@ -282,13 +409,20 @@ where
     /// Returns a vector of tuples containing the score and ID of the nearest neighbors.
     async fn top_n_ids(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<ScyllaSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         let query_vector = self.generate_query_vector(req.query()).await?;
 
+        let statement = self.get_filter_statement_or_default(&req).await?;
+        let params = req
+            .filter()
+            .as_ref()
+            .map(ScyllaSearchFilter::params)
+            .unwrap_or_default();
+
         let results = self
             .session
-            .execute_unpaged(&self.search_stmt, &[])
+            .execute_unpaged(&statement, params)
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 

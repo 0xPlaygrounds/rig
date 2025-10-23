@@ -4,7 +4,8 @@ use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        request::{SearchFilter, VectorSearchRequest},
     },
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -45,6 +46,65 @@ impl Display for PgVectorDistanceFunction {
             PgVectorDistanceFunction::L1 => write!(f, "<+>"),
             PgVectorDistanceFunction::Hamming => write!(f, "<~>"),
             PgVectorDistanceFunction::Jaccard => write!(f, "<%>"),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct PgSearchFilter {
+    condition: String,
+    values: Vec<serde_json::Value>,
+}
+
+impl SearchFilter for PgSearchFilter {
+    type Value = serde_json::Value;
+
+    fn eq(key: String, value: Self::Value) -> Self {
+        Self {
+            condition: format!("{key} = $"),
+            values: vec![value],
+        }
+    }
+
+    fn gt(key: String, value: Self::Value) -> Self {
+        Self {
+            condition: format!("{key} > $"),
+            values: vec![value],
+        }
+    }
+
+    fn lt(key: String, value: Self::Value) -> Self {
+        Self {
+            condition: format!("{key} < $"),
+            values: vec![value],
+        }
+    }
+
+    fn and(self, rhs: Self) -> Self {
+        Self {
+            condition: format!("({}) AND ({})", self.condition, rhs.condition),
+            values: self.values.into_iter().chain(rhs.values).collect(),
+        }
+    }
+
+    fn or(self, rhs: Self) -> Self {
+        Self {
+            condition: format!("({}) OR ({})", self.condition, rhs.condition),
+            values: self.values.into_iter().chain(rhs.values).collect(),
+        }
+    }
+}
+
+impl PgSearchFilter {
+    fn into_clause(self) -> (String, Vec<serde_json::Value>) {
+        (self.condition, self.values)
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self {
+            condition: format!("NOT ({})", self.condition),
+            values: self.values,
         }
     }
 }
@@ -93,35 +153,72 @@ where
         Self::new(model, pg_pool, None, PgVectorDistanceFunction::Cosine)
     }
 
-    fn search_query_full(&self, threshold: Option<f64>) -> String {
-        self.search_query(true, threshold)
-    }
-    fn search_query_only_ids(&self, threshold: Option<f64>) -> String {
-        self.search_query(false, threshold)
+    fn search_query_full(
+        &self,
+        req: &VectorSearchRequest<PgSearchFilter>,
+    ) -> (String, Vec<serde_json::Value>) {
+        self.search_query(true, req)
     }
 
-    fn search_query(&self, with_document: bool, threshold: Option<f64>) -> String {
+    fn search_query_only_ids(
+        &self,
+        req: &VectorSearchRequest<PgSearchFilter>,
+    ) -> (String, Vec<serde_json::Value>) {
+        self.search_query(false, req)
+    }
+
+    fn search_query(
+        &self,
+        with_document: bool,
+        req: &VectorSearchRequest<PgSearchFilter>,
+    ) -> (String, Vec<serde_json::Value>) {
         let document = if with_document { ", document" } else { "" };
-        format!(
+
+        let thresh = req
+            .threshold()
+            .map(|t| PgSearchFilter::gt("distance".into(), t.into()));
+        let filter = match (thresh, req.filter()) {
+            (Some(thresh), Some(filt)) => Some(thresh.and(filt.clone())),
+            (Some(thresh), _) => Some(thresh),
+            (_, Some(filt)) => Some(filt.clone()),
+            _ => None,
+        };
+        let (where_clause, params) = match filter {
+            Some(f) => {
+                let (expr, params) = f.into_clause();
+                (String::from("WHERE") + &expr, params)
+            }
+            None => (Default::default(), Default::default()),
+        };
+
+        let mut counter = 3;
+        let mut buf = String::with_capacity(where_clause.len() * 2);
+
+        for c in where_clause.chars() {
+            buf.push(c);
+
+            if c == '$' {
+                buf.push_str(counter.to_string().as_str());
+                counter += 1;
+            }
+        }
+
+        let where_clause = buf;
+
+        let query = format!(
             "
             SELECT id{}, distance FROM ( \
               SELECT DISTINCT ON (id) id{}, embedding {} $1 as distance \
               FROM {} \
-              {where_clause}
+              {where_clause} \
               ORDER BY id, distance \
             ) as d \
             ORDER BY distance \
             LIMIT $2",
-            document,
-            document,
-            self.distance_function,
-            self.documents_table,
-            where_clause = if let Some(threshold) = threshold {
-                format!("where distance > {threshold}")
-            } else {
-                String::new()
-            }
-        )
+            document, document, self.distance_function, self.documents_table
+        );
+
+        (query, params)
     }
 }
 
@@ -166,11 +263,13 @@ impl<Model> VectorStoreIndex for PostgresVectorStore<Model>
 where
     Model: EmbeddingModel,
 {
+    type Filter = PgSearchFilter;
+
     /// Get the top n documents based on the distance to the given query.
     /// The result is a list of tuples of the form (score, id, document)
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<PgSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         if req.samples() > i64::MAX as u64 {
             return Err(VectorStoreError::DatastoreError(
@@ -192,13 +291,19 @@ where
             .collect::<Vec<f32>>()
             .into();
 
-        let rows: Vec<SearchResult> =
-            sqlx::query_as(self.search_query_full(req.threshold()).as_str())
-                .bind(embedded_query)
-                .bind(req.samples() as i64)
-                .fetch_all(&self.pg_pool)
-                .await
-                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        let (search_query, params) = self.search_query_full(&req);
+        let builder = sqlx::query_as(search_query.as_str())
+            .bind(embedded_query)
+            .bind(req.samples() as i64);
+
+        let builder = params
+            .iter()
+            .fold(builder, |builder, param| builder.bind(param));
+
+        let rows = builder
+            .fetch_all(&self.pg_pool)
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
         let rows: Vec<(f64, String, T)> = rows
             .into_iter()
@@ -211,7 +316,7 @@ where
     /// Same as `top_n` but returns the document ids only.
     async fn top_n_ids(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<PgSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         if req.samples() > i64::MAX as u64 {
             return Err(VectorStoreError::DatastoreError(
@@ -232,13 +337,19 @@ where
             .collect::<Vec<f32>>()
             .into();
 
-        let rows: Vec<SearchResultOnlyId> =
-            sqlx::query_as(self.search_query_only_ids(req.threshold()).as_str())
-                .bind(embedded_query)
-                .bind(req.samples() as i64)
-                .fetch_all(&self.pg_pool)
-                .await
-                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        let (search_query, params) = self.search_query_only_ids(&req);
+        let builder = sqlx::query_as(search_query.as_str())
+            .bind(embedded_query)
+            .bind(req.samples() as i64);
+
+        let builder = params
+            .iter()
+            .fold(builder, |builder, param| builder.bind(param));
+
+        let rows: Vec<SearchResultOnlyId> = builder
+            .fetch_all(&self.pg_pool)
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
         let rows: Vec<(f64, String)> = rows
             .into_iter()

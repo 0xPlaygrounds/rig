@@ -1,12 +1,17 @@
+mod filter;
+
 use reqwest::StatusCode;
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        request::{SearchFilter, VectorSearchRequest},
     },
 };
 use serde::{Deserialize, Serialize};
+
+use crate::filter::Filter;
 
 /// Represents a vector store implementation using Milvus - <https://milvus.io/> as the backend.
 pub struct MilvusVectorStore<M> {
@@ -120,45 +125,37 @@ where
     fn create_search_request(
         &self,
         data: Vec<f64>,
-        limit: usize,
-        threshold: Option<f64>,
+        req: &VectorSearchRequest<Filter>,
+        id_only: bool,
     ) -> SearchRequest<'_> {
-        let filter = if let Some(threshold) = threshold {
-            format!("distance >= {threshold}")
-        } else {
-            String::new()
-        };
-        SearchRequest {
-            collection_name: &self.collection_name,
-            db_name: &self.database_name,
-            data,
-            filter,
-            anns_field: "embedding",
-            limit,
-            output_fields: vec!["id", "distance", "document", "embeddedText"],
-        }
-    }
+        const OUTPUT_FIELDS: [&str; 4] = ["id", "distance", "document", "embeddedText"];
+        const OUTPUT_FIELDS_ID_ONLY: [&str; 2] = ["id", "distance"];
 
-    /// Creates a semantic search request, but only for IDs.
-    fn create_search_request_id_only(
-        &self,
-        data: Vec<f64>,
-        limit: usize,
-        threshold: Option<f64>,
-    ) -> SearchRequest<'_> {
-        let filter = if let Some(threshold) = threshold {
-            format!("distance >= {threshold}")
+        let output_fields = if id_only {
+            OUTPUT_FIELDS_ID_ONLY.to_vec()
         } else {
-            String::new()
+            OUTPUT_FIELDS.to_vec()
         };
+
+        let threshold = req
+            .threshold()
+            .map(|thresh| Filter::gte("distance".into(), thresh.into()));
+
+        let filter = match (threshold, req.filter()) {
+            (Some(thresh), Some(filter)) => thresh.and(filter.clone()).into_inner(),
+            (Some(thresh), _) => thresh.into_inner(),
+            (_, Some(filter)) => filter.clone().into_inner(),
+            _ => String::new(),
+        };
+
         SearchRequest {
             collection_name: &self.collection_name,
             db_name: &self.database_name,
             data,
             filter,
             anns_field: "embedding",
-            limit,
-            output_fields: vec!["id", "distance"],
+            limit: req.samples() as usize,
+            output_fields,
         }
     }
 }
@@ -228,11 +225,13 @@ impl<M> VectorStoreIndex for MilvusVectorStore<M>
 where
     M: EmbeddingModel,
 {
+    type Filter = Filter;
+
     /// Search for the top `n` nearest neighbors to the given query within the Milvus vector store.
     /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let embedding = self.model.embed_text(req.query()).await?;
         let url = format!(
@@ -240,8 +239,7 @@ where
             base_url = self.base_url
         );
 
-        let body =
-            self.create_search_request(embedding.vec, req.samples() as usize, req.threshold());
+        let body = self.create_search_request(embedding.vec, &req, false);
 
         let mut client = self.client.post(url);
         if let Some(ref token) = self.token {
@@ -274,7 +272,7 @@ where
     /// Returns a vector of tuples containing the score and ID of the nearest neighbors.
     async fn top_n_ids(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<Filter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         let embedding = self.model.embed_text(req.query()).await?;
         let url = format!(
@@ -282,11 +280,7 @@ where
             base_url = self.base_url
         );
 
-        let body = self.create_search_request_id_only(
-            embedding.vec,
-            req.samples() as usize,
-            req.threshold(),
-        );
+        let body = self.create_search_request(embedding.vec, &req, true);
 
         let mut client = self.client.post(url);
         if let Some(ref token) = self.token {

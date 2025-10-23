@@ -4,7 +4,8 @@ use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        request::{SearchFilter, VectorSearchRequest},
     },
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -109,6 +110,52 @@ where
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SurrealSearchFilter(String);
+
+impl SurrealSearchFilter {
+    fn inner(self) -> String {
+        self.0
+    }
+}
+
+impl std::fmt::Display for SurrealSearchFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl SearchFilter for SurrealSearchFilter {
+    type Value = surrealdb::Value;
+
+    fn eq(key: String, value: Self::Value) -> Self {
+        Self(format!("{key} = {value}"))
+    }
+
+    fn gt(key: String, value: Self::Value) -> Self {
+        Self(format!("{key} > {value}"))
+    }
+
+    fn lt(key: String, value: Self::Value) -> Self {
+        Self(format!("{key} < {value}"))
+    }
+
+    fn and(self, rhs: Self) -> Self {
+        Self(format!("({self}) AND ({rhs})"))
+    }
+
+    fn or(self, rhs: Self) -> Self {
+        Self(format!("({self}) OR ({rhs})"))
+    }
+}
+
+impl SurrealSearchFilter {
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self(format!("NOT ({self})"))
+    }
+}
+
 impl<C, Model> SurrealVectorStore<C, Model>
 where
     C: Connection,
@@ -151,11 +198,12 @@ where
         let Self {
             distance_function, ..
         } = self;
+
         format!(
             "
             SELECT id {document} {embedded_text}, {distance_function}($vec, embedding) as distance \
               from type::table($tablename) \
-              where {distance_function}($vec, embedding) >= $threshold \
+              where {distance_function}($vec, embedding) >= $threshold AND $filter \
               order by distance desc \
             LIMIT $limit",
         )
@@ -167,11 +215,13 @@ where
     C: Connection,
     Model: EmbeddingModel,
 {
+    type Filter = SurrealSearchFilter;
+
     /// Get the top n documents based on the distance to the given query.
     /// The result is a list of tuples of the form (score, id, document)
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<SurrealSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let embedded_query: Vec<f64> = self.model.embed_text(req.query()).await?.vec;
 
@@ -182,6 +232,13 @@ where
             .bind(("tablename", self.documents_table.clone()))
             .bind(("threshold", req.threshold().unwrap_or(0.)))
             .bind(("limit", req.samples() as usize))
+            .bind((
+                "filter",
+                req.filter()
+                    .clone()
+                    .map(SurrealSearchFilter::inner)
+                    .unwrap_or("true".into()),
+            ))
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
@@ -200,7 +257,7 @@ where
     /// Same as `top_n` but returns the document ids only.
     async fn top_n_ids(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<SurrealSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         let embedded_query: Vec<f32> = self
             .model
@@ -218,6 +275,13 @@ where
             .bind(("tablename", self.documents_table.clone()))
             .bind(("threshold", req.threshold().unwrap_or(0.)))
             .bind(("limit", req.samples() as usize))
+            .bind((
+                "filter",
+                req.filter()
+                    .clone()
+                    .map(SurrealSearchFilter::inner)
+                    .unwrap_or("true".into()),
+            ))
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 

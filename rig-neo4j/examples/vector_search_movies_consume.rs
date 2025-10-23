@@ -14,8 +14,8 @@
 //! [examples/vector_search_movies_add_embeddings.rs](examples/vector_search_movies_add_embeddings.rs) provides an example of
 //! how to add embeddings to an existing `recommendations` database.
 use neo4rs::ConfigBuilder;
-use rig::vector_store::request::VectorSearchRequest;
-use rig_neo4j::{Neo4jClient, vector_index::SearchParams};
+use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig_neo4j::Neo4jClient;
 
 use std::env;
 
@@ -69,18 +69,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // ❗IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client
-        .get_index(
-            model,
-            INDEX_NAME,
-            SearchParams::new(Some("node.year > 1990".to_string())),
-        )
-        .await?;
+    let index = neo4j_client.get_index(model, INDEX_NAME).await?;
 
     let query = "a historical movie on quebec";
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(5)
+        .filter(SearchFilter::gt("node.year".into(), 1990.into()))
         .build()?;
 
     // Query the index

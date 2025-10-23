@@ -1,7 +1,11 @@
+mod filter;
+
+use filter::*;
 use qdrant_client::{
     Payload, Qdrant,
     qdrant::{
-        PointId, PointStruct, Query, QueryPoints, UpsertPointsBuilder, point_id::PointIdOptions,
+        Filter, PointId, PointStruct, Query, QueryPoints, UpsertPointsBuilder,
+        point_id::PointIdOptions,
     },
 };
 use rig::{
@@ -59,11 +63,13 @@ where
         query: Option<Query>,
         limit: usize,
         threshold: Option<f64>,
+        filter: Option<Filter>,
     ) -> QueryPoints {
         let mut params = self.query_params.clone();
         params.query = query;
         params.limit = Some(limit as u64);
         params.score_threshold = threshold.map(|x| x as f32);
+        params.filter = filter;
         params
     }
 }
@@ -120,11 +126,13 @@ impl<M> VectorStoreIndex for QdrantVectorStore<M>
 where
     M: EmbeddingModel + std::marker::Sync + Send,
 {
+    type Filter = QdrantFilter;
+
     /// Search for the top `n` nearest neighbors to the given query within the Qdrant vector store.
     /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<Self::Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let query = match self.query_params.query {
             Some(ref q) => Some(q.clone()),
@@ -133,7 +141,17 @@ where
             )),
         };
 
-        let params = self.prepare_query_params(query, req.samples() as usize, req.threshold());
+        let filter = req
+            .filter()
+            .as_ref()
+            .cloned()
+            .map(QdrantFilter::interpret)
+            .transpose()?
+            .flatten();
+
+        let params =
+            self.prepare_query_params(query, req.samples() as usize, req.threshold(), filter);
+
         let result = self
             .client
             .query(params)
@@ -159,7 +177,7 @@ where
     /// Returns a vector of tuples containing the score and ID of the nearest neighbors.
     async fn top_n_ids(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<Self::Filter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         let query = match self.query_params.query {
             Some(ref q) => Some(q.clone()),
@@ -168,7 +186,17 @@ where
             )),
         };
 
-        let params = self.prepare_query_params(query, req.samples() as usize, req.threshold());
+        let filter = req
+            .filter()
+            .as_ref()
+            .cloned()
+            .map(QdrantFilter::interpret)
+            .transpose()?
+            .flatten();
+
+        let params =
+            self.prepare_query_params(query, req.samples() as usize, req.threshold(), filter);
+
         let points = self
             .client
             .query(params)
