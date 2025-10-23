@@ -118,6 +118,11 @@ where
         } else {
             completion_request
         };
+        let completion_request = if let Some(tool_choice) = &self.tool_choice {
+            completion_request.tool_choice(tool_choice.clone())
+        } else {
+            completion_request
+        };
 
         // If the agent has RAG text, we need to fetch the dynamic context and tools
         let agent = match &rag_text {
