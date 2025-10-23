@@ -84,7 +84,7 @@ tokio-rusqlite = { version = "0.6.0", default-features = false }
 tokio-test = "0.4.4"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
-uuid = "1.17.0"
+uuid = "1.18.0"
 worker = "0.6"
 zerocopy = "0.8.26"
 reqwest-eventsource = "0.6.0"
