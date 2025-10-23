@@ -440,7 +440,7 @@ where
     }
 }
 
-pub fn build_where_clause(
+fn build_where_clause(
     req: &VectorSearchRequest<SqliteSearchFilter>,
     query_vec: Vec<f32>,
 ) -> Result<(String, Vec<Value>), FilterError> {
