@@ -334,6 +334,16 @@ where
                                 yield Err(e);
                             }
                         },
+                        Ok(StreamedAssistentContent::ToolCallPartial { id, delta }) => {
+                            if let Some(ref hook) = self.hook {
+                                hook.on_tool_result(&tool_call.function.name, &tool_call.function.arguments.to_string(), &tool_result.to_string(), cancel_signal.clone())
+                                .await;
+
+                                if cancel_signal.is_cancelled() {
+                                    return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec()).into()));
+                                }
+                            }
+                        }
                         Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id, signature })) => {
                             chat_history.write().await.push(rig::message::Message::Assistant {
                                 id: None,
@@ -490,6 +500,17 @@ where
     #[allow(unused_variables)]
     /// Called when receiving a text delta
     fn on_text_delta(
+        &self,
+        text_delta: &str,
+        aggregated_text: &str,
+        cancel_sig: CancelSignal,
+    ) -> impl Future<Output = ()> + Send {
+        async {}
+    }
+
+    #[allow(unused_variables)]
+    /// Called when receiving a tool call delta
+    fn on_tool_call_delta(
         &self,
         text_delta: &str,
         aggregated_text: &str,
