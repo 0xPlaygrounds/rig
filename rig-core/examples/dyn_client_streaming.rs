@@ -65,6 +65,7 @@ async fn test_openai_streaming(
                 println!("\n[Error: {}]", e);
                 break;
             }
+            _ => {}
         }
     }
     println!();
@@ -108,6 +109,7 @@ async fn test_anthropic_streaming(
                 println!("\n[Error: {}]", e);
                 break;
             }
+            _ => {}
         }
     }
     println!();
@@ -148,6 +150,7 @@ async fn test_provider_model_id_streaming(
                 println!("\n[Error: {}]", e);
                 break;
             }
+            _ => {}
         }
     }
     println!();
