@@ -498,12 +498,11 @@ impl<T> CompletionModel<T> {
         let mut request_payload = json!({
             "model": self.model,
             "messages": full_history,
-            "options": options,
             "stream": false,
         });
 
         // Convert internal prompt into a provider Message
-        let options = if let Some(extra) = completion_request.additional_params {
+        let options = if let Some(mut extra) = completion_request.additional_params {
             if extra.get("think").is_some() {
                 request_payload["think"] = extra["think"].take();
             }
@@ -514,6 +513,8 @@ impl<T> CompletionModel<T> {
         } else {
             json!({ "temperature": completion_request.temperature })
         };
+
+        request_payload["options"] = options;
 
         if !completion_request.tools.is_empty() {
             request_payload["tools"] = json!(
