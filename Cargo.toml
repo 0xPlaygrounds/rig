@@ -54,7 +54,7 @@ lancedb = { version = "0.21", default-features = false }
 log = "0.4.27"
 lopdf = "0.36.0"
 mime_guess = "2.0.5"
-mongodb = "3.2.3"
+mongodb = "3.2.5"
 neo4rs = "0.8.0"
 ordered-float = "5.0.0"
 pgvector = "0.4"
