@@ -44,6 +44,7 @@ async fn main() -> Result<(), anyhow::Error> {
                         }
                         break;
                     }
+                    _ => {}
                 }
 
                 // Demonstrate pause control every 10 chunks

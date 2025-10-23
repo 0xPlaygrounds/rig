@@ -145,6 +145,7 @@ pub enum ContentPartChunkPart {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DeltaTextChunk {
+    pub item_id: String,
     pub content_index: u64,
     pub sequence_number: u64,
     pub delta: String,
@@ -299,6 +300,9 @@ where
                                 ItemChunkKind::RefusalDelta(delta) => {
                                     combined_text.push_str(&delta.delta);
                                     yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
+                                }
+                                ItemChunkKind::FunctionCallArgsDelta(delta) => {
+                                    yield Ok(streaming::RawStreamingChoice::ToolCallDelta { id: delta.item_id.clone(), delta: delta.delta.clone() })
                                 }
 
                                 _ => { continue }
