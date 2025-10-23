@@ -8,7 +8,7 @@ description = "Rig vector store index integration for Fastembed. https://github.
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.22.0" }
+rig-core = { path = "../rig-core", version = "0.22.0", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
@@ -18,6 +18,13 @@ fastembed = { workspace = true }
 [dev-dependencies]
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
+
+[features]
+default = ["hf-hub", "ort-download-binaries", "hf-hub-native-tls"]
+
+hf-hub = ["fastembed/hf-hub"]
+ort-download-binaries = ["fastembed/ort-download-binaries"]
+hf-hub-native-tls = ["fastembed/hf-hub-native-tls"]
 
 [[example]]
 name = "vector_search_fastembed"
