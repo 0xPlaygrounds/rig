@@ -1,10 +1,7 @@
 use rig::streaming::StreamingPrompt;
 use rig::{
-    agent::stream_to_stdout,
-    client::{CompletionClient, ProviderClient},
-    completion::ToolDefinition,
-    providers::anthropic,
-    tool::Tool,
+    agent::stream_to_stdout, client::CompletionClient, completion::ToolDefinition,
+    providers::anthropic, tool::Tool,
 };
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};

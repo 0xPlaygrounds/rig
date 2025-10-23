@@ -1,7 +1,9 @@
+use http::Method;
+
 use super::completion::CompletionModel;
 use crate::{
     client::{CompletionClient, ProviderClient, VerifyClient, VerifyError, impl_conversion_traits},
-    http_client,
+    http_client::{self, HttpClientExt, NoBody, Result as HttpResult, with_bearer_auth},
 };
 
 // ================================================================
@@ -29,6 +31,14 @@ where
 }
 
 impl<'a, T> ClientBuilder<'a, T> {
+    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
+        Self {
+            api_key,
+            base_url: XAI_BASE_URL,
+            http_client,
+        }
+    }
+
     pub fn base_url(mut self, base_url: &'a str) -> Self {
         self.base_url = base_url;
         self
@@ -63,7 +73,7 @@ pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
     default_headers: http_client::HeaderMap,
-    http_client: T,
+    pub http_client: T,
 }
 
 impl<T> std::fmt::Debug for Client<T>
@@ -80,10 +90,7 @@ where
     }
 }
 
-impl<T> Client<T>
-where
-    T: Default,
-{
+impl Client<reqwest::Client> {
     /// Create a new xAI client builder.
     ///
     /// # Example
@@ -94,7 +101,7 @@ where
     /// let xai = Client::builder("your-xai-api-key")
     ///    .build()
     /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, T> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
         ClientBuilder::new(api_key)
     }
 
@@ -105,82 +112,89 @@ where
     pub fn new(api_key: &str) -> Self {
         Self::builder(api_key).build()
     }
-}
 
-impl Client<reqwest::Client> {
-    pub(crate) fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
-
-        tracing::debug!("POST {}", url);
-
-        self.http_client
-            .post(url)
-            .bearer_auth(&self.api_key)
-            .headers(self.default_headers.clone())
-    }
-
-    pub(crate) fn reqwest_get(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
-
-        tracing::debug!("GET {}", url);
-
-        self.http_client
-            .get(url)
-            .bearer_auth(&self.api_key)
-            .headers(self.default_headers.clone())
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
     }
 }
 
-impl ProviderClient for Client<reqwest::Client> {
+impl<T> Client<T>
+where
+    T: HttpClientExt,
+{
+    pub(crate) fn req(&self, method: Method, path: &str) -> HttpResult<http_client::Builder> {
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+
+        let mut builder = http_client::Builder::new().uri(url).method(method);
+        for (header, value) in &self.default_headers {
+            builder = builder.header(header, value);
+        }
+
+        with_bearer_auth(builder, &self.api_key)
+    }
+
+    pub(crate) fn post(&self, path: &str) -> HttpResult<http_client::Builder> {
+        self.req(Method::POST, path)
+    }
+
+    pub(crate) fn get(&self, path: &str) -> HttpResult<http_client::Builder> {
+        self.req(Method::GET, path)
+    }
+}
+
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     /// Create a new xAI client from the `XAI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("XAI_API_KEY").expect("XAI_API_KEY not set");
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 }
 
-impl CompletionClient for Client<reqwest::Client> {
-    type CompletionModel = CompletionModel<reqwest::Client>;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     /// Create a completion model with the given name.
-    fn completion_model(&self, model: &str) -> CompletionModel<reqwest::Client> {
+    fn completion_model(&self, model: &str) -> CompletionModel<T> {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl VerifyClient for Client<reqwest::Client> {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
-        let response = self
-            .reqwest_get("/v1/api-key")
-            .send()
-            .await
-            .map_err(|e| VerifyError::HttpError(http_client::Error::Instance(e.into())))?;
+        let req = self.get("/v1/api-key").unwrap().body(NoBody).unwrap();
 
-        match response.status() {
+        let response = self.http_client.send::<_, Vec<u8>>(req).await.unwrap();
+        let status = response.status();
+
+        match status {
             reqwest::StatusCode::OK => Ok(()),
             reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
                 Err(VerifyError::InvalidAuthentication)
             }
-            reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
-                Err(VerifyError::ProviderError(response.text().await.map_err(
-                    |e| VerifyError::HttpError(http_client::Error::Instance(e.into())),
-                )?))
-            }
-            _ => {
-                response
-                    .error_for_status()
-                    .map_err(|e| VerifyError::HttpError(http_client::Error::Instance(e.into())))?;
-                Ok(())
-            }
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR => Err(VerifyError::ProviderError(
+                http_client::text(response).await?,
+            )),
+            _ => Err(VerifyError::HttpError(http_client::Error::Instance(
+                http_client::text(response).await?.into(),
+            ))),
         }
     }
 }

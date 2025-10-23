@@ -1,7 +1,12 @@
-use crate::telemetry::SpanCombinator;
+use crate::{
+    http_client::{
+        HttpClientExt,
+        sse::{Event, GenericEventSource},
+    },
+    telemetry::SpanCombinator,
+};
 use async_stream::stream;
 use futures::StreamExt;
-use reqwest_eventsource::{Event, RequestBuilderExt};
 use serde::{Deserialize, Serialize};
 use tracing::info_span;
 
@@ -69,7 +74,10 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl CompletionModel<reqwest::Client> {
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -101,17 +109,19 @@ impl CompletionModel<reqwest::Client> {
             "Sending completion request to Gemini API {}",
             serde_json::to_string_pretty(&request)?
         );
+        let body = serde_json::to_vec(&request)?;
 
-        // Build the request with proper headers for SSE
-        let mut event_source = self
+        let req = self
             .client
             .post_sse(&format!(
                 "/v1beta/models/{}:streamGenerateContent",
                 self.model
             ))
-            .json(&request)
-            .eventsource()
-            .expect("Cloning request must always succeed");
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        let mut event_source = GenericEventSource::new(self.client.http_client.clone(), req);
 
         let stream = stream! {
             let mut text_response = String::new();
@@ -194,7 +204,7 @@ impl CompletionModel<reqwest::Client> {
                             break;
                         }
                     }
-                    Err(reqwest_eventsource::Error::StreamEnded) => {
+                    Err(crate::http_client::Error::StreamEnded) => {
                         break;
                     }
                     Err(error) => {

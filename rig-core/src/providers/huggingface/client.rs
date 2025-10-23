@@ -130,6 +130,15 @@ where
 }
 
 impl<T> ClientBuilder<T> {
+    pub fn new_with_client(api_key: &str, http_client: T) -> ClientBuilder<T> {
+        ClientBuilder {
+            api_key: api_key.to_string(),
+            base_url: HUGGINGFACE_API_BASE_URL.to_string(),
+            sub_provider: SubProvider::default(),
+            http_client,
+        }
+    }
+
     pub fn with_client<U>(self, http_client: U) -> ClientBuilder<U> {
         ClientBuilder {
             api_key: self.api_key,
@@ -176,7 +185,7 @@ pub struct Client<T = reqwest::Client> {
     base_url: String,
     default_headers: reqwest::header::HeaderMap,
     api_key: String,
-    http_client: T,
+    pub http_client: T,
     pub(crate) sub_provider: SubProvider,
 }
 
@@ -192,46 +201,6 @@ where
             .field("sub_provider", &self.sub_provider)
             .field("api_key", &"<REDACTED>")
             .finish()
-    }
-}
-
-impl<T> Client<T>
-where
-    T: Default,
-{
-    /// Create a new Huggingface client builder.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::huggingface::{ClientBuilder, self};
-    ///
-    /// // Initialize the Huggingface client
-    /// let client = Client::builder("your-huggingface-api-key")
-    ///    .build()
-    /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<T> {
-        ClientBuilder::new(api_key)
-    }
-
-    /// Create a new Huggingface client. For more control, use the `builder` method.
-    ///
-    /// # Panics
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key)
-            .build()
-            .expect("Huggingface client should build")
-    }
-}
-
-impl Client<reqwest::Client> {
-    pub(crate) fn post_reqwest(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-
-        self.http_client
-            .post(url)
-            .headers(self.default_headers.clone())
-            .bearer_auth(&self.api_key)
     }
 }
 
@@ -275,24 +244,60 @@ where
     }
 }
 
-impl ProviderClient for Client<reqwest::Client> {
+impl Client<reqwest::Client> {
+    /// Create a new Huggingface client builder.
+    ///
+    /// # Example
+    /// ```
+    /// use rig::providers::huggingface::{ClientBuilder, self};
+    ///
+    /// // Initialize the Huggingface client
+    /// let client = Client::builder("your-huggingface-api-key")
+    ///    .build()
+    /// ```
+    pub fn builder(api_key: &str) -> ClientBuilder<reqwest::Client> {
+        ClientBuilder::new(api_key)
+    }
+
+    /// Create a new Huggingface client. For more control, use the `builder` method.
+    ///
+    /// # Panics
+    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
+    pub fn new(api_key: &str) -> Self {
+        Self::builder(api_key)
+            .build()
+            .expect("Huggingface client should build")
+    }
+
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
+    }
+}
+
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
     /// Create a new Huggingface client from the `HUGGINGFACE_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY is not set");
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build().unwrap()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build().unwrap()
     }
 }
 
-impl CompletionClient for Client<reqwest::Client> {
-    type CompletionModel = CompletionModel<reqwest::Client>;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     /// Create a new completion model with the given name
     ///
@@ -305,13 +310,16 @@ impl CompletionClient for Client<reqwest::Client> {
     ///
     /// let completion_model = client.completion_model(huggingface::GEMMA_2);
     /// ```
-    fn completion_model(&self, model: &str) -> CompletionModel<reqwest::Client> {
+    fn completion_model(&self, model: &str) -> Self::CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl TranscriptionClient for Client<reqwest::Client> {
-    type TranscriptionModel = TranscriptionModel<reqwest::Client>;
+impl<T> TranscriptionClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    type TranscriptionModel = TranscriptionModel<T>;
 
     /// Create a new transcription model with the given name
     ///
@@ -325,14 +333,17 @@ impl TranscriptionClient for Client<reqwest::Client> {
     /// let completion_model = client.transcription_model(huggingface::WHISPER_LARGE_V3);
     /// ```
     ///
-    fn transcription_model(&self, model: &str) -> TranscriptionModel<reqwest::Client> {
+    fn transcription_model(&self, model: &str) -> Self::TranscriptionModel {
         TranscriptionModel::new(self.clone(), model)
     }
 }
 
 #[cfg(feature = "image")]
-impl ImageGenerationClient for Client<reqwest::Client> {
-    type ImageGenerationModel = ImageGenerationModel<reqwest::Client>;
+impl<T> ImageGenerationClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    type ImageGenerationModel = ImageGenerationModel<T>;
 
     /// Create a new image generation model with the given name
     ///
@@ -345,12 +356,15 @@ impl ImageGenerationClient for Client<reqwest::Client> {
     ///
     /// let completion_model = client.image_generation_model(huggingface::WHISPER_LARGE_V3);
     /// ```
-    fn image_generation_model(&self, model: &str) -> ImageGenerationModel<reqwest::Client> {
+    fn image_generation_model(&self, model: &str) -> Self::ImageGenerationModel {
         ImageGenerationModel::new(self.clone(), model)
     }
 }
 
-impl VerifyClient for Client<reqwest::Client> {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         let req = self
@@ -358,12 +372,9 @@ impl VerifyClient for Client<reqwest::Client> {
             .body(http_client::NoBody)
             .map_err(|e| VerifyError::HttpError(e.into()))?;
 
-        let req = reqwest::Request::try_from(req)
-            .map_err(|e| VerifyError::HttpError(http_client::Error::Instance(e.into())))?;
-
-        let response: reqwest::Response = self
+        let response = self
             .http_client
-            .execute(req)
+            .send::<_, Vec<u8>>(req)
             .await
             .map_err(|e| VerifyError::HttpError(http_client::Error::Instance(e.into())))?;
 
@@ -371,17 +382,12 @@ impl VerifyClient for Client<reqwest::Client> {
             reqwest::StatusCode::OK => Ok(()),
             reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
             reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
-                let text = response
-                    .text()
-                    .await
-                    .map_err(|e| VerifyError::HttpError(http_client::Error::Instance(e.into())))?;
+                let text = http_client::text(response).await?;
                 Err(VerifyError::ProviderError(text))
             }
             _ => {
-                response
-                    .error_for_status()
-                    .map_err(|e| VerifyError::HttpError(http_client::Error::Instance(e.into())))?;
-                Ok(())
+                let text = http_client::text(response).await?;
+                Err(VerifyError::ProviderError(text))
             }
         }
     }

@@ -1,6 +1,8 @@
 //! The streaming module for the OpenAI Responses API.
 //! Please see the `openai_streaming` or `openai_streaming_with_tools` example for more practical usage.
 use crate::completion::{CompletionError, GetTokenUsage};
+use crate::http_client::HttpClientExt;
+use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::openai::responses_api::{
     ReasoningSummary, ResponsesCompletionModel, ResponsesUsage,
 };
@@ -8,8 +10,6 @@ use crate::streaming;
 use crate::streaming::RawStreamingChoice;
 use async_stream::stream;
 use futures::StreamExt;
-use reqwest_eventsource::Event;
-use reqwest_eventsource::RequestBuilderExt;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info_span};
 use tracing_futures::Instrument as _;
@@ -191,7 +191,10 @@ pub enum SummaryPartChunkPart {
     SummaryText { text: String },
 }
 
-impl ResponsesCompletionModel<reqwest::Client> {
+impl<T> ResponsesCompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     pub(crate) async fn stream(
         &self,
         completion_request: crate::completion::CompletionRequest,
@@ -200,7 +203,16 @@ impl ResponsesCompletionModel<reqwest::Client> {
         let mut request = self.create_completion_request(completion_request)?;
         request.stream = Some(true);
 
-        let request_builder = self.client.post_reqwest("/responses").json(&request);
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .post("/responses")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        // let request_builder = self.client.post_reqwest("/responses").json(&request);
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -226,9 +238,9 @@ impl ResponsesCompletionModel<reqwest::Client> {
             serde_json::to_string(&request.input).expect("This should always work"),
         );
         // Build the request with proper headers for SSE
-        let mut event_source = request_builder
-            .eventsource()
-            .expect("Cloning request must always succeed");
+        let client = self.clone().client.http_client;
+
+        let mut event_source = GenericEventSource::new(client, req);
 
         let stream = stream! {
             let mut final_usage = ResponsesUsage::new();
@@ -244,13 +256,13 @@ impl ResponsesCompletionModel<reqwest::Client> {
                         tracing::info!("OpenAI stream started");
                         continue;
                     }
-                    Ok(Event::Message(message)) => {
+                    Ok(Event::Message(evt)) => {
                         // Skip heartbeat messages or empty data
-                        if message.data.trim().is_empty() {
+                        if evt.data.trim().is_empty() {
                             continue;
                         }
 
-                        let data = serde_json::from_str::<StreamingCompletionChunk>(&message.data);
+                        let data = serde_json::from_str::<StreamingCompletionChunk>(&evt.data);
 
                         let Ok(data) = data else {
                             let err = data.unwrap_err();
@@ -306,8 +318,8 @@ impl ResponsesCompletionModel<reqwest::Client> {
                             }
                         }
                     }
-                    Err(reqwest_eventsource::Error::StreamEnded) => {
-                        break;
+                    Err(crate::http_client::Error::StreamEnded) => {
+                        event_source.close();
                     }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
@@ -317,8 +329,8 @@ impl ResponsesCompletionModel<reqwest::Client> {
                 }
             }
 
-            // Ensure event source is closed when stream ends
-            event_source.close();
+            // // Ensure event source is closed when stream ends
+            // event_source.close();
 
             for tool_call in &tool_calls {
                 yield Ok(tool_call.to_owned())

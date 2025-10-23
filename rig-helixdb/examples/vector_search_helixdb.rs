@@ -1,7 +1,7 @@
 use helix_rs::{HelixDB, HelixDBClient};
 use rig::{
     Embed,
-    client::{EmbeddingsClient, ProviderClient},
+    client::EmbeddingsClient,
     embeddings::EmbeddingsBuilder,
     vector_store::{InsertDocuments, VectorSearchRequest, VectorStoreIndex},
 };

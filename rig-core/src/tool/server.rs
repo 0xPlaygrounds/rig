@@ -12,7 +12,7 @@ pub struct ToolServer {
     /// These tools will always exist on the tool server for as long as they are not deleted.
     static_tool_names: Vec<String>,
     /// Dynamic tools. These tools will be dynamically fetched from a given vector store.
-    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
+    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
     /// The toolset where tools are called (to be executed).
     toolset: ToolSet,
 }
@@ -44,7 +44,7 @@ impl ToolServer {
 
     pub(crate) fn add_dynamic_tools(
         mut self,
-        dyn_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
+        dyn_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
     ) -> Self {
         self.dynamic_tools = dyn_tools;
         self
@@ -75,7 +75,7 @@ impl ToolServer {
     pub fn dynamic_tools(
         mut self,
         sample: usize,
-        dynamic_tools: impl VectorStoreIndexDyn + 'static,
+        dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
         toolset: ToolSet,
     ) -> Self {
         self.dynamic_tools.push((sample, Box::new(dynamic_tools)));

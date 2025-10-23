@@ -28,6 +28,7 @@ pub const GEMINI_1_5_PRO_8B: &str = "gemini-1.5-pro-8b";
 pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 
 use self::gemini_api_types::Schema;
+use crate::http_client::HttpClientExt;
 use crate::message::Reasoning;
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
@@ -67,7 +68,10 @@ impl<T> CompletionModel<T> {
     }
 }
 
-impl completion::CompletionModel for CompletionModel<reqwest::Client> {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     type Response = GenerateContentResponse;
     type StreamingResponse = StreamingCompletionResponse;
 

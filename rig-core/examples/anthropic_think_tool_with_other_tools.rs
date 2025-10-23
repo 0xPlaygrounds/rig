@@ -232,7 +232,7 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
 
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
-    let client = providers::anthropic::ClientBuilder::new(&api_key)
+    let client = providers::anthropic::ClientBuilder::<reqwest::Client>::new(&api_key)
         .anthropic_beta("token-efficient-tools-2025-02-19")
         .build()?;
 

@@ -9198,22 +9198,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reqwest-eventsource"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "632c55746dbb44275691640e7b40c907c16a2dc1a5842aa98aaec90da6ec6bde"
-dependencies = [
- "eventsource-stream",
- "futures-core",
- "futures-timer",
- "mime",
- "nom 7.1.3",
- "pin-project-lite",
- "reqwest 0.12.23",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "resolv-conf"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9345,7 +9329,9 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "epub",
+ "eventsource-stream",
  "futures",
+ "futures-timer",
  "glob",
  "http 1.3.1",
  "hyper-util",
@@ -9355,10 +9341,10 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "ordered-float",
+ "pin-project-lite",
  "quick-xml",
  "rayon",
  "reqwest 0.12.23",
- "reqwest-eventsource",
  "rig-derive",
  "rmcp",
  "schemars 1.0.4",

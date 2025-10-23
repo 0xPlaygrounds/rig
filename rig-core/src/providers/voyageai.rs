@@ -1,13 +1,16 @@
 use crate::client::{EmbeddingsClient, ProviderClient, VerifyClient, VerifyError};
 use crate::embeddings::EmbeddingError;
+use crate::http_client::{HttpClientExt, with_bearer_auth};
 use crate::{embeddings, http_client, impl_conversion_traits};
+use bytes::Bytes;
+use http::Method;
 use serde::Deserialize;
 use serde_json::json;
 
 // ================================================================
 // Main Voyage AI Client
 // ================================================================
-const OPENAI_API_BASE_URL: &str = "https://api.voyageai.com/v1";
+const VOYAGEAI_API_BASE_URL: &str = "https://api.voyageai.com/v1";
 
 pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
@@ -22,13 +25,21 @@ where
     pub fn new(api_key: &'a str) -> Self {
         Self {
             api_key,
-            base_url: OPENAI_API_BASE_URL,
+            base_url: VOYAGEAI_API_BASE_URL,
             http_client: Default::default(),
         }
     }
 }
 
 impl<'a, T> ClientBuilder<'a, T> {
+    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
+        Self {
+            api_key,
+            base_url: VOYAGEAI_API_BASE_URL,
+            http_client,
+        }
+    }
+
     pub fn base_url(mut self, base_url: &'a str) -> Self {
         self.base_url = base_url;
         self
@@ -71,41 +82,36 @@ where
     }
 }
 
-impl<T> Client<T>
-where
-    T: Default,
-{
-    /// Create a new Voyage AI client builder.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::voyageai::{ClientBuilder, self};
-    ///
-    /// // Initialize the Voyage AI client
-    /// let voyageai = Client::builder("your-voyageai-api-key")
-    ///    .build()
-    /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, T> {
-        ClientBuilder::new(api_key)
-    }
+impl<T> Client<T> {
+    pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
 
-    /// Create a new Voyage AI client. For more control, use the `builder` method.
-    ///
-    /// # Panics
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key).build()
+        let req = http_client::Request::builder()
+            .uri(url)
+            .method(Method::POST);
+
+        with_bearer_auth(req, &self.api_key)
     }
 }
 
 impl Client<reqwest::Client> {
-    pub(crate) fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
-        self.http_client.post(url).bearer_auth(&self.api_key)
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
+        ClientBuilder::new(api_key)
+    }
+
+    pub fn new(api_key: &str) -> Self {
+        Self::builder(api_key).build()
+    }
+
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
     }
 }
 
-impl VerifyClient for Client<reqwest::Client> {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         // No API endpoint to verify the API key
@@ -120,26 +126,32 @@ impl_conversion_traits!(
     AsAudioGeneration for Client<T>
 );
 
-impl ProviderClient for Client<reqwest::Client> {
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
     /// Create a new OpenAI client from the `OPENAI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("VOYAGE_API_KEY").expect("VOYAGE_API_KEY not set");
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 }
 
 /// Although the models have default embedding dimensions, there are additional alternatives for increasing and decreasing the dimensions to your requirements.
 /// See Voyage AI's documentation:  <https://docs.voyageai.com/docs/embeddings>
-impl EmbeddingsClient for Client<reqwest::Client> {
-    type EmbeddingModel = EmbeddingModel<reqwest::Client>;
+impl<T> EmbeddingsClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    type EmbeddingModel = EmbeddingModel<T>;
     fn embedding_model(&self, model: &str) -> Self::EmbeddingModel {
         let ndims = match model {
             VOYAGE_CODE_2 => 1536,
@@ -238,7 +250,10 @@ pub struct EmbeddingModel<T> {
     ndims: usize,
 }
 
-impl embeddings::EmbeddingModel for EmbeddingModel<reqwest::Client> {
+impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
     const MAX_DOCUMENTS: usize = 1024;
 
     fn ndims(&self) -> usize {
@@ -251,24 +266,25 @@ impl embeddings::EmbeddingModel for EmbeddingModel<reqwest::Client> {
         documents: impl IntoIterator<Item = String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
+        let request = json!({
+            "model": self.model,
+            "input": documents,
+        });
 
-        let response = self
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
             .client
-            .reqwest_post("/embeddings")
-            .json(&json!({
-                "model": self.model,
-                "input": documents,
-            }))
-            .send()
-            .await
-            .map_err(|e| EmbeddingError::HttpError(http_client::Error::Instance(e.into())))?;
+            .post("/embeddings")?
+            .body(body)
+            .map_err(|x| EmbeddingError::HttpError(x.into()))?;
 
-        if response.status().is_success() {
-            match response
-                .json::<ApiResponse<EmbeddingResponse>>()
-                .await
-                .map_err(|e| EmbeddingError::HttpError(http_client::Error::Instance(e.into())))?
-            {
+        let response = self.client.http_client.send::<_, Bytes>(req).await?;
+        let status = response.status();
+        let response_body = response.into_body().into_future().await?.to_vec();
+
+        if status.is_success() {
+            match serde_json::from_slice::<ApiResponse<EmbeddingResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "VoyageAI embedding token usage: {}",
@@ -295,9 +311,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel<reqwest::Client> {
             }
         } else {
             Err(EmbeddingError::ProviderError(
-                response.text().await.map_err(|e| {
-                    EmbeddingError::HttpError(http_client::Error::Instance(e.into()))
-                })?,
+                String::from_utf8_lossy(&response_body).to_string(),
             ))
         }
     }

@@ -1,4 +1,6 @@
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::http_client::HttpClientExt;
+use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils;
 use crate::json_utils::merge;
 use crate::providers::openai::completion::{CompletionModel, Usage};
@@ -6,9 +8,7 @@ use crate::streaming;
 use crate::streaming::RawStreamingChoice;
 use async_stream::stream;
 use futures::StreamExt;
-use reqwest::RequestBuilder;
-use reqwest_eventsource::Event;
-use reqwest_eventsource::RequestBuilderExt;
+use http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -83,10 +83,13 @@ impl CompletionModel<reqwest::Client> {
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
 
-        let builder = self
+        let req_body = serde_json::to_vec(&request_as_json)?;
+
+        let req = self
             .client
-            .post_reqwest("/chat/completions")
-            .json(&request_as_json);
+            .post("/chat/completions")?
+            .body(req_body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -106,18 +109,24 @@ impl CompletionModel<reqwest::Client> {
             tracing::Span::current()
         };
 
-        tracing::Instrument::instrument(send_compatible_streaming_request(builder), span).await
+        tracing::Instrument::instrument(
+            send_compatible_streaming_request(self.client.http_client.clone(), req),
+            span,
+        )
+        .await
     }
 }
 
-pub async fn send_compatible_streaming_request(
-    request_builder: RequestBuilder,
-) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError> {
+pub async fn send_compatible_streaming_request<T>(
+    http_client: T,
+    req: Request<Vec<u8>>,
+) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     let span = tracing::Span::current();
     // Build the request with proper headers for SSE
-    let mut event_source = request_builder
-        .eventsource()
-        .expect("Cloning request must always succeed");
+    let mut event_source = GenericEventSource::new(http_client, req);
 
     let stream = stream! {
         let span = tracing::Span::current();
@@ -213,7 +222,7 @@ pub async fn send_compatible_streaming_request(
                         final_usage = usage.clone();
                     }
                 }
-                Err(reqwest_eventsource::Error::StreamEnded) => {
+                Err(crate::http_client::Error::StreamEnded) => {
                     break;
                 }
                 Err(error) => {

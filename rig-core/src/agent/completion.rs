@@ -17,8 +17,14 @@ use tokio::sync::RwLock;
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
-pub type DynamicContextStore =
-    Arc<RwLock<Vec<(usize, Box<dyn crate::vector_store::VectorStoreIndexDyn>)>>>;
+pub type DynamicContextStore = Arc<
+    RwLock<
+        Vec<(
+            usize,
+            Box<dyn crate::vector_store::VectorStoreIndexDyn + Send + Sync>,
+        )>,
+    >,
+>;
 
 /// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
 /// (i.e.: system prompt) and a static set of context documents and tools.

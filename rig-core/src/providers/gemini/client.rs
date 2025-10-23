@@ -28,9 +28,9 @@ pub struct ClientBuilder<'a, T = reqwest::Client> {
 
 impl<'a, T> ClientBuilder<'a, T>
 where
-    T: HttpClientExt,
+    T: HttpClientExt + Default,
 {
-    pub fn new(api_key: &'a str) -> ClientBuilder<'a, reqwest::Client> {
+    pub fn new(api_key: &'a str) -> ClientBuilder<'a, T> {
         ClientBuilder {
             api_key,
             base_url: GEMINI_API_BASE_URL,
@@ -82,7 +82,7 @@ pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
     default_headers: reqwest::header::HeaderMap,
-    http_client: T,
+    pub http_client: T,
 }
 
 impl<T> Debug for Client<T>
@@ -101,52 +101,6 @@ where
 
 impl<T> Client<T>
 where
-    T: HttpClientExt + Default,
-{
-    /// Create a new Google Gemini client builder.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::gemini::{ClientBuilder, self};
-    ///
-    /// // Initialize the Google Gemini client
-    /// let gemini_client = Client::builder("your-google-gemini-api-key")
-    ///    .build()
-    /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, T> {
-        ClientBuilder::new_with_client(api_key, Default::default())
-    }
-
-    /// Create a new Google Gemini client. For more control, use the `builder` method.
-    ///
-    /// # Panics
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key)
-            .build()
-            .expect("Gemini client should build")
-    }
-}
-
-impl Client<reqwest::Client> {
-    pub(crate) fn post_sse(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!(
-            "{}/{}?alt=sse&key={}",
-            self.base_url,
-            path.trim_start_matches('/'),
-            self.api_key
-        );
-
-        tracing::debug!("POST {}/{}?alt=sse&key={}", self.base_url, path, "****");
-
-        self.http_client
-            .post(url)
-            .headers(self.default_headers.clone())
-    }
-}
-
-impl<T> Client<T>
-where
     T: HttpClientExt,
 {
     pub(crate) fn post(&self, path: &str) -> http_client::Builder {
@@ -159,6 +113,25 @@ where
         );
 
         tracing::debug!("POST {}/{}?key={}", self.base_url, path, "****");
+        let mut req = http_client::Request::post(url);
+
+        if let Some(hs) = req.headers_mut() {
+            *hs = self.default_headers.clone();
+        }
+
+        req
+    }
+
+    pub(crate) fn post_sse(&self, path: &str) -> http_client::Builder {
+        let url = format!(
+            "{}/{}?alt=sse&key={}",
+            self.base_url,
+            path.trim_start_matches('/'),
+            self.api_key
+        );
+
+        tracing::debug!("POST {}/{}?alt=sse&key={}", self.base_url, path, "****");
+
         let mut req = http_client::Request::post(url);
 
         if let Some(hs) = req.headers_mut() {
@@ -200,26 +173,50 @@ where
     }
 }
 
-// NOTE: (@FayCarsons) This cannot be implemented for all T because `AsCompletion`/`CompletionModel` requires SSE
-// which we are not able to implement for any `T: HttpClientExt` right now
-impl ProviderClient for Client<reqwest::Client> {
+impl Client<reqwest::Client> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
+        ClientBuilder::<reqwest::Client>::new(api_key)
+    }
+
+    /// Create a new Gemini client. For more control, use the `builder` method.
+    ///
+    /// # Panics
+    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
+    pub fn new(api_key: &str) -> Self {
+        ClientBuilder::<reqwest::Client>::new(api_key)
+            .build()
+            .unwrap()
+    }
+
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
+    }
+}
+
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+{
     /// Create a new Google Gemini client from the `GEMINI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build().unwrap()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build().unwrap()
     }
 }
 
-impl CompletionClient for Client<reqwest::Client> {
-    type CompletionModel = CompletionModel<reqwest::Client>;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     /// Create a completion model with the given name.
     /// Gemini-specific parameters can be set using the [GenerationConfig](crate::providers::gemini::completion::gemini_api_types::GenerationConfig) struct.
@@ -294,7 +291,7 @@ where
 
 impl<T> TranscriptionClient for Client<T>
 where
-    T: HttpClientExt + Clone + Debug + Default + 'static,
+    T: HttpClientExt + Clone + Debug + Default + WasmCompatSend + 'static,
     Client<T>: CompletionClient,
 {
     type TranscriptionModel = TranscriptionModel<T>;
