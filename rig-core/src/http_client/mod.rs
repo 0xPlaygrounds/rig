@@ -2,7 +2,6 @@ use crate::http_client::sse::BoxedStream;
 use bytes::Bytes;
 use http::StatusCode;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
-use opentelemetry::trace::Status;
 use reqwest::{Body, multipart::Form};
 
 pub mod retry;
