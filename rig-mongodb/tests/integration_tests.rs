@@ -51,7 +51,6 @@ async fn vector_search_test() {
                     "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
                 ],
                 "model": "text-embedding-ada-002",
-                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -91,7 +90,6 @@ async fn vector_search_test() {
                     "What is a linglingdong?"
                 ],
                 "model": "text-embedding-ada-002",
-                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -193,7 +191,6 @@ async fn insert_documents_test() {
                     "Test document 2"
                 ],
                 "model": "text-embedding-ada-002",
-                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")

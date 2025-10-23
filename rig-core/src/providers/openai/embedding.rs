@@ -74,7 +74,7 @@ where
             "input": documents,
         });
 
-        if self.ndims > 0 {
+        if self.ndims > 0 && self.model != TEXT_EMBEDDING_ADA_002 {
             body["dimensions"] = json!(self.ndims);
         }
 

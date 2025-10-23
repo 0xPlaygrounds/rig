@@ -225,7 +225,6 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
                     "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
                 ],
                 "model": "text-embedding-ada-002",
-                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -264,7 +263,6 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
             .json_body(json!({
                 "input": ["Test definition"],
                 "model": "text-embedding-ada-002",
-                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -293,7 +291,6 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
             .json_body(json!({
                 "input": ["What is a glarb?"],
                 "model": "text-embedding-ada-002",
-                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -321,7 +318,6 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
             .json_body(json!({
                 "input": ["What is a linglingdong?"],
                 "model": "text-embedding-ada-002",
-                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
