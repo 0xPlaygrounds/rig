@@ -17,6 +17,8 @@ pub enum Error {
     Protocol(#[from] http::Error),
     #[error("Invalid status code: {0}")]
     InvalidStatusCode(StatusCode),
+    #[error("Invalid status code {0} with message: {1}")]
+    InvalidStatusCodeWithMessage(StatusCode, String),
     #[error("Stream ended")]
     StreamEnded,
     #[error("Invalid content type was returned: {0:?}")]
@@ -121,6 +123,12 @@ impl HttpClientExt for reqwest::Client {
 
         async move {
             let response = req.send().await.map_err(instance_error)?;
+            if !response.status().is_success() {
+                return Err(Error::InvalidStatusCodeWithMessage(
+                    response.status(),
+                    response.text().await.unwrap(),
+                ));
+            }
 
             let mut res = Response::builder().status(response.status());
 
@@ -158,6 +166,12 @@ impl HttpClientExt for reqwest::Client {
 
         async move {
             let response = req.send().await.map_err(instance_error)?;
+            if !response.status().is_success() {
+                return Err(Error::InvalidStatusCodeWithMessage(
+                    response.status(),
+                    response.text().await.unwrap(),
+                ));
+            }
 
             let mut res = Response::builder().status(response.status());
 
@@ -200,6 +214,12 @@ impl HttpClientExt for reqwest::Client {
 
         async move {
             let response: reqwest::Response = client.execute(req).await.map_err(instance_error)?;
+            if !response.status().is_success() {
+                return Err(Error::InvalidStatusCodeWithMessage(
+                    response.status(),
+                    response.text().await.unwrap(),
+                ));
+            }
 
             #[cfg(not(target_family = "wasm"))]
             let mut res = Response::builder()
