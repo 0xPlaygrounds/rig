@@ -150,10 +150,6 @@ impl SearchFilter for LanceDBFilter {
     fn or(self, rhs: Self) -> Self {
         Self(zip_result(self.0, rhs.0).map(|(l, r)| format!("({l}) OR ({r})")))
     }
-
-    fn not(self) -> Self {
-        Self(self.0.map(|s| format!("NOT ({s})")))
-    }
 }
 
 fn escape_value(value: serde_json::Value) -> Result<String, FilterError> {
@@ -180,6 +176,11 @@ fn escape_value(value: serde_json::Value) -> Result<String, FilterError> {
 impl LanceDBFilter {
     pub fn into_inner(self) -> Result<String, FilterError> {
         self.0
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self(self.0.map(|s| format!("NOT ({s})")))
     }
 }
 

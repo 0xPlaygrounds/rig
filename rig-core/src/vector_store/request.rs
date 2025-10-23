@@ -79,7 +79,6 @@ pub trait SearchFilter {
     fn lt(key: String, value: Self::Value) -> Self;
     fn and(self, rhs: Self) -> Self;
     fn or(self, rhs: Self) -> Self;
-    fn not(self) -> Self;
 }
 
 /// A canonical, serializable retpresentation of filter expressions.
@@ -96,7 +95,6 @@ where
     Lt(String, V),
     And(Box<Self>, Box<Self>),
     Or(Box<Self>, Box<Self>),
-    Not(Box<Self>),
 }
 
 impl<V> SearchFilter for Filter<V>
@@ -124,10 +122,6 @@ where
     fn or(self, rhs: Self) -> Self {
         Self::Or(self.into(), rhs.into())
     }
-
-    fn not(self) -> Self {
-        Self::Not(self.into())
-    }
 }
 
 impl<V> Filter<V>
@@ -144,7 +138,6 @@ where
             Self::Lt(key, val) => F::lt(key, val),
             Self::And(lhs, rhs) => F::and(lhs.interpret(), rhs.interpret()),
             Self::Or(lhs, rhs) => F::or(lhs.interpret(), rhs.interpret()),
-            Self::Not(inner) => F::not(inner.interpret()),
         }
     }
 }
@@ -180,7 +173,6 @@ impl Filter<serde_json::Value> {
             }
             And(l, r) => l.satisfies(value) && r.satisfies(value),
             Or(l, r) => l.satisfies(value) || r.satisfies(value),
-            Not(inner) => !inner.satisfies(value),
         }
     }
 }

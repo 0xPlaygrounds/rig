@@ -93,18 +93,19 @@ impl SearchFilter for PgSearchFilter {
             values: self.values.into_iter().chain(rhs.values).collect(),
         }
     }
-
-    fn not(self) -> Self {
-        Self {
-            condition: format!("NOT ({})", self.condition),
-            values: self.values,
-        }
-    }
 }
 
 impl PgSearchFilter {
     fn into_clause(self) -> (String, Vec<serde_json::Value>) {
         (self.condition, self.values)
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self {
+            condition: format!("NOT ({})", self.condition),
+            values: self.values,
+        }
     }
 }
 

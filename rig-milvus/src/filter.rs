@@ -109,15 +109,20 @@ impl SearchFilter for Filter {
     fn or(self, rhs: Self) -> Self {
         Self(format!("({}) OR ({})", self.0, rhs.0))
     }
-
-    fn not(self) -> Self {
-        Self(format!("NOT ({})", self.0))
-    }
 }
 
 impl Filter {
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self(format!("NOT ({})", self.0))
+    }
+
     pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
         Self(format!("{key} >= {}", value.escaped()))
+    }
+
+    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+        Self(format!("{key} <= {}", value.escaped()))
     }
 
     pub fn into_inner(self) -> String {

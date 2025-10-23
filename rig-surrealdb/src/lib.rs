@@ -147,8 +147,11 @@ impl SearchFilter for SurrealSearchFilter {
     fn or(self, rhs: Self) -> Self {
         Self(format!("({self}) OR ({rhs})"))
     }
+}
 
-    fn not(self) -> Self {
+impl SurrealSearchFilter {
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
         Self(format!("NOT ({self})"))
     }
 }

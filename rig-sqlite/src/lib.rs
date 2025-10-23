@@ -283,11 +283,14 @@ impl SearchFilter for SqliteSearchFilter {
             params: self.params.into_iter().chain(rhs.params).collect(),
         }
     }
+}
 
-    fn not(self) -> Self {
+impl SqliteSearchFilter {
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
         Self {
             condition: format!("NOT ({})", self.condition),
-            params: self.params,
+            ..self
         }
     }
 }

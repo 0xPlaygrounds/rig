@@ -267,10 +267,6 @@ impl SearchFilter for MongoDbSearchFilter {
     fn or(self, rhs: Self) -> Self {
         Self(doc! { "$or": [ self.0, rhs.0 ]})
     }
-
-    fn not(self) -> Self {
-        Self(doc! { "$not": self.0 })
-    }
 }
 
 impl MongoDbSearchFilter {
@@ -281,6 +277,15 @@ impl MongoDbSearchFilter {
 
     pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
         Self(doc! { key: { "$gte": value } })
+    }
+
+    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+        Self(doc! { key: { "$lte": value } })
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self(doc! { "$not": self.0 })
     }
 }
 

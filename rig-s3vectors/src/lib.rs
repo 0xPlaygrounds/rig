@@ -49,12 +49,6 @@ impl SearchFilter for S3SearchFilter {
     fn or(self, rhs: Self) -> Self {
         Self(document!({ "$or": [ self.0, rhs.0 ]}))
     }
-
-    fn not(self) -> Self {
-        // FIXME: This is not ideal, we should remove this method from the trait or
-        // put in in another trait
-        panic!("'not' is not available for S3SearchFilter")
-    }
 }
 
 impl S3SearchFilter {

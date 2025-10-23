@@ -129,15 +129,16 @@ impl SearchFilter for Neo4jSearchFilter {
     fn or(self, rhs: Self) -> Self {
         Self(format!("({}) OR ({})", self.0, rhs.0))
     }
-
-    fn not(self) -> Self {
-        Self(format!("NOT ({})", self.0))
-    }
 }
 
 impl Neo4jSearchFilter {
     pub fn render(self) -> String {
         format!("WHERE {}", self.0)
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self(format!("NOT ({})", self.0))
     }
 }
 

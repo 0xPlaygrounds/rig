@@ -91,18 +91,19 @@ impl SearchFilter for ScyllaSearchFilter {
             params: self.params.into_iter().chain(rhs.params).collect(),
         }
     }
-
-    fn not(self) -> Self {
-        Self {
-            condition: format!("NOT ({})", self.condition),
-            ..self
-        }
-    }
 }
 
 impl ScyllaSearchFilter {
     fn params(&self) -> &[CqlValue] {
         self.params.as_slice()
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self {
+            condition: format!("NOT ({})", self.condition),
+            ..self
+        }
     }
 }
 

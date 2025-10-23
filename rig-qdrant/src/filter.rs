@@ -45,13 +45,13 @@ impl SearchFilter for QdrantFilter {
     fn or(self, rhs: Self) -> Self {
         Self(json!({ "should": [ self.0, rhs.0 ]}))
     }
-
-    fn not(self) -> Self {
-        Self(json!({ "must_not": [ self.0 ]}))
-    }
 }
 
 impl QdrantFilter {
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self(json!({ "must_not": [ self.0 ]}))
+    }
     pub fn into_inner(self) -> serde_json::Value {
         self.0
     }
