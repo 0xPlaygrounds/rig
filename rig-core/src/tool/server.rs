@@ -4,7 +4,7 @@ use tokio::sync::mpsc::{Sender, error::SendError};
 use crate::{
     completion::{CompletionError, ToolDefinition},
     tool::{Tool, ToolDyn, ToolError, ToolSet, ToolSetError},
-    vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn},
+    vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
 
 pub struct ToolServer {
@@ -159,10 +159,15 @@ impl ToolServer {
         let mut tools = if let Some(text) = text {
             stream::iter(self.dynamic_tools.iter())
                         .then(|(num_sample, index)| async {
-                            let req = VectorSearchRequest::builder().query(text.clone()).samples(*num_sample as u64).build().expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
+                            let req =
+                                VectorSearchRequest::builder()
+                                    .query(text.clone())
+                                    .samples(*num_sample as u64)
+                                    .build()
+                                    .expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
                             Ok::<_, VectorStoreError>(
-                                index
-                                    .top_n_ids(req)
+                        index.as_ref()
+                                    .top_n_ids(req.map_filter(Filter::interpret))
                                     .await?
                                     .into_iter()
                                     .map(|(_, id)| id)

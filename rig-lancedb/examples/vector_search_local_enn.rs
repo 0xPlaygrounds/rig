@@ -7,7 +7,7 @@ use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::VectorStoreIndexDyn,
+    vector_store::VectorStoreIndex,
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 

@@ -1,4 +1,4 @@
-use rig::vector_store::request::VectorSearchRequest;
+use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use serde_json::json;
 
 use rig::client::EmbeddingsClient;
@@ -8,7 +8,10 @@ use rig::{
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
 };
-use rig_sqlite::{Column, ColumnValue, SqliteVectorStore, SqliteVectorStoreTable};
+use rig_sqlite::{
+    Column, ColumnValue, SqliteSearchFilter, SqliteVectorStore, SqliteVectorStoreTable,
+    build_where_clause,
+};
 use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use sqlite_vec::sqlite3_vec_init;
 use tokio_rusqlite::Connection;
@@ -166,21 +169,41 @@ async fn vector_search_test() {
     let req = VectorSearchRequest::builder()
         .samples(samples)
         .query(query)
+        .filter(SqliteSearchFilter::eq("id".into(), "doc1".into()).not())
         .build()
         .expect("VectorSearchRequest should not fail to build here");
 
     // Query the index
     let results = index.top_n::<serde_json::Value>(req).await.expect("");
+    assert!(results.is_empty());
+}
 
-    let (_, _, value) = &results.first().expect("");
+#[tokio::test]
+async fn query_syntax() {
+    use rusqlite::Connection;
 
-    assert_eq!(
-        value,
-        &serde_json::json!({
-            "id": "doc1",
-            "definition": "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
-        })
-    )
+    // Initialize the `sqlite-vec`extension
+    // See: https://alexgarcia.xyz/sqlite-vec/rust.html
+    unsafe {
+        sqlite3_auto_extension(Some(std::mem::transmute::<*const (), SqliteExtensionFn>(
+            sqlite3_vec_init as *const (),
+        )));
+    }
+
+    let conn = Connection::open("vector_store.db").expect("Could not initialize SQLite connection");
+
+    let req = VectorSearchRequest::builder()
+        .samples(1)
+        .query("nothing")
+        .build()
+        .expect("Query should build");
+
+    let (where_clause, _) = build_where_clause(&req, vec![0.0]).expect("Filter should compile");
+
+    conn.prepare(&format!(
+        "SELECT * FROM documents_embeddings as e {where_clause}"
+    ))
+    .expect("QUERY SYNTAX NOT VALID");
 }
 
 async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, OneOrMany<Embedding>)> {
