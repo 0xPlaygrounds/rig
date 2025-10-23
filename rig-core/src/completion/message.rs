@@ -688,7 +688,13 @@ impl MimeType for MediaType {
             .or_else(|| {
                 DocumentMediaType::from_mime_type(mime_type)
                     .map(MediaType::Document)
-                    .or_else(|| AudioMediaType::from_mime_type(mime_type).map(MediaType::Audio))
+                    .or_else(|| {
+                        AudioMediaType::from_mime_type(mime_type)
+                            .map(MediaType::Audio)
+                            .or_else(|| {
+                                VideoMediaType::from_mime_type(mime_type).map(MediaType::Video)
+                            })
+                    })
             })
     }
 
