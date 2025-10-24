@@ -9347,7 +9347,6 @@ dependencies = [
  "axum 0.8.4",
  "base64 0.22.1",
  "bytes",
- "dotenvy",
  "epub",
  "eventsource-stream",
  "futures",

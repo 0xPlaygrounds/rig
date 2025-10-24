@@ -78,10 +78,6 @@ name = "request_hook"
 name = "discord_bot"
 required-features = ["discord-bot"]
 
-[[example]]
-name = "flex_example"
-required-features = ["derive"]
-
 [[test]]
 name = "embed_macro"
 required-features = ["derive"]
@@ -91,7 +87,6 @@ as-any = { workspace = true }
 async-stream = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
-dotenvy = { workspace = true }
 epub = { workspace = true, optional = true }
 eventsource-stream = "0.2.3"
 futures = { workspace = true }

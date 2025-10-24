@@ -2,12 +2,8 @@
 //!
 //! To run this example:
 //!
-//! 1. Create a .env file in the rig-core directory with:
-//!    ```bash
-//!    FLEX_API_KEY="your-api-key-here"
-//!    FLEX_BASE_URL="https://api.openai.com/v1"
-//!    FLEX_MODELS="gpt-4o,gpt-4-turbo"
-//!    ```
+//! 1. Set environment variables FLEX_API_KEY, FLEX_BASE_URL, and optionally FLEX_MODELS
+//!    (recommended using direnv with a .envrc file in your project root)
 //!
 //! 2. Then run:
 //!    ```bash
@@ -21,10 +17,6 @@ use rig::providers::flex;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load environment variables from .env file
-    dotenvy::dotenv().ok();
-    println!("Environment variables loaded from .env file (if exists)\n");
-
     println!("Testing the flex provider implementation...\n");
 
     // Example 1: Create a client from environment variables
@@ -100,12 +92,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nFlex provider is working correctly!");
     println!("\nTo use it in your project:");
     println!(
-        "  1. Create a .env file with: FLEX_API_KEY, FLEX_BASE_URL, and optionally FLEX_MODELS"
+        "  1. Set environment variables: FLEX_API_KEY, FLEX_BASE_URL, and optionally FLEX_MODELS"
     );
-    println!("  2. Load it with dotenvy::dotenv().ok()");
-    println!("  3. Create a client with flex::Client::from_env()");
-    println!("  4. Use flex::get_models_from_env() to get configured model names");
-    println!("  5. Create models with client.completion_model(model_name)");
+    println!("     (recommended using direnv with .envrc instead of .env files)");
+    println!("  2. Create a client with flex::Client::from_env()");
+    println!("  3. Use flex::get_models_from_env() to get configured model names");
+    println!("  4. Create models with client.completion_model(model_name)");
 
     Ok(())
 }
