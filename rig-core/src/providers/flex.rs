@@ -1,5 +1,20 @@
-//! Flexible API client and Rig integration that allows users to configure
-//! the API key, base URL, and model names through environment variables.
+//! A lightweight provider for OpenAI-like APIs that aren’t fully spec-compliant.
+//!
+//! Services like **Together AI**, **Chutes AI**, **vLLM**, **SGLang**, **mistral.rs**,
+//! **candle-vllm**, and custom inference servers often mimic OpenAI’s API but add
+//! custom fields, non-standard streaming, or extended behaviors that break strict
+//! clients.
+//!
+//! The `Flex` provider handles these gracefully by letting you configure:
+//! - **Base URL** (any endpoint),
+//! - **API key** (per instance, no globals),
+//! - **Model list** (enabling multi-model support and rotation across backends).
+//!
+//! It preserves OpenAI-style semantics while avoiding fragile workarounds in the core
+//! client—ideal for dynamic, multi-provider LLM setups in Rust.
+//!
+//! Use `Flex` when your backend is *mostly* OpenAI-compatible but not perfect.
+//! Use the standard `OpenAI` provider only for fully compliant APIs.
 //!
 //! # Example
 //! ```no_run
