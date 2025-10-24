@@ -3,7 +3,7 @@
 //! To run this example:
 //!
 //! 1. Set environment variables FLEX_API_KEY, FLEX_BASE_URL, and optionally FLEX_MODELS
-//!    (recommended using direnv with a .envrc file in your project root)
+//!
 //!
 //! 2. Then run:
 //!    ```bash
@@ -78,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "\n3. No models configured in FLEX_MODELS. Using default model name for demonstration."
         );
-        let _model = client.completion_model("gpt-4o");
+        let _model = client.completion_model("gpt-4.1-mini");
         println!("   ✓ Completion model created with default name!\n");
 
         // Example 4: Verify the client (this will test the API key and base URL)
@@ -90,14 +90,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("\nFlex provider is working correctly!");
-    println!("\nTo use it in your project:");
-    println!(
-        "  1. Set environment variables: FLEX_API_KEY, FLEX_BASE_URL, and optionally FLEX_MODELS"
-    );
-    println!("     (recommended using direnv with .envrc instead of .env files)");
-    println!("  2. Create a client with flex::Client::from_env()");
-    println!("  3. Use flex::get_models_from_env() to get configured model names");
-    println!("  4. Create models with client.completion_model(model_name)");
 
     Ok(())
 }
