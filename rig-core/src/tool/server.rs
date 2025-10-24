@@ -93,8 +93,10 @@ impl ToolServer {
             }
         });
 
-        #[cfg(target_family = "wasm")]
-        tokio::task::spawn_local(async move {
+        // SAFETY: `rig` currently doesn't compile to WASM without the `worker` feature.
+        // Therefore, we can safely assume that the user won't try to compile to wasm without the worker feature.
+        #[cfg(all(feature = "worker", target_family = "wasm"))]
+        wasm_bindgen_futures::spawn_local(async move {
             while let Some(message) = rx.recv().await {
                 self.handle_message(message).await;
             }
