@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.22.0...rig-core-v0.23.0) - 2025-10-24
+
+### Added
+
+- *(rig-1008)* add Send + Sync to ProviderClient ([#974](https://github.com/0xPlaygrounds/rig/pull/974))
+- *(rig-976)* support filters for `VectorSearchRequest` ([#952](https://github.com/0xPlaygrounds/rig/pull/952))
+- *(rig-1004)* expose tool call partials ([#960](https://github.com/0xPlaygrounds/rig/pull/960))
+- convert video media mime type ([#959](https://github.com/0xPlaygrounds/rig/pull/959))
+- *(rig-996)* generic streaming ([#955](https://github.com/0xPlaygrounds/rig/pull/955))
+- *(gemini)* Support streaming thinking ([#947](https://github.com/0xPlaygrounds/rig/pull/947))
+- *(ollama)* thinking ([#948](https://github.com/0xPlaygrounds/rig/pull/948))
+- *(anthropic)* Expose the reasoning signature ([#945](https://github.com/0xPlaygrounds/rig/pull/945))
+
+### Fixed
+
+- *(rig-1011)* docs mismatch ([#981](https://github.com/0xPlaygrounds/rig/pull/981))
+- *(rig-1007)* tool servers broken in WASM ([#970](https://github.com/0xPlaygrounds/rig/pull/970))
+- *(rig-1009)* Incorrect struct shape (OpenAI) ([#973](https://github.com/0xPlaygrounds/rig/pull/973))
+- *(rig-997)* allow string documents for OpenAI Completions API ([#966](https://github.com/0xPlaygrounds/rig/pull/966))
+- *(rig-1006)* text-embedding-ada-002 doesn't support custom dimensions ([#967](https://github.com/0xPlaygrounds/rig/pull/967))
+- *(agent)* Apply tool_choice to completion request ([#958](https://github.com/0xPlaygrounds/rig/pull/958))
+- *(rig-1005)* enable toggling "think" on ollama ([#962](https://github.com/0xPlaygrounds/rig/pull/962))
+- *(openrouter)* use reqwest_post helper to construct full URL ([#943](https://github.com/0xPlaygrounds/rig/pull/943))
+- *(rig-995)* include max tokens in Moonshot API request ([#935](https://github.com/0xPlaygrounds/rig/pull/935))
+
+### Other
+
+- InvalidCodeWithMessage error enum variant ([#963](https://github.com/0xPlaygrounds/rig/pull/963))
+- *(rig-1003)* update list of production rig users ([#956](https://github.com/0xPlaygrounds/rig/pull/956))
+- make streaming prompt module pub ([#944](https://github.com/0xPlaygrounds/rig/pull/944))
+- *(rig-993)* re-import all items from embeddings module in rig::embeddings ([#936](https://github.com/0xPlaygrounds/rig/pull/936))
+
 ## [0.22.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.21.0...rig-core-v0.22.0) - 2025-10-14
 
 ### Added
