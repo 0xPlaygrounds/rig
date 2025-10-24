@@ -56,6 +56,19 @@ where
 }
 
 impl<'a, T> ClientBuilder<'a, T> {
+    pub fn new_with_client(
+        auth: impl Into<AzureOpenAIAuth>,
+        endpoint: &'a str,
+        http_client: T,
+    ) -> Self {
+        Self {
+            auth: auth.into(),
+            api_version: None,
+            azure_endpoint: endpoint,
+            http_client,
+        }
+    }
+
     /// API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
     pub fn api_version(mut self, api_version: &'a str) -> Self {
         self.api_version = Some(api_version);
@@ -149,10 +162,7 @@ impl AzureOpenAIAuth {
     }
 }
 
-impl<T> Client<T>
-where
-    T: Default,
-{
+impl Client<reqwest::Client> {
     /// Create a new Azure OpenAI client builder.
     ///
     /// # Example
@@ -163,13 +173,20 @@ where
     /// let azure = Client::builder("your-azure-api-key", "https://{your-resource-name}.openai.azure.com")
     ///    .build()
     /// ```
-    pub fn builder(auth: impl Into<AzureOpenAIAuth>, endpoint: &str) -> ClientBuilder<'_, T> {
+    pub fn builder(
+        auth: impl Into<AzureOpenAIAuth>,
+        endpoint: &str,
+    ) -> ClientBuilder<'_, reqwest::Client> {
         ClientBuilder::new(auth, endpoint)
     }
 
     /// Creates a new Azure OpenAI client. For more control, use the `builder` method.
     pub fn new(auth: impl Into<AzureOpenAIAuth>, endpoint: &str) -> Self {
         Self::builder(auth, endpoint).build()
+    }
+
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
     }
 }
 
@@ -194,6 +211,48 @@ where
         self.post(url)
     }
 
+    #[cfg(feature = "audio")]
+    fn post_audio_generation(&self, deployment_id: &str) -> http_client::Builder {
+        let url = format!(
+            "{}/openai/deployments/{}/audio/speech?api-version={}",
+            self.azure_endpoint, deployment_id, self.api_version
+        )
+        .replace("//", "/");
+
+        self.post(url)
+    }
+
+    fn post_chat_completion(&self, deployment_id: &str) -> http_client::Builder {
+        let url = format!(
+            "{}/openai/deployments/{}/chat/completions?api-version={}",
+            self.azure_endpoint, deployment_id, self.api_version
+        )
+        .replace("//", "/");
+
+        self.post(url)
+    }
+
+    fn post_transcription(&self, deployment_id: &str) -> http_client::Builder {
+        let url = format!(
+            "{}/openai/deployments/{}/audio/translations?api-version={}",
+            self.azure_endpoint, deployment_id, self.api_version
+        )
+        .replace("//", "/");
+
+        self.post(url)
+    }
+
+    #[cfg(feature = "image")]
+    fn post_image_generation(&self, deployment_id: &str) -> http_client::Builder {
+        let url = format!(
+            "{}/openai/deployments/{}/images/generations?api-version={}",
+            self.azure_endpoint, deployment_id, self.api_version
+        )
+        .replace("//", "/");
+
+        self.post(url)
+    }
+
     async fn send<U, R>(
         &self,
         req: http_client::Request<U>,
@@ -206,57 +265,10 @@ where
     }
 }
 
-impl Client<reqwest::Client> {
-    fn reqwest_post(&self, url: String) -> reqwest::RequestBuilder {
-        let (key, val) = self.auth.as_header();
-
-        self.http_client.post(url).header(key, val)
-    }
-
-    #[cfg(feature = "audio")]
-    fn post_audio_generation(&self, deployment_id: &str) -> reqwest::RequestBuilder {
-        let url = format!(
-            "{}/openai/deployments/{}/audio/speech?api-version={}",
-            self.azure_endpoint, deployment_id, self.api_version
-        )
-        .replace("//", "/");
-
-        self.reqwest_post(url)
-    }
-
-    fn post_chat_completion(&self, deployment_id: &str) -> reqwest::RequestBuilder {
-        let url = format!(
-            "{}/openai/deployments/{}/chat/completions?api-version={}",
-            self.azure_endpoint, deployment_id, self.api_version
-        )
-        .replace("//", "/");
-
-        self.reqwest_post(url)
-    }
-
-    fn post_transcription(&self, deployment_id: &str) -> reqwest::RequestBuilder {
-        let url = format!(
-            "{}/openai/deployments/{}/audio/translations?api-version={}",
-            self.azure_endpoint, deployment_id, self.api_version
-        )
-        .replace("//", "/");
-
-        self.reqwest_post(url)
-    }
-
-    #[cfg(feature = "image")]
-    fn post_image_generation(&self, deployment_id: &str) -> reqwest::RequestBuilder {
-        let url = format!(
-            "{}/openai/deployments/{}/images/generations?api-version={}",
-            self.azure_endpoint, deployment_id, self.api_version
-        )
-        .replace("//", "/");
-
-        self.reqwest_post(url)
-    }
-}
-
-impl ProviderClient for Client<reqwest::Client> {
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
     /// Create a new Azure OpenAI client from the `AZURE_API_KEY` or `AZURE_TOKEN`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
     fn from_env() -> Self {
         let auth = if let Ok(api_key) = std::env::var("AZURE_API_KEY") {
@@ -270,7 +282,7 @@ impl ProviderClient for Client<reqwest::Client> {
         let api_version = std::env::var("AZURE_API_VERSION").expect("AZURE_API_VERSION not set");
         let azure_endpoint = std::env::var("AZURE_ENDPOINT").expect("AZURE_ENDPOINT not set");
 
-        Self::builder(auth, &azure_endpoint)
+        ClientBuilder::<T>::new(auth, &azure_endpoint)
             .api_version(&api_version)
             .build()
     }
@@ -282,12 +294,17 @@ impl ProviderClient for Client<reqwest::Client> {
             panic!("Incorrect provider value type")
         };
         let auth = AzureOpenAIAuth::ApiKey(api_key.to_string());
-        Self::builder(auth, &header).api_version(&version).build()
+        ClientBuilder::<T>::new(auth, &header)
+            .api_version(&version)
+            .build()
     }
 }
 
-impl CompletionClient for Client<reqwest::Client> {
-    type CompletionModel = CompletionModel<reqwest::Client>;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     /// Create a completion model with the given name.
     ///
@@ -300,13 +317,16 @@ impl CompletionClient for Client<reqwest::Client> {
     ///
     /// let gpt4 = azure.completion_model(azure::GPT_4);
     /// ```
-    fn completion_model(&self, model: &str) -> CompletionModel<reqwest::Client> {
+    fn completion_model(&self, model: &str) -> Self::CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl EmbeddingsClient for Client<reqwest::Client> {
-    type EmbeddingModel = EmbeddingModel<reqwest::Client>;
+impl<T> EmbeddingsClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
+    type EmbeddingModel = EmbeddingModel<T>;
 
     /// Create an embedding model with the given name.
     /// Note: default embedding dimension of 0 will be used if model is not known.
@@ -321,7 +341,7 @@ impl EmbeddingsClient for Client<reqwest::Client> {
     ///
     /// let embedding_model = azure.embedding_model(azure::TEXT_EMBEDDING_3_LARGE);
     /// ```
-    fn embedding_model(&self, model: &str) -> EmbeddingModel<reqwest::Client> {
+    fn embedding_model(&self, model: &str) -> Self::EmbeddingModel {
         let ndims = match model {
             TEXT_EMBEDDING_3_LARGE => 3072,
             TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => 1536,
@@ -341,17 +361,16 @@ impl EmbeddingsClient for Client<reqwest::Client> {
     ///
     /// let embedding_model = azure.embedding_model("model-unknown-to-rig", 3072);
     /// ```
-    fn embedding_model_with_ndims(
-        &self,
-        model: &str,
-        ndims: usize,
-    ) -> EmbeddingModel<reqwest::Client> {
+    fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> Self::EmbeddingModel {
         EmbeddingModel::new(self.clone(), model, ndims)
     }
 }
 
-impl TranscriptionClient for Client<reqwest::Client> {
-    type TranscriptionModel = TranscriptionModel<reqwest::Client>;
+impl<T> TranscriptionClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
+    type TranscriptionModel = TranscriptionModel<T>;
 
     /// Create a transcription model with the given name.
     ///
@@ -364,7 +383,7 @@ impl TranscriptionClient for Client<reqwest::Client> {
     ///
     /// let whisper = azure.transcription_model("model-unknown-to-rig");
     /// ```
-    fn transcription_model(&self, model: &str) -> TranscriptionModel<reqwest::Client> {
+    fn transcription_model(&self, model: &str) -> Self::TranscriptionModel {
         TranscriptionModel::new(self.clone(), model)
     }
 }
@@ -626,7 +645,10 @@ impl<T> CompletionModel<T> {
     }
 }
 
-impl completion::CompletionModel for CompletionModel<reqwest::Client> {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     type Response = openai::CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
@@ -659,37 +681,36 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                 .get("messages")
                 .expect("Converting JSON should not fail"),
         );
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .post_chat_completion(&self.model)
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(http_client::Error::from)?;
 
         async move {
-            let response = self
-                .client
-                .post_chat_completion(&self.model)
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
+            let response = self.client.http_client.send::<_, Bytes>(req).await.unwrap();
 
-            if response.status().is_success() {
-                let t = response.text().await.map_err(|e| {
-                    CompletionError::HttpError(http_client::Error::Instance(e.into()))
-                })?;
-                tracing::debug!(target: "rig", "Azure completion error: {}", t);
+            let status = response.status();
+            let response_body = response.into_body().into_future().await?.to_vec();
 
-                match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(&t)? {
+            if status.is_success() {
+                match serde_json::from_slice::<ApiResponse<openai::CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_model_output(&response.choices);
                         span.record_response_metadata(&response);
                         span.record_token_usage(&response.usage);
+                        tracing::debug!(target: "rig", "Azure completion output: {}", serde_json::to_string_pretty(&response)?);
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
                 }
             } else {
                 Err(CompletionError::ProviderError(
-                    response.text().await.map_err(|e| {
-                        CompletionError::HttpError(http_client::Error::Instance(e.into()))
-                    })?,
+                    String::from_utf8_lossy(&response_body).to_string()
                 ))
             }
         }
@@ -710,11 +731,14 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
 
-        let builder = self
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
             .client
-            .post_chat_completion(self.model.as_str())
+            .post_chat_completion(&self.model)
             .header("Content-Type", "application/json")
-            .json(&request);
+            .body(body)
+            .map_err(http_client::Error::from)?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -735,8 +759,11 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             tracing::Span::current()
         };
 
-        tracing_futures::Instrument::instrument(send_compatible_streaming_request(builder), span)
-            .await
+        tracing_futures::Instrument::instrument(
+            send_compatible_streaming_request(self.client.http_client.clone(), req),
+            span,
+        )
+        .await
     }
 }
 
@@ -760,7 +787,10 @@ impl<T> TranscriptionModel<T> {
     }
 }
 
-impl transcription::TranscriptionModel for TranscriptionModel<reqwest::Client> {
+impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     type Response = TranscriptionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -795,22 +825,18 @@ impl transcription::TranscriptionModel for TranscriptionModel<reqwest::Client> {
             }
         }
 
-        let response = self
+        let req = self
             .client
             .post_transcription(&self.model)
-            .header("Content-Type", "application/json")
-            .multipart(body)
-            .send()
-            .await
-            .map_err(|e| TranscriptionError::HttpError(http_client::Error::Instance(e.into())))?;
+            .body(body)
+            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
 
-        if response.status().is_success() {
-            match response
-                .json::<ApiResponse<TranscriptionResponse>>()
-                .await
-                .map_err(|e| {
-                    TranscriptionError::HttpError(http_client::Error::Instance(e.into()))
-                })? {
+        let response = self.client.http_client.send_multipart::<Bytes>(req).await?;
+        let status = response.status();
+        let response_body = response.into_body().into_future().await?.to_vec();
+
+        if status.is_success() {
+            match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(api_error_response) => Err(TranscriptionError::ProviderError(
                     api_error_response.message,
@@ -818,9 +844,7 @@ impl transcription::TranscriptionModel for TranscriptionModel<reqwest::Client> {
             }
         } else {
             Err(TranscriptionError::ProviderError(
-                response.text().await.map_err(|e| {
-                    TranscriptionError::HttpError(http_client::Error::Instance(e.into()))
-                })?,
+                String::from_utf8_lossy(&response_body).to_string(),
             ))
         }
     }
@@ -836,10 +860,12 @@ use tracing::{Instrument, info_span};
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod image_generation {
     use crate::client::ImageGenerationClient;
+    use crate::http_client::HttpClientExt;
+    use crate::image_generation;
     use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
     use crate::providers::azure::{ApiResponse, Client};
     use crate::providers::openai::ImageGenerationResponse;
-    use crate::{http_client, image_generation};
+    use bytes::Bytes;
     use serde_json::json;
 
     #[derive(Clone)]
@@ -847,7 +873,11 @@ mod image_generation {
         client: Client<T>,
         pub model: String,
     }
-    impl image_generation::ImageGenerationModel for ImageGenerationModel<reqwest::Client> {
+
+    impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
+    where
+        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    {
         type Response = ImageGenerationResponse;
 
         #[cfg_attr(feature = "worker", worker::send)]
@@ -863,40 +893,38 @@ mod image_generation {
                 "response_format": "b64_json"
             });
 
-            let response = self
+            let body = serde_json::to_vec(&request)?;
+
+            let req = self
                 .client
                 .post_image_generation(&self.model)
                 .header("Content-Type", "application/json")
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| {
-                    ImageGenerationError::HttpError(http_client::Error::Instance(e.into()))
-                })?;
+                .body(body)
+                .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
 
-            if !response.status().is_success() {
+            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let status = response.status();
+            let response_body = response.into_body().into_future().await?.to_vec();
+
+            if !status.is_success() {
                 return Err(ImageGenerationError::ProviderError(format!(
-                    "{}: {}",
-                    response.status(),
-                    response.text().await.map_err(|e| {
-                        ImageGenerationError::HttpError(http_client::Error::Instance(e.into()))
-                    })?
+                    "{status}: {}",
+                    String::from_utf8_lossy(&response_body)
                 )));
             }
 
-            let t = response.text().await.map_err(|e| {
-                ImageGenerationError::HttpError(http_client::Error::Instance(e.into()))
-            })?;
-
-            match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&t)? {
+            match serde_json::from_slice::<ApiResponse<ImageGenerationResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
             }
         }
     }
 
-    impl ImageGenerationClient for Client<reqwest::Client> {
-        type ImageGenerationModel = ImageGenerationModel<reqwest::Client>;
+    impl<T> ImageGenerationClient for Client<T>
+    where
+        T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+    {
+        type ImageGenerationModel = ImageGenerationModel<T>;
 
         fn image_generation_model(&self, model: &str) -> Self::ImageGenerationModel {
             ImageGenerationModel {
@@ -922,10 +950,10 @@ pub use audio_generation::*;
 mod audio_generation {
     use super::Client;
     use crate::audio_generation::{
-        AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
+        self, AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
     };
     use crate::client::AudioGenerationClient;
-    use crate::{audio_generation, http_client};
+    use crate::http_client::HttpClientExt;
     use bytes::Bytes;
     use serde_json::json;
 
@@ -935,7 +963,10 @@ mod audio_generation {
         model: String,
     }
 
-    impl audio_generation::AudioGenerationModel for AudioGenerationModel<reqwest::Client> {
+    impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
+    where
+        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    {
         type Response = Bytes;
 
         #[cfg_attr(feature = "worker", worker::send)]
@@ -950,40 +981,38 @@ mod audio_generation {
                 "speed": request.speed,
             });
 
-            let response = self
+            let body = serde_json::to_vec(&request)?;
+
+            let req = self
                 .client
                 .post_audio_generation("/audio/speech")
                 .header("Content-Type", "application/json")
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| {
-                    AudioGenerationError::HttpError(http_client::Error::Instance(e.into()))
-                })?;
+                .body(body)
+                .map_err(|e| AudioGenerationError::HttpError(e.into()))?;
 
-            if !response.status().is_success() {
+            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let status = response.status();
+            let response_body = response.into_body().into_future().await?;
+
+            if !status.is_success() {
                 return Err(AudioGenerationError::ProviderError(format!(
-                    "{}: {}",
-                    response.status(),
-                    response.text().await.map_err(|e| {
-                        AudioGenerationError::HttpError(http_client::Error::Instance(e.into()))
-                    })?
+                    "{status}: {}",
+                    String::from_utf8_lossy(&response_body)
                 )));
             }
 
-            let bytes = response.bytes().await.map_err(|e| {
-                AudioGenerationError::HttpError(http_client::Error::Instance(e.into()))
-            })?;
-
             Ok(AudioGenerationResponse {
-                audio: bytes.to_vec(),
-                response: bytes,
+                audio: response_body.to_vec(),
+                response: response_body,
             })
         }
     }
 
-    impl AudioGenerationClient for Client<reqwest::Client> {
-        type AudioGenerationModel = AudioGenerationModel<reqwest::Client>;
+    impl<T> AudioGenerationClient for Client<T>
+    where
+        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    {
+        type AudioGenerationModel = AudioGenerationModel<T>;
 
         fn audio_generation_model(&self, model: &str) -> Self::AudioGenerationModel {
             AudioGenerationModel {
@@ -994,7 +1023,10 @@ mod audio_generation {
     }
 }
 
-impl VerifyClient for Client<reqwest::Client> {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         // There is currently no way to verify the Azure OpenAI API key or token without

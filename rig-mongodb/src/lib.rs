@@ -1,11 +1,12 @@
 use futures::StreamExt;
-use mongodb::bson::{self, doc};
+use mongodb::bson::{self, Bson, Document, doc};
 
 use rig::{
     Embed, OneOrMany,
     embeddings::embedding::{Embedding, EmbeddingModel},
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        request::{SearchFilter, VectorSearchRequest},
     },
 };
 use serde::{Deserialize, Serialize};
@@ -241,33 +242,94 @@ impl SearchParams {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct MongoDbSearchFilter(Document);
+
+impl SearchFilter for MongoDbSearchFilter {
+    type Value = Bson;
+
+    fn eq(key: String, value: Self::Value) -> Self {
+        Self(doc! { key: value })
+    }
+
+    fn gt(key: String, value: Self::Value) -> Self {
+        Self(doc! { key: { "$gt": value } })
+    }
+
+    fn lt(key: String, value: Self::Value) -> Self {
+        Self(doc! { key: { "$lt": value } })
+    }
+
+    fn and(self, rhs: Self) -> Self {
+        Self(doc! { "$and": [ self.0, rhs.0 ]})
+    }
+
+    fn or(self, rhs: Self) -> Self {
+        Self(doc! { "$or": [ self.0, rhs.0 ]})
+    }
+}
+
+impl MongoDbSearchFilter {
+    /// Render the filter as a MonadDB `$match` expression
+    pub fn into_document(self) -> Document {
+        doc! { "$match": self.0 }
+    }
+
+    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+        Self(doc! { key: { "$gte": value } })
+    }
+
+    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+        Self(doc! { key: { "$lte": value } })
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self(doc! { "$not": self.0 })
+    }
+}
+
 impl<C, M> VectorStoreIndex for MongoDbVectorIndex<C, M>
 where
     C: Sync + Send,
     M: EmbeddingModel + Sync + Send,
 {
+    type Filter = MongoDbSearchFilter;
+
     /// Implement the `top_n` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
     ///
     /// `VectorSearchRequest` similarity search threshold filter gets ignored here because it is already present and can already be added in the MongoDB vector store struct.
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<MongoDbSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_text(req.query()).await?;
 
+        let mut pipeline = vec![
+            self.pipeline_search_stage(&prompt_embedding, req.samples() as usize),
+            self.pipeline_score_stage(),
+        ];
+
+        if let Some(filter) = req.filter() {
+            let filter = req
+                .threshold()
+                .map(|thresh| {
+                    MongoDbSearchFilter::gte("score".into(), thresh.into()).and(filter.clone())
+                })
+                .unwrap_or(filter.clone());
+
+            pipeline.push(filter.into_document())
+        }
+
+        pipeline.push(doc! {
+            "$project": {
+                self.embedded_field.clone(): 0
+            }
+        });
+
         let mut cursor = self
             .collection
-            .aggregate([
-                self.pipeline_search_stage(&prompt_embedding, req.samples() as usize),
-                self.pipeline_score_stage(),
-                {
-                    doc! {
-                        "$project": {
-                            self.embedded_field.clone(): 0,
-                        },
-                    }
-                },
-            ])
+            .aggregate(pipeline)
             .await
             .map_err(mongodb_to_rig_error)?
             .with_type::<serde_json::Value>();
@@ -295,22 +357,36 @@ where
     /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
     async fn top_n_ids(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<MongoDbSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_text(req.query()).await?;
 
+        let mut pipeline = vec![
+            self.pipeline_search_stage(&prompt_embedding, req.samples() as usize),
+            self.pipeline_score_stage(),
+        ];
+
+        if let Some(filter) = req.filter() {
+            let filter = req
+                .threshold()
+                .map(|thresh| {
+                    MongoDbSearchFilter::gte("score".into(), thresh.into()).and(filter.clone())
+                })
+                .unwrap_or(filter.clone());
+
+            pipeline.push(filter.into_document())
+        }
+
+        pipeline.push(doc! {
+            "$project": {
+                "_id": 1,
+                "score": 1
+            },
+        });
+
         let mut cursor = self
             .collection
-            .aggregate([
-                self.pipeline_search_stage(&prompt_embedding, req.samples() as usize),
-                self.pipeline_score_stage(),
-                doc! {
-                    "$project": {
-                        "_id": 1,
-                        "score": 1
-                    },
-                },
-            ])
+            .aggregate(pipeline)
             .await
             .map_err(mongodb_to_rig_error)?
             .with_type::<serde_json::Value>();

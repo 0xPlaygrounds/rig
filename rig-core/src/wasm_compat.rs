@@ -1,4 +1,7 @@
+use bytes::Bytes;
 use std::pin::Pin;
+
+use futures::Stream;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub trait WasmCompatSend: Send {}
@@ -9,6 +12,34 @@ pub trait WasmCompatSend {}
 impl<T> WasmCompatSend for T where T: Send {}
 #[cfg(target_arch = "wasm32")]
 impl<T> WasmCompatSend for T {}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub trait WasmCompatSendStream:
+    Stream<Item = Result<Bytes, crate::http_client::Error>> + Send
+{
+    type InnerItem: Send;
+}
+
+#[cfg(target_arch = "wasm32")]
+pub trait WasmCompatSendStream: Stream<Item = Result<Bytes, crate::http_client::Error>> {
+    type InnerItem;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl<T> WasmCompatSendStream for T
+where
+    T: Stream<Item = Result<Bytes, crate::http_client::Error>> + Send,
+{
+    type InnerItem = Result<Bytes, crate::http_client::Error>;
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<T> WasmCompatSendStream for T
+where
+    T: Stream<Item = Result<Bytes, crate::http_client::Error>>,
+{
+    type InnerItem = Result<Bytes, crate::http_client::Error>;
+}
 
 #[cfg(not(target_arch = "wasm32"))]
 pub trait WasmCompatSync: Sync {}

@@ -1,5 +1,6 @@
 use super::client::Client;
 use crate::completion::GetTokenUsage;
+use crate::http_client::HttpClientExt;
 use crate::providers::openai::StreamingCompletionResponse;
 use crate::telemetry::SpanCombinator;
 use crate::{
@@ -656,7 +657,10 @@ impl<T> CompletionModel<T> {
     }
 }
 
-impl completion::CompletionModel for CompletionModel<reqwest::Client> {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 

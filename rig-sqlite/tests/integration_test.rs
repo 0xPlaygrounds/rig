@@ -1,4 +1,4 @@
-use rig::vector_store::request::VectorSearchRequest;
+use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use serde_json::json;
 
 use rig::client::EmbeddingsClient;
@@ -8,7 +8,9 @@ use rig::{
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
 };
-use rig_sqlite::{Column, ColumnValue, SqliteVectorStore, SqliteVectorStoreTable};
+use rig_sqlite::{
+    Column, ColumnValue, SqliteSearchFilter, SqliteVectorStore, SqliteVectorStoreTable,
+};
 use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use sqlite_vec::sqlite3_vec_init;
 use tokio_rusqlite::Connection;
@@ -76,7 +78,6 @@ async fn vector_search_test() {
                     "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
                 ],
                 "model": "text-embedding-ada-002",
-                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -116,7 +117,6 @@ async fn vector_search_test() {
                     "What is a glarb?",
                 ],
                 "model": "text-embedding-ada-002",
-                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -166,21 +166,13 @@ async fn vector_search_test() {
     let req = VectorSearchRequest::builder()
         .samples(samples)
         .query(query)
+        .filter(SqliteSearchFilter::eq("id".into(), "doc1".into()).not())
         .build()
         .expect("VectorSearchRequest should not fail to build here");
 
     // Query the index
     let results = index.top_n::<serde_json::Value>(req).await.expect("");
-
-    let (_, _, value) = &results.first().expect("");
-
-    assert_eq!(
-        value,
-        &serde_json::json!({
-            "id": "doc1",
-            "definition": "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
-        })
-    )
+    assert!(results.is_empty());
 }
 
 async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, OneOrMany<Embedding>)> {

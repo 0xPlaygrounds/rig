@@ -1,10 +1,7 @@
 use rig::vector_store::InsertDocuments;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
-    Embed,
-    client::{EmbeddingsClient, ProviderClient},
-    embeddings::EmbeddingsBuilder,
-    vector_store::VectorStoreIndex,
+    Embed, client::EmbeddingsClient, embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex,
 };
 use serde::{Deserialize, Serialize};
 

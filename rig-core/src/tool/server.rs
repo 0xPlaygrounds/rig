@@ -4,7 +4,7 @@ use tokio::sync::mpsc::{Sender, error::SendError};
 use crate::{
     completion::{CompletionError, ToolDefinition},
     tool::{Tool, ToolDyn, ToolError, ToolSet, ToolSetError},
-    vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn},
+    vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
 
 pub struct ToolServer {
@@ -12,7 +12,7 @@ pub struct ToolServer {
     /// These tools will always exist on the tool server for as long as they are not deleted.
     static_tool_names: Vec<String>,
     /// Dynamic tools. These tools will be dynamically fetched from a given vector store.
-    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
+    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
     /// The toolset where tools are called (to be executed).
     toolset: ToolSet,
 }
@@ -44,7 +44,7 @@ impl ToolServer {
 
     pub(crate) fn add_dynamic_tools(
         mut self,
-        dyn_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
+        dyn_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
     ) -> Self {
         self.dynamic_tools = dyn_tools;
         self
@@ -75,7 +75,7 @@ impl ToolServer {
     pub fn dynamic_tools(
         mut self,
         sample: usize,
-        dynamic_tools: impl VectorStoreIndexDyn + 'static,
+        dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
         toolset: ToolSet,
     ) -> Self {
         self.dynamic_tools.push((sample, Box::new(dynamic_tools)));
@@ -159,10 +159,15 @@ impl ToolServer {
         let mut tools = if let Some(text) = text {
             stream::iter(self.dynamic_tools.iter())
                         .then(|(num_sample, index)| async {
-                            let req = VectorSearchRequest::builder().query(text.clone()).samples(*num_sample as u64).build().expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
+                            let req =
+                                VectorSearchRequest::builder()
+                                    .query(text.clone())
+                                    .samples(*num_sample as u64)
+                                    .build()
+                                    .expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
                             Ok::<_, VectorStoreError>(
-                                index
-                                    .top_n_ids(req)
+                        index.as_ref()
+                                    .top_n_ids(req.map_filter(Filter::interpret))
                                     .await?
                                     .into_iter()
                                     .map(|(_, id)| id)

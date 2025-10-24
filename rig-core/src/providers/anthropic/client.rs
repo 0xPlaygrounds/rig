@@ -1,6 +1,6 @@
 //! Anthropic client api implementation
 use bytes::Bytes;
-use http_client::{Method, Request};
+use http_client::Method;
 
 use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
 use crate::{
@@ -9,6 +9,7 @@ use crate::{
         VerifyError, impl_conversion_traits,
     },
     http_client::{self, HttpClientExt},
+    wasm_compat::WasmCompatSend,
 };
 
 // ================================================================
@@ -24,7 +25,10 @@ pub struct ClientBuilder<'a, T = reqwest::Client> {
     http_client: T,
 }
 
-impl<'a> ClientBuilder<'a, reqwest::Client> {
+impl<'a, T> ClientBuilder<'a, T>
+where
+    T: Default,
+{
     pub fn new(api_key: &'a str) -> Self {
         ClientBuilder {
             api_key,
@@ -127,7 +131,7 @@ pub struct Client<T = reqwest::Client> {
     /// The API key
     api_key: String,
     /// The underlying HTTP client
-    http_client: T,
+    pub http_client: T,
     /// Default headers that will be automatically added to any given request with this client (API key, Anthropic Version and any betas that have been added)
     default_headers: reqwest::header::HeaderMap,
 }
@@ -159,16 +163,6 @@ where
         V: From<Bytes> + Send + 'static,
     {
         self.http_client.send(req).await
-    }
-
-    pub async fn send_streaming<U>(
-        &self,
-        req: Request<U>,
-    ) -> Result<http_client::StreamingResponse, http_client::Error>
-    where
-        U: Into<Bytes>,
-    {
-        self.http_client.send_streaming(req).await
     }
 
     pub(crate) fn post(&self, path: &str) -> http_client::Builder {
@@ -212,6 +206,13 @@ where
 }
 
 impl Client<reqwest::Client> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
+        ClientBuilder::new(api_key)
+    }
+
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
+    }
     /// Create a new Anthropic client. For more control, use the `builder` method.
     ///
     /// # Panics
@@ -224,13 +225,16 @@ impl Client<reqwest::Client> {
     }
 }
 
-impl ProviderClient for Client<reqwest::Client> {
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
     /// Create a new Anthropic client from the `ANTHROPIC_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
 
-        Client::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build().unwrap()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
@@ -238,19 +242,25 @@ impl ProviderClient for Client<reqwest::Client> {
             panic!("Incorrect provider value type")
         };
 
-        Client::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build().unwrap()
     }
 }
 
-impl CompletionClient for Client<reqwest::Client> {
-    type CompletionModel = CompletionModel<reqwest::Client>;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
-    fn completion_model(&self, model: &str) -> CompletionModel<reqwest::Client> {
+    fn completion_model(&self, model: &str) -> CompletionModel<T> {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl VerifyClient for Client<reqwest::Client> {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         let req = self

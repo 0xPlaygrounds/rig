@@ -1,5 +1,5 @@
+use rig::client::ImageGenerationClient;
 use rig::image_generation::ImageGenerationModel;
-use rig::prelude::*;
 use rig::providers::huggingface;
 use std::env::args;
 use std::fs::File;

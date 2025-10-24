@@ -1,4 +1,6 @@
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::http_client::HttpClientExt;
+use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::{
     AssistantContent, Message, ToolCall, ToolCallFunction, ToolType, Usage,
@@ -8,7 +10,7 @@ use crate::telemetry::SpanCombinator;
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
-use reqwest_eventsource::Event;
+use http::Method;
 use serde::{Deserialize, Serialize};
 use tracing::info_span;
 use tracing_futures::Instrument;
@@ -89,7 +91,10 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl CompletionModel<reqwest::Client> {
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     pub(crate) async fn stream(
         &self,
         request: CompletionRequest,
@@ -121,13 +126,15 @@ impl CompletionModel<reqwest::Client> {
             serde_json::to_string_pretty(&request)?
         );
 
-        let req = self.client.client().post("/v2/chat").json(&request);
+        let body = serde_json::to_vec(&request)?;
 
-        let mut event_source = self
+        let req = self
             .client
-            .eventsource(req)
-            .await
-            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            .req(Method::POST, "/v2/chat")?
+            .body(body)
+            .unwrap();
+
+        let mut event_source = GenericEventSource::new(self.client.http_client(), req);
 
         let stream = stream! {
             let mut current_tool_call: Option<(String, String, String)> = None;
@@ -230,9 +237,9 @@ impl CompletionModel<reqwest::Client> {
                             _ => {}
                         }
                     },
-
-                    Err(reqwest_eventsource::Error::StreamEnded) => break,
-
+                    Err(crate::http_client::Error::StreamEnded) => {
+                        break;
+                    }
                     Err(err) => {
                         tracing::error!(?err, "SSE error");
                         yield Err(CompletionError::ResponseError(err.to_string()));

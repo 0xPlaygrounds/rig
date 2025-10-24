@@ -31,7 +31,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create Anthropic client
     let anthropic_api_key = env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
-    let anthropic_client = ClientBuilder::new(&anthropic_api_key)
+    let anthropic_client = ClientBuilder::<reqwest::Client>::new(&anthropic_api_key)
         .anthropic_beta("token-efficient-tools-2025-02-19") // Enable efficient tool calling
         .build()?;
 

@@ -17,8 +17,14 @@ use tokio::sync::RwLock;
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
-pub type DynamicContextStore =
-    Arc<RwLock<Vec<(usize, Box<dyn crate::vector_store::VectorStoreIndexDyn>)>>>;
+pub type DynamicContextStore = Arc<
+    RwLock<
+        Vec<(
+            usize,
+            Box<dyn crate::vector_store::VectorStoreIndexDyn + Send + Sync>,
+        )>,
+    >,
+>;
 
 /// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
 /// (i.e.: system prompt) and a static set of context documents and tools.
@@ -109,6 +115,11 @@ where
             .documents(self.static_context.clone());
         let completion_request = if let Some(preamble) = &self.preamble {
             completion_request.preamble(preamble.to_owned())
+        } else {
+            completion_request
+        };
+        let completion_request = if let Some(tool_choice) = &self.tool_choice {
+            completion_request.tool_choice(tool_choice.clone())
         } else {
             completion_request
         };

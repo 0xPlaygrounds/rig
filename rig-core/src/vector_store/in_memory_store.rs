@@ -11,6 +11,7 @@ use super::{IndexStrategy, VectorStoreError, VectorStoreIndex, request::VectorSe
 use crate::{
     OneOrMany,
     embeddings::{Embedding, EmbeddingModel, distance::VectorDistance},
+    vector_store::request::Filter,
 };
 
 use super::lsh::LSHIndex;
@@ -410,6 +411,8 @@ impl<M: EmbeddingModel, D: Serialize> InMemoryVectorIndex<M, D> {
 impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
     for InMemoryVectorIndex<M, D>
 {
+    type Filter = Filter<serde_json::Value>;
+
     async fn top_n<T: for<'a> Deserialize<'a>>(
         &self,
         req: VectorSearchRequest,

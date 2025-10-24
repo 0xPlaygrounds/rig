@@ -19,6 +19,7 @@ use crate::{
     providers::openai,
 };
 use crate::{http_client, impl_conversion_traits, message};
+use http::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
@@ -48,6 +49,14 @@ where
 }
 
 impl<'a, T> ClientBuilder<'a, T> {
+    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
+        Self {
+            api_key,
+            base_url: MOONSHOT_API_BASE_URL,
+            http_client,
+        }
+    }
+
     pub fn base_url(mut self, base_url: &'a str) -> Self {
         self.base_url = base_url;
         self
@@ -92,33 +101,6 @@ where
 
 impl<T> Client<T>
 where
-    T: Default,
-{
-    /// Create a new Moonshot client builder.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::moonshot::{ClientBuilder, self};
-    ///
-    /// // Initialize the Moonshot client
-    /// let moonshot = Client::builder("your-moonshot-api-key")
-    ///    .build()
-    /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, T> {
-        ClientBuilder::new(api_key)
-    }
-
-    /// Create a new Moonshot client. For more control, use the `builder` method.
-    ///
-    /// # Panics
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key).build()
-    }
-}
-
-impl<T> Client<T>
-where
     T: HttpClientExt,
 {
     fn req(
@@ -140,31 +122,43 @@ where
 }
 
 impl Client<reqwest::Client> {
-    fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
+        ClientBuilder::new(api_key)
+    }
 
-        self.http_client.post(url).bearer_auth(&self.api_key)
+    pub fn new(api_key: &str) -> Self {
+        Self::builder(api_key).build()
+    }
+
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
     }
 }
 
-impl ProviderClient for Client<reqwest::Client> {
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
     /// Create a new Moonshot client from the `MOONSHOT_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("MOONSHOT_API_KEY").expect("MOONSHOT_API_KEY not set");
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 }
 
-impl CompletionClient for Client<reqwest::Client> {
-    type CompletionModel = CompletionModel<reqwest::Client>;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     /// Create a completion model with the given name.
     ///
@@ -177,12 +171,15 @@ impl CompletionClient for Client<reqwest::Client> {
     ///
     /// let completion_model = moonshot.completion_model(moonshot::MOONSHOT_CHAT);
     /// ```
-    fn completion_model(&self, model: &str) -> CompletionModel<reqwest::Client> {
+    fn completion_model(&self, model: &str) -> Self::CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl VerifyClient for Client<reqwest::Client> {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         let req = self
@@ -201,10 +198,7 @@ impl VerifyClient for Client<reqwest::Client> {
                 let text = http_client::text(response).await?;
                 Err(VerifyError::ProviderError(text))
             }
-            _ => {
-                //response.error_for_status()?;
-                Ok(())
-            }
+            _ => Ok(()),
         }
     }
 }
@@ -314,7 +308,10 @@ impl<T> CompletionModel<T> {
     }
 }
 
-impl completion::CompletionModel for CompletionModel<reqwest::Client> {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     type Response = openai::CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
@@ -350,24 +347,26 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             tracing::Span::current()
         };
 
+        let body = serde_json::to_vec(&request)?;
+        let req = self
+            .client
+            .req(Method::POST, "/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(http_client::Error::from)?;
+
         let async_block = async move {
-            let response = self
-                .client
-                .reqwest_post("/chat/completions")
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| http_client::Error::Instance(e.into()))?;
+            let response = self.client.http_client.send::<_, bytes::Bytes>(req).await?;
 
-            if response.status().is_success() {
-                let t = response
-                    .text()
-                    .await
-                    .map_err(|e| http_client::Error::Instance(e.into()))?;
-                tracing::debug!(target: "rig::completions", "MoonShot completion response: {t}");
+            let status = response.status();
+            let response_body = response.into_body().into_future().await?.to_vec();
 
-                match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(&t)? {
+            if status.is_success() {
+                match serde_json::from_slice::<ApiResponse<openai::CompletionResponse>>(
+                    &response_body,
+                )? {
                     ApiResponse::Ok(response) => {
+                        tracing::debug!(target: "rig::completions", "MoonShot completion response: {t}", t = serde_json::to_string_pretty(&response)?);
                         let span = tracing::Span::current();
                         span.record("gen_ai.response.id", response.id.clone());
                         span.record("gen_ai.response.model_name", response.model.clone());
@@ -388,10 +387,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                 }
             } else {
                 Err(CompletionError::ProviderError(
-                    response
-                        .text()
-                        .await
-                        .map_err(|e| http_client::Error::Instance(e.into()))?,
+                    String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
         };
@@ -431,9 +427,15 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
 
-        let builder = self.client.reqwest_post("/chat/completions").json(&request);
+        let body = serde_json::to_vec(&request)?;
+        let req = self
+            .client
+            .req(Method::POST, "/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(http_client::Error::from)?;
 
-        send_compatible_streaming_request(builder)
+        send_compatible_streaming_request(self.client.http_client.clone(), req)
             .instrument(span)
             .await
     }

@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use super::client::Client;
 use crate::completion::CompletionRequest;
 use crate::providers::cohere::streaming::StreamingCompletionResponse;
+use http::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
@@ -579,7 +580,10 @@ where
     }
 }
 
-impl completion::CompletionModel for CompletionModel<reqwest::Client> {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -613,36 +617,41 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             serde_json::to_string_pretty(&request)?
         );
 
+        let req_body = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .req(Method::POST, "/v2/chat")?
+            .body(req_body)
+            .unwrap();
+
         async {
             let response = self
                 .client
-                .client()
-                .post("/v2/chat")
-                .json(&request)
-                .send()
+                .http_client()
+                .send::<_, bytes::Bytes>(req)
                 .await
                 .map_err(|e| http_client::Error::Instance(e.into()))?;
 
-            if response.status().is_success() {
-                let text_response = response.text().await.map_err(|e| {
-                    CompletionError::HttpError(http_client::Error::Instance(e.into()))
-                })?;
-                tracing::debug!("Cohere completion request: {}", text_response);
+            let status = response.status();
+            let body = response.into_body().into_future().await?.to_owned();
 
-                let json_response: CompletionResponse = serde_json::from_str(&text_response)?;
+            if status.is_success() {
+                let json_response: CompletionResponse = serde_json::from_slice(&body)?;
                 let span = tracing::Span::current();
                 span.record_token_usage(&json_response.usage);
                 span.record_model_output(&json_response.message);
                 span.record_response_metadata(&json_response);
-                tracing::debug!("Cohere completion response: {}", text_response);
+                tracing::debug!(
+                    "Cohere completion response: {}",
+                    serde_json::to_string_pretty(&json_response)?
+                );
                 let completion: completion::CompletionResponse<CompletionResponse> =
                     json_response.try_into()?;
                 Ok(completion)
             } else {
                 Err(CompletionError::ProviderError(
-                    response.text().await.map_err(|e| {
-                        CompletionError::HttpError(http_client::Error::Instance(e.into()))
-                    })?,
+                    String::from_utf8_lossy(&body).to_string(),
                 ))
             }
         }

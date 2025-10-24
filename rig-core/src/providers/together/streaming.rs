@@ -1,6 +1,7 @@
 use serde_json::json;
 
 use super::completion::CompletionModel;
+use crate::http_client::HttpClientExt;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
@@ -11,7 +12,10 @@ use crate::{
 
 use tracing::{Instrument, info_span};
 
-impl CompletionModel<reqwest::Client> {
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -22,11 +26,14 @@ impl CompletionModel<reqwest::Client> {
 
         request = merge(request, json!({"stream_tokens": true}));
 
-        let builder = self
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
             .client
-            .reqwest_post("/v1/chat/completions")
+            .post("/v1/chat/completions")?
             .header("Content-Type", "application/json")
-            .json(&request);
+            .body(body)
+            .map_err(|x| CompletionError::HttpError(x.into()))?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -47,7 +54,7 @@ impl CompletionModel<reqwest::Client> {
             tracing::Span::current()
         };
 
-        send_compatible_streaming_request(builder)
+        send_compatible_streaming_request(self.client.http_client.clone(), req)
             .instrument(span)
             .await
     }

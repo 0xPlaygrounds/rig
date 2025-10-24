@@ -22,7 +22,6 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     impl_conversion_traits, json_utils, message,
 };
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
@@ -106,33 +105,6 @@ where
 
 impl<T> Client<T>
 where
-    T: Default,
-{
-    /// Create a new Galadriel client builder.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::galadriel::{ClientBuilder, self};
-    ///
-    /// // Initialize the Galadriel client
-    /// let galadriel = Client::builder("your-galadriel-api-key")
-    ///    .build()
-    /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, T> {
-        ClientBuilder::new(api_key)
-    }
-
-    /// Create a new Galadriel client. For more control, use the `builder` method.
-    ///
-    /// # Panics
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key).build()
-    }
-}
-
-impl<T> Client<T>
-where
     T: HttpClientExt,
 {
     pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
@@ -146,40 +118,33 @@ where
 
         http_client::with_bearer_auth(req, &self.api_key)
     }
-
-    async fn send<U, R>(
-        &self,
-        req: http_client::Request<U>,
-    ) -> http_client::Result<http_client::Response<http_client::LazyBody<R>>>
-    where
-        U: Into<Bytes> + Send,
-        R: From<Bytes> + Send + 'static,
-    {
-        self.http_client.send(req).await
-    }
 }
 
 impl Client<reqwest::Client> {
-    fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
-        let mut req = self.http_client.post(url).bearer_auth(&self.api_key);
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
+        ClientBuilder::new(api_key)
+    }
 
-        if let Some(fine_tune_key) = self.fine_tune_api_key.clone() {
-            req = req.header("Fine-Tune-Authorization", fine_tune_key)
-        }
+    pub fn new(api_key: &str) -> Self {
+        ClientBuilder::new(api_key).build()
+    }
 
-        req
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
     }
 }
 
-impl ProviderClient for Client<reqwest::Client> {
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
     /// Create a new Galadriel client from the `GALADRIEL_API_KEY` environment variable,
     /// and optionally from the `GALADRIEL_FINE_TUNE_API_KEY` environment variable.
     /// Panics if the `GALADRIEL_API_KEY` environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("GALADRIEL_API_KEY").expect("GALADRIEL_API_KEY not set");
         let fine_tune_api_key = std::env::var("GALADRIEL_FINE_TUNE_API_KEY").ok();
-        let mut builder = Self::builder(&api_key);
+        let mut builder = ClientBuilder::<T>::new(&api_key);
         if let Some(fine_tune_api_key) = fine_tune_api_key.as_deref() {
             builder = builder.fine_tune_api_key(fine_tune_api_key);
         }
@@ -191,7 +156,7 @@ impl ProviderClient for Client<reqwest::Client> {
         else {
             panic!("Incorrect provider value type")
         };
-        let mut builder = Self::builder(&api_key);
+        let mut builder = ClientBuilder::<T>::new(&api_key);
         if let Some(fine_tune_key) = fine_tune_key.as_deref() {
             builder = builder.fine_tune_api_key(fine_tune_key);
         }
@@ -199,8 +164,11 @@ impl ProviderClient for Client<reqwest::Client> {
     }
 }
 
-impl CompletionClient for Client<reqwest::Client> {
-    type CompletionModel = CompletionModel<reqwest::Client>;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     /// Create a completion model with the given name.
     ///
@@ -213,12 +181,15 @@ impl CompletionClient for Client<reqwest::Client> {
     ///
     /// let gpt4 = galadriel.completion_model(galadriel::GPT_4);
     /// ```
-    fn completion_model(&self, model: &str) -> CompletionModel<reqwest::Client> {
+    fn completion_model(&self, model: &str) -> Self::CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl VerifyClient for Client<reqwest::Client> {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         // Could not find an API endpoint to verify the API key
@@ -582,7 +553,10 @@ where
     }
 }
 
-impl completion::CompletionModel for CompletionModel<reqwest::Client> {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
@@ -622,7 +596,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         };
 
         async move {
-            let response = self.client.send(req).await?;
+            let response = self.client.http_client.send(req).await?;
 
             if response.status().is_success() {
                 let t = http_client::text(response).await?;
@@ -671,11 +645,14 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
 
-        let builder = self
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
             .client
-            .reqwest_post("/chat/completions")
+            .post("/chat/completions")?
             .header("Content-Type", "application/json")
-            .json(&request);
+            .body(body)
+            .map_err(http_client::Error::from)?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -696,7 +673,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             tracing::Span::current()
         };
 
-        send_compatible_streaming_request(builder)
+        send_compatible_streaming_request(self.client.http_client.clone(), req)
             .instrument(span)
             .await
     }

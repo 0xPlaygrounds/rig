@@ -13,7 +13,7 @@ use rig::{
     providers::openai,
 };
 use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
-use rig_neo4j::{Neo4jClient, ToBoltType, vector_index::SearchParams};
+use rig_neo4j::{Neo4jClient, ToBoltType};
 
 const BOLT_PORT: u16 = 7687;
 const HTTP_PORT: u16 = 7474;
@@ -61,7 +61,6 @@ async fn vector_search_test() {
                     "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
                 ],
                 "model": "text-embedding-ada-002",
-                "dimensions": 1536,
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -102,7 +101,6 @@ async fn vector_search_test() {
                     "What is a glarb?",
                 ],
                 "model": "text-embedding-ada-002",
-                "dimensions": 1536
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -192,7 +190,7 @@ async fn vector_search_test() {
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
     let index = neo4j_client
-        .get_index(model, "vector_index", SearchParams::default())
+        .get_index(model, "vector_index")
         .await
         .expect("");
 

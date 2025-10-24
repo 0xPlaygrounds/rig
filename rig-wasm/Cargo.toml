@@ -8,9 +8,9 @@ version = "0.1.0"
 crate-type = ["cdylib"]
 
 [dependencies]
-rig-core = { version = "0.17.1", features = ["worker", "audio", "image"] }
+rig-core = { version = "0.17.1", default-features = false, features = ["worker", "audio", "image"] }
 # Comment the new version out until we are ready to upgrade!
-# rig-core = { version = "0.18.2", path = "../rig-core", features = ["worker", "audio", "image"] }
+# rig-core = { version = "0.18.2", path = "../rig-core", default-features = false, features = ["worker", "audio", "image"] }
 serde_json.workspace = true
 anyhow = { workspace = true }
 futures = { workspace = true }

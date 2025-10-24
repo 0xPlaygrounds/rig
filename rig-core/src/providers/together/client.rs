@@ -31,6 +31,14 @@ where
 }
 
 impl<'a, T> ClientBuilder<'a, T> {
+    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
+        Self {
+            api_key,
+            base_url: TOGETHER_AI_BASE_URL,
+            http_client,
+        }
+    }
+
     pub fn base_url(mut self, base_url: &'a str) -> Self {
         self.base_url = base_url;
         self
@@ -64,7 +72,7 @@ pub struct Client<T = reqwest::Client> {
     base_url: String,
     default_headers: reqwest::header::HeaderMap,
     api_key: String,
-    http_client: T,
+    pub http_client: T,
 }
 
 impl<T> std::fmt::Debug for Client<T>
@@ -78,33 +86,6 @@ where
             .field("default_headers", &self.default_headers)
             .field("api_key", &"<REDACTED>")
             .finish()
-    }
-}
-
-impl<T> Client<T>
-where
-    T: Default,
-{
-    /// Create a new Together AI client builder.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::together_ai::{ClientBuilder, self};
-    ///
-    /// // Initialize the Together AI client
-    /// let together_ai = Client::builder("your-together-ai-api-key")
-    ///    .build()
-    /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, T> {
-        ClientBuilder::new(api_key)
-    }
-
-    /// Create a new Together AI client. For more control, use the `builder` method.
-    ///
-    /// # Panics
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key).build()
     }
 }
 
@@ -153,45 +134,55 @@ where
 }
 
 impl Client<reqwest::Client> {
-    pub(crate) fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
+        ClientBuilder::new(api_key)
+    }
 
-        tracing::debug!("POST {}", url);
+    pub fn new(api_key: &str) -> Self {
+        Self::builder(api_key).build()
+    }
 
-        self.http_client
-            .post(url)
-            .bearer_auth(&self.api_key)
-            .headers(self.default_headers.clone())
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
     }
 }
 
-impl ProviderClient for Client<reqwest::Client> {
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     /// Create a new Together AI client from the `TOGETHER_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("TOGETHER_API_KEY").expect("TOGETHER_API_KEY not set");
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 }
 
-impl CompletionClient for Client<reqwest::Client> {
-    type CompletionModel = CompletionModel<reqwest::Client>;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     /// Create a completion model with the given name.
-    fn completion_model(&self, model: &str) -> CompletionModel<reqwest::Client> {
+    fn completion_model(&self, model: &str) -> Self::CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl EmbeddingsClient for Client<reqwest::Client> {
-    type EmbeddingModel = EmbeddingModel<reqwest::Client>;
+impl<T> EmbeddingsClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    type EmbeddingModel = EmbeddingModel<T>;
 
     /// Create an embedding model with the given name.
     /// Note: default embedding dimension of 0 will be used if model is not known.
@@ -206,7 +197,7 @@ impl EmbeddingsClient for Client<reqwest::Client> {
     ///
     /// let embedding_model = together_ai.embedding_model(together_ai::embedding::EMBEDDING_V1);
     /// ```
-    fn embedding_model(&self, model: &str) -> EmbeddingModel<reqwest::Client> {
+    fn embedding_model(&self, model: &str) -> Self::EmbeddingModel {
         let ndims = match model {
             M2_BERT_80M_8K_RETRIEVAL => 8192,
             _ => 0,
@@ -226,16 +217,15 @@ impl EmbeddingsClient for Client<reqwest::Client> {
     ///
     /// let embedding_model = together_ai.embedding_model_with_ndims("model-unknown-to-rig", 1024);
     /// ```
-    fn embedding_model_with_ndims(
-        &self,
-        model: &str,
-        ndims: usize,
-    ) -> EmbeddingModel<reqwest::Client> {
+    fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> Self::EmbeddingModel {
         EmbeddingModel::new(self.clone(), model, ndims)
     }
 }
 
-impl VerifyClient for Client<reqwest::Client> {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         let req = self

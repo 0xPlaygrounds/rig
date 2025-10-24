@@ -4,7 +4,10 @@ use lancedb::{
 };
 use rig::{
     embeddings::embedding::EmbeddingModel,
-    vector_store::{VectorStoreError, VectorStoreIndex, request::VectorSearchRequest},
+    vector_store::{
+        VectorStoreError, VectorStoreIndex,
+        request::{FilterError, SearchFilter, VectorSearchRequest},
+    },
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -114,6 +117,73 @@ pub enum SearchType {
     Approximate,
 }
 
+/// An eDSL for filtering expressions, is rendered as a `WHERE` clause
+#[derive(Debug, Clone)]
+pub struct LanceDBFilter(Result<String, FilterError>);
+
+fn zip_result(
+    l: Result<String, FilterError>,
+    r: Result<String, FilterError>,
+) -> Result<(String, String), FilterError> {
+    l.and_then(|l| r.map(|r| (l, r)))
+}
+
+impl SearchFilter for LanceDBFilter {
+    type Value = serde_json::Value;
+
+    fn eq(key: String, value: Self::Value) -> Self {
+        Self(escape_value(value).map(|s| format!("{key} = {s}")))
+    }
+
+    fn gt(key: String, value: Self::Value) -> Self {
+        Self(escape_value(value).map(|s| format!("{key} > {s}")))
+    }
+
+    fn lt(key: String, value: Self::Value) -> Self {
+        Self(escape_value(value).map(|s| format!("{key} < {s}")))
+    }
+
+    fn and(self, rhs: Self) -> Self {
+        Self(zip_result(self.0, rhs.0).map(|(l, r)| format!("({l}) AND ({r})")))
+    }
+
+    fn or(self, rhs: Self) -> Self {
+        Self(zip_result(self.0, rhs.0).map(|(l, r)| format!("({l}) OR ({r})")))
+    }
+}
+
+fn escape_value(value: serde_json::Value) -> Result<String, FilterError> {
+    use serde_json::Value::*;
+
+    match value {
+        Null => Ok("NULL".into()),
+        Bool(b) => Ok(b.to_string()),
+        Number(n) => Ok(n.to_string()),
+        String(s) => Ok(format!("'{}'", s.replace("'", "''"))),
+        Array(xs) => Ok(format!(
+            "({})",
+            xs.into_iter()
+                .map(escape_value)
+                .collect::<Result<Vec<_>, _>>()?
+                .join(", ")
+        )),
+        Object(_) => Err(FilterError::TypeError(
+            "objects not supported in SQLite backend".into(),
+        )),
+    }
+}
+
+impl LanceDBFilter {
+    pub fn into_inner(self) -> Result<String, FilterError> {
+        self.0
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self(self.0.map(|s| format!("NOT ({s})")))
+    }
+}
+
 /// Parameters used to perform a vector search on a LanceDb table.
 /// # Example
 /// ```
@@ -183,6 +253,8 @@ impl<M> VectorStoreIndex for LanceDbVectorIndex<M>
 where
     M: EmbeddingModel + Sync + Send,
 {
+    type Filter = LanceDBFilter;
+
     /// Implement the `top_n` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
     /// # Example
     /// ```
@@ -202,11 +274,11 @@ where
     /// ```
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<LanceDBFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_text(req.query()).await?;
 
-        let query = self
+        let mut query = self
             .table
             .vector_search(prompt_embedding.vec.clone())
             .map_err(lancedb_to_rig_error)?
@@ -219,6 +291,10 @@ where
                     .map_err(lancedb_to_rig_error)?
                     .filter_embeddings(),
             ));
+
+        if let Some(filter) = req.filter() {
+            query = query.only_if(filter.clone().into_inner()?)
+        }
 
         self.build_query(query)
             .execute_query()
@@ -260,11 +336,11 @@ where
     /// ```
     async fn top_n_ids(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<LanceDBFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_text(req.query()).await?;
 
-        let query = self
+        let mut query = self
             .table
             .query()
             .select(lancedb::query::Select::Columns(vec![self.id_field.clone()]))
@@ -272,6 +348,10 @@ where
             .map_err(lancedb_to_rig_error)?
             .distance_range(None, req.threshold().map(|x| x as f32))
             .limit(req.samples() as usize);
+
+        if let Some(filter) = req.filter() {
+            query = query.only_if(filter.clone().into_inner()?)
+        }
 
         self.build_query(query)
             .execute_query()

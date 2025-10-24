@@ -9,7 +9,6 @@ use crate::{
 use super::{CompletionModel, EmbeddingModel};
 use crate::client::{CompletionClient, EmbeddingsClient, ProviderClient, impl_conversion_traits};
 use bytes::Bytes;
-use reqwest_eventsource::{CannotCloneRequestError, EventSource};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -97,6 +96,10 @@ where
 }
 
 impl Client<reqwest::Client> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
+        ClientBuilder::new(api_key)
+    }
+
     /// Create a new Cohere client. For more control, use the `builder` method.
     ///
     /// # Panics
@@ -104,13 +107,17 @@ impl Client<reqwest::Client> {
     pub fn new(api_key: &str) -> Self {
         ClientBuilder::new(api_key).build()
     }
+
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
+    }
 }
 
 impl<T> Client<T>
 where
     T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    fn req(
+    pub(crate) fn req(
         &self,
         method: http_client::Method,
         path: &str,
@@ -125,6 +132,14 @@ where
 
     pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
         self.req(http_client::Method::POST, path)
+    }
+
+    pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
+        self.req(http_client::Method::GET, path)
+    }
+
+    pub fn http_client(&self) -> T {
+        self.http_client.clone()
     }
 
     pub(crate) async fn send<U, V>(
@@ -172,45 +187,41 @@ where
     }
 }
 
-impl Client<reqwest::Client> {
-    pub(crate) async fn eventsource(
-        &self,
-        req: reqwest::RequestBuilder,
-    ) -> Result<EventSource, CannotCloneRequestError> {
-        reqwest_eventsource::EventSource::new(req)
-    }
-
-    pub(crate) fn client(&self) -> &reqwest::Client {
-        &self.http_client
-    }
-}
-
-impl ProviderClient for Client<reqwest::Client> {
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+{
     /// Create a new Cohere client from the `COHERE_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set");
-        Self::new(&api_key)
+        ClientBuilder::new_with_client(&api_key, T::default()).build()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+        ClientBuilder::new_with_client(&api_key, T::default()).build()
     }
 }
 
-impl CompletionClient for Client<reqwest::Client> {
-    type CompletionModel = CompletionModel<reqwest::Client>;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     fn completion_model(&self, model: &str) -> Self::CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl EmbeddingsClient for Client<reqwest::Client> {
-    type EmbeddingModel = EmbeddingModel<reqwest::Client>;
+impl<T> EmbeddingsClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+{
+    type EmbeddingModel = EmbeddingModel<T>;
 
     fn embedding_model(&self, model: &str) -> Self::EmbeddingModel {
         self.embedding_model(model, "search_document")
@@ -225,30 +236,26 @@ impl EmbeddingsClient for Client<reqwest::Client> {
     }
 }
 
-impl VerifyClient for Client<reqwest::Client> {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
-        let response = self
-            .http_client
-            .get("/v1/models")
-            .send()
-            .await
-            .map_err(|e| VerifyError::HttpError(http_client::Error::Instance(e.into())))?;
+        let req = self
+            .get("/models")?
+            .body(http_client::NoBody)
+            .map_err(|e| VerifyError::HttpError(e.into()))?;
 
-        match response.status() {
+        let response = self.http_client.send::<_, Vec<u8>>(req).await?;
+        let status = response.status();
+        let body = http_client::text(response).await?;
+
+        match status {
             reqwest::StatusCode::OK => Ok(()),
             reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
-            reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
-                Err(VerifyError::ProviderError(response.text().await.map_err(
-                    |e| VerifyError::HttpError(http_client::Error::Instance(e.into())),
-                )?))
-            }
-            _ => {
-                response
-                    .error_for_status()
-                    .map_err(|e| VerifyError::HttpError(http_client::Error::Instance(e.into())))?;
-                Ok(())
-            }
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR => Err(VerifyError::ProviderError(body)),
+            _ => Err(VerifyError::ProviderError(body)),
         }
     }
 }

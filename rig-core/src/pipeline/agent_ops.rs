@@ -161,7 +161,7 @@ pub mod tests {
     use super::*;
     use crate::message;
     use completion::{Prompt, PromptError};
-    use vector_store::{VectorStoreError, VectorStoreIndex};
+    use vector_store::{VectorStoreError, VectorStoreIndex, request::Filter};
 
     pub struct MockModel;
 
@@ -183,6 +183,8 @@ pub mod tests {
     pub struct MockIndex;
 
     impl VectorStoreIndex for MockIndex {
+        type Filter = Filter<serde_json::Value>;
+
         async fn top_n<T: for<'a> serde::Deserialize<'a> + WasmCompatSend>(
             &self,
             _req: VectorSearchRequest,

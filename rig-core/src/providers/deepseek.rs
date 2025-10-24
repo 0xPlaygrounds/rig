@@ -12,12 +12,13 @@
 use async_stream::stream;
 use bytes::Bytes;
 use futures::StreamExt;
-use reqwest_eventsource::{Event, RequestBuilderExt};
+use http::{Method, Request};
 use std::collections::HashMap;
 use tracing::{Instrument, info_span};
 
 use crate::client::{CompletionClient, ProviderClient, VerifyClient, VerifyError};
 use crate::completion::GetTokenUsage;
+use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
 use crate::message::{Document, DocumentSourceKind};
@@ -56,6 +57,13 @@ where
 }
 
 impl<'a, T> ClientBuilder<'a, T> {
+    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
+        Self {
+            api_key,
+            base_url: DEEPSEEK_API_BASE_URL,
+            http_client,
+        }
+    }
     pub fn base_url(mut self, base_url: &'a str) -> Self {
         self.base_url = base_url;
         self
@@ -100,33 +108,6 @@ where
 
 impl<T> Client<T>
 where
-    T: Default,
-{
-    /// Create a new DeepSeek client builder.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::deepseek::{ClientBuilder, self};
-    ///
-    /// // Initialize the DeepSeek client
-    /// let deepseek = Client::builder("your-deepseek-api-key")
-    ///    .build()
-    /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, T> {
-        ClientBuilder::new(api_key)
-    }
-
-    /// Create a new DeepSeek client. For more control, use the `builder` method.
-    ///
-    /// # Panics
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key).build()
-    }
-}
-
-impl<T> Client<T>
-where
     T: HttpClientExt,
 {
     fn req(
@@ -159,33 +140,45 @@ where
 }
 
 impl Client<reqwest::Client> {
-    fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
+        ClientBuilder::new(api_key)
+    }
 
-        self.http_client.post(url).bearer_auth(&self.api_key)
+    pub fn new(api_key: &str) -> Self {
+        ClientBuilder::new(api_key).build()
+    }
+
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
     }
 }
 
-impl ProviderClient for Client<reqwest::Client> {
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
     // If you prefer the environment variable approach:
     fn from_env() -> Self {
         let api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY not set");
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 }
 
-impl CompletionClient for Client<reqwest::Client> {
-    type CompletionModel = CompletionModel<reqwest::Client>;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     /// Creates a DeepSeek completion model with the given `model_name`.
-    fn completion_model(&self, model_name: &str) -> CompletionModel<reqwest::Client> {
+    fn completion_model(&self, model_name: &str) -> Self::CompletionModel {
         CompletionModel {
             client: self.clone(),
             model: model_name.to_string(),
@@ -193,7 +186,10 @@ impl CompletionClient for Client<reqwest::Client> {
     }
 }
 
-impl VerifyClient for Client<reqwest::Client> {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         let req = self
@@ -626,7 +622,10 @@ impl<T> CompletionModel<T> {
     }
 }
 
-impl completion::CompletionModel for CompletionModel<reqwest::Client> {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -662,24 +661,21 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
 
         tracing::debug!("DeepSeek completion request: {request:?}");
 
+        let body = serde_json::to_vec(&request)?;
+        let req = self
+            .client
+            .req(Method::POST, "/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
         async move {
-            let response = self
-                .client
-                .reqwest_post("/chat/completions")
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| http_client::Error::Instance(e.into()))?;
+            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let status = response.status();
+            let response_body = response.into_body().into_future().await?.to_vec();
 
-            if response.status().is_success() {
-                let t = response
-                    .text()
-                    .await
-                    .map_err(|e| http_client::Error::Instance(e.into()))?;
-
-                tracing::debug!(target: "rig", "DeepSeek completion: {t}");
-
-                match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
+            if status.is_success() {
+                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record(
@@ -691,16 +687,15 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                             "gen_ai.usage.output_tokens",
                             response.usage.completion_tokens,
                         );
+                        tracing::debug!(target: "rig", "DeepSeek completion output: {}", serde_json::to_string_pretty(&response_body)?);
+
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
                 }
             } else {
                 Err(CompletionError::ProviderError(
-                    response
-                        .text()
-                        .await
-                        .map_err(|e| http_client::Error::Instance(e.into()))?,
+                    String::from_utf8_lossy(&response_body).to_string()
                 ))
             }
         }
@@ -724,7 +719,14 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
 
-        let builder = self.client.reqwest_post("/chat/completions").json(&request);
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .req(Method::POST, "/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -745,7 +747,11 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             tracing::Span::current()
         };
 
-        tracing::Instrument::instrument(send_compatible_streaming_request(builder), span).await
+        tracing::Instrument::instrument(
+            send_compatible_streaming_request(self.client.http_client.clone(), req),
+            span,
+        )
+        .await
     }
 }
 
@@ -785,16 +791,18 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-pub async fn send_compatible_streaming_request(
-    request_builder: reqwest::RequestBuilder,
+pub async fn send_compatible_streaming_request<T>(
+    http_client: T,
+    req: Request<Vec<u8>>,
 ) -> Result<
     crate::streaming::StreamingCompletionResponse<StreamingCompletionResponse>,
     CompletionError,
-> {
+>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     let span = tracing::Span::current();
-    let mut event_source = request_builder
-        .eventsource()
-        .expect("Cloning request must succeed");
+    let mut event_source = GenericEventSource::new(http_client, req);
 
     let stream = stream! {
         let mut final_usage = Usage::new();
@@ -885,7 +893,7 @@ pub async fn send_compatible_streaming_request(
                         final_usage = usage.clone();
                     }
                 }
-                Err(reqwest_eventsource::Error::StreamEnded) => {
+                Err(crate::http_client::Error::StreamEnded) => {
                     break;
                 }
                 Err(err) => {
@@ -895,6 +903,8 @@ pub async fn send_compatible_streaming_request(
                 }
             }
         }
+
+        event_source.close();
 
         let mut tool_calls = Vec::new();
         // Flush accumulated tool calls

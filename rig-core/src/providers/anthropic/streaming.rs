@@ -6,9 +6,9 @@ use tracing::info_span;
 use tracing_futures::Instrument;
 
 use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefinition, Usage};
-use super::decoders::sse::from_response as sse_from_response;
 use crate::OneOrMany;
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
 use crate::streaming::{self, RawStreamingChoice, StreamingResult};
@@ -117,7 +117,7 @@ impl GetTokenUsage for StreamingCompletionResponse {
 
 impl<T> CompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default,
+    T: HttpClientExt + Clone + Default + 'static,
 {
     pub(crate) async fn stream(
         &self,
@@ -207,26 +207,7 @@ where
             .body(body)
             .map_err(http_client::Error::Protocol)?;
 
-        let response = self.client.send_streaming(req).await?;
-
-        if !response.status().is_success() {
-            let mut stream = response.into_body();
-            let mut text = String::with_capacity(1024);
-            loop {
-                let Some(chunk) = stream.next().await else {
-                    break;
-                };
-
-                let chunk: Vec<u8> = chunk?.into();
-
-                let str = String::from_utf8_lossy(&chunk);
-
-                text.push_str(&str)
-            }
-            return Err(CompletionError::ProviderError(text));
-        }
-
-        let stream = sse_from_response(response.into_body());
+        let stream = GenericEventSource::new(self.client.http_client.clone(), req);
 
         // Use our SSE decoder to directly handle Server-Sent Events format
         let stream: StreamingResult<StreamingCompletionResponse> = Box::pin(stream! {
@@ -239,7 +220,8 @@ where
 
             while let Some(sse_result) = sse_stream.next().await {
                 match sse_result {
-                    Ok(sse) => {
+                    Ok(Event::Open) => {}
+                    Ok(Event::Message(sse)) => {
                         // Parse the SSE data as a StreamingEvent
                         match serde_json::from_str::<StreamingEvent>(&sse.data) {
                             Ok(event) => {

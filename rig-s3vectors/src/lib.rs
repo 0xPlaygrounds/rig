@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+#[macro_use]
+mod document;
 
 use aws_sdk_s3vectors::{
     Client,
@@ -8,17 +9,56 @@ use aws_smithy_types::Document;
 use rig::{
     embeddings::EmbeddingModel,
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        request::{SearchFilter, VectorSearchRequest},
     },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateRecord {
     document: serde_json::Value,
     embedded_text: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct S3SearchFilter(aws_smithy_types::Document);
+
+impl SearchFilter for S3SearchFilter {
+    type Value = aws_smithy_types::Document;
+
+    fn eq(key: String, value: Self::Value) -> Self {
+        Self(document!({ key: { "$eq": value } }))
+    }
+
+    fn gt(key: String, value: Self::Value) -> Self {
+        Self(document!({ key: { "$gt": value } }))
+    }
+
+    fn lt(key: String, value: Self::Value) -> Self {
+        Self(document!({ key: { "$lt": value } }))
+    }
+
+    fn and(self, rhs: Self) -> Self {
+        Self(document!({ "$and": [ self.0, rhs.0 ]}))
+    }
+
+    fn or(self, rhs: Self) -> Self {
+        Self(document!({ "$or": [ self.0, rhs.0 ]}))
+    }
+}
+
+impl S3SearchFilter {
+    pub fn inner(&self) -> &aws_smithy_types::Document {
+        &self.0
+    }
+
+    pub fn into_inner(self) -> aws_smithy_types::Document {
+        self.0
+    }
 }
 
 pub struct S3VectorsVectorStore<M> {
@@ -191,9 +231,11 @@ impl<M> VectorStoreIndex for S3VectorsVectorStore<M>
 where
     M: EmbeddingModel,
 {
+    type Filter = S3SearchFilter;
+
     async fn top_n<T: for<'a> serde::Deserialize<'a> + Send>(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<S3SearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         if req.samples() > i32::MAX as u64 {
             return Err(VectorStoreError::DatastoreError(format!("The number of samples to return with the `rig` AWS S3Vectors integration cannot be higher than {}", i32::MAX).into()));
@@ -208,7 +250,7 @@ where
             .map(|x| x as f32)
             .collect();
 
-        let query = self
+        let mut query_builder = self
             .client
             .query_vectors()
             .query_vector(VectorData::Float32(embedding))
@@ -216,10 +258,13 @@ where
             .return_distance(true)
             .return_metadata(true)
             .vector_bucket_name(self.bucket_name())
-            .index_name(self.index_name())
-            .send()
-            .await
-            .unwrap();
+            .index_name(self.index_name());
+
+        if let Some(filter) = req.filter() {
+            query_builder = query_builder.filter(filter.inner().clone())
+        }
+
+        let query = query_builder.send().await.unwrap();
 
         let res: Vec<(f64, String, T)> = query
             .vectors
@@ -246,9 +291,10 @@ where
 
         Ok(res)
     }
+
     async fn top_n_ids(
         &self,
-        req: VectorSearchRequest,
+        req: VectorSearchRequest<S3SearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         if req.samples() > i32::MAX as u64 {
             return Err(VectorStoreError::DatastoreError(format!("The number of samples to return with the `rig` AWS S3Vectors integration cannot be higher than {}", i32::MAX).into()));
@@ -263,17 +309,20 @@ where
             .map(|x| x as f32)
             .collect();
 
-        let query = self
+        let mut query_builder = self
             .client
             .query_vectors()
             .query_vector(VectorData::Float32(embedding))
             .top_k(req.samples() as i32)
             .return_distance(true)
             .vector_bucket_name(self.bucket_name())
-            .index_name(self.index_name())
-            .send()
-            .await
-            .unwrap();
+            .index_name(self.index_name());
+
+        if let Some(filter) = req.filter() {
+            query_builder = query_builder.filter(filter.inner().clone())
+        }
+
+        let query = query_builder.send().await.unwrap();
 
         let res: Vec<(f64, String)> = query
             .vectors

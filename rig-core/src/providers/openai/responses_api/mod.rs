@@ -1035,7 +1035,10 @@ pub enum OutputRole {
     Assistant,
 }
 
-impl completion::CompletionModel for ResponsesCompletionModel<reqwest::Client> {
+impl<T> completion::CompletionModel for ResponsesCompletionModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 

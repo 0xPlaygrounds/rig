@@ -58,7 +58,7 @@ where
     /// Maximum number of tokens for the completion
     max_tokens: Option<u64>,
     /// List of vector store, with the sample number
-    dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
+    dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
     /// Temperature of the model
     temperature: Option<f64>,
     /// Tool server handle
@@ -231,7 +231,7 @@ where
     pub fn dynamic_context(
         mut self,
         sample: usize,
-        dynamic_context: impl VectorStoreIndexDyn + 'static,
+        dynamic_context: impl VectorStoreIndexDyn + Send + Sync + 'static,
     ) -> Self {
         self.dynamic_context
             .push((sample, Box::new(dynamic_context)));
@@ -248,10 +248,10 @@ where
     pub fn dynamic_tools(
         self,
         sample: usize,
-        dynamic_tools: impl VectorStoreIndexDyn + 'static,
+        dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
         toolset: ToolSet,
     ) -> AgentBuilderSimple<M> {
-        let thing: Box<dyn VectorStoreIndexDyn + 'static> = Box::new(dynamic_tools);
+        let thing: Box<dyn VectorStoreIndexDyn + Send + Sync + 'static> = Box::new(dynamic_tools);
         let dynamic_tools = vec![(sample, thing)];
 
         AgentBuilderSimple {
@@ -355,9 +355,9 @@ where
     /// Maximum number of tokens for the completion
     max_tokens: Option<u64>,
     /// List of vector store, with the sample number
-    dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
+    dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
     /// Dynamic tools
-    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn>)>,
+    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
     /// Temperature of the model
     temperature: Option<f64>,
     /// Actual tool implementations
@@ -463,7 +463,7 @@ where
     pub fn dynamic_context(
         mut self,
         sample: usize,
-        dynamic_context: impl VectorStoreIndexDyn + 'static,
+        dynamic_context: impl VectorStoreIndexDyn + Send + Sync + 'static,
     ) -> Self {
         self.dynamic_context
             .push((sample, Box::new(dynamic_context)));
@@ -480,7 +480,7 @@ where
     pub fn dynamic_tools(
         mut self,
         sample: usize,
-        dynamic_tools: impl VectorStoreIndexDyn + 'static,
+        dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
         toolset: ToolSet,
     ) -> Self {
         self.dynamic_tools.push((sample, Box::new(dynamic_tools)));

@@ -1,4 +1,6 @@
-use crate::http_client;
+use bytes::Bytes;
+
+use crate::http_client::HttpClientExt;
 use crate::providers::openai::{ApiResponse, Client};
 use crate::transcription;
 use crate::transcription::TranscriptionError;
@@ -44,7 +46,10 @@ impl<T> TranscriptionModel<T> {
     }
 }
 
-impl transcription::TranscriptionModel for TranscriptionModel<reqwest::Client> {
+impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
     type Response = TranscriptionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -82,32 +87,31 @@ impl transcription::TranscriptionModel for TranscriptionModel<reqwest::Client> {
             }
         }
 
+        let req = self
+            .client
+            .post("/audio/transcriptions")?
+            .body(body)
+            .unwrap();
+
         let response = self
             .client
-            .post_reqwest("audio/transcriptions")
-            .multipart(body)
-            .send()
+            .http_client
+            .send_multipart::<Bytes>(req)
             .await
-            .map_err(|e| TranscriptionError::HttpError(http_client::Error::Instance(e.into())))?;
+            .unwrap();
 
-        if response.status().is_success() {
-            match response
-                .json::<ApiResponse<TranscriptionResponse>>()
-                .await
-                .map_err(|e| {
-                    TranscriptionError::HttpError(http_client::Error::Instance(e.into()))
-                })? {
+        let status = response.status();
+        let response_body = response.into_body().into_future().await?.to_vec();
+        if status.is_success() {
+            match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(api_error_response) => Err(TranscriptionError::ProviderError(
                     api_error_response.message,
                 )),
             }
         } else {
-            Err(TranscriptionError::ProviderError(
-                response.text().await.map_err(|e| {
-                    TranscriptionError::HttpError(http_client::Error::Instance(e.into()))
-                })?,
-            ))
+            let str = String::from_utf8_lossy(&response_body).to_string();
+            Err(TranscriptionError::ProviderError(str))
         }
     }
 }

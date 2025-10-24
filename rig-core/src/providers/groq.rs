@@ -8,7 +8,8 @@
 //!
 //! let gpt4o = client.completion_model(groq::GPT_4O);
 //! ```
-use reqwest_eventsource::{Event, RequestBuilderExt};
+use bytes::Bytes;
+use http::{Method, Request};
 use std::collections::HashMap;
 use tracing::info_span;
 use tracing_futures::Instrument;
@@ -16,6 +17,7 @@ use tracing_futures::Instrument;
 use super::openai::{CompletionResponse, StreamingToolCall, TranscriptionResponse, Usage};
 use crate::client::{CompletionClient, TranscriptionClient, VerifyClient, VerifyError};
 use crate::completion::GetTokenUsage;
+use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
 use crate::providers::openai::{AssistantContent, Function, ToolType};
@@ -30,7 +32,6 @@ use crate::{
     providers::openai::ToolDefinition,
     transcription::{self, TranscriptionError},
 };
-use reqwest::RequestBuilder;
 use reqwest::multipart::Part;
 use rig::client::ProviderClient;
 use rig::impl_conversion_traits;
@@ -62,6 +63,14 @@ where
 }
 
 impl<'a, T> ClientBuilder<'a, T> {
+    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
+        Self {
+            api_key,
+            base_url: GROQ_API_BASE_URL,
+            http_client,
+        }
+    }
+
     pub fn base_url(mut self, base_url: &'a str) -> Self {
         self.base_url = base_url;
         self
@@ -106,33 +115,6 @@ where
 
 impl<T> Client<T>
 where
-    T: Default,
-{
-    /// Create a new Groq client builder.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::groq::{ClientBuilder, self};
-    ///
-    /// // Initialize the Groq client
-    /// let groq = Client::builder("your-groq-api-key")
-    ///    .build()
-    /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, T> {
-        ClientBuilder::new(api_key)
-    }
-
-    /// Create a new Groq client with the given API key.
-    ///
-    /// # Panics
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key).build()
-    }
-}
-
-impl<T> Client<T>
-where
     T: HttpClientExt,
 {
     fn req(
@@ -154,31 +136,43 @@ where
 }
 
 impl Client<reqwest::Client> {
-    fn reqwest_post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
+        ClientBuilder::new(api_key)
+    }
 
-        self.http_client.post(url).bearer_auth(&self.api_key)
+    pub fn new(api_key: &str) -> Self {
+        ClientBuilder::new(api_key).build()
+    }
+
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
     }
 }
 
-impl ProviderClient for Client<reqwest::Client> {
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
+{
     /// Create a new Groq client from the `GROQ_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("GROQ_API_KEY").expect("GROQ_API_KEY not set");
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 }
 
-impl CompletionClient for Client<reqwest::Client> {
-    type CompletionModel = CompletionModel<reqwest::Client>;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     /// Create a completion model with the given name.
     ///
@@ -191,13 +185,16 @@ impl CompletionClient for Client<reqwest::Client> {
     ///
     /// let gpt4 = groq.completion_model(groq::GPT_4);
     /// ```
-    fn completion_model(&self, model: &str) -> CompletionModel<reqwest::Client> {
+    fn completion_model(&self, model: &str) -> Self::CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl TranscriptionClient for Client<reqwest::Client> {
-    type TranscriptionModel = TranscriptionModel<reqwest::Client>;
+impl<T> TranscriptionClient for Client<T>
+where
+    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
+{
+    type TranscriptionModel = TranscriptionModel<T>;
 
     /// Create a transcription model with the given name.
     ///
@@ -210,12 +207,15 @@ impl TranscriptionClient for Client<reqwest::Client> {
     ///
     /// let gpt4 = groq.transcription_model(groq::WHISPER_LARGE_V3);
     /// ```
-    fn transcription_model(&self, model: &str) -> TranscriptionModel<reqwest::Client> {
+    fn transcription_model(&self, model: &str) -> Self::TranscriptionModel {
         TranscriptionModel::new(self.clone(), model)
     }
 }
 
-impl VerifyClient for Client<reqwest::Client> {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         let req = self
@@ -467,7 +467,10 @@ impl<T> CompletionModel<T> {
     }
 }
 
-impl completion::CompletionModel for CompletionModel<reqwest::Client> {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -498,21 +501,21 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             tracing::Span::current()
         };
 
-        let async_block = async move {
-            let response = self
-                .client
-                .reqwest_post("/chat/completions")
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| http_client::Error::Instance(e.into()))?;
+        let body = serde_json::to_vec(&request)?;
+        let req = self
+            .client
+            .req(Method::POST, "/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| http_client::Error::Instance(e.into()))?;
 
-            if response.status().is_success() {
-                match response
-                    .json::<ApiResponse<CompletionResponse>>()
-                    .await
-                    .map_err(|e| http_client::Error::Instance(e.into()))?
-                {
+        let async_block = async move {
+            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let status = response.status();
+            let response_body = response.into_body().into_future().await?.to_vec();
+
+            if status.is_success() {
+                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record("gen_ai.response.id", response.id.clone());
@@ -534,10 +537,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                 }
             } else {
                 Err(CompletionError::ProviderError(
-                    response
-                        .text()
-                        .await
-                        .map_err(|e| http_client::Error::Instance(e.into()))?,
+                    String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
         };
@@ -561,7 +561,13 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
 
-        let builder = self.client.reqwest_post("/chat/completions").json(&request);
+        let body = serde_json::to_vec(&request)?;
+        let req = self
+            .client
+            .req(Method::POST, "/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| http_client::Error::Instance(e.into()))?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -582,7 +588,11 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             tracing::Span::current()
         };
 
-        tracing::Instrument::instrument(send_compatible_streaming_request(builder), span).await
+        tracing::Instrument::instrument(
+            send_compatible_streaming_request(self.client.http_client.clone(), req),
+            span,
+        )
+        .await
     }
 }
 
@@ -608,7 +618,10 @@ impl<T> TranscriptionModel<T> {
         }
     }
 }
-impl transcription::TranscriptionModel for TranscriptionModel<reqwest::Client> {
+impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+where
+    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
+{
     type Response = TranscriptionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -646,21 +659,24 @@ impl transcription::TranscriptionModel for TranscriptionModel<reqwest::Client> {
             }
         }
 
+        let req = self
+            .client
+            .req(Method::POST, "/audio/transcriptions")?
+            .body(body)
+            .unwrap();
+
         let response = self
             .client
-            .reqwest_post("audio/transcriptions")
-            .multipart(body)
-            .send()
+            .http_client
+            .send_multipart::<Bytes>(req)
             .await
-            .map_err(|e| TranscriptionError::HttpError(http_client::Error::Instance(e.into())))?;
+            .unwrap();
 
-        if response.status().is_success() {
-            match response
-                .json::<ApiResponse<TranscriptionResponse>>()
-                .await
-                .map_err(|e| {
-                    TranscriptionError::HttpError(http_client::Error::Instance(e.into()))
-                })? {
+        let status = response.status();
+        let response_body = response.into_body().into_future().await?.to_vec();
+
+        if status.is_success() {
+            match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(api_error_response) => Err(TranscriptionError::ProviderError(
                     api_error_response.message,
@@ -668,9 +684,7 @@ impl transcription::TranscriptionModel for TranscriptionModel<reqwest::Client> {
             }
         } else {
             Err(TranscriptionError::ProviderError(
-                response.text().await.map_err(|e| {
-                    TranscriptionError::HttpError(http_client::Error::Instance(e.into()))
-                })?,
+                String::from_utf8_lossy(&response_body).to_string(),
             ))
         }
     }
@@ -718,16 +732,19 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-pub async fn send_compatible_streaming_request(
-    request_builder: RequestBuilder,
+pub async fn send_compatible_streaming_request<T>(
+    client: T,
+    req: Request<Vec<u8>>,
 ) -> Result<
     crate::streaming::StreamingCompletionResponse<StreamingCompletionResponse>,
     CompletionError,
-> {
+>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     let span = tracing::Span::current();
-    let mut event_source = request_builder
-        .eventsource()
-        .expect("Cloning request must succeed");
+
+    let mut event_source = GenericEventSource::new(client, req);
 
     let stream = stream! {
         let span = tracing::Span::current();
@@ -825,8 +842,7 @@ pub async fn send_compatible_streaming_request(
                     }
                 }
 
-                Err(reqwest_eventsource::Error::StreamEnded) => break,
-
+                Err(crate::http_client::Error::StreamEnded) => break,
                 Err(err) => {
                     tracing::error!(?err, "SSE error");
                     yield Err(CompletionError::ResponseError(err.to_string()));
@@ -834,6 +850,8 @@ pub async fn send_compatible_streaming_request(
                 }
             }
         }
+
+        event_source.close();
 
         let mut tool_calls = Vec::new();
         // Flush accumulated tool calls

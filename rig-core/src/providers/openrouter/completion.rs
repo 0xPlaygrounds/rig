@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use tracing::{Instrument, info_span};
 
@@ -6,7 +7,8 @@ use super::client::{ApiErrorResponse, ApiResponse, Client, Usage};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
-    http_client, json_utils,
+    http_client::HttpClientExt,
+    json_utils,
     providers::openai::Message,
 };
 use serde_json::{Value, json};
@@ -227,7 +229,10 @@ impl<T> CompletionModel<T> {
     }
 }
 
-impl completion::CompletionModel for CompletionModel<reqwest::Client> {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = FinalCompletionResponse;
 
@@ -257,22 +262,22 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
             tracing::Span::current()
         };
 
-        async move {
-            let response = self
-                .client
-                .reqwest_post("/chat/completions")
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| CompletionError::HttpError(http_client::Error::Instance(e.into())))?;
+        let body = serde_json::to_vec(&request)?;
 
-            if response.status().is_success() {
-                match response
-                    .json::<ApiResponse<CompletionResponse>>()
-                    .await
-                    .map_err(|e| {
-                        CompletionError::HttpError(http_client::Error::Instance(e.into()))
-                    })? {
+        let req = self
+            .client
+            .post("/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|x| CompletionError::HttpError(x.into()))?;
+
+        async move {
+            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let status = response.status();
+            let response_body = response.into_body().into_future().await?.to_vec();
+
+            if status.is_success() {
+                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_token_usage(&response.usage);
@@ -288,9 +293,7 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                 }
             } else {
                 Err(CompletionError::ProviderError(
-                    response.text().await.map_err(|e| {
-                        CompletionError::HttpError(http_client::Error::Instance(e.into()))
-                    })?,
+                    String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
         }

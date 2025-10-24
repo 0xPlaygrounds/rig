@@ -70,13 +70,15 @@ where
     /// A text chunk from a message response
     Message(String),
 
-    /// A tool call response chunk
+    /// A tool call response (in its entirety)
     ToolCall {
         id: String,
         call_id: Option<String>,
         name: String,
         arguments: serde_json::Value,
     },
+    /// A tool call partial/delta
+    ToolCallDelta { id: String, delta: String },
     /// A reasoning chunk
     Reasoning {
         id: Option<String>,
@@ -219,6 +221,12 @@ where
                     stream.text = format!("{}{}", stream.text, text.clone());
                     Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
                 }
+                RawStreamingChoice::ToolCallDelta { id, delta } => {
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCallDelta {
+                        id,
+                        delta,
+                    })))
+                }
                 RawStreamingChoice::Reasoning {
                     id,
                     reasoning,
@@ -342,6 +350,9 @@ impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
                 RawStreamingChoice::Message(m) => {
                     Poll::Ready(Some(Ok(RawStreamingChoice::Message(m))))
                 }
+                RawStreamingChoice::ToolCallDelta { id, delta } => {
+                    Poll::Ready(Some(Ok(RawStreamingChoice::ToolCallDelta { id, delta })))
+                }
                 RawStreamingChoice::Reasoning {
                     id,
                     reasoning,
@@ -367,7 +378,8 @@ impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
     }
 }
 
-/// helper function to stream a completion request to stdout
+/// A helper function to stream a completion request to stdout.
+/// Tool call deltas are ignored as tool calls are generally much easier to handle when received in their entirety rather than using deltas.
 pub async fn stream_to_stdout<M>(
     agent: &'static Agent<M>,
     stream: &mut StreamingCompletionResponse<M::StreamingResponse>,
@@ -422,6 +434,7 @@ where
                 eprintln!("Error: {e}");
                 break;
             }
+            _ => {}
         }
     }
 
@@ -489,6 +502,10 @@ mod tests {
                     println!("\nTool Call: {tc:?}");
                     chunk_count += 1;
                 }
+                Ok(StreamedAssistantContent::ToolCallDelta { delta, .. }) => {
+                    println!("\nTool Call delta: {delta:?}");
+                    chunk_count += 1;
+                }
                 Ok(StreamedAssistantContent::Final(res)) => {
                     println!("\nFinal response: {res:?}");
                 }
@@ -538,6 +555,7 @@ mod tests {
 pub enum StreamedAssistantContent<R> {
     Text(Text),
     ToolCall(ToolCall),
+    ToolCallDelta { id: String, delta: String },
     Reasoning(Reasoning),
     Final(R),
 }
