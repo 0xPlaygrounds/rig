@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Example 4: Make a test API call
         println!("4. Making a test API call...");
         let response = model
-            .completion_request(Message::user("Say hello in 10 words or less."))
+            .completion_request(Message::user("tell a short llm joke"))
             .send()
             .await;
 
@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for content in response.choice.iter() {
                     match content {
                         rig::completion::AssistantContent::Text(text_content) => {
-                            println!("   Prompt: Say hello in 10 words or less.");
+                            println!("   Prompt: tell a short llm joke");
                             println!("   Response: {}", text_content.text);
                         }
                         _ => {
