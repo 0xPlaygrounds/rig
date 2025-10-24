@@ -396,11 +396,13 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 ))),
                             },
                             message::UserContent::Document(message::Document { data, .. }) => {
-                                if let DocumentSourceKind::Base64(text) = data {
+                                if let DocumentSourceKind::Base64(text)
+                                | DocumentSourceKind::String(text) = data
+                                {
                                     Ok(UserContent::Text { text })
                                 } else {
                                     Err(message::MessageError::ConversionError(
-                                        "Documents must be base64".into(),
+                                        "Documents must be base64 or a string".into(),
                                     ))
                                 }
                             }
