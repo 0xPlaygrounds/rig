@@ -110,7 +110,7 @@ pub enum ItemChunkKind {
     #[serde(rename = "response.refusal.done")]
     RefusalDone(RefusalTextChunk),
     #[serde(rename = "response.function_call_arguments.delta")]
-    FunctionCallArgsDelta(DeltaTextChunk),
+    FunctionCallArgsDelta(DeltaTextChunkWithItemId),
     #[serde(rename = "response.function_call_arguments.done")]
     FunctionCallArgsDone(ArgsTextChunk),
     #[serde(rename = "response.reasoning_summary_part.added")]
@@ -145,6 +145,13 @@ pub enum ContentPartChunkPart {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DeltaTextChunk {
+    pub content_index: u64,
+    pub sequence_number: u64,
+    pub delta: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DeltaTextChunkWithItemId {
     pub item_id: String,
     pub content_index: u64,
     pub sequence_number: u64,
