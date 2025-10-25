@@ -91,7 +91,6 @@ pub mod agent_ops;
 pub mod op;
 pub mod stream_ops;
 pub mod try_op;
-pub mod try_stream_ops;
 #[macro_use]
 pub mod parallel;
 #[macro_use]

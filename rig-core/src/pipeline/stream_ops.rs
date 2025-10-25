@@ -1,7 +1,6 @@
 use crate::agent::prompt_request::streaming::StreamingError;
 use crate::agent::{Agent, MultiTurnStreamItem, Text};
 use crate::completion::CompletionModel;
-use crate::pipeline::try_stream_ops::TryStreamingOp;
 use crate::wasm_compat::*;
 use futures::{Stream, StreamExt};
 use std::future::Future;
