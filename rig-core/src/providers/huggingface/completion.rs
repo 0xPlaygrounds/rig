@@ -51,20 +51,8 @@ pub const QWEN_QVQ_PREVIEW: &str = "Qwen/QVQ-72B-Preview";
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub struct Function {
     name: String,
-    #[serde(deserialize_with = "deserialize_arguments")]
+    #[serde(with = "json_utils::stringified_json")]
     pub arguments: serde_json::Value,
-}
-
-fn deserialize_arguments<'de, D>(deserializer: D) -> Result<Value, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = Value::deserialize(deserializer)?;
-
-    match value {
-        Value::String(s) => serde_json::from_str(&s).map_err(serde::de::Error::custom),
-        other => Ok(other),
-    }
 }
 
 impl From<Function> for message::ToolFunction {
@@ -249,14 +237,26 @@ pub enum Message {
         #[serde(default, deserialize_with = "json_utils::null_or_vec")]
         tool_calls: Vec<ToolCall>,
     },
-    #[serde(rename = "Tool")]
+    #[serde(rename = "tool", alias = "Tool")]
     ToolResult {
         name: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         arguments: Option<serde_json::Value>,
-        #[serde(deserialize_with = "string_or_one_or_many")]
+        #[serde(
+            deserialize_with = "string_or_one_or_many",
+            serialize_with = "serialize_tool_content"
+        )]
         content: OneOrMany<String>,
     },
+}
+
+fn serialize_tool_content<S>(content: &OneOrMany<String>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    // OpenAI-compatible APIs expect tool content as a string, not an array
+    let joined = content.iter().map(String::as_str).collect::<Vec<_>>().join("\n");
+    serializer.serialize_str(&joined)
 }
 
 impl Message {
