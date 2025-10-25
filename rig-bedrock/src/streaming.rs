@@ -148,7 +148,12 @@ impl CompletionModel {
                         match message_stop_event.stop_reason {
                             aws_bedrock::StopReason::ToolUse => {
                                 if let Some(tool_call) = current_tool_call.take() {
-                                    let tool_input = serde_json::from_str(tool_call.input_json.as_str())?;
+                                    // Handle empty input_json for tools with no parameters
+                                    let tool_input = if tool_call.input_json.is_empty() {
+                                        serde_json::json!({})
+                                    } else {
+                                        serde_json::from_str(tool_call.input_json.as_str())?
+                                    };
                                     yield Ok(RawStreamingChoice::ToolCall {
                                         name: tool_call.name,
                                         call_id: None,
