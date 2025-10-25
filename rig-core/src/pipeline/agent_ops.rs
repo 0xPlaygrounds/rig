@@ -4,6 +4,7 @@ use crate::{
     completion::{self, CompletionModel},
     extractor::{ExtractionError, Extractor},
     message::Message,
+    pipeline::TryOp,
     vector_store::{self, request::VectorSearchRequest},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
