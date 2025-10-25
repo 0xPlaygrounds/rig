@@ -215,9 +215,10 @@ where
     fn post_audio_generation(&self, deployment_id: &str) -> http_client::Builder {
         let url = format!(
             "{}/openai/deployments/{}/audio/speech?api-version={}",
-            self.azure_endpoint, deployment_id, self.api_version
-        )
-        .replace("//", "/");
+            self.azure_endpoint,
+            deployment_id.trim_start_matches('/'),
+            self.api_version
+        );
 
         self.post(url)
     }
@@ -225,9 +226,10 @@ where
     fn post_chat_completion(&self, deployment_id: &str) -> http_client::Builder {
         let url = format!(
             "{}/openai/deployments/{}/chat/completions?api-version={}",
-            self.azure_endpoint, deployment_id, self.api_version
-        )
-        .replace("//", "/");
+            self.azure_endpoint,
+            deployment_id.trim_start_matches('/'),
+            self.api_version
+        );
 
         self.post(url)
     }
@@ -235,9 +237,10 @@ where
     fn post_transcription(&self, deployment_id: &str) -> http_client::Builder {
         let url = format!(
             "{}/openai/deployments/{}/audio/translations?api-version={}",
-            self.azure_endpoint, deployment_id, self.api_version
-        )
-        .replace("//", "/");
+            self.azure_endpoint,
+            deployment_id.trim_start_matches('/'),
+            self.api_version
+        );
 
         self.post(url)
     }
@@ -246,9 +249,10 @@ where
     fn post_image_generation(&self, deployment_id: &str) -> http_client::Builder {
         let url = format!(
             "{}/openai/deployments/{}/images/generations?api-version={}",
-            self.azure_endpoint, deployment_id, self.api_version
-        )
-        .replace("//", "/");
+            self.azure_endpoint,
+            deployment_id.trim_start_matches('/'),
+            self.api_version
+        );
 
         self.post(url)
     }
