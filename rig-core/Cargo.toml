@@ -47,6 +47,7 @@ fastrand = "2.3.0"
 eventsource-stream = "0.2.3"
 pin-project-lite = "0.2.16"
 futures-timer = "3.0.3"
+wasm-bindgen-futures = { version = "0.4.54", optional = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -89,7 +90,7 @@ discord-bot = ["dep:serenity"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
-worker = ["dep:worker"]
+worker = ["dep:worker", "dep:wasm-bindgen-futures"]
 rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
 reqwest-tls = ["reqwest/default"]
