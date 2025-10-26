@@ -636,11 +636,14 @@ where
 
         let mut body = reqwest::multipart::Form::new()
             .text("model", self.model.clone())
-            .text("language", request.language)
             .part(
                 "file",
                 Part::bytes(data).file_name(request.filename.clone()),
             );
+
+        if let Some(language) = request.language {
+            body = body.text("language", language);
+        }
 
         if let Some(prompt) = request.prompt {
             body = body.text("prompt", prompt.clone());
