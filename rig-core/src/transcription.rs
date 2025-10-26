@@ -131,7 +131,7 @@ pub struct TranscriptionRequest {
     /// The file name to be used in the request
     pub filename: String,
     /// The language used in the response from the transcription model provider
-    pub language: String,
+    pub language: Option<String>,
     /// The prompt to be sent to the transcription model provider
     pub prompt: Option<String>,
     /// The temperature sent to the transcription model provider
@@ -189,7 +189,7 @@ where
     model: M,
     data: Vec<u8>,
     filename: Option<String>,
-    language: String,
+    language: Option<String>,
     prompt: Option<String>,
     temperature: Option<f64>,
     additional_params: Option<serde_json::Value>,
@@ -204,7 +204,7 @@ where
             model,
             data: vec![],
             filename: None,
-            language: "en".to_string(),
+            language: None,
             prompt: None,
             temperature: None,
             additional_params: None,
@@ -242,7 +242,7 @@ where
 
     /// Sets the output language for the transcription request
     pub fn language(mut self, language: String) -> Self {
-        self.language = language;
+        self.language = Some(language);
         self
     }
 
