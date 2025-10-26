@@ -10,7 +10,7 @@ use crate::{
     message::{self},
     one_or_many::string_or_one_or_many,
 };
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Value, json};
 use std::{convert::Infallible, str::FromStr};
 use tracing::info_span;
@@ -58,14 +58,14 @@ pub struct Function {
     pub arguments: serde_json::Value,
 }
 
-fn deserialize_arguments<'de, D>(deserializer: D) -> Result<serde_json::Value, D::Error>
+fn deserialize_arguments<'de, D>(deserializer: D) -> Result<Value, D::Error>
 where
-    D: serde::Deserializer<'de>,
+    D: Deserializer<'de>,
 {
-    let value = serde_json::Value::deserialize(deserializer)?;
+    let value = Value::deserialize(deserializer)?;
 
     match value {
-        serde_json::Value::String(s) => serde_json::from_str(&s).map_err(serde::de::Error::custom),
+        Value::String(s) => serde_json::from_str(&s).map_err(serde::de::Error::custom),
         other => Ok(other),
     }
 }
@@ -267,7 +267,7 @@ pub enum Message {
 
 fn serialize_tool_content<S>(content: &OneOrMany<String>, serializer: S) -> Result<S::Ok, S::Error>
 where
-    S: serde::Serializer,
+    S: Serializer,
 {
     // OpenAI-compatible APIs expect tool content as a string, not an array
     let joined = content
