@@ -272,11 +272,7 @@ where
                 this.handle_event(&event);
                 Poll::Ready(Some(Ok(event.into())))
             }
-            Poll::Ready(None) => {
-                let err = super::Error::StreamEnded;
-                this.handle_error(&err);
-                Poll::Ready(Some(Err(err)))
-            }
+            Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }
     }
