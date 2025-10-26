@@ -20,7 +20,7 @@ use std::fmt::Display;
 // ================================================================
 // Main Huggingface Client
 // ================================================================
-const HUGGINGFACE_API_BASE_URL: &str = "https://router.huggingface.co/";
+const HUGGINGFACE_API_BASE_URL: &str = "https://router.huggingface.co";
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum SubProvider {
@@ -39,11 +39,8 @@ impl SubProvider {
     /// Get the chat completion endpoint for the SubProvider
     /// Required because Huggingface Inference requires the model
     /// in the url and in the request body.
-    pub fn completion_endpoint(&self, model: &str) -> String {
-        match self {
-            SubProvider::HFInference => format!("/{model}/v1/chat/completions"),
-            _ => "/v1/chat/completions".to_string(),
-        }
+    pub fn completion_endpoint(&self, _model: &str) -> String {
+        "v1/chat/completions".to_string()
     }
 
     /// Get the transcription endpoint for the SubProvider
@@ -159,9 +156,6 @@ impl<T> ClientBuilder<T> {
     }
 
     pub fn build(self) -> Result<Client<T>, ClientBuilderError> {
-        let route = self.sub_provider.to_string();
-        let base_url = format!("{}/{}", self.base_url, route).replace("//", "/");
-
         let mut default_headers = reqwest::header::HeaderMap::new();
         default_headers.insert(
             "Content-Type",
@@ -171,7 +165,7 @@ impl<T> ClientBuilder<T> {
         );
 
         Ok(Client {
-            base_url,
+            base_url: self.base_url,
             default_headers,
             api_key: self.api_key,
             http_client: self.http_client,
@@ -209,7 +203,9 @@ where
     T: HttpClientExt,
 {
     pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+
+        println!("URL: {url}");
 
         let mut req = http_client::Request::post(url);
 
@@ -221,7 +217,7 @@ where
     }
 
     pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
 
         let mut req = http_client::Request::get(url);
 
