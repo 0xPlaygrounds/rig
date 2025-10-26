@@ -51,8 +51,23 @@ pub const QWEN_QVQ_PREVIEW: &str = "Qwen/QVQ-72B-Preview";
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub struct Function {
     name: String,
-    #[serde(with = "json_utils::stringified_json")]
+    #[serde(
+        serialize_with = "json_utils::stringified_json::serialize",
+        deserialize_with = "deserialize_arguments"
+    )]
     pub arguments: serde_json::Value,
+}
+
+fn deserialize_arguments<'de, D>(deserializer: D) -> Result<serde_json::Value, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+
+    match value {
+        serde_json::Value::String(s) => serde_json::from_str(&s).map_err(serde::de::Error::custom),
+        other => Ok(other),
+    }
 }
 
 impl From<Function> for message::ToolFunction {
@@ -255,7 +270,11 @@ where
     S: serde::Serializer,
 {
     // OpenAI-compatible APIs expect tool content as a string, not an array
-    let joined = content.iter().map(String::as_str).collect::<Vec<_>>().join("\n");
+    let joined = content
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join("\n");
     serializer.serialize_str(&joined)
 }
 
