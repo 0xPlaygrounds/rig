@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.22...rig-postgres-v0.1.23) - 2025-10-27
+
+### Added
+
+- *(rig-976)* support filters for `VectorSearchRequest` ([#952](https://github.com/0xPlaygrounds/rig/pull/952))
+- *(rig-996)* generic streaming ([#955](https://github.com/0xPlaygrounds/rig/pull/955))
+
+### Fixed
+
+- *(rig-1006)* text-embedding-ada-002 doesn't support custom dimensions ([#967](https://github.com/0xPlaygrounds/rig/pull/967))
+
+### Other
+
+- Dependent packages no longer force unnecessary features on rig-core ([#964](https://github.com/0xPlaygrounds/rig/pull/964))
+
 ## [0.1.22](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.21...rig-postgres-v0.1.22) - 2025-10-14
 
 ### Added

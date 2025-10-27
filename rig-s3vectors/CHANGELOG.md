@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.10...rig-s3vectors-v0.1.11) - 2025-10-27
+
+### Added
+
+- *(rig-976)* support filters for `VectorSearchRequest` ([#952](https://github.com/0xPlaygrounds/rig/pull/952))
+
+### Other
+
+- Dependent packages no longer force unnecessary features on rig-core ([#964](https://github.com/0xPlaygrounds/rig/pull/964))
+
 ## [0.1.10](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.9...rig-s3vectors-v0.1.10) - 2025-10-14
 
 ### Other
