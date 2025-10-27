@@ -218,7 +218,7 @@ where
                 RawStreamingChoice::Message(text) => {
                     // Forward the streaming tokens to the outer stream
                     // and concat the text together
-                    stream.text = format!("{}{}", stream.text, text.clone());
+                    stream.text = format!("{}{}", stream.text, text);
                     Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
                 }
                 RawStreamingChoice::ToolCallDelta { id, delta } => {
@@ -234,10 +234,10 @@ where
                 } => {
                     // Forward the streaming tokens to the outer stream
                     // and concat the text together
-                    stream.reasoning = format!("{}{}", stream.reasoning, reasoning.clone());
+                    stream.reasoning = format!("{}{}", stream.reasoning, reasoning);
                     Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(Reasoning {
                         id,
-                        reasoning: vec![stream.reasoning.clone()],
+                        reasoning: vec![reasoning],
                         signature,
                     }))))
                 }
