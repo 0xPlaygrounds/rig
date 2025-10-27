@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.25](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.24...rig-lancedb-v0.2.25) - 2025-10-27
+
+### Added
+
+- *(rig-976)* support filters for `VectorSearchRequest` ([#952](https://github.com/0xPlaygrounds/rig/pull/952))
+- *(rig-996)* generic streaming ([#955](https://github.com/0xPlaygrounds/rig/pull/955))
+
+### Fixed
+
+- *(rig-1006)* text-embedding-ada-002 doesn't support custom dimensions ([#967](https://github.com/0xPlaygrounds/rig/pull/967))
+
 ## [0.2.24](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.23...rig-lancedb-v0.2.24) - 2025-10-14
 
 ### Added
