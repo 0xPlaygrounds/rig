@@ -2,13 +2,11 @@ use rig::agent::stream_to_stdout;
 use rig::prelude::*;
 use rig::providers::{self, groq::DEEPSEEK_R1_DISTILL_LLAMA_70B};
 use rig::streaming::StreamingPrompt;
-use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let client =
-        providers::groq::Client::new(&env::var("GROQ_API_KEY").expect("GROQ_API_KEY not set"));
+    let client = providers::groq::Client::from_env();
 
     let json = serde_json::json!({
         "reasoning_format": "parsed"

@@ -75,6 +75,10 @@ pub struct TranscriptionResponse<T> {
 pub trait TranscriptionModel: Clone + WasmCompatSend + WasmCompatSync {
     /// The raw response type returned by the underlying model.
     type Response: WasmCompatSend + WasmCompatSync;
+    type Client;
+    type Models: TryFrom<String>;
+
+    fn make(client: &Self::Client, model: Self::Models) -> Self;
 
     /// Generates a completion response for the given transcription model
     fn transcription(

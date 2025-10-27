@@ -1,19 +1,25 @@
 use super::{ApiErrorResponse, ApiResponse, Client, completion::Usage};
 use crate::embeddings::EmbeddingError;
 use crate::http_client::HttpClientExt;
-use crate::{embeddings, http_client};
+use crate::{embeddings, http_client, models};
 use serde::Deserialize;
 use serde_json::json;
 
 // ================================================================
 // OpenAI Embedding API
 // ================================================================
-/// `text-embedding-3-large` embedding model
-pub const TEXT_EMBEDDING_3_LARGE: &str = "text-embedding-3-large";
-/// `text-embedding-3-small` embedding model
-pub const TEXT_EMBEDDING_3_SMALL: &str = "text-embedding-3-small";
-/// `text-embedding-ada-002` embedding model
-pub const TEXT_EMBEDDING_ADA_002: &str = "text-embedding-ada-002";
+
+models! {
+    pub enum EmbeddingModels {
+        /// `text-embedding-3-large` embedding model
+        TextEmbedding3Large => "text-embedding-3-large",
+        /// `text-embedding-3-small` embedding model
+        TextEmbedding3Small => "text-embedding-3-small",
+        /// `text-embedding-ada-002` embedding model
+        TextEmbeddingAda2 => "text-embedding-ada-002",
+    }
+}
+pub use EmbeddingModels::*;
 
 #[derive(Debug, Deserialize)]
 pub struct EmbeddingResponse {
@@ -48,7 +54,7 @@ pub struct EmbeddingData {
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
-    pub model: String,
+    pub model: EmbeddingModels,
     ndims: usize,
 }
 
@@ -57,6 +63,13 @@ where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     const MAX_DOCUMENTS: usize = 1024;
+
+    type Client = Client<T>;
+    type Models = EmbeddingModels;
+
+    fn make(client: &Self::Client, model: Self::Models, ndims: Option<usize>) -> Self {
+        Self::new(client.clone(), model, ndims.unwrap_or_default())
+    }
 
     fn ndims(&self) -> usize {
         self.ndims
@@ -70,11 +83,11 @@ where
         let documents = documents.into_iter().collect::<Vec<_>>();
 
         let mut body = json!({
-            "model": self.model,
+            "model": <EmbeddingModels as Into<&str>>::into(self.model),
             "input": documents,
         });
 
-        if self.ndims > 0 && self.model != TEXT_EMBEDDING_ADA_002 {
+        if self.ndims > 0 && self.model != EmbeddingModels::TextEmbeddingAda2 {
             body["dimensions"] = json!(self.ndims);
         }
 
@@ -87,7 +100,7 @@ where
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
-        let response = self.client.http_client.send(req).await?;
+        let response = self.client.http_client().send(req).await?;
 
         if response.status().is_success() {
             let body: Vec<u8> = response.into_body().await?;
@@ -126,10 +139,10 @@ where
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: &str, ndims: usize) -> Self {
+    pub fn new(client: Client<T>, model: EmbeddingModels, ndims: usize) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model,
             ndims,
         }
     }

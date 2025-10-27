@@ -9,7 +9,7 @@ use tokio::time::sleep;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Use the direct model streaming to get access to pause control
-    let model = ollama::Client::new().completion_model("gemma3:4b");
+    let model = ollama::Client::from_env().completion_model("gemma3:4b");
     let completion_request = model
         .completion_request("Explain backpropagation in neural networks.")
         .preamble("You are a helpful AI assistant. Provide concise explanations.".to_string())

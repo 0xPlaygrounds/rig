@@ -175,6 +175,13 @@ impl completion::CompletionModel for CompletionModel {
     type Response = AwsConverseOutput;
     type StreamingResponse = crate::streaming::BedrockStreamingResponse;
 
+    type Client = Client;
+    type Models = String;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        Self::new(client.clone(), model.into().as_str())
+    }
+
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,

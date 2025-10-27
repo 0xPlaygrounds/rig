@@ -1,7 +1,10 @@
 use futures::StreamExt;
 /// This example showcases using streaming with multiple clients by using a dynamic ClientBuilder.
 /// In this example, we will use both OpenAI and Anthropic with streaming responses - so ensure you have your `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` set when using this example!
-use rig::{client::builder::DynClientBuilder, providers::anthropic::CLAUDE_3_7_SONNET};
+use rig::{
+    client::builder::{DefaultProviders, DynClientBuilder},
+    providers::{anthropic, openai},
+};
 
 #[tokio::main]
 async fn main() {
@@ -38,8 +41,8 @@ async fn test_openai_streaming(
 
     let mut stream = client
         .stream_prompt(
-            "openai",
-            "gpt-4o",
+            DefaultProviders::OpenAI,
+            openai::GPT4O,
             "Tell me a short story about a robot learning to paint",
         )
         .await?;
@@ -82,8 +85,8 @@ async fn test_anthropic_streaming(
 
     let mut stream = client
         .stream_prompt(
-            "anthropic",
-            CLAUDE_3_7_SONNET,
+            DefaultProviders::Anthropic,
+            anthropic::Claude37Sonnet,
             "Explain quantum computing in simple terms",
         )
         .await?;
@@ -124,9 +127,12 @@ async fn test_provider_model_id_streaming(
         "Streaming prompt using ProviderModelId: 'What are the benefits of renewable energy?'"
     );
 
-    let provider_model = client.id("openai:gpt-4o")?;
-    let mut stream = provider_model
-        .stream_prompt("What are the benefits of renewable energy?")
+    let mut stream = client
+        .stream_prompt(
+            DefaultProviders::OpenAI,
+            openai::GPT4,
+            "What are the benefits of renewable energy?",
+        )
         .await?;
 
     print!("Response: ");

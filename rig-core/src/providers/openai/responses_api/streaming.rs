@@ -246,7 +246,7 @@ where
             serde_json::to_string(&request.input).expect("This should always work"),
         );
         // Build the request with proper headers for SSE
-        let client = self.clone().client.http_client;
+        let client = self.client.http_client().clone();
 
         let mut event_source = GenericEventSource::new(client, req);
 

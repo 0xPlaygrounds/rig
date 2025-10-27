@@ -13,7 +13,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Initialize the xAI client
     let client = voyageai::Client::from_env();
     let embeddings = client
-        .embeddings(voyageai::VOYAGE_3_LARGE)
+        .embeddings(voyageai::Voyage3Large)
         .document(Greetings {
             message: "Hello, world!".to_string(),
         })?

@@ -107,12 +107,14 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::Client::builder("TEST")
-        .base_url(&server.base_url())
-        .build();
+    let openai_client: openai::Client = openai::Client::builder()
+        .api_key("TEST")
+        .base_url(server.base_url())
+        .build()
+        .unwrap();
 
     // Select an embedding model.
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding_model(openai::TextEmbeddingAda2);
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store")

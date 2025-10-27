@@ -19,7 +19,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Create ollama client
-    let client = ollama::Client::new();
+    let client = ollama::Client::from_env();
 
     // Create agent with a single context prompt
     let agent = client

@@ -1,4 +1,5 @@
 use rig::client::EmbeddingsClient;
+use rig::providers::openai;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
@@ -50,11 +51,13 @@ async fn vector_search_test() {
 
     // init fake openai service
     let openai_mock = create_openai_mock_service().await;
-    let openai_client = rig::providers::openai::Client::builder("TEST")
-        .base_url(&openai_mock.base_url())
-        .build();
+    let openai_client: openai::Client = openai::Client::builder()
+        .api_key("TEST")
+        .base_url(openai_mock.base_url())
+        .build()
+        .unwrap();
 
-    let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding_model(openai::TextEmbedding3Small);
 
     // create test documents with mocked embeddings
     let words = vec![

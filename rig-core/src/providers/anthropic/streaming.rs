@@ -202,12 +202,12 @@ where
 
         let req = self
             .client
-            .post("/v1/messages")
+            .post("/v1/messages")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::Protocol)?;
 
-        let stream = GenericEventSource::new(self.client.http_client.clone(), req);
+        let stream = GenericEventSource::new(self.client.http_client().clone(), req);
 
         // Use our SSE decoder to directly handle Server-Sent Events format
         let stream: StreamingResult<StreamingCompletionResponse> = Box::pin(stream! {

@@ -9,6 +9,7 @@ use rig::prelude::*;
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use rig::providers;
+use rig::providers::openai::CompletionModels::GPT4O;
 use tracing::Level;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -44,8 +45,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create OpenAI client
     let agent = providers::openai::Client::from_env()
-        .completion_model("gpt-4o")
-        .completions_api()
+        .completion_model(GPT4O)
         .into_agent_builder()
         .preamble("You are a helpful assistant")
         .build();

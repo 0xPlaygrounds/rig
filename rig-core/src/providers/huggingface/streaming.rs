@@ -29,7 +29,7 @@ where
         }
 
         // HF Inference API uses the model in the path even though its specified in the request body
-        let path = self.client.sub_provider.completion_endpoint(&self.model);
+        let path = self.client.subprovider().completion_endpoint(&self.model);
 
         let body = serde_json::to_vec(&request)?;
 
@@ -58,7 +58,7 @@ where
             tracing::Span::current()
         };
 
-        send_compatible_streaming_request(self.client.http_client.clone(), req)
+        send_compatible_streaming_request(self.client.http_client().clone(), req)
             .instrument(span)
             .await
     }

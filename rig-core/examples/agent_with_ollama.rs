@@ -1,11 +1,16 @@
+use rig::client::Nothing;
+use rig::completion::Prompt;
 /// This example requires that you have the [`ollama`](https://ollama.com) server running locally.
 use rig::prelude::*;
-use rig::{completion::Prompt, providers};
+use rig::providers::ollama;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create ollama client
-    let client = providers::ollama::Client::new();
+    //
+    // In the case of ollama, no API key is necessary, so we can use the `Nothing` struct in its
+    // place
+    let client: ollama::Client = ollama::Client::new(Nothing).unwrap();
 
     // Create agent with a single context prompt
     let comedian_agent = client
