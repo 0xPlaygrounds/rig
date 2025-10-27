@@ -216,11 +216,9 @@ where
     }
 }
 
-impl<T> EmbeddingsClient for Client<T>
-where
-    T: HttpClientExt + std::fmt::Debug + Clone + Default + Send + 'static,
-{
-    type EmbeddingModel = EmbeddingModel<T>;
+impl EmbeddingsClient for Client<reqwest::Client> {
+    type EmbeddingModel = EmbeddingModel<reqwest::Client>;
+
     fn embedding_model(&self, model: &str) -> Self::EmbeddingModel {
         let ndims = match model {
             TEXT_EMBEDDING_3_LARGE => 3072,

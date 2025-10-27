@@ -3,6 +3,7 @@
 //! Dyn-compatible traits have been provided to allow for more provider-agnostic code.
 
 pub mod audio_generation;
+pub mod client;
 pub mod builder;
 pub mod completion;
 pub mod embeddings;
