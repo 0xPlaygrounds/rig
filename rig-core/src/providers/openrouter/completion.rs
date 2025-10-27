@@ -4,25 +4,39 @@ use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
 
 use super::client::{ApiErrorResponse, ApiResponse, Client, Usage};
-use crate::completion::{self, CompletionError, CompletionRequest};
-use crate::http_client::HttpClientExt;
-use crate::one_or_many::string_or_one_or_many;
-use crate::providers::openai;
-use crate::providers::openrouter::streaming::StreamingCompletionResponse;
+
+use crate::{
+    OneOrMany,
+    completion::{self, CompletionError, CompletionRequest},
+    http_client::HttpClientExt,
+    json_utils, models,
+    providers::openai::Message,
+};
+use serde_json::{Value, json};
+
+use crate::providers::openai::AssistantContent;
+use crate::providers::openrouter::streaming::FinalCompletionResponse;
+use crate::streaming::StreamingCompletionResponse;
 use crate::telemetry::SpanCombinator;
 use crate::{OneOrMany, json_utils, message};
 
 // ================================================================
 // OpenRouter Completion API
 // ================================================================
-/// The `qwen/qwq-32b` model. Find more models at <https://openrouter.ai/models>.
-pub const QWEN_QWQ_32B: &str = "qwen/qwq-32b";
-/// The `anthropic/claude-3.7-sonnet` model. Find more models at <https://openrouter.ai/models>.
-pub const CLAUDE_3_7_SONNET: &str = "anthropic/claude-3.7-sonnet";
-/// The `perplexity/sonar-pro` model. Find more models at <https://openrouter.ai/models>.
-pub const PERPLEXITY_SONAR_PRO: &str = "perplexity/sonar-pro";
-/// The `google/gemini-2.0-flash-001` model. Find more models at <https://openrouter.ai/models>.
-pub const GEMINI_FLASH_2_0: &str = "google/gemini-2.0-flash-001";
+
+models! {
+    pub enum CompletionModels {
+        /// The `qwen/qwq-32b` model. Find more models at <https://openrouter.ai/models>.
+        QwenQWQ32b => "qwen/qwq-32b",
+        /// The `anthropic/claude-3.7-sonnet` model. Find more models at <https://openrouter.ai/models>.
+        Claude37Sonnet => "anthropic/claude-3.7-sonnet",
+        /// The `perplexity/sonar-pro` model. Find more models at <https://openrouter.ai/models>.
+        PerplexitySonarPro => "perplexity/sonar-pro",
+        /// The `google/gemini-2.0-flash-001` model. Find more models at <https://openrouter.ai/models>.
+        GeminiFlash2 => "google/gemini-2.0-flash-001",
+    }
+}
+pub use CompletionModels::*;
 
 /// A openrouter completion object.
 ///
@@ -304,15 +318,14 @@ pub enum ToolChoiceFunctionKind {
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
-    /// Name of the model (e.g.: deepseek-ai/DeepSeek-R1)
     pub model: String,
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 
@@ -387,6 +400,13 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
+    type Client = Client<T>;
+    type Models = String;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        Self::new(client.clone(), model.into())
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -423,7 +443,7 @@ where
             .map_err(|x| CompletionError::HttpError(x.into()))?;
 
         async move {
-            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let response = self.client.http_client().send::<_, Bytes>(req).await?;
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
 

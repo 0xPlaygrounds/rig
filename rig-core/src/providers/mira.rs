@@ -7,7 +7,9 @@
 //! let client = mira::Client::new("YOUR_API_KEY");
 //!
 //! ```
-use crate::client::{CompletionClient, ProviderClient, VerifyClient, VerifyError};
+use crate::client::{
+    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
 use crate::message::{Document, DocumentSourceKind};
@@ -17,16 +19,58 @@ use crate::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
-    impl_conversion_traits,
     message::{self, AssistantContent, Message, UserContent},
 };
-use http::Method;
-use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::string::FromUtf8Error;
 use thiserror::Error;
 use tracing::{self, Instrument, info_span};
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MiraExt;
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MiraBuilder;
+
+impl Provider for MiraExt {
+    type Builder = MiraBuilder;
+
+    const VERIFY_PATH: &'static str = "/user-credits";
+
+    fn build<H>(
+        _: &crate::client::ClientBuilder<
+            Self::Builder,
+            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
+            H,
+        >,
+    ) -> Self {
+        Self
+    }
+}
+
+impl<H> Capabilities<H> for MiraExt {
+    type Completion = Capable<CompletionModel<H>>;
+    type Embeddings = Nothing;
+    type Transcription = Nothing;
+
+    #[cfg(feature = "image")]
+    type ImageGeneration = Nothing;
+
+    #[cfg(feature = "audio")]
+    type AudioGeneration = Nothing;
+}
+
+impl DebugExt for MiraExt {}
+
+impl ProviderBuilder for MiraBuilder {
+    type Output = MiraExt;
+    type ApiKey = String;
+
+    const BASE_URL: &'static str = MIRA_API_BASE_URL;
+}
+
+pub type Client<H = reqwest::Client> = client::Client<MiraExt, H>;
+pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<MiraBuilder, String, H>;
 
 #[derive(Debug, Error)]
 pub enum MiraError {
@@ -111,91 +155,6 @@ struct ModelInfo {
     id: String,
 }
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    api_key: &'a str,
-    base_url: &'a str,
-    http_client: T,
-}
-
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
-    pub fn new(api_key: &'a str) -> Self {
-        Self {
-            api_key,
-            base_url: MIRA_API_BASE_URL,
-            http_client: Default::default(),
-        }
-    }
-}
-
-impl<'a, T> ClientBuilder<'a, T> {
-    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
-        Self {
-            api_key,
-            base_url: MIRA_API_BASE_URL,
-            http_client,
-        }
-    }
-
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            api_key: self.api_key,
-            base_url: self.base_url,
-            http_client,
-        }
-    }
-
-    pub fn build(self) -> Client<T> {
-        let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        headers.insert(
-            reqwest::header::ACCEPT,
-            HeaderValue::from_static("application/json"),
-        );
-        headers.insert(
-            reqwest::header::USER_AGENT,
-            HeaderValue::from_static("rig-client/1.0"),
-        );
-
-        Client {
-            base_url: self.base_url.to_string(),
-            http_client: self.http_client,
-            api_key: self.api_key.to_string(),
-            headers,
-        }
-    }
-}
-
-#[derive(Clone)]
-/// Client for interacting with the Mira API
-pub struct Client<T = reqwest::Client> {
-    base_url: String,
-    http_client: T,
-    api_key: String,
-    headers: HeaderMap,
-}
-
-impl<T> std::fmt::Debug for Client<T>
-where
-    T: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client")
-            .field("base_url", &self.base_url)
-            .field("http_client", &self.http_client)
-            .field("api_key", &"<REDACTED>")
-            .field("headers", &self.headers)
-            .finish()
-    }
-}
-
 impl<T> Client<T>
 where
     T: HttpClientExt,
@@ -207,7 +166,7 @@ where
                 .map_err(http_client::Error::Protocol)
         })?;
 
-        let response = self.http_client.send(req).await?;
+        let response = self.http_client().send(req).await?;
 
         let status = response.status();
 
@@ -227,109 +186,22 @@ where
 
         Ok(models.data.into_iter().map(|model| model.id).collect())
     }
-
-    fn req(
-        &self,
-        method: http_client::Method,
-        path: &str,
-    ) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
-
-        let mut req = http_client::Builder::new().method(method).uri(url);
-
-        if let Some(hs) = req.headers_mut() {
-            *hs = self.headers.clone();
-        }
-
-        http_client::with_bearer_auth(req, &self.api_key)
-    }
-
-    pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        self.req(http_client::Method::POST, path)
-    }
 }
 
-impl Client<reqwest::Client> {
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::new(api_key)
-    }
+impl ProviderClient for Client {
+    type Input = String;
 
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key).build()
-    }
-
-    pub fn from_env() -> Self {
-        <Self as ProviderClient>::from_env()
-    }
-}
-
-impl<T> ProviderClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
     /// Create a new Mira client from the `MIRA_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("MIRA_API_KEY").expect("MIRA_API_KEY not set");
-        ClientBuilder::<T>::new(&api_key).build()
+        Self::new(&api_key).unwrap()
     }
 
-    fn from_val(input: crate::client::ProviderValue) -> Self {
-        let crate::client::ProviderValue::Simple(api_key) = input else {
-            panic!("Incorrect provider value type")
-        };
-        ClientBuilder::<T>::new(&api_key).build()
+    fn from_val(input: Self::Input) -> Self {
+        Self::new(&input).unwrap()
     }
 }
-
-impl<T> CompletionClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    type CompletionModel = CompletionModel<T>;
-
-    /// Create a completion model with the given name.
-    fn completion_model(&self, model: &str) -> Self::CompletionModel {
-        CompletionModel::new(self.to_owned(), model)
-    }
-}
-
-impl<T> VerifyClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn verify(&self) -> Result<(), VerifyError> {
-        let req = self
-            .get("/user-credits")?
-            .body(http_client::NoBody)
-            .map_err(http_client::Error::from)?;
-
-        let response = HttpClientExt::send(&self.http_client, req).await?;
-
-        match response.status() {
-            reqwest::StatusCode::OK => Ok(()),
-            reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
-            reqwest::StatusCode::INTERNAL_SERVER_ERROR
-            | reqwest::StatusCode::SERVICE_UNAVAILABLE
-            | reqwest::StatusCode::BAD_GATEWAY => {
-                let text = http_client::text(response).await?;
-                Err(VerifyError::ProviderError(text))
-            }
-            _ => {
-                //response.error_for_status()?;
-                Ok(())
-            }
-        }
-    }
-}
-
-impl_conversion_traits!(
-    AsEmbeddings,
-    AsTranscription,
-    AsImageGeneration,
-    AsAudioGeneration for Client<T>
-);
 
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
@@ -438,6 +310,13 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
+    type Client = Client<T>;
+    type Models = String;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        Self::new(client.clone(), &model.into())
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -477,7 +356,7 @@ where
 
         let req = self
             .client
-            .req(Method::POST, "/v1/chat/completions")?
+            .post("/v1/chat/completions")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
@@ -485,7 +364,7 @@ where
         let async_block = async move {
             let response = self
                 .client
-                .http_client
+                .http_client()
                 .send::<_, bytes::Bytes>(req)
                 .await
                 .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
@@ -564,12 +443,12 @@ where
 
         let req = self
             .client
-            .req(Method::POST, "/v1/chat/completions")?
+            .post("/v1/chat/completions")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
-        send_compatible_streaming_request(self.client.http_client.clone(), req)
+        send_compatible_streaming_request(self.client.http_client().clone(), req)
             .instrument(span)
             .await
     }

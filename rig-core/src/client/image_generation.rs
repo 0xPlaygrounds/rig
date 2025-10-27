@@ -1,6 +1,6 @@
 #[cfg(feature = "image")]
 mod image {
-    use crate::client::{AsImageGeneration, ProviderClient};
+    use crate::client::Nothing;
     use crate::image_generation::{
         ImageGenerationError, ImageGenerationModel, ImageGenerationModelDyn,
         ImageGenerationRequest, ImageGenerationResponse,
@@ -10,7 +10,7 @@ mod image {
 
     /// A provider client with image generation capabilities.
     /// Clone is required for conversions between client types.
-    pub trait ImageGenerationClient: ProviderClient + Clone {
+    pub trait ImageGenerationClient {
         /// The ImageGenerationModel used by the Client
         type ImageGenerationModel: ImageGenerationModel;
 
@@ -26,10 +26,13 @@ mod image {
         ///
         /// let gpt4 = openai.image_generation_model(openai::DALL_E_3);
         /// ```
-        fn image_generation_model(&self, model: &str) -> Self::ImageGenerationModel;
+        fn image_generation_model(
+            &self,
+            model: <Self::ImageGenerationModel as ImageGenerationModel>::Models,
+        ) -> Self::ImageGenerationModel;
     }
 
-    pub trait ImageGenerationClientDyn: ProviderClient {
+    pub trait ImageGenerationClientDyn {
         /// Create an image generation model with the given name.
         fn image_generation_model<'a>(&self, model: &str) -> Box<dyn ImageGenerationModelDyn + 'a>;
     }
@@ -38,13 +41,12 @@ mod image {
         ImageGenerationClientDyn for T
     {
         fn image_generation_model<'a>(&self, model: &str) -> Box<dyn ImageGenerationModelDyn + 'a> {
-            Box::new(self.image_generation_model(model))
-        }
-    }
+            let model = model
+                .to_string()
+                .try_into()
+                .unwrap_or_else(|_| panic!("Invalid model name '{model}'"));
 
-    impl<T: ImageGenerationClientDyn + Clone + 'static> AsImageGeneration for T {
-        fn as_image_generation(&self) -> Option<Box<dyn ImageGenerationClientDyn>> {
-            Some(Box::new(self.clone()))
+            Box::new(self.image_generation_model(model))
         }
     }
 
@@ -53,8 +55,20 @@ mod image {
     pub struct ImageGenerationModelHandle<'a> {
         pub(crate) inner: Arc<dyn ImageGenerationModelDyn + 'a>,
     }
+
     impl ImageGenerationModel for ImageGenerationModelHandle<'_> {
         type Response = ();
+        type Models = Nothing;
+        type Client = Nothing;
+
+        // FIXME: This is not the behavior we want, but not sure how we could statically prevent
+        // this method from being called aside from totally gutting the trait
+        /// **Do not call this method**
+        fn make(_client: &Self::Client, _model: Self::Models) -> Self {
+            panic!(
+                "'ImageGenerationModel::make' should not be called on 'ImageGenerationModelHandle'"
+            )
+        }
 
         fn image_generation(
             &self,

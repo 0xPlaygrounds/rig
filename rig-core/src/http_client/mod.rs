@@ -19,6 +19,10 @@ pub enum Error {
     InvalidStatusCode(StatusCode),
     #[error("Invalid status code {0} with message: {1}")]
     InvalidStatusCodeWithMessage(StatusCode, String),
+    #[error("Header value outside of legal range: {0}")]
+    InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+    #[error("Request in error state, cannot access headers")]
+    NoHeaders,
     #[error("Stream ended")]
     StreamEnded,
     #[error("Invalid content type was returned: {0:?}")]
@@ -47,7 +51,7 @@ fn instance_error<E: std::error::Error + 'static>(error: E) -> Error {
 pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
 pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
 
-pub type StreamingResponse<T> = Response<T>;
+pub type StreamingResponse = Response<BoxedStream>;
 
 pub struct NoBody;
 
@@ -68,11 +72,19 @@ pub async fn text(response: Response<LazyBody<Vec<u8>>>) -> Result<String> {
     Ok(String::from(String::from_utf8_lossy(&text)))
 }
 
-pub fn with_bearer_auth(req: Builder, auth: &str) -> Result<Builder> {
-    let auth_header =
+pub fn bearer_auth_header(headers: &mut HeaderMap, auth: &str) -> Result<()> {
+    let header_val =
         HeaderValue::from_str(&format!("Bearer {}", auth)).map_err(http::Error::from)?;
 
-    Ok(req.header("Authorization", auth_header))
+    headers.insert(http::header::AUTHORIZATION, header_val);
+
+    Ok(())
+}
+
+pub fn with_bearer_auth(mut req: Builder, auth: &str) -> Result<Builder> {
+    bearer_auth_header(req.headers_mut().ok_or(Error::NoHeaders)?, auth)?;
+
+    Ok(req)
 }
 
 /// A helper trait to make generic requests (both regular and SSE) possible.
@@ -101,7 +113,7 @@ pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
     fn send_streaming<T>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse<BoxedStream>>> + WasmCompatSend
+    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
     where
         T: Into<Bytes>;
 }
@@ -196,7 +208,7 @@ impl HttpClientExt for reqwest::Client {
     fn send_streaming<T>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse<BoxedStream>>> + WasmCompatSend
+    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
     where
         T: Into<Bytes>,
     {

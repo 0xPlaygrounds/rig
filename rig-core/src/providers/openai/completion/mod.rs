@@ -10,7 +10,8 @@ use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{ProviderResponseExt, SpanCombinator};
-use crate::{OneOrMany, completion, json_utils, message};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::{OneOrMany, completion, json_utils, message, models};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::fmt;
@@ -20,81 +21,87 @@ use std::str::FromStr;
 
 pub mod streaming;
 
-/// `o4-mini-2025-04-16` completion model
-pub const O4_MINI_2025_04_16: &str = "o4-mini-2025-04-16";
-/// `o4-mini` completion model
-pub const O4_MINI: &str = "o4-mini";
-/// `o3` completion model
-pub const O3: &str = "o3";
-/// `o3-mini` completion model
-pub const O3_MINI: &str = "o3-mini";
-/// `o3-mini-2025-01-31` completion model
-pub const O3_MINI_2025_01_31: &str = "o3-mini-2025-01-31";
-/// `o1-pro` completion model
-pub const O1_PRO: &str = "o1-pro";
-/// `o1`` completion model
-pub const O1: &str = "o1";
-/// `o1-2024-12-17` completion model
-pub const O1_2024_12_17: &str = "o1-2024-12-17";
-/// `o1-preview` completion model
-pub const O1_PREVIEW: &str = "o1-preview";
-/// `o1-preview-2024-09-12` completion model
-pub const O1_PREVIEW_2024_09_12: &str = "o1-preview-2024-09-12";
-/// `o1-mini completion model
-pub const O1_MINI: &str = "o1-mini";
-/// `o1-mini-2024-09-12` completion model
-pub const O1_MINI_2024_09_12: &str = "o1-mini-2024-09-12";
+models! {
+    #[allow(non_camel_case_types)]
+    pub enum CompletionModels {
+        /// `o4-mini-2025-04-16` completion model
+        O4Mini_2025_04_16=> "o4-mini-2025-04-16",
+        /// `o4-mini` completion model
+        O4Mini=> "o4-mini",
+        /// `o3` completion model
+        O3=> "o3",
+        /// `o3-mini` completion model
+        O3Mini=> "o3-mini",
+        /// `o3-mini-2025-01-31` completion model
+        O3Mini_2025_01_31=> "o3-mini-2025-01-31",
+        /// `o1-pro` completion model
+        O1Pro=> "o1-pro",
+        /// `o1`` completion model
+        O1=> "o1",
+        /// `o1-2024-12-17` completion model
+        O1_2024_12_17=> "o1-2024-12-17",
+        /// `o1-preview` completion model
+        O1Preview=> "o1-preview",
+        /// `o1-preview-2024-09-12` completion model
+        O1Preview_2024_09_12=> "o1-preview-2024-09-12",
+        /// `o1-mini completion model
+        O1Mini => "o1-mini",
+        /// `o1-mini-2024-09-12` completion model
+        O1Mini_2024_09_12=> "o1-mini-2024-09-12",
 
-/// `gpt-4.1-mini` completion model
-pub const GPT_4_1_MINI: &str = "gpt-4.1-mini";
-/// `gpt-4.1-nano` completion model
-pub const GPT_4_1_NANO: &str = "gpt-4.1-nano";
-/// `gpt-4.1-2025-04-14` completion model
-pub const GPT_4_1_2025_04_14: &str = "gpt-4.1-2025-04-14";
-/// `gpt-4.1` completion model
-pub const GPT_4_1: &str = "gpt-4.1";
-/// `gpt-4.5-preview` completion model
-pub const GPT_4_5_PREVIEW: &str = "gpt-4.5-preview";
-/// `gpt-4.5-preview-2025-02-27` completion model
-pub const GPT_4_5_PREVIEW_2025_02_27: &str = "gpt-4.5-preview-2025-02-27";
-/// `gpt-4o-2024-11-20` completion model (this is newer than 4o)
-pub const GPT_4O_2024_11_20: &str = "gpt-4o-2024-11-20";
-/// `gpt-4o` completion model
-pub const GPT_4O: &str = "gpt-4o";
-/// `gpt-4o-mini` completion model
-pub const GPT_4O_MINI: &str = "gpt-4o-mini";
-/// `gpt-4o-2024-05-13` completion model
-pub const GPT_4O_2024_05_13: &str = "gpt-4o-2024-05-13";
-/// `gpt-4-turbo` completion model
-pub const GPT_4_TURBO: &str = "gpt-4-turbo";
-/// `gpt-4-turbo-2024-04-09` completion model
-pub const GPT_4_TURBO_2024_04_09: &str = "gpt-4-turbo-2024-04-09";
-/// `gpt-4-turbo-preview` completion model
-pub const GPT_4_TURBO_PREVIEW: &str = "gpt-4-turbo-preview";
-/// `gpt-4-0125-preview` completion model
-pub const GPT_4_0125_PREVIEW: &str = "gpt-4-0125-preview";
-/// `gpt-4-1106-preview` completion model
-pub const GPT_4_1106_PREVIEW: &str = "gpt-4-1106-preview";
-/// `gpt-4-vision-preview` completion model
-pub const GPT_4_VISION_PREVIEW: &str = "gpt-4-vision-preview";
-/// `gpt-4-1106-vision-preview` completion model
-pub const GPT_4_1106_VISION_PREVIEW: &str = "gpt-4-1106-vision-preview";
-/// `gpt-4` completion model
-pub const GPT_4: &str = "gpt-4";
-/// `gpt-4-0613` completion model
-pub const GPT_4_0613: &str = "gpt-4-0613";
-/// `gpt-4-32k` completion model
-pub const GPT_4_32K: &str = "gpt-4-32k";
-/// `gpt-4-32k-0613` completion model
-pub const GPT_4_32K_0613: &str = "gpt-4-32k-0613";
-/// `gpt-3.5-turbo` completion model
-pub const GPT_35_TURBO: &str = "gpt-3.5-turbo";
-/// `gpt-3.5-turbo-0125` completion model
-pub const GPT_35_TURBO_0125: &str = "gpt-3.5-turbo-0125";
-/// `gpt-3.5-turbo-1106` completion model
-pub const GPT_35_TURBO_1106: &str = "gpt-3.5-turbo-1106";
-/// `gpt-3.5-turbo-instruct` completion model
-pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
+        /// `gpt-4.1-mini` completion model
+        GPT41Mini=> "gpt-4.1-mini",
+        /// `gpt-4.1-nano` completion model
+        GPT41Nano=> "gpt-4.1-nano",
+        /// `gpt-4.1-2025-04-14` completion model
+        GPT41_2025_04_14=> "gpt-4.1-2025-04-14",
+        /// `gpt-4.1` completion model
+        GPT41=> "gpt-4.1",
+        /// `gpt-4.5-preview` completion model
+        GPT45Preview=> "gpt-4.5-preview",
+        /// `gpt-4.5-preview-2025-02-27` completion model
+        GPT45Preview_2025_02_27=> "gpt-4.5-preview-2025-02-27",
+        /// `gpt-4o-2024-11-20` completion model (this is newer than 4o)
+        GPT4O_2024_11_20=> "gpt-4o-2024-11-20",
+        /// `gpt-4o` completion model
+        GPT4O=> "gpt-4o",
+        /// `gpt-4o-mini` completion model
+        GPT4OMini=> "gpt-4o-mini",
+        /// `gpt-4o-2024-05-13` completion model
+        GPT4O_2024_05_13=> "gpt-4o-2024-05-13",
+        /// `gpt-4-turbo` completion model
+        GPT4Turbo=> "gpt-4-turbo",
+        /// `gpt-4-turbo-2024-04-09` completion model
+        GPT4Turbo_2024_04_09=> "gpt-4-turbo-2024-04-09",
+        /// `gpt-4-turbo-preview` completion model
+        GPT4TurboPreview=> "gpt-4-turbo-preview",
+        /// `gpt-4-0125-preview` completion model
+        GPT4_0125_PREVIEW=> "gpt-4-0125-preview",
+        /// `gpt-4-1106-preview` completion model
+        GPT4_1106_PREVIEW=> "gpt-4-1106-preview",
+        /// `gpt-4-vision-preview` completion model
+        GPT4VisionPreview=> "gpt-4-vision-preview",
+        /// `gpt-4-1106-vision-preview` completion model
+        GPT4VisionPreview_1106 => "gpt-4-1106-vision-preview",
+        /// `gpt-4` completion model
+        GPT4=> "gpt-4",
+        /// `gpt-4-0613` completion model
+        GPT4_0613=> "gpt-4-0613",
+        /// `gpt-4-32k` completion model
+        GPT4_32K=> "gpt-4-32k",
+        /// `gpt-4-32k-0613` completion model
+        GPT4_32K_0613=> "gpt-4-32k-0613",
+        /// `gpt-3.5-turbo` completion model
+        GPT35Turbo=> "gpt-3.5-turbo",
+        /// `gpt-3.5-turbo-0125` completion model
+        GPT35Turbo_0125=> "gpt-3.5-turbo-0125",
+        /// `gpt-3.5-turbo-1106` completion model
+        GPT35Turbo_1106=> "gpt-3.5-turbo-1106",
+        /// `gpt-3.5-turbo-instruct` completion model
+        GPT35TurboInstruct=> "gpt-3.5-turbo-instruct",
+    }
+}
+pub use CompletionModels::*;
 
 impl From<ApiErrorResponse> for CompletionError {
     fn from(err: ApiErrorResponse) -> Self {
@@ -829,7 +836,7 @@ pub struct CompletionModel<T = reqwest::Client> {
 
 impl<T> CompletionModel<T>
 where
-    T: HttpClientExt + Default + std::fmt::Debug + Clone + 'static,
+    T: Default + std::fmt::Debug + Clone + 'static,
 {
     pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
@@ -949,11 +956,26 @@ impl CompletionModel<reqwest::Client> {
     }
 }
 
-impl completion::CompletionModel for CompletionModel<reqwest::Client> {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt
+        + Default
+        + std::fmt::Debug
+        + Clone
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
+    type Client = Client<T>;
+    type Models = CompletionModels;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        Self::new(client.clone(), model.into().into())
+    }
+
     async fn completion(
         &self,
         completion_request: CoreCompletionRequest,
@@ -1016,7 +1038,6 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         .await
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         request: CoreCompletionRequest,
@@ -1024,6 +1045,6 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        CompletionModel::stream(self, request).await
+        Self::stream(self, request).await
     }
 }

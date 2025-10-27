@@ -715,7 +715,7 @@ where
 
     /// Use the Completions API instead of Responses.
     pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel<T> {
-        crate::providers::openai::completion::CompletionModel::new(self.client, &self.model)
+        super::completion::CompletionModel::new(self.client, &self.model)
     }
 
     /// Attempt to create a completion request from [`crate::completion::CompletionRequest`].
@@ -1043,7 +1043,13 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
+    type Client = Client<T>;
+    type Models = super::CompletionModels;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        Self::new(client.clone(), model.into().into())
+    }
+
     async fn completion(
         &self,
         completion_request: crate::completion::CompletionRequest,

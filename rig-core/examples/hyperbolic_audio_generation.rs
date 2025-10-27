@@ -20,7 +20,7 @@ async fn main() {
 
     let path = Path::new(&path);
     let mut file = File::create_new(path).expect("Failed to create file");
-    let hyperbolic = hyperbolic::Client::from_env();
+    let hyperbolic: hyperbolic::Client = hyperbolic::Client::from_env();
     let tts = hyperbolic.audio_generation_model("EN");
 
     let response = tts

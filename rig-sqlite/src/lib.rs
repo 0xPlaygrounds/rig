@@ -99,7 +99,7 @@ where
 
 impl<E, T> SqliteVectorStore<E, T>
 where
-    E: EmbeddingModel + 'static,
+    E: EmbeddingModel + Clone + 'static,
     T: SqliteVectorStoreTable + 'static,
 {
     pub async fn new(conn: Connection, embedding_model: &E) -> Result<Self, VectorStoreError> {
@@ -225,15 +225,19 @@ where
     pub async fn add_rows(
         &self,
         documents: Vec<(T, OneOrMany<Embedding>)>,
-    ) -> Result<i64, VectorStoreError> {
-        let documents = documents.clone();
-        let this = self.clone();
+    ) -> Result<i64, VectorStoreError>
+    where
+        T: 'static,
+        Self: 'static,
+    {
+        let cloned = self.clone();
 
         self.conn
             .call(move |conn| {
-                let tx = conn.transaction().map_err(tokio_rusqlite::Error::from)?;
-                let result = this.add_rows_with_txn(&tx, documents)?;
-                tx.commit().map_err(tokio_rusqlite::Error::from)?;
+                let tx = conn.transaction()?;
+                let result = cloned.add_rows_with_txn(&tx, documents)?;
+                tx.commit()?;
+
                 Ok(result)
             })
             .await

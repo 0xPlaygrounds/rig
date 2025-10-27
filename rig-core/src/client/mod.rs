@@ -10,10 +10,33 @@ pub mod image_generation;
 pub mod transcription;
 pub mod verify;
 
-#[cfg(feature = "derive")]
-pub use rig_derive::ProviderClient;
-use std::fmt::Debug;
+use bytes::Bytes;
+pub use completion::CompletionClient;
+pub use embeddings::EmbeddingsClient;
+use http::HeaderMap;
+use serde::{Deserialize, Serialize};
+use std::{cell::Cell, fmt::Debug, marker::PhantomData};
 use thiserror::Error;
+pub use verify::{VerifyClient, VerifyError};
+
+#[cfg(feature = "image")]
+use crate::image_generation::ImageGenerationModel;
+#[cfg(feature = "image")]
+use image_generation::ImageGenerationClient;
+
+#[cfg(feature = "audio")]
+use crate::audio_generation::*;
+#[cfg(feature = "audio")]
+use audio_generation::*;
+
+use crate::{
+    completion::CompletionModel,
+    embeddings::EmbeddingModel,
+    http_client::{self, Builder, HttpClientExt, LazyBody, Request, Response},
+    prelude::TranscriptionClient,
+    transcription::TranscriptionModel,
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
+};
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -33,53 +56,18 @@ pub enum ClientBuilderError {
 ///
 /// All conversion traits must be implemented, they are automatically
 /// implemented if the respective client trait is implemented.
-pub trait ProviderClient:
-    AsCompletion
-    + AsTranscription
-    + AsEmbeddings
-    + AsImageGeneration
-    + AsAudioGeneration
-    + Debug
-    + WasmCompatSend
-    + WasmCompatSync
-{
+pub trait ProviderClient {
+    type Input;
+
     /// Create a client from the process's environment.
     /// Panics if an environment is improperly configured.
     fn from_env() -> Self
     where
         Self: Sized;
 
-    /// A helper method to box the client.
-    fn boxed(self) -> Box<dyn ProviderClient>
-    where
-        Self: Sized + 'static,
-    {
-        Box::new(self)
-    }
-
-    /// Create a boxed client from the process's environment.
-    /// Panics if an environment is improperly configured.
-    fn from_env_boxed<'a>() -> Box<dyn ProviderClient + 'a>
-    where
-        Self: Sized,
-        Self: 'a,
-    {
-        Box::new(Self::from_env())
-    }
-
-    fn from_val(input: ProviderValue) -> Self
+    fn from_val(input: Self::Input) -> Self
     where
         Self: Sized;
-
-    /// Create a boxed client from the process's environment.
-    /// Panics if an environment is improperly configured.
-    fn from_val_boxed<'a>(input: ProviderValue) -> Box<dyn ProviderClient + 'a>
-    where
-        Self: Sized,
-        Self: 'a,
-    {
-        Box::new(Self::from_val(input))
-    }
 }
 
 #[derive(Clone)]
@@ -126,947 +114,492 @@ where
     }
 }
 
-/// Attempt to convert a ProviderClient to a CompletionClient
-pub trait AsCompletion {
-    fn as_completion(&self) -> Option<Box<dyn CompletionClientDyn>> {
-        None
+use crate::completion::{GetTokenUsage, Usage};
+
+/// The final streaming response from a dynamic client.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FinalCompletionResponse {
+    pub usage: Option<Usage>,
+}
+
+impl GetTokenUsage for FinalCompletionResponse {
+    fn token_usage(&self) -> Option<Usage> {
+        self.usage
     }
 }
 
-/// Attempt to convert a ProviderClient to a TranscriptionClient
-pub trait AsTranscription {
-    fn as_transcription(&self) -> Option<Box<dyn TranscriptionClientDyn>> {
-        None
+pub struct Nothing;
+
+impl TryFrom<String> for Nothing {
+    type Error = String;
+
+    fn try_from(_: String) -> Result<Self, Self::Error> {
+        Ok(Nothing)
     }
 }
 
-/// Attempt to convert a ProviderClient to a EmbeddingsClient
-pub trait AsEmbeddings {
-    fn as_embeddings(&self) -> Option<Box<dyn EmbeddingsClientDyn>> {
-        None
+// So that i.e Ollama can ignore auth
+#[derive(Clone)]
+pub struct Client<Ext = Nothing, H = reqwest::Client> {
+    base_url: String,
+    headers: HeaderMap,
+    http_client: H,
+    ext: Ext,
+}
+
+pub trait DebugExt: Debug {
+    fn fields(&self) -> impl Iterator<Item = (&'static str, &dyn Debug)> {
+        std::iter::empty()
     }
 }
 
-/// Attempt to convert a ProviderClient to a AudioGenerationClient
-pub trait AsAudioGeneration {
-    #[cfg(feature = "audio")]
-    fn as_audio_generation(&self) -> Option<Box<dyn AudioGenerationClientDyn>> {
-        None
+impl<Ext, H> std::fmt::Debug for Client<Ext, H>
+where
+    Ext: DebugExt,
+    H: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut d = &mut f.debug_struct("Client");
+
+        d = d
+            .field("base_url", &self.base_url)
+            .field("headers", &self.headers)
+            .field("http_client", &self.http_client);
+
+        self.ext
+            .fields()
+            .fold(d, |d, (name, field)| d.field(name, field))
+            .finish()
     }
 }
 
-/// Attempt to convert a ProviderClient to a ImageGenerationClient
-pub trait AsImageGeneration {
+pub enum Transport {
+    Http,
+    Sse,
+    NdJson,
+}
+
+pub trait Provider {
+    const VERIFY_PATH: &'static str;
+
+    type Builder: ProviderBuilder;
+
+    fn build<H>(
+        builder: &ClientBuilder<Self::Builder, <Self::Builder as ProviderBuilder>::ApiKey, H>,
+    ) -> Self;
+
+    fn build_uri(&self, base_url: &str, path: &str, _transport: Transport) -> String {
+        base_url.to_string() + "/" + path.trim_start_matches('/')
+    }
+
+    fn with_custom(&self, req: http_client::Builder) -> http_client::Result<http_client::Builder> {
+        Ok(req)
+    }
+}
+
+pub struct Capable<M>(PhantomData<M>);
+
+pub trait Capability {
+    const CAPABLE: bool;
+}
+
+impl<M> Capability for Capable<M> {
+    const CAPABLE: bool = true;
+}
+
+impl Capability for Nothing {
+    const CAPABLE: bool = false;
+}
+
+pub trait Capabilities<H = reqwest::Client> {
+    type Completion: Capability;
+    type Embeddings: Capability;
+    type Transcription: Capability;
     #[cfg(feature = "image")]
-    fn as_image_generation(&self) -> Option<Box<dyn ImageGenerationClientDyn>> {
-        None
+    type ImageGeneration: Capability;
+    #[cfg(feature = "audio")]
+    type AudioGeneration: Capability;
+}
+
+pub trait ProviderBuilder: Sized {
+    type Output: Provider;
+    type ApiKey;
+
+    const BASE_URL: &'static str;
+
+    fn finish<H>(
+        &self,
+        builder: ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<ClientBuilder<Self, Self::ApiKey, H>> {
+        Ok(builder)
     }
 }
 
-/// Attempt to convert a ProviderClient to a VerifyClient
-pub trait AsVerify {
-    fn as_verify(&self) -> Option<Box<dyn VerifyClientDyn>> {
-        None
+impl<Ext, ExtBuilder, ApiKey, H> Client<Ext, H>
+where
+    ExtBuilder: Default + ProviderBuilder<Output = Ext, ApiKey = ApiKey>,
+    Ext: Provider<Builder = ExtBuilder>,
+    H: Default + HttpClientExt,
+{
+    pub fn new(api_key: impl Into<ApiKey>) -> http_client::Result<Self> {
+        Self::builder().api_key(api_key).build()
     }
 }
 
-#[cfg(not(feature = "audio"))]
-impl<T: ProviderClient> AsAudioGeneration for T {}
-
-#[cfg(not(feature = "image"))]
-impl<T: ProviderClient> AsImageGeneration for T {}
-
-#[macro_export]
-macro_rules! impl_conversion_traits {
-    ($( $trait_:ident ),* for $($type_spec:tt)+) => {
-        impl_conversion_traits!(@expand_traits [$($trait_)+] $($type_spec)+);
-    };
-
-    (@expand_traits [$trait_:ident $($rest_traits:ident)*] $($type_spec:tt)+) => {
-        impl_conversion_traits!(@impl $trait_ for $($type_spec)+);
-        impl_conversion_traits!(@expand_traits [$($rest_traits)*] $($type_spec)+);
-    };
-
-    (@expand_traits [] $($type_spec:tt)+) => {};
-
-    (@impl AsAudioGeneration for $($type_spec:tt)+) => {
-        rig::client::impl_audio_generation!($($type_spec)+);
-    };
-
-    (@impl AsImageGeneration for $($type_spec:tt)+) => {
-        rig::client::impl_image_generation!($($type_spec)+);
-    };
-
-    (@impl $trait_:ident for $($type_spec:tt)+) => {
-        impl_conversion_traits!(@impl_trait $trait_ for $($type_spec)+);
-    };
-
-    (@impl_trait $trait_:ident for $struct_:ident) => {
-        impl rig::client::$trait_ for $struct_ {}
-    };
-
-    (@impl_trait $trait_:ident for $struct_:ident<$($generics:tt),*>) => {
-        impl<$($generics),*> rig::client::$trait_ for $struct_<$($generics),*> {}
-    };
-}
-
-#[cfg(feature = "audio")]
-#[macro_export]
-macro_rules! impl_audio_generation {
-    ($struct_:ident) => {
-        impl rig::client::AsAudioGeneration for $struct_ {}
-    };
-    ($struct_:ident<$($generics:tt),*>) => {
-        impl<$($generics),*> rig::client::AsAudioGeneration for $struct_<$($generics),*> {}
-    };
-}
-
-#[cfg(not(feature = "audio"))]
-#[macro_export]
-macro_rules! impl_audio_generation {
-    ($($tokens:tt)*) => {};
-}
-
-#[cfg(feature = "image")]
-#[macro_export]
-macro_rules! impl_image_generation {
-    ($struct_:ident) => {
-        impl rig::client::AsImageGeneration for $struct_ {}
-    };
-    ($struct_:ident<$($generics:tt),*>) => {
-        impl<$($generics),*> rig::client::AsImageGeneration for $struct_<$($generics),*> {}
-    };
-}
-
-#[cfg(not(feature = "image"))]
-#[macro_export]
-macro_rules! impl_image_generation {
-    ($($tokens:tt)*) => {};
-}
-
-pub use impl_audio_generation;
-pub use impl_conversion_traits;
-pub use impl_image_generation;
-
-#[cfg(feature = "audio")]
-use crate::client::audio_generation::AudioGenerationClientDyn;
-use crate::client::completion::CompletionClientDyn;
-use crate::client::embeddings::EmbeddingsClientDyn;
-#[cfg(feature = "image")]
-use crate::client::image_generation::ImageGenerationClientDyn;
-use crate::client::transcription::TranscriptionClientDyn;
-use crate::client::verify::VerifyClientDyn;
-
-#[cfg(feature = "audio")]
-pub use crate::client::audio_generation::AudioGenerationClient;
-pub use crate::client::completion::CompletionClient;
-pub use crate::client::embeddings::EmbeddingsClient;
-#[cfg(feature = "image")]
-pub use crate::client::image_generation::ImageGenerationClient;
-pub use crate::client::transcription::TranscriptionClient;
-pub use crate::client::verify::{VerifyClient, VerifyError};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-
-#[cfg(test)]
-mod tests {
-    use crate::OneOrMany;
-    use crate::client::ProviderClient;
-    use crate::completion::{Completion, CompletionRequest, ToolDefinition};
-    use crate::image_generation::ImageGenerationRequest;
-    use crate::message::AssistantContent;
-    use crate::providers::{
-        anthropic, azure, cohere, deepseek, galadriel, gemini, huggingface, hyperbolic, mira,
-        moonshot, openai, openrouter, together, xai,
-    };
-    use crate::streaming::StreamingCompletion;
-    use crate::tool::Tool;
-    use crate::transcription::TranscriptionRequest;
-    use futures::StreamExt;
-    use rig::message::Message;
-    use rig::providers::{groq, ollama, perplexity};
-    use serde::{Deserialize, Serialize};
-    use serde_json::json;
-    use std::fs::File;
-    use std::io::Read;
-
-    use super::ProviderValue;
-
-    struct ClientConfig {
-        name: &'static str,
-        factory_env: Box<dyn Fn() -> Box<dyn ProviderClient>>,
-        // Not sure where we're going to be using this but I've added it for completeness
-        #[allow(dead_code)]
-        factory_val: Box<dyn Fn(ProviderValue) -> Box<dyn ProviderClient>>,
-        env_variable: &'static str,
-        completion_model: Option<&'static str>,
-        embeddings_model: Option<&'static str>,
-        transcription_model: Option<&'static str>,
-        image_generation_model: Option<&'static str>,
-        audio_generation_model: Option<(&'static str, &'static str)>,
+impl<Ext, H> Client<Ext, H> {
+    pub fn base_url(&self) -> &str {
+        &self.base_url
     }
 
-    impl Default for ClientConfig {
-        fn default() -> Self {
-            Self {
-                name: "",
-                factory_env: Box::new(|| panic!("Not implemented")),
-                factory_val: Box::new(|_| panic!("Not implemented")),
-                env_variable: "",
-                completion_model: None,
-                embeddings_model: None,
-                transcription_model: None,
-                image_generation_model: None,
-                audio_generation_model: None,
+    pub fn headers(&self) -> &HeaderMap {
+        &self.headers
+    }
+
+    pub fn http_client(&self) -> &H {
+        &self.http_client
+    }
+
+    pub fn ext(&self) -> &Ext {
+        &self.ext
+    }
+}
+
+impl<Ext, Builder, H> Client<Ext, H>
+where
+    H: Default + HttpClientExt,
+    Ext: Provider<Builder = Builder>,
+    Builder: Default + ProviderBuilder,
+{
+    pub fn builder() -> ClientBuilder<Builder, NeedsApiKey, H> {
+        ClientBuilder::default()
+    }
+}
+
+impl<Ext, H> Client<Ext, H>
+where
+    Ext: Provider,
+{
+    pub fn post<S>(&self, path: S) -> http_client::Result<Builder>
+    where
+        S: AsRef<str>,
+    {
+        let uri = self
+            .ext
+            .build_uri(&self.base_url, path.as_ref(), Transport::Http);
+
+        self.ext.with_custom(Request::post(uri))
+    }
+
+    pub fn post_sse<S>(&self, path: S) -> http_client::Result<Builder>
+    where
+        S: AsRef<str>,
+    {
+        let uri = self
+            .ext
+            .build_uri(&self.base_url, path.as_ref(), Transport::Sse);
+
+        self.ext.with_custom(Request::post(uri))
+    }
+
+    pub fn get<S>(&self, path: S) -> http_client::Result<Builder>
+    where
+        S: AsRef<str>,
+    {
+        let uri = self
+            .ext
+            .build_uri(&self.base_url, path.as_ref(), Transport::Http);
+
+        self.ext.with_custom(Request::get(uri))
+    }
+}
+
+impl<Ext, H> Client<Ext, H>
+where
+    H: HttpClientExt,
+{
+    pub async fn send<T, U>(&self, req: Request<T>) -> http_client::Result<Response<LazyBody<U>>>
+    where
+        T: Into<Bytes> + WasmCompatSend,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        self.http_client.send(req).await
+    }
+
+    pub async fn send_streaming<U, R>(
+        &self,
+        req: Request<U>,
+    ) -> Result<http_client::StreamingResponse, http_client::Error>
+    where
+        U: Into<Bytes>,
+    {
+        self.http_client.send_streaming(req).await
+    }
+}
+
+impl<Ext, H> VerifyClient for Client<Ext, H>
+where
+    H: HttpClientExt,
+    Ext: DebugExt + Provider + WasmCompatSync,
+{
+    async fn verify(&self) -> Result<(), VerifyError> {
+        use http::StatusCode;
+
+        let req = self
+            .get(Ext::VERIFY_PATH)?
+            .body(http_client::NoBody)
+            .map_err(http_client::Error::from)?;
+
+        let response = self.http_client.send(req).await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(()),
+            StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
+                Err(VerifyError::InvalidAuthentication)
             }
-        }
-    }
-
-    impl ClientConfig {
-        fn is_env_var_set(&self) -> bool {
-            self.env_variable.is_empty() || std::env::var(self.env_variable).is_ok()
-        }
-
-        fn factory_env(&self) -> Box<dyn ProviderClient + '_> {
-            self.factory_env.as_ref()()
-        }
-    }
-
-    fn providers() -> Vec<ClientConfig> {
-        vec![
-            ClientConfig {
-                name: "Anthropic",
-                factory_env: Box::new(anthropic::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(anthropic::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "ANTHROPIC_API_KEY",
-                completion_model: Some(anthropic::CLAUDE_3_5_SONNET),
-                ..Default::default()
-            },
-            ClientConfig {
-                name: "Cohere",
-                factory_env: Box::new(cohere::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(cohere::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "COHERE_API_KEY",
-                completion_model: Some(cohere::COMMAND_R),
-                embeddings_model: Some(cohere::EMBED_ENGLISH_LIGHT_V2),
-                ..Default::default()
-            },
-            ClientConfig {
-                name: "Gemini",
-                factory_env: Box::new(gemini::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(gemini::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "GEMINI_API_KEY",
-                completion_model: Some(gemini::completion::GEMINI_2_0_FLASH),
-                embeddings_model: Some(gemini::embedding::EMBEDDING_001),
-                transcription_model: Some(gemini::transcription::GEMINI_2_0_FLASH),
-                ..Default::default()
-            },
-            ClientConfig {
-                name: "Huggingface",
-                factory_env: Box::new(huggingface::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(huggingface::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "HUGGINGFACE_API_KEY",
-                completion_model: Some(huggingface::PHI_4),
-                transcription_model: Some(huggingface::WHISPER_SMALL),
-                image_generation_model: Some(huggingface::STABLE_DIFFUSION_3),
-                ..Default::default()
-            },
-            ClientConfig {
-                name: "OpenAI",
-                factory_env: Box::new(openai::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(openai::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "OPENAI_API_KEY",
-                completion_model: Some(openai::GPT_4O),
-                embeddings_model: Some(openai::TEXT_EMBEDDING_ADA_002),
-                transcription_model: Some(openai::WHISPER_1),
-                image_generation_model: Some(openai::DALL_E_2),
-                audio_generation_model: Some((openai::TTS_1, "onyx")),
-            },
-            ClientConfig {
-                name: "OpenRouter",
-                factory_env: Box::new(openrouter::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(openrouter::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "OPENROUTER_API_KEY",
-                completion_model: Some(openrouter::CLAUDE_3_7_SONNET),
-                ..Default::default()
-            },
-            ClientConfig {
-                name: "Together",
-                factory_env: Box::new(together::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(together::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "TOGETHER_API_KEY",
-                completion_model: Some(together::ALPACA_7B),
-                embeddings_model: Some(together::BERT_BASE_UNCASED),
-                ..Default::default()
-            },
-            ClientConfig {
-                name: "XAI",
-                factory_env: Box::new(xai::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(xai::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "XAI_API_KEY",
-                completion_model: Some(xai::GROK_3_MINI),
-                embeddings_model: None,
-                ..Default::default()
-            },
-            ClientConfig {
-                name: "Azure",
-                factory_env: Box::new(azure::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(azure::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "AZURE_API_KEY",
-                completion_model: Some(azure::GPT_4O),
-                embeddings_model: Some(azure::TEXT_EMBEDDING_ADA_002),
-                transcription_model: Some("whisper-1"),
-                image_generation_model: Some("dalle-2"),
-                audio_generation_model: Some(("tts-1", "onyx")),
-            },
-            ClientConfig {
-                name: "Deepseek",
-                factory_env: Box::new(deepseek::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(deepseek::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "DEEPSEEK_API_KEY",
-                completion_model: Some(deepseek::DEEPSEEK_CHAT),
-                ..Default::default()
-            },
-            ClientConfig {
-                name: "Galadriel",
-                factory_env: Box::new(galadriel::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(galadriel::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "GALADRIEL_API_KEY",
-                completion_model: Some(galadriel::GPT_4O),
-                ..Default::default()
-            },
-            ClientConfig {
-                name: "Groq",
-                factory_env: Box::new(groq::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(groq::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "GROQ_API_KEY",
-                completion_model: Some(groq::MIXTRAL_8X7B_32768),
-                transcription_model: Some(groq::DISTIL_WHISPER_LARGE_V3),
-                ..Default::default()
-            },
-            ClientConfig {
-                name: "Hyperbolic",
-                factory_env: Box::new(hyperbolic::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(hyperbolic::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "HYPERBOLIC_API_KEY",
-                completion_model: Some(hyperbolic::LLAMA_3_1_8B),
-                image_generation_model: Some(hyperbolic::SD1_5),
-                audio_generation_model: Some(("EN", "EN-US")),
-                ..Default::default()
-            },
-            ClientConfig {
-                name: "Mira",
-                factory_env: Box::new(mira::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(mira::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "MIRA_API_KEY",
-                completion_model: Some("gpt-4o"),
-                ..Default::default()
-            },
-            ClientConfig {
-                name: "Moonshot",
-                factory_env: Box::new(moonshot::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(moonshot::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "MOONSHOT_API_KEY",
-                completion_model: Some(moonshot::MOONSHOT_CHAT),
-                ..Default::default()
-            },
-            ClientConfig {
-                name: "Ollama",
-                factory_env: Box::new(ollama::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(ollama::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "OLLAMA_ENABLED",
-                completion_model: Some("llama3.1:8b"),
-                embeddings_model: Some(ollama::NOMIC_EMBED_TEXT),
-                ..Default::default()
-            },
-            ClientConfig {
-                name: "Perplexity",
-                factory_env: Box::new(perplexity::Client::<reqwest::Client>::from_env_boxed),
-                factory_val: Box::new(perplexity::Client::<reqwest::Client>::from_val_boxed),
-                env_variable: "PERPLEXITY_API_KEY",
-                completion_model: Some(perplexity::SONAR),
-                ..Default::default()
-            },
-        ]
-    }
-
-    async fn test_completions_client(config: &ClientConfig) {
-        let client = config.factory_env();
-
-        let Some(client) = client.as_completion() else {
-            return;
-        };
-
-        let model = config
-            .completion_model
-            .unwrap_or_else(|| panic!("{} does not have completion_model set", config.name));
-
-        let model = client.completion_model(model);
-
-        let resp = model
-            .completion_request(Message::user("Whats the capital of France?"))
-            .send()
-            .await;
-
-        assert!(
-            resp.is_ok(),
-            "[{}]: Error occurred when prompting, {}",
-            config.name,
-            resp.err().unwrap()
-        );
-
-        let resp = resp.unwrap();
-
-        match resp.choice.first() {
-            AssistantContent::Text(text) => {
-                assert!(text.text.to_lowercase().contains("paris"));
+            StatusCode::INTERNAL_SERVER_ERROR => {
+                let text = http_client::text(response).await?;
+                Err(VerifyError::ProviderError(text))
+            }
+            status if status.as_u16() == 529 => {
+                let text = http_client::text(response).await?;
+                Err(VerifyError::ProviderError(text))
             }
             _ => {
-                unreachable!(
-                    "[{}]: First choice wasn't a Text message, {:?}",
-                    config.name,
-                    resp.choice.first()
-                );
+                let status = response.status();
+
+                if status.is_success() {
+                    Ok(())
+                } else {
+                    let text: String = String::from_utf8_lossy(&response.into_body().await?).into();
+                    Err(VerifyError::HttpError(http_client::Error::Instance(
+                        format!("Failed with '{status}': {text}").into(),
+                    )))
+                }
             }
         }
     }
+}
 
-    #[tokio::test]
-    #[ignore]
-    async fn test_completions() {
-        for p in providers().into_iter().filter(ClientConfig::is_env_var_set) {
-            test_completions_client(&p).await;
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NeedsApiKey;
+
+// ApiKey is generic because Anthropic uses custom auth header, local models like Ollama use none
+pub struct ClientBuilder<Ext, ApiKey = NeedsApiKey, H = reqwest::Client> {
+    base_url: String,
+    api_key: ApiKey,
+    headers: HeaderMap,
+    http_client: H,
+    ext: Cell<Ext>,
+}
+
+impl<ExtBuilder, H> Default for ClientBuilder<ExtBuilder, NeedsApiKey, H>
+where
+    H: Default,
+    ExtBuilder: ProviderBuilder + Default,
+{
+    fn default() -> Self {
+        Self {
+            api_key: NeedsApiKey,
+            headers: Default::default(),
+            base_url: ExtBuilder::BASE_URL.into(),
+            http_client: Default::default(),
+            ext: Default::default(),
+        }
+    }
+}
+
+impl<Ext, H> ClientBuilder<Ext, NeedsApiKey, H> {
+    /// Set the API key for this client. This *must* be done before the `build` method can be
+    /// called
+    pub fn api_key<ApiKey>(self, api_key: impl Into<ApiKey>) -> ClientBuilder<Ext, ApiKey, H> {
+        ClientBuilder {
+            api_key: api_key.into(),
+            base_url: self.base_url,
+            headers: self.headers,
+            http_client: self.http_client,
+            ext: self.ext,
+        }
+    }
+}
+
+impl<Ext, ApiKey, H> ClientBuilder<Ext, ApiKey, H> {
+    /// Owned map over the ext field
+    pub(crate) fn over_ext<F, NewExt>(self, f: F) -> ClientBuilder<NewExt, ApiKey, H>
+    where
+        F: FnOnce(Ext) -> NewExt,
+    {
+        let ClientBuilder {
+            base_url,
+            api_key,
+            headers,
+            http_client,
+            ext,
+        } = self;
+
+        let new_ext = f(ext.into_inner());
+
+        ClientBuilder {
+            base_url,
+            api_key,
+            headers,
+            http_client,
+            ext: Cell::new(new_ext),
         }
     }
 
-    async fn test_tools_client(config: &ClientConfig) {
-        let client = config.factory_env();
-        let model = config
-            .completion_model
-            .unwrap_or_else(|| panic!("{} does not have the model set.", config.name));
-
-        let Some(client) = client.as_completion() else {
-            return;
-        };
-
-        let model = client.agent(model)
-            .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
-            .max_tokens(1024)
-            .tool(Adder)
-            .tool(Subtract)
-            .build();
-
-        let request = model.completion("Calculate 2 - 5", vec![]).await;
-
-        assert!(
-            request.is_ok(),
-            "[{}]: Error occurred when building prompt, {}",
-            config.name,
-            request.err().unwrap()
-        );
-
-        let resp = request.unwrap().send().await;
-
-        assert!(
-            resp.is_ok(),
-            "[{}]: Error occurred when prompting, {}",
-            config.name,
-            resp.err().unwrap()
-        );
-
-        let resp = resp.unwrap();
-
-        assert!(
-            resp.choice.iter().any(|content| match content {
-                AssistantContent::ToolCall(tc) => {
-                    if tc.function.name != Subtract::NAME {
-                        return false;
-                    }
-
-                    let arguments =
-                        serde_json::from_value::<OperationArgs>((tc.function.arguments).clone())
-                            .expect("Error parsing arguments");
-
-                    arguments.x == 2.0 && arguments.y == 5.0
-                }
-                _ => false,
-            }),
-            "[{}]: Model did not use the Subtract tool.",
-            config.name
-        )
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_tools() {
-        for p in providers().into_iter().filter(ClientConfig::is_env_var_set) {
-            test_tools_client(&p).await;
+    /// Set the base URL for this client
+    pub fn base_url<S>(self, base_url: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        Self {
+            base_url: base_url.as_ref().to_string(),
+            ..self
         }
     }
 
-    async fn test_streaming_client(config: &ClientConfig) {
-        let client = config.factory_env();
-
-        let Some(client) = client.as_completion() else {
-            return;
-        };
-
-        let model = config
-            .completion_model
-            .unwrap_or_else(|| panic!("{} does not have the model set.", config.name));
-
-        let model = client.completion_model(model);
-
-        let resp = model.stream(CompletionRequest {
-            preamble: None,
-            tools: vec![],
-            documents: vec![],
-            temperature: None,
-            max_tokens: None,
-            additional_params: None,
-            tool_choice: None,
-            chat_history: OneOrMany::one(Message::user("What is the capital of France?")),
-        });
-
-        let mut resp = resp.await.unwrap();
-
-        let mut received_chunk = false;
-
-        while let Some(chunk) = resp.next().await {
-            received_chunk = true;
-            assert!(chunk.is_ok());
-        }
-
-        assert!(
-            received_chunk,
-            "[{}]: Failed to receive a chunk from stream",
-            config.name
-        );
-
-        for choice in resp.choice {
-            match choice {
-                AssistantContent::Text(text) => {
-                    assert!(
-                        text.text.to_lowercase().contains("paris"),
-                        "[{}]: Did not answer with Paris",
-                        config.name
-                    );
-                }
-                AssistantContent::ToolCall(_) => {}
-                AssistantContent::Reasoning(_) => {}
-            }
+    /// Set the HTTP backend used in this client
+    pub fn http_client<U>(self, http_client: U) -> ClientBuilder<Ext, ApiKey, U> {
+        ClientBuilder {
+            http_client,
+            base_url: self.base_url,
+            api_key: self.api_key,
+            headers: self.headers,
+            ext: self.ext,
         }
     }
 
-    #[tokio::test]
-    #[ignore]
-    async fn test_streaming() {
-        for provider in providers().into_iter().filter(ClientConfig::is_env_var_set) {
-            test_streaming_client(&provider).await;
-        }
+    pub(crate) fn headers_mut(&mut self) -> &mut HeaderMap {
+        &mut self.headers
     }
 
-    async fn test_streaming_tools_client(config: &ClientConfig) {
-        let client = config.factory_env();
-        let model = config
-            .completion_model
-            .unwrap_or_else(|| panic!("{} does not have the model set.", config.name));
+    pub(crate) fn ext_mut(&mut self) -> &mut Ext {
+        self.ext.get_mut()
+    }
+}
 
-        let Some(client) = client.as_completion() else {
-            return;
-        };
+impl<Ext, ApiKey, H> ClientBuilder<Ext, ApiKey, H> {
+    pub(crate) fn get_api_key(&self) -> &ApiKey {
+        &self.api_key
+    }
+}
 
-        let model = client.agent(model)
-            .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
-            .max_tokens(1024)
-            .tool(Adder)
-            .tool(Subtract)
-            .build();
+impl<Ext, Key, H> ClientBuilder<Ext, Key, H> {
+    // FIXME: @FayCarsons - this sucks. We need the `Cell` elsewhere but it means we can't get an
+    // immutable reference
+    // I think we should just clone like fuck
+    pub fn ext(&self) -> Ext {
+        unsafe { self.ext.as_ptr().read() }
+    }
+}
 
-        let request = model.stream_completion("Calculate 2 - 5", vec![]).await;
+impl<Ext, ExtBuilder, ApiKey, H> ClientBuilder<ExtBuilder, ApiKey, H>
+where
+    ExtBuilder: ProviderBuilder<Output = Ext, ApiKey = ApiKey> + Default,
+    Ext: Provider<Builder = ExtBuilder>,
+{
+    pub fn build(mut self) -> http_client::Result<Client<ExtBuilder::Output, H>> {
+        // The beauty of `Cell<T>` - take `ext` out of Self, leaving default
+        // now we can use it to customize the rest of Self and then build
+        let ext = self.ext.take();
 
-        assert!(
-            request.is_ok(),
-            "[{}]: Error occurred when building prompt, {}",
-            config.name,
-            request.err().unwrap()
-        );
+        self = ext.finish(self)?;
+        let ext = Ext::build(&self);
 
-        let resp = request.unwrap().stream().await;
+        let ClientBuilder {
+            http_client,
+            base_url,
+            headers,
+            ..
+        } = self;
 
-        assert!(
-            resp.is_ok(),
-            "[{}]: Error occurred when prompting, {}",
-            config.name,
-            resp.err().unwrap()
-        );
+        Ok(Client {
+            http_client,
+            base_url,
+            headers,
+            ext,
+        })
+    }
+}
 
-        let mut resp = resp.unwrap();
+impl<M, Ext, H> CompletionClient for Client<Ext, H>
+where
+    Ext: Capabilities<H, Completion = Capable<M>>,
+    M: CompletionModel<Client = Self>,
+{
+    type CompletionModel = M;
 
-        let mut received_chunk = false;
+    fn completion_model(
+        &self,
+        model: impl Into<<Self::CompletionModel as CompletionModel>::Models>,
+    ) -> Self::CompletionModel {
+        M::make(self, model)
+    }
+}
 
-        while let Some(chunk) = resp.next().await {
-            received_chunk = true;
-            assert!(chunk.is_ok());
-        }
+impl<M, Ext, H> EmbeddingsClient for Client<Ext, H>
+where
+    Ext: Capabilities<H, Embeddings = Capable<M>>,
+    M: EmbeddingModel<Client = Self>,
+{
+    type EmbeddingModel = M;
 
-        assert!(
-            received_chunk,
-            "[{}]: Failed to receive a chunk from stream",
-            config.name
-        );
-
-        assert!(
-            resp.choice.iter().any(|content| match content {
-                AssistantContent::ToolCall(tc) => {
-                    if tc.function.name != Subtract::NAME {
-                        return false;
-                    }
-
-                    let arguments =
-                        serde_json::from_value::<OperationArgs>((tc.function.arguments).clone())
-                            .expect("Error parsing arguments");
-
-                    arguments.x == 2.0 && arguments.y == 5.0
-                }
-                _ => false,
-            }),
-            "[{}]: Model did not use the Subtract tool.",
-            config.name
-        )
+    fn embedding_model(&self, model: <M as EmbeddingModel>::Models) -> Self::EmbeddingModel {
+        M::make(self, model, None)
     }
 
-    #[tokio::test]
-    #[ignore]
-    async fn test_streaming_tools() {
-        for p in providers().into_iter().filter(ClientConfig::is_env_var_set) {
-            test_streaming_tools_client(&p).await;
-        }
+    fn embedding_model_with_ndims(
+        &self,
+        model: <M as EmbeddingModel>::Models,
+        ndims: usize,
+    ) -> Self::EmbeddingModel {
+        M::make(self, model, Some(ndims))
     }
+}
 
-    async fn test_audio_generation_client(config: &ClientConfig) {
-        let client = config.factory_env();
+impl<M, Ext, H> TranscriptionClient for Client<Ext, H>
+where
+    Ext: Capabilities<H, Transcription = Capable<M>>,
+    M: TranscriptionModel<Client = Self> + WasmCompatSend,
+{
+    type TranscriptionModel = M;
 
-        let Some(client) = client.as_audio_generation() else {
-            return;
-        };
-
-        let (model, voice) = config
-            .audio_generation_model
-            .unwrap_or_else(|| panic!("{} doesn't have the model set", config.name));
-
-        let model = client.audio_generation_model(model);
-
-        let request = model
-            .audio_generation_request()
-            .text("Hello world!")
-            .voice(voice);
-
-        let resp = request.send().await;
-
-        assert!(
-            resp.is_ok(),
-            "[{}]: Error occurred when sending request, {}",
-            config.name,
-            resp.err().unwrap()
-        );
-
-        let resp = resp.unwrap();
-
-        assert!(
-            !resp.audio.is_empty(),
-            "[{}]: Returned audio was empty",
-            config.name
-        );
+    fn transcription_model(
+        &self,
+        model: <M as TranscriptionModel>::Models,
+    ) -> Self::TranscriptionModel {
+        M::make(self, model)
     }
+}
 
-    #[tokio::test]
-    #[ignore]
-    async fn test_audio_generation() {
-        for p in providers().into_iter().filter(ClientConfig::is_env_var_set) {
-            test_audio_generation_client(&p).await;
-        }
+#[cfg(feature = "image")]
+impl<M, Ext, H> ImageGenerationClient for Client<Ext, H>
+where
+    Ext: Capabilities<H, ImageGeneration = Capable<M>>,
+    M: ImageGenerationModel<Client = Self>,
+{
+    type ImageGenerationModel = M;
+
+    fn image_generation_model(
+        &self,
+        model: <M as ImageGenerationModel>::Models,
+    ) -> <Self as ImageGenerationClient>::ImageGenerationModel {
+        M::make(self, model)
     }
+}
 
-    fn assert_feature<F, M>(
-        name: &str,
-        feature_name: &str,
-        model_name: &str,
-        feature: Option<F>,
-        model: Option<M>,
-    ) {
-        assert_eq!(
-            feature.is_some(),
-            model.is_some(),
-            "{} has{} implemented {} but config.{} is {}.",
-            name,
-            if feature.is_some() { "" } else { "n't" },
-            feature_name,
-            model_name,
-            if model.is_some() { "some" } else { "none" }
-        );
-    }
+#[cfg(feature = "audio")]
+impl<M, Model, Ext, H> AudioGenerationClient for Client<Ext, H>
+where
+    Ext: Capabilities<H, ImageGeneration = Capable<M>>,
+    M: AudioGenerationModel<Client = Self, Model = Model>,
+{
+    type AudioGenerationModel = M;
 
-    #[test]
-    #[ignore]
-    pub fn test_polymorphism() {
-        for config in providers().into_iter().filter(ClientConfig::is_env_var_set) {
-            let client = config.factory_env();
-            assert_feature(
-                config.name,
-                "AsCompletion",
-                "completion_model",
-                client.as_completion(),
-                config.completion_model,
-            );
-
-            assert_feature(
-                config.name,
-                "AsEmbeddings",
-                "embeddings_model",
-                client.as_embeddings(),
-                config.embeddings_model,
-            );
-
-            assert_feature(
-                config.name,
-                "AsTranscription",
-                "transcription_model",
-                client.as_transcription(),
-                config.transcription_model,
-            );
-
-            assert_feature(
-                config.name,
-                "AsImageGeneration",
-                "image_generation_model",
-                client.as_image_generation(),
-                config.image_generation_model,
-            );
-
-            assert_feature(
-                config.name,
-                "AsAudioGeneration",
-                "audio_generation_model",
-                client.as_audio_generation(),
-                config.audio_generation_model,
-            )
-        }
-    }
-
-    async fn test_embed_client(config: &ClientConfig) {
-        const TEST: &str = "Hello world.";
-
-        let client = config.factory_env();
-
-        let Some(client) = client.as_embeddings() else {
-            return;
-        };
-
-        let model = config.embeddings_model.unwrap();
-
-        let model = client.embedding_model(model);
-
-        let resp = model.embed_text(TEST).await;
-
-        assert!(
-            resp.is_ok(),
-            "[{}]: Error occurred when sending request, {}",
-            config.name,
-            resp.err().unwrap()
-        );
-
-        let resp = resp.unwrap();
-
-        assert_eq!(resp.document, TEST);
-
-        assert!(
-            !resp.vec.is_empty(),
-            "[{}]: Returned embed was empty",
-            config.name
-        );
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_embed() {
-        for config in providers().into_iter().filter(ClientConfig::is_env_var_set) {
-            test_embed_client(&config).await;
-        }
-    }
-
-    async fn test_image_generation_client(config: &ClientConfig) {
-        let client = config.factory_env();
-        let Some(client) = client.as_image_generation() else {
-            return;
-        };
-
-        let model = config.image_generation_model.unwrap();
-
-        let model = client.image_generation_model(model);
-
-        let resp = model
-            .image_generation(ImageGenerationRequest {
-                prompt: "A castle sitting on a large hill.".to_string(),
-                width: 256,
-                height: 256,
-                additional_params: None,
-            })
-            .await;
-
-        assert!(
-            resp.is_ok(),
-            "[{}]: Error occurred when sending request, {}",
-            config.name,
-            resp.err().unwrap()
-        );
-
-        let resp = resp.unwrap();
-
-        assert!(
-            !resp.image.is_empty(),
-            "[{}]: Generated image was empty",
-            config.name
-        );
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_image_generation() {
-        for config in providers().into_iter().filter(ClientConfig::is_env_var_set) {
-            test_image_generation_client(&config).await;
-        }
-    }
-
-    async fn test_transcription_client(config: &ClientConfig, data: Vec<u8>) {
-        let client = config.factory_env();
-        let Some(client) = client.as_transcription() else {
-            return;
-        };
-
-        let model = config.image_generation_model.unwrap();
-
-        let model = client.transcription_model(model);
-
-        let resp = model
-            .transcription(TranscriptionRequest {
-                data,
-                filename: "audio.mp3".to_string(),
-                language: None,
-                prompt: None,
-                temperature: None,
-                additional_params: None,
-            })
-            .await;
-
-        assert!(
-            resp.is_ok(),
-            "[{}]: Error occurred when sending request, {}",
-            config.name,
-            resp.err().unwrap()
-        );
-
-        let resp = resp.unwrap();
-
-        assert!(
-            !resp.text.is_empty(),
-            "[{}]: Returned transcription was empty",
-            config.name
-        );
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_transcription() {
-        let mut file = File::open("examples/audio/en-us-natural-speech.mp3").unwrap();
-
-        let mut data = Vec::new();
-        let _ = file.read(&mut data);
-
-        for config in providers().into_iter().filter(ClientConfig::is_env_var_set) {
-            test_transcription_client(&config, data.clone()).await;
-        }
-    }
-
-    #[derive(Deserialize)]
-    struct OperationArgs {
-        x: f32,
-        y: f32,
-    }
-
-    #[derive(Debug, thiserror::Error)]
-    #[error("Math error")]
-    struct MathError;
-
-    #[derive(Deserialize, Serialize)]
-    struct Adder;
-    impl Tool for Adder {
-        const NAME: &'static str = "add";
-
-        type Error = MathError;
-        type Args = OperationArgs;
-        type Output = f32;
-
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            ToolDefinition {
-                name: "add".to_string(),
-                description: "Add x and y together".to_string(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": {
-                        "x": {
-                            "type": "number",
-                            "description": "The first number to add"
-                        },
-                        "y": {
-                            "type": "number",
-                            "description": "The second number to add"
-                        }
-                    }
-                }),
-            }
-        }
-
-        async fn call(&self, args: Self::Args) -> anyhow::Result<Self::Output, Self::Error> {
-            println!("[tool-call] Adding {} and {}", args.x, args.y);
-            let result = args.x + args.y;
-            Ok(result)
-        }
-    }
-
-    #[derive(Deserialize, Serialize)]
-    struct Subtract;
-    impl Tool for Subtract {
-        const NAME: &'static str = "subtract";
-
-        type Error = MathError;
-        type Args = OperationArgs;
-        type Output = f32;
-
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            serde_json::from_value(json!({
-                "name": "subtract",
-                "description": "Subtract y from x (i.e.: x - y)",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "x": {
-                            "type": "number",
-                            "description": "The number to subtract from"
-                        },
-                        "y": {
-                            "type": "number",
-                            "description": "The number to subtract"
-                        }
-                    }
-                }
-            }))
-            .expect("Tool Definition")
-        }
-
-        async fn call(&self, args: Self::Args) -> anyhow::Result<Self::Output, Self::Error> {
-            println!("[tool-call] Subtracting {} from {}", args.y, args.x);
-            let result = args.x - args.y;
-            Ok(result)
-        }
+    fn audio_generation_model(
+        &self,
+        model: impl Into<<Self::AudioGenerationModel as AudioGenerationModel>::Model>,
+    ) -> Self::AudioGenerationModel {
+        M::make(self, model.into())
     }
 }

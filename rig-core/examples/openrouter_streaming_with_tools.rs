@@ -93,7 +93,7 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     // Create agent with a single context prompt and two tools
     let calculator_agent = providers::openrouter::Client::from_env()
-        .agent(providers::openrouter::GEMINI_FLASH_2_0)
+        .agent(providers::openrouter::GeminiFlash2.to_string())
         .preamble(
             "You are a calculator here to help the user perform arithmetic
             operations. Use the tools provided to answer the user's question.
