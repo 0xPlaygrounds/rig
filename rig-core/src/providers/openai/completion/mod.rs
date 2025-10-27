@@ -818,8 +818,11 @@ where
 pub struct CompletionRequest {
     model: String,
     messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<ToolDefinition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<ToolChoice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
     #[serde(flatten)]
     additional_params: Option<serde_json::Value>,
