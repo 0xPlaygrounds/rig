@@ -33,6 +33,10 @@ name = "vector_search_local_ann"
 required-features = ["rig-core/derive"]
 
 [[example]]
+name = "vector_search_local_ann_agent"
+required-features = ["rig-core/derive"]
+
+[[example]]
 name = "vector_search_local_enn"
 required-features = ["rig-core/derive"]
 
