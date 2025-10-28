@@ -238,6 +238,7 @@ async fn main() -> anyhow::Result<()> {
         client_info: Implementation {
             name: "rig-core".to_string(),
             version: "0.13.0".to_string(),
+            ..Default::default()
         },
     };
 
