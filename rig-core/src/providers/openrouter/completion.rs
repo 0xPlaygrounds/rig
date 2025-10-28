@@ -46,7 +46,7 @@ pub struct CompletionResponse {
 
 impl From<ApiErrorResponse> for CompletionError {
     fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
+        CompletionError::ProviderError(err.error.message)
     }
 }
 
@@ -301,7 +301,7 @@ where
                             "OpenRouter response: {response:?}");
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.error.message)),
                 }
             } else {
                 Err(CompletionError::ProviderError(

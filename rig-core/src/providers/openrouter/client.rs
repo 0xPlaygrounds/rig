@@ -209,7 +209,19 @@ impl_conversion_traits!(
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ApiErrorResponse {
+    pub error: ErrorDetails,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ErrorDetails {
     pub message: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub code: Option<serde_json::Value>,
+    #[serde(rename = "type")]
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub error_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
