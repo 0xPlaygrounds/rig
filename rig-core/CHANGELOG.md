@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.23.0...rig-core-v0.23.1) - 2025-10-28
+
+### Fixed
+
+- compliance with OpenAI API  stream error "message":"Model field is required." ([#1006](https://github.com/0xPlaygrounds/rig/pull/1006))
+
 ## [0.23.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.22.0...rig-core-v0.23.0) - 2025-10-27
 
 ### Added
