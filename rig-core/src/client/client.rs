@@ -1,69 +1,54 @@
-use std::fmt::DebugStruct;
-
 use bytes::Bytes;
 use http::{HeaderMap, HeaderName, HeaderValue};
+use std::fmt::{Debug, DebugStruct};
 
+#[cfg(feature = "image")]
+use crate::client::ImageGenerationClient;
 use crate::{
-    client::{EmbeddingsClient, ProviderClient, VerifyClient, VerifyError},
+    client::{
+        AsAudioGeneration, AsCompletion, AsEmbeddings, AsImageGeneration, AsTranscription,
+        CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient, VerifyClient,
+        VerifyError,
+    },
     http_client::{self, Builder, HttpClientExt, LazyBody, Request, Response},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
 pub struct Nothing;
 
-#[derive(Clone)]
-pub struct Client<'a, Ext = Nothing, H = reqwest::Client> {
-    base_url: &'a str,
-    headers: HeaderMap,
-    http_client: H,
-    ext: Ext,
-}
+pub struct ApiKey(String);
 
-pub struct ApiKey<'a>(&'a str);
-
-impl<'a> From<&'a str> for ApiKey<'a> {
-    fn from(value: &'a str) -> Self {
-        Self(value)
+impl From<&str> for ApiKey {
+    fn from(value: &str) -> Self {
+        Self(value.into())
     }
 }
 
-pub trait IntoHeader {
-    fn make_header(self) -> Option<http_client::Result<(HeaderName, HeaderValue)>>;
-}
-
-impl<'a> IntoHeader for ApiKey<'a> {
-    fn make_header(self) -> Option<http_client::Result<(HeaderName, HeaderValue)>> {
-        Some(
-            HeaderValue::from_str(self.0)
-                .map(|val| (HeaderName::from_static("AUTHORIZATION"), val))
-                .map_err(|e| http_client::Error::from(http::Error::from(e))),
-        )
-    }
-}
-
-// So that i.e Ollama can ignore auth
-impl IntoHeader for Nothing {
+pub trait IntoHeader: Sized {
     fn make_header(self) -> Option<http_client::Result<(HeaderName, HeaderValue)>> {
         None
     }
 }
 
-pub trait ClientSpecific<'a> {
-    type ApiKey: IntoHeader + From<&'a str>;
+impl IntoHeader for ApiKey {
+    fn make_header(self) -> Option<http_client::Result<(HeaderName, HeaderValue)>> {
+        let header = HeaderValue::from_str(&self.0)
+            .map(|val| (HeaderName::from_static("AUTHORIZATION"), val))
+            .map_err(|e| http_client::Error::from(http::Error::from(e)));
 
-    const BASE_URL: &'static str;
-    const VERIFY_PATH: &'static str;
-
-    fn with_custom(&self, req: Builder) -> http_client::Result<Builder> {
-        Ok(req)
+        Some(header)
     }
 }
 
-pub trait ClientExtBuilder<'a> {
-    type Extension: ClientSpecific<'a>;
+// So that i.e Ollama can ignore auth
+impl IntoHeader for Nothing {}
 
-    fn customize(&self, headers: HeaderMap) -> http_client::Result<HeaderMap>;
-    fn build(self) -> Self::Extension;
+#[derive(Clone)]
+pub struct Client<Ext = Nothing, H = reqwest::Client> {
+    base_url: &'static str,
+    headers: HeaderMap,
+    http_client: H,
+    ext: Ext,
 }
 
 pub trait DebugExt {
@@ -72,15 +57,7 @@ pub trait DebugExt {
         'a: 'b;
 }
 
-// #[derive(Clone)]
-// pub struct Client<'a, Ext = Nothing, H = reqwest::Client> {
-//     base_url: &'a str,
-//     headers: HeaderMap,
-//     http_client: H,
-//     ext: Ext,
-// }
-
-impl<'a, Ext, H> std::fmt::Debug for Client<'a, Ext, H>
+impl<Ext, H> std::fmt::Debug for Client<Ext, H>
 where
     Ext: DebugExt,
     H: std::fmt::Debug,
@@ -97,20 +74,52 @@ where
     }
 }
 
-impl<'a, Ext, H> Client<'a, Ext, H>
-where
-    Ext: ClientSpecific<'a> + Default,
-    H: Default,
-{
-    pub fn new(api_key: &str) -> http_client::Result<Self> {
-        ClientBuilder::default().api_key(api_key).build()
+pub trait Provider {
+    type ApiKey: IntoHeader + From<String>;
+    type Builder;
+
+    const VERIFY_PATH: &'static str;
+
+    fn build(builder: Self::Builder) -> Self;
+
+    fn with_custom(&self, req: http_client::Builder) -> http_client::Result<http_client::Builder> {
+        Ok(req)
     }
 }
 
-impl<'a, Ext, H> Client<'a, Ext, H>
+pub trait ProviderBuilder: Sized {
+    const BASE_URL: &'static str;
+
+    fn finish<Key, H>(&self, headers: &mut HeaderMap) -> http_client::Result<()>;
+}
+
+impl<Ext, ExtBuilder, ApiKey, H> Client<Ext, H>
+where
+    ApiKey: From<String> + IntoHeader,
+    ExtBuilder: Default + ProviderBuilder,
+    Ext: Provider<ApiKey = ApiKey, Builder = ExtBuilder> + Default,
+    H: Default,
+{
+    pub fn new(api_key: &str) -> http_client::Result<Self> {
+        Self::builder().api_key::<ApiKey>(api_key).build()
+    }
+}
+
+impl<Ext, ExtBuilder, H> Client<Ext, H>
+where
+    H: Default,
+    Ext: Default + Provider<Builder = ExtBuilder>,
+    ExtBuilder: Default + ProviderBuilder,
+{
+    pub fn builder() -> ClientBuilder<ExtBuilder, NeedsApiKey, H> {
+        ClientBuilder::default()
+    }
+}
+
+impl<Ext, H> Client<Ext, H>
 where
     H: HttpClientExt,
-    Ext: ClientSpecific<'a>,
+    Ext: Provider,
 {
     fn build_uri(&self, path: &str) -> String {
         self.base_url.to_string() + "/" + path.trim_start_matches('/')
@@ -132,7 +141,7 @@ where
         self.http_client.send(req).await
     }
 
-    pub async fn send_streaming<U>(
+    pub async fn send_streaming<U, R>(
         &self,
         req: Request<U>,
     ) -> Result<http_client::StreamingResponse, http_client::Error>
@@ -143,11 +152,105 @@ where
     }
 }
 
-impl<'a, Ext, H, Key> ProviderClient for Client<'a, Ext, H>
+/*
+impl<Ext, H> EmbeddingsClient for Client<Ext, H>
 where
-    Ext: ClientSpecific<'a, ApiKey = Key> + Default + Clone,
-    Key: From<&'a str>,
-    H: Default + Clone,
+    H: Default + Debug + Clone + WasmCompatSend + WasmCompatSync,
+    Ext: EmbeddingsClient + Provider + DebugExt,
+    Ext::Builder: Default,
+    Self: ProviderClient,
+{
+    type EmbeddingModel = Ext::EmbeddingModel;
+
+    fn embedding_model(&self, model: &str) -> Self::EmbeddingModel {
+        self.ext.embedding_model(model)
+    }
+
+    fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> Self::EmbeddingModel {
+        self.ext.embedding_model_with_ndims(model, ndims)
+    }
+}
+
+impl<Ext, H> TranscriptionClient for Client<Ext, H>
+where
+    H: Default + Debug + Clone + WasmCompatSend + WasmCompatSync,
+    Ext: TranscriptionClient + Provider + DebugExt,
+    Ext::Builder: Default,
+    Self: ProviderClient,
+{
+    type TranscriptionModel = Ext::TranscriptionModel;
+
+    fn transcription_model(&self, model: &str) -> Self::TranscriptionModel {
+        self.ext.transcription_model(model)
+    }
+}
+
+#[cfg(feature = "image")]
+impl<Ext, H> ImageGenerationClient for Client<Ext, H>
+where
+    H: Default + Debug + Clone + WasmCompatSend + WasmCompatSync,
+    Ext: ImageGenerationClient + Provider + DebugExt,
+    Ext::Builder: Default,
+    Self: ProviderClient,
+{
+    type ImageGenerationModel = <Ext as ImageGenerationClient>::ImageGenerationModel;
+
+    fn image_generation_model(
+        &self,
+        model: &str,
+    ) -> <Self as ImageGenerationClient>::ImageGenerationModel {
+        self.ext.image_generation_model(model)
+    }
+}
+
+impl<Ext, H> CompletionClient for Client<Ext, H>
+where
+    H: Default + Debug + Clone + WasmCompatSend + WasmCompatSync,
+    Ext: CompletionClient + Provider + DebugExt,
+    Ext::Builder: Default,
+    Self: ProviderClient,
+{
+    type CompletionModel = Ext::CompletionModel;
+
+    fn completion_model(&self, model: &str) -> Self::CompletionModel {
+        self.ext.completion_model(model)
+    }
+
+    fn agent(&self, model: &str) -> crate::agent::AgentBuilder<Self::CompletionModel> {
+        self.ext.agent(model)
+    }
+
+    fn extractor<T>(
+        &self,
+        model: &str,
+    ) -> crate::extractor::ExtractorBuilder<Self::CompletionModel, T>
+    where
+        T: schemars::JsonSchema + for<'a> serde::Deserialize<'a> + serde::Serialize + Send + Sync,
+    {
+        self.ext.extractor(model)
+    }
+}
+
+#[cfg(feature = "audio")]
+impl<Ext, H> AudioGenerationClient for Client<Ext, H>
+where
+    H: Default + Debug + Clone + WasmCompatSend + WasmCompatSync,
+    Ext: CompletionClient + Provider + DebugExt,
+    Ext::Builder: Default,
+{
+    type AudioGenerationModel = Ext::AudioGenerationModel;
+
+    fn audio_generation_model(&self, model: &str) -> Self::AudioGenerationModel {
+        self.ext.audio_generation_model(model)
+    }
+}
+
+impl<Ext, Builder, H> ProviderClient for Client<Ext, H>
+where
+    H: std::fmt::Debug + Default + Clone + WasmCompatSend + WasmCompatSync,
+    Ext: Provider<Builder = Builder> + DebugExt + Clone + WasmCompatSend + WasmCompatSync,
+    Builder: Default,
+    Self: AsEmbeddings + AsImageGeneration + AsAudioGeneration + AsCompletion + AsTranscription,
 {
     // FIXME: Realistically, the users API key could contain some invalid characters which could
     // cause this to fail i.e. from incorrectly reading secrets
@@ -155,7 +258,10 @@ where
     fn from_env() -> Self {
         let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
 
-        Client::new(&api_key).expect("Default client should build")
+        Client::builder()
+            .api_key(&api_key)
+            .build()
+            .expect("Default client should build")
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
@@ -163,24 +269,19 @@ where
             panic!("Incorrect provider value type")
         };
 
-        Client::new(&api_key).expect("Default client should build")
+        Client::builder()
+            .api_key(&api_key)
+            .build()
+            .expect("Default client should build")
     }
 }
+*/
 
-impl<'a, Ext, H> Client<'a, Ext, H>
+impl<Ext, H> VerifyClient for Client<Ext, H>
 where
-    H: Default,
-    Ext: Default + ClientSpecific<'a>,
-{
-    pub fn builder() -> ClientBuilder<NeedsApiKey, Ext, H> {
-        ClientBuilder::default()
-    }
-}
-
-impl<'a, Ext, H> VerifyClient for Client<'a, Ext, H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + Default + Clone,
-    Ext: ClientSpecific<'a> + WasmCompatSend + WasmCompatSync + Default + Clone,
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + std::fmt::Debug + Default + Clone,
+    Ext: DebugExt + Provider + WasmCompatSend + WasmCompatSync + Default + Clone,
+    Ext::Builder: Default,
 {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
@@ -230,31 +331,43 @@ pub struct ClientBuilder<Ext, ApiKey = NeedsApiKey, H = reqwest::Client> {
     api_key: ApiKey,
     headers: HeaderMap,
     http_client: H,
-    pub(crate) ext: Ext,
+    ext: Ext,
 }
 
-impl<'a, Ext, H> Default for ClientBuilder<Ext, NeedsApiKey, H>
+impl<'a, ExtBuilder, H> Default for ClientBuilder<ExtBuilder, NeedsApiKey, H>
 where
     H: Default,
-    Ext: Default + ClientSpecific<'a>,
+    ExtBuilder: ProviderBuilder + Default,
 {
     fn default() -> Self {
         Self {
             api_key: NeedsApiKey,
             headers: Default::default(),
-            base_url: Ext::BASE_URL,
+            base_url: ExtBuilder::BASE_URL,
             http_client: Default::default(),
             ext: Default::default(),
         }
     }
 }
 
-impl<'a, Ext, ApiKey, H> ClientBuilder<Ext, ApiKey, H>
-where
-    ApiKey: From<&'a str>,
-{
+impl<'a, Ext, H> ClientBuilder<Ext, NeedsApiKey, H> {
+    pub fn api_key<ApiKey>(self, api_key: &'a str) -> ClientBuilder<Ext, ApiKey, H>
+    where
+        ApiKey: From<String>,
+    {
+        ClientBuilder {
+            api_key: ApiKey::from(api_key.into()),
+            base_url: self.base_url,
+            headers: self.headers,
+            http_client: self.http_client,
+            ext: self.ext,
+        }
+    }
+}
+
+impl<'a, Ext, ApiKey, H> ClientBuilder<Ext, ApiKey, H> {
     /// Map over the ext field
-    pub(crate) fn with_client_specific<F>(self, f: F) -> Self
+    pub(crate) fn over_ext<F>(self, f: F) -> Self
     where
         F: Fn(Ext) -> Ext,
     {
@@ -268,17 +381,7 @@ where
         Self { base_url, ..self }
     }
 
-    pub fn api_key(self, api_key: &'a str) -> ClientBuilder<Ext, ApiKey, H> {
-        ClientBuilder {
-            api_key: ApiKey::from(api_key),
-            base_url: self.base_url,
-            headers: self.headers,
-            http_client: self.http_client,
-            ext: self.ext,
-        }
-    }
-
-    pub fn http_client<U>(self, http_client: U) -> ClientBuilder<ApiKey, Ext, U> {
+    pub fn http_client<U>(self, http_client: U) -> ClientBuilder<Ext, ApiKey, U> {
         ClientBuilder {
             http_client,
             base_url: self.base_url,
@@ -287,17 +390,31 @@ where
             ext: self.ext,
         }
     }
+
+    pub(crate) fn headers_mut(&mut self) -> &mut HeaderMap {
+        &mut self.headers
+    }
+
+    pub(crate) fn ext(&self) -> &Ext {
+        &self.ext
+    }
+
+    pub(crate) fn ext_mut(&mut self) -> &mut Ext {
+        &mut self.ext
+    }
 }
 
-impl<'a, HasApiKey, Ext, H> ClientBuilder<Ext, HasApiKey, H>
+impl<HasApiKey, ExtBuilder, H> ClientBuilder<ExtBuilder, HasApiKey, H>
 where
-    HasApiKey: IntoHeader + From<&'a str>,
+    HasApiKey: IntoHeader + From<String>,
+    ExtBuilder: ProviderBuilder,
 {
-    pub fn build<ClientExt>(self) -> http_client::Result<Client<'a, ClientExt, H>>
+    pub fn build<Ext>(mut self) -> http_client::Result<Client<Ext, H>>
     where
-        ClientExt: ClientSpecific<'a, ApiKey = HasApiKey>,
-        Ext: ClientExtBuilder<'a, Extension = ClientExt>,
+        Ext: Provider<Builder = ExtBuilder, ApiKey = HasApiKey>,
     {
+        self.ext.finish::<HasApiKey, H>(self.headers_mut());
+
         let ClientBuilder {
             http_client,
             base_url,
@@ -305,8 +422,6 @@ where
             ext,
             ..
         } = self;
-
-        let ext = ext.build();
 
         if let Some((k, v)) = self.api_key.make_header().transpose()? {
             headers.insert(k, v);
@@ -316,7 +431,7 @@ where
             http_client,
             base_url,
             headers,
-            ext,
+            ext: Ext::build(ext),
         })
     }
 }

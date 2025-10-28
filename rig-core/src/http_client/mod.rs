@@ -19,6 +19,8 @@ pub enum Error {
     InvalidStatusCode(StatusCode),
     #[error("Invalid status code {0} with message: {1}")]
     InvalidStatusCodeWithMessage(StatusCode, String),
+    #[error("Header value outside of legal range: {0}")]
+    InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
     #[error("Stream ended")]
     StreamEnded,
     #[error("Invalid content type was returned: {0:?}")]
@@ -47,7 +49,7 @@ fn instance_error<E: std::error::Error + 'static>(error: E) -> Error {
 pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
 pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
 
-pub type StreamingResponse<T> = Response<T>;
+pub type StreamingResponse = Response<BoxedStream>;
 
 pub struct NoBody;
 
@@ -101,7 +103,7 @@ pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
     fn send_streaming<T>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse<BoxedStream>>> + WasmCompatSend
+    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
     where
         T: Into<Bytes>;
 }
@@ -196,7 +198,7 @@ impl HttpClientExt for reqwest::Client {
     fn send_streaming<T>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse<BoxedStream>>> + WasmCompatSend
+    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
     where
         T: Into<Bytes>,
     {

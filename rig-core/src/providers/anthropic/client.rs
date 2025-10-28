@@ -7,90 +7,98 @@ use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
 use crate::{
     client::{
         CompletionClient,
-        client::{self, ClientExtBuilder, ClientSpecific, IntoHeader},
+        client::{self, DebugExt, IntoHeader, Provider, ProviderBuilder},
         impl_conversion_traits,
     },
     http_client::{self, HttpClientExt},
-    wasm_compat::WasmCompatSend,
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
-type Client<'a, H = reqwest::Client> = client::Client<'a, AnthropicExt<'a>, H>;
-type ClientBuilder<'a, H = reqwest::Client> =
-    client::ClientBuilder<AnthropicBuilder<'a>, AnthropicKey<'a>, H>;
+pub type Client<H = reqwest::Client> = client::Client<AnthropicExt, H>;
+pub type ClientBuilder<H = reqwest::Client> =
+    client::ClientBuilder<AnthropicBuilder, AnthropicKey, H>;
 
 // ================================================================
 // Main Anthropic Client
 // ================================================================
 #[derive(Debug, Clone)]
-pub struct AnthropicExt<'a>(PhantomData<&'a ()>);
+pub struct AnthropicExt;
 
-impl<'a> ClientSpecific<'a> for AnthropicExt<'a> {
-    type ApiKey = AnthropicKey<'a>;
-    const BASE_URL: &'static str = "https://api.anthropic.com";
+impl Provider for AnthropicExt {
+    type ApiKey = AnthropicKey;
+    type Builder = AnthropicBuilder;
+
     const VERIFY_PATH: &'static str = "/v1/models";
+
+    fn build(_: Self::Builder) -> Self {
+        Self
+    }
 }
 
-impl<'a> Default for AnthropicExt<'a> {
+impl ProviderBuilder for AnthropicBuilder {
+    const BASE_URL: &'static str = "https://api.anthropic.com";
+
+    fn finish<ApiKey, H>(
+        &self,
+        mut builder: client::ClientBuilder<Self, ApiKey, H>,
+    ) -> client::ClientBuilder<Self, ApiKey, H> {
+        todo!()
+    }
+}
+
+impl DebugExt for AnthropicExt {
+    fn with_fields<'a, 'b>(
+        &'a self,
+        f: &'b mut std::fmt::DebugStruct,
+    ) -> &'b mut std::fmt::DebugStruct
+    where
+        'a: 'b,
+    {
+        f
+    }
+}
+
+impl<'a> Default for AnthropicExt {
     fn default() -> Self {
-        Self(PhantomData)
+        Self
     }
 }
 
-pub struct AnthropicKey<'a>(&'a str);
+pub struct AnthropicKey(String);
 
-impl IntoHeader for AnthropicKey<'_> {
-    fn make_header(self) -> Option<http_client::Result<(http::HeaderName, HeaderValue)>> {
-        Some(
-            HeaderValue::from_str(self.0)
-                .map(|val| (http::HeaderName::from_static("X-Api-Key"), val))
-                .map_err(|e| http_client::Error::from(http::Error::from(e))),
-        )
-    }
-}
-
-impl<'a> From<&'a str> for AnthropicKey<'a> {
-    fn from(value: &'a str) -> Self {
+impl From<String> for AnthropicKey {
+    fn from(value: String) -> Self {
         Self(value)
     }
 }
 
-pub struct AnthropicBuilder<'a> {
-    anthropic_version: &'static str,
-    anthropic_betas: Vec<&'static str>,
-    _lifetime: PhantomData<&'a ()>,
+impl IntoHeader for AnthropicKey {
+    fn make_header(self) -> Option<http_client::Result<(http::HeaderName, HeaderValue)>> {
+        let header = HeaderValue::from_str(&self.0)
+            .map(|val| (http::HeaderName::from_static("X-Api-Key"), val))
+            .map_err(|e| http_client::Error::from(http::Error::from(e)));
+
+        Some(header)
+    }
 }
 
-impl Default for AnthropicBuilder<'_> {
+impl<'a> From<&'a str> for AnthropicKey {
+    fn from(value: &'a str) -> Self {
+        Self(value.into())
+    }
+}
+
+pub struct AnthropicBuilder {
+    anthropic_version: String,
+    anthropic_betas: Vec<String>,
+}
+
+impl Default for AnthropicBuilder {
     fn default() -> Self {
         Self {
-            anthropic_version: ANTHROPIC_VERSION_LATEST,
+            anthropic_version: ANTHROPIC_VERSION_LATEST.into(),
             anthropic_betas: Vec::new(),
-            _lifetime: PhantomData,
         }
-    }
-}
-
-impl<'a> ClientExtBuilder<'a> for AnthropicBuilder<'a> {
-    type Extension = AnthropicExt<'a>;
-
-    fn customize(&self, mut headers: http::HeaderMap) -> http_client::Result<http::HeaderMap> {
-        headers.insert(
-            "anthropic-version",
-            HeaderValue::from_str(self.anthropic_version)?,
-        );
-
-        if !self.anthropic_betas.is_empty() {
-            headers.insert(
-                "anthropic-beta",
-                HeaderValue::from_str(&self.anthropic_betas.join(","))?,
-            );
-        }
-
-        Ok(headers)
-    }
-
-    fn build(self) -> Self::Extension {
-        AnthropicExt(PhantomData)
     }
 }
 
@@ -106,45 +114,36 @@ impl<'a> ClientExtBuilder<'a> for AnthropicBuilder<'a> {
 ///    .anthropic_beta("prompt-caching-2024-07-31")
 ///    .build()
 /// ```
-impl<'a, H> ClientBuilder<'a, H> {
-    pub fn anthropic_version(self, anthropic_version: &'static str) -> Self {
-        Self {
-            ext: AnthropicBuilder {
-                anthropic_version,
-                ..self.ext
-            },
-            ..self
-        }
+impl<H> ClientBuilder<H> {
+    pub fn anthropic_version(self, anthropic_version: &str) -> Self {
+        self.over_ext(|ext| AnthropicBuilder {
+            anthropic_version: anthropic_version.into(),
+            ..ext
+        })
     }
 
-    pub fn anthropic_betas(mut self, anthropic_betas: &[&'static str]) -> Self {
-        self.ext.anthropic_betas.extend(anthropic_betas);
+    pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
+        self.over_ext(|mut ext| {
+            ext.anthropic_betas
+                .extend(anthropic_betas.iter().copied().map(String::from));
 
-        self
+            ext
+        })
     }
 
-    pub fn anthropic_beta(mut self, anthropic_beta: &'static str) -> Self {
-        self.ext.anthropic_betas.push(anthropic_beta);
+    pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
+        self.over_ext(|mut ext| {
+            ext.anthropic_betas.push(anthropic_beta.into());
 
-        self
-    }
-}
-
-impl<'a, H> CompletionClient for Client<'a, H>
-where
-    H: HttpClientExt + Clone + std::fmt::Debug,
-{
-    type CompletionModel = CompletionModel;
-
-    fn completion_model(&self, model: &str) -> CompletionModel<T> {
-        CompletionModel::new(self.clone(), model)
+            ext
+        })
     }
 }
 
-impl_conversion_traits!(
-    AsTranscription,
-    AsEmbeddings,
-    AsImageGeneration,
-    AsAudioGeneration
-    for Client<T>
-);
+// impl_conversion_traits!(
+//     AsTranscription,
+//     AsEmbeddings,
+//     AsImageGeneration,
+//     AsAudioGeneration
+//     for Client<T>
+// );

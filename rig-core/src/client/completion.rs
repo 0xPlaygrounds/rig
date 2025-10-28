@@ -61,6 +61,10 @@ pub trait CompletionClient: ProviderClient + Clone {
     }
 }
 
+pub trait HasCompletion {
+    type CompletionModel: CompletionModel;
+}
+
 /// Wraps a CompletionModel in a dyn-compatible way for AgentBuilder.
 #[derive(Clone)]
 pub struct CompletionModelHandle<'a> {

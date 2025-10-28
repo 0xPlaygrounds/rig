@@ -21,12 +21,12 @@ pub enum VerifyError {
 
 /// A provider client that can verify the configuration.
 /// Clone is required for conversions between client types.
-pub trait VerifyClient: ProviderClient + Clone {
+pub trait VerifyClient: Clone {
     /// Verify the configuration.
     fn verify(&self) -> impl Future<Output = Result<(), VerifyError>> + WasmCompatSend;
 }
 
-pub trait VerifyClientDyn: ProviderClient {
+pub trait VerifyClientDyn {
     /// Verify the configuration.
     fn verify(&self) -> WasmBoxedFuture<'_, Result<(), VerifyError>>;
 }
