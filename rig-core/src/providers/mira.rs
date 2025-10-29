@@ -332,7 +332,7 @@ impl_conversion_traits!(
 );
 
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
     /// Name of the model
     pub model: String,
