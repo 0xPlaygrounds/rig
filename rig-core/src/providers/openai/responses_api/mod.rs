@@ -11,6 +11,8 @@ use super::completion::ToolChoice;
 use super::{Client, responses_api::streaming::StreamingCompletionResponse};
 use super::{InputAudio, SystemContent};
 use crate::completion::CompletionError;
+use crate::http_client;
+use crate::http_client::HttpClientExt;
 use crate::json_utils;
 use crate::message::{
     AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError,
@@ -379,7 +381,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             });
                         }
                         crate::message::AssistantContent::Reasoning(
-                            crate::message::Reasoning { id, reasoning },
+                            crate::message::Reasoning { id, reasoning, .. },
                         ) => {
                             items.push(InputItem {
                                 role: None,
@@ -441,6 +443,20 @@ fn add_props_false(schema: &mut serde_json::Value) {
             for (_, def_schema) in defs_obj.iter_mut() {
                 add_props_false(def_schema);
             }
+        }
+
+        if obj.contains_key("properties") {
+            let prop_names = if let Some(Value::Object(props_obj)) = obj.get("properties") {
+                props_obj
+                    .keys()
+                    .cloned()
+                    .map(|prop| Value::String(prop))
+                    .collect()
+            } else {
+                vec![]
+            };
+
+            obj.insert("required".to_string(), Value::Array(prop_names));
         }
 
         if let Some(properties) = obj.get_mut("properties")
@@ -692,16 +708,19 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
 
 /// The completion model struct for OpenAI's response API.
 #[derive(Clone)]
-pub struct ResponsesCompletionModel {
+pub struct ResponsesCompletionModel<T = reqwest::Client> {
     /// The OpenAI client
-    pub(crate) client: Client,
+    pub(crate) client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
 }
 
-impl ResponsesCompletionModel {
+impl<T> ResponsesCompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
+{
     /// Creates a new [`ResponsesCompletionModel`].
-    pub fn new(client: Client, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -709,7 +728,7 @@ impl ResponsesCompletionModel {
     }
 
     /// Use the Completions API instead of Responses.
-    pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel {
+    pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel<T> {
         crate::providers::openai::completion::CompletionModel::new(self.client, &self.model)
     }
 
@@ -1030,7 +1049,10 @@ pub enum OutputRole {
     Assistant,
 }
 
-impl completion::CompletionModel for ResponsesCompletionModel {
+impl<T> completion::CompletionModel for ResponsesCompletionModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -1065,18 +1087,24 @@ impl completion::CompletionModel for ResponsesCompletionModel {
             serde_json::to_string(&request.input)
                 .expect("openai request to successfully turn into a JSON value"),
         );
-        let request_json = serde_json::to_value(request.clone())?;
+        let body = serde_json::to_vec(&request)?;
+        tracing::debug!(
+            "OpenAI Responses API input: {request}",
+            request = serde_json::to_string_pretty(&request).unwrap()
+        );
+
+        let req = self
+            .client
+            .post("/responses")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         async move {
-            let response = self
-                .client
-                .post("/responses")
-                .json(&request_json)
-                .send()
-                .await?;
+            let response = self.client.send(req).await?;
 
             if response.status().is_success() {
-                let t = response.text().await?;
+                let t = http_client::text(response).await?;
                 let response = serde_json::from_str::<Self::Response>(&t)?;
                 let span = tracing::Span::current();
                 span.record(
@@ -1093,7 +1121,8 @@ impl completion::CompletionModel for ResponsesCompletionModel {
                 tracing::info!("API successfully called");
                 response.try_into()
             } else {
-                Err(CompletionError::ProviderError(response.text().await?))
+                let text = http_client::text(response).await?;
+                Err(CompletionError::ProviderError(text))
             }
         }
         .instrument(span)
@@ -1108,7 +1137,7 @@ impl completion::CompletionModel for ResponsesCompletionModel {
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        Self::stream(self, request).await
+        ResponsesCompletionModel::stream(self, request).await
     }
 }
 
@@ -1438,6 +1467,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                     crate::message::AssistantContent::Reasoning(crate::message::Reasoning {
                         id,
                         reasoning,
+                        ..
                     }) => Ok(vec![Message::Assistant {
                         content: OneOrMany::one(AssistantContentType::Reasoning(OpenAIReasoning {
                             id: id.expect("An OpenAI-generated ID is required when using OpenAI reasoning items"),

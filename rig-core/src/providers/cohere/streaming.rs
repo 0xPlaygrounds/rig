@@ -1,4 +1,6 @@
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::http_client::HttpClientExt;
+use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::{
     AssistantContent, Message, ToolCall, ToolCallFunction, ToolType, Usage,
@@ -8,7 +10,7 @@ use crate::telemetry::SpanCombinator;
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
-use reqwest_eventsource::{Event, RequestBuilderExt};
+use http::Method;
 use serde::{Deserialize, Serialize};
 use tracing::info_span;
 use tracing_futures::Instrument;
@@ -89,7 +91,10 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl CompletionModel {
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     pub(crate) async fn stream(
         &self,
         request: CompletionRequest,
@@ -121,14 +126,17 @@ impl CompletionModel {
             serde_json::to_string_pretty(&request)?
         );
 
-        let mut event_source = self
-            .client
-            .post("/v2/chat")
-            .json(&request)
-            .eventsource()
-            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+        let body = serde_json::to_vec(&request)?;
 
-        let stream = Box::pin(stream! {
+        let req = self
+            .client
+            .req(Method::POST, "/v2/chat")?
+            .body(body)
+            .unwrap();
+
+        let mut event_source = GenericEventSource::new(self.client.http_client(), req);
+
+        let stream = stream! {
             let mut current_tool_call: Option<(String, String, String)> = None;
             let mut text_response = String::new();
             let mut tool_calls = Vec::new();
@@ -229,9 +237,9 @@ impl CompletionModel {
                             _ => {}
                         }
                     },
-
-                    Err(reqwest_eventsource::Error::StreamEnded) => break,
-
+                    Err(crate::http_client::Error::StreamEnded) => {
+                        break;
+                    }
                     Err(err) => {
                         tracing::error!(?err, "SSE error");
                         yield Err(CompletionError::ResponseError(err.to_string()));
@@ -241,8 +249,10 @@ impl CompletionModel {
             }
 
             event_source.close();
-        }.instrument(span));
+        }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(stream))
+        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+            stream,
+        )))
     }
 }

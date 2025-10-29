@@ -31,6 +31,7 @@ async fn vector_search_test() {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
             .header("Authorization", "Bearer TEST")
+            .header("Content-Type", "application/json")
             .json_body(json!({
                 "input": req_data,
                 "model": "text-embedding-ada-002",
@@ -76,6 +77,7 @@ async fn vector_search_test() {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
             .header("Authorization", "Bearer TEST")
+            .header("Content-Type", "application/json")
             .json_body(json!({
                 "input": [
                     "My boss says I zindle too much, what does that mean?"
@@ -105,8 +107,7 @@ async fn vector_search_test() {
     // Initialize OpenAI client
     let openai_client = openai::Client::builder("TEST")
         .base_url(&server.base_url())
-        .build()
-        .unwrap();
+        .build();
 
     // Select an embedding model.
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);

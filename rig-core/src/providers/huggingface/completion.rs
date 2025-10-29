@@ -1,5 +1,6 @@
 use super::client::Client;
 use crate::completion::GetTokenUsage;
+use crate::http_client::HttpClientExt;
 use crate::providers::openai::StreamingCompletionResponse;
 use crate::telemetry::SpanCombinator;
 use crate::{
@@ -9,7 +10,7 @@ use crate::{
     message::{self},
     one_or_many::string_or_one_or_many,
 };
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Value, json};
 use std::{convert::Infallible, str::FromStr};
 use tracing::info_span;
@@ -50,7 +51,10 @@ pub const QWEN_QVQ_PREVIEW: &str = "Qwen/QVQ-72B-Preview";
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub struct Function {
     name: String,
-    #[serde(deserialize_with = "deserialize_arguments")]
+    #[serde(
+        serialize_with = "json_utils::stringified_json::serialize",
+        deserialize_with = "deserialize_arguments"
+    )]
     pub arguments: serde_json::Value,
 }
 
@@ -248,14 +252,30 @@ pub enum Message {
         #[serde(default, deserialize_with = "json_utils::null_or_vec")]
         tool_calls: Vec<ToolCall>,
     },
-    #[serde(rename = "Tool")]
+    #[serde(rename = "tool", alias = "Tool")]
     ToolResult {
         name: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         arguments: Option<serde_json::Value>,
-        #[serde(deserialize_with = "string_or_one_or_many")]
+        #[serde(
+            deserialize_with = "string_or_one_or_many",
+            serialize_with = "serialize_tool_content"
+        )]
         content: OneOrMany<String>,
     },
+}
+
+fn serialize_tool_content<S>(content: &OneOrMany<String>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    // OpenAI-compatible APIs expect tool content as a string, not an array
+    let joined = content
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join("\n");
+    serializer.serialize_str(&joined)
 }
 
 impl Message {
@@ -590,14 +610,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 }
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T = reqwest::Client> {
+    pub(crate) client: Client<T>,
     /// Name of the model (e.g: google/gemma-2-2b-it)
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -656,7 +676,10 @@ impl CompletionModel {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -694,13 +717,24 @@ impl completion::CompletionModel for CompletionModel {
             request
         };
 
-        let response = self.client.post(&path).json(&request).send().await?;
+        let request = serde_json::to_vec(&request)?;
+
+        let request = self
+            .client
+            .post(&path)?
+            .header("Content-Type", "application/json")
+            .body(request)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        let response = self.client.send(request).await?;
 
         if response.status().is_success() {
-            let t = response.text().await?;
-            tracing::debug!(target: "rig", "Huggingface completion error: {}", t);
+            let bytes: Vec<u8> = response.into_body().await?;
+            let text = String::from_utf8_lossy(&bytes);
 
-            match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
+            tracing::debug!(target: "rig", "Huggingface completion error: {}", text);
+
+            match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&bytes)? {
                 ApiResponse::Ok(response) => {
                     let span = tracing::Span::current();
                     span.record_token_usage(&response.usage);
@@ -712,10 +746,13 @@ impl completion::CompletionModel for CompletionModel {
                 ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.to_string())),
             }
         } else {
+            let status = response.status();
+            let text: Vec<u8> = response.into_body().await?;
+            let text: String = String::from_utf8_lossy(&text).into();
+
             Err(CompletionError::ProviderError(format!(
                 "{}: {}",
-                response.status(),
-                response.text().await?
+                status, text
             )))
         }
     }

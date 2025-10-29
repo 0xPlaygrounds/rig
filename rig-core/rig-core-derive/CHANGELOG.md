@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.6...rig-derive-v0.1.7) - 2025-10-27
+
+### Added
+
+- *(rig-996)* generic streaming ([#955](https://github.com/0xPlaygrounds/rig/pull/955))
+
 ## [0.1.6](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.5...rig-derive-v0.1.6) - 2025-09-02
 
 ### Other

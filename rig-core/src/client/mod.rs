@@ -42,6 +42,8 @@ pub trait ProviderClient:
     + Send
     + Sync
     + Debug
+    + WasmCompatSend
+    + WasmCompatSync
 {
     /// Create a client from the process's environment.
     /// Panics if an environment is improperly configured.
@@ -176,32 +178,37 @@ impl<T: ProviderClient> AsAudioGeneration for T {}
 #[cfg(not(feature = "image"))]
 impl<T: ProviderClient> AsImageGeneration for T {}
 
-/// Implements the conversion traits for a given struct
-/// ```rust
-/// pub struct Client;
-/// impl ProviderClient for Client {
-///     ...
-/// }
-/// impl_conversion_traits!(AsCompletion, AsEmbeddings for Client);
-/// ```
 #[macro_export]
 macro_rules! impl_conversion_traits {
-    ($( $trait_:ident ),* for $struct_:ident ) => {
-        $(
-            impl_conversion_traits!(@impl $trait_ for $struct_);
-        )*
+    ($( $trait_:ident ),* for $($type_spec:tt)+) => {
+        impl_conversion_traits!(@expand_traits [$($trait_)+] $($type_spec)+);
     };
 
-    (@impl AsAudioGeneration for $struct_:ident ) => {
-        rig::client::impl_audio_generation!($struct_);
+    (@expand_traits [$trait_:ident $($rest_traits:ident)*] $($type_spec:tt)+) => {
+        impl_conversion_traits!(@impl $trait_ for $($type_spec)+);
+        impl_conversion_traits!(@expand_traits [$($rest_traits)*] $($type_spec)+);
     };
 
-    (@impl AsImageGeneration for $struct_:ident ) => {
-        rig::client::impl_image_generation!($struct_);
+    (@expand_traits [] $($type_spec:tt)+) => {};
+
+    (@impl AsAudioGeneration for $($type_spec:tt)+) => {
+        rig::client::impl_audio_generation!($($type_spec)+);
     };
 
-    (@impl $trait_:ident for $struct_:ident) => {
+    (@impl AsImageGeneration for $($type_spec:tt)+) => {
+        rig::client::impl_image_generation!($($type_spec)+);
+    };
+
+    (@impl $trait_:ident for $($type_spec:tt)+) => {
+        impl_conversion_traits!(@impl_trait $trait_ for $($type_spec)+);
+    };
+
+    (@impl_trait $trait_:ident for $struct_:ident) => {
         impl rig::client::$trait_ for $struct_ {}
+    };
+
+    (@impl_trait $trait_:ident for $struct_:ident<$($generics:tt),*>) => {
+        impl<$($generics),*> rig::client::$trait_ for $struct_<$($generics),*> {}
     };
 }
 
@@ -211,12 +218,15 @@ macro_rules! impl_audio_generation {
     ($struct_:ident) => {
         impl rig::client::AsAudioGeneration for $struct_ {}
     };
+    ($struct_:ident<$($generics:tt),*>) => {
+        impl<$($generics),*> rig::client::AsAudioGeneration for $struct_<$($generics),*> {}
+    };
 }
 
 #[cfg(not(feature = "audio"))]
 #[macro_export]
 macro_rules! impl_audio_generation {
-    ($struct_:ident) => {};
+    ($($tokens:tt)*) => {};
 }
 
 #[cfg(feature = "image")]
@@ -225,12 +235,15 @@ macro_rules! impl_image_generation {
     ($struct_:ident) => {
         impl rig::client::AsImageGeneration for $struct_ {}
     };
+    ($struct_:ident<$($generics:tt),*>) => {
+        impl<$($generics),*> rig::client::AsImageGeneration for $struct_<$($generics),*> {}
+    };
 }
 
 #[cfg(not(feature = "image"))]
 #[macro_export]
 macro_rules! impl_image_generation {
-    ($struct_:ident) => {};
+    ($($tokens:tt)*) => {};
 }
 
 pub use impl_audio_generation;
@@ -254,6 +267,7 @@ pub use crate::client::embeddings::EmbeddingsClient;
 pub use crate::client::image_generation::ImageGenerationClient;
 pub use crate::client::transcription::TranscriptionClient;
 pub use crate::client::verify::{VerifyClient, VerifyError};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 #[cfg(test)]
 mod tests {
@@ -323,16 +337,16 @@ mod tests {
         vec![
             ClientConfig {
                 name: "Anthropic",
-                factory_env: Box::new(anthropic::Client::from_env_boxed),
-                factory_val: Box::new(anthropic::Client::from_val_boxed),
+                factory_env: Box::new(anthropic::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(anthropic::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "ANTHROPIC_API_KEY",
                 completion_model: Some(anthropic::CLAUDE_3_5_SONNET),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Cohere",
-                factory_env: Box::new(cohere::Client::from_env_boxed),
-                factory_val: Box::new(cohere::Client::from_val_boxed),
+                factory_env: Box::new(cohere::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(cohere::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "COHERE_API_KEY",
                 completion_model: Some(cohere::COMMAND_R),
                 embeddings_model: Some(cohere::EMBED_ENGLISH_LIGHT_V2),
@@ -340,8 +354,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Gemini",
-                factory_env: Box::new(gemini::Client::from_env_boxed),
-                factory_val: Box::new(gemini::Client::from_val_boxed),
+                factory_env: Box::new(gemini::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(gemini::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "GEMINI_API_KEY",
                 completion_model: Some(gemini::completion::GEMINI_2_0_FLASH),
                 embeddings_model: Some(gemini::embedding::EMBEDDING_001),
@@ -350,8 +364,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Huggingface",
-                factory_env: Box::new(huggingface::Client::from_env_boxed),
-                factory_val: Box::new(huggingface::Client::from_val_boxed),
+                factory_env: Box::new(huggingface::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(huggingface::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "HUGGINGFACE_API_KEY",
                 completion_model: Some(huggingface::PHI_4),
                 transcription_model: Some(huggingface::WHISPER_SMALL),
@@ -360,8 +374,8 @@ mod tests {
             },
             ClientConfig {
                 name: "OpenAI",
-                factory_env: Box::new(openai::Client::from_env_boxed),
-                factory_val: Box::new(openai::Client::from_val_boxed),
+                factory_env: Box::new(openai::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(openai::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "OPENAI_API_KEY",
                 completion_model: Some(openai::GPT_4O),
                 embeddings_model: Some(openai::TEXT_EMBEDDING_ADA_002),
@@ -371,16 +385,16 @@ mod tests {
             },
             ClientConfig {
                 name: "OpenRouter",
-                factory_env: Box::new(openrouter::Client::from_env_boxed),
-                factory_val: Box::new(openrouter::Client::from_val_boxed),
+                factory_env: Box::new(openrouter::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(openrouter::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "OPENROUTER_API_KEY",
                 completion_model: Some(openrouter::CLAUDE_3_7_SONNET),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Together",
-                factory_env: Box::new(together::Client::from_env_boxed),
-                factory_val: Box::new(together::Client::from_val_boxed),
+                factory_env: Box::new(together::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(together::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "TOGETHER_API_KEY",
                 completion_model: Some(together::ALPACA_7B),
                 embeddings_model: Some(together::BERT_BASE_UNCASED),
@@ -388,8 +402,8 @@ mod tests {
             },
             ClientConfig {
                 name: "XAI",
-                factory_env: Box::new(xai::Client::from_env_boxed),
-                factory_val: Box::new(xai::Client::from_val_boxed),
+                factory_env: Box::new(xai::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(xai::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "XAI_API_KEY",
                 completion_model: Some(xai::GROK_3_MINI),
                 embeddings_model: None,
@@ -397,8 +411,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Azure",
-                factory_env: Box::new(azure::Client::from_env_boxed),
-                factory_val: Box::new(azure::Client::from_val_boxed),
+                factory_env: Box::new(azure::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(azure::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "AZURE_API_KEY",
                 completion_model: Some(azure::GPT_4O),
                 embeddings_model: Some(azure::TEXT_EMBEDDING_ADA_002),
@@ -408,24 +422,24 @@ mod tests {
             },
             ClientConfig {
                 name: "Deepseek",
-                factory_env: Box::new(deepseek::Client::from_env_boxed),
-                factory_val: Box::new(deepseek::Client::from_val_boxed),
+                factory_env: Box::new(deepseek::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(deepseek::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "DEEPSEEK_API_KEY",
                 completion_model: Some(deepseek::DEEPSEEK_CHAT),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Galadriel",
-                factory_env: Box::new(galadriel::Client::from_env_boxed),
-                factory_val: Box::new(galadriel::Client::from_val_boxed),
+                factory_env: Box::new(galadriel::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(galadriel::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "GALADRIEL_API_KEY",
                 completion_model: Some(galadriel::GPT_4O),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Groq",
-                factory_env: Box::new(groq::Client::from_env_boxed),
-                factory_val: Box::new(groq::Client::from_val_boxed),
+                factory_env: Box::new(groq::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(groq::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "GROQ_API_KEY",
                 completion_model: Some(groq::MIXTRAL_8X7B_32768),
                 transcription_model: Some(groq::DISTIL_WHISPER_LARGE_V3),
@@ -433,8 +447,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Hyperbolic",
-                factory_env: Box::new(hyperbolic::Client::from_env_boxed),
-                factory_val: Box::new(hyperbolic::Client::from_val_boxed),
+                factory_env: Box::new(hyperbolic::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(hyperbolic::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "HYPERBOLIC_API_KEY",
                 completion_model: Some(hyperbolic::LLAMA_3_1_8B),
                 image_generation_model: Some(hyperbolic::SD1_5),
@@ -443,24 +457,24 @@ mod tests {
             },
             ClientConfig {
                 name: "Mira",
-                factory_env: Box::new(mira::Client::from_env_boxed),
-                factory_val: Box::new(mira::Client::from_val_boxed),
+                factory_env: Box::new(mira::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(mira::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "MIRA_API_KEY",
                 completion_model: Some("gpt-4o"),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Moonshot",
-                factory_env: Box::new(moonshot::Client::from_env_boxed),
-                factory_val: Box::new(moonshot::Client::from_val_boxed),
+                factory_env: Box::new(moonshot::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(moonshot::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "MOONSHOT_API_KEY",
                 completion_model: Some(moonshot::MOONSHOT_CHAT),
                 ..Default::default()
             },
             ClientConfig {
                 name: "Ollama",
-                factory_env: Box::new(ollama::Client::from_env_boxed),
-                factory_val: Box::new(ollama::Client::from_val_boxed),
+                factory_env: Box::new(ollama::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(ollama::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "OLLAMA_ENABLED",
                 completion_model: Some("llama3.1:8b"),
                 embeddings_model: Some(ollama::NOMIC_EMBED_TEXT),
@@ -468,8 +482,8 @@ mod tests {
             },
             ClientConfig {
                 name: "Perplexity",
-                factory_env: Box::new(perplexity::Client::from_env_boxed),
-                factory_val: Box::new(perplexity::Client::from_val_boxed),
+                factory_env: Box::new(perplexity::Client::<reqwest::Client>::from_env_boxed),
+                factory_val: Box::new(perplexity::Client::<reqwest::Client>::from_val_boxed),
                 env_variable: "PERPLEXITY_API_KEY",
                 completion_model: Some(perplexity::SONAR),
                 ..Default::default()
@@ -939,7 +953,7 @@ mod tests {
             .transcription(TranscriptionRequest {
                 data,
                 filename: "audio.mp3".to_string(),
-                language: "en".to_string(),
+                language: None,
                 prompt: None,
                 temperature: None,
                 additional_params: None,

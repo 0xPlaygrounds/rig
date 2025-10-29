@@ -1,12 +1,16 @@
 use super::completion::CompletionModel;
 use crate::completion::{CompletionError, CompletionRequest};
+use crate::http_client::HttpClientExt;
 use crate::json_utils::merge_inplace;
 use crate::providers::openai::{StreamingCompletionResponse, send_compatible_streaming_request};
 use crate::streaming;
 use serde_json::json;
 use tracing::{Instrument, info_span};
 
-impl CompletionModel {
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -27,7 +31,14 @@ impl CompletionModel {
         // HF Inference API uses the model in the path even though its specified in the request body
         let path = self.client.sub_provider.completion_endpoint(&self.model);
 
-        let builder = self.client.post(&path).json(&request);
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .post(&path)?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -40,14 +51,14 @@ impl CompletionModel {
             gen_ai.response.model = self.model,
             gen_ai.usage.output_tokens = tracing::field::Empty,
             gen_ai.usage.input_tokens = tracing::field::Empty,
-            gen_ai.input.messages = serde_json::to_string(request.get("messages").expect("Converting request messages to JSON should not fail!")).unwrap(),
+            gen_ai.input.messages = serde_json::to_string(&request["messages"]).unwrap(),
             gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
-        send_compatible_streaming_request(builder)
+        send_compatible_streaming_request(self.client.http_client.clone(), req)
             .instrument(span)
             .await
     }

@@ -3,6 +3,7 @@ use crate::{
     completion::{Chat, CompletionError, CompletionModel, PromptError, Usage},
     message::Message,
     streaming::{StreamedAssistantContent, StreamingPrompt},
+    wasm_compat::WasmCompatSend,
 };
 use futures::StreamExt;
 use std::io::{self, Write};
@@ -60,7 +61,7 @@ where
 
 impl<M> CliChat for AgentImpl<M>
 where
-    M: CompletionModel + 'static,
+    M: CompletionModel + WasmCompatSend + 'static,
 {
     async fn request(
         &mut self,

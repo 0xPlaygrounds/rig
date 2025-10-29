@@ -13,7 +13,7 @@ use rig::{
     providers::openai,
 };
 use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
-use rig_neo4j::{Neo4jClient, ToBoltType, vector_index::SearchParams};
+use rig_neo4j::{Neo4jClient, ToBoltType};
 
 const BOLT_PORT: u16 = 7687;
 const HTTP_PORT: u16 = 7474;
@@ -53,6 +53,7 @@ async fn vector_search_test() {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
             .header("Authorization", "Bearer TEST")
+            .header("Content-Type", "application/json")
             .json_body(json!({
                 "input": [
                     "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
@@ -94,6 +95,7 @@ async fn vector_search_test() {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
             .header("Authorization", "Bearer TEST")
+            .header("Content-Type", "application/json")
             .json_body(json!({
                 "input": [
                     "What is a glarb?",
@@ -123,8 +125,7 @@ async fn vector_search_test() {
     // Initialize OpenAI client
     let openai_client = openai::Client::builder("TEST")
         .base_url(&server.base_url())
-        .build()
-        .unwrap();
+        .build();
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
@@ -189,7 +190,7 @@ async fn vector_search_test() {
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
     let index = neo4j_client
-        .get_index(model, "vector_index", SearchParams::default())
+        .get_index(model, "vector_index")
         .await
         .expect("");
 

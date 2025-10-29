@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.4.0...rig-neo4j-v0.4.1) - 2025-10-28
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.4.0](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.3.8...rig-neo4j-v0.4.0) - 2025-10-27
+
+### Added
+
+- *(rig-976)* support filters for `VectorSearchRequest` ([#952](https://github.com/0xPlaygrounds/rig/pull/952))
+
+### Fixed
+
+- *(rig-1006)* text-embedding-ada-002 doesn't support custom dimensions ([#967](https://github.com/0xPlaygrounds/rig/pull/967))
+
+### Other
+
+- Dependent packages no longer force unnecessary features on rig-core ([#964](https://github.com/0xPlaygrounds/rig/pull/964))
+
+## [0.3.8](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.3.7...rig-neo4j-v0.3.8) - 2025-10-14
+
+### Added
+
+- *(rig-951)* generic HTTP client ([#875](https://github.com/0xPlaygrounds/rig/pull/875))
+
+### Fixed
+
+- trying to fix test regressions part 2 ([#913](https://github.com/0xPlaygrounds/rig/pull/913))
+- test regression ([#912](https://github.com/0xPlaygrounds/rig/pull/912))
+
 ## [0.3.7](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.3.6...rig-neo4j-v0.3.7) - 2025-09-29
 
 ### Other

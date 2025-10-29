@@ -5,29 +5,55 @@ use crate::client::{
     ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient,
     VerifyClient, VerifyError, impl_conversion_traits,
 };
+use crate::http_client::{self, HttpClientExt};
+use crate::wasm_compat::*;
 use crate::{
     Embed,
     embeddings::{self},
 };
+use bytes::Bytes;
 use serde::Deserialize;
+use std::fmt::Debug;
 
 // ================================================================
 // Google Gemini Client
 // ================================================================
 const GEMINI_API_BASE_URL: &str = "https://generativelanguage.googleapis.com";
 
-pub struct ClientBuilder<'a> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
-    http_client: Option<reqwest::Client>,
+    http_client: T,
 }
 
-impl<'a> ClientBuilder<'a> {
-    pub fn new(api_key: &'a str) -> Self {
+impl<'a, T> ClientBuilder<'a, T>
+where
+    T: HttpClientExt + Default,
+{
+    pub fn new(api_key: &'a str) -> ClientBuilder<'a, T> {
+        ClientBuilder {
+            api_key,
+            base_url: GEMINI_API_BASE_URL,
+            http_client: Default::default(),
+        }
+    }
+
+    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
         Self {
             api_key,
             base_url: GEMINI_API_BASE_URL,
-            http_client: None,
+            http_client,
+        }
+    }
+
+    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U>
+    where
+        U: HttpClientExt,
+    {
+        ClientBuilder {
+            api_key: self.api_key,
+            base_url: self.base_url,
+            http_client,
         }
     }
 
@@ -36,40 +62,33 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = Some(client);
-        self
-    }
-
-    pub fn build(self) -> Result<Client, ClientBuilderError> {
+    pub fn build(self) -> Result<Client<T>, ClientBuilderError> {
         let mut default_headers = reqwest::header::HeaderMap::new();
         default_headers.insert(
             reqwest::header::CONTENT_TYPE,
             "application/json".parse().unwrap(),
         );
-        let http_client = if let Some(http_client) = self.http_client {
-            http_client
-        } else {
-            reqwest::Client::builder().build()?
-        };
 
         Ok(Client {
             base_url: self.base_url.to_string(),
             api_key: self.api_key.to_string(),
             default_headers,
-            http_client,
+            http_client: self.http_client,
         })
     }
 }
 #[derive(Clone)]
-pub struct Client {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
     default_headers: reqwest::header::HeaderMap,
-    http_client: reqwest::Client,
+    pub http_client: T,
 }
 
-impl std::fmt::Debug for Client {
+impl<T> Debug for Client<T>
+where
+    T: Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("base_url", &self.base_url)
@@ -80,91 +99,139 @@ impl std::fmt::Debug for Client {
     }
 }
 
-impl Client {
-    /// Create a new Google Gemini client builder.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::gemini::{ClientBuilder, self};
-    ///
-    /// // Initialize the Google Gemini client
-    /// let gemini_client = Client::builder("your-google-gemini-api-key")
-    ///    .build()
-    /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
-        ClientBuilder::new(api_key)
+impl<T> Client<T>
+where
+    T: HttpClientExt,
+{
+    pub(crate) fn post(&self, path: &str) -> http_client::Builder {
+        // API key gets inserted as query param - no need to add bearer auth or headers
+        let url = format!(
+            "{}/{}?key={}",
+            self.base_url,
+            path.trim_start_matches('/'),
+            self.api_key
+        );
+
+        tracing::debug!("POST {}/{}?key={}", self.base_url, path, "****");
+        let mut req = http_client::Request::post(url);
+
+        if let Some(hs) = req.headers_mut() {
+            *hs = self.default_headers.clone();
+        }
+
+        req
     }
 
-    /// Create a new Google Gemini client. For more control, use the `builder` method.
+    pub(crate) fn post_sse(&self, path: &str) -> http_client::Builder {
+        let url = format!(
+            "{}/{}?alt=sse&key={}",
+            self.base_url,
+            path.trim_start_matches('/'),
+            self.api_key
+        );
+
+        tracing::debug!("POST {}/{}?alt=sse&key={}", self.base_url, path, "****");
+
+        let mut req = http_client::Request::post(url);
+
+        if let Some(hs) = req.headers_mut() {
+            *hs = self.default_headers.clone();
+        }
+
+        req
+    }
+
+    pub(crate) fn get(&self, path: &str) -> http_client::Builder {
+        // API key gets inserted as query param - no need to add bearer auth or headers
+        let url = format!(
+            "{}/{}?key={}",
+            self.base_url,
+            path.trim_start_matches('/'),
+            self.api_key
+        );
+
+        tracing::debug!("GET {}/{}?key={}", self.base_url, path, "****");
+
+        let mut req = http_client::Request::get(url);
+
+        if let Some(hs) = req.headers_mut() {
+            *hs = self.default_headers.clone();
+        }
+
+        req
+    }
+
+    pub(crate) async fn send<U, R>(
+        &self,
+        req: http_client::Request<U>,
+    ) -> http_client::Result<http_client::Response<http_client::LazyBody<R>>>
+    where
+        U: Into<Bytes> + Send,
+        R: From<Bytes> + Send + 'static,
+    {
+        self.http_client.send(req).await
+    }
+}
+
+impl Client<reqwest::Client> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
+        ClientBuilder::<reqwest::Client>::new(api_key)
+    }
+
+    /// Create a new Gemini client. For more control, use the `builder` method.
     ///
     /// # Panics
     /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key)
+        ClientBuilder::<reqwest::Client>::new(api_key)
             .build()
-            .expect("Gemini client should build")
+            .unwrap()
     }
 
-    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
-        // API key gets inserted as query param - no need to add bearer auth or headers
-        let url = format!("{}/{}?key={}", self.base_url, path, self.api_key).replace("//", "/");
-
-        tracing::debug!("POST {}/{}?key={}", self.base_url, path, "****");
-        self.http_client
-            .post(url)
-            .headers(self.default_headers.clone())
-    }
-
-    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
-        // API key gets inserted as query param - no need to add bearer auth or headers
-        let url = format!("{}/{}?key={}", self.base_url, path, self.api_key).replace("//", "/");
-
-        tracing::debug!("GET {}/{}?key={}", self.base_url, path, "****");
-        self.http_client
-            .get(url)
-            .headers(self.default_headers.clone())
-    }
-
-    pub(crate) fn post_sse(&self, path: &str) -> reqwest::RequestBuilder {
-        let url =
-            format!("{}/{}?alt=sse&key={}", self.base_url, path, self.api_key).replace("//", "/");
-
-        tracing::debug!("POST {}/{}?alt=sse&key={}", self.base_url, path, "****");
-        self.http_client
-            .post(url)
-            .headers(self.default_headers.clone())
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
     }
 }
 
-impl ProviderClient for Client {
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+{
     /// Create a new Google Gemini client from the `GEMINI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build().unwrap()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build().unwrap()
     }
 }
 
-impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     /// Create a completion model with the given name.
     /// Gemini-specific parameters can be set using the [GenerationConfig](crate::providers::gemini::completion::gemini_api_types::GenerationConfig) struct.
     /// [Gemini API Reference](https://ai.google.dev/api/generate-content#generationconfig)
-    fn completion_model(&self, model: &str) -> CompletionModel {
+    fn completion_model(&self, model: &str) -> Self::CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl EmbeddingsClient for Client {
-    type EmbeddingModel = EmbeddingModel;
+impl<T> EmbeddingsClient for Client<T>
+where
+    T: HttpClientExt + Clone + Debug + Default + 'static,
+    Client<T>: CompletionClient,
+{
+    type EmbeddingModel = EmbeddingModel<T>;
 
     /// Create an embedding model with the given name.
     /// Note: default embedding dimension of 0 will be used if model is not known.
@@ -179,7 +246,7 @@ impl EmbeddingsClient for Client {
     ///
     /// let embedding_model = gemini.embedding_model(gemini::embedding::EMBEDDING_GECKO_001);
     /// ```
-    fn embedding_model(&self, model: &str) -> EmbeddingModel {
+    fn embedding_model(&self, model: &str) -> EmbeddingModel<T> {
         EmbeddingModel::new(self.clone(), model, None)
     }
 
@@ -194,7 +261,7 @@ impl EmbeddingsClient for Client {
     ///
     /// let embedding_model = gemini.embedding_model_with_ndims("model-unknown-to-rig", 1024);
     /// ```
-    fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> EmbeddingModel {
+    fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> EmbeddingModel<T> {
         EmbeddingModel::new(self.clone(), model, Some(ndims))
     }
 
@@ -217,35 +284,52 @@ impl EmbeddingsClient for Client {
     fn embeddings<D: Embed>(
         &self,
         model: &str,
-    ) -> embeddings::EmbeddingsBuilder<EmbeddingModel, D> {
+    ) -> embeddings::EmbeddingsBuilder<EmbeddingModel<T>, D> {
         embeddings::EmbeddingsBuilder::new(self.embedding_model(model))
     }
 }
 
-impl TranscriptionClient for Client {
-    type TranscriptionModel = TranscriptionModel;
+impl<T> TranscriptionClient for Client<T>
+where
+    T: HttpClientExt + Clone + Debug + Default + WasmCompatSend + 'static,
+    Client<T>: CompletionClient,
+{
+    type TranscriptionModel = TranscriptionModel<T>;
 
     /// Create a transcription model with the given name.
     /// Gemini-specific parameters can be set using the [GenerationConfig](crate::providers::gemini::completion::gemini_api_types::GenerationConfig) struct.
     /// [Gemini API Reference](https://ai.google.dev/api/generate-content#generationconfig)
-    fn transcription_model(&self, model: &str) -> TranscriptionModel {
+    fn transcription_model(&self, model: &str) -> TranscriptionModel<T> {
         TranscriptionModel::new(self.clone(), model)
     }
 }
 
-impl VerifyClient for Client {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
+    Client<T>: CompletionClient,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
-        let response = self.get("/v1beta/models").send().await?;
+        let req = self
+            .get("/v1beta/models")
+            .body(http_client::NoBody)
+            .map_err(|e| VerifyError::HttpError(e.into()))?;
+        let response = self.http_client.send::<_, Vec<u8>>(req).await?;
+
         match response.status() {
             reqwest::StatusCode::OK => Ok(()),
             reqwest::StatusCode::FORBIDDEN => Err(VerifyError::InvalidAuthentication),
             reqwest::StatusCode::INTERNAL_SERVER_ERROR
             | reqwest::StatusCode::SERVICE_UNAVAILABLE => {
-                Err(VerifyError::ProviderError(response.text().await?))
+                let text = http_client::text(response).await?;
+                Err(VerifyError::ProviderError(text))
             }
             _ => {
-                response.error_for_status()?;
+                // TODO: Find/write some alternative for this that uses `http::StatusCode` vs
+                // reqwest::StatusCode
+                //
+                // response.error_for_status()?;
                 Ok(())
             }
         }
@@ -254,7 +338,7 @@ impl VerifyClient for Client {
 
 impl_conversion_traits!(
     AsImageGeneration,
-    AsAudioGeneration for Client
+    AsAudioGeneration for Client<T>
 );
 
 #[derive(Debug, Deserialize)]

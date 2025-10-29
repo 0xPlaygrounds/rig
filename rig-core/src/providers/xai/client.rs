@@ -1,7 +1,9 @@
+use http::Method;
+
 use super::completion::CompletionModel;
-use crate::client::{
-    ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError,
-    impl_conversion_traits,
+use crate::{
+    client::{CompletionClient, ProviderClient, VerifyClient, VerifyError, impl_conversion_traits},
+    http_client::{self, HttpClientExt, NoBody, Result as HttpResult, with_bearer_auth},
 };
 
 // ================================================================
@@ -9,18 +11,31 @@ use crate::client::{
 // ================================================================
 const XAI_BASE_URL: &str = "https://api.x.ai";
 
-pub struct ClientBuilder<'a> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
-    http_client: Option<reqwest::Client>,
+    http_client: T,
 }
 
-impl<'a> ClientBuilder<'a> {
+impl<'a, T> ClientBuilder<'a, T>
+where
+    T: Default,
+{
     pub fn new(api_key: &'a str) -> Self {
         Self {
             api_key,
             base_url: XAI_BASE_URL,
-            http_client: None,
+            http_client: Default::default(),
+        }
+    }
+}
+
+impl<'a, T> ClientBuilder<'a, T> {
+    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
+        Self {
+            api_key,
+            base_url: XAI_BASE_URL,
+            http_client,
         }
     }
 
@@ -29,42 +44,42 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = Some(client);
-        self
+    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
+        ClientBuilder {
+            api_key: self.api_key,
+            base_url: self.base_url,
+            http_client,
+        }
     }
 
-    pub fn build(self) -> Result<Client, ClientBuilderError> {
+    pub fn build(self) -> Client<T> {
         let mut default_headers = reqwest::header::HeaderMap::new();
         default_headers.insert(
             reqwest::header::CONTENT_TYPE,
             "application/json".parse().unwrap(),
         );
 
-        let http_client = if let Some(http_client) = self.http_client {
-            http_client
-        } else {
-            reqwest::Client::builder().build()?
-        };
-
-        Ok(Client {
+        Client {
             base_url: self.base_url.to_string(),
             api_key: self.api_key.to_string(),
             default_headers,
-            http_client,
-        })
+            http_client: self.http_client,
+        }
     }
 }
 
 #[derive(Clone)]
-pub struct Client {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
-    default_headers: reqwest::header::HeaderMap,
-    http_client: reqwest::Client,
+    default_headers: http_client::HeaderMap,
+    pub http_client: T,
 }
 
-impl std::fmt::Debug for Client {
+impl<T> std::fmt::Debug for Client<T>
+where
+    T: std::fmt::Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("base_url", &self.base_url)
@@ -75,7 +90,7 @@ impl std::fmt::Debug for Client {
     }
 }
 
-impl Client {
+impl Client<reqwest::Client> {
     /// Create a new xAI client builder.
     ///
     /// # Example
@@ -86,7 +101,7 @@ impl Client {
     /// let xai = Client::builder("your-xai-api-key")
     ///    .build()
     /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
         ClientBuilder::new(api_key)
     }
 
@@ -95,73 +110,91 @@ impl Client {
     /// # Panics
     /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key)
-            .build()
-            .expect("xAI client should build")
+        Self::builder(api_key).build()
     }
 
-    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-
-        tracing::debug!("POST {}", url);
-        self.http_client
-            .post(url)
-            .bearer_auth(&self.api_key)
-            .headers(self.default_headers.clone())
-    }
-
-    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-
-        tracing::debug!("GET {}", url);
-        self.http_client
-            .get(url)
-            .bearer_auth(&self.api_key)
-            .headers(self.default_headers.clone())
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
     }
 }
 
-impl ProviderClient for Client {
+impl<T> Client<T>
+where
+    T: HttpClientExt,
+{
+    pub(crate) fn req(&self, method: Method, path: &str) -> HttpResult<http_client::Builder> {
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+
+        let mut builder = http_client::Builder::new().uri(url).method(method);
+        for (header, value) in &self.default_headers {
+            builder = builder.header(header, value);
+        }
+
+        with_bearer_auth(builder, &self.api_key)
+    }
+
+    pub(crate) fn post(&self, path: &str) -> HttpResult<http_client::Builder> {
+        self.req(Method::POST, path)
+    }
+
+    pub(crate) fn get(&self, path: &str) -> HttpResult<http_client::Builder> {
+        self.req(Method::GET, path)
+    }
+}
+
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     /// Create a new xAI client from the `XAI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("XAI_API_KEY").expect("XAI_API_KEY not set");
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 }
 
-impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     /// Create a completion model with the given name.
-    fn completion_model(&self, model: &str) -> CompletionModel {
+    fn completion_model(&self, model: &str) -> CompletionModel<T> {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl VerifyClient for Client {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
-        let response = self.get("/v1/api-key").send().await?;
-        match response.status() {
+        let req = self.get("/v1/api-key").unwrap().body(NoBody).unwrap();
+
+        let response = self.http_client.send::<_, Vec<u8>>(req).await.unwrap();
+        let status = response.status();
+
+        match status {
             reqwest::StatusCode::OK => Ok(()),
             reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
                 Err(VerifyError::InvalidAuthentication)
             }
-            reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
-                Err(VerifyError::ProviderError(response.text().await?))
-            }
-            _ => {
-                response.error_for_status()?;
-                Ok(())
-            }
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR => Err(VerifyError::ProviderError(
+                http_client::text(response).await?,
+            )),
+            _ => Err(VerifyError::HttpError(http_client::Error::Instance(
+                http_client::text(response).await?.into(),
+            ))),
         }
     }
 }
@@ -170,7 +203,7 @@ impl_conversion_traits!(
     AsEmbeddings,
     AsTranscription,
     AsImageGeneration,
-    AsAudioGeneration for Client
+    AsAudioGeneration for Client<T>
 );
 
 pub mod xai_api_types {

@@ -44,7 +44,7 @@ async fn gemini(file_path: &str) {
     // Create an OAI client
     let gemini = gemini::Client::from_env();
     // Create the whisper transcription model
-    let gemini = gemini.transcription_model(gemini::transcription::GEMINI_1_5_FLASH);
+    let gemini = gemini.transcription_model(gemini::transcription::GEMINI_2_0_FLASH);
     let response = gemini
         .transcription_request()
         .load_file(file_path)

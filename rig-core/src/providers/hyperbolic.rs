@@ -10,9 +10,8 @@
 //! ```
 use super::openai::{AssistantContent, send_compatible_streaming_request};
 
-use crate::client::{
-    ClientBuilderError, CompletionClient, ProviderClient, VerifyClient, VerifyError,
-};
+use crate::client::{CompletionClient, ProviderClient, VerifyClient, VerifyError};
+use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
 use crate::message;
 use crate::streaming::StreamingCompletionResponse;
@@ -25,6 +24,7 @@ use crate::{
     json_utils,
     providers::openai::Message,
 };
+use http::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -33,18 +33,31 @@ use serde_json::{Value, json};
 // ================================================================
 const HYPERBOLIC_API_BASE_URL: &str = "https://api.hyperbolic.xyz";
 
-pub struct ClientBuilder<'a> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
-    http_client: Option<reqwest::Client>,
+    http_client: T,
 }
 
-impl<'a> ClientBuilder<'a> {
+impl<'a, T> ClientBuilder<'a, T>
+where
+    T: Default,
+{
     pub fn new(api_key: &'a str) -> Self {
         Self {
             api_key,
             base_url: HYPERBOLIC_API_BASE_URL,
-            http_client: None,
+            http_client: Default::default(),
+        }
+    }
+}
+
+impl<'a, T> ClientBuilder<'a, T> {
+    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
+        Self {
+            api_key,
+            base_url: HYPERBOLIC_API_BASE_URL,
+            http_client,
         }
     }
 
@@ -53,34 +66,34 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = Some(client);
-        self
+    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
+        ClientBuilder {
+            api_key: self.api_key,
+            base_url: self.base_url,
+            http_client,
+        }
     }
 
-    pub fn build(self) -> Result<Client, ClientBuilderError> {
-        let http_client = if let Some(http_client) = self.http_client {
-            http_client
-        } else {
-            reqwest::Client::builder().build()?
-        };
-
-        Ok(Client {
+    pub fn build(self) -> Client<T> {
+        Client {
             base_url: self.base_url.to_string(),
             api_key: self.api_key.to_string(),
-            http_client,
-        })
+            http_client: self.http_client,
+        }
     }
 }
 
 #[derive(Clone)]
-pub struct Client {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
-    http_client: reqwest::Client,
+    http_client: T,
 }
 
-impl std::fmt::Debug for Client {
+impl<T> std::fmt::Debug for Client<T>
+where
+    T: std::fmt::Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("base_url", &self.base_url)
@@ -90,60 +103,66 @@ impl std::fmt::Debug for Client {
     }
 }
 
-impl Client {
-    /// Create a new Hyperbolic client builder.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::hyperbolic::{ClientBuilder, self};
-    ///
-    /// // Initialize the Hyperbolic client
-    /// let hyperbolic = Client::builder("your-hyperbolic-api-key")
-    ///    .build()
-    /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
+impl Client<reqwest::Client> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
         ClientBuilder::new(api_key)
     }
 
-    /// Create a new Hyperbolic client. For more control, use the `builder` method.
-    ///
-    /// # Panics
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key)
-            .build()
-            .expect("Hyperbolic client should build")
+        Self::builder(api_key).build()
     }
 
-    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url).bearer_auth(&self.api_key)
-    }
-
-    pub(crate) fn get(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.get(url).bearer_auth(&self.api_key)
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
     }
 }
 
-impl ProviderClient for Client {
+impl<T> Client<T>
+where
+    T: HttpClientExt,
+{
+    fn req(
+        &self,
+        method: http_client::Method,
+        path: &str,
+    ) -> http_client::Result<http_client::Builder> {
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+
+        http_client::with_bearer_auth(
+            http_client::Builder::new().method(method).uri(url),
+            &self.api_key,
+        )
+    }
+
+    fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
+        self.req(http_client::Method::GET, path)
+    }
+}
+
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     /// Create a new Hyperbolic client from the `HYPERBOLIC_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("HYPERBOLIC_API_KEY").expect("HYPERBOLIC_API_KEY not set");
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 }
 
-impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
     /// Create a completion model with the given name.
     ///
@@ -156,23 +175,32 @@ impl CompletionClient for Client {
     ///
     /// let llama_3_1_8b = hyperbolic.completion_model(hyperbolic::LLAMA_3_1_8B);
     /// ```
-    fn completion_model(&self, model: &str) -> CompletionModel {
+    fn completion_model(&self, model: &str) -> Self::CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl VerifyClient for Client {
+impl VerifyClient for Client<reqwest::Client> {
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
-        let response = self.get("/users/me").send().await?;
+        let req = self
+            .get("/models")?
+            .body(http_client::NoBody)
+            .map_err(http_client::Error::from)?;
+
+        let response = HttpClientExt::send(&self.http_client, req).await?;
+
         match response.status() {
             reqwest::StatusCode::OK => Ok(()),
             reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
-            reqwest::StatusCode::INTERNAL_SERVER_ERROR => {
-                Err(VerifyError::ProviderError(response.text().await?))
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR
+            | reqwest::StatusCode::SERVICE_UNAVAILABLE
+            | reqwest::StatusCode::BAD_GATEWAY => {
+                let text = http_client::text(response).await?;
+                Err(VerifyError::ProviderError(text))
             }
             _ => {
-                response.error_for_status()?;
+                //response.error_for_status()?;
                 Ok(())
             }
         }
@@ -181,7 +209,7 @@ impl VerifyClient for Client {
 
 impl_conversion_traits!(
     AsEmbeddings,
-    AsTranscription for Client
+    AsTranscription for Client<T>
 );
 
 #[derive(Debug, Deserialize)]
@@ -341,13 +369,20 @@ pub struct Choice {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    client: Client,
+pub struct CompletionModel<T> {
+    client: Client<T>,
     /// Name of the model (e.g.: deepseek-ai/DeepSeek-R1)
     pub model: String,
 }
 
-impl CompletionModel {
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.to_string(),
+        }
+    }
+
     pub(crate) fn create_completion_request(
         &self,
         completion_request: CompletionRequest,
@@ -394,16 +429,10 @@ impl CompletionModel {
     }
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
-}
-
-impl completion::CompletionModel for CompletionModel {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
@@ -414,6 +443,7 @@ impl completion::CompletionModel for CompletionModel {
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
         let request = self.create_completion_request(completion_request)?;
+        let body = serde_json::to_vec(&request)?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -434,16 +464,21 @@ impl completion::CompletionModel for CompletionModel {
             tracing::Span::current()
         };
 
-        let async_block = async move {
-            let response = self
-                .client
-                .post("/v1/chat/completions")
-                .json(&request)
-                .send()
-                .await?;
+        let req = self
+            .client
+            .req(Method::POST, "/v1/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(http_client::Error::from)?;
 
-            if response.status().is_success() {
-                match response.json::<ApiResponse<CompletionResponse>>().await? {
+        let async_block = async move {
+            let response = self.client.http_client.send::<_, bytes::Bytes>(req).await?;
+
+            let status = response.status();
+            let response_body = response.into_body().into_future().await?.to_vec();
+
+            if status.is_success() {
+                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(response) => {
                         tracing::info!(target: "rig",
                             "Hyperbolic completion token usage: {:?}",
@@ -455,7 +490,9 @@ impl completion::CompletionModel for CompletionModel {
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
                 }
             } else {
-                Err(CompletionError::ProviderError(response.text().await?))
+                Err(CompletionError::ProviderError(
+                    String::from_utf8_lossy(&response_body).to_string(),
+                ))
             }
         };
 
@@ -494,9 +531,16 @@ impl completion::CompletionModel for CompletionModel {
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
 
-        let builder = self.client.post("/v1/chat/completions").json(&request);
+        let body = serde_json::to_vec(&request)?;
 
-        send_compatible_streaming_request(builder)
+        let req = self
+            .client
+            .req(Method::POST, "/v1/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(http_client::Error::from)?;
+
+        send_compatible_streaming_request(self.client.http_client.clone(), req)
             .instrument(span)
             .await
     }
@@ -514,11 +558,13 @@ pub use image_generation::*;
 mod image_generation {
     use super::{ApiResponse, Client};
     use crate::client::ImageGenerationClient;
+    use crate::http_client::HttpClientExt;
     use crate::image_generation;
     use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
     use crate::json_utils::merge_inplace;
     use base64::Engine;
     use base64::prelude::BASE64_STANDARD;
+    use http::Method;
     use serde::Deserialize;
     use serde_json::json;
 
@@ -531,13 +577,13 @@ mod image_generation {
     pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
 
     #[derive(Clone)]
-    pub struct ImageGenerationModel {
-        client: Client,
+    pub struct ImageGenerationModel<T> {
+        client: Client<T>,
         pub model: String,
     }
 
-    impl ImageGenerationModel {
-        pub(crate) fn new(client: Client, model: &str) -> ImageGenerationModel {
+    impl<T> ImageGenerationModel<T> {
+        pub(crate) fn new(client: Client<T>, model: &str) -> ImageGenerationModel<T> {
             Self {
                 client,
                 model: model.to_string(),
@@ -572,7 +618,10 @@ mod image_generation {
         }
     }
 
-    impl image_generation::ImageGenerationModel for ImageGenerationModel {
+    impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
+    where
+        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    {
         type Response = ImageGenerationResponse;
 
         #[cfg_attr(feature = "worker", worker::send)]
@@ -592,33 +641,43 @@ mod image_generation {
                 merge_inplace(&mut request, params);
             }
 
+            let body = serde_json::to_vec(&request)?;
+
+            let request = self
+                .client
+                .req(Method::POST, "/v1/image/generation")?
+                .header("Content-Type", "application/json")
+                .body(body)
+                .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
+
             let response = self
                 .client
-                .post("/v1/image/generation")
-                .json(&request)
-                .send()
+                .http_client
+                .send::<_, bytes::Bytes>(request)
                 .await?;
 
-            if !response.status().is_success() {
+            let status = response.status();
+            let response_body = response.into_body().into_future().await?.to_vec();
+
+            if !status.is_success() {
                 return Err(ImageGenerationError::ProviderError(format!(
-                    "{}: {}",
-                    response.status().as_str(),
-                    response.text().await?
+                    "{status}: {}",
+                    String::from_utf8_lossy(&response_body)
                 )));
             }
 
-            match response
-                .json::<ApiResponse<ImageGenerationResponse>>()
-                .await?
-            {
+            match serde_json::from_slice::<ApiResponse<ImageGenerationResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(err) => Err(ImageGenerationError::ResponseError(err.message)),
             }
         }
     }
 
-    impl ImageGenerationClient for Client {
-        type ImageGenerationModel = ImageGenerationModel;
+    impl<T> ImageGenerationClient for Client<T>
+    where
+        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    {
+        type ImageGenerationModel = ImageGenerationModel<T>;
 
         /// Create an image generation model with the given name.
         ///
@@ -631,7 +690,7 @@ mod image_generation {
         ///
         /// let llama_3_1_8b = hyperbolic.image_generation_model(hyperbolic::SSD);
         /// ```
-        fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
+        fn image_generation_model(&self, model: &str) -> Self::ImageGenerationModel {
             ImageGenerationModel::new(self.clone(), model)
         }
     }
@@ -651,19 +710,22 @@ mod audio_generation {
     use crate::audio_generation;
     use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
     use crate::client::AudioGenerationClient;
+    use crate::http_client::{self, HttpClientExt};
     use base64::Engine;
     use base64::prelude::BASE64_STANDARD;
+    use bytes::Bytes;
+    use http::Method;
     use serde::Deserialize;
     use serde_json::json;
 
     #[derive(Clone)]
-    pub struct AudioGenerationModel {
-        client: Client,
+    pub struct AudioGenerationModel<T> {
+        client: Client<T>,
         pub language: String,
     }
 
-    impl AudioGenerationModel {
-        pub(crate) fn new(client: Client, language: &str) -> AudioGenerationModel {
+    impl<T> AudioGenerationModel<T> {
+        pub(crate) fn new(client: Client<T>, language: &str) -> AudioGenerationModel<T> {
             Self {
                 client,
                 language: language.to_string(),
@@ -693,7 +755,10 @@ mod audio_generation {
         }
     }
 
-    impl audio_generation::AudioGenerationModel for AudioGenerationModel {
+    impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
+    where
+        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    {
         type Response = AudioGenerationResponse;
 
         #[cfg_attr(feature = "worker", worker::send)]
@@ -709,31 +774,37 @@ mod audio_generation {
                 "speed": request.speed
             });
 
-            let response = self
-                .client
-                .post("/v1/audio/generation")
-                .json(&request)
-                .send()
-                .await?;
+            let body = serde_json::to_vec(&request)?;
 
-            if !response.status().is_success() {
+            let req = self
+                .client
+                .req(Method::POST, "/v1/audio/generation")?
+                .header("Content-Type", "application/json")
+                .body(body)
+                .map_err(http_client::Error::from)?;
+
+            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let status = response.status();
+            let response_body = response.into_body().into_future().await?.to_vec();
+
+            if !status.is_success() {
                 return Err(AudioGenerationError::ProviderError(format!(
-                    "{}: {}",
-                    response.status(),
-                    response.text().await?
+                    "{status}: {}",
+                    String::from_utf8_lossy(&response_body)
                 )));
             }
 
-            match serde_json::from_str::<ApiResponse<AudioGenerationResponse>>(
-                &response.text().await?,
-            )? {
+            match serde_json::from_slice::<ApiResponse<AudioGenerationResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(err) => Err(AudioGenerationError::ProviderError(err.message)),
             }
         }
     }
-    impl AudioGenerationClient for Client {
-        type AudioGenerationModel = AudioGenerationModel;
+    impl<T> AudioGenerationClient for Client<T>
+    where
+        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    {
+        type AudioGenerationModel = AudioGenerationModel<T>;
 
         /// Create a completion model with the given name.
         ///
@@ -746,7 +817,7 @@ mod audio_generation {
         ///
         /// let tts = hyperbolic.audio_generation_model("EN");
         /// ```
-        fn audio_generation_model(&self, language: &str) -> AudioGenerationModel {
+        fn audio_generation_model(&self, language: &str) -> Self::AudioGenerationModel {
             AudioGenerationModel::new(self.clone(), language)
         }
     }

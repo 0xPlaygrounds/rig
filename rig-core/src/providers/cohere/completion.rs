@@ -1,6 +1,7 @@
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, GetTokenUsage},
+    http_client::{self, HttpClientExt},
     json_utils,
     message::{self, Reasoning, ToolChoice},
     telemetry::SpanCombinator,
@@ -10,6 +11,7 @@ use std::collections::HashMap;
 use super::client::Client;
 use crate::completion::CompletionRequest;
 use crate::providers::cohere::streaming::StreamingCompletionResponse;
+use http::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
@@ -159,6 +161,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     completion::AssistantContent::Reasoning(Reasoning {
                         id: None,
                         reasoning: vec![thinking],
+                        signature: None,
                     })
                 }
             }))
@@ -457,6 +460,7 @@ impl TryFrom<Message> for message::Message {
                             message::AssistantContent::Reasoning(Reasoning {
                                 id: None,
                                 reasoning: vec![thinking],
+                                signature: None,
                             })
                         }
                     })
@@ -512,13 +516,16 @@ impl TryFrom<Message> for message::Message {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T = reqwest::Client> {
+    pub(crate) client: Client<T>,
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt,
+{
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -573,7 +580,10 @@ impl CompletionModel {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
@@ -607,24 +617,42 @@ impl completion::CompletionModel for CompletionModel {
             serde_json::to_string_pretty(&request)?
         );
 
+        let req_body = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .req(Method::POST, "/v2/chat")?
+            .body(req_body)
+            .unwrap();
+
         async {
-            let response = self.client.post("/v2/chat").json(&request).send().await?;
+            let response = self
+                .client
+                .http_client()
+                .send::<_, bytes::Bytes>(req)
+                .await
+                .map_err(|e| http_client::Error::Instance(e.into()))?;
 
-            if response.status().is_success() {
-                let text_response = response.text().await?;
-                tracing::debug!("Cohere completion request: {}", text_response);
+            let status = response.status();
+            let body = response.into_body().into_future().await?.to_owned();
 
-                let json_response: CompletionResponse = serde_json::from_str(&text_response)?;
+            if status.is_success() {
+                let json_response: CompletionResponse = serde_json::from_slice(&body)?;
                 let span = tracing::Span::current();
                 span.record_token_usage(&json_response.usage);
                 span.record_model_output(&json_response.message);
                 span.record_response_metadata(&json_response);
-                tracing::debug!("Cohere completion response: {}", text_response);
+                tracing::debug!(
+                    "Cohere completion response: {}",
+                    serde_json::to_string_pretty(&json_response)?
+                );
                 let completion: completion::CompletionResponse<CompletionResponse> =
                     json_response.try_into()?;
                 Ok(completion)
             } else {
-                Err(CompletionError::ProviderError(response.text().await?))
+                Err(CompletionError::ProviderError(
+                    String::from_utf8_lossy(&body).to_string(),
+                ))
             }
         }
         .instrument(llm_span)

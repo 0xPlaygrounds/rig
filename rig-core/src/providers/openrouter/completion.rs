@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use tracing::{Instrument, info_span};
 
@@ -6,6 +7,7 @@ use super::client::{ApiErrorResponse, ApiResponse, Client, Usage};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
+    http_client::HttpClientExt,
     json_utils,
     providers::openai::Message,
 };
@@ -161,14 +163,14 @@ pub enum ToolChoiceFunctionKind {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+pub struct CompletionModel<T = reqwest::Client> {
+    pub(crate) client: Client<T>,
     /// Name of the model (e.g.: deepseek-ai/DeepSeek-R1)
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -209,13 +211,25 @@ impl CompletionModel {
             .map(ToolChoice::try_from)
             .transpose()?;
 
-        let request = json!({
+        let mut request = json!({
             "model": self.model,
             "messages": full_history,
-            "temperature": completion_request.temperature,
-            "tools": completion_request.tools.into_iter().map(crate::providers::openai::completion::ToolDefinition::from).collect::<Vec<_>>(),
-            "tool_choice": tool_choice,
         });
+
+        if let Some(temperature) = completion_request.temperature {
+            request["temperature"] = json!(temperature);
+        }
+
+        if !completion_request.tools.is_empty() {
+            request["tools"] = json!(
+                completion_request
+                    .tools
+                    .into_iter()
+                    .map(crate::providers::openai::completion::ToolDefinition::from)
+                    .collect::<Vec<_>>()
+            );
+            request["tool_choice"] = json!(tool_choice);
+        }
 
         let request = if let Some(params) = completion_request.additional_params {
             json_utils::merge(request, params)
@@ -227,7 +241,10 @@ impl CompletionModel {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = FinalCompletionResponse;
 
@@ -257,16 +274,22 @@ impl completion::CompletionModel for CompletionModel {
             tracing::Span::current()
         };
 
-        async move {
-            let response = self
-                .client
-                .post("/chat/completions")
-                .json(&request)
-                .send()
-                .await?;
+        let body = serde_json::to_vec(&request)?;
 
-            if response.status().is_success() {
-                match response.json::<ApiResponse<CompletionResponse>>().await? {
+        let req = self
+            .client
+            .post("/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|x| CompletionError::HttpError(x.into()))?;
+
+        async move {
+            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let status = response.status();
+            let response_body = response.into_body().into_future().await?.to_vec();
+
+            if status.is_success() {
+                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_token_usage(&response.usage);
@@ -281,7 +304,9 @@ impl completion::CompletionModel for CompletionModel {
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
                 }
             } else {
-                Err(CompletionError::ProviderError(response.text().await?))
+                Err(CompletionError::ProviderError(
+                    String::from_utf8_lossy(&response_body).to_string(),
+                ))
             }
         }
         .instrument(span)

@@ -12,15 +12,18 @@ use crate::{
     OneOrMany,
     client::{VerifyClient, VerifyError},
     completion::{self, CompletionError, MessageError, message},
+    http_client::{self, HttpClientExt},
     impl_conversion_traits, json_utils,
 };
 
-use crate::client::{ClientBuilderError, CompletionClient, ProviderClient};
+use crate::client::{CompletionClient, ProviderClient};
 use crate::completion::CompletionRequest;
 use crate::json_utils::merge;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
+use bytes::Bytes;
+use http::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
@@ -30,18 +33,31 @@ use tracing::{Instrument, info_span};
 // ================================================================
 const PERPLEXITY_API_BASE_URL: &str = "https://api.perplexity.ai";
 
-pub struct ClientBuilder<'a> {
+pub struct ClientBuilder<'a, T = reqwest::Client> {
     api_key: &'a str,
     base_url: &'a str,
-    http_client: Option<reqwest::Client>,
+    http_client: T,
 }
 
-impl<'a> ClientBuilder<'a> {
+impl<'a, T> ClientBuilder<'a, T>
+where
+    T: Default,
+{
     pub fn new(api_key: &'a str) -> Self {
         Self {
             api_key,
             base_url: PERPLEXITY_API_BASE_URL,
-            http_client: None,
+            http_client: Default::default(),
+        }
+    }
+}
+
+impl<'a, T> ClientBuilder<'a, T> {
+    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
+        Self {
+            api_key,
+            base_url: PERPLEXITY_API_BASE_URL,
+            http_client,
         }
     }
 
@@ -50,34 +66,34 @@ impl<'a> ClientBuilder<'a> {
         self
     }
 
-    pub fn custom_client(mut self, client: reqwest::Client) -> Self {
-        self.http_client = Some(client);
-        self
+    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
+        ClientBuilder {
+            api_key: self.api_key,
+            base_url: self.base_url,
+            http_client,
+        }
     }
 
-    pub fn build(self) -> Result<Client, ClientBuilderError> {
-        let http_client = if let Some(http_client) = self.http_client {
-            http_client
-        } else {
-            reqwest::Client::builder().build()?
-        };
-
-        Ok(Client {
+    pub fn build(self) -> Client<T> {
+        Client {
             base_url: self.base_url.to_string(),
             api_key: self.api_key.to_string(),
-            http_client,
-        })
+            http_client: self.http_client,
+        }
     }
 }
 
 #[derive(Clone)]
-pub struct Client {
+pub struct Client<T = reqwest::Client> {
     base_url: String,
     api_key: String,
-    http_client: reqwest::Client,
+    http_client: T,
 }
 
-impl std::fmt::Debug for Client {
+impl<T> std::fmt::Debug for Client<T>
+where
+    T: std::fmt::Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("base_url", &self.base_url)
@@ -87,62 +103,70 @@ impl std::fmt::Debug for Client {
     }
 }
 
-impl Client {
-    /// Create a new Perplexity client builder.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::perplexity::{ClientBuilder, self};
-    ///
-    /// // Initialize the Perplexity client
-    /// let perplexity = Client::builder("your-perplexity-api-key")
-    ///    .build()
-    /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_> {
-        ClientBuilder::new(api_key)
-    }
+impl<T> Client<T>
+where
+    T: HttpClientExt,
+{
+    fn req(
+        &self,
+        method: http_client::Method,
+        path: &str,
+    ) -> http_client::Result<http_client::Builder> {
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+        let req = http_client::Builder::new().method(method).uri(url);
 
-    /// Create a new Perplexity client. For more control, use the `builder` method.
-    ///
-    /// # Panics
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key)
-            .build()
-            .expect("Perplexity client should build")
-    }
-
-    pub(crate) fn post(&self, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/{}", self.base_url, path).replace("//", "/");
-        self.http_client.post(url).bearer_auth(&self.api_key)
+        http_client::with_bearer_auth(req, &self.api_key)
     }
 }
 
-impl ProviderClient for Client {
+impl Client<reqwest::Client> {
+    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
+        ClientBuilder::new(api_key)
+    }
+
+    pub fn new(api_key: &str) -> Self {
+        Self::builder(api_key).build()
+    }
+
+    pub fn from_env() -> Self {
+        <Self as ProviderClient>::from_env()
+    }
+}
+
+impl<T> ProviderClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
     /// Create a new Perplexity client from the `PERPLEXITY_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("PERPLEXITY_API_KEY").expect("PERPLEXITY_API_KEY not set");
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        Self::new(&api_key)
+        ClientBuilder::<T>::new(&api_key).build()
     }
 }
 
-impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
+impl<T> CompletionClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
+    type CompletionModel = CompletionModel<T>;
 
-    fn completion_model(&self, model: &str) -> CompletionModel {
+    fn completion_model(&self, model: &str) -> Self::CompletionModel {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl VerifyClient for Client {
+impl<T> VerifyClient for Client<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         // No API endpoint to verify the API key
@@ -154,7 +178,7 @@ impl_conversion_traits!(
     AsTranscription,
     AsEmbeddings,
     AsImageGeneration,
-    AsAudioGeneration for Client
+    AsAudioGeneration for Client<T>
 );
 
 #[derive(Debug, Deserialize)]
@@ -262,13 +286,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 }
 
 #[derive(Clone)]
-pub struct CompletionModel {
-    client: Client,
+pub struct CompletionModel<T> {
+    client: Client<T>,
     pub model: String,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: &str) -> Self {
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -386,7 +410,10 @@ impl From<Message> for message::Message {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
@@ -417,16 +444,23 @@ impl completion::CompletionModel for CompletionModel {
             tracing::Span::current()
         };
 
-        let async_block = async move {
-            let response = self
-                .client
-                .post("/chat/completions")
-                .json(&request)
-                .send()
-                .await?;
+        let body = serde_json::to_vec(&request)?;
 
-            if response.status().is_success() {
-                match response.json::<ApiResponse<CompletionResponse>>().await? {
+        let req = self
+            .client
+            .req(Method::POST, "/v1/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(http_client::Error::from)?;
+
+        let async_block = async move {
+            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+
+            let status = response.status();
+            let response_body = response.into_body().into_future().await?.to_vec();
+
+            if status.is_success() {
+                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(completion) => {
                         let span = tracing::Span::current();
                         span.record("gen_ai.usage.input_tokens", completion.usage.prompt_tokens);
@@ -445,7 +479,9 @@ impl completion::CompletionModel for CompletionModel {
                     ApiResponse::Err(error) => Err(CompletionError::ProviderError(error.message)),
                 }
             } else {
-                Err(CompletionError::ProviderError(response.text().await?))
+                Err(CompletionError::ProviderError(
+                    String::from_utf8_lossy(&response_body).to_string(),
+                ))
             }
         };
 
@@ -461,8 +497,14 @@ impl completion::CompletionModel for CompletionModel {
         let mut request = self.create_completion_request(completion_request)?;
 
         request = merge(request, json!({"stream": true}));
+        let body = serde_json::to_vec(&request)?;
 
-        let builder = self.client.post("/chat/completions").json(&request);
+        let req = self
+            .client
+            .req(Method::POST, "/chat/completions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(http_client::Error::from)?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -482,7 +524,7 @@ impl completion::CompletionModel for CompletionModel {
         } else {
             tracing::Span::current()
         };
-        send_compatible_streaming_request(builder)
+        send_compatible_streaming_request(self.client.http_client.clone(), req)
             .instrument(span)
             .await
     }

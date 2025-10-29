@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.26](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.2.25...rig-mongodb-v0.2.26) - 2025-10-28
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.25](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.2.24...rig-mongodb-v0.2.25) - 2025-10-27
+
+### Added
+
+- *(rig-976)* support filters for `VectorSearchRequest` ([#952](https://github.com/0xPlaygrounds/rig/pull/952))
+
+### Fixed
+
+- *(rig-1006)* text-embedding-ada-002 doesn't support custom dimensions ([#967](https://github.com/0xPlaygrounds/rig/pull/967))
+
+### Other
+
+- Dependent packages no longer force unnecessary features on rig-core ([#964](https://github.com/0xPlaygrounds/rig/pull/964))
+
+## [0.2.24](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.2.23...rig-mongodb-v0.2.24) - 2025-10-14
+
+### Added
+
+- *(rig-951)* generic HTTP client ([#875](https://github.com/0xPlaygrounds/rig/pull/875))
+
+### Fixed
+
+- trying to fix test regressions part 2 ([#913](https://github.com/0xPlaygrounds/rig/pull/913))
+- test regression ([#912](https://github.com/0xPlaygrounds/rig/pull/912))
+- *(rig-983)* http request fail due to no content type header set ([#909](https://github.com/0xPlaygrounds/rig/pull/909))
+
 ## [0.2.23](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.2.22...rig-mongodb-v0.2.23) - 2025-09-29
 
 ### Other

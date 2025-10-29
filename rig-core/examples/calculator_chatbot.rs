@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rig::cli_chatbot::ChatBotBuilder;
+use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::{
     completion::ToolDefinition,

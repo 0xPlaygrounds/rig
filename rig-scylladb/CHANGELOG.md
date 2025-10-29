@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.15](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.1.14...rig-scylladb-v0.1.15) - 2025-10-28
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.14](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.1.13...rig-scylladb-v0.1.14) - 2025-10-27
+
+### Added
+
+- *(rig-976)* support filters for `VectorSearchRequest` ([#952](https://github.com/0xPlaygrounds/rig/pull/952))
+
+### Fixed
+
+- *(rig-1006)* text-embedding-ada-002 doesn't support custom dimensions ([#967](https://github.com/0xPlaygrounds/rig/pull/967))
+
+### Other
+
+- Dependent packages no longer force unnecessary features on rig-core ([#964](https://github.com/0xPlaygrounds/rig/pull/964))
+
+## [0.1.13](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.1.12...rig-scylladb-v0.1.13) - 2025-10-14
+
+### Added
+
+- *(rig-951)* generic HTTP client ([#875](https://github.com/0xPlaygrounds/rig/pull/875))
+
+### Fixed
+
+- trying to fix test regressions part 2 ([#913](https://github.com/0xPlaygrounds/rig/pull/913))
+
 ## [0.1.12](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.1.11...rig-scylladb-v0.1.12) - 2025-09-29
 
 ### Fixed

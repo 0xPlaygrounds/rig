@@ -72,8 +72,7 @@
 //!
 //!     let index = client.get_index(
 //!         model,
-//!         "moviePlotsEmbedding",
-//!         SearchParams::default()
+//!         "moviePlotsEmbedding"
 //!     ).await.unwrap();
 //!
 //!     #[derive(Debug, Deserialize)]
@@ -90,9 +89,12 @@ use std::str::FromStr;
 
 use futures::TryStreamExt;
 use neo4rs::*;
-use rig::{embeddings::EmbeddingModel, vector_store::VectorStoreError};
+use rig::{
+    embeddings::EmbeddingModel,
+    vector_store::{VectorStoreError, request::SearchFilter},
+};
 use serde::Deserialize;
-use vector_index::{IndexConfig, Neo4jVectorIndex, SearchParams, VectorSimilarityFunction};
+use vector_index::{IndexConfig, Neo4jVectorIndex, VectorSimilarityFunction};
 
 pub struct Neo4jClient {
     pub graph: Graph,
@@ -100,6 +102,72 @@ pub struct Neo4jClient {
 
 fn neo4j_to_rig_error(e: neo4rs::Error) -> VectorStoreError {
     VectorStoreError::DatastoreError(Box::new(e))
+}
+
+#[derive(Clone, Debug)]
+pub struct Neo4jSearchFilter(String);
+
+impl SearchFilter for Neo4jSearchFilter {
+    type Value = serde_json::Value;
+
+    fn eq(key: String, value: Self::Value) -> Self {
+        Self(format!("n.{} = {}", key, serialize_cypher(value)))
+    }
+
+    fn gt(key: String, value: Self::Value) -> Self {
+        Self(format!("n.{key} > {}", serialize_cypher(value)))
+    }
+
+    fn lt(key: String, value: Self::Value) -> Self {
+        Self(format!("n.{key} < {}", serialize_cypher(value)))
+    }
+
+    fn and(self, rhs: Self) -> Self {
+        Self(format!("({}) AND ({})", self.0, rhs.0))
+    }
+
+    fn or(self, rhs: Self) -> Self {
+        Self(format!("({}) OR ({})", self.0, rhs.0))
+    }
+}
+
+impl Neo4jSearchFilter {
+    pub fn render(self) -> String {
+        format!("WHERE {}", self.0)
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self(format!("NOT ({})", self.0))
+    }
+}
+
+fn serialize_cypher(value: serde_json::Value) -> String {
+    use serde_json::Value::*;
+    match value {
+        Null => "null".into(),
+        Bool(b) => b.to_string(),
+        Number(n) => n.to_string(),
+        String(s) => format!("'{}'", s.replace('\'', "\\'")),
+        Array(arr) => {
+            format!(
+                "[{}]",
+                arr.into_iter()
+                    .map(serialize_cypher)
+                    .collect::<Vec<std::string::String>>()
+                    .join(", ")
+            )
+        }
+        Object(obj) => {
+            format!(
+                "{{{}}}",
+                obj.into_iter()
+                    .map(|(k, v)| format!("{k}: {}", serialize_cypher(v)))
+                    .collect::<Vec<std::string::String>>()
+                    .join(", ")
+            )
+        }
+    }
 }
 
 pub trait ToBoltType {
@@ -202,7 +270,6 @@ impl Neo4jClient {
         &self,
         model: M,
         index_name: &str,
-        search_params: SearchParams,
     ) -> Result<Neo4jVectorIndex<M>, VectorStoreError> {
         #[derive(Deserialize)]
         struct IndexInfo {
@@ -264,7 +331,6 @@ impl Neo4jClient {
             self.graph.clone(),
             model,
             index_config,
-            search_params,
         ))
     }
 

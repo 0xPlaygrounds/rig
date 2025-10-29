@@ -266,6 +266,7 @@ impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
     /// ```rust
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?
     ///     .load_with_path()
+    ///     .ignore_errors()
     ///     .by_page()
     ///     .into_iter();
     ///

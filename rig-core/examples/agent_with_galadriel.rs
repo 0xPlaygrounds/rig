@@ -12,7 +12,7 @@ async fn main() -> Result<(), anyhow::Error> {
     if let Some(fine_tune_api_key) = fine_tune_api_key.as_deref() {
         builder = builder.fine_tune_api_key(fine_tune_api_key);
     }
-    let client = builder.build().expect("Failed to build client");
+    let client = builder.build();
 
     // Create agent with a single context prompt
     let comedian_agent = client

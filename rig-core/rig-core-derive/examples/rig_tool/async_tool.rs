@@ -1,4 +1,4 @@
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers;
 use rig::tool::Tool;
