@@ -390,7 +390,7 @@ pub const LLAMA_3_8B_8192: &str = "llama3-8b-8192";
 pub const MIXTRAL_8X7B_32768: &str = "mixtral-8x7b-32768";
 
 #[derive(Clone, Debug)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
     /// Name of the model (e.g.: deepseek-r1-distill-llama-70b)
     pub model: String,

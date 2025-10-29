@@ -451,7 +451,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 // ---------- Completion Model ----------
 
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
     pub model: String,
 }
