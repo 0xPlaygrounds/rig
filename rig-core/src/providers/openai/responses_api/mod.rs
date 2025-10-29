@@ -445,6 +445,20 @@ fn add_props_false(schema: &mut serde_json::Value) {
             }
         }
 
+        if obj.contains_key("properties") {
+            let prop_names = if let Some(Value::Object(props_obj)) = obj.get("properties") {
+                props_obj
+                    .keys()
+                    .cloned()
+                    .map(|prop| Value::String(prop))
+                    .collect()
+            } else {
+                vec![]
+            };
+
+            obj.insert("required".to_string(), Value::Array(prop_names));
+        }
+
         if let Some(properties) = obj.get_mut("properties")
             && let Value::Object(props) = properties
         {
