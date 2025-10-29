@@ -555,9 +555,6 @@ impl<T> EmbeddingModel<T> {
     }
 }
 
-// ================================================================
-// Azure OpenAI Completion API
-// ================================================================
 /// `o1` completion model
 pub const O1: &str = "o1";
 /// `o1-preview` completion model
