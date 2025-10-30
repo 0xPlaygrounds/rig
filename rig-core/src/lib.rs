@@ -143,6 +143,6 @@ pub use one_or_many::{EmptyListError, OneOrMany};
 
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
-pub use rig_derive::Embed;
+pub use rig_derive::{Embed, rig_tool as tool_macro};
 
 pub mod telemetry;
