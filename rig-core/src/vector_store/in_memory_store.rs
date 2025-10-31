@@ -16,6 +16,8 @@ use crate::{
 
 use super::lsh::LSHIndex;
 
+pub use super::builder::InMemoryVectorStoreBuilder;
+
 /// [InMemoryVectorStore] is a simple in-memory vector store that stores embeddings
 /// in-memory using a HashMap.
 #[derive(Clone, Default)]
@@ -31,13 +33,51 @@ pub struct InMemoryVectorStore<D: Serialize> {
 }
 
 impl<D: Serialize + Eq> InMemoryVectorStore<D> {
+    /// Create a new builder for configuring an [InMemoryVectorStore].
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use rig::vector_store::InMemoryVectorStore;
+    ///
+    /// let store = InMemoryVectorStore::<String>::builder()
+    ///     .with_lsh()
+    ///     .documents(documents)
+    ///     .build();
+    /// ```
+    pub fn builder() -> InMemoryVectorStoreBuilder<D> {
+        InMemoryVectorStoreBuilder::new()
+    }
+
+    /// Internal constructor used by the builder.
+    pub(super) fn from_builder(
+        embeddings: HashMap<String, (D, OneOrMany<Embedding>)>,
+        index_strategy: IndexStrategy,
+    ) -> Self {
+        let mut vector_store = Self {
+            embeddings,
+            index_strategy: index_strategy.clone(),
+            lsh_index: None,
+        };
+
+        // Initialize LSH index if needed
+        if let IndexStrategy::LSH {
+            num_tables,
+            num_hyperplanes,
+        } = index_strategy
+        {
+            vector_store.initialize_lsh_index(num_tables, num_hyperplanes);
+        }
+
+        vector_store
+    }
+
     /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings.
     /// Ids are automatically generated have will have the form `"doc{n}"` where `n`
     /// is the index of the document.
-    pub fn from_documents(
-        documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>,
-        index_strategy: IndexStrategy,
-    ) -> Self {
+    ///
+    /// Uses BruteForce index strategy by default. For custom index strategies, use [InMemoryVectorStore::builder].
+    pub fn from_documents(documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>) -> Self {
         let mut store = HashMap::new();
         documents
             .into_iter()
@@ -46,80 +86,49 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
                 store.insert(format!("doc{i}"), (doc, embeddings));
             });
 
-        let mut vector_store = Self {
+        Self {
             embeddings: store,
-            index_strategy: index_strategy.clone(),
+            index_strategy: IndexStrategy::default(),
             lsh_index: None,
-        };
-
-        // Initialize LSH index if needed
-        if let IndexStrategy::LSH {
-            num_tables,
-            num_hyperplanes,
-        } = index_strategy
-        {
-            vector_store.initialize_lsh_index(num_tables, num_hyperplanes);
         }
-
-        vector_store
     }
 
     /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings with ids.
+    ///
+    /// Uses BruteForce index strategy by default. For custom index strategies, use [InMemoryVectorStore::builder].
     pub fn from_documents_with_ids(
         documents: impl IntoIterator<Item = (impl ToString, D, OneOrMany<Embedding>)>,
-        index_strategy: IndexStrategy,
     ) -> Self {
         let mut store = HashMap::new();
         documents.into_iter().for_each(|(i, doc, embeddings)| {
             store.insert(i.to_string(), (doc, embeddings));
         });
 
-        let mut vector_store = Self {
+        Self {
             embeddings: store,
-            index_strategy: index_strategy.clone(),
+            index_strategy: IndexStrategy::default(),
             lsh_index: None,
-        };
-
-        // Initialize LSH index if needed
-        if let IndexStrategy::LSH {
-            num_tables,
-            num_hyperplanes,
-        } = index_strategy
-        {
-            vector_store.initialize_lsh_index(num_tables, num_hyperplanes);
         }
-
-        vector_store
     }
 
     /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings.
     /// Document ids are generated using the provided function.
+    ///
+    /// Uses BruteForce index strategy by default. For custom index strategies, use [InMemoryVectorStore::builder].
     pub fn from_documents_with_id_f(
         documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>,
         f: fn(&D) -> String,
-        index_strategy: IndexStrategy,
     ) -> Self {
         let mut store = HashMap::new();
         documents.into_iter().for_each(|(doc, embeddings)| {
             store.insert(f(&doc), (doc, embeddings));
         });
 
-        let mut vector_store = Self {
+        Self {
             embeddings: store,
-            index_strategy: index_strategy.clone(),
+            index_strategy: IndexStrategy::default(),
             lsh_index: None,
-        };
-
-        // Initialize LSH index if needed
-        if let IndexStrategy::LSH {
-            num_tables,
-            num_hyperplanes,
-        } = index_strategy
-        {
-            vector_store.initialize_lsh_index(num_tables, num_hyperplanes);
         }
-
-        vector_store
     }
 
     /// Implement vector search on [InMemoryVectorStore].
@@ -459,14 +468,18 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
 mod tests {
     use std::cmp::Reverse;
 
-    use crate::{OneOrMany, embeddings::embedding::Embedding};
+    use crate::{OneOrMany, embeddings::embedding::Embedding, vector_store::IndexStrategy};
 
-    use super::{InMemoryVectorStore, IndexStrategy, RankingItem};
+    use super::{InMemoryVectorStore, RankingItem};
 
     #[test]
     fn test_auto_ids() {
-        let mut vector_store = InMemoryVectorStore::from_documents(
-            vec![
+        let mut vector_store = InMemoryVectorStore::builder()
+            .index_strategy(IndexStrategy::LSH {
+                num_tables: 5,
+                num_hyperplanes: 10,
+            })
+            .documents(vec![
                 (
                     "glarb-garb",
                     OneOrMany::one(Embedding {
@@ -488,12 +501,8 @@ mod tests {
                         vec: vec![0.3, 0.7, 0.1],
                     }),
                 ),
-            ],
-            IndexStrategy::LSH {
-                num_tables: 5,
-                num_hyperplanes: 10,
-            },
-        );
+            ])
+            .build();
 
         vector_store.add_documents(vec![
             (
@@ -574,8 +583,12 @@ mod tests {
 
     #[test]
     fn test_single_embedding() {
-        let vector_store = InMemoryVectorStore::from_documents_with_ids(
-            vec![
+        let vector_store = InMemoryVectorStore::builder()
+            .index_strategy(IndexStrategy::LSH {
+                num_tables: 5,
+                num_hyperplanes: 10,
+            })
+            .documents_with_ids(vec![
                 (
                     "doc1",
                     "glarb-garb",
@@ -600,12 +613,8 @@ mod tests {
                         vec: vec![0.3, 0.7, 0.1],
                     }),
                 ),
-            ],
-            IndexStrategy::LSH {
-                num_tables: 5,
-                num_hyperplanes: 10,
-            },
-        );
+            ])
+            .build();
 
         let ranking = vector_store.vector_search(
             &Embedding {
@@ -636,8 +645,12 @@ mod tests {
 
     #[test]
     fn test_multiple_embeddings() {
-        let vector_store = InMemoryVectorStore::from_documents_with_ids(
-            vec![
+        let vector_store = InMemoryVectorStore::builder()
+            .index_strategy(IndexStrategy::LSH {
+                num_tables: 5,
+                num_hyperplanes: 10,
+            })
+            .documents_with_ids(vec![
                 (
                     "doc1",
                     "glarb-garb",
@@ -683,12 +696,8 @@ mod tests {
                     ])
                     .unwrap(),
                 ),
-            ],
-            IndexStrategy::LSH {
-                num_tables: 5,
-                num_hyperplanes: 10,
-            },
-        );
+            ])
+            .build();
 
         let ranking = vector_store.vector_search(
             &Embedding {

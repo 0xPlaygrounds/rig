@@ -12,6 +12,7 @@ use crate::{
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
+pub mod builder;
 pub mod in_memory_store;
 pub mod lsh;
 pub mod request;
