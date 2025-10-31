@@ -179,14 +179,20 @@ where
                                     && !function.arguments.is_empty()
                                 {
                                     if let Some((id, name, arguments)) =
-                                        tool_calls.get(&tool_call.index)
+                                        tool_calls.get(&tool_call.index).cloned()
                                     {
                                         let new_arguments = &tool_call.function.arguments;
-                                        let arguments = format!("{arguments}{new_arguments}");
+                                        let combined_arguments = format!("{arguments}{new_arguments}");
                                         tool_calls.insert(
                                             tool_call.index,
-                                            (id.clone(), name.clone(), arguments),
+                                            (id.clone(), name.clone(), combined_arguments),
                                         );
+
+                                        // Emit the delta so UI can show progress
+                                        yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                                            id: id.clone(),
+                                            delta: new_arguments.clone(),
+                                        });
                                     } else {
                                         debug!("Partial tool call received but tool call was never started.");
                                     }
@@ -281,4 +287,172 @@ where
     Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
         stream,
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_streaming_function_deserialization() {
+        let json = r#"{"name": "get_weather", "arguments": "{\"location\":\"Paris\"}"}"#;
+        let function: StreamingFunction = serde_json::from_str(json).unwrap();
+        assert_eq!(function.name, Some("get_weather".to_string()));
+        assert_eq!(function.arguments, r#"{"location":"Paris"}"#.to_string());
+    }
+
+    #[test]
+    fn test_streaming_tool_call_deserialization() {
+        let json = r#"{
+            "index": 0,
+            "id": "call_abc123",
+            "function": {
+                "name": "get_weather",
+                "arguments": "{\"city\":\"London\"}"
+            }
+        }"#;
+        let tool_call: StreamingToolCall = serde_json::from_str(json).unwrap();
+        assert_eq!(tool_call.index, 0);
+        assert_eq!(tool_call.id, Some("call_abc123".to_string()));
+        assert_eq!(tool_call.function.name, Some("get_weather".to_string()));
+    }
+
+    #[test]
+    fn test_streaming_tool_call_partial_deserialization() {
+        // Partial tool calls have no name and partial arguments
+        let json = r#"{
+            "index": 0,
+            "id": null,
+            "function": {
+                "name": null,
+                "arguments": "Paris"
+            }
+        }"#;
+        let tool_call: StreamingToolCall = serde_json::from_str(json).unwrap();
+        assert_eq!(tool_call.index, 0);
+        assert!(tool_call.id.is_none());
+        assert!(tool_call.function.name.is_none());
+        assert_eq!(tool_call.function.arguments, "Paris");
+    }
+
+    #[test]
+    fn test_streaming_delta_with_tool_calls() {
+        let json = r#"{
+            "content": null,
+            "tool_calls": [{
+                "index": 0,
+                "id": "call_xyz",
+                "function": {
+                    "name": "search",
+                    "arguments": ""
+                }
+            }]
+        }"#;
+        let delta: StreamingDelta = serde_json::from_str(json).unwrap();
+        assert!(delta.content.is_none());
+        assert_eq!(delta.tool_calls.len(), 1);
+        assert_eq!(delta.tool_calls[0].id, Some("call_xyz".to_string()));
+    }
+
+    #[test]
+    fn test_streaming_chunk_deserialization() {
+        let json = r#"{
+            "choices": [{
+                "delta": {
+                    "content": "Hello",
+                    "tool_calls": []
+                }
+            }],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15
+            }
+        }"#;
+        let chunk: StreamingCompletionChunk = serde_json::from_str(json).unwrap();
+        assert_eq!(chunk.choices.len(), 1);
+        assert_eq!(chunk.choices[0].delta.content, Some("Hello".to_string()));
+        assert!(chunk.usage.is_some());
+    }
+
+    #[test]
+    fn test_streaming_chunk_with_multiple_tool_call_deltas() {
+        // Simulates multiple partial tool call chunks arriving
+        let json_start = r#"{
+            "choices": [{
+                "delta": {
+                    "content": null,
+                    "tool_calls": [{
+                        "index": 0,
+                        "id": "call_123",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": ""
+                        }
+                    }]
+                }
+            }],
+            "usage": null
+        }"#;
+
+        let json_chunk1 = r#"{
+            "choices": [{
+                "delta": {
+                    "content": null,
+                    "tool_calls": [{
+                        "index": 0,
+                        "id": null,
+                        "function": {
+                            "name": null,
+                            "arguments": "{\"loc"
+                        }
+                    }]
+                }
+            }],
+            "usage": null
+        }"#;
+
+        let json_chunk2 = r#"{
+            "choices": [{
+                "delta": {
+                    "content": null,
+                    "tool_calls": [{
+                        "index": 0,
+                        "id": null,
+                        "function": {
+                            "name": null,
+                            "arguments": "ation\":\"NYC\"}"
+                        }
+                    }]
+                }
+            }],
+            "usage": null
+        }"#;
+
+        // Verify each chunk deserializes correctly
+        let start_chunk: StreamingCompletionChunk = serde_json::from_str(json_start).unwrap();
+        assert_eq!(start_chunk.choices[0].delta.tool_calls.len(), 1);
+        assert_eq!(
+            start_chunk.choices[0].delta.tool_calls[0]
+                .function
+                .name
+                .as_ref()
+                .unwrap(),
+            "get_weather"
+        );
+
+        let chunk1: StreamingCompletionChunk = serde_json::from_str(json_chunk1).unwrap();
+        assert_eq!(chunk1.choices[0].delta.tool_calls.len(), 1);
+        assert_eq!(
+            chunk1.choices[0].delta.tool_calls[0].function.arguments,
+            "{\"loc"
+        );
+
+        let chunk2: StreamingCompletionChunk = serde_json::from_str(json_chunk2).unwrap();
+        assert_eq!(chunk2.choices[0].delta.tool_calls.len(), 1);
+        assert_eq!(
+            chunk2.choices[0].delta.tool_calls[0].function.arguments,
+            "ation\":\"NYC\"}"
+        );
+    }
 }
