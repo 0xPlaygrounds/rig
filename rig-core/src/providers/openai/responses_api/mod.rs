@@ -755,6 +755,7 @@ pub struct CompletionResponse {
     /// The model output (messages, etc will go here)
     pub output: Vec<Output>,
     /// Tools
+    #[serde(default)]
     pub tools: Vec<ResponsesToolDefinition>,
     /// Additional parameters
     #[serde(flatten)]
