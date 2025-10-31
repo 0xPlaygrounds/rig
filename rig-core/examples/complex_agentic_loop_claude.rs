@@ -7,7 +7,7 @@ use rig::{
     message::Message,
     providers::anthropic::{CLAUDE_3_7_SONNET, ClientBuilder},
     tools::ThinkTool,
-    vector_store::{IndexStrategy, in_memory_store::InMemoryVectorStore},
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -81,11 +81,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Create vector store with the embeddings
-    let vector_store = InMemoryVectorStore::from_documents_with_id_f(
-        embeddings,
-        |entry| entry.id.clone(),
-        IndexStrategy::BruteForce,
-    );
+    let vector_store =
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |entry| entry.id.clone());
 
     // Create vector store index
     let vector_index = vector_store.index(embedding_model);

@@ -2,11 +2,8 @@ use anyhow::{Context, Result};
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::{
-    Embed,
-    embeddings::EmbeddingsBuilder,
-    loaders::PdfFileLoader,
-    providers::openai,
-    vector_store::{IndexStrategy, in_memory_store::InMemoryVectorStore},
+    Embed, embeddings::EmbeddingsBuilder, loaders::PdfFileLoader, providers::openai,
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -85,7 +82,7 @@ async fn main() -> Result<()> {
     println!("Successfully generated embeddings");
 
     // Create vector store and index
-    let vector_store = InMemoryVectorStore::from_documents(embeddings, IndexStrategy::BruteForce);
+    let vector_store = InMemoryVectorStore::from_documents(embeddings);
     let index = vector_store.index(model);
     println!("Successfully created vector store and index");
 

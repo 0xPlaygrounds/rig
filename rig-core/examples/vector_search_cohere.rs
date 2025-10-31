@@ -3,8 +3,7 @@ use rig::{
     embeddings::EmbeddingsBuilder,
     providers::cohere::{Client, EMBED_ENGLISH_V3},
     vector_store::{
-        IndexStrategy, VectorStoreIndex, in_memory_store::InMemoryVectorStore,
-        request::VectorSearchRequest,
+        VectorStoreIndex, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -58,11 +57,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Create vector store with the embeddings
-    let vector_store = InMemoryVectorStore::from_documents_with_id_f(
-        embeddings,
-        |doc| doc.id.clone(),
-        IndexStrategy::BruteForce,
-    );
+    let vector_store =
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
 
     let query = "Which instrument is found in the Nebulon Mountain Ranges?";
     let req = VectorSearchRequest::builder()

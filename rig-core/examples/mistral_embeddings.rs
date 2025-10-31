@@ -2,9 +2,9 @@ use rig::Embed;
 use rig::client::EmbeddingsClient;
 use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::mistral;
+use rig::vector_store::VectorStoreIndex;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;
 use rig::vector_store::request::VectorSearchRequest;
-use rig::vector_store::{IndexStrategy, VectorStoreIndex};
 use serde::{Deserialize, Serialize};
 
 #[derive(Embed, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -30,7 +30,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .expect("Failed to embed documents");
 
     // Create vector store with the embeddings
-    let vector_store = InMemoryVectorStore::from_documents(embeddings, IndexStrategy::BruteForce);
+    let vector_store = InMemoryVectorStore::from_documents(embeddings);
 
     // Create vector store index
     let index = vector_store.index(embedding_model);
