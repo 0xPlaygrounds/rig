@@ -211,13 +211,25 @@ impl<T> CompletionModel<T> {
             .map(ToolChoice::try_from)
             .transpose()?;
 
-        let request = json!({
+        let mut request = json!({
             "model": self.model,
             "messages": full_history,
-            "temperature": completion_request.temperature,
-            "tools": completion_request.tools.into_iter().map(crate::providers::openai::completion::ToolDefinition::from).collect::<Vec<_>>(),
-            "tool_choice": tool_choice,
         });
+
+        if let Some(temperature) = completion_request.temperature {
+            request["temperature"] = json!(temperature);
+        }
+
+        if !completion_request.tools.is_empty() {
+            request["tools"] = json!(
+                completion_request
+                    .tools
+                    .into_iter()
+                    .map(crate::providers::openai::completion::ToolDefinition::from)
+                    .collect::<Vec<_>>()
+            );
+            request["tool_choice"] = json!(tool_choice);
+        }
 
         let request = if let Some(params) = completion_request.additional_params {
             json_utils::merge(request, params)

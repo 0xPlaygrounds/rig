@@ -121,6 +121,29 @@ pub enum SearchType {
 #[derive(Debug, Clone)]
 pub struct LanceDBFilter(Result<String, FilterError>);
 
+impl serde::Serialize for LanceDBFilter {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match &self.0 {
+            Ok(s) => serializer.serialize_str(s),
+            Err(e) => serializer.collect_str(e),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for LanceDBFilter {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        // We can't deserialize to Error, so just create an Ok variant
+        Ok(LanceDBFilter(Ok(s)))
+    }
+}
+
 fn zip_result(
     l: Result<String, FilterError>,
     r: Result<String, FilterError>,

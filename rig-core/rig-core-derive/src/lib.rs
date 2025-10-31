@@ -223,7 +223,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
     // Extract return type and get Output and Error types from Result<T, E>
     let return_type = &input_fn.sig.output;
-    let output_type = match return_type {
+    let (output_type, error_type) = match return_type {
         ReturnType::Type(_, ty) => {
             if let Type::Path(type_path) = ty.deref() {
                 if let Some(last_segment) = type_path.path.segments.last() {
@@ -233,15 +233,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                                 let output = args.args.first().unwrap();
                                 let error = args.args.last().unwrap();
 
-                                // Convert the error type to a string for comparison
-                                let error_str = quote!(#error).to_string().replace(" ", "");
-                                if !error_str.contains("rig::tool::ToolError") {
-                                    panic!(
-                                        "Expected rig::tool::ToolError as second type parameter but found {error_str}"
-                                    );
-                                }
-
-                                quote!(#output)
+                                (quote!(#output), quote!(#error))
                             } else {
                                 panic!("Expected Result with two type parameters");
                             }
@@ -306,13 +298,13 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let call_impl = if is_async {
         quote! {
             async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-                #fn_name(#(args.#param_names,)*).await.map_err(|e| rig::tool::ToolError::ToolCallError(e.into()))
+                #fn_name(#(args.#param_names,)*).await
             }
         }
     } else {
         quote! {
             async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-                #fn_name(#(args.#param_names,)*).map_err(|e| rig::tool::ToolError::ToolCallError(e.into()))
+                #fn_name(#(args.#param_names,)*)
             }
         }
     };
@@ -333,7 +325,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
             type Args = #params_struct_name;
             type Output = #output_type;
-            type Error = rig::tool::ToolError;
+            type Error = #error_type;
 
             fn name(&self) -> String {
                 #fn_name_str.to_string()

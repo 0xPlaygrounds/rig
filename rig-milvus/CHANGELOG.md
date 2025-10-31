@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.15](https://github.com/0xPlaygrounds/rig/compare/rig-milvus-v0.1.14...rig-milvus-v0.1.15) - 2025-10-28
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.14](https://github.com/0xPlaygrounds/rig/compare/rig-milvus-v0.1.13...rig-milvus-v0.1.14) - 2025-10-27
+
+### Added
+
+- *(rig-976)* support filters for `VectorSearchRequest` ([#952](https://github.com/0xPlaygrounds/rig/pull/952))
+- *(rig-996)* generic streaming ([#955](https://github.com/0xPlaygrounds/rig/pull/955))
+
+### Other
+
+- Dependent packages no longer force unnecessary features on rig-core ([#964](https://github.com/0xPlaygrounds/rig/pull/964))
+
 ## [0.1.13](https://github.com/0xPlaygrounds/rig/compare/rig-milvus-v0.1.12...rig-milvus-v0.1.13) - 2025-10-14
 
 ### Other

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.5](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.4...rig-bedrock-v0.3.5) - 2025-10-28
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.3.4](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.3...rig-bedrock-v0.3.4) - 2025-10-27
+
+### Added
+
+- *(bedrock)* Support streaming thinking ([#946](https://github.com/0xPlaygrounds/rig/pull/946))
+- *(bedrock)* Implement usage ([#934](https://github.com/0xPlaygrounds/rig/pull/934))
+
+### Other
+
+- Fix bedrock tool calls with zero arguments ([#989](https://github.com/0xPlaygrounds/rig/pull/989))
+- Dependent packages no longer force unnecessary features on rig-core ([#964](https://github.com/0xPlaygrounds/rig/pull/964))
+
 ## [0.3.3](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.2...rig-bedrock-v0.3.3) - 2025-10-14
 
 ### Added

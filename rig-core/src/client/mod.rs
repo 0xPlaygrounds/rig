@@ -951,7 +951,7 @@ mod tests {
             .transcription(TranscriptionRequest {
                 data,
                 filename: "audio.mp3".to_string(),
-                language: "en".to_string(),
+                language: None,
                 prompt: None,
                 temperature: None,
                 additional_params: None,
