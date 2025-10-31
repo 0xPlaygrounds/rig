@@ -208,7 +208,13 @@ where
                                 let Some(arguments) = function.arguments.clone() else { continue; };
 
                                 let Some(tc) = current_tool_call.clone() else { continue; };
-                                current_tool_call = Some((tc.0, tc.1, format!("{}{}", tc.2, arguments)));
+                                current_tool_call = Some((tc.0.clone(), tc.1, format!("{}{}", tc.2, arguments)));
+
+                                // Emit the delta so UI can show progress
+                                yield Ok(RawStreamingChoice::ToolCallDelta {
+                                    id: tc.0,
+                                    delta: arguments,
+                                });
                             },
 
                             StreamingEvent::ToolCallEnd => {
@@ -254,5 +260,228 @@ where
         Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
             stream,
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_message_content_delta_deserialization() {
+        let json = json!({
+            "type": "content-delta",
+            "delta": {
+                "message": {
+                    "content": {
+                        "text": "Hello world"
+                    }
+                }
+            }
+        });
+
+        let event: StreamingEvent = serde_json::from_value(json).unwrap();
+        match event {
+            StreamingEvent::ContentDelta { delta } => {
+                assert!(delta.is_some());
+                let message = delta.unwrap().message.unwrap();
+                let content = message.content.unwrap();
+                assert_eq!(content.text, Some("Hello world".to_string()));
+            }
+            _ => panic!("Expected ContentDelta"),
+        }
+    }
+
+    #[test]
+    fn test_tool_call_start_deserialization() {
+        let json = json!({
+            "type": "tool-call-start",
+            "delta": {
+                "message": {
+                    "tool_calls": {
+                        "id": "call_123",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{"
+                        }
+                    }
+                }
+            }
+        });
+
+        let event: StreamingEvent = serde_json::from_value(json).unwrap();
+        match event {
+            StreamingEvent::ToolCallStart { delta } => {
+                assert!(delta.is_some());
+                let tool_call = delta.unwrap().message.unwrap().tool_calls.unwrap();
+                assert_eq!(tool_call.id, Some("call_123".to_string()));
+                assert_eq!(
+                    tool_call.function.unwrap().name,
+                    Some("get_weather".to_string())
+                );
+            }
+            _ => panic!("Expected ToolCallStart"),
+        }
+    }
+
+    #[test]
+    fn test_tool_call_delta_deserialization() {
+        let json = json!({
+            "type": "tool-call-delta",
+            "delta": {
+                "message": {
+                    "tool_calls": {
+                        "function": {
+                            "arguments": "\"location\""
+                        }
+                    }
+                }
+            }
+        });
+
+        let event: StreamingEvent = serde_json::from_value(json).unwrap();
+        match event {
+            StreamingEvent::ToolCallDelta { delta } => {
+                assert!(delta.is_some());
+                let tool_call = delta.unwrap().message.unwrap().tool_calls.unwrap();
+                let function = tool_call.function.unwrap();
+                assert_eq!(function.arguments, Some("\"location\"".to_string()));
+            }
+            _ => panic!("Expected ToolCallDelta"),
+        }
+    }
+
+    #[test]
+    fn test_tool_call_end_deserialization() {
+        let json = json!({
+            "type": "tool-call-end"
+        });
+
+        let event: StreamingEvent = serde_json::from_value(json).unwrap();
+        match event {
+            StreamingEvent::ToolCallEnd => {
+                // Success
+            }
+            _ => panic!("Expected ToolCallEnd"),
+        }
+    }
+
+    #[test]
+    fn test_message_end_with_usage_deserialization() {
+        let json = json!({
+            "type": "message-end",
+            "delta": {
+                "usage": {
+                    "tokens": {
+                        "input_tokens": 100,
+                        "output_tokens": 50
+                    }
+                }
+            }
+        });
+
+        let event: StreamingEvent = serde_json::from_value(json).unwrap();
+        match event {
+            StreamingEvent::MessageEnd { delta } => {
+                assert!(delta.is_some());
+                let usage = delta.unwrap().usage.unwrap();
+                let tokens = usage.tokens.unwrap();
+                assert_eq!(tokens.input_tokens, Some(100.0));
+                assert_eq!(tokens.output_tokens, Some(50.0));
+            }
+            _ => panic!("Expected MessageEnd"),
+        }
+    }
+
+    #[test]
+    fn test_streaming_event_order() {
+        // Test that a typical sequence of events deserializes correctly
+        let events = vec![
+            json!({"type": "message-start"}),
+            json!({"type": "content-start"}),
+            json!({
+                "type": "content-delta",
+                "delta": {
+                    "message": {
+                        "content": {
+                            "text": "Sure, "
+                        }
+                    }
+                }
+            }),
+            json!({
+                "type": "content-delta",
+                "delta": {
+                    "message": {
+                        "content": {
+                            "text": "I can help with that."
+                        }
+                    }
+                }
+            }),
+            json!({"type": "content-end"}),
+            json!({"type": "tool-plan"}),
+            json!({
+                "type": "tool-call-start",
+                "delta": {
+                    "message": {
+                        "tool_calls": {
+                            "id": "call_abc",
+                            "function": {
+                                "name": "search",
+                                "arguments": ""
+                            }
+                        }
+                    }
+                }
+            }),
+            json!({
+                "type": "tool-call-delta",
+                "delta": {
+                    "message": {
+                        "tool_calls": {
+                            "function": {
+                                "arguments": "{\"query\":"
+                            }
+                        }
+                    }
+                }
+            }),
+            json!({
+                "type": "tool-call-delta",
+                "delta": {
+                    "message": {
+                        "tool_calls": {
+                            "function": {
+                                "arguments": "\"Rust\"}"
+                            }
+                        }
+                    }
+                }
+            }),
+            json!({"type": "tool-call-end"}),
+            json!({
+                "type": "message-end",
+                "delta": {
+                    "usage": {
+                        "tokens": {
+                            "input_tokens": 50,
+                            "output_tokens": 25
+                        }
+                    }
+                }
+            }),
+        ];
+
+        for (i, event_json) in events.iter().enumerate() {
+            let result = serde_json::from_value::<StreamingEvent>(event_json.clone());
+            assert!(
+                result.is_ok(),
+                "Failed to deserialize event at index {}: {:?}",
+                i,
+                result.err()
+            );
+        }
     }
 }

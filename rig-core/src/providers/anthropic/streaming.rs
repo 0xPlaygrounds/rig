@@ -98,7 +98,7 @@ struct ThinkingState {
     signature: String,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StreamingCompletionResponse {
     pub usage: PartialUsage,
 }
@@ -299,6 +299,11 @@ fn handle_event(
             ContentDelta::InputJsonDelta { partial_json } => {
                 if let Some(tool_call) = current_tool_call {
                     tool_call.input_json.push_str(partial_json);
+                    // Emit the delta so UI can show progress
+                    return Some(Ok(RawStreamingChoice::ToolCallDelta {
+                        id: tool_call.id.clone(),
+                        delta: partial_json.clone(),
+                    }));
                 }
                 None
             }
@@ -580,5 +585,115 @@ mod tests {
 
         // Tool call state should remain unchanged
         assert!(tool_call_state.is_some());
+    }
+
+    #[test]
+    fn test_handle_input_json_delta_event() {
+        let event = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::InputJsonDelta {
+                partial_json: "{\"arg\":\"value".to_string(),
+            },
+        };
+
+        let mut tool_call_state = Some(ToolCallState {
+            name: "test_tool".to_string(),
+            id: "tool_123".to_string(),
+            input_json: String::new(),
+        });
+        let mut thinking_state = None;
+
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+
+        // Should emit a ToolCallDelta
+        assert!(result.is_some());
+        let choice = result.unwrap().unwrap();
+
+        match choice {
+            RawStreamingChoice::ToolCallDelta { id, delta } => {
+                assert_eq!(id, "tool_123");
+                assert_eq!(delta, "{\"arg\":\"value");
+            }
+            _ => panic!("Expected ToolCallDelta choice, got {:?}", choice),
+        }
+
+        // Verify the input_json was accumulated
+        assert!(tool_call_state.is_some());
+        let state = tool_call_state.unwrap();
+        assert_eq!(state.input_json, "{\"arg\":\"value");
+    }
+
+    #[test]
+    fn test_tool_call_accumulation_with_multiple_deltas() {
+        let mut tool_call_state = Some(ToolCallState {
+            name: "test_tool".to_string(),
+            id: "tool_123".to_string(),
+            input_json: String::new(),
+        });
+        let mut thinking_state = None;
+
+        // First delta
+        let event1 = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::InputJsonDelta {
+                partial_json: "{\"location\":".to_string(),
+            },
+        };
+        let result1 = handle_event(&event1, &mut tool_call_state, &mut thinking_state);
+        assert!(result1.is_some());
+
+        // Second delta
+        let event2 = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::InputJsonDelta {
+                partial_json: "\"Paris\",".to_string(),
+            },
+        };
+        let result2 = handle_event(&event2, &mut tool_call_state, &mut thinking_state);
+        assert!(result2.is_some());
+
+        // Third delta
+        let event3 = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::InputJsonDelta {
+                partial_json: "\"temp\":\"20C\"}".to_string(),
+            },
+        };
+        let result3 = handle_event(&event3, &mut tool_call_state, &mut thinking_state);
+        assert!(result3.is_some());
+
+        // Verify accumulated JSON
+        assert!(tool_call_state.is_some());
+        let state = tool_call_state.as_ref().unwrap();
+        assert_eq!(
+            state.input_json,
+            "{\"location\":\"Paris\",\"temp\":\"20C\"}"
+        );
+
+        // Final ContentBlockStop should emit complete tool call
+        let stop_event = StreamingEvent::ContentBlockStop { index: 0 };
+        let final_result = handle_event(&stop_event, &mut tool_call_state, &mut thinking_state);
+        assert!(final_result.is_some());
+
+        match final_result.unwrap().unwrap() {
+            RawStreamingChoice::ToolCall {
+                id,
+                name,
+                arguments,
+                ..
+            } => {
+                assert_eq!(id, "tool_123");
+                assert_eq!(name, "test_tool");
+                assert_eq!(
+                    arguments.get("location").unwrap().as_str().unwrap(),
+                    "Paris"
+                );
+                assert_eq!(arguments.get("temp").unwrap().as_str().unwrap(), "20C");
+            }
+            other => panic!("Expected ToolCall, got {:?}", other),
+        }
+
+        // Tool call state should be taken
+        assert!(tool_call_state.is_none());
     }
 }

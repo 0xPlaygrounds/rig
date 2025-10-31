@@ -296,6 +296,12 @@ where
                                 } else {
                                     existing_tool_call.function.arguments = serde_json::Value::String(combined);
                                 }
+
+                                // Emit the delta so UI can show progress
+                                yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                                    id: existing_tool_call.id.clone(),
+                                    delta: chunk.clone(),
+                                });
                             }
                         }
                     }
@@ -363,4 +369,218 @@ where
     Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
         stream,
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_streaming_completion_response_deserialization() {
+        let json = json!({
+            "id": "gen-abc123",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "role": "assistant",
+                    "content": "Hello"
+                }
+            }],
+            "created": 1234567890u64,
+            "model": "gpt-3.5-turbo",
+            "object": "chat.completion.chunk"
+        });
+
+        let response: StreamingCompletionResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(response.id, "gen-abc123");
+        assert_eq!(response.model, "gpt-3.5-turbo");
+        assert_eq!(response.choices.len(), 1);
+    }
+
+    #[test]
+    fn test_delta_with_content() {
+        let json = json!({
+            "role": "assistant",
+            "content": "Hello, world!"
+        });
+
+        let delta: DeltaResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(delta.role, Some("assistant".to_string()));
+        assert_eq!(delta.content, Some("Hello, world!".to_string()));
+    }
+
+    #[test]
+    fn test_delta_with_tool_call() {
+        let json = json!({
+            "role": "assistant",
+            "tool_calls": [{
+                "index": 0,
+                "id": "call_abc",
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "arguments": "{\"location\":"
+                }
+            }]
+        });
+
+        let delta: DeltaResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(delta.tool_calls.len(), 1);
+        assert_eq!(delta.tool_calls[0].index, 0);
+        assert_eq!(delta.tool_calls[0].id, Some("call_abc".to_string()));
+    }
+
+    #[test]
+    fn test_tool_call_with_partial_arguments() {
+        let json = json!({
+            "index": 0,
+            "id": null,
+            "type": null,
+            "function": {
+                "name": null,
+                "arguments": "Paris"
+            }
+        });
+
+        let tool_call: OpenRouterToolCall = serde_json::from_value(json).unwrap();
+        assert_eq!(tool_call.index, 0);
+        assert!(tool_call.id.is_none());
+        assert_eq!(tool_call.function.arguments, Some("Paris".to_string()));
+    }
+
+    #[test]
+    fn test_streaming_with_usage() {
+        let json = json!({
+            "id": "gen-xyz",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "content": null
+                }
+            }],
+            "created": 1234567890u64,
+            "model": "gpt-4",
+            "object": "chat.completion.chunk",
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150
+            }
+        });
+
+        let response: StreamingCompletionResponse = serde_json::from_value(json).unwrap();
+        assert!(response.usage.is_some());
+        let usage = response.usage.unwrap();
+        assert_eq!(usage.prompt_tokens, 100);
+        assert_eq!(usage.completion_tokens, 50);
+        assert_eq!(usage.total_tokens, 150);
+    }
+
+    #[test]
+    fn test_multiple_tool_call_deltas() {
+        // Simulates the sequence of deltas for a tool call with arguments
+        let start_json = json!({
+            "id": "gen-1",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "tool_calls": [{
+                        "index": 0,
+                        "id": "call_123",
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "arguments": ""
+                        }
+                    }]
+                }
+            }],
+            "created": 1234567890u64,
+            "model": "gpt-4",
+            "object": "chat.completion.chunk"
+        });
+
+        let delta1_json = json!({
+            "id": "gen-2",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "tool_calls": [{
+                        "index": 0,
+                        "function": {
+                            "arguments": "{\"query\":"
+                        }
+                    }]
+                }
+            }],
+            "created": 1234567890u64,
+            "model": "gpt-4",
+            "object": "chat.completion.chunk"
+        });
+
+        let delta2_json = json!({
+            "id": "gen-3",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "tool_calls": [{
+                        "index": 0,
+                        "function": {
+                            "arguments": "\"Rust programming\"}"
+                        }
+                    }]
+                }
+            }],
+            "created": 1234567890u64,
+            "model": "gpt-4",
+            "object": "chat.completion.chunk"
+        });
+
+        // Verify all chunks deserialize
+        let start: StreamingCompletionResponse = serde_json::from_value(start_json).unwrap();
+        assert_eq!(
+            start.choices[0].delta.as_ref().unwrap().tool_calls[0].id,
+            Some("call_123".to_string())
+        );
+
+        let delta1: StreamingCompletionResponse = serde_json::from_value(delta1_json).unwrap();
+        assert_eq!(
+            delta1.choices[0].delta.as_ref().unwrap().tool_calls[0]
+                .function
+                .arguments,
+            Some("{\"query\":".to_string())
+        );
+
+        let delta2: StreamingCompletionResponse = serde_json::from_value(delta2_json).unwrap();
+        assert_eq!(
+            delta2.choices[0].delta.as_ref().unwrap().tool_calls[0]
+                .function
+                .arguments,
+            Some("\"Rust programming\"}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_response_with_error() {
+        let json = json!({
+            "id": "gen-err",
+            "choices": [{
+                "index": 0,
+                "error": {
+                    "code": 400,
+                    "message": "Invalid request"
+                }
+            }],
+            "created": 1234567890u64,
+            "model": "gpt-4",
+            "object": "chat.completion.chunk"
+        });
+
+        let response: StreamingCompletionResponse = serde_json::from_value(json).unwrap();
+        assert!(response.choices[0].error.is_some());
+        let error = response.choices[0].error.as_ref().unwrap();
+        assert_eq!(error.code, 400);
+        assert_eq!(error.message, "Invalid request");
+    }
 }
