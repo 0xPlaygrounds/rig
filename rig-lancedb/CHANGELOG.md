@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.27](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.26...rig-lancedb-v0.2.27) - 2025-11-01
+
+### Fixed
+
+- implement Serialize for LanceDBFilter to enable LanceDbVectorIndex usage in dynamic_context ([#1010](https://github.com/0xPlaygrounds/rig/pull/1010))
+
 ## [0.2.26](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.25...rig-lancedb-v0.2.26) - 2025-10-28
 
 ### Other
