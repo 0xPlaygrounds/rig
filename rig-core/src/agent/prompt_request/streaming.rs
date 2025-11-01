@@ -2,8 +2,8 @@ use crate::{
     OneOrMany,
     agent::CancelSignal,
     completion::GetTokenUsage,
-    message::{AssistantContent, Reasoning, ToolResultContent, UserContent},
-    streaming::{StreamedAssistantContent, StreamingCompletion},
+    message::{AssistantContent, Reasoning, ToolResult, ToolResultContent, UserContent},
+    streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletion},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{Stream, StreamExt};
@@ -32,7 +32,11 @@ pub type StreamingResult<R> =
 #[serde(tag = "type", rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum MultiTurnStreamItem<R> {
-    StreamItem(StreamedAssistantContent<R>),
+    /// A streamed assistant content item.
+    StreamAssistantItem(StreamedAssistantContent<R>),
+    /// A streamed user content item (mostly for tool results).
+    StreamUserItem(StreamedUserContent),
+    /// The final result from the stream.
     FinalResponse(FinalResponse),
 }
 
@@ -62,7 +66,7 @@ impl FinalResponse {
 
 impl<R> MultiTurnStreamItem<R> {
     pub(crate) fn stream_item(item: StreamedAssistantContent<R>) -> Self {
-        Self::StreamItem(item)
+        Self::StreamAssistantItem(item)
     }
 
     pub fn final_response(response: &str, aggregated_usage: crate::completion::Usage) -> Self {
@@ -288,7 +292,9 @@ where
                                 gen_ai.tool.call.result = tracing::field::Empty
                             );
 
-                            let res = async {
+                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ToolCall(tool_call.clone())));
+
+                            let tc_result = async {
                                 let tool_span = tracing::Span::current();
                                 if let Some(ref hook) = self.hook {
                                     hook.on_tool_call(&tool_call.function.name, &tool_call.function.arguments.to_string(), cancel_signal.clone()).await;
@@ -323,15 +329,20 @@ where
                                 let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
 
                                 tool_calls.push(tool_call_msg);
-                                tool_results.push((tool_call.id, tool_call.call_id, tool_result));
+                                tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), tool_result.clone()));
 
                                 did_call_tool = true;
-                                Ok(())
-                                // break;
+                                Ok(tool_result)
                             }.instrument(tool_span).await;
 
-                            if let Err(e) = res {
-                                yield Err(e);
+                            match tc_result {
+                                Ok(text) => {
+                                    let tr = ToolResult { id: tool_call.id, call_id: tool_call.call_id, content: OneOrMany::one(ToolResultContent::Text(Text { text })) };
+                                    yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult(tr)));
+                                }
+                                Err(e) => {
+                                    yield Err(e);
+                                }
                             }
                         },
                         Ok(StreamedAssistantContent::ToolCallDelta { id, delta }) => {
@@ -456,11 +467,13 @@ pub async fn stream_to_stdout<R>(
     print!("Response: ");
     while let Some(content) = stream.next().await {
         match content {
-            Ok(MultiTurnStreamItem::StreamItem(StreamedAssistantContent::Text(Text { text }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                Text { text },
+            ))) => {
                 print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout()).unwrap();
             }
-            Ok(MultiTurnStreamItem::StreamItem(StreamedAssistantContent::Reasoning(
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
                 Reasoning { reasoning, .. },
             ))) => {
                 let reasoning = reasoning.join("\n");
