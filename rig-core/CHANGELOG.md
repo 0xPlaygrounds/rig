@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.2](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.23.1...rig-core-v0.23.2) - 2025-11-01
+
+### Added
+
+- *(providers)* Emit tool call deltas ([#1020](https://github.com/0xPlaygrounds/rig/pull/1020))
+- export rig tool macro from main crate ([#1016](https://github.com/0xPlaygrounds/rig/pull/1016))
+
+### Fixed
+
+- *(rig-1029)* Reasoning not handled properly for agent stream prompt ([#1024](https://github.com/0xPlaygrounds/rig/pull/1024))
+- *(openai-responses)* add `#[serde(default)]` for missing `tools` field ([#1021](https://github.com/0xPlaygrounds/rig/pull/1021))
+- *(rig-1027)* allow any error type to be used for rig tool macro ([#1017](https://github.com/0xPlaygrounds/rig/pull/1017))
+
+### Other
+
+- make CompletionModel  default type to reqwest::Client ([#1013](https://github.com/0xPlaygrounds/rig/pull/1013))
+- *(deps)* upgrade rmcp dependency ([#1008](https://github.com/0xPlaygrounds/rig/pull/1008))
+
 ## [0.23.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.23.0...rig-core-v0.23.1) - 2025-10-28
 
 ### Fixed
