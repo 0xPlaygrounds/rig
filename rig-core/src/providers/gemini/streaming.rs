@@ -152,7 +152,12 @@ where
                             continue;
                         };
 
-                        for part in &choice.content.parts {
+                        let Some(content) = choice.content.as_ref() else {
+                            tracing::debug!(finish_reason = ?choice.finish_reason, "Streaming candidate missing content");
+                            continue;
+                        };
+
+                        for part in &content.parts {
                             match part {
                                 Part {
                                     part: PartKind::Text(text),
@@ -165,7 +170,7 @@ where
                                     part: PartKind::Text(text),
                                     ..
                                 } => {
-                                    text_response += text;
+                                    text_response.push_str(text);
                                     yield Ok(streaming::RawStreamingChoice::Message(text.clone()));
                                 },
                                 Part {
@@ -186,7 +191,7 @@ where
                             }
                         }
 
-                        if choice.content.parts.is_empty() {
+                        if content.parts.is_empty() {
                             tracing::trace!(reason = ?choice.finish_reason, "There is no part in the streaming content");
                         }
 
@@ -252,12 +257,15 @@ mod tests {
 
         let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
         assert_eq!(response.candidates.len(), 1);
-        assert_eq!(response.candidates[0].content.parts.len(), 1);
+        let content = response.candidates[0]
+            .content
+            .expect("candidate should contain content");
+        assert_eq!(content.parts.len(), 1);
 
         if let Part {
             part: PartKind::Text(text),
             ..
-        } = &response.candidates[0].content.parts[0]
+        } = &content.parts[0]
         {
             assert_eq!(text, "Hello, world!");
         } else {
@@ -289,14 +297,17 @@ mod tests {
 
         let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
         assert_eq!(response.candidates.len(), 1);
-        assert_eq!(response.candidates[0].content.parts.len(), 3);
+        let content = response.candidates[0]
+            .content
+            .expect("candidate should contain content");
+        assert_eq!(content.parts.len(), 3);
 
         // Verify all three text parts are present
         for (i, expected_text) in ["Hello, ", "world!", " How are you?"].iter().enumerate() {
             if let Part {
                 part: PartKind::Text(text),
                 ..
-            } = &response.candidates[0].content.parts[i]
+            } = &content.parts[i]
             {
                 assert_eq!(text, expected_text);
             } else {
@@ -337,13 +348,16 @@ mod tests {
         });
 
         let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
-        assert_eq!(response.candidates[0].content.parts.len(), 2);
+        let content = response.candidates[0]
+            .content
+            .expect("candidate should contain content");
+        assert_eq!(content.parts.len(), 2);
 
         // Verify first tool call
         if let Part {
             part: PartKind::FunctionCall(call),
             ..
-        } = &response.candidates[0].content.parts[0]
+        } = &content.parts[0]
         {
             assert_eq!(call.name, "get_weather");
         } else {
@@ -354,7 +368,7 @@ mod tests {
         if let Part {
             part: PartKind::FunctionCall(call),
             ..
-        } = &response.candidates[0].content.parts[1]
+        } = &content.parts[1]
         {
             assert_eq!(call.name, "get_temperature");
         } else {
@@ -399,7 +413,10 @@ mod tests {
         });
 
         let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
-        let parts = &response.candidates[0].content.parts;
+        let content = response.candidates[0]
+            .content
+            .expect("candidate should contain content");
+        let parts = &content.parts;
         assert_eq!(parts.len(), 4);
 
         // Verify reasoning (thought) part
@@ -469,7 +486,10 @@ mod tests {
         });
 
         let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
-        assert_eq!(response.candidates[0].content.parts.len(), 0);
+        let content = response.candidates[0]
+            .content
+            .expect("candidate should contain content");
+        assert_eq!(content.parts.len(), 0);
     }
 
     #[test]

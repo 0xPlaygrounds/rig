@@ -1,0 +1,56 @@
+{
+  "type": "object",
+  "description": "Minimal schema reproducing KIO structured extraction requirements",
+  "required": [
+    "summary_short",
+    "panel",
+    "chunks"
+  ],
+  "properties": {
+    "summary_short": {
+      "type": "string",
+      "description": "Short summary (1-2 sentences) capturing the essence of the ruling."
+    },
+    "panel": {
+      "type": "array",
+      "description": "Members of the adjudicating panel in order of appearance.",
+      "items": {
+        "type": "object",
+        "required": ["name", "role"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Full name exactly as written in the decision."
+          },
+          "role": {
+            "type": "string",
+            "enum": ["chair", "member", "rapporteur", "other"],
+            "description": "Role of the panel member."
+          }
+        }
+      }
+    },
+    "chunks": {
+      "type": "array",
+      "description": "Semantic chunks covering the entire document in order.",
+      "items": {
+        "type": "object",
+        "required": ["position", "body"],
+        "properties": {
+          "position": {
+            "type": "integer",
+            "description": "1-based order of the chunk."
+          },
+          "section": {
+            "type": "string",
+            "description": "Logical section label (e.g., 'sentencja')."
+          },
+          "body": {
+            "type": "string",
+            "description": "Full body text for the chunk."
+          }
+        }
+      }
+    }
+  }
+}
