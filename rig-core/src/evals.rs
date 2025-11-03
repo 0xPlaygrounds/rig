@@ -9,6 +9,7 @@ use crate::{
     completion::CompletionModel,
     embeddings::EmbeddingModel,
     extractor::{Extractor, ExtractorBuilder},
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
 /// Evaluation errors.
@@ -22,7 +23,7 @@ pub enum EvalError {
     Custom(String),
 }
 
-/// The outcome of an evaluation (ie, sending an input to an LLM which then gets tested against a set of criteria).
+/// The outcome of an evaluation (ie, WasmCompatSending an input to an LLM which then gets tested against a set of criteria).
 /// Invalid results due to things like functions returning errors should be encoded as invalid evaluation outcomes.
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(tag = "outcome", content = "data")]
@@ -58,20 +59,20 @@ impl<Output> EvalOutcome<Output> {
 /// - Invalid (the output was unable to be retrieved due to an external failure like an API call fail)
 pub trait Eval<Output>
 where
-    Output: for<'a> Deserialize<'a> + Serialize + Clone + Send + Sync,
-    Self: Sized + Send + Sync + 'static,
+    Output: for<'a> Deserialize<'a> + Serialize + Clone + WasmCompatSend + WasmCompatSync,
+    Self: Sized + WasmCompatSend + WasmCompatSync + 'static,
 {
-    fn eval(&self, input: String) -> impl Future<Output = EvalOutcome<Output>> + Send;
+    fn eval(&self, input: String) -> impl Future<Output = EvalOutcome<Output>> + WasmCompatSend;
 
-    /// Send a bunch of inputs to be evaluated all in one call.
+    /// WasmCompatSend a bunch of inputs to be evaluated all in one call.
     /// You can set the concurrency limit to help alleviate issues
-    /// with model provider API limits, as sending requests too quickly may
+    /// with model provider API limits, as WasmCompatSending requests too quickly may
     /// result in throttling or temporary request refusal.
     fn eval_batch(
         &self,
         input: Vec<String>,
         concurrency_limit: usize,
-    ) -> impl Future<Output = Vec<EvalOutcome<Output>>> + Send {
+    ) -> impl Future<Output = Vec<EvalOutcome<Output>>> + WasmCompatSend {
         use futures::StreamExt;
         async move {
             let thing: Vec<EvalOutcome<Output>> = futures::stream::iter(input)
@@ -203,7 +204,12 @@ where
 pub struct LlmJudgeMetric<M, T>
 where
     M: CompletionModel,
-    T: Judgment + Send + Sync + JsonSchema + Serialize + for<'a> Deserialize<'a>,
+    T: Judgment
+        + WasmCompatSend
+        + WasmCompatSync
+        + JsonSchema
+        + Serialize
+        + for<'a> Deserialize<'a>,
 {
     ext: Extractor<M, T>,
 }
@@ -213,16 +219,20 @@ where
 pub struct LlmJudgeMetricWithFn<M, T>
 where
     M: CompletionModel,
-    T: Send + Sync + JsonSchema + Serialize + for<'a> Deserialize<'a>,
+    T: WasmCompatSend + WasmCompatSync + JsonSchema + Serialize + for<'a> Deserialize<'a>,
 {
     ext: Extractor<M, T>,
+    #[cfg(not(not(all(feature = "wasm", target_arch = "wasm32"))))]
+    evaluator: Box<dyn Fn(&T) -> bool + Send + Sync>,
+
+    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
     evaluator: Box<dyn Fn(&T) -> bool + Send + Sync>,
 }
 
 pub struct LlmJudgeBuilder<M, T>
 where
     M: CompletionModel,
-    T: Send + Sync + JsonSchema + Serialize + for<'a> Deserialize<'a> + 'static,
+    T: WasmCompatSend + WasmCompatSync + JsonSchema + Serialize + for<'a> Deserialize<'a> + 'static,
 {
     ext: ExtractorBuilder<M, T>,
 }
@@ -230,24 +240,39 @@ where
 pub struct LlmJudgeBuilderWithFn<M, T>
 where
     M: CompletionModel,
-    T: Send + Sync + JsonSchema + Serialize + for<'a> Deserialize<'a> + 'static,
+    T: WasmCompatSend + WasmCompatSync + JsonSchema + Serialize + for<'a> Deserialize<'a> + 'static,
 {
     ext: ExtractorBuilder<M, T>,
+    #[cfg(not(feature = "wasm"))]
+    evaluator: Box<dyn Fn(&T) -> bool + Send + Sync>,
+    #[cfg(feature = "wasm")]
     evaluator: Box<dyn Fn(&T) -> bool + Send + Sync>,
 }
 
 impl<M, T> LlmJudgeBuilder<M, T>
 where
     M: CompletionModel,
-    T: Send + Sync + JsonSchema + Serialize + for<'a> Deserialize<'a>,
+    T: WasmCompatSend + WasmCompatSync + JsonSchema + Serialize + for<'a> Deserialize<'a>,
 {
     pub fn new(ext: ExtractorBuilder<M, T>) -> Self {
         Self { ext }
     }
 
+    #[cfg(not(feature = "wasm"))]
     pub fn with_fn<F>(self, f: F) -> LlmJudgeBuilderWithFn<M, T>
     where
         F: Fn(&T) -> bool + Send + Sync + 'static,
+    {
+        LlmJudgeBuilderWithFn {
+            ext: self.ext,
+            evaluator: Box::new(f),
+        }
+    }
+
+    #[cfg(feature = "wasm")]
+    pub fn with_fn<F>(self, f: F) -> LlmJudgeBuilderWithFn<M, T>
+    where
+        F: Fn(&T) -> bool + 'static,
     {
         LlmJudgeBuilderWithFn {
             ext: self.ext,
@@ -272,11 +297,11 @@ where
 impl<M, T> LlmJudgeBuilderWithFn<M, T>
 where
     M: CompletionModel,
-    T: Send + Sync + JsonSchema + Serialize + for<'a> Deserialize<'a> + 'static,
+    T: WasmCompatSend + WasmCompatSync + JsonSchema + Serialize + for<'a> Deserialize<'a> + 'static,
 {
     pub fn with_fn<F2>(mut self, f: F2) -> Self
     where
-        F2: Fn(&T) -> bool + Send + Sync + 'static,
+        F2: Fn(&T) -> bool + WasmCompatSend + WasmCompatSync + 'static,
     {
         self.evaluator = Box::new(f);
         self
@@ -306,7 +331,14 @@ pub trait Judgment {
 impl<M, T> Eval<T> for LlmJudgeMetric<M, T>
 where
     M: CompletionModel + 'static,
-    T: Judgment + Send + Sync + JsonSchema + Serialize + for<'a> Deserialize<'a> + Clone + 'static,
+    T: Judgment
+        + WasmCompatSend
+        + WasmCompatSync
+        + JsonSchema
+        + Serialize
+        + for<'a> Deserialize<'a>
+        + Clone
+        + 'static,
 {
     async fn eval(&self, input: String) -> EvalOutcome<T> {
         match self.ext.extract(input).await {
@@ -325,7 +357,13 @@ where
 impl<M, T> Eval<T> for LlmJudgeMetricWithFn<M, T>
 where
     M: CompletionModel + 'static,
-    T: Send + Sync + JsonSchema + Serialize + for<'a> Deserialize<'a> + Clone + 'static,
+    T: WasmCompatSend
+        + WasmCompatSync
+        + JsonSchema
+        + Serialize
+        + for<'a> Deserialize<'a>
+        + Clone
+        + 'static,
 {
     async fn eval(&self, input: String) -> EvalOutcome<T> {
         match self.ext.extract(input).await {
@@ -344,7 +382,7 @@ where
 impl<M, T> From<ExtractorBuilder<M, T>> for LlmJudgeBuilder<M, T>
 where
     M: CompletionModel,
-    T: Send + Sync + JsonSchema + Serialize + for<'a> Deserialize<'a>,
+    T: WasmCompatSend + WasmCompatSync + JsonSchema + Serialize + for<'a> Deserialize<'a>,
 {
     fn from(ext: ExtractorBuilder<M, T>) -> Self {
         Self::new(ext)

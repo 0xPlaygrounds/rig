@@ -1,6 +1,10 @@
 //! Everything related to audio generation (ie, Text To Speech).
 //! Rig abstracts over a number of different providers using the [AudioGenerationModel] trait.
-use crate::{client::audio_generation::AudioGenerationModelHandle, http_client};
+use crate::{
+    client::audio_generation::AudioGenerationModelHandle,
+    http_client,
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
+};
 use futures::future::BoxFuture;
 use serde_json::Value;
 use std::sync::Arc;
@@ -46,7 +50,7 @@ where
         voice: &str,
     ) -> impl std::future::Future<
         Output = Result<AudioGenerationRequestBuilder<M>, AudioGenerationError>,
-    > + Send;
+    > + WasmCompatSend;
 }
 
 pub struct AudioGenerationResponse<T> {
@@ -54,7 +58,7 @@ pub struct AudioGenerationResponse<T> {
     pub response: T,
 }
 
-pub trait AudioGenerationModel: Clone + Send + Sync {
+pub trait AudioGenerationModel: Clone + WasmCompatSend + WasmCompatSync {
     type Response: Send + Sync;
 
     fn audio_generation(
@@ -69,7 +73,7 @@ pub trait AudioGenerationModel: Clone + Send + Sync {
     }
 }
 
-pub trait AudioGenerationModelDyn: Send + Sync {
+pub trait AudioGenerationModelDyn: WasmCompatSend + WasmCompatSync {
     fn audio_generation(
         &self,
         request: AudioGenerationRequest,
