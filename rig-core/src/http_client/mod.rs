@@ -23,23 +23,23 @@ pub enum Error {
     StreamEnded,
     #[error("Invalid content type was returned: {0:?}")]
     InvalidContentType(HeaderValue),
-    #[cfg(not(target_family = "wasm"))]
+    #[cfg(not(feature = "wasm"))]
     #[error("Http client error: {0}")]
     Instance(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 
-    #[cfg(target_family = "wasm")]
+    #[cfg(feature = "wasm")]
     #[error("Http client error: {0}")]
     Instance(#[from] Box<dyn std::error::Error + 'static>),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(not(feature = "wasm"))]
 pub(crate) fn instance_error<E: std::error::Error + Send + Sync + 'static>(error: E) -> Error {
     Error::Instance(error.into())
 }
 
-#[cfg(target_family = "wasm")]
+#[cfg(feature = "wasm")]
 fn instance_error<E: std::error::Error + 'static>(error: E) -> Error {
     Error::Instance(error.into())
 }
@@ -221,12 +221,12 @@ impl HttpClientExt for reqwest::Client {
                 ));
             }
 
-            #[cfg(not(target_family = "wasm"))]
+            #[cfg(not(feature = "wasm"))]
             let mut res = Response::builder()
                 .status(response.status())
                 .version(response.version());
 
-            #[cfg(target_family = "wasm")]
+            #[cfg(feature = "wasm")]
             let mut res = Response::builder().status(response.status());
 
             if let Some(hs) = res.headers_mut() {

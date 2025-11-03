@@ -9585,7 +9585,6 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "wasm-bindgen-futures",
- "worker",
 ]
 
 [[package]]
