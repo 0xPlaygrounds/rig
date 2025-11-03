@@ -494,7 +494,6 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = CompletionResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: CompletionRequest,
@@ -553,7 +552,6 @@ where
         .await
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         request: CompletionRequest,

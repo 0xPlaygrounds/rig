@@ -47,7 +47,6 @@ where
 {
     type Response = ImageGenerationResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn image_generation(
         &self,
         request: ImageGenerationRequest,

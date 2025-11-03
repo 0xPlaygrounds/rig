@@ -119,7 +119,6 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
@@ -180,7 +179,6 @@ where
         .await
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         request: CompletionRequest,

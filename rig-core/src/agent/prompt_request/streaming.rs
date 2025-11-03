@@ -153,7 +153,6 @@ where
         }
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn send(self) -> StreamingResult<M::StreamingResponse> {
         let agent_span = if tracing::Span::current().is_disabled() {
             info_span!(

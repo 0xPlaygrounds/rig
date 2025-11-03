@@ -112,7 +112,6 @@ impl<T> VerifyClient for Client<T>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         // No API endpoint to verify the API key
         Ok(())
@@ -260,7 +259,6 @@ where
         self.ndims
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,

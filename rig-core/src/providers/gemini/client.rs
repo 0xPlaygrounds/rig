@@ -309,7 +309,6 @@ where
     T: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
     Client<T>: CompletionClient,
 {
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         let req = self
             .get("/v1beta/models")
