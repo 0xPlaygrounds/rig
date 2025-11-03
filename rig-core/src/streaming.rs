@@ -91,11 +91,11 @@ where
     FinalResponse(R),
 }
 
-#[cfg(not(feature = "wasm"))]
+#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
 
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>>>>;
 
@@ -477,9 +477,9 @@ mod tests {
             yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 15 }));
         };
 
-        #[cfg(not(feature = "wasm"))]
+        #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
         let pinned_stream: StreamingResult<MockResponse> = Box::pin(stream);
-        #[cfg(feature = "wasm")]
+        #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
         let pinned_stream: StreamingResult<MockResponse> = Box::pin(stream);
 
         StreamingCompletionResponse::stream(pinned_stream)

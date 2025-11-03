@@ -243,9 +243,9 @@ where
     T: WasmCompatSend + WasmCompatSync + JsonSchema + Serialize + for<'a> Deserialize<'a> + 'static,
 {
     ext: ExtractorBuilder<M, T>,
-    #[cfg(not(feature = "wasm"))]
+    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
     evaluator: Box<dyn Fn(&T) -> bool + Send + Sync>,
-    #[cfg(feature = "wasm")]
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
     evaluator: Box<dyn Fn(&T) -> bool + Send + Sync>,
 }
 
@@ -258,7 +258,7 @@ where
         Self { ext }
     }
 
-    #[cfg(not(feature = "wasm"))]
+    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
     pub fn with_fn<F>(self, f: F) -> LlmJudgeBuilderWithFn<M, T>
     where
         F: Fn(&T) -> bool + Send + Sync + 'static,
@@ -269,7 +269,7 @@ where
         }
     }
 
-    #[cfg(feature = "wasm")]
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
     pub fn with_fn<F>(self, f: F) -> LlmJudgeBuilderWithFn<M, T>
     where
         F: Fn(&T) -> bool + 'static,

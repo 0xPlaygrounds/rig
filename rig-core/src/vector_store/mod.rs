@@ -24,14 +24,14 @@ pub enum VectorStoreError {
     #[error("Json error: {0}")]
     JsonError(#[from] serde_json::Error),
 
-    #[cfg(not(feature = "wasm"))]
+    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
     #[error("Datastore error: {0}")]
     DatastoreError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 
     #[error("Filter error: {0}")]
     FilterError(#[from] FilterError),
 
-    #[cfg(feature = "wasm")]
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
     #[error("Datastore error: {0}")]
     DatastoreError(#[from] Box<dyn std::error::Error + 'static>),
 

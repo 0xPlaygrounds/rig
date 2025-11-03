@@ -21,12 +21,12 @@ pub enum TranscriptionError {
     #[error("JsonError: {0}")]
     JsonError(#[from] serde_json::Error),
 
-    #[cfg(not(feature = "wasm"))]
+    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
     /// Error building the transcription request
     #[error("RequestError: {0}")]
     RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 
-    #[cfg(feature = "wasm")]
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
     /// Error building the transcription request
     #[error("RequestError: {0}")]
     RequestError(#[from] Box<dyn std::error::Error + 'static>),

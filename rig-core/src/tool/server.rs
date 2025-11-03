@@ -86,7 +86,7 @@ impl ToolServer {
     pub fn run(mut self) -> ToolServerHandle {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1000);
 
-        #[cfg(not(feature = "wasm"))]
+        #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
         tokio::spawn(async move {
             while let Some(message) = rx.recv().await {
                 self.handle_message(message).await;
@@ -95,7 +95,7 @@ impl ToolServer {
 
         // SAFETY: `rig` currently doesn't compile to WASM without the `worker` feature.
         // Therefore, we can safely assume that the user won't try to compile to wasm without the worker feature.
-        #[cfg(feature = "wasm")]
+        #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
         wasm_bindgen_futures::spawn_local(async move {
             while let Some(message) = rx.recv().await {
                 self.handle_message(message).await;
