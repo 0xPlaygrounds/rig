@@ -5,6 +5,7 @@ use rig::vector_store::{VectorStoreError, VectorStoreIndex};
 use rusqlite::types::Value;
 use serde::Deserialize;
 use std::marker::PhantomData;
+use std::ops::RangeInclusive;
 use tokio_rusqlite::Connection;
 use tracing::{debug, info};
 use zerocopy::IntoBytes;
@@ -240,7 +241,7 @@ where
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct SqliteSearchFilter {
     condition: String,
     params: Vec<serde_json::Value>,
@@ -291,6 +292,60 @@ impl SqliteSearchFilter {
         Self {
             condition: format!("NOT ({})", self.condition),
             ..self
+        }
+    }
+
+    /// Tests whether the value at `key` is contained in the range
+    pub fn between<N>(key: String, range: RangeInclusive<N>) -> Self
+    where
+        N: Ord + rusqlite::ToSql + std::fmt::Display,
+    {
+        let lo = range.start();
+        let hi = range.end();
+
+        Self {
+            condition: format!("{key} between {lo} and {hi}"),
+            ..Default::default()
+        }
+    }
+
+    // Null checks
+    pub fn is_null(key: String) -> Self {
+        Self {
+            condition: format!("{key} is null"),
+            ..Default::default()
+        }
+    }
+
+    pub fn is_not_null(key: String) -> Self {
+        Self {
+            condition: format!("{key} is not null"),
+            ..Default::default()
+        }
+    }
+
+    // String ops
+    /// Tests whether the value at `key` satisfies the glob pattern
+    /// `pattern` should be a valid SQLite glob pattern
+    pub fn glob<'a, S>(key: String, pattern: S) -> Self
+    where
+        S: AsRef<&'a str>,
+    {
+        Self {
+            condition: format!("{key} glob {}", pattern.as_ref()),
+            ..Default::default()
+        }
+    }
+
+    /// Tests whether the value at `key` satisfies the "like" pattern
+    /// `pattern` should be a valid SQLite like pattern
+    pub fn like<'a, S>(key: String, pattern: S) -> Self
+    where
+        S: AsRef<&'a str>,
+    {
+        Self {
+            condition: format!("{key} like {}", pattern.as_ref()),
+            ..Default::default()
         }
     }
 }

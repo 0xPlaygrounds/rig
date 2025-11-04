@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use lancedb::{
     DistanceType,
     query::{QueryBase, VectorQuery},
@@ -204,6 +206,87 @@ impl LanceDBFilter {
     #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
         Self(self.0.map(|s| format!("NOT ({s})")))
+    }
+
+    /// IN operator
+    pub fn in_values(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+        Self(
+            values
+                .into_iter()
+                .map(escape_value)
+                .collect::<Result<Vec<_>, FilterError>>()
+                .map(|xs| xs.join(","))
+                .map(|xs| format!("{key} IN ({xs})")),
+        )
+    }
+
+    /// LIKE operator (string pattern matching)
+    pub fn like<S>(key: String, pattern: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        Self(
+            escape_value(serde_json::Value::String(pattern.as_ref().into()))
+                .map(|pat| format!("{key} LIKE {pat}")),
+        )
+    }
+
+    /// ILIKE operator (case-insensitive pattern matching)
+    pub fn ilike<S>(key: String, pattern: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        Self(
+            escape_value(serde_json::Value::String(pattern.as_ref().into()))
+                .map(|pat| format!("{key} ILIKE {pat}")),
+        )
+    }
+
+    /// IS NULL check
+    pub fn is_null(key: String) -> Self {
+        Self(Ok(format!("{key} IS NULL")))
+    }
+
+    /// IS NOT NULL check
+    pub fn is_not_null(key: String) -> Self {
+        Self(Ok(format!("{key} IS NOT NULL")))
+    }
+
+    /// Array has any (for LIST columns with scalar index)
+    pub fn array_has_any(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+        Self(
+            values
+                .into_iter()
+                .map(escape_value)
+                .collect::<Result<Vec<_>, FilterError>>()
+                .map(|xs| xs.join(","))
+                .map(|xs| format!("array_has_any({key}, ARRAY[{xs}])")),
+        )
+    }
+
+    /// Array has all (for LIST columns with scalar index)
+    pub fn array_has_all(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+        Self(
+            values
+                .into_iter()
+                .map(escape_value)
+                .collect::<Result<Vec<_>, FilterError>>()
+                .map(|xs| xs.join(","))
+                .map(|xs| format!("array_has_all({key}, ARRAY[{xs}])")),
+        )
+    }
+
+    /// Array length comparison
+    pub fn array_length(key: String, length: i32) -> Self {
+        Self(Ok(format!("array_length({key}) = {length}")))
+    }
+
+    /// BETWEEN operator
+    pub fn between<T>(key: String, Range { start, end }: Range<T>) -> Self
+    where
+        T: PartialOrd + std::fmt::Display + Into<serde_json::Number>,
+    {
+        Self(Ok(format!("{key} BETWEEN {start} AND {end}")))
     }
 }
 

@@ -154,6 +154,68 @@ impl SurrealSearchFilter {
     pub fn not(self) -> Self {
         Self(format!("NOT ({self})"))
     }
+
+    /// Test if the value at `key` contains `val`
+    pub fn contains(key: String, val: <Self as SearchFilter>::Value) -> Self {
+        Self(format!("{key} CONTAINS {val}"))
+    }
+
+    /// Test if the value at `key` does *not* contain `val`
+    pub fn does_not_contain(key: String, val: <Self as SearchFilter>::Value) -> Self {
+        Self(format!("{key} CONTAINSNOT {val}"))
+    }
+
+    /// Test if the value at `key` contains every element of `vals`
+    /// `vals` should be a SurrealDB collection
+    pub fn all(key: String, vals: <Self as SearchFilter>::Value) -> Self {
+        Self(format!("{key} CONTAINSALL {vals}"))
+    }
+
+    /// Test if the value at `key` contains any elements of `vals`
+    /// `vals` should be a SurrealDB collection
+    pub fn any(key: String, vals: <Self as SearchFilter>::Value) -> Self {
+        Self(format!("{key} CONTAINSANY {vals}"))
+    }
+
+    /// Test if the value at `key` is a member of `vals`
+    /// `vals` should be a SurrealDB collection
+    pub fn member(key: String, vals: <Self as SearchFilter>::Value) -> Self {
+        Self(format!("{key} IN {vals}"))
+    }
+
+    /// Test if the value at `key` is *not* a member of `vals`
+    /// `vals` should be a SurrealDB collection
+    pub fn not_member(key: String, vals: <Self as SearchFilter>::Value) -> Self {
+        Self(format!("{key} NOTIN {vals}"))
+    }
+
+    // Geospatial filters
+    /// Test if the value at `key` is inside `geometry`
+    pub fn inside(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
+        Self(format!("{key} INSIDE {geometry}"))
+    }
+
+    /// Test if the value at `key` is outside `geometry`
+    pub fn outside(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
+        Self(format!("{key} OUTSIDE {geometry}"))
+    }
+
+    /// Test if the value at `key` intersects `geometry`
+    pub fn intersects(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
+        Self(format!("{key} INTERSECTS {geometry}"))
+    }
+
+    // String ops
+    /// SurrealDB text search
+    pub fn matches<'a, S: AsRef<&'a str>>(key: String, query: S) -> Self {
+        Self(format!("{key} @@ {}", query.as_ref()))
+    }
+
+    /// Check if the value at `key` matches regex `pattern`
+    /// `pattern` should be a valid surrealDB regex
+    pub fn regex<'a, S: AsRef<&'a str>>(key: String, pattern: S) -> Self {
+        Self(format!("{key} = /{}/", pattern.as_ref()))
+    }
 }
 
 impl<C, Model> SurrealVectorStore<C, Model>

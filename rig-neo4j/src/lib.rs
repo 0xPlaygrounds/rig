@@ -140,6 +140,66 @@ impl Neo4jSearchFilter {
     pub fn not(self) -> Self {
         Self(format!("NOT ({})", self.0))
     }
+
+    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+        Self(format!("n.{key} >= {}", serialize_cypher(value)))
+    }
+
+    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+        Self(format!("n.{key} <= {}", serialize_cypher(value)))
+    }
+
+    pub fn member(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+        Self(format!(
+            "n.{key} IN {}",
+            serialize_cypher(serde_json::Value::Array(values))
+        ))
+    }
+
+    // String matching
+
+    /// Tests whether the value at `key` contains the pattern
+    pub fn contains<S>(key: String, pattern: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        Self(format!(
+            "n.{key} CONTAINS {}",
+            serialize_cypher(serde_json::Value::String(pattern.as_ref().into()))
+        ))
+    }
+
+    /// Tests whether the value at `key` starts with the pattern
+    pub fn starts_with<S>(key: String, pattern: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        Self(format!(
+            "n.{key} STARTS WITH {}",
+            serialize_cypher(serde_json::Value::String(pattern.as_ref().into()))
+        ))
+    }
+
+    /// Tests whether the value at `key` ends with the pattern
+    pub fn ends_with<S>(key: String, pattern: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        Self(format!(
+            "n.{key} ENDS WITH {}",
+            serialize_cypher(serde_json::Value::String(pattern.as_ref().into()))
+        ))
+    }
+
+    pub fn matches<S>(key: String, pattern: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        Self(format!(
+            "n.{key} =~ {}",
+            serialize_cypher(serde_json::Value::String(pattern.as_ref().into()))
+        ))
+    }
 }
 
 fn serialize_cypher(value: serde_json::Value) -> String {

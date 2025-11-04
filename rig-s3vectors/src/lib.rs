@@ -59,6 +59,22 @@ impl S3SearchFilter {
     pub fn into_inner(self) -> aws_smithy_types::Document {
         self.0
     }
+
+    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+        Self(document!({ key: { "$gte": value } }))
+    }
+
+    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+        Self(document!({ key: { "$lte": value } }))
+    }
+
+    pub fn exists(key: String) -> Self {
+        Self(document!({ "$exists": { key: true } }))
+    }
+
+    pub fn not(self) -> Self {
+        Self(document!({ "$not": self.0 }))
+    }
 }
 
 pub struct S3VectorsVectorStore<M> {
