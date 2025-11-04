@@ -72,6 +72,7 @@ impl S3SearchFilter {
         Self(document!({ "$exists": { key: true } }))
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
         Self(document!({ "$not": self.0 }))
     }

@@ -127,7 +127,7 @@ impl ScyllaSearchFilter {
         }
     }
 
-    pub fn in_list(key: String, values: Vec<Self::Value>) -> Self {
+    pub fn member(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let placeholders = vec!["?"; values.len()].join(", ");
 
         Self {
