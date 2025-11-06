@@ -145,7 +145,10 @@ impl TryFrom<GenerateContentResponse>
             TranscriptionError::ResponseError("No response candidates in response".into())
         })?;
 
-        let part = candidate.content.parts.first();
+        let part = candidate
+            .content
+            .as_ref()
+            .and_then(|content| content.parts.first());
 
         let text = match part {
             Some(Part {
