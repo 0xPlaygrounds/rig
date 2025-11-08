@@ -16,7 +16,7 @@ members = [
     "rig-bedrock",
     "rig-milvus",
     "rig-wasm",
-    "rig-s3vectors", "rig-helixdb",
+    "rig-s3vectors", "rig-helixdb", "rig-vertexai",
 ]
 
 [profile.release]
