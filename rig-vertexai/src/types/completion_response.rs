@@ -1,7 +1,8 @@
+use crate::types::json_utils;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig::OneOrMany;
 use rig::completion::{CompletionError, CompletionResponse, Usage};
-use rig::message::{AssistantContent, Text};
+use rig::message::{AssistantContent, Text, ToolCall, ToolFunction};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -13,7 +14,6 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
     fn try_from(value: VertexGenerateContentOutput) -> Result<Self, Self::Error> {
         let response = &value.0;
 
-        // Get the first candidate
         let candidate = response.candidates.first().ok_or_else(|| {
             CompletionError::ProviderError("No candidates in response".to_string())
         })?;
@@ -23,25 +23,39 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
             .as_ref()
             .ok_or_else(|| CompletionError::ProviderError("No content in candidate".to_string()))?;
 
-        // Extract text from parts
-        let mut text_parts = Vec::new();
+        let mut assistant_contents = Vec::new();
+
         for part in content.parts.iter() {
-            if let Some(text) = part.text() {
-                text_parts.push(AssistantContent::Text(Text { text: text.clone() }));
+            if let Some(function_call) = part.function_call() {
+                let args_json = function_call
+                    .args
+                    .as_ref()
+                    .map(|s| json_utils::struct_to_json(s.clone()))
+                    .unwrap_or_else(|| serde_json::json!({}));
+
+                assistant_contents.push(AssistantContent::ToolCall(ToolCall {
+                    id: function_call.name.clone(),
+                    call_id: None,
+                    function: ToolFunction {
+                        name: function_call.name.clone(),
+                        arguments: args_json,
+                    },
+                }));
+            } else if let Some(text) = part.text() {
+                assistant_contents.push(AssistantContent::Text(Text { text: text.clone() }));
             }
         }
 
-        if text_parts.is_empty() {
+        if assistant_contents.is_empty() {
             return Err(CompletionError::ProviderError(
-                "No text content found in response".to_string(),
+                "No text or tool call content found in response".to_string(),
             ));
         }
 
-        let choice = OneOrMany::many(text_parts).map_err(|e| {
+        let choice = OneOrMany::many(assistant_contents).map_err(|e| {
             CompletionError::ProviderError(format!("Failed to create OneOrMany: {e}"))
         })?;
 
-        // Extract usage metadata
         let usage = response
             .usage_metadata
             .as_ref()

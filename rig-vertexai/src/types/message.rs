@@ -1,6 +1,7 @@
+use crate::types::json_utils;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig::completion::CompletionError;
-use rig::message::{AssistantContent, Message, Text, UserContent};
+use rig::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
 
 pub struct RigMessage(pub Message);
 
@@ -16,8 +17,30 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                         UserContent::Text(Text { text }) => {
                             Ok(vertexai::model::Part::new().set_text(text))
                         }
+                        UserContent::ToolResult(tool_result) => {
+                            let response_struct = if tool_result.content.len() == 1 {
+                                match tool_result.content.iter().next() {
+                                    Some(ToolResultContent::Text(Text { text })) => {
+                                        serde_json::json!({ "output": text })
+                                    }
+                                    _ => {
+                                        serde_json::json!({ "output": "Tool executed successfully" })
+                                    }
+                                }
+                            } else {
+                                serde_json::json!({ "output": "Multiple results" })
+                            };
+
+                            let struct_val = json_utils::json_to_struct(response_struct)?;
+                            
+                            let function_response = vertexai::model::FunctionResponse::new()
+                                .set_name(tool_result.id.clone())
+                                .set_response(struct_val);
+
+                            Ok(vertexai::model::Part::new().set_function_response(function_response))
+                        }
                         _ => Err(CompletionError::ProviderError(
-                            "Only text user content is supported in this initial implementation".to_string(),
+                            format!("Unsupported user content type: {:?}", user_content),
                         )),
                     })
                     .collect();
@@ -34,8 +57,17 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                         AssistantContent::Text(Text { text }) => {
                             Ok(vertexai::model::Part::new().set_text(text))
                         }
+                        AssistantContent::ToolCall(tool_call) => {
+                            let struct_val = json_utils::json_to_struct(tool_call.function.arguments)?;
+                            
+                            let function_call = vertexai::model::FunctionCall::new()
+                                .set_name(tool_call.function.name.clone())
+                                .set_args(struct_val);
+
+                            Ok(vertexai::model::Part::new().set_function_call(function_call))
+                        }
                         _ => Err(CompletionError::ProviderError(
-                            "Only text assistant content is supported in this initial implementation".to_string(),
+                            format!("Unsupported assistant content type: {:?}", assistant_content),
                         )),
                     })
                     .collect();

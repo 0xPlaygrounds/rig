@@ -39,7 +39,6 @@ impl CompletionModel {
             )
         })?;
 
-        // Extract model name from full path if provided, otherwise use as-is
         let model_name = if self.model.contains('/') {
             self.model.clone()
         } else {
@@ -61,11 +60,18 @@ impl CompletionModelTrait for CompletionModel {
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+        tracing::debug!(
+            target: "rig::vertexai",
+            "Vertex AI completion request: {request:?}"
+        );
+
         let vertex_request = VertexCompletionRequest(request);
 
         let contents = vertex_request.contents()?;
         let generation_config = vertex_request.generation_config();
         let system_instruction = vertex_request.system_instruction();
+        let tools = vertex_request.tools();
+        let tool_config = vertex_request.tool_config();
         let model_path = self.model_path()?;
 
         let mut request_builder = self
@@ -84,10 +90,23 @@ impl CompletionModelTrait for CompletionModel {
             request_builder = request_builder.set_system_instruction(system_instruction);
         }
 
+        if let Some(tools) = tools {
+            request_builder = request_builder.set_tools([tools]);
+        }
+
+        if let Some(tool_config) = tool_config {
+            request_builder = request_builder.set_tool_config(tool_config);
+        }
+
         let response = request_builder
             .send()
             .await
             .map_err(|e| CompletionError::ProviderError(format!("Vertex AI API error: {e}")))?;
+
+        tracing::debug!(
+            target: "rig::vertexai",
+            "Vertex AI completion response: {response:?}"
+        );
 
         let vertex_output = VertexGenerateContentOutput(response);
         let completion_response = vertex_output.try_into()?;
