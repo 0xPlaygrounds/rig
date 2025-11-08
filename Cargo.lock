@@ -1838,7 +1838,7 @@ dependencies = [
  "indexmap 2.11.4",
  "js-sys",
  "once_cell",
- "rand 0.9.1",
+ "rand 0.9.2",
  "serde",
  "serde_bytes",
  "serde_json",
@@ -2839,7 +2839,7 @@ dependencies = [
  "log",
  "object_store",
  "parking_lot",
- "rand 0.9.1",
+ "rand 0.9.2",
  "regex",
  "sqlparser",
  "tempfile",
@@ -2955,7 +2955,7 @@ dependencies = [
  "itertools 0.14.0",
  "log",
  "object_store",
- "rand 0.9.1",
+ "rand 0.9.2",
  "tokio",
  "url",
 ]
@@ -3031,7 +3031,7 @@ dependencies = [
  "log",
  "object_store",
  "parking_lot",
- "rand 0.9.1",
+ "rand 0.9.2",
  "tempfile",
  "url",
 ]
@@ -3092,7 +3092,7 @@ dependencies = [
  "itertools 0.14.0",
  "log",
  "md-5",
- "rand 0.9.1",
+ "rand 0.9.2",
  "regex",
  "sha2",
  "unicode-segmentation",
@@ -3496,9 +3496,15 @@ name = "deranged"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c9e6a11ca8224451684bc0d7d5a7adbf8f2fd6887261a1cfc3c0432f9d4068e"
+
+[[package]]
+name = "deranged"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ececcb659e7ba858fb4f10388c250a7252eb0a27373f1a72b8748afdd248e587"
 dependencies = [
  "powerfmt",
- "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -4410,7 +4416,7 @@ checksum = "18c1ddb9231d8554c2d6bdf4cfaabf0c59251658c68b6c95cd52dd0c513a912a"
 dependencies = [
  "getrandom 0.3.3",
  "libm",
- "rand 0.9.1",
+ "rand 0.9.2",
  "siphasher",
 ]
 
@@ -4605,7 +4611,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "480fc4f47567da549ab44bb2f37f6db1570c9eff7200e50334b69fa1daa74339"
 dependencies = [
  "arrow-array",
- "rand 0.9.1",
+ "rand 0.9.2",
 ]
 
 [[package]]
@@ -4946,6 +4952,225 @@ dependencies = [
 ]
 
 [[package]]
+name = "google-cloud-aiplatform-v1"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b2ee3b41a637f859cf250a3dd8b8e2db261b48720eda84acf9cd19348aef802"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "google-cloud-api",
+ "google-cloud-gax",
+ "google-cloud-gax-internal",
+ "google-cloud-iam-v1",
+ "google-cloud-location",
+ "google-cloud-longrunning",
+ "google-cloud-lro",
+ "google-cloud-rpc",
+ "google-cloud-type",
+ "google-cloud-wkt",
+ "lazy_static",
+ "reqwest 0.12.24",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "tracing",
+]
+
+[[package]]
+name = "google-cloud-api"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee6526cfcf0c6c8945d9f1fb7a32c843dc08535f7547e2a30c1945e693699a32"
+dependencies = [
+ "bytes",
+ "google-cloud-wkt",
+ "serde",
+ "serde_json",
+ "serde_with",
+]
+
+[[package]]
+name = "google-cloud-auth"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f084abe65c3bdde490bf4a4eebc7e103637fb3ac4b101d09508dd5bf12ce82b1"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bon",
+ "google-cloud-gax",
+ "http 1.3.1",
+ "reqwest 0.12.24",
+ "rustc_version",
+ "rustls 0.23.28",
+ "rustls-pemfile 2.2.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.16",
+ "time",
+ "tokio",
+]
+
+[[package]]
+name = "google-cloud-gax"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a36f8701dac18c2cbedf588d15ee4ce5c018da531c2e74e9ad043cbd32b0fccb"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "futures",
+ "google-cloud-rpc",
+ "google-cloud-wkt",
+ "http 1.3.1",
+ "pin-project",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.16",
+ "tokio",
+]
+
+[[package]]
+name = "google-cloud-gax-internal"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "152076418386463ff650deabbef392672626d62e97639bb5194e11f8984b4835"
+dependencies = [
+ "bytes",
+ "google-cloud-auth",
+ "google-cloud-gax",
+ "google-cloud-rpc",
+ "http 1.3.1",
+ "http-body-util",
+ "opentelemetry-semantic-conventions",
+ "percent-encoding",
+ "reqwest 0.12.24",
+ "rustc_version",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.16",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "google-cloud-iam-v1"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2f2c6d094d0ed9453de0fba8bb690b0c039a3d056f009d2e6c7909c32a446bb"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "google-cloud-gax",
+ "google-cloud-gax-internal",
+ "google-cloud-type",
+ "google-cloud-wkt",
+ "lazy_static",
+ "reqwest 0.12.24",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "tracing",
+]
+
+[[package]]
+name = "google-cloud-location"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6710e61195b0570c1239881c58f465b4726049eb6de6b42904c5d0d6f9196ca6"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "google-cloud-gax",
+ "google-cloud-gax-internal",
+ "google-cloud-wkt",
+ "lazy_static",
+ "reqwest 0.12.24",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "tracing",
+]
+
+[[package]]
+name = "google-cloud-longrunning"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "398201f50d0dd0180105628c370ba5dae77a3f5e842eebce494f451caee96371"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "google-cloud-gax",
+ "google-cloud-gax-internal",
+ "google-cloud-rpc",
+ "google-cloud-wkt",
+ "lazy_static",
+ "reqwest 0.12.24",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "tracing",
+]
+
+[[package]]
+name = "google-cloud-lro"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a93fd80965a47da86e1d21c90dcd10858b859e6c702c5c6e1b383686692ae73e"
+dependencies = [
+ "google-cloud-gax",
+ "google-cloud-longrunning",
+ "google-cloud-rpc",
+ "google-cloud-wkt",
+ "serde",
+ "tokio",
+]
+
+[[package]]
+name = "google-cloud-rpc"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5b655e3540a78e18fd753ebd8f11e068210a3fa392892370f932ffcc8774346"
+dependencies = [
+ "bytes",
+ "google-cloud-wkt",
+ "serde",
+ "serde_json",
+ "serde_with",
+]
+
+[[package]]
+name = "google-cloud-type"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "290760412b63cd266376273e4fbeb13afaa4bc7dadd5340786c916866139e14c"
+dependencies = [
+ "bytes",
+ "google-cloud-wkt",
+ "serde",
+ "serde_json",
+ "serde_with",
+]
+
+[[package]]
+name = "google-cloud-wkt"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02931df6af9beda1c852bbbbe5f7b6ba6ae5e4cd49c029fa0ca2cecc787cd9b1"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "thiserror 2.0.16",
+ "time",
+ "url",
+]
+
+[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5120,7 +5345,7 @@ checksum = "2d37e0d09decbce0bd0aeec46444449f84e87fae138bbc5180d6870b074f2708"
 dependencies = [
  "anyhow",
  "helix-macros",
- "reqwest 0.12.23",
+ "reqwest 0.12.24",
  "serde",
  "serde_json",
  "thiserror 2.0.16",
@@ -5151,8 +5376,8 @@ dependencies = [
  "libc",
  "log",
  "native-tls",
- "rand 0.9.1",
- "reqwest 0.12.23",
+ "rand 0.9.2",
+ "reqwest 0.12.24",
  "serde",
  "serde_json",
  "thiserror 2.0.16",
@@ -6019,7 +6244,7 @@ dependencies = [
  "nom 8.0.0",
  "num-traits",
  "ordered-float",
- "rand 0.9.1",
+ "rand 0.9.2",
  "ryu",
  "serde",
  "serde_json",
@@ -6168,7 +6393,7 @@ dependencies = [
  "pin-project",
  "prost",
  "prost-types",
- "rand 0.9.1",
+ "rand 0.9.2",
  "roaring",
  "serde",
  "serde_json",
@@ -6198,7 +6423,7 @@ dependencies = [
  "half",
  "jsonb",
  "num-traits",
- "rand 0.9.1",
+ "rand 0.9.2",
 ]
 
 [[package]]
@@ -6238,7 +6463,7 @@ dependencies = [
  "object_store",
  "pin-project",
  "prost",
- "rand 0.9.1",
+ "rand 0.9.2",
  "roaring",
  "serde_json",
  "snafu",
@@ -6294,7 +6519,7 @@ dependencies = [
  "futures",
  "half",
  "hex",
- "rand 0.9.1",
+ "rand 0.9.2",
  "rand_xoshiro",
  "random_word",
 ]
@@ -6329,7 +6554,7 @@ dependencies = [
  "prost",
  "prost-build",
  "prost-types",
- "rand 0.9.1",
+ "rand 0.9.2",
  "snafu",
  "strum 0.25.0",
  "tokio",
@@ -6422,7 +6647,7 @@ dependencies = [
  "prost",
  "prost-build",
  "prost-types",
- "rand 0.9.1",
+ "rand 0.9.2",
  "rand_distr 0.5.1",
  "rayon",
  "roaring",
@@ -6469,7 +6694,7 @@ dependencies = [
  "path_abs",
  "pin-project",
  "prost",
- "rand 0.9.1",
+ "rand 0.9.2",
  "serde",
  "shellexpand",
  "snafu",
@@ -6497,7 +6722,7 @@ dependencies = [
  "lance-core",
  "log",
  "num-traits",
- "rand 0.9.1",
+ "rand 0.9.2",
  "rayon",
  "tokio",
  "tracing",
@@ -6515,7 +6740,7 @@ dependencies = [
  "lance",
  "lance-namespace-reqwest-client",
  "opendal",
- "reqwest 0.12.23",
+ "reqwest 0.12.24",
  "serde_json",
  "thiserror 1.0.69",
  "url",
@@ -6527,7 +6752,7 @@ version = "0.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ea349999bcda4eea53fc05d334b3775ec314761e6a706555c777d7a29b18d19"
 dependencies = [
- "reqwest 0.12.23",
+ "reqwest 0.12.24",
  "serde",
  "serde_json",
  "serde_repr",
@@ -6562,7 +6787,7 @@ dependencies = [
  "prost",
  "prost-build",
  "prost-types",
- "rand 0.9.1",
+ "rand 0.9.2",
  "rangemap",
  "roaring",
  "serde",
@@ -6584,7 +6809,7 @@ dependencies = [
  "arrow-schema",
  "lance-arrow",
  "num-traits",
- "rand 0.9.1",
+ "rand 0.9.2",
 ]
 
 [[package]]
@@ -6896,7 +7121,7 @@ dependencies = [
  "md-5",
  "nom 8.0.0",
  "nom_locate",
- "rand 0.9.1",
+ "rand 0.9.2",
  "rangemap",
  "rayon",
  "sha2",
@@ -7743,8 +7968,8 @@ dependencies = [
  "parking_lot",
  "percent-encoding",
  "quick-xml 0.38.0",
- "rand 0.9.1",
- "reqwest 0.12.23",
+ "rand 0.9.2",
+ "reqwest 0.12.24",
  "ring 0.17.14",
  "rustls-pemfile 2.2.0",
  "serde",
@@ -7854,7 +8079,7 @@ dependencies = [
  "percent-encoding",
  "quick-xml 0.38.0",
  "reqsign",
- "reqwest 0.12.23",
+ "reqwest 0.12.24",
  "serde",
  "serde_json",
  "sha2",
@@ -7930,7 +8155,7 @@ dependencies = [
  "bytes",
  "http 1.3.1",
  "opentelemetry",
- "reqwest 0.12.23",
+ "reqwest 0.12.24",
 ]
 
 [[package]]
@@ -7945,7 +8170,7 @@ dependencies = [
  "opentelemetry-proto",
  "opentelemetry_sdk",
  "prost",
- "reqwest 0.12.23",
+ "reqwest 0.12.24",
  "thiserror 2.0.16",
  "tracing",
 ]
@@ -7963,6 +8188,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "opentelemetry-semantic-conventions"
+version = "0.31.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e62e29dfe041afb8ed2a6c9737ab57db4907285d999ef8ad3a59092a36bdc846"
+
+[[package]]
 name = "opentelemetry_sdk"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7973,7 +8204,7 @@ dependencies = [
  "futures-util",
  "opentelemetry",
  "percent-encoding",
- "rand 0.9.1",
+ "rand 0.9.2",
  "serde_json",
  "thiserror 2.0.16",
  "tokio",
@@ -8687,7 +8918,7 @@ dependencies = [
  "bitflags 2.9.1",
  "lazy_static",
  "num-traits",
- "rand 0.9.1",
+ "rand 0.9.2",
  "rand_chacha 0.9.0",
  "rand_xorshift",
  "regex-syntax 0.8.7",
@@ -8899,7 +9130,7 @@ dependencies = [
  "bytes",
  "getrandom 0.3.3",
  "lru-slab",
- "rand 0.9.1",
+ "rand 0.9.2",
  "ring 0.17.14",
  "rustc-hash 2.1.1",
  "rustls 0.23.28",
@@ -8970,9 +9201,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.9.1"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fbfd9d094a40bf3ae768db9361049ace4c0e04a4fd6b359518bd7b73a73dd97"
+checksum = "6db2770f06117d490610c7488547d543617b21bfa07796d7a12f6f1bd53850d1"
 dependencies = [
  "rand_chacha 0.9.0",
  "rand_core 0.9.3",
@@ -9033,7 +9264,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a8615d50dcf34fa31f7ab52692afec947c4dd0ab803cc87cb3b0b4570ff7463"
 dependencies = [
  "num-traits",
- "rand 0.9.1",
+ "rand 0.9.2",
 ]
 
 [[package]]
@@ -9072,7 +9303,7 @@ dependencies = [
  "ahash 0.8.12",
  "brotli",
  "paste",
- "rand 0.9.1",
+ "rand 0.9.2",
  "unicase",
 ]
 
@@ -9316,7 +9547,7 @@ dependencies = [
  "percent-encoding",
  "quick-xml 0.37.5",
  "rand 0.8.5",
- "reqwest 0.12.23",
+ "reqwest 0.12.24",
  "rsa",
  "rust-ini",
  "serde",
@@ -9372,9 +9603,9 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.12.23"
+version = "0.12.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d429f34c8092b2d42c7c93cec323bb4adeb7c67698f70839adec842ec10c7ceb"
+checksum = "9d0946410b9f7b082a427e4ef5c8ff541a88b357bc6c637c40db3a68ac70a36f"
 dependencies = [
  "async-compression",
  "base64 0.22.1",
@@ -9505,7 +9736,7 @@ dependencies = [
  "aws-sdk-bedrockruntime",
  "aws-smithy-types",
  "base64 0.22.1",
- "reqwest 0.12.23",
+ "reqwest 0.12.24",
  "rig-core 0.23.1",
  "rig-derive",
  "schemars 1.0.4",
@@ -9531,7 +9762,7 @@ dependencies = [
  "glob",
  "mime_guess",
  "ordered-float",
- "reqwest 0.12.23",
+ "reqwest 0.12.24",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -9568,7 +9799,7 @@ dependencies = [
  "pin-project-lite",
  "quick-xml 0.38.0",
  "rayon",
- "reqwest 0.12.23",
+ "reqwest 0.12.24",
  "rig-derive",
  "rmcp",
  "schemars 1.0.4",
@@ -9612,7 +9843,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "ethers",
- "reqwest 0.12.23",
+ "reqwest 0.12.24",
  "rig-core 0.23.1",
  "schemars 1.0.4",
  "serde",
@@ -9653,7 +9884,7 @@ version = "0.2.26"
 dependencies = [
  "anyhow",
  "arrow-array",
- "deranged",
+ "deranged 0.4.0",
  "futures",
  "httpmock",
  "lancedb",
@@ -9668,7 +9899,7 @@ name = "rig-milvus"
 version = "0.1.15"
 dependencies = [
  "anyhow",
- "reqwest 0.12.23",
+ "reqwest 0.12.24",
  "rig-core 0.23.1",
  "serde",
  "serde_json",
@@ -9822,6 +10053,11 @@ dependencies = [
 [[package]]
 name = "rig-vertexai"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "google-cloud-aiplatform-v1",
+ "tokio",
+]
 
 [[package]]
 name = "rig-wasm"
@@ -9949,8 +10185,8 @@ dependencies = [
  "http-body-util",
  "paste",
  "pin-project-lite",
- "rand 0.9.1",
- "reqwest 0.12.23",
+ "rand 0.9.2",
+ "reqwest 0.12.24",
  "rmcp-macros",
  "schemars 1.0.4",
  "serde",
@@ -10512,7 +10748,7 @@ dependencies = [
  "futures",
  "hashbrown 0.14.5",
  "itertools 0.14.0",
- "rand 0.9.1",
+ "rand 0.9.2",
  "rand_pcg",
  "scylla-cql",
  "smallvec",
@@ -11594,7 +11830,7 @@ dependencies = [
  "path-clean",
  "pharos",
  "reblessive",
- "reqwest 0.12.23",
+ "reqwest 0.12.24",
  "revision 0.11.0",
  "ring 0.17.14",
  "rust_decimal",
@@ -12231,11 +12467,11 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.41"
+version = "0.3.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a7619e19bc266e0f9c5e6686659d394bc57973859340060a69221e57dbc0c40"
+checksum = "91e7d9e3bb61134e77bde20dd4825b97c010155709965fedf0f49bb138e52a9d"
 dependencies = [
- "deranged",
+ "deranged 0.5.5",
  "itoa",
  "num-conv",
  "powerfmt",
@@ -12246,15 +12482,15 @@ dependencies = [
 
 [[package]]
 name = "time-core"
-version = "0.1.4"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9e9a38711f559d9e3ce1cdb06dd7c5b8ea546bc90052da6d06bb76da74bb07c"
+checksum = "40868e7c1d2f0b8d73e4a8c7f0ff63af4f6d19be117e90bd73eb1d62cf831c6b"
 
 [[package]]
 name = "time-macros"
-version = "0.2.22"
+version = "0.2.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3526739392ec93fd8b359c8e98514cb3e8e021beb4e5f597b00a0221f8ed8a49"
+checksum = "30cfb0125f12d9c277f35663a0a33f8c30190f4e4574868a330595412d34ebf3"
 dependencies = [
  "num-conv",
  "time-core",
@@ -12313,7 +12549,7 @@ dependencies = [
  "monostate",
  "onig",
  "paste",
- "rand 0.9.1",
+ "rand 0.9.2",
  "rayon",
  "rayon-cond",
  "regex",
@@ -12866,7 +13102,7 @@ version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b907da542cbced5261bd3256de1b3a1bf340a3d37f93425a07362a1d687de56"
 dependencies = [
- "rand 0.9.1",
+ "rand 0.9.2",
 ]
 
 [[package]]
@@ -12954,7 +13190,7 @@ version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "470dbf6591da1b39d43c14523b2b469c86879a53e8b758c8e090a470fe7b1fbe"
 dependencies = [
- "rand 0.9.1",
+ "rand 0.9.2",
  "serde",
  "web-time",
 ]
