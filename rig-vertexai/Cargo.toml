@@ -11,6 +11,8 @@ description = "VertexAI model provider for Rig integration."
 google-cloud-aiplatform-v1 = { version = "1.2.0", default-features = false, features = [
     "prediction-service",
 ] }
+rig-core = { path = "../rig-core", version = "0.23.1", default-features = false }
+serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["full"] }
 
 [dev-dependencies]
