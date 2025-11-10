@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.16](https://github.com/0xPlaygrounds/rig/compare/rig-milvus-v0.1.15...rig-milvus-v0.1.16) - 2025-11-10
+
+### Added
+
+- *(rig-1014)* add backend specific vector search filters ([#1032](https://github.com/0xPlaygrounds/rig/pull/1032))
+
 ## [0.1.15](https://github.com/0xPlaygrounds/rig/compare/rig-milvus-v0.1.14...rig-milvus-v0.1.15) - 2025-10-28
 
 ### Other

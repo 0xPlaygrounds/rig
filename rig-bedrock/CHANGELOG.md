@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.5...rig-bedrock-v0.3.6) - 2025-11-10
+
+### Added
+
+- *(providers)* Emit tool call deltas ([#1020](https://github.com/0xPlaygrounds/rig/pull/1020))
+
 ## [0.3.5](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.4...rig-bedrock-v0.3.5) - 2025-10-28
 
 ### Other
