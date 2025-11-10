@@ -297,6 +297,105 @@ mod tests {
     }
 
     #[test]
+    fn test_no_tool_choice_when_not_specified() {
+        // Test that when tool_choice is None (not set), it defaults to Auto in Vertex AI
+        let request = CompletionRequest {
+            tool_choice: None, // Not set
+            tools: vec![ToolDefinition {
+                name: "test_tool".to_string(),
+                description: "A test tool".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            }],
+            ..minimal_request()
+        };
+
+        let vertex_request = VertexCompletionRequest(request);
+        let tool_config = vertex_request.tool_config();
+
+        assert!(tool_config.is_some());
+        let config = tool_config.unwrap();
+        let function_calling_config = config.function_calling_config.as_ref();
+
+        assert!(function_calling_config.is_some());
+        // When not specified, should default to Auto
+        assert_eq!(
+            function_calling_config.unwrap().mode,
+            vertexai::model::function_calling_config::Mode::Auto
+        );
+    }
+
+    #[test]
+    fn test_tool_with_empty_parameters() {
+        // Test that tools with empty parameters work correctly
+        let request = CompletionRequest {
+            tools: vec![ToolDefinition {
+                name: "document_list".to_string(),
+                description: "Lists all documents".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            }],
+            ..minimal_request()
+        };
+
+        let vertex_request = VertexCompletionRequest(request);
+        let tools = vertex_request.tools();
+
+        assert!(tools.is_some());
+        let tool = tools.unwrap();
+        assert!(!tool.function_declarations.is_empty());
+        assert_eq!(tool.function_declarations.len(), 1);
+        assert_eq!(tool.function_declarations[0].name.as_str(), "document_list");
+        assert_eq!(
+            tool.function_declarations[0].description.as_str(),
+            "Lists all documents"
+        );
+    }
+
+    #[test]
+    fn test_tool_with_parameters() {
+        // Test that tools with complex parameters work correctly
+        let request = CompletionRequest {
+            tools: vec![ToolDefinition {
+                name: "get_weather".to_string(),
+                description: "Get weather for a location".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "City name"
+                        },
+                        "units": {
+                            "type": "string",
+                            "enum": ["celsius", "fahrenheit"]
+                        }
+                    },
+                    "required": ["location"]
+                }),
+            }],
+            ..minimal_request()
+        };
+
+        let vertex_request = VertexCompletionRequest(request);
+        let tools = vertex_request.tools();
+
+        assert!(tools.is_some());
+        let tool = tools.unwrap();
+        assert!(!tool.function_declarations.is_empty());
+        assert_eq!(tool.function_declarations.len(), 1);
+        assert_eq!(tool.function_declarations[0].name.as_str(), "get_weather");
+        assert_eq!(
+            tool.function_declarations[0].description.as_str(),
+            "Get weather for a location"
+        );
+    }
+
+    #[test]
     fn test_generation_config_with_temperature_and_max_tokens() {
         // Test that temperature and max_tokens convert to GenerationConfig
         let request = CompletionRequest {
