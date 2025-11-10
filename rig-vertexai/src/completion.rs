@@ -7,7 +7,25 @@ use rig::completion::{
 };
 use rig::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
-use std::env;
+
+// All supported models: <https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/gemini>
+
+/// `gemini-1.5-pro`
+pub const GEMINI_1_5_PRO: &str = "gemini-1.5-pro";
+/// `gemini-1.5-flash`
+pub const GEMINI_1_5_FLASH: &str = "gemini-1.5-flash";
+/// `gemini-1.5-pro-latest`
+pub const GEMINI_1_5_PRO_LATEST: &str = "gemini-1.5-pro-latest";
+/// `gemini-1.5-flash-latest`
+pub const GEMINI_1_5_FLASH_LATEST: &str = "gemini-1.5-flash-latest";
+/// `gemini-2.0-flash-exp`
+pub const GEMINI_2_0_FLASH_EXP: &str = "gemini-2.0-flash-exp";
+/// `gemini-2.5-flash-lite`
+pub const GEMINI_2_5_FLASH_LITE: &str = "gemini-2.5-flash-lite";
+/// `gemini-2.5-flash`
+pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
+/// `gemini-2.5-pro`
+pub const GEMINI_2_5_PRO: &str = "gemini-2.5-pro";
 
 #[derive(Clone)]
 pub struct CompletionModel {
@@ -33,17 +51,22 @@ impl CompletionModel {
     }
 
     fn model_path(&self) -> Result<String, CompletionError> {
-        let project_id = env::var("GOOGLE_CLOUD_PROJECT").map_err(|_| {
-            CompletionError::ProviderError(
-                "GOOGLE_CLOUD_PROJECT environment variable is not set".to_string(),
-            )
-        })?;
+        let project_id = self
+            .client
+            .project_id()
+            .ok_or_else(|| {
+                CompletionError::ProviderError(
+                    "Google Cloud project ID is not set. Set it via ClientBuilder::with_google_cloud_project() or GOOGLE_CLOUD_PROJECT environment variable".to_string(),
+                )
+            })?;
+
+        let region = self.client.region();
 
         let model_name = if self.model.contains('/') {
             self.model.clone()
         } else {
             format!(
-                "projects/{project_id}/locations/global/publishers/google/models/{}",
+                "projects/{project_id}/locations/{region}/publishers/google/models/{}",
                 self.model
             )
         };

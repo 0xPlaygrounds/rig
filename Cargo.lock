@@ -10056,6 +10056,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "google-cloud-aiplatform-v1",
+ "google-cloud-auth",
  "rig-core 0.23.1",
  "schemars 1.0.4",
  "serde",
