@@ -81,3 +81,110 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use google_cloud_aiplatform_v1 as vertexai;
+    use rig::OneOrMany;
+    use rig::message::{Message, Text, ToolResult, ToolResultContent};
+
+    #[test]
+    fn test_user_text_message_conversion() {
+        let message = Message::User {
+            content: OneOrMany::one(rig::message::UserContent::Text(Text {
+                text: "Hello".to_string(),
+            })),
+        };
+
+        let rig_message = RigMessage(message);
+        let vertex_content: Result<vertexai::model::Content, _> = rig_message.try_into();
+
+        assert!(vertex_content.is_ok());
+        let content = vertex_content.unwrap();
+        assert_eq!(content.role.as_str(), "user");
+        assert_eq!(content.parts.len(), 1);
+        assert_eq!(content.parts[0].text(), Some(&"Hello".to_string()));
+    }
+
+    #[test]
+    fn test_assistant_text_message_conversion() {
+        let message = Message::Assistant {
+            id: None,
+            content: OneOrMany::one(AssistantContent::Text(Text {
+                text: "Hi there".to_string(),
+            })),
+        };
+
+        let rig_message = RigMessage(message);
+        let vertex_content: Result<vertexai::model::Content, _> = rig_message.try_into();
+
+        assert!(vertex_content.is_ok());
+        let content = vertex_content.unwrap();
+        assert_eq!(content.role.as_str(), "model");
+        assert_eq!(content.parts.len(), 1);
+        assert_eq!(content.parts[0].text(), Some(&"Hi there".to_string()));
+    }
+
+    #[test]
+    fn test_assistant_tool_call_message_conversion() {
+        use rig::message::{ToolCall, ToolFunction};
+        let tool_call = ToolCall {
+            id: "add".to_string(),
+            call_id: None,
+            function: ToolFunction {
+                name: "add".to_string(),
+                arguments: serde_json::json!({
+                    "x": 5,
+                    "y": 3
+                }),
+            },
+        };
+
+        let message = Message::Assistant {
+            id: None,
+            content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
+        };
+
+        let rig_message = RigMessage(message);
+        let vertex_content: Result<vertexai::model::Content, _> = rig_message.try_into();
+
+        assert!(vertex_content.is_ok());
+        let content = vertex_content.unwrap();
+        assert_eq!(content.role.as_str(), "model");
+        assert_eq!(content.parts.len(), 1);
+        
+        let function_call = content.parts[0].function_call();
+        assert!(function_call.is_some());
+        let function_call = function_call.unwrap();
+        assert_eq!(function_call.name.as_str(), "add");
+    }
+
+    #[test]
+    fn test_user_tool_result_message_conversion() {
+        let tool_result = ToolResult {
+            id: "add".to_string(),
+            call_id: None,
+            content: OneOrMany::one(ToolResultContent::Text(Text {
+                text: "8".to_string(),
+            })),
+        };
+
+        let message = Message::User {
+            content: OneOrMany::one(rig::message::UserContent::ToolResult(tool_result)),
+        };
+
+        let rig_message = RigMessage(message);
+        let vertex_content: Result<vertexai::model::Content, _> = rig_message.try_into();
+
+        assert!(vertex_content.is_ok());
+        let content = vertex_content.unwrap();
+        assert_eq!(content.role.as_str(), "user");
+        assert_eq!(content.parts.len(), 1);
+        
+        let function_response = content.parts[0].function_response();
+        assert!(function_response.is_some());
+        let function_response = function_response.unwrap();
+        assert_eq!(function_response.name.as_str(), "add");
+    }
+}
+
