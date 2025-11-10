@@ -4,7 +4,7 @@ use rig::{
     completion::{Prompt, ToolDefinition},
     tool::Tool,
 };
-use rig_vertexai::Client;
+use rig_vertexai::{Client, GEMINI_2_5_FLASH_LITE};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 
@@ -54,7 +54,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let client = Client::from_env();
 
     // Create agent with a calculator tool
-    let calculator_agent = client.agent("gemini-2.5-flash-lite").tool(Adder).build();
+    let calculator_agent = client.agent(GEMINI_2_5_FLASH_LITE).tool(Adder).build();
 
     // Prompt the agent and print the response
     println!("Calculate 15 + 27");
