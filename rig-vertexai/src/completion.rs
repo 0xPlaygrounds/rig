@@ -1,3 +1,5 @@
+//! All supported models: <https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/gemini>
+
 use crate::types::{
     completion_request::VertexCompletionRequest, completion_response::VertexGenerateContentOutput,
 };
@@ -7,8 +9,6 @@ use rig::completion::{
 };
 use rig::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
-
-// All supported models: <https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/gemini>
 
 /// `gemini-1.5-pro`
 pub const GEMINI_1_5_PRO: &str = "gemini-1.5-pro";

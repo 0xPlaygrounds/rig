@@ -96,7 +96,6 @@ pub struct Client {
 
 impl Client {
     pub fn new() -> Self {
-        // Resolve project_id from environment if available
         let project_id = std::env::var("GOOGLE_CLOUD_PROJECT").ok();
         Self {
             project_id,
