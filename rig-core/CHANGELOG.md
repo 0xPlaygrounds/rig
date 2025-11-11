@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.24.0...rig-core-v0.24.1) - 2025-11-11
+
+### Fixed
+
+- update imported packages in the code example ([#1041](https://github.com/0xPlaygrounds/rig/pull/1041))
+
 ## [0.24.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.23.1...rig-core-v0.24.0) - 2025-11-10
 
 ### Added
