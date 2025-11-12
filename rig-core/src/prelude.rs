@@ -16,5 +16,3 @@ pub use crate::client::image_generation::ImageGenerationClient;
 pub use crate::client::audio_generation::AudioGenerationClient;
 
 pub use crate::client::{VerifyClient, VerifyError};
-
-pub use crate::http_client::HttpLogConfigExt;

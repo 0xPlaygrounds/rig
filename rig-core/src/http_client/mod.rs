@@ -1,14 +1,16 @@
-use crate::http_client::{sse::BoxedStream, util::Escape};
+use crate::http_client::{escape::Escape, sse::BoxedStream};
 use bytes::Bytes;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
 use http::{StatusCode, request::Parts};
 use reqwest::{Body, multipart::Form};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use tracing::Level;
+use std::sync::{
+    Arc, OnceLock,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 
+mod escape;
 pub mod retry;
 pub mod sse;
-pub mod util;
 
 use std::pin::Pin;
 
@@ -78,44 +80,71 @@ pub fn with_bearer_auth(req: Builder, auth: &str) -> Result<Builder> {
     Ok(req.header("Authorization", auth_header))
 }
 
-static LOG_HTTP_BODY_MAX: AtomicUsize = AtomicUsize::new(8 * 1024);
-
-/// Extension trait for client builders to configure HTTP logging.
-///
-/// # Example
-/// ```
-/// use rig::prelude::*;
-/// use rig::providers::openai;
-///
-/// let client = openai::Client::builder("api-key")
-///     .max_log_body_preview(8192)
-///     .build();
-/// ```
-pub trait HttpLogConfigExt {
-    /// Set the maximum number of bytes to preview from the body when logging in the `TRACE` level.
-    /// Defaults to 8192 bytes. Set to 0 to disable body preview logging.
-    ///
-    /// This method can be called on any client builder to configure HTTP logging before building the client.
-    fn max_log_body_preview(self, max_preview_bytes: usize) -> Self;
+#[derive(Clone, Debug)]
+pub struct HttpLogSettings {
+    max_body_preview: Arc<AtomicUsize>,
+    headers_enabled: Arc<AtomicBool>,
 }
 
-impl<T> HttpLogConfigExt for T
-where
-    T: Sized,
-{
-    fn max_log_body_preview(self, max_preview_bytes: usize) -> Self {
-        LOG_HTTP_BODY_MAX.store(max_preview_bytes, Ordering::Relaxed);
-        self
+impl Default for HttpLogSettings {
+    fn default() -> Self {
+        Self {
+            max_body_preview: Arc::new(AtomicUsize::new(8 * 1024)),
+            headers_enabled: Arc::new(AtomicBool::new(true)),
+        }
     }
 }
 
-/// Set the maximum number of bytes to preview from the body when logging in the `TRACE` level. Defaults to 8192 bytes. Set to 0 to disable body preview logging.
-pub fn set_max_log_body_preview(max_preview_bytes: usize) {
-    LOG_HTTP_BODY_MAX.store(max_preview_bytes, Ordering::Relaxed);
+impl HttpLogSettings {
+    pub fn new(max_preview_bytes: usize) -> Self {
+        Self {
+            max_body_preview: Arc::new(AtomicUsize::new(max_preview_bytes)),
+            headers_enabled: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
+    pub fn max_body_preview(&self) -> usize {
+        self.max_body_preview.load(Ordering::Relaxed)
+    }
+
+    pub fn set_max_body_preview(&self, max_preview_bytes: usize) {
+        self.max_body_preview
+            .store(max_preview_bytes, Ordering::Relaxed);
+    }
+
+    pub fn log_headers_enabled(&self) -> bool {
+        self.headers_enabled.load(Ordering::Relaxed)
+    }
+
+    pub fn set_log_headers_enabled(&self, enabled: bool) {
+        self.headers_enabled.store(enabled, Ordering::Relaxed);
+    }
 }
 
-fn body_preview_len() -> usize {
-    LOG_HTTP_BODY_MAX.load(Ordering::Relaxed)
+fn http_log_settings() -> &'static HttpLogSettings {
+    static SETTINGS: OnceLock<HttpLogSettings> = OnceLock::new();
+    SETTINGS.get_or_init(HttpLogSettings::default)
+}
+
+/// Set the maximum number of bytes to preview from the body when logging at the `TRACE` level.
+/// Defaults to 8192 bytes. Set to 0 to disable body preview logging.
+pub fn set_max_log_body_preview(max_preview_bytes: usize) {
+    http_log_settings().set_max_body_preview(max_preview_bytes);
+}
+
+/// Get the current maximum number of bytes previewed from the body when logging at the `TRACE` level.
+fn max_log_body_preview() -> usize {
+    http_log_settings().max_body_preview()
+}
+
+/// Enable or disable header logging when tracing HTTP requests/responses.
+pub fn set_log_headers_enabled(enabled: bool) {
+    http_log_settings().set_log_headers_enabled(enabled);
+}
+
+/// Returns whether header logging is currently enabled.
+fn log_headers_enabled() -> bool {
+    http_log_settings().log_headers_enabled()
 }
 
 /// A helper trait to make generic requests (both regular and SSE) possible.
@@ -301,49 +330,69 @@ impl HttpClientExt for reqwest::Client {
 }
 
 fn log_request(parts: &Parts, body: &Bytes) {
-    if tracing::enabled!(Level::TRACE) {
-        // Redact sensitive headers (e.g., Authorization) for logging
-        let mut redacted_headers = parts.headers.clone();
-        redacted_headers.remove("Authorization");
-        let preview_len = body_preview_len();
-
-        if preview_len > 0 {
-            let shown = std::cmp::min(preview_len, body.len());
-            let preview = Escape::new(&body[..shown]);
-            tracing::trace!(
-                target: "rig::http",
-                method = %parts.method,
-                uri = %parts.uri,
-                body_len = body.len(),
-                body_preview_len = shown,
-                headers = ?redacted_headers,
-                body_preview = ?preview,
-                "sending HTTP request"
-            );
-        } else {
-            tracing::trace!(
-                target: "rig::http",
-                method = %parts.method,
-                uri = %parts.uri,
-                body_len = body.len(),
-                headers = ?redacted_headers,
-                "sending HTTP request"
-            );
-        }
+    if !log_headers_enabled() {
+        return;
     }
-}
 
-fn log_headers(parts: &Parts) {
-    if tracing::enabled!(Level::TRACE) {
-        // Redact sensitive headers (e.g., Authorization) for logging
-        let mut redacted_headers = parts.headers.clone();
-        redacted_headers.remove("Authorization");
+    let redacted_headers = redact_sensitive_headers(&parts.headers);
+    let preview_len = max_log_body_preview();
+
+    if preview_len > 0 {
+        let shown = std::cmp::min(preview_len, body.len());
+        let preview = Escape::new(&body[..shown]);
         tracing::trace!(
             target: "rig::http",
             method = %parts.method,
             uri = %parts.uri,
+            body_len = body.len(),
+            body_preview_len = shown,
+            headers = ?redacted_headers,
+            body_preview = ?preview,
+            "sending HTTP request"
+        );
+    } else {
+        tracing::trace!(
+            target: "rig::http",
+            method = %parts.method,
+            uri = %parts.uri,
+            body_len = body.len(),
             headers = ?redacted_headers,
             "sending HTTP request"
         );
     }
+}
+
+fn log_headers(parts: &Parts) {
+    if !log_headers_enabled() {
+        return;
+    }
+
+    let redacted_headers = redact_sensitive_headers(&parts.headers);
+    tracing::trace!(
+        target: "rig::http",
+        method = %parts.method,
+        uri = %parts.uri,
+        headers = ?redacted_headers,
+        "sending HTTP request"
+    );
+}
+
+/// Redact sensitive headers (e.g., Authorization) for logging
+fn redact_sensitive_headers(headers: &HeaderMap) -> HeaderMap {
+    let is_sensitive_header = |name: &str| {
+        let trimmed = name.trim();
+        match trimmed.len() {
+            13 => trimmed.eq_ignore_ascii_case("authorization"),
+            len if len > 4 && trimmed[len - 4..].eq_ignore_ascii_case("-key") => true,
+            _ => false,
+        }
+    };
+    let mut filtered = HeaderMap::with_capacity(headers.len());
+    for (name, value) in headers.iter() {
+        // avoid the closure allocation, inline check, avoid clones if possible
+        if !is_sensitive_header(name.as_str()) {
+            filtered.append(name, value.clone());
+        }
+    }
+    filtered
 }
