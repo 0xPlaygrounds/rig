@@ -39,6 +39,8 @@ pub trait ProviderClient:
     + AsEmbeddings
     + AsImageGeneration
     + AsAudioGeneration
+    + Send
+    + Sync
     + Debug
     + WasmCompatSend
     + WasmCompatSync
