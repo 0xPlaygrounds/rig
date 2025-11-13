@@ -52,7 +52,6 @@ where
 {
     type Response = TranscriptionResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn transcription(
         &self,
         request: transcription::TranscriptionRequest,

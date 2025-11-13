@@ -190,7 +190,6 @@ impl<T> VerifyClient for Client<T>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         let req = self
             .get("/user/balance")?
@@ -629,7 +628,6 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: CompletionRequest,
@@ -703,7 +701,6 @@ where
         .await
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         completion_request: CompletionRequest,

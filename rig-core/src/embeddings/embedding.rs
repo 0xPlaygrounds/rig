@@ -23,12 +23,12 @@ pub enum EmbeddingError {
     #[error("UrlError: {0}")]
     UrlError(#[from] url::ParseError),
 
-    #[cfg(not(target_family = "wasm"))]
+    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
     /// Error processing the document for embedding
     #[error("DocumentError: {0}")]
     DocumentError(Box<dyn std::error::Error + Send + Sync + 'static>),
 
-    #[cfg(target_family = "wasm")]
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
     /// Error processing the document for embedding
     #[error("DocumentError: {0}")]
     DocumentError(Box<dyn std::error::Error + 'static>),

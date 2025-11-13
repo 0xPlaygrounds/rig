@@ -98,12 +98,12 @@ pub enum CompletionError {
     #[error("UrlError: {0}")]
     UrlError(#[from] url::ParseError),
 
-    #[cfg(not(target_family = "wasm"))]
+    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
     /// Error building the completion request
     #[error("RequestError: {0}")]
     RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 
-    #[cfg(target_family = "wasm")]
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
     /// Error building the completion request
     #[error("RequestError: {0}")]
     RequestError(#[from] Box<dyn std::error::Error + 'static>),

@@ -181,7 +181,6 @@ where
 }
 
 impl VerifyClient for Client<reqwest::Client> {
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         let req = self
             .get("/models")?
@@ -436,7 +435,6 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: CompletionRequest,
@@ -499,7 +497,6 @@ where
         async_block.instrument(span).await
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -624,7 +621,6 @@ mod image_generation {
     {
         type Response = ImageGenerationResponse;
 
-        #[cfg_attr(feature = "worker", worker::send)]
         async fn image_generation(
             &self,
             generation_request: ImageGenerationRequest,
@@ -761,7 +757,6 @@ mod audio_generation {
     {
         type Response = AudioGenerationResponse;
 
-        #[cfg_attr(feature = "worker", worker::send)]
         async fn audio_generation(
             &self,
             request: AudioGenerationRequest,

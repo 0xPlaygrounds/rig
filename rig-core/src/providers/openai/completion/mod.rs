@@ -928,7 +928,6 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: CoreCompletionRequest,
@@ -991,7 +990,6 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         .await
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         request: CoreCompletionRequest,

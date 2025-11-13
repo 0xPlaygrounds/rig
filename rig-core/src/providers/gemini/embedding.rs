@@ -48,7 +48,6 @@ where
     }
 
     /// <https://ai.google.dev/api/embeddings#batch_embed_contents-SHELL>
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String> + WasmCompatSend,
