@@ -45,23 +45,22 @@ impl Tool for Adder {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .with_target(false)
-        .init();
+    tracing_subscriber::fmt().with_target(false).init();
 
     // Create Vertex AI client using implicit credentials
     let client = Client::from_env();
 
     // Create agent with a calculator tool
-    let calculator_agent = client.agent(GEMINI_2_5_FLASH_LITE).tool(Adder).build();
+    let calculator_agent = client
+        .agent(GEMINI_2_5_FLASH_LITE)
+        .tool(Adder)
+        .max_tokens(1024)
+        .build();
 
     // Prompt the agent and print the response
     println!("Calculate 15 + 27");
-    println!(
-        "Vertex AI Calculator Agent: {}",
-        calculator_agent.prompt("Calculate 15 + 27").await?
-    );
+    let answer = calculator_agent.prompt("Calculate 15 + 27").await?;
+    println!("Vertex AI Calculator Agent: {answer}");
 
     Ok(())
 }
