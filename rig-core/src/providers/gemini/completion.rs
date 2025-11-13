@@ -1362,6 +1362,8 @@ pub mod gemini_api_types {
         /// Configuration for thinking/reasoning.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thinking_config: Option<ThinkingConfig>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub image_config: Option<ImageConfig>,
     }
 
     impl Default for GenerationConfig {
@@ -1380,6 +1382,7 @@ pub mod gemini_api_types {
                 response_logprobs: None,
                 logprobs: None,
                 thinking_config: None,
+                image_config: None,
             }
         }
     }
@@ -1390,6 +1393,13 @@ pub mod gemini_api_types {
         pub thinking_budget: u32,
         pub include_thoughts: Option<bool>,
     }
+
+    #[derive(Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ImageConfig {
+        pub aspect_ratio: Option<String>,
+    }
+
     /// The Schema object allows the definition of input and output data types. These types can be objects, but also
     /// primitives and arrays. Represents a select subset of an OpenAPI 3.0 schema object.
     /// From [Gemini API Reference](https://ai.google.dev/api/caching#Schema)
