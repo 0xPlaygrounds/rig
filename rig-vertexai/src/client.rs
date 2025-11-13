@@ -14,34 +14,24 @@ use tokio::sync::OnceCell;
 ///
 /// The `global` endpoint is recommended for Gemini models as it provides higher availability
 /// and reduces resource exhaustion errors. Regional endpoints (e.g., `us-central1`, `europe-west4`)
-/// are also supported and can be specified via `ClientBuilder::with_location()`.
+/// are also supported and can be specified via `ClientBuilder::new()`.
 /// Regional endpoints may be preferred for data residency requirements or to use regional quotas.
 pub const DEFAULT_LOCATION: &str = "global";
 
 #[derive(Clone, Debug)]
 pub struct ClientBuilder {
-    project: Option<String>,
-    location: Option<String>,
+    project: String,
+    location: String,
     credentials: Option<Credentials>,
 }
 
 impl ClientBuilder {
-    pub fn new() -> Self {
+    pub fn new(project: &str, location: &str) -> Self {
         Self {
-            project: None,
-            location: None,
+            project: project.to_string(),
+            location: location.to_string(),
             credentials: None,
         }
-    }
-
-    pub fn with_project(mut self, project: &str) -> Self {
-        self.project = Some(project.to_string());
-        self
-    }
-
-    pub fn with_location(mut self, location: &str) -> Self {
-        self.location = Some(location.to_string());
-        self
     }
 
     pub fn with_credentials(mut self, credentials: Credentials) -> Self {
@@ -50,19 +40,8 @@ impl ClientBuilder {
     }
 
     pub async fn build(self) -> Result<Client, String> {
-        // Resolve project: use explicit value, or fall back to GOOGLE_CLOUD_PROJECT env var
-        let project = self
-            .project
-            .or_else(|| std::env::var("GOOGLE_CLOUD_PROJECT").ok())
-            .ok_or_else(|| {
-                "Google Cloud project is required. Set it via ClientBuilder::with_project() or GOOGLE_CLOUD_PROJECT environment variable".to_string()
-            })?;
-
-        // Resolve location: use explicit value, or fall back to GOOGLE_CLOUD_LOCATION env var, or default to "global"
-        let location = self
-            .location
-            .or_else(|| std::env::var("GOOGLE_CLOUD_LOCATION").ok())
-            .unwrap_or_else(|| DEFAULT_LOCATION.to_string());
+        let project = self.project;
+        let location = self.location;
 
         let credentials = self.credentials.clone();
         let mut builder = vertexai::client::PredictionService::builder();
@@ -76,7 +55,7 @@ impl ClientBuilder {
             .map_err(|e| format!("Failed to build Vertex AI client: {e}. Make sure you have Google Cloud credentials configured (e.g., via 'gcloud auth application-default login')"))?;
 
         Ok(Client {
-            project: Some(project),
+            project,
             location,
             credentials,
             vertex_client: Arc::new(OnceCell::from(vertex_client)),
@@ -84,15 +63,9 @@ impl ClientBuilder {
     }
 }
 
-impl Default for ClientBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Client {
-    project: Option<String>,
+    project: String,
     location: String,
     credentials: Option<Credentials>,
     pub(crate) vertex_client: Arc<OnceCell<vertexai::client::PredictionService>>,
@@ -100,10 +73,10 @@ pub struct Client {
 
 impl Client {
     pub fn new() -> Self {
-        let project = std::env::var("GOOGLE_CLOUD_PROJECT").ok();
-        let location = std::env::var("GOOGLE_CLOUD_LOCATION")
-            .ok()
-            .unwrap_or_else(|| DEFAULT_LOCATION.to_string());
+        let project = std::env::var("GOOGLE_CLOUD_PROJECT")
+            .expect("GOOGLE_CLOUD_PROJECT environment variable must be set");
+        let location =
+            std::env::var("GOOGLE_CLOUD_LOCATION").unwrap_or_else(|_| DEFAULT_LOCATION.to_string());
         Self {
             project,
             location,
@@ -112,12 +85,12 @@ impl Client {
         }
     }
 
-    pub fn builder() -> ClientBuilder {
-        ClientBuilder::new()
+    pub fn builder(project: &str, location: &str) -> ClientBuilder {
+        ClientBuilder::new(project, location)
     }
 
-    pub fn project(&self) -> Option<&str> {
-        self.project.as_deref()
+    pub fn project(&self) -> &str {
+        &self.project
     }
 
     pub fn location(&self) -> &str {

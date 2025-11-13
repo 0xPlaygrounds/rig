@@ -51,26 +51,12 @@ impl CompletionModel {
     }
 
     fn model_path(&self) -> Result<String, CompletionError> {
-        let model_name = if self.model.contains('/') {
-            self.model.clone()
-        } else {
-            let project = self
-            .client
-            .project()
-            .ok_or_else(|| {
-                CompletionError::ProviderError(
-                    "Google Cloud project is not set. Set it via ClientBuilder::with_project() or GOOGLE_CLOUD_PROJECT environment variable".to_string(),
-                )
-            })?;
-
-            let location = self.client.location();
-            format!(
-                "projects/{project}/locations/{location}/publishers/google/models/{}",
-                self.model
-            )
-        };
-
-        Ok(model_name)
+        let project = self.client.project();
+        let location = self.client.location();
+        Ok(format!(
+            "projects/{project}/locations/{location}/publishers/google/models/{}",
+            self.model
+        ))
     }
 }
 
