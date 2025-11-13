@@ -386,25 +386,31 @@ impl TryFrom<DocumentMediaType> for DocumentFormat {
     }
 }
 
-impl From<message::AssistantContent> for Content {
-    fn from(text: message::AssistantContent) -> Self {
+impl TryFrom<message::AssistantContent> for Content {
+    type Error = MessageError;
+    fn try_from(text: message::AssistantContent) -> Result<Self, Self::Error> {
         match text {
-            message::AssistantContent::Text(message::Text { text }) => Content::Text { text },
+            message::AssistantContent::Text(message::Text { text }) => Ok(Content::Text { text }),
+            message::AssistantContent::Image(_) => {
+                return Err(MessageError::ConversionError(
+                    "Anthropic currently doesn't support images.".into(),
+                ));
+            }
             message::AssistantContent::ToolCall(message::ToolCall { id, function, .. }) => {
-                Content::ToolUse {
+                Ok(Content::ToolUse {
                     id,
                     name: function.name,
                     input: function.arguments,
-                }
+                })
             }
             message::AssistantContent::Reasoning(Reasoning {
                 reasoning,
                 signature,
                 ..
-            }) => Content::Thinking {
+            }) => Ok(Content::Thinking {
                 thinking: reasoning.first().cloned().unwrap_or(String::new()),
                 signature,
-            },
+            }),
         }
     }
 }
@@ -515,7 +521,7 @@ impl TryFrom<message::Message> for Message {
             },
 
             message::Message::Assistant { content, .. } => Message {
-                content: content.map(|content| content.into()),
+                content: content.try_map(|content| content.try_into())?,
                 role: Role::Assistant,
             },
         })
