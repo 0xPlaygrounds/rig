@@ -85,8 +85,9 @@ where
         let collection_name = self.query_params.collection_name.clone();
 
         for (document, embeddings) in documents {
-            let json_document = serde_json::to_value(&document).unwrap();
-            let doc_as_payload = Payload::try_from(json_document).unwrap();
+            let json_document = serde_json::to_value(&document)?;
+            let doc_as_payload = Payload::try_from(json_document)
+                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
             let embeddings_as_point_structs = embeddings
                 .into_iter()
@@ -101,7 +102,8 @@ where
                 })
                 .collect::<Vec<PointStruct>>();
 
-            let request = UpsertPointsBuilder::new(&collection_name, embeddings_as_point_structs);
+            let request =
+                UpsertPointsBuilder::new(&collection_name, embeddings_as_point_structs).wait(true);
             self.client.upsert_points(request).await.map_err(|err| {
                 VectorStoreError::DatastoreError(format!("Error while upserting: {err}").into())
             })?;
