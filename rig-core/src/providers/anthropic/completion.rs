@@ -426,11 +426,9 @@ impl TryFrom<message::AssistantContent> for Content {
     fn try_from(text: message::AssistantContent) -> Result<Self, Self::Error> {
         match text {
             message::AssistantContent::Text(message::Text { text }) => Ok(Content::Text { text }),
-            message::AssistantContent::Image(_) => {
-                return Err(MessageError::ConversionError(
-                    "Anthropic currently doesn't support images.".into(),
-                ));
-            }
+            message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
+                "Anthropic currently doesn't support images.".to_string(),
+            )),
             message::AssistantContent::ToolCall(message::ToolCall { id, function, .. }) => {
                 Ok(Content::ToolUse {
                     id,
@@ -493,7 +491,7 @@ impl TryFrom<message::Message> for Message {
                         data, media_type, ..
                     }) => {
                         let media_type = media_type.ok_or(MessageError::ConversionError(
-                            "Image media type is required for Claude API".into(),
+                            "Image media type is required for Claude API".to_string(),
                         ))?;
 
                         let source = match data {
