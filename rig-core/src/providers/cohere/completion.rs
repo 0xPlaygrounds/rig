@@ -394,32 +394,40 @@ impl TryFrom<message::Message> for Vec<Message> {
             message::Message::Assistant { content, .. } => {
                 let mut text_content = vec![];
                 let mut tool_calls = vec![];
-                content.into_iter().for_each(|content| match content {
-                    message::AssistantContent::Text(message::Text { text }) => {
-                        text_content.push(AssistantContent::Text { text });
+
+                for content in content.into_iter() {
+                    match content {
+                        message::AssistantContent::Text(message::Text { text }) => {
+                            text_content.push(AssistantContent::Text { text });
+                        }
+                        message::AssistantContent::ToolCall(message::ToolCall {
+                            id,
+                            function:
+                                message::ToolFunction {
+                                    name, arguments, ..
+                                },
+                            ..
+                        }) => {
+                            tool_calls.push(ToolCall {
+                                id: Some(id),
+                                r#type: Some(ToolType::Function),
+                                function: Some(ToolCallFunction {
+                                    name,
+                                    arguments: serde_json::to_value(arguments).unwrap_or_default(),
+                                }),
+                            });
+                        }
+                        message::AssistantContent::Reasoning(Reasoning { reasoning, .. }) => {
+                            let thinking = reasoning.join("\n");
+                            text_content.push(AssistantContent::Thinking { thinking });
+                        }
+                        message::AssistantContent::Image(_) => {
+                            return Err(message::MessageError::ConversionError(
+                                "Cohere currently doesn't support images.".to_owned(),
+                            ));
+                        }
                     }
-                    message::AssistantContent::ToolCall(message::ToolCall {
-                        id,
-                        function:
-                            message::ToolFunction {
-                                name, arguments, ..
-                            },
-                        ..
-                    }) => {
-                        tool_calls.push(ToolCall {
-                            id: Some(id),
-                            r#type: Some(ToolType::Function),
-                            function: Some(ToolCallFunction {
-                                name,
-                                arguments: serde_json::to_value(arguments).unwrap_or_default(),
-                            }),
-                        });
-                    }
-                    message::AssistantContent::Reasoning(Reasoning { reasoning, .. }) => {
-                        let thinking = reasoning.join("\n");
-                        text_content.push(AssistantContent::Thinking { thinking });
-                    }
-                });
+                }
 
                 vec![Message::Assistant {
                     content: text_content,

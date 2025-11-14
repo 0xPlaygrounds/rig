@@ -149,6 +149,9 @@ impl TryFrom<RigAssistantContent> for aws_bedrock::ContentBlock {
                     aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text_block),
                 ))
             }
+            AssistantContent::Image(_) => Err(CompletionError::ProviderError(
+                "AWS Bedrock does not support image content in assistant messages".to_owned(),
+            )),
         }
     }
 }
