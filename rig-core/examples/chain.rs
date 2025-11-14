@@ -1,10 +1,12 @@
 use rig::prelude::*;
 
+use rig::providers::openai::CompletionModels::GPT4;
+use rig::providers::openai::EmbeddingModels::TextEmbeddingAda2;
 use rig::{
     embeddings::EmbeddingsBuilder,
     parallel,
     pipeline::{self, Op, agent_ops::lookup, passthrough},
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+    providers::openai::Client,
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 
@@ -13,7 +15,7 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     // Create OpenAI client
     let openai_client = Client::from_env();
-    let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+    let embedding_model = openai_client.embedding_model(TextEmbeddingAda2);
 
     // Create embeddings for our documents
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -28,7 +30,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create vector store index
     let index = vector_store.index(embedding_model);
-    let agent = openai_client.agent("gpt-4")
+    let agent = openai_client.agent(GPT4)
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
         ")

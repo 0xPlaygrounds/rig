@@ -1,4 +1,4 @@
-use super::{Client, client::ApiResponse};
+use super::{EmbeddingModels, client::ApiResponse, client::Client};
 
 use crate::{
     embeddings::{self, EmbeddingError},
@@ -62,7 +62,7 @@ impl std::fmt::Display for BilledUnits {
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
-    pub model: String,
+    pub model: EmbeddingModels,
     pub input_type: String,
     ndims: usize,
 }
@@ -72,6 +72,13 @@ where
     T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     const MAX_DOCUMENTS: usize = 96;
+    type Models = EmbeddingModels;
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
+        let dims = dims.unwrap_or_else(|| model.default_dimensions());
+        Self::new(client.clone(), model, "search_document", dims)
+    }
 
     fn ndims(&self) -> usize {
         self.ndims
@@ -85,7 +92,7 @@ where
         let documents = documents.into_iter().collect::<Vec<_>>();
 
         let body = json!({
-            "model": self.model,
+            "model": self.model.to_string(),
             "texts": documents,
             "input_type": self.input_type
         });
@@ -152,10 +159,10 @@ where
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: &str, input_type: &str, ndims: usize) -> Self {
+    pub fn new(client: Client<T>, model: EmbeddingModels, input_type: &str, ndims: usize) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model,
             input_type: input_type.to_string(),
             ndims,
         }

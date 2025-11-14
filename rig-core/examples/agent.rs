@@ -1,5 +1,6 @@
 use rig::prelude::*;
 
+use rig::providers::openai::CompletionModels::GPT4O;
 use rig::{completion::Prompt, providers};
 
 #[tokio::main]
@@ -9,7 +10,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let comedian_agent = client
-        .agent("gpt-4o")
+        .agent(GPT4O)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

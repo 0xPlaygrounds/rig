@@ -120,6 +120,13 @@ impl EmbeddingModel {
 impl embeddings::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 1024;
 
+    type Client = Client;
+    type Models = fastembed::EmbeddingModel;
+
+    fn make(_: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
+        Self::new(&model, dims.unwrap_or_default())
+    }
+
     fn ndims(&self) -> usize {
         self.ndims
     }

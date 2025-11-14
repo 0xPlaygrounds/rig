@@ -30,6 +30,13 @@ where
 {
     type Response = Bytes;
 
+    type Client = Client<T>;
+    type Model = String;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Model>) -> Self {
+        Self::new(client.clone(), model.into().as_str())
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn audio_generation(
         &self,

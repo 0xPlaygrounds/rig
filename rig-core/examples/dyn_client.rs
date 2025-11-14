@@ -1,9 +1,13 @@
-/// This example showcases using multiple clients by using a dynamic ClientBuilder to allow you to generate the client
-/// without resorting to workarounds like generating an enum for every single provider you want to use.
+/// This example showcases using multiple clients by using a dynamic ClientBuilder
+/// This is in the process of being phased out, and will be removed in future versions,
+/// its use is discouraged
+///
 /// In this example, we will use both OpenAI and Anthropic - so ensure you have your `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` set when using this example!
 /// Note that DynClientBuilder does not only support agents - it supports every kind of client that can currently be used in Rig at the moment.
 use rig::{
-    client::builder::DynClientBuilder, completion::Prompt, providers::anthropic::CLAUDE_3_7_SONNET,
+    client::builder::{DefaultProviders, DynClientBuilder},
+    completion::Prompt,
+    providers::anthropic,
 };
 
 #[tokio::main]
@@ -17,7 +21,10 @@ async fn main() {
         .build();
 
     // set up Anthropic client
-    let completion_anthropic = multi_client.agent("anthropic", CLAUDE_3_7_SONNET).unwrap();
+    let completion_anthropic = multi_client
+        .agent(DefaultProviders::Anthropic, anthropic::Claude37Sonnet)
+        .unwrap();
+
     let agent_anthropic = completion_anthropic
         .preamble("You are a helpful assistant")
         .max_tokens(1024)

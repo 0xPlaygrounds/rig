@@ -7,6 +7,7 @@ use tracing::{Instrument, info_span};
 use super::client::{Client, Usage};
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
+use crate::models;
 use crate::streaming::{RawStreamingChoice, StreamingCompletionResponse};
 use crate::{
     OneOrMany,
@@ -16,18 +17,22 @@ use crate::{
     telemetry::SpanCombinator,
 };
 
-pub const CODESTRAL: &str = "codestral-latest";
-pub const MISTRAL_LARGE: &str = "mistral-large-latest";
-pub const PIXTRAL_LARGE: &str = "pixtral-large-latest";
-pub const MISTRAL_SABA: &str = "mistral-saba-latest";
-pub const MINISTRAL_3B: &str = "ministral-3b-latest";
-pub const MINISTRAL_8B: &str = "ministral-8b-latest";
-
-//Free models
-pub const MISTRAL_SMALL: &str = "mistral-small-latest";
-pub const PIXTRAL_SMALL: &str = "pixtral-12b-2409";
-pub const MISTRAL_NEMO: &str = "open-mistral-nemo";
-pub const CODESTRAL_MAMBA: &str = "open-codestral-mamba";
+models! {
+    pub enum CompletionModels {
+        Codestral => "codestral-latest",
+        MistralLarge => "mistral-large-latest",
+        PixtralLarge => "pixtral-large-latest",
+        MistralSaba => "mistral-saba-latest",
+        Ministral3b => "ministral-3b-latest",
+        Ministral8b => "ministral-8b-latest",
+        //Free models
+        MistralSmall => "mistral-small-latest",
+        PixtralSmall => "pixtral-12b-2409",
+        MistralNemo => "open-mistral-nemo",
+        CodestralMamba => "open-codestral-mamba",
+    }
+}
+pub use CompletionModels::*;
 
 // =================================================================
 // Rig Implementation Types
@@ -494,6 +499,13 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = CompletionResponse;
 
+    type Client = Client<T>;
+    type Models = CompletionModels;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        CompletionModel::new(client.clone(), model.into().into())
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -630,7 +642,10 @@ mod tests {
         }
         "#;
         let completion_response = serde_json::from_str::<CompletionResponse>(json_data).unwrap();
-        assert_eq!(completion_response.model, MISTRAL_SMALL);
+        assert_eq!(
+            completion_response.model,
+            CompletionModels::MistralSmall.to_string()
+        );
 
         let CompletionResponse {
             id,

@@ -5,13 +5,13 @@ use rig::completion::Prompt;
 use rig::prelude::*;
 
 use rig::providers;
+use rig::providers::openai::CompletionModels::GPT4O;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
     let agent = providers::openai::Client::from_env()
-        .completion_model("gpt-4o")
-        .completions_api()
+        .completion_model(GPT4O)
         .into_agent_builder()
         .preamble("You are a helpful assistant")
         .build();

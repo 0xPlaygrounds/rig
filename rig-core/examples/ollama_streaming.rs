@@ -9,7 +9,7 @@ use rig::streaming::StreamingPrompt;
 async fn main() -> Result<(), anyhow::Error> {
     // Create streaming agent with a single context prompt
 
-    let agent = ollama::Client::new()
+    let agent = ollama::Client::from_env()
         .agent("llama3.2")
         .preamble("Be precise and concise.")
         .temperature(0.5)

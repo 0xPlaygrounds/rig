@@ -156,7 +156,7 @@ where
         };
 
         tracing::Instrument::instrument(
-            send_streaming_request(self.client.http_client.clone(), req),
+            send_streaming_request(self.client.http_client().clone(), req),
             span,
         )
         .await

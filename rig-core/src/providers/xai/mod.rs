@@ -14,4 +14,4 @@ pub mod completion;
 pub mod streaming;
 
 pub use client::Client;
-pub use completion::GROK_3_MINI;
+pub use completion::{CompletionModels, CompletionModels::*};

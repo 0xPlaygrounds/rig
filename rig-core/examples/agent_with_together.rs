@@ -21,9 +21,7 @@ async fn main() -> Result<(), anyhow::Error> {
 }
 
 async fn basic() -> Result<(), anyhow::Error> {
-    let together_ai_client = together::Client::new(
-        &std::env::var("TOGETHER_API_KEY").expect("TOGETHER_API_KEY not set"),
-    );
+    let together_ai_client = together::Client::from_env();
     // Choose a model, replace "together-model-v1" with an actual Together AI model name
     let model =
         together_ai_client.completion_model(rig::providers::together::MIXTRAL_8X7B_INSTRUCT_V0_1);
@@ -38,9 +36,7 @@ async fn basic() -> Result<(), anyhow::Error> {
 
 async fn tools() -> Result<(), anyhow::Error> {
     // Create Together AI client
-    let together_ai_client = together::Client::new(
-        &std::env::var("TOGETHER_API_KEY").expect("TOGETHER_API_KEY not set"),
-    );
+    let together_ai_client = together::Client::from_env();
     // Choose a model, replace "together-model-v1" with an actual Together AI model name
     let model =
         together_ai_client.completion_model(rig::providers::together::MIXTRAL_8X7B_INSTRUCT_V0_1);
@@ -60,9 +56,7 @@ async fn tools() -> Result<(), anyhow::Error> {
 
 async fn context() -> Result<(), anyhow::Error> {
     // Create Together AI client
-    let together_ai_client = together::Client::new(
-        &std::env::var("TOGETHER_API_KEY").expect("TOGETHER_API_KEY not set"),
-    );
+    let together_ai_client = together::Client::from_env();
 
     // Choose a model, replace "together-model-v1" with an actual Together AI model name
     let model =

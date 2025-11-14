@@ -1,9 +1,11 @@
 use anyhow::Result;
 use rig::prelude::*;
+use rig::providers::openai::CompletionModels::GPT4;
+use rig::providers::openai::EmbeddingModels::TextEmbeddingAda2;
 use rig::{
     completion::{Prompt, ToolDefinition},
     embeddings::EmbeddingsBuilder,
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+    providers::openai::Client,
     tool::{Tool, ToolEmbedding, ToolSet},
     vector_store::in_memory_store::InMemoryVectorStore,
 };
@@ -130,7 +132,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create OpenAI client
     let openai_client = Client::from_env();
-    let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+    let embedding_model = openai_client.embedding_model(TextEmbeddingAda2);
     let toolset = ToolSet::builder()
         .dynamic_tool(Add)
         .dynamic_tool(Subtract)
@@ -149,7 +151,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create RAG agent with a single context prompt and a dynamic tool source
     let calculator_rag = openai_client
-        .agent("gpt-4")
+        .agent(GPT4)
         .preamble("You are a calculator here to help the user perform arithmetic operations.")
         // Add a dynamic tool source with a sample rate of 1 (i.e.: only
         // 1 additional tool will be added to prompts)

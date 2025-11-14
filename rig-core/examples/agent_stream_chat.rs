@@ -1,6 +1,7 @@
 use rig::agent::stream_to_stdout;
 use rig::message::Message;
 use rig::prelude::*;
+use rig::providers::openai::CompletionModels::GPT4;
 use rig::streaming::StreamingChat;
 
 use rig::providers;
@@ -12,7 +13,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let comedian_agent = client
-        .agent("gpt-4o")
+        .agent(GPT4)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

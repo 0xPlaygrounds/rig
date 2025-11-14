@@ -1,15 +1,11 @@
 use rig::prelude::*;
-use rig::{
-    completion::Prompt,
-    providers::{self, groq::DEEPSEEK_R1_DISTILL_LLAMA_70B},
-};
-use std::env;
+use rig::providers::groq;
+use rig::{completion::Prompt, providers::groq::DEEPSEEK_R1_DISTILL_LLAMA_70B};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let client =
-        providers::groq::Client::new(&env::var("GROQ_API_KEY").expect("GROQ_API_KEY not set"));
+    let client = groq::Client::from_env();
 
     // Create agent with a single context prompt
     let comedian_agent = client

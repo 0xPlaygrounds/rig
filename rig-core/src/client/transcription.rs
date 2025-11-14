@@ -1,13 +1,15 @@
-use crate::client::{AsTranscription, ProviderClient};
-use crate::transcription::{
-    TranscriptionError, TranscriptionModel, TranscriptionModelDyn, TranscriptionRequest,
-    TranscriptionResponse,
+use crate::{
+    client::Nothing,
+    transcription::{
+        TranscriptionError, TranscriptionModel, TranscriptionModelDyn, TranscriptionRequest,
+        TranscriptionResponse,
+    },
 };
 use std::sync::Arc;
 
 /// A provider client with transcription capabilities.
 /// Clone is required for conversions between client types.
-pub trait TranscriptionClient: ProviderClient + Clone {
+pub trait TranscriptionClient {
     /// The type of TranscriptionModel used by the Client
     type TranscriptionModel: TranscriptionModel;
 
@@ -23,10 +25,13 @@ pub trait TranscriptionClient: ProviderClient + Clone {
     ///
     /// let whisper = openai.transcription_model(openai::WHISPER_1);
     /// ```
-    fn transcription_model(&self, model: &str) -> Self::TranscriptionModel;
+    fn transcription_model(
+        &self,
+        model: <Self::TranscriptionModel as TranscriptionModel>::Models,
+    ) -> Self::TranscriptionModel;
 }
 
-pub trait TranscriptionClientDyn: ProviderClient {
+pub trait TranscriptionClientDyn {
     /// Create a transcription model with the given name.
     fn transcription_model<'a>(&self, model: &str) -> Box<dyn TranscriptionModelDyn + 'a>;
 }
@@ -37,16 +42,12 @@ where
     M: TranscriptionModel + 'static,
 {
     fn transcription_model<'a>(&self, model: &str) -> Box<dyn TranscriptionModelDyn + 'a> {
-        Box::new(self.transcription_model(model))
-    }
-}
+        let model = match model.to_string().try_into() {
+            Ok(model) => model,
+            Err(_) => panic!("Invalid model '{model}'"),
+        };
 
-impl<T> AsTranscription for T
-where
-    T: TranscriptionClientDyn + Clone + 'static,
-{
-    fn as_transcription(&self) -> Option<Box<dyn TranscriptionClientDyn>> {
-        Some(Box::new(self.clone()))
+        Box::new(self.transcription_model(model))
     }
 }
 
@@ -58,6 +59,12 @@ pub struct TranscriptionModelHandle<'a> {
 
 impl TranscriptionModel for TranscriptionModelHandle<'_> {
     type Response = ();
+    type Client = ();
+    type Models = Nothing;
+
+    fn make(_: &Self::Client, _: Self::Models) -> Self {
+        panic!("TranscriptionModelHandle::TranscriptionModel::make should not be called")
+    }
 
     async fn transcription(
         &self,

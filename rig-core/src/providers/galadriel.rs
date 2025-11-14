@@ -11,16 +11,19 @@
 //! let gpt4o = client.completion_model(galadriel::GPT_4O);
 //! ```
 use super::openai;
-use crate::client::{CompletionClient, ProviderClient, VerifyClient, VerifyError};
+use crate::client::{
+    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
 use crate::message::MessageError;
+use crate::models;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
-    impl_conversion_traits, json_utils, message,
+    json_utils, message,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -31,178 +34,108 @@ use tracing::{Instrument, info_span};
 // ================================================================
 const GALADRIEL_API_BASE_URL: &str = "https://api.galadriel.com/v1/verified";
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    api_key: &'a str,
-    fine_tune_api_key: Option<&'a str>,
-    base_url: &'a str,
-    http_client: T,
-}
-
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
-    pub fn new(api_key: &'a str) -> Self {
-        Self {
-            api_key,
-            fine_tune_api_key: None,
-            base_url: GALADRIEL_API_BASE_URL,
-            http_client: Default::default(),
-        }
-    }
-}
-
-impl<'a, T> ClientBuilder<'a, T> {
-    pub fn fine_tune_api_key(mut self, fine_tune_api_key: &'a str) -> Self {
-        self.fine_tune_api_key = Some(fine_tune_api_key);
-        self
-    }
-
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            api_key: self.api_key,
-            fine_tune_api_key: self.fine_tune_api_key,
-            base_url: self.base_url,
-            http_client,
-        }
-    }
-
-    pub fn build(self) -> Client<T> {
-        Client {
-            base_url: self.base_url.to_string(),
-            api_key: self.api_key.to_string(),
-            fine_tune_api_key: self.fine_tune_api_key.map(|x| x.to_string()),
-            http_client: self.http_client,
-        }
-    }
-}
-#[derive(Clone)]
-pub struct Client<T = reqwest::Client> {
-    base_url: String,
-    api_key: String,
+#[derive(Debug, Default, Clone)]
+pub struct GaladrielExt {
     fine_tune_api_key: Option<String>,
-    http_client: T,
 }
 
-impl<T> std::fmt::Debug for Client<T>
-where
-    T: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client")
-            .field("base_url", &self.base_url)
-            .field("http_client", &self.http_client)
-            .field("api_key", &"<REDACTED>")
-            .field("fine_tune_api_key", &"<REDACTED>")
-            .finish()
-    }
+#[derive(Debug, Default, Clone)]
+pub struct GaladrielBuilder {
+    fine_tune_api_key: Option<String>,
 }
 
-impl<T> Client<T>
-where
-    T: HttpClientExt,
-{
-    pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+type GaladrielApiKey = String;
 
-        let mut req = http_client::Request::post(url);
+impl Provider for GaladrielExt {
+    type Builder = GaladrielBuilder;
 
-        if let Some(fine_tune_key) = self.fine_tune_api_key.clone() {
-            req = req.header("Fine-Tune-Authorization", fine_tune_key);
-        }
+    /// There is currently no way to verify a Galadriel api key without consuming tokens
+    const VERIFY_PATH: &'static str = "";
 
-        http_client::with_bearer_auth(req, &self.api_key)
+    fn build<H>(
+        builder: &crate::client::ClientBuilder<
+            Self::Builder,
+            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
+            H,
+        >,
+    ) -> Self {
+        let GaladrielBuilder { fine_tune_api_key } = builder.ext();
+
+        Self { fine_tune_api_key }
     }
 }
 
-impl Client<reqwest::Client> {
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::new(api_key)
-    }
+impl<H> Capabilities<H> for GaladrielExt {
+    type Completion = Capable<CompletionModel<H>>;
+    type Embeddings = Nothing;
+    type Transcription = Nothing;
+    #[cfg(feature = "image")]
+    type ImageGeneration = Nothing;
+    #[cfg(feature = "audio")]
+    type AudioGeneration = Nothing;
+}
 
-    pub fn new(api_key: &str) -> Self {
-        ClientBuilder::new(api_key).build()
-    }
-
-    pub fn from_env() -> Self {
-        <Self as ProviderClient>::from_env()
+impl DebugExt for GaladrielExt {
+    fn fields(&self) -> impl Iterator<Item = (&'static str, &dyn std::fmt::Debug)> {
+        std::iter::once((
+            "fine_tune_api_key",
+            (&self.fine_tune_api_key as &dyn std::fmt::Debug),
+        ))
     }
 }
 
-impl<T> ProviderClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
+impl ProviderBuilder for GaladrielBuilder {
+    type Output = GaladrielExt;
+    type ApiKey = GaladrielApiKey;
+
+    const BASE_URL: &'static str = GALADRIEL_API_BASE_URL;
+}
+
+pub type Client<H = reqwest::Client> = client::Client<GaladrielExt, H>;
+pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<GaladrielBuilder, String, H>;
+
+impl<T> ClientBuilder<T> {
+    pub fn fine_tune_api_key<S>(mut self, fine_tune_api_key: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        *self.ext_mut() = GaladrielBuilder {
+            fine_tune_api_key: Some(fine_tune_api_key.as_ref().into()),
+        };
+
+        self
+    }
+}
+
+impl ProviderClient for Client {
+    type Input = (String, Option<String>);
+
     /// Create a new Galadriel client from the `GALADRIEL_API_KEY` environment variable,
     /// and optionally from the `GALADRIEL_FINE_TUNE_API_KEY` environment variable.
     /// Panics if the `GALADRIEL_API_KEY` environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("GALADRIEL_API_KEY").expect("GALADRIEL_API_KEY not set");
         let fine_tune_api_key = std::env::var("GALADRIEL_FINE_TUNE_API_KEY").ok();
-        let mut builder = ClientBuilder::<T>::new(&api_key);
+
+        let mut builder = Self::builder().api_key(api_key);
+
         if let Some(fine_tune_api_key) = fine_tune_api_key.as_deref() {
             builder = builder.fine_tune_api_key(fine_tune_api_key);
         }
-        builder.build()
+
+        builder.build().unwrap()
     }
 
-    fn from_val(input: crate::client::ProviderValue) -> Self {
-        let crate::client::ProviderValue::ApiKeyWithOptionalKey(api_key, fine_tune_key) = input
-        else {
-            panic!("Incorrect provider value type")
-        };
-        let mut builder = ClientBuilder::<T>::new(&api_key);
-        if let Some(fine_tune_key) = fine_tune_key.as_deref() {
-            builder = builder.fine_tune_api_key(fine_tune_key);
+    fn from_val((api_key, fine_tune_api_key): Self::Input) -> Self {
+        let mut builder = Self::builder().api_key(api_key);
+
+        if let Some(fine_tune_key) = fine_tune_api_key {
+            builder = builder.fine_tune_api_key(fine_tune_key)
         }
-        builder.build()
+
+        builder.build().unwrap()
     }
 }
-
-impl<T> CompletionClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    type CompletionModel = CompletionModel<T>;
-
-    /// Create a completion model with the given name.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::galadriel::{Client, self};
-    ///
-    /// // Initialize the Galadriel client
-    /// let galadriel = Client::new("your-galadriel-api-key", None);
-    ///
-    /// let gpt4 = galadriel.completion_model(galadriel::GPT_4);
-    /// ```
-    fn completion_model(&self, model: &str) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model)
-    }
-}
-
-impl<T> VerifyClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn verify(&self) -> Result<(), VerifyError> {
-        // Could not find an API endpoint to verify the API key
-        Ok(())
-    }
-}
-
-impl_conversion_traits!(
-    AsEmbeddings,
-    AsTranscription,
-    AsImageGeneration,
-    AsAudioGeneration for Client<T>
-);
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
@@ -235,48 +168,55 @@ impl std::fmt::Display for Usage {
 // ================================================================
 // Galadriel Completion API
 // ================================================================
-/// `o1-preview` completion model
-pub const O1_PREVIEW: &str = "o1-preview";
-/// `o1-preview-2024-09-12` completion model
-pub const O1_PREVIEW_2024_09_12: &str = "o1-preview-2024-09-12";
-/// `o1-mini completion model
-pub const O1_MINI: &str = "o1-mini";
-/// `o1-mini-2024-09-12` completion model
-pub const O1_MINI_2024_09_12: &str = "o1-mini-2024-09-12";
-/// `gpt-4o` completion model
-pub const GPT_4O: &str = "gpt-4o";
-/// `gpt-4o-2024-05-13` completion model
-pub const GPT_4O_2024_05_13: &str = "gpt-4o-2024-05-13";
-/// `gpt-4-turbo` completion model
-pub const GPT_4_TURBO: &str = "gpt-4-turbo";
-/// `gpt-4-turbo-2024-04-09` completion model
-pub const GPT_4_TURBO_2024_04_09: &str = "gpt-4-turbo-2024-04-09";
-/// `gpt-4-turbo-preview` completion model
-pub const GPT_4_TURBO_PREVIEW: &str = "gpt-4-turbo-preview";
-/// `gpt-4-0125-preview` completion model
-pub const GPT_4_0125_PREVIEW: &str = "gpt-4-0125-preview";
-/// `gpt-4-1106-preview` completion model
-pub const GPT_4_1106_PREVIEW: &str = "gpt-4-1106-preview";
-/// `gpt-4-vision-preview` completion model
-pub const GPT_4_VISION_PREVIEW: &str = "gpt-4-vision-preview";
-/// `gpt-4-1106-vision-preview` completion model
-pub const GPT_4_1106_VISION_PREVIEW: &str = "gpt-4-1106-vision-preview";
-/// `gpt-4` completion model
-pub const GPT_4: &str = "gpt-4";
-/// `gpt-4-0613` completion model
-pub const GPT_4_0613: &str = "gpt-4-0613";
-/// `gpt-4-32k` completion model
-pub const GPT_4_32K: &str = "gpt-4-32k";
-/// `gpt-4-32k-0613` completion model
-pub const GPT_4_32K_0613: &str = "gpt-4-32k-0613";
-/// `gpt-3.5-turbo` completion model
-pub const GPT_35_TURBO: &str = "gpt-3.5-turbo";
-/// `gpt-3.5-turbo-0125` completion model
-pub const GPT_35_TURBO_0125: &str = "gpt-3.5-turbo-0125";
-/// `gpt-3.5-turbo-1106` completion model
-pub const GPT_35_TURBO_1106: &str = "gpt-3.5-turbo-1106";
-/// `gpt-3.5-turbo-instruct` completion model
-pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
+
+models! {
+    #[allow(non_camel_case_types)]
+    pub enum CompletionModels {
+        /// `o1-preview` completion model
+        O1Preview => "o1-preview",
+        /// `o1-preview-2024-09-12` completion model
+        O1Preview_2024_09_12 => "o1-preview-2024-09-12",
+        /// `o1-mini completion model
+        O1Mini  => "o1-mini",
+        /// `o1-mini-2024-09-12` completion model
+        O1Mini_2024_09_12 => "o1-mini-2024-09-12",
+        /// `gpt-4o` completion model
+        Gpt4o => "gpt-4o",
+        /// `gpt-4o-2024-05-13` completion model
+        Gpt4o_2024_05_13 => "gpt-4o-2024-05-13",
+        /// `gpt-4-turbo` completion model
+        Gpt4Turbo => "gpt-4-turbo",
+        /// `gpt-4-turbo-2024-04-09` completion model
+        Gpt4Turbo_2024_04_09 => "gpt-4-turbo-2024-04-09",
+        /// `gpt-4-turbo-preview` completion model
+        Gpt4TurboPreview => "gpt-4-turbo-preview",
+        /// `gpt-4-0125-preview` completion model
+        Gpt4_0125_Preview => "gpt-4-0125-preview",
+        /// `gpt-4-1106-preview` completion model
+        Gpt4_1106_Preview => "gpt-4-1106-preview",
+        /// `gpt-4-vision-preview` completion model
+        Gpt4VisionPreview => "gpt-4-vision-preview",
+        /// `gpt-4-1106-vision-preview` completion model
+        Gpt4_1106_VisionPreview => "gpt-4-1106-vision-preview",
+        /// `gpt-4` completion model
+        Gpt4 => "gpt-4",
+        /// `gpt-4-0613` completion model
+        Gpt4_0613 => "gpt-4-0613",
+        /// `gpt-4-32k` completion model
+        Gpt4_32K => "gpt-4-32k",
+        /// `gpt-4-32k-0613` completion model
+        Gpt4_32K_0613 => "gpt-4-32k-0613",
+        /// `gpt-3.5-turbo` completion model
+        Gpt35Turbo => "gpt-3.5-turbo",
+        /// `gpt-3.5-turbo-0125` completion model
+        Gpt35Turbo_0125 => "gpt-3.5-turbo-0125",
+        /// `gpt-3.5-turbo-1106` completion model
+        Gpt35Turbo_1106 => "gpt-3.5-turbo-1106",
+        /// `gpt-3.5-turbo-instruct` completion model
+        Gpt35TurboInstinct => "gpt-3.5-turbo-instruct",
+    }
+}
+pub use CompletionModels::*;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -560,6 +500,13 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
+    type Client = Client<T>;
+    type Models = CompletionModels;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        Self::new(client.clone(), model.into().into())
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -596,7 +543,7 @@ where
         };
 
         async move {
-            let response = self.client.http_client.send(req).await?;
+            let response = self.client.http_client().send(req).await?;
 
             if response.status().is_success() {
                 let t = http_client::text(response).await?;
@@ -673,7 +620,7 @@ where
             tracing::Span::current()
         };
 
-        send_compatible_streaming_request(self.client.http_client.clone(), req)
+        send_compatible_streaming_request(self.client.http_client().clone(), req)
             .instrument(span)
             .await
     }

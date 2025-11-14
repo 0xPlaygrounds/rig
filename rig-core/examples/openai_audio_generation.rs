@@ -1,4 +1,5 @@
 use rig::audio_generation::AudioGenerationModel;
+use rig::client::audio_generation::AudioGenerationClient;
 use rig::prelude::*;
 use rig::providers::openai;
 use std::env::args;
