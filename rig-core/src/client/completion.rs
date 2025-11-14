@@ -17,7 +17,9 @@ use std::sync::Arc;
 /// Clone is required for conversions between client types.
 pub trait CompletionClient: ProviderClient + Clone {
     /// The type of CompletionModel used by the client.
-    type CompletionModel: CompletionModel;
+    // require the associated CompletionModel to be 'static so it can be used
+    // behind trait objects (Box/Arc<dyn ... + 'static>) safely
+    type CompletionModel: CompletionModel + 'static;
 
     /// Create a completion model with the given name.
     ///
