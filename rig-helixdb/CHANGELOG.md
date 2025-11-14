@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/0xPlaygrounds/rig/compare/rig-helixdb-v0.1.3...rig-helixdb-v0.1.4) - 2025-11-10
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.1.3](https://github.com/0xPlaygrounds/rig/compare/rig-helixdb-v0.1.2...rig-helixdb-v0.1.3) - 2025-10-28
 
 ### Other

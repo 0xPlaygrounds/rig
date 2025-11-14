@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.23.1...rig-core-v0.24.0) - 2025-11-10
+
+### Added
+
+- *(rig-1024)* yield tool calls and results from multi-step stream prompt ([#1023](https://github.com/0xPlaygrounds/rig/pull/1023))
+- *(providers)* Emit tool call deltas ([#1020](https://github.com/0xPlaygrounds/rig/pull/1020))
+- export rig tool macro from main crate ([#1016](https://github.com/0xPlaygrounds/rig/pull/1016))
+
+### Fixed
+
+- *(rig-1035)* export StreamingPromptHook ([#1039](https://github.com/0xPlaygrounds/rig/pull/1039))
+- Gemini responses lacking content ([#1030](https://github.com/0xPlaygrounds/rig/pull/1030))
+- *(rig-1029)* Reasoning not handled properly for agent stream prompt ([#1024](https://github.com/0xPlaygrounds/rig/pull/1024))
+- *(openai-responses)* add `#[serde(default)]` for missing `tools` field ([#1021](https://github.com/0xPlaygrounds/rig/pull/1021))
+- *(rig-1027)* allow any error type to be used for rig tool macro ([#1017](https://github.com/0xPlaygrounds/rig/pull/1017))
+
+### Other
+
+- make CompletionModel  default type to reqwest::Client ([#1013](https://github.com/0xPlaygrounds/rig/pull/1013))
+- *(deps)* upgrade rmcp dependency ([#1008](https://github.com/0xPlaygrounds/rig/pull/1008))
+
 ## [0.23.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.23.0...rig-core-v0.23.1) - 2025-10-28
 
 ### Fixed

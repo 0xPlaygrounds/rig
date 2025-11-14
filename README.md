@@ -84,7 +84,7 @@ cargo add rig-core
 
 ### Simple example:
 ```rust
-use rig::{completion::Prompt, providers::openai};
+use rig::{client::CompletionClient, completion::Prompt, providers::openai};
 
 #[tokio::main]
 async fn main() {
