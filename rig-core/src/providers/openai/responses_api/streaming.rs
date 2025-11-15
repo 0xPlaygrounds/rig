@@ -117,8 +117,8 @@ pub enum ItemChunkKind {
     ReasoningSummaryPartAdded(SummaryPartChunk),
     #[serde(rename = "response.reasoning_summary_part.done")]
     ReasoningSummaryPartDone(SummaryPartChunk),
-    #[serde(rename = "response.reasoning_summary_text.added")]
-    ReasoningSummaryTextAdded(SummaryTextChunk),
+    #[serde(rename = "response.reasoning_summary_text.delta")]
+    ReasoningSummaryTextDelta(SummaryTextChunk),
     #[serde(rename = "response.reasoning_summary_text.done")]
     ReasoningSummaryTextDone(SummaryTextChunk),
 }
@@ -295,7 +295,11 @@ where
                                                 })
                                                 .collect::<Vec<String>>()
                                                 .join("\n");
-                                            yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning, id: Some(id.to_string()), signature: None })
+                                            yield Ok(streaming::RawStreamingChoice::Reasoning {
+                                                id: Some(id.to_string()),
+                                                reasoning,
+                                                signature: None,
+                                            })
                                         }
                                         _ => continue
                                     }
@@ -303,6 +307,9 @@ where
                                 ItemChunkKind::OutputTextDelta(delta) => {
                                     combined_text.push_str(&delta.delta);
                                     yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
+                                }
+                                ItemChunkKind::ReasoningSummaryTextDelta(delta) => {
+                                    yield Ok(streaming::RawStreamingChoice::ReasoningDelta { id: None, reasoning: delta.delta.clone() })
                                 }
                                 ItemChunkKind::RefusalDelta(delta) => {
                                     combined_text.push_str(&delta.delta);
