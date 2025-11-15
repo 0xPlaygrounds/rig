@@ -104,11 +104,6 @@ where
 
         span.record_model_input(&request.contents);
 
-        tracing::debug!(
-            "Sending completion request to Gemini API {}",
-            serde_json::to_string_pretty(&request)?
-        );
-
         let body = serde_json::to_vec(&request)?;
 
         let request = self

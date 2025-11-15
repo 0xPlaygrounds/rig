@@ -1,23 +1,15 @@
-use crate::{
-    http_client::{
-        HttpClientExt,
-        sse::{Event, GenericEventSource},
-    },
-    telemetry::SpanCombinator,
-};
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tracing::info_span;
 
-use super::completion::{
-    CompletionModel, create_request_body,
-    gemini_api_types::{ContentCandidate, Part, PartKind},
-};
-use crate::{
-    completion::{CompletionError, CompletionRequest, GetTokenUsage},
-    streaming::{self},
-};
+use super::completion::gemini_api_types::{ContentCandidate, Part, PartKind};
+use super::completion::{CompletionModel, create_request_body};
+use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::http_client::HttpClientExt;
+use crate::http_client::sse::{Event, GenericEventSource};
+use crate::streaming;
+use crate::telemetry::SpanCombinator;
 
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -164,7 +156,10 @@ where
                                     thought: Some(true),
                                     ..
                                 } => {
-                                    yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: text.clone(), id: None, signature: None });
+                                    yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
+                                        id: None,
+                                        reasoning: text.clone(),
+                                    });
                                 },
                                 Part {
                                     part: PartKind::Text(text),

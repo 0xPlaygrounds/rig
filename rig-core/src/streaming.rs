@@ -79,11 +79,16 @@ where
     },
     /// A tool call partial/delta
     ToolCallDelta { id: String, delta: String },
-    /// A reasoning chunk
+    /// A reasoning (in its entirety)
     Reasoning {
         id: Option<String>,
         reasoning: String,
         signature: Option<String>,
+    },
+    /// A reasoning partial/delta
+    ReasoningDelta {
+        id: Option<String>,
+        reasoning: String,
     },
 
     /// The final response object, must be yielded if you want the
@@ -231,15 +236,19 @@ where
                     id,
                     reasoning,
                     signature,
-                } => {
+                } => Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(Reasoning {
+                    id,
+                    reasoning: vec![reasoning],
+                    signature,
+                })))),
+                RawStreamingChoice::ReasoningDelta { id, reasoning } => {
                     // Forward the streaming tokens to the outer stream
                     // and concat the text together
                     stream.reasoning = format!("{}{}", stream.reasoning, reasoning);
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(Reasoning {
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::ReasoningDelta {
                         id,
-                        reasoning: vec![reasoning],
-                        signature,
-                    }))))
+                        reasoning,
+                    })))
                 }
                 RawStreamingChoice::ToolCall {
                     id,
@@ -362,6 +371,12 @@ impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
                     reasoning,
                     signature,
                 }))),
+                RawStreamingChoice::ReasoningDelta { id, reasoning } => {
+                    Poll::Ready(Some(Ok(RawStreamingChoice::ReasoningDelta {
+                        id,
+                        reasoning,
+                    })))
+                }
                 RawStreamingChoice::ToolCall {
                     id,
                     name,
@@ -514,6 +529,10 @@ mod tests {
                     print!("{reasoning}");
                     std::io::Write::flush(&mut std::io::stdout()).unwrap();
                 }
+                Ok(StreamedAssistantContent::ReasoningDelta { reasoning, .. }) => {
+                    println!("Reasoning delta: {reasoning}");
+                    chunk_count += 1;
+                }
                 Err(e) => {
                     eprintln!("Error: {e:?}");
                     break;
@@ -555,8 +574,15 @@ mod tests {
 pub enum StreamedAssistantContent<R> {
     Text(Text),
     ToolCall(ToolCall),
-    ToolCallDelta { id: String, delta: String },
+    ToolCallDelta {
+        id: String,
+        delta: String,
+    },
     Reasoning(Reasoning),
+    ReasoningDelta {
+        id: Option<String>,
+        reasoning: String,
+    },
     Final(R),
 }
 
