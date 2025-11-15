@@ -162,25 +162,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let content = response
             .content
             .iter()
-            .map(|content| {
-                Ok(match content {
-                    Content::Text { text } => completion::AssistantContent::text(text),
-                    Content::ToolUse { id, name, input } => {
-                        completion::AssistantContent::tool_call(id, name, input.clone())
-                    }
-                    Content::Thinking {
-                        thinking,
-                        signature,
-                    } => message::AssistantContent::Reasoning(
-                        Reasoning::new(thinking).with_signature(signature.clone()),
-                    ),
-                    _ => {
-                        return Err(CompletionError::ResponseError(
-                            "Response did not contain a message, tool call, or reasoning".into(),
-                        ));
-                    }
-                })
-            })
+            .map(|content| content.clone().try_into())
             .collect::<Result<Vec<_>, _>>()?;
 
         let choice = OneOrMany::many(content).map_err(|_| {
@@ -563,6 +545,30 @@ impl TryFrom<message::Message> for Message {
     }
 }
 
+impl TryFrom<Content> for message::AssistantContent {
+    type Error = MessageError;
+
+    fn try_from(content: Content) -> Result<Self, Self::Error> {
+        Ok(match content {
+            Content::Text { text } => message::AssistantContent::text(text),
+            Content::ToolUse { id, name, input } => {
+                message::AssistantContent::tool_call(id, name, input)
+            }
+            Content::Thinking {
+                thinking,
+                signature,
+            } => message::AssistantContent::Reasoning(
+                Reasoning::new(&thinking).with_signature(signature),
+            ),
+            _ => {
+                return Err(MessageError::ConversionError(
+                    "Content did not contain a message, tool call, or reasoning".to_owned(),
+                ));
+            }
+        })
+    }
+}
+
 impl From<ToolResultContent> for message::ToolResultContent {
     fn from(content: ToolResultContent) -> Self {
         match content {
@@ -573,6 +579,59 @@ impl From<ToolResultContent> for message::ToolResultContent {
                 ..
             }) => message::ToolResultContent::image_base64(data, Some(format.into()), None),
         }
+    }
+}
+
+impl TryFrom<Message> for message::Message {
+    type Error = MessageError;
+
+    fn try_from(message: Message) -> Result<Self, Self::Error> {
+        Ok(match message.role {
+            Role::User => message::Message::User {
+                content: message.content.try_map(|content| {
+                    Ok(match content {
+                        Content::Text { text } => message::UserContent::text(text),
+                        Content::ToolResult {
+                            tool_use_id,
+                            content,
+                            ..
+                        } => message::UserContent::tool_result(
+                            tool_use_id,
+                            content.map(|content| content.into()),
+                        ),
+                        Content::Image { source } => message::UserContent::Image(message::Image {
+                            data: source.data.into(),
+                            media_type: Some(source.media_type.into()),
+                            detail: None,
+                            additional_params: None,
+                        }),
+                        Content::Document { source } => message::UserContent::document(
+                            source.data,
+                            Some(message::DocumentMediaType::PDF),
+                        ),
+                        _ => {
+                            return Err(MessageError::ConversionError(
+                                "Unsupported content type for User role".to_owned(),
+                            ));
+                        }
+                    })
+                })?,
+            },
+            Role::Assistant => match message.content.first() {
+                Content::Text { .. } | Content::ToolUse { .. } | Content::Thinking { .. } => {
+                    message::Message::Assistant {
+                        id: None,
+                        content: message.content.try_map(|content| content.try_into())?,
+                    }
+                }
+
+                _ => {
+                    return Err(MessageError::ConversionError(
+                        format!("Unsupported message for Assistant role: {message:?}").to_owned(),
+                    ));
+                }
+            },
+        })
     }
 }
 
