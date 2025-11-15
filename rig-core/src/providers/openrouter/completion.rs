@@ -8,8 +8,7 @@ use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::one_or_many::string_or_one_or_many;
 use crate::providers::openai;
-use crate::providers::openrouter::streaming::FinalCompletionResponse;
-use crate::streaming::StreamingCompletionResponse;
+use crate::providers::openrouter::streaming::StreamingCompletionResponse;
 use crate::telemetry::SpanCombinator;
 use crate::{OneOrMany, json_utils};
 
@@ -294,7 +293,7 @@ where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
     type Response = CompletionResponse;
-    type StreamingResponse = FinalCompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -365,7 +364,10 @@ where
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<
+        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+        CompletionError,
+    > {
         CompletionModel::stream(self, completion_request).await
     }
 }
