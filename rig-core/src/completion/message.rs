@@ -622,6 +622,10 @@ impl AssistantContent {
             },
         })
     }
+
+    pub fn reasoning(reasoning: impl AsRef<str>) -> Self {
+        AssistantContent::Reasoning(Reasoning::new(reasoning.as_ref()))
+    }
 }
 
 impl ToolResultContent {

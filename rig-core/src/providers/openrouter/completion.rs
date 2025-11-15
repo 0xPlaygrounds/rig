@@ -1,22 +1,16 @@
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
 
 use super::client::{ApiErrorResponse, ApiResponse, Client, Usage};
-
-use crate::{
-    OneOrMany,
-    completion::{self, CompletionError, CompletionRequest},
-    http_client::HttpClientExt,
-    json_utils,
-    providers::openai::Message,
-};
-use serde_json::{Value, json};
-
-use crate::providers::openai::AssistantContent;
-use crate::providers::openrouter::streaming::FinalCompletionResponse;
-use crate::streaming::StreamingCompletionResponse;
+use crate::completion::{self, CompletionError, CompletionRequest};
+use crate::http_client::HttpClientExt;
+use crate::one_or_many::string_or_one_or_many;
+use crate::providers::openai;
+use crate::providers::openrouter::streaming::StreamingCompletionResponse;
 use crate::telemetry::SpanCombinator;
+use crate::{OneOrMany, json_utils};
 
 // ================================================================
 // OpenRouter Completion API
@@ -62,13 +56,16 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             Message::Assistant {
                 content,
                 tool_calls,
+                reasoning,
                 ..
             } => {
                 let mut content = content
                     .iter()
                     .map(|c| match c {
-                        AssistantContent::Text { text } => completion::AssistantContent::text(text),
-                        AssistantContent::Refusal { refusal } => {
+                        openai::AssistantContent::Text { text } => {
+                            completion::AssistantContent::text(text)
+                        }
+                        openai::AssistantContent::Refusal { refusal } => {
                             completion::AssistantContent::text(refusal)
                         }
                     })
@@ -86,6 +83,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         })
                         .collect::<Vec<_>>(),
                 );
+
+                if let Some(reasoning) = reasoning {
+                    content.push(completion::AssistantContent::reasoning(reasoning));
+                }
+
                 Ok(content)
             }
             _ => Err(CompletionError::ResponseError(
@@ -123,6 +125,51 @@ pub struct Choice {
     pub native_finish_reason: Option<String>,
     pub message: Message,
     pub finish_reason: Option<String>,
+}
+
+/// OpenRouter message.
+///
+/// Almost identical to OpenAI's Message, but supports more parameters
+/// for some providers like `reasoning`.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum Message {
+    #[serde(alias = "developer")]
+    System {
+        #[serde(deserialize_with = "string_or_one_or_many")]
+        content: OneOrMany<openai::SystemContent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    User {
+        #[serde(deserialize_with = "string_or_one_or_many")]
+        content: OneOrMany<openai::UserContent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    Assistant {
+        #[serde(default, deserialize_with = "json_utils::string_or_vec")]
+        content: Vec<openai::AssistantContent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        refusal: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        audio: Option<openai::AudioAssistant>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(
+            default,
+            deserialize_with = "json_utils::null_or_vec",
+            skip_serializing_if = "Vec::is_empty"
+        )]
+        tool_calls: Vec<openai::ToolCall>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reasoning: Option<String>,
+    },
+    #[serde(rename = "tool")]
+    ToolResult {
+        tool_call_id: String,
+        content: OneOrMany<openai::ToolResultContent>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -182,23 +229,23 @@ impl<T> CompletionModel<T> {
         completion_request: CompletionRequest,
     ) -> Result<Value, CompletionError> {
         // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
+        let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
+            Some(preamble) => vec![openai::Message::system(preamble)],
             None => vec![],
         };
 
         // Gather docs
         if let Some(docs) = completion_request.normalized_documents() {
-            let docs: Vec<Message> = docs.try_into()?;
+            let docs: Vec<openai::Message> = docs.try_into()?;
             full_history.extend(docs);
         }
 
         // Convert existing chat history
-        let chat_history: Vec<Message> = completion_request
+        let chat_history: Vec<openai::Message> = completion_request
             .chat_history
             .into_iter()
             .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
             .into_iter()
             .flatten()
             .collect();
@@ -246,7 +293,7 @@ where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
     type Response = CompletionResponse;
-    type StreamingResponse = FinalCompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -317,7 +364,10 @@ where
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<
+        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+        CompletionError,
+    > {
         CompletionModel::stream(self, completion_request).await
     }
 }

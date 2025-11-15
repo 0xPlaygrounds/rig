@@ -1,19 +1,19 @@
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
-use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
-use crate::json_utils;
-use crate::json_utils::merge;
-use crate::providers::openai::completion::{CompletionModel, Usage};
-use crate::streaming;
-use crate::streaming::RawStreamingChoice;
+use std::collections::HashMap;
+
 use async_stream::stream;
 use futures::StreamExt;
 use http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashMap;
 use tracing::{debug, info_span};
 use tracing_futures::Instrument;
+
+use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::http_client::HttpClientExt;
+use crate::http_client::sse::{Event, GenericEventSource};
+use crate::json_utils::{self, merge};
+use crate::providers::openai::completion::{CompletionModel, Usage};
+use crate::streaming::{self, RawStreamingChoice};
 
 // ================================================================
 // OpenAI Completion Streaming API
@@ -149,11 +149,12 @@ where
                         continue;
                     }
 
-                    let data = serde_json::from_str::<StreamingCompletionChunk>(&message.data);
-                    let Ok(data) = data else {
-                        let err = data.unwrap_err();
-                        debug!("Couldn't serialize data as StreamingCompletionChunk: {:?}", err);
-                        continue;
+                    let data = match serde_json::from_str::<StreamingCompletionChunk>(&message.data) {
+                        Ok(data) => data,
+                        Err(error) => {
+                            tracing::error!(?error, message = message.data, "Failed to parse SSE message");
+                            continue;
+                        }
                     };
 
                     if let Some(choice) = data.choices.first() {
@@ -175,7 +176,7 @@ where
                                 // tool call partial (ie, a continuation of a previously received tool call)
                                 // name: None or Empty String
                                 // arguments: Some(String)
-                                else if function.name.clone().is_none_or(|s| s.is_empty())
+                                else if function.name.as_ref().is_none_or(|s| s.is_empty())
                                     && !function.arguments.is_empty()
                                 {
                                     if let Some((id, name, arguments)) =
