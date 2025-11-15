@@ -823,10 +823,6 @@ where
         async move {
             let request: Vec<u8> = serde_json::to_vec(&request)?;
 
-            if let Ok(json_str) = String::from_utf8(request.clone()) {
-                tracing::debug!("Request body:\n{}", json_str);
-            }
-
             let req = self
                 .client
                 .post("/v1/messages")
