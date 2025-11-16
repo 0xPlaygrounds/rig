@@ -67,7 +67,7 @@ pub struct MessageDelta {
     pub stop_sequence: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Clone, Serialize)]
+#[derive(Debug, Deserialize, Clone, Serialize, Default)]
 pub struct PartialUsage {
     pub output_tokens: usize,
     #[serde(default)]
@@ -215,6 +215,7 @@ where
             let mut current_thinking: Option<ThinkingState> = None;
             let mut sse_stream = Box::pin(stream);
             let mut input_tokens = 0;
+            let mut final_usage = None;
 
             let mut text_content = String::new();
 
@@ -247,9 +248,8 @@ where
                                                 content: OneOrMany::one(Content::Text { text: text_content.clone() })}
                                             );
 
-                                            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                                                usage
-                                            }))
+                                            final_usage = Some(usage);
+                                            break;
                                         }
                                     }
                                     _ => {}
@@ -277,6 +277,13 @@ where
                     }
                 }
             }
+
+            // Ensure event source is closed when stream ends
+            sse_stream.close();
+
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                usage: final_usage.unwrap_or_default()
+            }))
         }.instrument(span));
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))

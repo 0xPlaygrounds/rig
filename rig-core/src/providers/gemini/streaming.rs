@@ -119,6 +119,7 @@ where
         let stream = stream! {
             let mut text_response = String::new();
             let mut model_outputs: Vec<Part> = Vec::new();
+            let mut final_usage = None;
             while let Some(event_result) = event_source.next().await {
                 match event_result {
                     Ok(Event::Open) => {
@@ -196,9 +197,7 @@ where
                             let span = tracing::Span::current();
                             span.record_model_output(&model_outputs);
                             span.record_token_usage(&data.usage_metadata);
-                            yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                                usage_metadata: data.usage_metadata.unwrap_or_default()
-                            }));
+                            final_usage = data.usage_metadata;
                             break;
                         }
                     }
@@ -215,6 +214,10 @@ where
 
             // Ensure event source is closed when stream ends
             event_source.close();
+
+            yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                usage_metadata: final_usage.unwrap_or_default()
+            }));
         };
 
         Ok(streaming::StreamingCompletionResponse::stream(Box::pin(

@@ -340,8 +340,8 @@ where
                 }
             }
 
-            // // Ensure event source is closed when stream ends
-            // event_source.close();
+            // Ensure event source is closed when stream ends
+            event_source.close();
 
             for tool_call in &tool_calls {
                 yield Ok(tool_call.to_owned())
@@ -352,7 +352,7 @@ where
             tracing::info!("OpenAI stream finished");
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.clone()
+                usage: final_usage
             }));
         }.instrument(span);
 

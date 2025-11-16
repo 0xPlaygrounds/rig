@@ -131,7 +131,7 @@ where
 
     let stream = stream! {
         let span = tracing::Span::current();
-        let mut final_usage = Usage::new();
+        let mut final_usage = None;
 
         // Track in-progress tool calls
         let mut tool_calls: HashMap<usize, (String, String, String)> = HashMap::new();
@@ -227,7 +227,7 @@ where
 
                     // Usage updates
                     if let Some(usage) = data.usage {
-                        final_usage = usage.clone();
+                        final_usage = Some(usage.clone());
                     }
                 }
                 Err(crate::http_client::Error::StreamEnded) => {
@@ -276,12 +276,13 @@ where
             tool_calls: vec_toolcalls
         };
 
+        let final_usage = final_usage.unwrap_or_default();
         span.record("gen_ai.usage.input_tokens", final_usage.prompt_tokens);
         span.record("gen_ai.usage.output_tokens", final_usage.total_tokens - final_usage.prompt_tokens);
         span.record("gen_ai.output.messages", serde_json::to_string(&vec![message_output]).expect("Converting from a Rust struct should always convert to JSON without failing"));
 
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-            usage: final_usage.clone()
+            usage: final_usage
         }));
     }.instrument(span);
 
