@@ -628,7 +628,11 @@ where
                 response.eval_count.unwrap_or_default(),
             );
 
-            tracing::debug!(target: "rig", "Received response from Ollama: {}", serde_json::to_string_pretty(&response)?);
+            tracing::trace!(
+                target: "rig::completion",
+                "Ollama completion response: {}",
+                serde_json::to_string_pretty(&response)?
+            );
 
             let response: completion::CompletionResponse<CompletionResponse> =
                 response.try_into()?;

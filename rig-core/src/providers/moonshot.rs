@@ -366,7 +366,6 @@ where
                     &response_body,
                 )? {
                     ApiResponse::Ok(response) => {
-                        tracing::debug!(target: "rig::completions", "MoonShot completion response: {t}", t = serde_json::to_string_pretty(&response)?);
                         let span = tracing::Span::current();
                         span.record("gen_ai.response.id", response.id.clone());
                         span.record("gen_ai.response.model_name", response.model.clone());
@@ -381,6 +380,11 @@ where
                                 usage.total_tokens - usage.prompt_tokens,
                             );
                         }
+                        tracing::trace!(
+                            target: "rig::completion",
+                            "MoonShot completion response: {}",
+                            serde_json::to_string_pretty(&response)?
+                        );
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.error.message)),

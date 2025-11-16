@@ -104,6 +104,12 @@ where
 
         span.record_model_input(&request.contents);
 
+        tracing::trace!(
+            target: "rig::completion",
+            "Sending completion request to Gemini API {}",
+            serde_json::to_string_pretty(&request)?
+        );
+
         let body = serde_json::to_vec(&request)?;
 
         let request = self
@@ -149,7 +155,7 @@ where
             span.record_response_metadata(&response);
             span.record_token_usage(&response.usage_metadata);
 
-            tracing::debug!(
+            tracing::trace!(
                 "Received response from Gemini API: {}",
                 serde_json::to_string_pretty(&response)?
             );

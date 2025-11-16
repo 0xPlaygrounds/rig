@@ -121,7 +121,8 @@ where
 
         let request = json_utils::merge(request, serde_json::json!({"stream": true}));
 
-        tracing::debug!(
+        tracing::trace!(
+            target: "rig::streaming",
             "Cohere streaming completion input: {}",
             serde_json::to_string_pretty(&request)?
         );

@@ -850,6 +850,11 @@ where
                         span.record_model_output(&completion.content);
                         span.record_response_metadata(&completion);
                         span.record_token_usage(&completion.usage);
+                        tracing::trace!(
+                            target: "rig::completion",
+                            "Anthropic completion response: {}",
+                            serde_json::to_string_pretty(&completion)?
+                        );
                         completion.try_into()
                     }
                     ApiResponse::Error(ApiErrorResponse { message }) => {

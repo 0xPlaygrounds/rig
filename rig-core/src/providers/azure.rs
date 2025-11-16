@@ -701,20 +701,26 @@ where
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if status.is_success() {
-                match serde_json::from_slice::<ApiResponse<openai::CompletionResponse>>(&response_body)? {
+                match serde_json::from_slice::<ApiResponse<openai::CompletionResponse>>(
+                    &response_body,
+                )? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_model_output(&response.choices);
                         span.record_response_metadata(&response);
                         span.record_token_usage(&response.usage);
-                        tracing::debug!(target: "rig", "Azure completion output: {}", serde_json::to_string_pretty(&response)?);
+                        tracing::trace!(
+                            target: "rig::completion",
+                            "Azure completion response: {}",
+                            serde_json::to_string_pretty(&response)?
+                        );
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
                 }
             } else {
                 Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string()
+                    String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
         }
