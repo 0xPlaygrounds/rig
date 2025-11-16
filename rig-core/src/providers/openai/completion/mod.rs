@@ -308,166 +308,191 @@ pub struct Function {
     pub arguments: serde_json::Value,
 }
 
+impl TryFrom<message::ToolResult> for Message {
+    type Error = message::MessageError;
+
+    fn try_from(value: message::ToolResult) -> Result<Self, Self::Error> {
+        Ok(Message::ToolResult {
+            tool_call_id: value.id,
+            content: value.content.try_map(|content| match content {
+                message::ToolResultContent::Text(message::Text { text }) => Ok(text.into()),
+                _ => Err(message::MessageError::ConversionError(
+                    "Tool result content does not support non-text".into(),
+                )),
+            })?,
+        })
+    }
+}
+
+impl TryFrom<message::UserContent> for UserContent {
+    type Error = message::MessageError;
+
+    fn try_from(value: message::UserContent) -> Result<Self, Self::Error> {
+        match value {
+            message::UserContent::Text(message::Text { text }) => Ok(UserContent::Text { text }),
+            message::UserContent::Image(message::Image {
+                data,
+                detail,
+                media_type,
+                ..
+            }) => match data {
+                DocumentSourceKind::Url(url) => Ok(UserContent::Image {
+                    image_url: ImageUrl {
+                        url,
+                        detail: detail.unwrap_or_default(),
+                    },
+                }),
+                DocumentSourceKind::Base64(data) => {
+                    let url = format!(
+                        "data:{};base64,{}",
+                        media_type.map(|i| i.to_mime_type()).ok_or(
+                            message::MessageError::ConversionError(
+                                "OpenAI Image URI must have media type".into()
+                            )
+                        )?,
+                        data
+                    );
+
+                    let detail = detail.ok_or(message::MessageError::ConversionError(
+                        "OpenAI image URI must have image detail".into(),
+                    ))?;
+
+                    Ok(UserContent::Image {
+                        image_url: ImageUrl { url, detail },
+                    })
+                }
+                DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
+                    "Raw files not supported, encode as base64 first".into(),
+                )),
+                DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
+                    "Document has no body".into(),
+                )),
+                doc => Err(message::MessageError::ConversionError(format!(
+                    "Unsupported document type: {doc:?}"
+                ))),
+            },
+            message::UserContent::Document(message::Document { data, .. }) => {
+                if let DocumentSourceKind::Base64(text) | DocumentSourceKind::String(text) = data {
+                    Ok(UserContent::Text { text })
+                } else {
+                    Err(message::MessageError::ConversionError(
+                        "Documents must be base64 or a string".into(),
+                    ))
+                }
+            }
+            message::UserContent::Audio(message::Audio {
+                data, media_type, ..
+            }) => match data {
+                DocumentSourceKind::Base64(data) => Ok(UserContent::Audio {
+                    input_audio: InputAudio {
+                        data,
+                        format: match media_type {
+                            Some(media_type) => media_type,
+                            None => AudioMediaType::MP3,
+                        },
+                    },
+                }),
+                DocumentSourceKind::Url(_) => Err(message::MessageError::ConversionError(
+                    "URLs are not supported for audio".into(),
+                )),
+                DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
+                    "Raw files are not supported for audio".into(),
+                )),
+                DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
+                    "Audio has no body".into(),
+                )),
+                audio => Err(message::MessageError::ConversionError(format!(
+                    "Unsupported audio type: {audio:?}"
+                ))),
+            },
+            message::UserContent::ToolResult(_) => Err(message::MessageError::ConversionError(
+                "Tool result is in unsupported format".into(),
+            )),
+            message::UserContent::Video(_) => Err(message::MessageError::ConversionError(
+                "Video is in unsupported format".into(),
+            )),
+        }
+    }
+}
+
+impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
+    type Error = message::MessageError;
+
+    fn try_from(value: OneOrMany<message::UserContent>) -> Result<Self, Self::Error> {
+        let (tool_results, other_content): (Vec<_>, Vec<_>) = value
+            .into_iter()
+            .partition(|content| matches!(content, message::UserContent::ToolResult(_)));
+
+        // If there are messages with both tool results and user content, openai will only
+        //  handle tool results. It's unlikely that there will be both.
+        if !tool_results.is_empty() {
+            tool_results
+                .into_iter()
+                .map(|content| match content {
+                    message::UserContent::ToolResult(tool_result) => tool_result.try_into(),
+                    _ => unreachable!(),
+                })
+                .collect::<Result<Vec<_>, _>>()
+        } else {
+            let other_content: Vec<UserContent> = other_content
+                .into_iter()
+                .map(|content| content.try_into())
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let other_content = OneOrMany::many(other_content)
+                .expect("There must be other content here if there were no tool result content");
+
+            Ok(vec![Message::User {
+                content: other_content,
+                name: None,
+            }])
+        }
+    }
+}
+
+impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
+    type Error = message::MessageError;
+
+    fn try_from(value: OneOrMany<message::AssistantContent>) -> Result<Self, Self::Error> {
+        let (text_content, tool_calls) = value.into_iter().fold(
+            (Vec::new(), Vec::new()),
+            |(mut texts, mut tools), content| {
+                match content {
+                    message::AssistantContent::Text(text) => texts.push(text),
+                    message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
+                    message::AssistantContent::Reasoning(_) => {
+                        unimplemented!("The OpenAI Completions API doesn't support reasoning!");
+                    }
+                }
+                (texts, tools)
+            },
+        );
+
+        // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
+        //  so either `content` or `tool_calls` will have some content.
+        Ok(vec![Message::Assistant {
+            content: text_content
+                .into_iter()
+                .map(|content| content.text.into())
+                .collect::<Vec<_>>(),
+            refusal: None,
+            audio: None,
+            name: None,
+            tool_calls: tool_calls
+                .into_iter()
+                .map(|tool_call| tool_call.into())
+                .collect::<Vec<_>>(),
+        }])
+    }
+}
+
 impl TryFrom<message::Message> for Vec<Message> {
     type Error = message::MessageError;
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
-            message::Message::User { content } => {
-                let (tool_results, other_content): (Vec<_>, Vec<_>) = content
-                    .into_iter()
-                    .partition(|content| matches!(content, message::UserContent::ToolResult(_)));
-
-                // If there are messages with both tool results and user content, openai will only
-                //  handle tool results. It's unlikely that there will be both.
-                if !tool_results.is_empty() {
-                    tool_results
-                        .into_iter()
-                        .map(|content| match content {
-                            message::UserContent::ToolResult(message::ToolResult {
-                                id,
-                                content,
-                                ..
-                            }) => Ok::<_, message::MessageError>(Message::ToolResult {
-                                tool_call_id: id,
-                                content: content.try_map(|content| match content {
-                                    message::ToolResultContent::Text(message::Text { text }) => {
-                                        Ok(text.into())
-                                    }
-                                    _ => Err(message::MessageError::ConversionError(
-                                        "Tool result content does not support non-text".into(),
-                                    )),
-                                })?,
-                            }),
-                            _ => unreachable!(),
-                        })
-                        .collect::<Result<Vec<_>, _>>()
-                } else {
-                    let other_content: Vec<UserContent> = other_content
-                        .into_iter()
-                        .map(|content| match content {
-                            message::UserContent::Text(message::Text { text }) => {
-                                Ok(UserContent::Text { text })
-                            }
-                            message::UserContent::Image(message::Image {
-                                data,
-                                detail,
-                                media_type,
-                                ..
-                            }) => match data {
-                                DocumentSourceKind::Url(url) => Ok(UserContent::Image {
-                                    image_url: ImageUrl {
-                                        url,
-                                        detail: detail.unwrap_or_default(),
-                                    },
-                                }),
-                                DocumentSourceKind::Base64(data) => {
-                                    let url = format!(
-                                        "data:{};base64,{}",
-                                        media_type.map(|i| i.to_mime_type()).ok_or(
-                                            message::MessageError::ConversionError(
-                                                "OpenAI Image URI must have media type".into()
-                                            )
-                                        )?,
-                                        data
-                                    );
-
-                                    let detail =
-                                        detail.ok_or(message::MessageError::ConversionError(
-                                            "OpenAI image URI must have image detail".into(),
-                                        ))?;
-
-                                    Ok(UserContent::Image {
-                                        image_url: ImageUrl { url, detail },
-                                    })
-                                }
-                                DocumentSourceKind::Raw(_) => {
-                                    Err(message::MessageError::ConversionError(
-                                        "Raw files not supported, encode as base64 first".into(),
-                                    ))
-                                }
-                                DocumentSourceKind::Unknown => {
-                                    Err(message::MessageError::ConversionError(
-                                        "Document has no body".into(),
-                                    ))
-                                }
-                                doc => Err(message::MessageError::ConversionError(format!(
-                                    "Unsupported document type: {doc:?}"
-                                ))),
-                            },
-                            message::UserContent::Document(message::Document { data, .. }) => {
-                                if let DocumentSourceKind::Base64(text)
-                                | DocumentSourceKind::String(text) = data
-                                {
-                                    Ok(UserContent::Text { text })
-                                } else {
-                                    Err(message::MessageError::ConversionError(
-                                        "Documents must be base64 or a string".into(),
-                                    ))
-                                }
-                            }
-                            message::UserContent::Audio(message::Audio {
-                                data: DocumentSourceKind::Base64(data),
-                                media_type,
-                                ..
-                            }) => Ok(UserContent::Audio {
-                                input_audio: InputAudio {
-                                    data,
-                                    format: match media_type {
-                                        Some(media_type) => media_type,
-                                        None => AudioMediaType::MP3,
-                                    },
-                                },
-                            }),
-                            _ => Err(message::MessageError::ConversionError(
-                                "Tool result is in unsupported format".into(),
-                            )),
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    let other_content = OneOrMany::many(other_content).expect(
-                        "There must be other content here if there were no tool result content",
-                    );
-
-                    Ok(vec![Message::User {
-                        content: other_content,
-                        name: None,
-                    }])
-                }
-            }
-            message::Message::Assistant { content, .. } => {
-                let (text_content, tool_calls) = content.into_iter().fold(
-                    (Vec::new(), Vec::new()),
-                    |(mut texts, mut tools), content| {
-                        match content {
-                            message::AssistantContent::Text(text) => texts.push(text),
-                            message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
-                            message::AssistantContent::Reasoning(_) => {
-                                unimplemented!(
-                                    "The OpenAI Completions API doesn't support reasoning!"
-                                );
-                            }
-                        }
-                        (texts, tools)
-                    },
-                );
-
-                // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
-                //  so either `content` or `tool_calls` will have some content.
-                Ok(vec![Message::Assistant {
-                    content: text_content
-                        .into_iter()
-                        .map(|content| content.text.into())
-                        .collect::<Vec<_>>(),
-                    refusal: None,
-                    audio: None,
-                    name: None,
-                    tool_calls: tool_calls
-                        .into_iter()
-                        .map(|tool_call| tool_call.into())
-                        .collect::<Vec<_>>(),
-                }])
-            }
+            message::Message::User { content } => content.try_into(),
+            message::Message::Assistant { content, .. } => content.try_into(),
         }
     }
 }

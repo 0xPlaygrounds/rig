@@ -10,7 +10,7 @@ use crate::one_or_many::string_or_one_or_many;
 use crate::providers::openai;
 use crate::providers::openrouter::streaming::StreamingCompletionResponse;
 use crate::telemetry::SpanCombinator;
-use crate::{OneOrMany, json_utils};
+use crate::{OneOrMany, json_utils, message};
 
 // ================================================================
 // OpenRouter Completion API
@@ -172,6 +172,98 @@ pub enum Message {
     },
 }
 
+impl Message {
+    pub fn system(content: &str) -> Self {
+        Message::System {
+            content: OneOrMany::one(content.to_owned().into()),
+            name: None,
+        }
+    }
+}
+
+impl From<openai::Message> for Message {
+    fn from(value: openai::Message) -> Self {
+        match value {
+            openai::Message::System { content, name } => Self::System { content, name },
+            openai::Message::User { content, name } => Self::User { content, name },
+            openai::Message::Assistant {
+                content,
+                refusal,
+                audio,
+                name,
+                tool_calls,
+            } => Self::Assistant {
+                content,
+                refusal,
+                audio,
+                name,
+                tool_calls,
+                reasoning: None,
+            },
+            openai::Message::ToolResult {
+                tool_call_id,
+                content,
+            } => Self::ToolResult {
+                tool_call_id,
+                content,
+            },
+        }
+    }
+}
+
+impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
+    type Error = message::MessageError;
+
+    fn try_from(value: OneOrMany<message::AssistantContent>) -> Result<Self, Self::Error> {
+        let (text_content, tool_calls, reasoning) = value.into_iter().fold(
+            (Vec::new(), Vec::new(), None),
+            |(mut texts, mut tools, mut reasoning), content| {
+                match content {
+                    message::AssistantContent::Text(text) => texts.push(text),
+                    message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
+                    message::AssistantContent::Reasoning(r) => {
+                        reasoning = r.reasoning.into_iter().next();
+                    }
+                }
+                (texts, tools, reasoning)
+            },
+        );
+
+        // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
+        //  so either `content` or `tool_calls` will have some content.
+        Ok(vec![Message::Assistant {
+            content: text_content
+                .into_iter()
+                .map(|content| content.text.into())
+                .collect::<Vec<_>>(),
+            refusal: None,
+            audio: None,
+            name: None,
+            tool_calls: tool_calls
+                .into_iter()
+                .map(|tool_call| tool_call.into())
+                .collect::<Vec<_>>(),
+            reasoning,
+        }])
+    }
+}
+
+// We re-use most of the openai implementation when we can and we re-implement
+// only the part that differentate for openrouter (like reasoning support).
+impl TryFrom<message::Message> for Vec<Message> {
+    type Error = message::MessageError;
+
+    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
+        match message {
+            message::Message::User { content } => {
+                let messages: Vec<openai::Message> = content.try_into()?;
+                Ok(messages.into_iter().map(Message::from).collect::<Vec<_>>())
+            }
+            message::Message::Assistant { content, .. } => content.try_into(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged, rename_all = "snake_case")]
 pub enum ToolChoice {
@@ -229,23 +321,23 @@ impl<T> CompletionModel<T> {
         completion_request: CompletionRequest,
     ) -> Result<Value, CompletionError> {
         // Add preamble to chat history (if available)
-        let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
-            Some(preamble) => vec![openai::Message::system(preamble)],
+        let mut full_history: Vec<Message> = match &completion_request.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
         };
 
         // Gather docs
         if let Some(docs) = completion_request.normalized_documents() {
-            let docs: Vec<openai::Message> = docs.try_into()?;
+            let docs: Vec<Message> = docs.try_into()?;
             full_history.extend(docs);
         }
 
         // Convert existing chat history
-        let chat_history: Vec<openai::Message> = completion_request
+        let chat_history: Vec<Message> = completion_request
             .chat_history
             .into_iter()
             .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
             .into_iter()
             .flatten()
             .collect();
