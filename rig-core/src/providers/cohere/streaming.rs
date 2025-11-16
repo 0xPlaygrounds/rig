@@ -249,7 +249,7 @@ where
                     }
                     Err(err) => {
                         tracing::error!(?err, "SSE error");
-                        yield Err(CompletionError::ResponseError(err.to_string()));
+                        yield Err(CompletionError::ProviderError(err.to_string()));
                         break;
                     }
                 }
