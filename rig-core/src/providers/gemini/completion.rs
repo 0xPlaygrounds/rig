@@ -105,7 +105,7 @@ where
         span.record_model_input(&request.contents);
 
         tracing::trace!(
-            target: "rig::completion",
+            target: "rig::completions",
             "Sending completion request to Gemini API {}",
             serde_json::to_string_pretty(&request)?
         );

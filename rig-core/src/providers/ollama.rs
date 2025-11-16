@@ -629,7 +629,7 @@ where
             );
 
             tracing::trace!(
-                target: "rig::completion",
+                target: "rig::completions",
                 "Ollama completion response: {}",
                 serde_json::to_string_pretty(&response)?
             );

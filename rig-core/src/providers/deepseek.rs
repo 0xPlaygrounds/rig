@@ -688,7 +688,7 @@ where
                             response.usage.completion_tokens,
                         );
                         tracing::trace!(
-                            target: "rig::completion",
+                            target: "rig::completions",
                             "DeepSeek completion output: {}",
                             serde_json::to_string_pretty(&response_body)?
                         );

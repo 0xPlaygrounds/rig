@@ -233,7 +233,7 @@ where
             tracing::Span::current()
         };
 
-        tracing::debug!(target: "rig::completion", "TogetherAI completion request: {messages_as_json_string}");
+        tracing::debug!(target: "rig::completions", "TogetherAI completion request: {messages_as_json_string}");
 
         let body = serde_json::to_vec(&request)?;
 
@@ -269,7 +269,7 @@ where
                             );
                         }
                         tracing::trace!(
-                            target: "rig::completion",
+                            target: "rig::completions",
                             "TogetherAI completion response: {}",
                             serde_json::to_string_pretty(&response)?
                         );

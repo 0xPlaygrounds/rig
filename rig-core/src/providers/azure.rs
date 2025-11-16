@@ -710,7 +710,7 @@ where
                         span.record_response_metadata(&response);
                         span.record_token_usage(&response.usage);
                         tracing::trace!(
-                            target: "rig::completion",
+                            target: "rig::completions",
                             "Azure completion response: {}",
                             serde_json::to_string_pretty(&response)?
                         );

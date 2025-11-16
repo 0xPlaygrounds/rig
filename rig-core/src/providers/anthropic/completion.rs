@@ -851,7 +851,7 @@ where
                         span.record_response_metadata(&completion);
                         span.record_token_usage(&completion.usage);
                         tracing::trace!(
-                            target: "rig::completion",
+                            target: "rig::completions",
                             "Anthropic completion response: {}",
                             serde_json::to_string_pretty(&completion)?
                         );

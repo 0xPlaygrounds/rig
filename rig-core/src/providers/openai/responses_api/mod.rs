@@ -1076,7 +1076,7 @@ where
         );
         let body = serde_json::to_vec(&request)?;
         tracing::trace!(
-            target: "rig::completion",
+            target: "rig::completions",
             "OpenAI Responses API input: {request}",
             request = serde_json::to_string_pretty(&request).unwrap()
         );

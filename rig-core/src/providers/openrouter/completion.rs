@@ -396,7 +396,7 @@ where
         let request = self.create_completion_request(completion_request)?;
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
-                target: "rig::completion",
+                target: "rig::completions",
                 "chat",
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "openrouter",
@@ -436,7 +436,7 @@ where
                         span.record("gen_ai.response.id", &response.id);
                         span.record("gen_ai.response.model_name", &response.model);
 
-                        tracing::debug!(target: "rig::completion",
+                        tracing::debug!(target: "rig::completions",
                             "OpenRouter response: {response:?}");
                         response.try_into()
                     }

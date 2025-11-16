@@ -643,7 +643,7 @@ where
                 span.record_model_output(&json_response.message);
                 span.record_response_metadata(&json_response);
                 tracing::trace!(
-                    target: "rig::completion",
+                    target: "rig::completions",
                     "Cohere completion response: {}",
                     serde_json::to_string_pretty(&json_response)?
                 );
