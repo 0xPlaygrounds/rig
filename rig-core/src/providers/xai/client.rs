@@ -1,5 +1,6 @@
 use crate::client::{
     self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+    SimpleKey,
 };
 
 // ================================================================
@@ -11,7 +12,7 @@ pub struct XAiExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct XAiExtBuilder;
 
-type XAiApiKey = String;
+type XAiApiKey = SimpleKey;
 
 pub type Client<H = reqwest::Client> = client::Client<XAiExt, H>;
 pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<XAiExtBuilder, XAiApiKey, H>;
@@ -23,7 +24,7 @@ impl Provider for XAiExt {
 
     const VERIFY_PATH: &'static str = "/v1/api-key";
 
-    fn build<H>(_: &client::ClientBuilder<Self::Builder, String, H>) -> Self {
+    fn build<H>(_: &client::ClientBuilder<Self::Builder, XAiApiKey, H>) -> Self {
         Self
     }
 }

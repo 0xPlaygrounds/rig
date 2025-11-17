@@ -1,7 +1,7 @@
 use crate::client::{
     self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+    SimpleKey,
 };
-use crate::http_client::{self, bearer_auth_header};
 #[cfg(feature = "image")]
 use crate::image_generation::ImageGenerationError;
 use crate::transcription::TranscriptionError;
@@ -106,7 +106,7 @@ pub struct HuggingFaceBuilder {
     subprovider: SubProvider,
 }
 
-type HuggingFaceApiKey = String;
+type HuggingFaceApiKey = SimpleKey;
 
 pub type Client<H = reqwest::Client> = client::Client<HuggingFaceExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =
@@ -117,9 +117,9 @@ impl Provider for HuggingFaceExt {
 
     const VERIFY_PATH: &'static str = "/api/whoami-v2";
 
-    fn build<H>(builder: &client::ClientBuilder<Self::Builder, String, H>) -> Self {
+    fn build<H>(builder: &client::ClientBuilder<Self::Builder, HuggingFaceApiKey, H>) -> Self {
         Self {
-            subprovider: builder.ext().subprovider,
+            subprovider: builder.ext().subprovider.clone(),
         }
     }
 }
@@ -146,17 +146,6 @@ impl ProviderBuilder for HuggingFaceBuilder {
     type ApiKey = HuggingFaceApiKey;
 
     const BASE_URL: &'static str = HUGGINGFACE_API_BASE_URL;
-
-    fn finish<H>(
-        &self,
-        mut builder: client::ClientBuilder<Self, String, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, String, H>> {
-        let auth = builder.get_api_key().to_string();
-
-        bearer_auth_header(builder.headers_mut(), &auth)?;
-
-        Ok(builder)
-    }
 }
 
 impl ProviderClient for Client {

@@ -16,7 +16,7 @@ use super::openai::{TranscriptionResponse, send_compatible_streaming_request};
 #[cfg(feature = "image")]
 use crate::client::Nothing;
 use crate::client::{
-    self, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient,
+    self, ApiKey, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient,
 };
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt, bearer_auth_header};
@@ -95,7 +95,7 @@ impl Provider for AzureExt {
             endpoint,
             api_version,
             ..
-        } = builder.ext();
+        } = builder.ext().clone();
 
         Self {
             endpoint,
@@ -163,6 +163,8 @@ pub enum AzureOpenAIAuth {
     Token(String),
 }
 
+impl ApiKey for AzureOpenAIAuth {}
+
 impl std::fmt::Debug for AzureOpenAIAuth {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -172,9 +174,12 @@ impl std::fmt::Debug for AzureOpenAIAuth {
     }
 }
 
-impl From<String> for AzureOpenAIAuth {
-    fn from(token: String) -> Self {
-        AzureOpenAIAuth::Token(token)
+impl<S> From<S> for AzureOpenAIAuth
+where
+    S: Into<String>,
+{
+    fn from(token: S) -> Self {
+        AzureOpenAIAuth::Token(token.into())
     }
 }
 

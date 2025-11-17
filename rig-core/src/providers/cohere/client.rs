@@ -2,6 +2,7 @@ use crate::{
     Embed,
     client::{
         self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+        SimpleKey,
     },
     embeddings::EmbeddingsBuilder,
     http_client::{self, HttpClientExt},
@@ -14,8 +15,6 @@ use serde::Deserialize;
 // ================================================================
 // Main Cohere Client
 // ================================================================
-pub type Client<H = reqwest::Client> = client::Client<CohereExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<CohereBuilder, CohereApiKey, H>;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CohereExt;
@@ -23,14 +22,17 @@ pub struct CohereExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CohereBuilder;
 
-type CohereApiKey = String;
+type CohereApiKey = SimpleKey;
+
+pub type Client<H = reqwest::Client> = client::Client<CohereExt, H>;
+pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<CohereBuilder, CohereApiKey, H>;
 
 impl Provider for CohereExt {
     type Builder = CohereBuilder;
 
     const VERIFY_PATH: &'static str = "/models";
 
-    fn build<H>(_: &client::ClientBuilder<Self::Builder, String, H>) -> Self {
+    fn build<H>(_: &client::ClientBuilder<Self::Builder, CohereApiKey, H>) -> Self {
         Self
     }
 }
@@ -56,8 +58,8 @@ impl ProviderBuilder for CohereBuilder {
 
     fn finish<H>(
         &self,
-        builder: client::ClientBuilder<Self, String, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, String, H>> {
+        builder: client::ClientBuilder<Self, CohereApiKey, H>,
+    ) -> http_client::Result<client::ClientBuilder<Self, CohereApiKey, H>> {
         Ok(builder)
     }
 }

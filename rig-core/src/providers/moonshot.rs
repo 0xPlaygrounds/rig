@@ -10,6 +10,7 @@
 //! ```
 use crate::client::{
     self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+    SimpleKey,
 };
 use crate::http_client::HttpClientExt;
 use crate::json_utils::merge;
@@ -35,6 +36,8 @@ pub struct MoonshotExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MoonshotBuilder;
 
+type MoonshotApiKey = SimpleKey;
+
 impl Provider for MoonshotExt {
     type Builder = MoonshotBuilder;
 
@@ -55,7 +58,7 @@ impl DebugExt for MoonshotExt {}
 
 impl ProviderBuilder for MoonshotBuilder {
     type Output = MoonshotExt;
-    type ApiKey = String;
+    type ApiKey = MoonshotApiKey;
 
     const BASE_URL: &'static str = MOONSHOT_API_BASE_URL;
 }
@@ -71,7 +74,8 @@ impl<H> Capabilities<H> for MoonshotExt {
 }
 
 pub type Client<H = reqwest::Client> = client::Client<MoonshotExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<MoonshotBuilder, String, H>;
+pub type ClientBuilder<H = reqwest::Client> =
+    client::ClientBuilder<MoonshotBuilder, MoonshotApiKey, H>;
 
 impl ProviderClient for Client {
     type Input = String;

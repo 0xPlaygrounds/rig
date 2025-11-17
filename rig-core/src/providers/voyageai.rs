@@ -1,5 +1,6 @@
 use crate::client::{
     self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+    SimpleKey,
 };
 use crate::embeddings::EmbeddingError;
 use crate::http_client::HttpClientExt;
@@ -19,7 +20,7 @@ pub struct VoyageExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct VoyageBuilder;
 
-type VoyageApiKey = String;
+type VoyageApiKey = SimpleKey;
 
 impl Provider for VoyageExt {
     type Builder = VoyageBuilder;
@@ -62,7 +63,7 @@ pub type Client<H = reqwest::Client> = client::Client<VoyageExt, H>;
 pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<VoyageBuilder, VoyageApiKey, H>;
 
 impl ProviderClient for Client {
-    type Input = VoyageApiKey;
+    type Input = String;
 
     /// Create a new OpenAI client from the `OPENAI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.

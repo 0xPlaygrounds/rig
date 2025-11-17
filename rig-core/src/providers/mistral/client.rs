@@ -1,8 +1,6 @@
-use crate::{
-    client::{
-        self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-    },
-    http_client::bearer_auth_header,
+use crate::client::{
+    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+    SimpleKey,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
@@ -14,7 +12,7 @@ pub struct MistralExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MistralBuilder;
 
-type MistralApiKey = String;
+type MistralApiKey = SimpleKey;
 
 pub type Client<H = reqwest::Client> = client::Client<MistralExt, H>;
 pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<MistralBuilder, String, H>;
@@ -24,7 +22,7 @@ impl Provider for MistralExt {
 
     const VERIFY_PATH: &'static str = "/models";
 
-    fn build<H>(_: &client::ClientBuilder<Self::Builder, String, H>) -> Self {
+    fn build<H>(_: &client::ClientBuilder<Self::Builder, MistralApiKey, H>) -> Self {
         Self
     }
 }
@@ -48,17 +46,6 @@ impl ProviderBuilder for MistralBuilder {
     type ApiKey = MistralApiKey;
 
     const BASE_URL: &'static str = MISTRAL_API_BASE_URL;
-
-    fn finish<H>(
-        &self,
-        mut builder: client::ClientBuilder<Self, String, H>,
-    ) -> crate::http_client::Result<client::ClientBuilder<Self, String, H>> {
-        let auth = builder.get_api_key().to_string();
-
-        bearer_auth_header(builder.headers_mut(), &auth)?;
-
-        Ok(builder)
-    }
 }
 
 impl ProviderClient for Client {

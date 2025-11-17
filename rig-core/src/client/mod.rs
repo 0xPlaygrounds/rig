@@ -13,9 +13,9 @@ pub mod verify;
 use bytes::Bytes;
 pub use completion::CompletionClient;
 pub use embeddings::EmbeddingsClient;
-use http::HeaderMap;
+use http::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
-use std::{cell::Cell, fmt::Debug, marker::PhantomData};
+use std::{fmt::Debug, marker::PhantomData};
 use thiserror::Error;
 pub use verify::{VerifyClient, VerifyError};
 
@@ -32,7 +32,7 @@ use audio_generation::*;
 use crate::{
     completion::CompletionModel,
     embeddings::EmbeddingModel,
-    http_client::{self, Builder, HttpClientExt, LazyBody, Request, Response},
+    http_client::{self, Builder, HttpClientExt, LazyBody, Request, Response, make_auth_header},
     prelude::TranscriptionClient,
     transcription::TranscriptionModel,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -70,50 +70,6 @@ pub trait ProviderClient {
         Self: Sized;
 }
 
-#[derive(Clone)]
-pub enum ProviderValue {
-    Simple(String),
-    ApiKeyWithOptionalKey(String, Option<String>),
-    ApiKeyWithVersionAndHeader(String, String, String),
-}
-
-impl From<&str> for ProviderValue {
-    fn from(value: &str) -> Self {
-        Self::Simple(value.to_string())
-    }
-}
-
-impl From<String> for ProviderValue {
-    fn from(value: String) -> Self {
-        Self::Simple(value)
-    }
-}
-
-impl<P> From<(P, Option<P>)> for ProviderValue
-where
-    P: AsRef<str>,
-{
-    fn from((api_key, optional_key): (P, Option<P>)) -> Self {
-        Self::ApiKeyWithOptionalKey(
-            api_key.as_ref().to_string(),
-            optional_key.map(|x| x.as_ref().to_string()),
-        )
-    }
-}
-
-impl<P> From<(P, P, P)> for ProviderValue
-where
-    P: AsRef<str>,
-{
-    fn from((api_key, version, header): (P, P, P)) -> Self {
-        Self::ApiKeyWithVersionAndHeader(
-            api_key.as_ref().to_string(),
-            version.as_ref().to_string(),
-            header.as_ref().to_string(),
-        )
-    }
-}
-
 use crate::completion::{GetTokenUsage, Usage};
 
 /// The final streaming response from a dynamic client.
@@ -128,7 +84,32 @@ impl GetTokenUsage for FinalCompletionResponse {
     }
 }
 
+pub trait ApiKey: Sized {
+    fn into_header(self) -> Option<http_client::Result<(HeaderName, HeaderValue)>> {
+        None
+    }
+}
+
+pub struct SimpleKey(String);
+
+impl ApiKey for SimpleKey {
+    fn into_header(self) -> Option<http_client::Result<(HeaderName, HeaderValue)>> {
+        Some(make_auth_header(self.0))
+    }
+}
+
+impl<S> From<S> for SimpleKey
+where
+    S: Into<String>,
+{
+    fn from(value: S) -> Self {
+        Self(value.into())
+    }
+}
+
 pub struct Nothing;
+
+impl ApiKey for Nothing {}
 
 impl TryFrom<String> for Nothing {
     type Error = String;
@@ -235,13 +216,14 @@ pub trait ProviderBuilder: Sized {
     }
 }
 
-impl<Ext, ExtBuilder, ApiKey, H> Client<Ext, H>
+impl<Ext, ExtBuilder, Key, H> Client<Ext, H>
 where
-    ExtBuilder: Default + ProviderBuilder<Output = Ext, ApiKey = ApiKey>,
+    ExtBuilder: Clone + Default + ProviderBuilder<Output = Ext, ApiKey = Key>,
     Ext: Provider<Builder = ExtBuilder>,
     H: Default + HttpClientExt,
+    Key: ApiKey,
 {
-    pub fn new(api_key: impl Into<ApiKey>) -> http_client::Result<Self> {
+    pub fn new(api_key: impl Into<Key>) -> http_client::Result<Self> {
         Self::builder().api_key(api_key).build()
     }
 }
@@ -389,7 +371,7 @@ pub struct ClientBuilder<Ext, ApiKey = NeedsApiKey, H = reqwest::Client> {
     api_key: ApiKey,
     headers: HeaderMap,
     http_client: H,
-    ext: Cell<Ext>,
+    ext: Ext,
 }
 
 impl<ExtBuilder, H> Default for ClientBuilder<ExtBuilder, NeedsApiKey, H>
@@ -422,7 +404,10 @@ impl<Ext, H> ClientBuilder<Ext, NeedsApiKey, H> {
     }
 }
 
-impl<Ext, ApiKey, H> ClientBuilder<Ext, ApiKey, H> {
+impl<Ext, ApiKey, H> ClientBuilder<Ext, ApiKey, H>
+where
+    Ext: Clone,
+{
     /// Owned map over the ext field
     pub(crate) fn over_ext<F, NewExt>(self, f: F) -> ClientBuilder<NewExt, ApiKey, H>
     where
@@ -436,14 +421,14 @@ impl<Ext, ApiKey, H> ClientBuilder<Ext, ApiKey, H> {
             ext,
         } = self;
 
-        let new_ext = f(ext.into_inner());
+        let new_ext = f(ext.clone());
 
         ClientBuilder {
             base_url,
             api_key,
             headers,
             http_client,
-            ext: Cell::new(new_ext),
+            ext: new_ext,
         }
     }
 
@@ -474,7 +459,7 @@ impl<Ext, ApiKey, H> ClientBuilder<Ext, ApiKey, H> {
     }
 
     pub(crate) fn ext_mut(&mut self) -> &mut Ext {
-        self.ext.get_mut()
+        &mut self.ext
     }
 }
 
@@ -485,23 +470,19 @@ impl<Ext, ApiKey, H> ClientBuilder<Ext, ApiKey, H> {
 }
 
 impl<Ext, Key, H> ClientBuilder<Ext, Key, H> {
-    // FIXME: @FayCarsons - this sucks. We need the `Cell` elsewhere but it means we can't get an
-    // immutable reference
-    // I think we should just clone like fuck
-    pub fn ext(&self) -> Ext {
-        unsafe { self.ext.as_ptr().read() }
+    pub fn ext(&self) -> &Ext {
+        &self.ext
     }
 }
 
-impl<Ext, ExtBuilder, ApiKey, H> ClientBuilder<ExtBuilder, ApiKey, H>
+impl<Ext, ExtBuilder, Key, H> ClientBuilder<ExtBuilder, Key, H>
 where
-    ExtBuilder: ProviderBuilder<Output = Ext, ApiKey = ApiKey> + Default,
+    ExtBuilder: Clone + ProviderBuilder<Output = Ext, ApiKey = Key> + Default,
     Ext: Provider<Builder = ExtBuilder>,
+    Key: ApiKey,
 {
     pub fn build(mut self) -> http_client::Result<Client<ExtBuilder::Output, H>> {
-        // The beauty of `Cell<T>` - take `ext` out of Self, leaving default
-        // now we can use it to customize the rest of Self and then build
-        let ext = self.ext.take();
+        let ext = self.ext.clone();
 
         self = ext.finish(self)?;
         let ext = Ext::build(&self);
@@ -509,9 +490,14 @@ where
         let ClientBuilder {
             http_client,
             base_url,
-            headers,
+            mut headers,
+            api_key,
             ..
         } = self;
+
+        if let Some((k, v)) = api_key.into_header().transpose()? {
+            headers.insert(k, v);
+        }
 
         Ok(Client {
             http_client,

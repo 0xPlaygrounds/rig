@@ -13,6 +13,7 @@
 use super::openai;
 use crate::client::{
     self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+    SimpleKey,
 };
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
@@ -44,7 +45,7 @@ pub struct GaladrielBuilder {
     fine_tune_api_key: Option<String>,
 }
 
-type GaladrielApiKey = String;
+type GaladrielApiKey = SimpleKey;
 
 impl Provider for GaladrielExt {
     type Builder = GaladrielBuilder;
@@ -59,7 +60,7 @@ impl Provider for GaladrielExt {
             H,
         >,
     ) -> Self {
-        let GaladrielBuilder { fine_tune_api_key } = builder.ext();
+        let GaladrielBuilder { fine_tune_api_key } = builder.ext().clone();
 
         Self { fine_tune_api_key }
     }
@@ -92,7 +93,8 @@ impl ProviderBuilder for GaladrielBuilder {
 }
 
 pub type Client<H = reqwest::Client> = client::Client<GaladrielExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<GaladrielBuilder, String, H>;
+pub type ClientBuilder<H = reqwest::Client> =
+    client::ClientBuilder<GaladrielBuilder, GaladrielApiKey, H>;
 
 impl<T> ClientBuilder<T> {
     pub fn fine_tune_api_key<S>(mut self, fine_tune_api_key: S) -> Self

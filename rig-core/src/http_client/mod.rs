@@ -1,7 +1,7 @@
 use crate::http_client::sse::BoxedStream;
 use bytes::Bytes;
-use http::StatusCode;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
+use http::{HeaderName, StatusCode};
 use reqwest::{Body, multipart::Form};
 
 pub mod retry;
@@ -72,11 +72,17 @@ pub async fn text(response: Response<LazyBody<Vec<u8>>>) -> Result<String> {
     Ok(String::from(String::from_utf8_lossy(&text)))
 }
 
-pub fn bearer_auth_header(headers: &mut HeaderMap, auth: &str) -> Result<()> {
-    let header_val =
-        HeaderValue::from_str(&format!("Bearer {}", auth)).map_err(http::Error::from)?;
+pub fn make_auth_header(key: impl AsRef<str>) -> Result<(HeaderName, HeaderValue)> {
+    Ok((
+        http::header::AUTHORIZATION,
+        HeaderValue::from_str(&format!("Bearer {}", key.as_ref()))?,
+    ))
+}
 
-    headers.insert(http::header::AUTHORIZATION, header_val);
+pub fn bearer_auth_header(headers: &mut HeaderMap, key: impl AsRef<str>) -> Result<()> {
+    let (k, v) = make_auth_header(key)?;
+
+    headers.insert(k, v);
 
     Ok(())
 }

@@ -1,7 +1,8 @@
 #[cfg(feature = "image")]
 use crate::client::Nothing;
 use crate::client::{
-    self, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient, Transport,
+    self, ApiKey, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient,
+    Transport,
 };
 use crate::http_client;
 use serde::Deserialize;
@@ -12,9 +13,6 @@ use std::fmt::Debug;
 // ================================================================
 const GEMINI_API_BASE_URL: &str = "https://generativelanguage.googleapis.com";
 
-pub type Client<H = reqwest::Client> = client::Client<GeminiExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<GeminiBuilder, H>;
-
 #[derive(Debug, Default, Clone)]
 pub struct GeminiExt {
     api_key: String,
@@ -23,7 +21,21 @@ pub struct GeminiExt {
 #[derive(Debug, Default, Clone)]
 pub struct GeminiBuilder;
 
-type GeminiApiKey = String;
+pub struct GeminiApiKey(String);
+
+impl<S> From<S> for GeminiApiKey
+where
+    S: Into<String>,
+{
+    fn from(value: S) -> Self {
+        Self(value.into())
+    }
+}
+
+pub type Client<H = reqwest::Client> = client::Client<GeminiExt, H>;
+pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<GeminiBuilder, GeminiApiKey, H>;
+
+impl ApiKey for GeminiApiKey {}
 
 impl DebugExt for GeminiExt {
     fn fields(&self) -> impl Iterator<Item = (&'static str, &dyn Debug)> {
@@ -36,9 +48,9 @@ impl Provider for GeminiExt {
 
     const VERIFY_PATH: &'static str = "/v1beta/models";
 
-    fn build<H>(builder: &client::ClientBuilder<Self::Builder, String, H>) -> Self {
+    fn build<H>(builder: &client::ClientBuilder<Self::Builder, GeminiApiKey, H>) -> Self {
         Self {
-            api_key: builder.get_api_key().to_string(),
+            api_key: builder.get_api_key().0.clone(),
         }
     }
 
@@ -83,8 +95,8 @@ impl ProviderBuilder for GeminiBuilder {
 
     fn finish<H>(
         &self,
-        mut builder: client::ClientBuilder<Self, String, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, String, H>> {
+        mut builder: client::ClientBuilder<Self, GeminiApiKey, H>,
+    ) -> http_client::Result<client::ClientBuilder<Self, GeminiApiKey, H>> {
         builder.headers_mut().insert(
             http::header::CONTENT_TYPE,
             http::HeaderValue::from_static("application/json"),
@@ -95,7 +107,7 @@ impl ProviderBuilder for GeminiBuilder {
 }
 
 impl ProviderClient for Client {
-    type Input = String;
+    type Input = GeminiApiKey;
 
     /// Create a new Google Gemini client from the `GEMINI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.

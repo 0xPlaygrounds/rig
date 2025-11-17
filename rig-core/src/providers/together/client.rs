@@ -1,5 +1,5 @@
 use crate::client::{
-    self, Capabilities, Capable, Nothing, Provider, ProviderBuilder, ProviderClient,
+    self, Capabilities, Capable, Nothing, Provider, ProviderBuilder, ProviderClient, SimpleKey,
 };
 
 // ================================================================
@@ -12,7 +12,7 @@ pub struct TogetherExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TogetherExtBuilder;
 
-type TogetherApiKey = String;
+type TogetherApiKey = SimpleKey;
 
 pub type Client<H = reqwest::Client> = client::Client<TogetherExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =
@@ -23,7 +23,7 @@ impl Provider for TogetherExt {
 
     const VERIFY_PATH: &'static str = "/models";
 
-    fn build<H>(_: &client::ClientBuilder<Self::Builder, String, H>) -> Self {
+    fn build<H>(_: &client::ClientBuilder<Self::Builder, TogetherApiKey, H>) -> Self {
         Self
     }
 }

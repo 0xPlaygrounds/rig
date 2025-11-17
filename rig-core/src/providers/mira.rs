@@ -9,6 +9,7 @@
 //! ```
 use crate::client::{
     self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+    SimpleKey,
 };
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
@@ -31,6 +32,8 @@ use tracing::{self, Instrument, info_span};
 pub struct MiraExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MiraBuilder;
+
+type MiraApiKey = SimpleKey;
 
 impl Provider for MiraExt {
     type Builder = MiraBuilder;
@@ -64,13 +67,13 @@ impl DebugExt for MiraExt {}
 
 impl ProviderBuilder for MiraBuilder {
     type Output = MiraExt;
-    type ApiKey = String;
+    type ApiKey = MiraApiKey;
 
     const BASE_URL: &'static str = MIRA_API_BASE_URL;
 }
 
 pub type Client<H = reqwest::Client> = client::Client<MiraExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<MiraBuilder, String, H>;
+pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<MiraBuilder, MiraApiKey, H>;
 
 #[derive(Debug, Error)]
 pub enum MiraError {

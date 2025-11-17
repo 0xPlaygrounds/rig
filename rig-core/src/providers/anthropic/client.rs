@@ -1,22 +1,14 @@
 //! Anthropic client api implementation
-use http::HeaderValue;
+use http::{HeaderName, HeaderValue};
 
 use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
 use crate::{
     client::{
-        self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+        self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+        ProviderClient,
     },
     http_client, models,
 };
-
-pub type Client<H = reqwest::Client> = client::Client<AnthropicExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<AnthropicBuilder, String, H>;
-
-// ================================================================
-// Main Anthropic Client
-// ================================================================
-#[derive(Debug, Default, Clone)]
-pub struct AnthropicExt;
 
 models! {
     pub enum AnthropicModels {
@@ -40,12 +32,18 @@ models! {
 }
 pub use AnthropicModels::*;
 
+// ================================================================
+// Main Anthropic Client
+// ================================================================
+#[derive(Debug, Default, Clone)]
+pub struct AnthropicExt;
+
 impl Provider for AnthropicExt {
     type Builder = AnthropicBuilder;
 
     const VERIFY_PATH: &'static str = "/v1/models";
 
-    fn build<H>(_builder: &client::ClientBuilder<Self::Builder, String, H>) -> Self {
+    fn build<H>(_builder: &client::ClientBuilder<Self::Builder, AnthropicKey, H>) -> Self {
         Self
     }
 }
@@ -61,22 +59,57 @@ impl<H> Capabilities<H> for AnthropicExt {
     type AudioGeneration = Nothing;
 }
 
+#[derive(Debug, Clone)]
+pub struct AnthropicBuilder {
+    anthropic_version: String,
+    anthropic_betas: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AnthropicKey(String);
+
+impl<S> From<S> for AnthropicKey
+where
+    S: Into<String>,
+{
+    fn from(value: S) -> Self {
+        Self(value.into())
+    }
+}
+
+impl ApiKey for AnthropicKey {
+    fn into_header(self) -> Option<http_client::Result<(http::HeaderName, HeaderValue)>> {
+        Some(
+            HeaderValue::from_str(&self.0)
+                .map(|val| (HeaderName::from_static("x-api-key"), val))
+                .map_err(Into::into),
+        )
+    }
+}
+
+pub type Client<H = reqwest::Client> = client::Client<AnthropicExt, H>;
+pub type ClientBuilder<H = reqwest::Client> =
+    client::ClientBuilder<AnthropicBuilder, AnthropicKey, H>;
+
+impl Default for AnthropicBuilder {
+    fn default() -> Self {
+        Self {
+            anthropic_version: ANTHROPIC_VERSION_LATEST.into(),
+            anthropic_betas: Vec::new(),
+        }
+    }
+}
+
 impl ProviderBuilder for AnthropicBuilder {
     type Output = AnthropicExt;
-    type ApiKey = String;
+    type ApiKey = AnthropicKey;
 
     const BASE_URL: &'static str = "https://api.anthropic.com";
 
     fn finish<H>(
         &self,
-        mut builder: client::ClientBuilder<Self, String, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, String, H>> {
-        let api_key = builder.get_api_key().to_string();
-
-        builder
-            .headers_mut()
-            .insert("x-api-key", HeaderValue::from_str(&api_key)?);
-
+        mut builder: client::ClientBuilder<Self, AnthropicKey, H>,
+    ) -> http_client::Result<client::ClientBuilder<Self, AnthropicKey, H>> {
         builder.headers_mut().insert(
             "anthropic-version",
             HeaderValue::from_str(&self.anthropic_version)?,
@@ -94,20 +127,6 @@ impl ProviderBuilder for AnthropicBuilder {
 }
 
 impl DebugExt for AnthropicExt {}
-
-pub struct AnthropicBuilder {
-    anthropic_version: String,
-    anthropic_betas: Vec<String>,
-}
-
-impl Default for AnthropicBuilder {
-    fn default() -> Self {
-        Self {
-            anthropic_version: ANTHROPIC_VERSION_LATEST.into(),
-            anthropic_betas: Vec::new(),
-        }
-    }
-}
 
 impl ProviderClient for Client {
     type Input = String;

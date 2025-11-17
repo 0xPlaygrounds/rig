@@ -10,8 +10,8 @@
 //! ```
 use super::openai::{AssistantContent, send_compatible_streaming_request};
 
-use crate::client::ProviderClient;
 use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder};
+use crate::client::{ProviderClient, SimpleKey};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
 use crate::message;
@@ -36,6 +36,8 @@ const HYPERBOLIC_API_BASE_URL: &str = "https://api.hyperbolic.xyz";
 pub struct HyperbolicExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HyperbolicBuilder;
+
+type HyperbolicApiKey = SimpleKey;
 
 impl Provider for HyperbolicExt {
     type Builder = HyperbolicBuilder;
@@ -67,7 +69,7 @@ impl DebugExt for HyperbolicExt {}
 
 impl ProviderBuilder for HyperbolicBuilder {
     type Output = HyperbolicExt;
-    type ApiKey = String;
+    type ApiKey = HyperbolicApiKey;
 
     const BASE_URL: &'static str = HYPERBOLIC_API_BASE_URL;
 }
@@ -76,7 +78,7 @@ pub type Client<H = reqwest::Client> = client::Client<HyperbolicExt, H>;
 pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<HyperbolicBuilder, String, H>;
 
 impl ProviderClient for Client {
-    type Input = String;
+    type Input = HyperbolicApiKey;
 
     /// Create a new Hyperbolic client from the `HYPERBOLIC_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
@@ -86,7 +88,7 @@ impl ProviderClient for Client {
     }
 
     fn from_val(input: Self::Input) -> Self {
-        Self::new(&input).unwrap()
+        Self::new(input).unwrap()
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::{
     client::{
         self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+        SimpleKey,
     },
     completion::GetTokenUsage,
 };
@@ -17,7 +18,7 @@ pub struct OpenRouterExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OpenRouterExtBuilder;
 
-type OpenRouterApiKey = String;
+type OpenRouterApiKey = SimpleKey;
 
 pub type Client<H = reqwest::Client> = client::Client<OpenRouterExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =
@@ -28,7 +29,7 @@ impl Provider for OpenRouterExt {
 
     const VERIFY_PATH: &'static str = "/key";
 
-    fn build<H>(_: &crate::client::ClientBuilder<Self::Builder, String, H>) -> Self {
+    fn build<H>(_: &crate::client::ClientBuilder<Self::Builder, OpenRouterApiKey, H>) -> Self {
         Self
     }
 }
@@ -54,17 +55,18 @@ impl ProviderBuilder for OpenRouterExtBuilder {
 }
 
 impl ProviderClient for Client {
-    type Input = String;
+    type Input = OpenRouterApiKey;
 
     /// Create a new openrouter client from the `OPENROUTER_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY not set");
+
         Self::new(&api_key).unwrap()
     }
 
     fn from_val(input: Self::Input) -> Self {
-        Self::new(&input).unwrap()
+        Self::new(input).unwrap()
     }
 }
 

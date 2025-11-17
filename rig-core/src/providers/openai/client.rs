@@ -1,5 +1,7 @@
 use crate::{
-    client::{self, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient},
+    client::{
+        self, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient, SimpleKey,
+    },
     extractor::ExtractorBuilder,
     http_client::HttpClientExt,
     prelude::CompletionClient,
@@ -20,7 +22,7 @@ pub struct OpenAIExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OpenAIExtBuilder;
 
-type OpenAIApiKey = String;
+type OpenAIApiKey = SimpleKey;
 
 pub type Client<H = reqwest::Client> = client::Client<OpenAIExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =
@@ -31,7 +33,7 @@ impl Provider for OpenAIExt {
 
     const VERIFY_PATH: &'static str = "/models";
 
-    fn build<H>(_: &crate::client::ClientBuilder<Self::Builder, String, H>) -> Self {
+    fn build<H>(_: &crate::client::ClientBuilder<Self::Builder, OpenAIApiKey, H>) -> Self {
         Self
     }
 }
@@ -86,7 +88,7 @@ where
 }
 
 impl ProviderClient for Client {
-    type Input = String;
+    type Input = OpenAIApiKey;
 
     /// Create a new OpenAI client from the `OPENAI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
@@ -104,7 +106,7 @@ impl ProviderClient for Client {
     }
 
     fn from_val(input: Self::Input) -> Self {
-        Self::new(&input).unwrap()
+        Self::new(input).unwrap()
     }
 }
 

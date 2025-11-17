@@ -18,6 +18,7 @@ use tracing::{Instrument, info_span};
 
 use crate::client::{
     self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+    SimpleKey,
 };
 use crate::completion::GetTokenUsage;
 use crate::http_client::HttpClientExt;
@@ -44,6 +45,8 @@ const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com";
 pub struct DeepSeekExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DeepSeekExtBuilder;
+
+type DeepSeekApiKey = SimpleKey;
 
 impl Provider for DeepSeekExt {
     type Builder = DeepSeekExtBuilder;
@@ -75,7 +78,7 @@ impl DebugExt for DeepSeekExt {}
 
 impl ProviderBuilder for DeepSeekExtBuilder {
     type Output = DeepSeekExt;
-    type ApiKey = String;
+    type ApiKey = DeepSeekApiKey;
 
     const BASE_URL: &'static str = DEEPSEEK_API_BASE_URL;
 }
@@ -84,7 +87,7 @@ pub type Client<H = reqwest::Client> = client::Client<DeepSeekExt, H>;
 pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<DeepSeekExtBuilder, String, H>;
 
 impl ProviderClient for Client {
-    type Input = String;
+    type Input = DeepSeekApiKey;
 
     // If you prefer the environment variable approach:
     fn from_env() -> Self {
@@ -93,7 +96,7 @@ impl ProviderClient for Client {
     }
 
     fn from_val(input: Self::Input) -> Self {
-        Self::new(&input).unwrap()
+        Self::new(input).unwrap()
     }
 }
 
