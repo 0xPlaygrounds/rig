@@ -202,6 +202,12 @@ impl Client {
     }
 }
 
+impl Default for Client {
+    fn default() -> Self {
+        Client::new()
+    }
+}
+
 impl ProviderClient for Client {
     fn from_env() -> Self
     where
