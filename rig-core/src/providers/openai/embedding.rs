@@ -100,7 +100,7 @@ where
 
         let req = self
             .client
-            .post("/embeddings")
+            .post("/embeddings")?
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
