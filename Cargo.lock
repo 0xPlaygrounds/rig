@@ -10057,7 +10057,7 @@ dependencies = [
  "anyhow",
  "google-cloud-aiplatform-v1",
  "google-cloud-auth",
- "rig-core 0.23.1",
+ "rig-core 0.24.0",
  "schemars 1.0.4",
  "serde",
  "serde_json",

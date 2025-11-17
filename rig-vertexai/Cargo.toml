@@ -10,7 +10,7 @@ description = "VertexAI model provider for Rig integration."
 [dependencies]
 google-cloud-aiplatform-v1 = { workspace = true }
 google-cloud-auth = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.23.1", default-features = false }
+rig-core = { path = "../rig-core", version = "0.24.0", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
