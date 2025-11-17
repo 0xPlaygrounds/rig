@@ -569,16 +569,16 @@ where
     fn image_generation_model(
         &self,
         model: <M as ImageGenerationModel>::Models,
-    ) -> <Self as ImageGenerationClient>::ImageGenerationModel {
+    ) -> Self::ImageGenerationModel {
         M::make(self, model)
     }
 }
 
 #[cfg(feature = "audio")]
-impl<M, Model, Ext, H> AudioGenerationClient for Client<Ext, H>
+impl<M, Ext, H> AudioGenerationClient for Client<Ext, H>
 where
-    Ext: Capabilities<H, ImageGeneration = Capable<M>>,
-    M: AudioGenerationModel<Client = Self, Model = Model>,
+    Ext: Capabilities<H, AudioGeneration = Capable<M>>,
+    M: AudioGenerationModel<Client = Self>,
 {
     type AudioGenerationModel = M;
 
@@ -586,6 +586,6 @@ where
         &self,
         model: impl Into<<Self::AudioGenerationModel as AudioGenerationModel>::Model>,
     ) -> Self::AudioGenerationModel {
-        M::make(self, model.into())
+        M::make(self, model)
     }
 }

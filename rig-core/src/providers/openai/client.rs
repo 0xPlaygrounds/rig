@@ -45,7 +45,7 @@ impl<H> Capabilities<H> for OpenAIExt {
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<super::AudioGenerationModel>;
+    type AudioGeneration = Capable<super::AudioGenerationModel<H>>;
 }
 
 impl DebugExt for OpenAIExt {}
