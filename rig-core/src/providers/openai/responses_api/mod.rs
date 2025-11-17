@@ -1075,7 +1075,8 @@ where
                 .expect("openai request to successfully turn into a JSON value"),
         );
         let body = serde_json::to_vec(&request)?;
-        tracing::debug!(
+        tracing::trace!(
+            target: "rig::completions",
             "OpenAI Responses API input: {request}",
             request = serde_json::to_string_pretty(&request).unwrap()
         );

@@ -73,7 +73,11 @@ where
 
         let request_body = json!({ "requests": requests  });
 
-        tracing::info!("{}", serde_json::to_string_pretty(&request_body).unwrap());
+        tracing::trace!(
+            target: "rig::embedding",
+            "Sending embedding request to Gemini API {}",
+            serde_json::to_string_pretty(&request_body).unwrap()
+        );
 
         let request_body = serde_json::to_vec(&request_body)?;
         let req = self

@@ -687,15 +687,18 @@ where
                             "gen_ai.usage.output_tokens",
                             response.usage.completion_tokens,
                         );
-                        tracing::debug!(target: "rig", "DeepSeek completion output: {}", serde_json::to_string_pretty(&response_body)?);
-
+                        tracing::trace!(
+                            target: "rig::completions",
+                            "DeepSeek completion output: {}",
+                            serde_json::to_string_pretty(&response_body)?
+                        );
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
                 }
             } else {
                 Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string()
+                    String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
         }

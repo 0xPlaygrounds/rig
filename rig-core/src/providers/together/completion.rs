@@ -233,7 +233,7 @@ where
             tracing::Span::current()
         };
 
-        tracing::debug!(target: "rig::completion", "TogetherAI completion request: {messages_as_json_string}");
+        tracing::debug!(target: "rig::completions", "TogetherAI completion request: {messages_as_json_string}");
 
         let body = serde_json::to_vec(&request)?;
 
@@ -250,7 +250,9 @@ where
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if status.is_success() {
-                match serde_json::from_slice::<ApiResponse<openai::CompletionResponse>>(&response_body)? {
+                match serde_json::from_slice::<ApiResponse<openai::CompletionResponse>>(
+                    &response_body,
+                )? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record(
@@ -266,14 +268,18 @@ where
                                 usage.total_tokens - usage.prompt_tokens,
                             );
                         }
-                        tracing::debug!(target: "rig::completion", "TogetherAI completion response: {}", serde_json::to_string_pretty(&response)?);
+                        tracing::trace!(
+                            target: "rig::completions",
+                            "TogetherAI completion response: {}",
+                            serde_json::to_string_pretty(&response)?
+                        );
                         response.try_into()
                     }
                     ApiResponse::Error(err) => Err(CompletionError::ProviderError(err.error)),
                 }
             } else {
                 Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string()
+                    String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
         }

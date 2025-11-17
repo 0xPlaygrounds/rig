@@ -1,23 +1,15 @@
-use crate::{
-    http_client::{
-        HttpClientExt,
-        sse::{Event, GenericEventSource},
-    },
-    telemetry::SpanCombinator,
-};
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tracing::info_span;
 
-use super::completion::{
-    CompletionModel, create_request_body,
-    gemini_api_types::{ContentCandidate, Part, PartKind},
-};
-use crate::{
-    completion::{CompletionError, CompletionRequest, GetTokenUsage},
-    streaming::{self},
-};
+use super::completion::gemini_api_types::{ContentCandidate, Part, PartKind};
+use super::completion::{CompletionModel, create_request_body};
+use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::http_client::HttpClientExt;
+use crate::http_client::sse::{Event, GenericEventSource};
+use crate::streaming;
+use crate::telemetry::SpanCombinator;
 
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -105,7 +97,8 @@ where
 
         span.record_model_input(&request.contents);
 
-        tracing::debug!(
+        tracing::trace!(
+            target: "rig::streaming",
             "Sending completion request to Gemini API {}",
             serde_json::to_string_pretty(&request)?
         );
@@ -126,6 +119,7 @@ where
         let stream = stream! {
             let mut text_response = String::new();
             let mut model_outputs: Vec<Part> = Vec::new();
+            let mut final_usage = None;
             while let Some(event_result) = event_source.next().await {
                 match event_result {
                     Ok(Event::Open) => {
@@ -203,9 +197,7 @@ where
                             let span = tracing::Span::current();
                             span.record_model_output(&model_outputs);
                             span.record_token_usage(&data.usage_metadata);
-                            yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                                usage_metadata: data.usage_metadata.unwrap_or_default()
-                            }));
+                            final_usage = data.usage_metadata;
                             break;
                         }
                     }
@@ -214,7 +206,7 @@ where
                     }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
-                        yield Err(CompletionError::ResponseError(error.to_string()));
+                        yield Err(CompletionError::ProviderError(error.to_string()));
                         break;
                     }
                 }
@@ -222,6 +214,10 @@ where
 
             // Ensure event source is closed when stream ends
             event_source.close();
+
+            yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                usage_metadata: final_usage.unwrap_or_default()
+            }));
         };
 
         Ok(streaming::StreamingCompletionResponse::stream(Box::pin(

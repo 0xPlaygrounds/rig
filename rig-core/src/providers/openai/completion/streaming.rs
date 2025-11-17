@@ -1,19 +1,19 @@
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
-use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
-use crate::json_utils;
-use crate::json_utils::merge;
-use crate::providers::openai::completion::{CompletionModel, Usage};
-use crate::streaming;
-use crate::streaming::RawStreamingChoice;
+use std::collections::HashMap;
+
 use async_stream::stream;
 use futures::StreamExt;
 use http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashMap;
 use tracing::{debug, info_span};
 use tracing_futures::Instrument;
+
+use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::http_client::HttpClientExt;
+use crate::http_client::sse::{Event, GenericEventSource};
+use crate::json_utils::{self, merge};
+use crate::providers::openai::completion::{CompletionModel, Usage};
+use crate::streaming::{self, RawStreamingChoice};
 
 // ================================================================
 // OpenAI Completion Streaming API
@@ -131,7 +131,7 @@ where
 
     let stream = stream! {
         let span = tracing::Span::current();
-        let mut final_usage = Usage::new();
+        let mut final_usage = None;
 
         // Track in-progress tool calls
         let mut tool_calls: HashMap<usize, (String, String, String)> = HashMap::new();
@@ -149,11 +149,12 @@ where
                         continue;
                     }
 
-                    let data = serde_json::from_str::<StreamingCompletionChunk>(&message.data);
-                    let Ok(data) = data else {
-                        let err = data.unwrap_err();
-                        debug!("Couldn't serialize data as StreamingCompletionChunk: {:?}", err);
-                        continue;
+                    let data = match serde_json::from_str::<StreamingCompletionChunk>(&message.data) {
+                        Ok(data) => data,
+                        Err(error) => {
+                            tracing::error!(?error, message = message.data, "Failed to parse SSE message");
+                            continue;
+                        }
                     };
 
                     if let Some(choice) = data.choices.first() {
@@ -175,7 +176,7 @@ where
                                 // tool call partial (ie, a continuation of a previously received tool call)
                                 // name: None or Empty String
                                 // arguments: Some(String)
-                                else if function.name.clone().is_none_or(|s| s.is_empty())
+                                else if function.name.as_ref().is_none_or(|s| s.is_empty())
                                     && !function.arguments.is_empty()
                                 {
                                     if let Some((id, name, arguments)) =
@@ -226,7 +227,7 @@ where
 
                     // Usage updates
                     if let Some(usage) = data.usage {
-                        final_usage = usage.clone();
+                        final_usage = Some(usage.clone());
                     }
                 }
                 Err(crate::http_client::Error::StreamEnded) => {
@@ -234,7 +235,7 @@ where
                 }
                 Err(error) => {
                     tracing::error!(?error, "SSE error");
-                    yield Err(CompletionError::ResponseError(error.to_string()));
+                    yield Err(CompletionError::ProviderError(error.to_string()));
                     break;
                 }
             }
@@ -275,12 +276,13 @@ where
             tool_calls: vec_toolcalls
         };
 
+        let final_usage = final_usage.unwrap_or_default();
         span.record("gen_ai.usage.input_tokens", final_usage.prompt_tokens);
         span.record("gen_ai.usage.output_tokens", final_usage.total_tokens - final_usage.prompt_tokens);
         span.record("gen_ai.output.messages", serde_json::to_string(&vec![message_output]).expect("Converting from a Rust struct should always convert to JSON without failing"));
 
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-            usage: final_usage.clone()
+            usage: final_usage
         }));
     }.instrument(span);
 

@@ -55,6 +55,10 @@ impl SpanCombinator for tracing::Span {
     where
         U: GetTokenUsage,
     {
+        if self.is_disabled() {
+            return;
+        }
+
         if let Some(usage) = usage.token_usage() {
             self.record("gen_ai.usage.input_tokens", usage.input_tokens);
             self.record("gen_ai.usage.output_tokens", usage.output_tokens);
@@ -65,6 +69,10 @@ impl SpanCombinator for tracing::Span {
     where
         R: ProviderResponseExt,
     {
+        if self.is_disabled() {
+            return;
+        }
+
         if let Some(id) = response.get_response_id() {
             self.record("gen_ai.response.id", id);
         }
@@ -78,19 +86,27 @@ impl SpanCombinator for tracing::Span {
     where
         T: Serialize,
     {
+        if self.is_disabled() {
+            return;
+        }
+
         let input_as_json_string =
             serde_json::to_string(input).expect("Serializing a Rust type to JSON should not break");
 
         self.record("gen_ai.input.messages", input_as_json_string);
     }
 
-    fn record_model_output<T>(&self, input: &T)
+    fn record_model_output<T>(&self, output: &T)
     where
         T: Serialize,
     {
-        let input_as_json_string =
-            serde_json::to_string(input).expect("Serializing a Rust type to JSON should not break");
+        if self.is_disabled() {
+            return;
+        }
 
-        self.record("gen_ai.input.messages", input_as_json_string);
+        let output_as_json_string = serde_json::to_string(output)
+            .expect("Serializing a Rust type to JSON should not break");
+
+        self.record("gen_ai.output.messages", output_as_json_string);
     }
 }

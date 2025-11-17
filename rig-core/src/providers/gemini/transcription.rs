@@ -96,7 +96,8 @@ where
             additional_params: None,
         };
 
-        tracing::debug!(
+        tracing::trace!(
+            target: "rig::transcription",
             "Sending completion request to Gemini API {}",
             serde_json::to_string_pretty(&request)?
         );

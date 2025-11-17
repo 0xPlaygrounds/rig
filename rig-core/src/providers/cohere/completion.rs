@@ -612,7 +612,7 @@ where
             tracing::Span::current()
         };
 
-        tracing::debug!(
+        tracing::trace!(
             "Cohere request: {}",
             serde_json::to_string_pretty(&request)?
         );
@@ -642,7 +642,8 @@ where
                 span.record_token_usage(&json_response.usage);
                 span.record_model_output(&json_response.message);
                 span.record_response_metadata(&json_response);
-                tracing::debug!(
+                tracing::trace!(
+                    target: "rig::completions",
                     "Cohere completion response: {}",
                     serde_json::to_string_pretty(&json_response)?
                 );
