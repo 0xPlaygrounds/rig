@@ -1,24 +1,21 @@
-use bytes::Bytes;
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use tracing::{Instrument, info_span};
-
-use super::client::{ApiErrorResponse, ApiResponse, Client, Usage};
-
+use super::{
+    client::{ApiErrorResponse, ApiResponse, Client, Usage},
+    streaming::StreamingCompletionResponse,
+};
+use crate::message;
+use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     http_client::HttpClientExt,
     json_utils, models,
-    providers::openai::Message,
+    one_or_many::string_or_one_or_many,
+    providers::openai,
 };
+use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-
-use crate::providers::openai::AssistantContent;
-use crate::providers::openrouter::streaming::FinalCompletionResponse;
-use crate::streaming::StreamingCompletionResponse;
-use crate::telemetry::SpanCombinator;
-use crate::{OneOrMany, json_utils, message};
+use tracing::{Instrument, info_span};
 
 // ================================================================
 // OpenRouter Completion API
