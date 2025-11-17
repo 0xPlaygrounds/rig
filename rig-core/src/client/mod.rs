@@ -244,6 +244,17 @@ impl<Ext, H> Client<Ext, H> {
     pub fn ext(&self) -> &Ext {
         &self.ext
     }
+
+    /// Create a new client from individual parts.
+    /// This is useful for converting between different provider extensions.
+    pub fn from_parts(base_url: String, headers: HeaderMap, http_client: H, ext: Ext) -> Self {
+        Self {
+            base_url,
+            headers,
+            http_client,
+            ext,
+        }
+    }
 }
 
 impl<Ext, Builder, H> Client<Ext, H>

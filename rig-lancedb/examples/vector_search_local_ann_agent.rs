@@ -82,6 +82,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Use OpenAI-compatible API interface to build agent
     let agent = openai_client
         .completion_model(GPT4O)
+        .completions_api()
         .into_agent_builder()
         .temperature(0.5)
         .preamble("You are a helpful AI assistant.")

@@ -397,6 +397,7 @@ async fn agent_with_dynamic_context_test() {
     // Build RAG agent with dynamic context
     let agent = openai_client
         .completion_model(GPT4O)
+        .completions_api()
         .into_agent_builder()
         .dynamic_context(top_k, vector_store_index)
         .build();

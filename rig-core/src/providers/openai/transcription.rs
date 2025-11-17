@@ -1,7 +1,7 @@
 use bytes::Bytes;
 
 use crate::http_client::HttpClientExt;
-use crate::providers::openai::{ApiResponse, Client};
+use crate::providers::openai::{Client, client::ApiResponse};
 use crate::transcription::TranscriptionError;
 use crate::{models, transcription};
 use reqwest::multipart::Part;

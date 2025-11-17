@@ -2,7 +2,11 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::{ApiErrorResponse, ApiResponse, Client, streaming::StreamingCompletionResponse};
+use super::{
+    CompletionsClient as Client,
+    client::{ApiErrorResponse, ApiResponse},
+    streaming::StreamingCompletionResponse,
+};
 use crate::completion::{
     CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
 };
@@ -969,7 +973,7 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
-    type Client = Client<T>;
+    type Client = super::CompletionsClient<T>;
     type Models = CompletionModels;
 
     fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {

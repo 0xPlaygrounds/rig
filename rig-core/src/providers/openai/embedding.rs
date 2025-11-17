@@ -1,4 +1,8 @@
-use super::{ApiErrorResponse, ApiResponse, Client, completion::Usage};
+use super::{
+    Client,
+    client::{ApiErrorResponse, ApiResponse},
+    completion::Usage,
+};
 use crate::embeddings::EmbeddingError;
 use crate::http_client::HttpClientExt;
 use crate::{embeddings, http_client, models};

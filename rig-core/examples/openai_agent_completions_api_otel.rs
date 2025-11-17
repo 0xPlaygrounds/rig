@@ -46,6 +46,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
     let agent = providers::openai::Client::from_env()
         .completion_model(GPT4O)
+        .completions_api()
         .into_agent_builder()
         .preamble("You are a helpful assistant")
         .build();

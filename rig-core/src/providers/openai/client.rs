@@ -16,20 +16,38 @@ use std::fmt::Debug;
 // ================================================================
 const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
 
+// ================================================================
+// OpenAI Responses API Extension
+// ================================================================
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAIExt;
+pub struct OpenAIResponsesExt;
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAIExtBuilder;
+pub struct OpenAIResponsesExtBuilder;
+
+// ================================================================
+// OpenAI Completions API Extension
+// ================================================================
+#[derive(Debug, Default, Clone, Copy)]
+pub struct OpenAICompletionsExt;
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct OpenAICompletionsExtBuilder;
 
 type OpenAIApiKey = SimpleKey;
 
-pub type Client<H = reqwest::Client> = client::Client<OpenAIExt, H>;
+// Responses API client (default)
+pub type Client<H = reqwest::Client> = client::Client<OpenAIResponsesExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =
-    client::ClientBuilder<OpenAIExtBuilder, OpenAIApiKey, H>;
+    client::ClientBuilder<OpenAIResponsesExtBuilder, OpenAIApiKey, H>;
 
-impl Provider for OpenAIExt {
-    type Builder = OpenAIExtBuilder;
+// Completions API client
+pub type CompletionsClient<H = reqwest::Client> = client::Client<OpenAICompletionsExt, H>;
+pub type CompletionsClientBuilder<H = reqwest::Client> =
+    client::ClientBuilder<OpenAICompletionsExtBuilder, OpenAIApiKey, H>;
+
+impl Provider for OpenAIResponsesExt {
+    type Builder = OpenAIResponsesExtBuilder;
 
     const VERIFY_PATH: &'static str = "/models";
 
@@ -38,8 +56,18 @@ impl Provider for OpenAIExt {
     }
 }
 
-impl<H> Capabilities<H> for OpenAIExt {
-    type Completion = Capable<super::CompletionModel<H>>;
+impl Provider for OpenAICompletionsExt {
+    type Builder = OpenAICompletionsExtBuilder;
+
+    const VERIFY_PATH: &'static str = "/models";
+
+    fn build<H>(_: &crate::client::ClientBuilder<Self::Builder, OpenAIApiKey, H>) -> Self {
+        Self
+    }
+}
+
+impl<H> Capabilities<H> for OpenAIResponsesExt {
+    type Completion = Capable<super::responses_api::ResponsesCompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;
     type Transcription = Capable<super::TranscriptionModel<H>>;
     #[cfg(feature = "image")]
@@ -48,10 +76,29 @@ impl<H> Capabilities<H> for OpenAIExt {
     type AudioGeneration = Capable<super::AudioGenerationModel<H>>;
 }
 
-impl DebugExt for OpenAIExt {}
+impl<H> Capabilities<H> for OpenAICompletionsExt {
+    type Completion = Capable<super::completion::CompletionModel<H>>;
+    type Embeddings = Capable<super::EmbeddingModel<H>>;
+    type Transcription = Capable<super::TranscriptionModel<H>>;
+    #[cfg(feature = "image")]
+    type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
+    #[cfg(feature = "audio")]
+    type AudioGeneration = Capable<super::AudioGenerationModel<H>>;
+}
 
-impl ProviderBuilder for OpenAIExtBuilder {
-    type Output = OpenAIExt;
+impl DebugExt for OpenAIResponsesExt {}
+
+impl DebugExt for OpenAICompletionsExt {}
+
+impl ProviderBuilder for OpenAIResponsesExtBuilder {
+    type Output = OpenAIResponsesExt;
+    type ApiKey = OpenAIApiKey;
+
+    const BASE_URL: &'static str = OPENAI_API_BASE_URL;
+}
+
+impl ProviderBuilder for OpenAICompletionsExtBuilder {
+    type Output = OpenAICompletionsExt;
     type ApiKey = OpenAIApiKey;
 
     const BASE_URL: &'static str = OPENAI_API_BASE_URL;
@@ -59,7 +106,6 @@ impl ProviderBuilder for OpenAIExtBuilder {
 
 impl<H> Client<H>
 where
-    Self: CompletionClient<CompletionModel = super::CompletionModel<H>>,
     H: HttpClientExt
         + Clone
         + std::fmt::Debug
@@ -69,34 +115,96 @@ where
         + 'static,
 {
     /// Create an extractor builder with the given completion model.
-    /// Intended for use exclusively with the Chat Completions API.
-    /// Useful for using extractors with Chat Completion compliant APIs.
-    pub fn extractor_completions_api<U>(
+    /// Uses the OpenAI Responses API (default behavior).
+    pub fn extractor<U>(
         &self,
         model: super::CompletionModels,
-    ) -> ExtractorBuilder<super::CompletionModel<H>, U>
+    ) -> ExtractorBuilder<super::responses_api::ResponsesCompletionModel<H>, U>
     where
         U: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
     {
-        // NOTE: this was the below commented out code, but that was somehow creating a
-        // `ResponsesCompletionModel` and then getting a `CompletionModel` from that. I figure
-        // directly getting the `CompletionModel` is fine but ???
-        //
-        // ExtractorBuilder::new(self.completion_model(model).completions_api())
         ExtractorBuilder::new(self.completion_model(model))
+    }
+
+    /// Create a Completions API client from this Responses API client.
+    /// Useful for switching to the traditional Chat Completions API.
+    pub fn completions_api(self) -> CompletionsClient<H> {
+        client::Client::from_parts(
+            self.base_url().to_string(),
+            self.headers().clone(),
+            self.http_client().clone(),
+            OpenAICompletionsExt,
+        )
+    }
+}
+
+impl<H> CompletionsClient<H>
+where
+    H: HttpClientExt
+        + Clone
+        + std::fmt::Debug
+        + Default
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
+{
+    /// Create an extractor builder with the given completion model.
+    /// Uses the OpenAI Chat Completions API.
+    pub fn extractor<U>(
+        &self,
+        model: super::CompletionModels,
+    ) -> ExtractorBuilder<super::completion::CompletionModel<H>, U>
+    where
+        U: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+    {
+        ExtractorBuilder::new(self.completion_model(model))
+    }
+
+    /// Create a Responses API client from this Completions API client.
+    /// Useful for switching to the newer Responses API.
+    pub fn responses_api(self) -> Client<H> {
+        client::Client::from_parts(
+            self.base_url().to_string(),
+            self.headers().clone(),
+            self.http_client().clone(),
+            OpenAIResponsesExt,
+        )
     }
 }
 
 impl ProviderClient for Client {
     type Input = OpenAIApiKey;
 
-    /// Create a new OpenAI client from the `OPENAI_API_KEY` environment variable.
+    /// Create a new OpenAI Responses API client from the `OPENAI_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let base_url: Option<String> = std::env::var("OPENAI_BASE_URL").ok();
         let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
 
         let mut builder = Client::builder().api_key(&api_key);
+
+        if let Some(base) = base_url {
+            builder = builder.base_url(&base);
+        }
+
+        builder.build().unwrap()
+    }
+
+    fn from_val(input: Self::Input) -> Self {
+        Self::new(input).unwrap()
+    }
+}
+
+impl ProviderClient for CompletionsClient {
+    type Input = OpenAIApiKey;
+
+    /// Create a new OpenAI Completions API client from the `OPENAI_API_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    fn from_env() -> Self {
+        let base_url: Option<String> = std::env::var("OPENAI_BASE_URL").ok();
+        let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
+
+        let mut builder = CompletionsClient::builder().api_key(&api_key);
 
         if let Some(base) = base_url {
             builder = builder.base_url(&base);
