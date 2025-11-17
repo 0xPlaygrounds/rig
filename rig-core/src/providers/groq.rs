@@ -346,6 +346,11 @@ impl TryFrom<message::Message> for Message {
                             groq_reasoning =
                                 Some(reasoning.first().cloned().unwrap_or(String::new()));
                         }
+                        message::AssistantContent::Image(_) => {
+                            return Err(MessageError::ConversionError(
+                                "Ollama currently doesn't support images.".into(),
+                            ));
+                        }
                     }
                 }
 

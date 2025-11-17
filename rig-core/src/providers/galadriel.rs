@@ -440,6 +440,11 @@ impl TryFrom<message::Message> for Message {
                                 "Galadriel currently doesn't support reasoning.".into(),
                             ));
                         }
+                        message::AssistantContent::Image(_) => {
+                            return Err(MessageError::ConversionError(
+                                "Galadriel currently doesn't support images.".into(),
+                            ));
+                        }
                     }
                 }
 

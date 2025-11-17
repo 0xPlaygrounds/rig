@@ -933,24 +933,29 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
             }
             InternalMessage::Assistant { content, .. } => {
                 let mut thinking: Option<String> = None;
-                let (text_content, tool_calls) = content.into_iter().fold(
-                    (Vec::new(), Vec::new()),
-                    |(mut texts, mut tools), content| {
-                        match content {
-                            crate::message::AssistantContent::Text(text) => texts.push(text.text),
-                            crate::message::AssistantContent::ToolCall(tool_call) => {
-                                tools.push(tool_call)
-                            }
-                            crate::message::AssistantContent::Reasoning(
-                                crate::message::Reasoning { reasoning, .. },
-                            ) => {
-                                thinking =
-                                    Some(reasoning.first().cloned().unwrap_or(String::new()));
-                            }
+                let mut text_content = Vec::new();
+                let mut tool_calls = Vec::new();
+
+                for content in content.into_iter() {
+                    match content {
+                        crate::message::AssistantContent::Text(text) => {
+                            text_content.push(text.text)
                         }
-                        (texts, tools)
-                    },
-                );
+                        crate::message::AssistantContent::ToolCall(tool_call) => {
+                            tool_calls.push(tool_call)
+                        }
+                        crate::message::AssistantContent::Reasoning(
+                            crate::message::Reasoning { reasoning, .. },
+                        ) => {
+                            thinking = Some(reasoning.first().cloned().unwrap_or(String::new()));
+                        }
+                        crate::message::AssistantContent::Image(_) => {
+                            return Err(crate::message::MessageError::ConversionError(
+                                "Ollama currently doesn't support images.".into(),
+                            ));
+                        }
+                    }
+                }
 
                 // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
                 //  so either `content` or `tool_calls` will have some content.

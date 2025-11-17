@@ -394,6 +394,12 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 }),
                             });
                         }
+                        crate::message::AssistantContent::Image(_) => {
+                            return Err(CompletionError::ProviderError(
+                                "Assistant image content is not supported in OpenAI Responses API"
+                                    .to_string(),
+                            ));
+                        }
                     }
                 }
 
@@ -1466,6 +1472,11 @@ impl TryFrom<message::Message> for Vec<Message> {
                         name: None,
                         status: (ToolStatus::Completed),
                     }]),
+                    crate::message::AssistantContent::Image(_) => {
+                        Err(MessageError::ConversionError(
+                            "Assistant image content is not supported in OpenAI Responses API".into(),
+                        ))
+                    }
                 }
             }
         }

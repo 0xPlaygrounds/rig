@@ -447,6 +447,11 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     "The OpenAI Completions API doesn't support reasoning!"
                                 );
                             }
+                            message::AssistantContent::Image(_) => {
+                                unimplemented!(
+                                    "The OpenAI Completions API doesn't support image content in assistant messages!"
+                                );
+                            }
                         }
                         (texts, tools)
                     },

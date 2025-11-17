@@ -651,6 +651,7 @@ mod tests {
                         config.name
                     );
                 }
+                AssistantContent::Image(_) => {}
                 AssistantContent::ToolCall(_) => {}
                 AssistantContent::Reasoning(_) => {}
             }

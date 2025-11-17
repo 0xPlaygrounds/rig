@@ -366,6 +366,11 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::AssistantContent::Reasoning(_) => {
                                 unimplemented!("Reasoning is not supported on HuggingFace via Rig");
                             }
+                            message::AssistantContent::Image(_) => {
+                                unimplemented!(
+                                    "Image content is not supported on HuggingFace via Rig"
+                                );
+                            }
                         }
                         (texts, tools)
                     },
