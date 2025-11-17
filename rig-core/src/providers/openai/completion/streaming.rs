@@ -52,11 +52,9 @@ pub enum FinishReason {
 }
 
 #[derive(Deserialize, Debug)]
-#[allow(dead_code)]
 struct StreamingChoice {
     delta: StreamingDelta,
     finish_reason: Option<FinishReason>,
-    index: usize,
 }
 
 #[derive(Deserialize, Debug)]
