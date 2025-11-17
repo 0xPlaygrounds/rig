@@ -269,8 +269,6 @@ where
             .ext
             .build_uri(&self.base_url, path.as_ref(), Transport::Http);
 
-        dbg!(&uri);
-
         let mut req = Request::post(uri);
 
         if let Some(hs) = req.headers_mut() {
@@ -287,8 +285,6 @@ where
         let uri = self
             .ext
             .build_uri(&self.base_url, path.as_ref(), Transport::Sse);
-
-        dbg!(&uri);
 
         let mut req = Request::post(uri);
 
@@ -307,8 +303,6 @@ where
             .ext
             .build_uri(&self.base_url, path.as_ref(), Transport::Http);
 
-        dbg!(&uri);
-
         self.ext.with_custom(Request::get(uri))
     }
 }
@@ -322,8 +316,6 @@ where
         T: std::fmt::Debug + Into<Bytes> + WasmCompatSend,
         U: std::fmt::Debug + From<Bytes> + WasmCompatSend + 'static,
     {
-        dbg!(&req);
-
         self.http_client.send(req).await
     }
 
@@ -334,8 +326,6 @@ where
     where
         U: std::fmt::Debug + Into<Bytes>,
     {
-        dbg!(&req);
-
         self.http_client.send_streaming(req).await
     }
 }

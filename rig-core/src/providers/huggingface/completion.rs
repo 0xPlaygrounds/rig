@@ -51,14 +51,6 @@ models! {
 }
 pub use CompletionModels::*;
 
-// FIXME: @FayCarsons - what do these do??
-// Conversational VLMs
-
-/// `Qwen/Qwen2-VL-7B-Instruct` visual-language completion model
-//pub const QWEN2_VL: &str = "Qwen/Qwen2-VL-7B-Instruct";
-/// `Qwen/QVQ-72B-Preview` visual-language completion model
-//pub const QWEN_QVQ_PREVIEW: &str = "Qwen/QVQ-72B-Preview";
-
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub struct Function {
     name: String,

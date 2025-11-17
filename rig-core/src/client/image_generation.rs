@@ -61,9 +61,9 @@ mod image {
         type Models = Nothing;
         type Client = Nothing;
 
-        // FIXME: This is not the behavior we want, but not sure how we could statically prevent
-        // this method from being called aside from totally gutting the trait
-        /// **Do not call this method**
+        // NOTE: @FayCarsons - This is not ideal, we would ideally have a way to statically prevent
+        // anyone from calling this method but that doesn't seem possible without gutting the trait
+        // and finding a new wait to implement `ImageGenerationClient` for arbitrary `Client<Ext, H>`
         fn make(_client: &Self::Client, _model: Self::Models) -> Self {
             panic!(
                 "'ImageGenerationModel::make' should not be called on 'ImageGenerationModelHandle'"

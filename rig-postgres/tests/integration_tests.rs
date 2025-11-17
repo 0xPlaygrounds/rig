@@ -175,14 +175,15 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
     server.mock(|when, then| {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
-            .header("Authorization", "Bearer TEST")
+            .header("authorization", "Bearer TEST")
             .json_body(json!({
+                "dimensions": 1536,
                 "input": [
                     "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
                     "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
                     "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
                 ],
-                "model": "text-embedding-ada-002",
+                "model": "text-embedding-3-small",
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -205,7 +206,7 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
                     "index": 2
                   }
                 ],
-                "model": "text-embedding-ada-002",
+                "model": "text-embedding-3-small",
                 "usage": {
                   "prompt_tokens": 8,
                   "total_tokens": 8
@@ -216,12 +217,13 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
     server.mock(|when, then| {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
-            .header("Authorization", "Bearer TEST")
+            .header("authorization", "Bearer TEST")
             .json_body(json!({
+                "dimensions": 1536,
                 "input": [
                     "What does \"glarb-glarb\" mean?"
                 ],
-                "model": "text-embedding-ada-002",
+                "model": "text-embedding-3-small",
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -234,7 +236,7 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
                         "index": 0
                       }
                     ],
-                    "model": "text-embedding-ada-002",
+                    "model": "text-embedding-3-small",
                     "usage": {
                       "prompt_tokens": 8,
                       "total_tokens": 8

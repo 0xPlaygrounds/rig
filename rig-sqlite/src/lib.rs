@@ -567,8 +567,6 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                     ORDER BY e.distance"
                 ))?;
 
-                dbg!(&stmt);
-
                 let rows = stmt
                     .query_map(rusqlite::params_from_iter(params), |row| {
                         // Create a map of column names to values
@@ -631,8 +629,6 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                      {where_clause}
                      ORDER BY e.distance"
                 ))?;
-
-                dbg!(&stmt);
 
                 let results = stmt
                     .query_map(rusqlite::params_from_iter(params), |row| {
