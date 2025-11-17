@@ -42,7 +42,7 @@ pub enum Error {
 }
 
 pub struct AnyClient {
-    client: Box<dyn Any + Send + Sync>,
+    client: Box<dyn Any + 'static>,
     vtable: AnyClientVTable,
 }
 
@@ -59,8 +59,8 @@ struct AnyClientVTable {
 impl AnyClient {
     pub fn new<Ext, H>(client: Client<Ext, H>) -> Self
     where
-        Ext: Provider + Capabilities + 'static,
-        H: 'static,
+        Ext: Provider + Capabilities + WasmCompatSend + WasmCompatSync + 'static,
+        H: WasmCompatSend + WasmCompatSync + 'static,
         Client<Ext, H>: WasmCompatSend + WasmCompatSync + 'static,
     {
         Self {
@@ -248,8 +248,8 @@ impl DynClientBuilder {
 
     pub fn register<Ext, H, Models>(mut self, provider_name: &'static str, model: Models) -> Self
     where
-        Ext: Provider + Capabilities + 'static,
-        H: Default + 'static,
+        Ext: Provider + Capabilities + WasmCompatSend + WasmCompatSync + 'static,
+        H: Default + WasmCompatSend + WasmCompatSync + 'static,
         Client<Ext, H>: ProviderClient + WasmCompatSend + WasmCompatSync + 'static,
         Models: ToString,
     {
