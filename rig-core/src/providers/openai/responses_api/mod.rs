@@ -20,6 +20,7 @@ use crate::message::{
 };
 use crate::one_or_many::string_or_one_or_many;
 
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, message};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -1038,7 +1039,13 @@ pub enum OutputRole {
 
 impl<T> completion::CompletionModel for ResponsesCompletionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+    T: HttpClientExt
+        + Clone
+        + std::fmt::Debug
+        + Default
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;

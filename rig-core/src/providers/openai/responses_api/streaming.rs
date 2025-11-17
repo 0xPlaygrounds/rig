@@ -8,6 +8,7 @@ use crate::providers::openai::responses_api::{
 };
 use crate::streaming;
 use crate::streaming::RawStreamingChoice;
+use crate::wasm_compat::WasmCompatSend;
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -201,7 +202,7 @@ pub enum SummaryPartChunkPart {
 
 impl<T> ResponsesCompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + WasmCompatSend + 'static,
 {
     pub(crate) async fn stream(
         &self,

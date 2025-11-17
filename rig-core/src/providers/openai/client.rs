@@ -121,7 +121,7 @@ where
         model: super::CompletionModels,
     ) -> ExtractorBuilder<super::responses_api::ResponsesCompletionModel<H>, U>
     where
-        U: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+        U: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
     {
         ExtractorBuilder::new(self.completion_model(model))
     }
@@ -155,7 +155,7 @@ where
         model: super::CompletionModels,
     ) -> ExtractorBuilder<super::completion::CompletionModel<H>, U>
     where
-        U: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
+        U: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
     {
         ExtractorBuilder::new(self.completion_model(model))
     }
