@@ -392,7 +392,7 @@ pub struct ClientBuilder<Ext, ApiKey = NeedsApiKey, H = reqwest::Client> {
     base_url: String,
     api_key: ApiKey,
     headers: HeaderMap,
-    http_client: H,
+    http_client: Option<H>,
     ext: Ext,
 }
 
@@ -406,7 +406,7 @@ where
             api_key: NeedsApiKey,
             headers: Default::default(),
             base_url: ExtBuilder::BASE_URL.into(),
-            http_client: Default::default(),
+            http_client: None,
             ext: Default::default(),
         }
     }
@@ -468,7 +468,7 @@ where
     /// Set the HTTP backend used in this client
     pub fn http_client<U>(self, http_client: U) -> ClientBuilder<Ext, ApiKey, U> {
         ClientBuilder {
-            http_client,
+            http_client: Some(http_client),
             base_url: self.base_url,
             api_key: self.api_key,
             headers: self.headers,
@@ -502,6 +502,7 @@ where
     ExtBuilder: Clone + ProviderBuilder<Output = Ext, ApiKey = Key> + Default,
     Ext: Provider<Builder = ExtBuilder>,
     Key: ApiKey,
+    H: Default,
 {
     pub fn build(mut self) -> http_client::Result<Client<ExtBuilder::Output, H>> {
         let ext = self.ext.clone();
@@ -520,6 +521,8 @@ where
         if let Some((k, v)) = api_key.into_header().transpose()? {
             headers.insert(k, v);
         }
+
+        let http_client = http_client.unwrap_or_default();
 
         Ok(Client {
             http_client,
