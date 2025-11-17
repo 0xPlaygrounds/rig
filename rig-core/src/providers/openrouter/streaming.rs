@@ -90,7 +90,7 @@ struct StreamingDelta {
     pub role: Option<String>,
     pub content: Option<String>,
     pub reasoning: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "json_utils::null_or_vec")]
     pub tool_calls: Vec<StreamingToolCall>,
 }
 
@@ -281,9 +281,7 @@ where
                         }
                         tool_calls = HashMap::new();
                     }
-
                 }
-
                 Err(crate::http_client::Error::StreamEnded) => {
                     break;
                 }

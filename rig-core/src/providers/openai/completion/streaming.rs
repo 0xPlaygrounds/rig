@@ -5,32 +5,31 @@ use futures::StreamExt;
 use http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::{debug, info_span};
+use tracing::info_span;
 use tracing_futures::Instrument;
 
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils::{self, merge};
-use crate::providers::openai::completion::{CompletionModel, Usage};
+use crate::message::{ToolCall, ToolFunction};
+use crate::providers::openai::completion::{self, CompletionModel, Usage};
 use crate::streaming::{self, RawStreamingChoice};
 
 // ================================================================
 // OpenAI Completion Streaming API
 // ================================================================
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StreamingFunction {
-    #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub arguments: String,
+#[derive(Deserialize, Debug)]
+pub(crate) struct StreamingFunction {
+    pub(crate) name: Option<String>,
+    pub(crate) arguments: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StreamingToolCall {
-    pub index: usize,
-    pub id: Option<String>,
-    pub function: StreamingFunction,
+#[derive(Deserialize, Debug)]
+pub(crate) struct StreamingToolCall {
+    pub(crate) index: usize,
+    pub(crate) id: Option<String>,
+    pub(crate) function: StreamingFunction,
 }
 
 #[derive(Deserialize, Debug)]
@@ -41,9 +40,23 @@ struct StreamingDelta {
     tool_calls: Vec<StreamingToolCall>,
 }
 
+#[derive(Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum FinishReason {
+    ToolCalls,
+    Stop,
+    ContentFilter,
+    Length,
+    #[serde(untagged)]
+    Other(String), // This will handle the deprecated function_call
+}
+
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct StreamingChoice {
     delta: StreamingDelta,
+    finish_reason: Option<FinishReason>,
+    index: usize,
 }
 
 #[derive(Deserialize, Debug)]
@@ -131,12 +144,12 @@ where
 
     let stream = stream! {
         let span = tracing::Span::current();
-        let mut final_usage = None;
 
-        // Track in-progress tool calls
-        let mut tool_calls: HashMap<usize, (String, String, String)> = HashMap::new();
-
+        // Accumulate tool calls by index while streaming
+        let mut tool_calls: HashMap<usize, ToolCall> = HashMap::new();
         let mut text_content = String::new();
+        let mut final_tool_calls: Vec<completion::ToolCall> = Vec::new();
+        let mut final_usage = None;
 
         while let Some(event_result) = event_source.next().await {
             match event_result {
@@ -144,6 +157,7 @@ where
                     tracing::trace!("SSE connection opened");
                     continue;
                 }
+
                 Ok(Event::Message(message)) => {
                     if message.data.trim().is_empty() || message.data == "[DONE]" {
                         continue;
@@ -157,77 +171,96 @@ where
                         }
                     };
 
-                    if let Some(choice) = data.choices.first() {
-                        let delta = &choice.delta;
+                    // Expect at least one choice
+                     let Some(choice) = data.choices.first() else {
+                        tracing::debug!("There is no choice");
+                        continue;
+                    };
+                    let delta = &choice.delta;
 
-                        // Tool calls
-                        if !delta.tool_calls.is_empty() {
-                            for tool_call in &delta.tool_calls {
-                                let function = tool_call.function.clone();
+                    if !delta.tool_calls.is_empty() {
+                        for tool_call in &delta.tool_calls {
+                            let index = tool_call.index;
 
-                                // Start of tool call
-                                if function.name.is_some() && function.arguments.is_empty() {
-                                    let id = tool_call.id.clone().unwrap_or_default();
-                                    tool_calls.insert(
-                                        tool_call.index,
-                                        (id, function.name.clone().unwrap(), "".to_string()),
-                                    );
-                                }
-                                // tool call partial (ie, a continuation of a previously received tool call)
-                                // name: None or Empty String
-                                // arguments: Some(String)
-                                else if function.name.as_ref().is_none_or(|s| s.is_empty())
-                                    && !function.arguments.is_empty()
-                                {
-                                    if let Some((id, name, arguments)) =
-                                        tool_calls.get(&tool_call.index).cloned()
-                                    {
-                                        let new_arguments = &tool_call.function.arguments;
-                                        let combined_arguments = format!("{arguments}{new_arguments}");
-                                        tool_calls.insert(
-                                            tool_call.index,
-                                            (id.clone(), name.clone(), combined_arguments),
-                                        );
+                            // Get or create tool call entry
+                            let existing_tool_call = tool_calls.entry(index).or_insert_with(|| ToolCall {
+                                id: String::new(),
+                                call_id: None,
+                                function: ToolFunction {
+                                    name: String::new(),
+                                    arguments: serde_json::Value::Null,
+                                },
+                            });
 
-                                        // Emit the delta so UI can show progress
-                                        yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
-                                            id: id.clone(),
-                                            delta: new_arguments.clone(),
-                                        });
-                                    } else {
-                                        debug!("Partial tool call received but tool call was never started.");
+                            // Update fields if present
+                            if let Some(id) = &tool_call.id && !id.is_empty() {
+                                    existing_tool_call.id = id.clone();
+                            }
+
+                            if let Some(name) = &tool_call.function.name && !name.is_empty() {
+                                    existing_tool_call.function.name = name.clone();
+                            }
+
+                            if let Some(chunk) = &tool_call.function.arguments {
+                                // Convert current arguments to string if needed
+                                let current_args = match &existing_tool_call.function.arguments {
+                                    serde_json::Value::Null => String::new(),
+                                    serde_json::Value::String(s) => s.clone(),
+                                    v => v.to_string(),
+                                };
+
+                                // Concatenate the new chunk
+                                let combined = format!("{current_args}{chunk}");
+
+                                // Try to parse as JSON if it looks complete
+                                if combined.trim_start().starts_with('{') && combined.trim_end().ends_with('}') {
+                                    match serde_json::from_str(&combined) {
+                                        Ok(parsed) => existing_tool_call.function.arguments = parsed,
+                                        Err(_) => existing_tool_call.function.arguments = serde_json::Value::String(combined),
                                     }
+                                } else {
+                                    existing_tool_call.function.arguments = serde_json::Value::String(combined);
                                 }
-                                // Complete tool call
-                                else {
-                                    let id = tool_call.id.clone().unwrap_or_default();
-                                    let name = function.name.expect("tool call should have a name");
-                                    let arguments = function.arguments;
-                                    let Ok(arguments) = serde_json::from_str(&arguments) else {
-                                        debug!("Couldn't serialize '{arguments}' as JSON");
-                                        continue;
-                                    };
 
-                                    yield Ok(streaming::RawStreamingChoice::ToolCall {
-                                        id,
-                                        name,
-                                        arguments,
-                                        call_id: None,
-                                    });
-                                }
+                                // Emit the delta so UI can show progress
+                                yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                                    id: existing_tool_call.id.clone(),
+                                    delta: chunk.clone(),
+                                });
                             }
                         }
+                    }
 
-                        // Message content
-                        if let Some(content) = &choice.delta.content {
-                            text_content += content;
-                            yield Ok(streaming::RawStreamingChoice::Message(content.clone()))
-                        }
+                    // Streamed text content
+                    if let Some(content) = &delta.content && !content.is_empty() {
+                        text_content += content;
+                        yield Ok(streaming::RawStreamingChoice::Message(content.clone()));
                     }
 
                     // Usage updates
                     if let Some(usage) = data.usage {
-                        final_usage = Some(usage.clone());
+                        final_usage = Some(usage);
+                    }
+
+                    // Finish reason
+                    if let Some(finish_reason) = &choice.finish_reason && *finish_reason == FinishReason::ToolCalls {
+                        for (_idx, tool_call) in tool_calls.into_iter() {
+                            final_tool_calls.push(completion::ToolCall {
+                                id: tool_call.id.clone(),
+                                r#type: completion::ToolType::Function,
+                                function: completion::Function {
+                                    name: tool_call.function.name.clone(),
+                                    arguments: tool_call.function.arguments.clone(),
+                                },
+                            });
+                            yield Ok(streaming::RawStreamingChoice::ToolCall {
+                                name: tool_call.function.name,
+                                id: tool_call.id,
+                                arguments: tool_call.function.arguments,
+                                call_id: None,
+                            });
+                        }
+                        tool_calls = HashMap::new();
                     }
                 }
                 Err(crate::http_client::Error::StreamEnded) => {
@@ -241,45 +274,33 @@ where
             }
         }
 
+
         // Ensure event source is closed when stream ends
         event_source.close();
 
-        let mut vec_toolcalls = vec![];
-
-        // Flush any tool calls that weren’t fully yielded
-        for (_, (id, name, arguments)) in tool_calls {
-            let Ok(arguments) = serde_json::from_str::<serde_json::Value>(&arguments) else {
-                continue;
-            };
-
-            vec_toolcalls.push(super::ToolCall {
-                r#type: super::ToolType::Function,
-                id: id.clone(),
-                function: super::Function {
-                    name: name.clone(), arguments: arguments.clone()
-                },
-            });
-
-            yield Ok(RawStreamingChoice::ToolCall {
-                id,
-                name,
-                arguments,
+        // Flush any accumulated tool calls (that weren't emitted as ToolCall earlier)
+        for (_idx, tool_call) in tool_calls.into_iter() {
+            yield Ok(streaming::RawStreamingChoice::ToolCall {
+                name: tool_call.function.name,
+                id: tool_call.id,
+                arguments: tool_call.function.arguments,
                 call_id: None,
             });
         }
 
-        let message_output = super::Message::Assistant {
-            content: vec![super::AssistantContent::Text { text: text_content }],
-            refusal: None,
-            audio: None,
-            name: None,
-            tool_calls: vec_toolcalls
-        };
-
         let final_usage = final_usage.unwrap_or_default();
-        span.record("gen_ai.usage.input_tokens", final_usage.prompt_tokens);
-        span.record("gen_ai.usage.output_tokens", final_usage.total_tokens - final_usage.prompt_tokens);
-        span.record("gen_ai.output.messages", serde_json::to_string(&vec![message_output]).expect("Converting from a Rust struct should always convert to JSON without failing"));
+        if !span.is_disabled() {
+            let message_output = super::Message::Assistant {
+                content: vec![super::AssistantContent::Text { text: text_content }],
+                refusal: None,
+                audio: None,
+                name: None,
+                tool_calls: final_tool_calls
+            };
+            span.record("gen_ai.usage.input_tokens", final_usage.prompt_tokens);
+            span.record("gen_ai.usage.output_tokens", final_usage.total_tokens - final_usage.prompt_tokens);
+            span.record("gen_ai.output.messages", serde_json::to_string(&vec![message_output]).expect("Converting from a Rust struct should always convert to JSON without failing"));
+        }
 
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
             usage: final_usage
@@ -300,7 +321,10 @@ mod tests {
         let json = r#"{"name": "get_weather", "arguments": "{\"location\":\"Paris\"}"}"#;
         let function: StreamingFunction = serde_json::from_str(json).unwrap();
         assert_eq!(function.name, Some("get_weather".to_string()));
-        assert_eq!(function.arguments, r#"{"location":"Paris"}"#.to_string());
+        assert_eq!(
+            function.arguments.as_ref().unwrap(),
+            r#"{"location":"Paris"}"#
+        );
     }
 
     #[test]
@@ -334,7 +358,7 @@ mod tests {
         assert_eq!(tool_call.index, 0);
         assert!(tool_call.id.is_none());
         assert!(tool_call.function.name.is_none());
-        assert_eq!(tool_call.function.arguments, "Paris");
+        assert_eq!(tool_call.function.arguments.as_ref().unwrap(), "Paris");
     }
 
     #[test]
@@ -446,14 +470,22 @@ mod tests {
         let chunk1: StreamingCompletionChunk = serde_json::from_str(json_chunk1).unwrap();
         assert_eq!(chunk1.choices[0].delta.tool_calls.len(), 1);
         assert_eq!(
-            chunk1.choices[0].delta.tool_calls[0].function.arguments,
+            chunk1.choices[0].delta.tool_calls[0]
+                .function
+                .arguments
+                .as_ref()
+                .unwrap(),
             "{\"loc"
         );
 
         let chunk2: StreamingCompletionChunk = serde_json::from_str(json_chunk2).unwrap();
         assert_eq!(chunk2.choices[0].delta.tool_calls.len(), 1);
         assert_eq!(
-            chunk2.choices[0].delta.tool_calls[0].function.arguments,
+            chunk2.choices[0].delta.tool_calls[0]
+                .function
+                .arguments
+                .as_ref()
+                .unwrap(),
             "ation\":\"NYC\"}"
         );
     }
