@@ -68,7 +68,12 @@ where
     type Models = EmbeddingModels;
 
     fn make(client: &Self::Client, model: Self::Models, ndims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, ndims.unwrap_or_default())
+        let dims = ndims.unwrap_or(match model {
+            EmbeddingModels::TextEmbedding3Large => 3072,
+            _ => 1536,
+        });
+
+        Self::new(client.clone(), model, dims)
     }
 
     fn ndims(&self) -> usize {

@@ -269,7 +269,15 @@ where
             .ext
             .build_uri(&self.base_url, path.as_ref(), Transport::Http);
 
-        self.ext.with_custom(Request::post(uri))
+        dbg!(&uri);
+
+        let mut req = Request::post(uri);
+
+        if let Some(hs) = req.headers_mut() {
+            *hs = self.headers.clone()
+        }
+
+        self.ext.with_custom(req)
     }
 
     pub fn post_sse<S>(&self, path: S) -> http_client::Result<Builder>
@@ -280,7 +288,15 @@ where
             .ext
             .build_uri(&self.base_url, path.as_ref(), Transport::Sse);
 
-        self.ext.with_custom(Request::post(uri))
+        dbg!(&uri);
+
+        let mut req = Request::post(uri);
+
+        if let Some(hs) = req.headers_mut() {
+            *hs = self.headers.clone()
+        }
+
+        self.ext.with_custom(req)
     }
 
     pub fn get<S>(&self, path: S) -> http_client::Result<Builder>
@@ -290,6 +306,8 @@ where
         let uri = self
             .ext
             .build_uri(&self.base_url, path.as_ref(), Transport::Http);
+
+        dbg!(&uri);
 
         self.ext.with_custom(Request::get(uri))
     }
@@ -301,9 +319,11 @@ where
 {
     pub async fn send<T, U>(&self, req: Request<T>) -> http_client::Result<Response<LazyBody<U>>>
     where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        T: std::fmt::Debug + Into<Bytes> + WasmCompatSend,
+        U: std::fmt::Debug + From<Bytes> + WasmCompatSend + 'static,
     {
+        dbg!(&req);
+
         self.http_client.send(req).await
     }
 
@@ -312,8 +332,10 @@ where
         req: Request<U>,
     ) -> Result<http_client::StreamingResponse, http_client::Error>
     where
-        U: Into<Bytes>,
+        U: std::fmt::Debug + Into<Bytes>,
     {
+        dbg!(&req);
+
         self.http_client.send_streaming(req).await
     }
 }
