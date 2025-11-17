@@ -1,4 +1,3 @@
-use crate::types::json_utils;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig::OneOrMany;
 use rig::completion::{CompletionError, CompletionResponse, Usage};
@@ -25,12 +24,14 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
 
         let mut assistant_contents = Vec::new();
 
+        // vertexai internally uses a wkt::Struct (serde_json::Map<String, serde_json::Value>) in
+        // function calling args. We need to convert that to serde_json::Value for rig::completion type matching
         for part in content.parts.iter() {
             if let Some(function_call) = part.function_call() {
                 let args_json = function_call
                     .args
                     .as_ref()
-                    .map(|s| json_utils::struct_to_json(s.clone()))
+                    .map(|s| serde_json::Value::Object(s.clone()))
                     .unwrap_or_else(|| serde_json::json!({}));
 
                 assistant_contents.push(AssistantContent::ToolCall(ToolCall {
@@ -97,7 +98,10 @@ mod tests {
         function_name: &str,
         args: serde_json::Value,
     ) -> VertexGenerateContentOutput {
-        let struct_args = crate::types::json_utils::json_to_struct(args).unwrap();
+        let struct_args = match args {
+            serde_json::Value::Object(map) => map,
+            _ => panic!("Expected JSON object for Struct conversion"),
+        };
         let function_call = vertexai::model::FunctionCall::new()
             .set_name(function_name.to_string())
             .set_args(struct_args);
