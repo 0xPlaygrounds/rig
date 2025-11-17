@@ -24,7 +24,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut response_text = String::new();
     for content in response.choice.iter() {
         if let rig::message::AssistantContent::Text(rig::message::Text { text }) = content {
-            response_text.push_str(&text);
+            response_text.push_str(text);
         }
     }
 
