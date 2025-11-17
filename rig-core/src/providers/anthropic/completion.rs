@@ -162,19 +162,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let content = response
             .content
             .iter()
-            .map(|content| {
-                Ok(match content {
-                    Content::Text { text } => completion::AssistantContent::text(text),
-                    Content::ToolUse { id, name, input } => {
-                        completion::AssistantContent::tool_call(id, name, input.clone())
-                    }
-                    _ => {
-                        return Err(CompletionError::ResponseError(
-                            "Response did not contain a message or tool call".into(),
-                        ));
-                    }
-                })
-            })
+            .map(|content| content.clone().try_into())
             .collect::<Result<Vec<_>, _>>()?;
 
         let choice = OneOrMany::many(content).map_err(|_| {
@@ -574,7 +562,7 @@ impl TryFrom<Content> for message::AssistantContent {
             ),
             _ => {
                 return Err(MessageError::ConversionError(
-                    format!("Unsupported content type for Assistant role: {content:?}").to_owned(),
+                    "Content did not contain a message, tool call, or reasoning".to_owned(),
                 ));
             }
         })
@@ -835,10 +823,6 @@ where
         async move {
             let request: Vec<u8> = serde_json::to_vec(&request)?;
 
-            if let Ok(json_str) = String::from_utf8(request.clone()) {
-                tracing::debug!("Request body:\n{}", json_str);
-            }
-
             let req = self
                 .client
                 .post("/v1/messages")
@@ -866,6 +850,11 @@ where
                         span.record_model_output(&completion.content);
                         span.record_response_metadata(&completion);
                         span.record_token_usage(&completion.usage);
+                        tracing::trace!(
+                            target: "rig::completions",
+                            "Anthropic completion response: {}",
+                            serde_json::to_string_pretty(&completion)?
+                        );
                         completion.try_into()
                     }
                     ApiResponse::Error(ApiErrorResponse { message }) => {

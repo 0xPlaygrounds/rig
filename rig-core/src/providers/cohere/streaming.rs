@@ -121,7 +121,8 @@ where
 
         let request = json_utils::merge(request, serde_json::json!({"stream": true}));
 
-        tracing::debug!(
+        tracing::trace!(
+            target: "rig::streaming",
             "Cohere streaming completion input: {}",
             serde_json::to_string_pretty(&request)?
         );
@@ -140,6 +141,7 @@ where
             let mut current_tool_call: Option<(String, String, String)> = None;
             let mut text_response = String::new();
             let mut tool_calls = Vec::new();
+            let mut final_usage = None;
 
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -185,9 +187,8 @@ where
                                 span.record_token_usage(&delta.usage);
                                 span.record_model_output(&vec![message]);
 
-                                yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                                    usage: delta.usage.clone()
-                                }));
+                                final_usage = Some(delta.usage.clone());
+                                break;
                             },
 
                             StreamingEvent::ToolCallStart { delta: Some(delta) } => {
@@ -248,13 +249,18 @@ where
                     }
                     Err(err) => {
                         tracing::error!(?err, "SSE error");
-                        yield Err(CompletionError::ResponseError(err.to_string()));
+                        yield Err(CompletionError::ProviderError(err.to_string()));
                         break;
                     }
                 }
             }
 
+            // Ensure event source is closed when stream ends
             event_source.close();
+
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                usage: final_usage.unwrap_or_default()
+            }))
         }.instrument(span);
 
         Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
