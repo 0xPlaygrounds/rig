@@ -47,6 +47,7 @@
 //! be used with the Cohere provider client.
 pub mod anthropic;
 pub mod azure;
+pub mod azure_ai_foundry;
 pub mod cohere;
 pub mod deepseek;
 pub mod galadriel;
