@@ -12,7 +12,6 @@
 use std::fmt::Debug;
 
 use super::openai::{TranscriptionResponse, send_compatible_streaming_request};
-
 #[cfg(feature = "image")]
 use crate::client::Nothing;
 use crate::client::{
@@ -58,17 +57,20 @@ impl DebugExt for AzureExt {
     }
 }
 
+// TODO: @FayCarsons - this should be a type-safe builder,
+// but that would require extending the `ProviderBuilder`
+// to have some notion of complete vs incomplete states in a
+// given extension builder
 #[derive(Debug, Clone)]
 pub struct AzureExtBuilder {
-    endpoint: String,
+    endpoint: Option<String>,
     api_version: String,
 }
 
-// FIXME: @FayCarsons - wait this is probably not what we want?
 impl Default for AzureExtBuilder {
     fn default() -> Self {
         Self {
-            endpoint: Default::default(),
+            endpoint: None,
             api_version: DEFAULT_API_VERSION.into(),
         }
     }
@@ -97,9 +99,12 @@ impl Provider for AzureExt {
             ..
         } = builder.ext().clone();
 
-        Self {
-            endpoint,
-            api_version,
+        match endpoint {
+            Some(endpoint) => Self {
+                endpoint,
+                api_version,
+            },
+            None => panic!("Azure endpoint must be set"),
         }
     }
 }
@@ -149,11 +154,15 @@ impl<H> ClientBuilder<H> {
 
         self
     }
+}
 
+impl<H> client::ClientBuilder<AzureExtBuilder, AzureOpenAIAuth, H> {
     /// Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
-    pub fn azure_endpoint(mut self, azure_endpoint: String) -> Self {
-        self.ext_mut().endpoint = azure_endpoint;
-        self
+    pub fn azure_endpoint(self, endpoint: String) -> ClientBuilder<H> {
+        self.over_ext(|AzureExtBuilder { api_version, .. }| AzureExtBuilder {
+            endpoint: Some(endpoint),
+            api_version,
+        })
     }
 }
 

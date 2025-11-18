@@ -107,6 +107,7 @@ where
     }
 }
 
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Nothing;
 
 impl ApiKey for Nothing {}
