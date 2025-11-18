@@ -451,6 +451,7 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct AdditionalParameters {
         /// Change your Gemini request configuration.
+        #[serde(default)]
         pub generation_config: GenerationConfig,
         /// Any additional parameters that you want.
         #[serde(flatten, skip_serializing_if = "Option::is_none")]
