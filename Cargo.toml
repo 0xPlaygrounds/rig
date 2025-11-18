@@ -16,7 +16,9 @@ members = [
     "rig-bedrock",
     "rig-milvus",
     "rig-wasm",
-    "rig-s3vectors", "rig-helixdb",
+    "rig-s3vectors",
+    "rig-helixdb",
+    "rig-vertexai",
 ]
 
 [profile.release]
@@ -48,6 +50,10 @@ ethers = "2.0.14"
 fastembed = { version = "4.9.1", default-features = false }
 futures = "0.3.31"
 glob = "0.3.2"
+google-cloud-auth = "1.0"
+google-cloud-aiplatform-v1 = { version = "1.2.0", default-features = false, features = [
+    "prediction-service",
+] }
 httpmock = "0.7.0"
 indoc = "2.0.6"
 lancedb = { version = "0.22", default-features = false }
@@ -59,7 +65,9 @@ neo4rs = "0.8.0"
 ordered-float = "5.0.0"
 pgvector = "0.4"
 proc-macro2 = "1.0.95"
-qdrant-client = { version = "1.14.0", default-features = false, features = ["serde"] }
+qdrant-client = { version = "1.14.0", default-features = false, features = [
+    "serde",
+] }
 quick-xml = "0.38.0"
 quote = "1.0.40"
 rayon = "1.10.0"
