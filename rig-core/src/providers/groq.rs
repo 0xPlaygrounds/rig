@@ -15,7 +15,9 @@ use tracing::info_span;
 use tracing_futures::Instrument;
 
 use super::openai::{CompletionResponse, StreamingToolCall, TranscriptionResponse, Usage};
-use crate::client::{CompletionClient, TranscriptionClient, VerifyClient, VerifyError};
+use crate::client::{
+    CompletionClient, StandardClientBuilder, TranscriptionClient, VerifyClient, VerifyError,
+};
 use crate::completion::GetTokenUsage;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
@@ -42,56 +44,6 @@ use serde_json::{Value, json};
 // Main Groq Client
 // ================================================================
 const GROQ_API_BASE_URL: &str = "https://api.groq.com/openai/v1";
-
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    api_key: &'a str,
-    base_url: &'a str,
-    http_client: T,
-}
-
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
-    pub fn new(api_key: &'a str) -> Self {
-        Self {
-            api_key,
-            base_url: GROQ_API_BASE_URL,
-            http_client: Default::default(),
-        }
-    }
-}
-
-impl<'a, T> ClientBuilder<'a, T> {
-    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
-        Self {
-            api_key,
-            base_url: GROQ_API_BASE_URL,
-            http_client,
-        }
-    }
-
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            api_key: self.api_key,
-            base_url: self.base_url,
-            http_client,
-        }
-    }
-
-    pub fn build(self) -> Client<T> {
-        Client {
-            base_url: self.base_url.to_string(),
-            api_key: self.api_key.to_string(),
-            http_client: self.http_client,
-        }
-    }
-}
 
 #[derive(Clone)]
 pub struct Client<T = reqwest::Client> {
@@ -136,16 +88,41 @@ where
 }
 
 impl Client<reqwest::Client> {
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::new(api_key)
-    }
-
     pub fn new(api_key: &str) -> Self {
-        ClientBuilder::new(api_key).build()
+        Self::builder(api_key)
+            .build()
+            .expect("Groq client should build")
     }
 
     pub fn from_env() -> Self {
         <Self as ProviderClient>::from_env()
+    }
+
+    /// Create a new Groq client builder
+    pub fn builder(api_key: &str) -> crate::client::Builder<'_, Self, reqwest::Client> {
+        <Self as StandardClientBuilder<reqwest::Client>>::builder(api_key)
+    }
+}
+
+impl<T> StandardClientBuilder<T> for Client<T>
+where
+    T: HttpClientExt,
+{
+    fn build_from_builder<Ext>(
+        builder: crate::client::Builder<'_, Self, T, Ext>,
+    ) -> Result<Self, crate::client::ClientBuilderError>
+    where
+        Ext: Default,
+        T: Default + Clone,
+    {
+        let api_key = builder.get_api_key();
+        let base_url = builder.get_base_url(GROQ_API_BASE_URL);
+        let http_client = builder.get_http_client();
+        Ok(Client {
+            base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
+            http_client,
+        })
     }
 }
 
@@ -157,14 +134,18 @@ where
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("GROQ_API_KEY").expect("GROQ_API_KEY not set");
-        ClientBuilder::<T>::new(&api_key).build()
+        Self::builder(&api_key)
+            .build()
+            .expect("Groq client should build")
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        ClientBuilder::<T>::new(&api_key).build()
+        Self::builder(&api_key)
+            .build()
+            .expect("Groq client should build")
     }
 }
 

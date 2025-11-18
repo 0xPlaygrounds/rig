@@ -10,6 +10,9 @@ pub mod image_generation;
 pub mod transcription;
 pub mod verify;
 
+mod standard_builder;
+pub use standard_builder::{Builder, StandardClientBuilder};
+
 #[cfg(feature = "derive")]
 pub use rig_derive::ProviderClient;
 use std::fmt::Debug;

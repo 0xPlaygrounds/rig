@@ -2,7 +2,7 @@ use super::completion::CompletionModel;
 #[cfg(feature = "image")]
 use crate::client::ImageGenerationClient;
 use crate::client::{
-    ClientBuilderError, CompletionClient, ProviderClient, TranscriptionClient, VerifyClient,
+    CompletionClient, ProviderClient, StandardClientBuilder, TranscriptionClient, VerifyClient,
     VerifyError,
 };
 use crate::http_client::{self, HttpClientExt};
@@ -21,6 +21,12 @@ use std::fmt::Display;
 // Main Huggingface Client
 // ================================================================
 const HUGGINGFACE_API_BASE_URL: &str = "https://router.huggingface.co";
+
+/// Extension data for HuggingFace client builder
+#[derive(Default, Clone)]
+pub struct BuilderExtension {
+    pub sub_provider: SubProvider,
+}
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum SubProvider {
@@ -105,75 +111,6 @@ impl Display for SubProvider {
     }
 }
 
-pub struct ClientBuilder<T = reqwest::Client> {
-    api_key: String,
-    base_url: String,
-    sub_provider: SubProvider,
-    http_client: T,
-}
-
-impl<T> ClientBuilder<T>
-where
-    T: Default,
-{
-    pub fn new(api_key: &str) -> ClientBuilder<T> {
-        ClientBuilder {
-            api_key: api_key.to_string(),
-            base_url: HUGGINGFACE_API_BASE_URL.to_string(),
-            sub_provider: SubProvider::default(),
-            http_client: Default::default(),
-        }
-    }
-}
-
-impl<T> ClientBuilder<T> {
-    pub fn new_with_client(api_key: &str, http_client: T) -> ClientBuilder<T> {
-        ClientBuilder {
-            api_key: api_key.to_string(),
-            base_url: HUGGINGFACE_API_BASE_URL.to_string(),
-            sub_provider: SubProvider::default(),
-            http_client,
-        }
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<U> {
-        ClientBuilder {
-            api_key: self.api_key,
-            base_url: self.base_url,
-            sub_provider: self.sub_provider,
-            http_client,
-        }
-    }
-
-    pub fn base_url(mut self, base_url: &str) -> Self {
-        self.base_url = base_url.to_string();
-        self
-    }
-
-    pub fn sub_provider(mut self, provider: impl Into<SubProvider>) -> Self {
-        self.sub_provider = provider.into();
-        self
-    }
-
-    pub fn build(self) -> Result<Client<T>, ClientBuilderError> {
-        let mut default_headers = reqwest::header::HeaderMap::new();
-        default_headers.insert(
-            "Content-Type",
-            "application/json"
-                .parse()
-                .expect("Failed to parse Content-Type"),
-        );
-
-        Ok(Client {
-            base_url: self.base_url,
-            default_headers,
-            api_key: self.api_key,
-            http_client: self.http_client,
-            sub_provider: self.sub_provider,
-        })
-    }
-}
-
 #[derive(Clone)]
 pub struct Client<T = reqwest::Client> {
     base_url: String,
@@ -241,24 +178,7 @@ where
 }
 
 impl Client<reqwest::Client> {
-    /// Create a new Huggingface client builder.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::huggingface::{ClientBuilder, self};
-    ///
-    /// // Initialize the Huggingface client
-    /// let client = Client::builder("your-huggingface-api-key")
-    ///    .build()
-    /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<reqwest::Client> {
-        ClientBuilder::new(api_key)
-    }
-
     /// Create a new Huggingface client. For more control, use the `builder` method.
-    ///
-    /// # Panics
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
         Self::builder(api_key)
             .build()
@@ -267,6 +187,59 @@ impl Client<reqwest::Client> {
 
     pub fn from_env() -> Self {
         <Self as ProviderClient>::from_env()
+    }
+
+    /// Create a new Huggingface client builder
+    pub fn builder(
+        api_key: &str,
+    ) -> crate::client::Builder<'_, Self, reqwest::Client, BuilderExtension> {
+        <Self as StandardClientBuilder<reqwest::Client>>::builder(api_key)
+            .with_extension(BuilderExtension::default())
+    }
+}
+
+impl<T> StandardClientBuilder<T> for Client<T>
+where
+    T: HttpClientExt,
+{
+    fn build_from_builder<Ext>(
+        builder: crate::client::Builder<'_, Self, T, Ext>,
+    ) -> Result<Self, crate::client::ClientBuilderError>
+    where
+        Ext: Default + 'static,
+        T: Default + Clone,
+    {
+        let api_key = builder.get_api_key();
+        let base_url = builder.get_base_url(HUGGINGFACE_API_BASE_URL);
+        let http_client = builder.get_http_client();
+        let default_headers = builder.get_headers(true);
+
+        let sub_provider = if let Some(ext) = builder.try_get_extension::<BuilderExtension>() {
+            ext.sub_provider
+        } else {
+            SubProvider::default()
+        };
+
+        Ok(Client {
+            base_url: base_url.to_string(),
+            default_headers,
+            api_key: api_key.to_string(),
+            http_client,
+            sub_provider,
+        })
+    }
+}
+
+// Helper implementation for Builder with HuggingFaceBuilderExtension
+impl<'a, T> crate::client::Builder<'a, Client<T>, T, BuilderExtension>
+where
+    T: crate::http_client::HttpClientExt + Default,
+{
+    pub fn sub_provider(self, provider: impl Into<SubProvider>) -> Self {
+        self.update_extension(|mut ext| {
+            ext.sub_provider = provider.into();
+            ext
+        })
     }
 }
 
@@ -278,14 +251,24 @@ where
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY is not set");
-        ClientBuilder::<T>::new(&api_key).build().unwrap()
+        Self::builder(&api_key)
+            .with_extension(BuilderExtension {
+                sub_provider: SubProvider::default(),
+            })
+            .build()
+            .expect("Huggingface client should build")
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        ClientBuilder::<T>::new(&api_key).build().unwrap()
+        Self::builder(&api_key)
+            .with_extension(BuilderExtension {
+                sub_provider: SubProvider::default(),
+            })
+            .build()
+            .expect("Huggingface client should build")
     }
 }
 

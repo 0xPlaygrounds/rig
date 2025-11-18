@@ -75,7 +75,8 @@ async fn vector_search_test() {
     let openai_mock = create_openai_mock_service().await;
     let openai_client = rig::providers::openai::Client::builder("TEST")
         .base_url(&openai_mock.base_url())
-        .build();
+        .build()
+        .unwrap();
 
     let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
 
@@ -347,7 +348,8 @@ async fn test_mock_server_setup() {
     let server = create_openai_mock_service().await;
     let openai_client = rig::providers::openai::Client::builder("TEST")
         .base_url(&server.base_url())
-        .build();
+        .build()
+        .unwrap();
     let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
 
     // Test that we can create embeddings with the mock

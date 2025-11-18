@@ -39,7 +39,8 @@
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
 use crate::client::{
-    CompletionClient, EmbeddingsClient, ProviderClient, VerifyClient, VerifyError,
+    CompletionClient, EmbeddingsClient, ProviderClient, StandardClientBuilder, VerifyClient,
+    VerifyError,
 };
 use crate::completion::{GetTokenUsage, Usage};
 use crate::http_client::{self, HttpClientExt};
@@ -68,84 +69,52 @@ use tracing_futures::Instrument;
 
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    base_url: &'a str,
-    http_client: T,
-}
-
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self {
-            base_url: OLLAMA_API_BASE_URL,
-            http_client: Default::default(),
-        }
-    }
-}
-
-impl<'a, T> ClientBuilder<'a, T> {
-    pub fn new_with_client(http_client: T) -> Self {
-        Self {
-            base_url: OLLAMA_API_BASE_URL,
-            http_client,
-        }
-    }
-
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            base_url: self.base_url,
-            http_client,
-        }
-    }
-
-    pub fn build(self) -> Client<T> {
-        Client {
-            base_url: self.base_url.into(),
-            http_client: self.http_client,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Client<T = reqwest::Client> {
     base_url: String,
+    api_key: Option<String>,
     http_client: T,
 }
 
 impl<T> Client<T> {
-    fn req(&self, method: http_client::Method, path: &str) -> http_client::Builder {
+    fn req(
+        &self,
+        method: http_client::Method,
+        path: &str,
+    ) -> http_client::Result<http_client::Builder> {
         let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
-        http_client::Builder::new().method(method).uri(url)
+        let mut builder = http_client::Builder::new().method(method).uri(url);
+
+        if let Some(api_key) = &self.api_key {
+            builder = http_client::with_bearer_auth(builder, api_key)?;
+        }
+
+        Ok(builder)
     }
 
-    pub(crate) fn post(&self, path: &str) -> http_client::Builder {
+    pub(crate) fn post(&self, path: &str) -> http_client::Result<http_client::Builder> {
         self.req(http_client::Method::POST, path)
     }
 
-    pub(crate) fn get(&self, path: &str) -> http_client::Builder {
+    pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
         self.req(http_client::Method::GET, path)
     }
 }
 
 impl Client<reqwest::Client> {
-    pub fn builder<'a>() -> ClientBuilder<'a, reqwest::Client> {
-        ClientBuilder::new()
-    }
-
     pub fn new() -> Self {
-        Self::builder().build()
+        Self::builder("")
+            .build()
+            .expect("Ollama client should build")
     }
 
     pub fn from_env() -> Self {
         <Self as ProviderClient>::from_env()
+    }
+
+    /// Create a new Ollama client builder
+    pub fn builder(api_key: &str) -> crate::client::Builder<'_, Self, reqwest::Client> {
+        <Self as StandardClientBuilder<reqwest::Client>>::builder(api_key)
     }
 }
 
@@ -155,21 +124,58 @@ impl Default for Client<reqwest::Client> {
     }
 }
 
+impl<T> StandardClientBuilder<T> for Client<T>
+where
+    T: HttpClientExt,
+{
+    fn build_from_builder<Ext>(
+        builder: crate::client::Builder<'_, Self, T, Ext>,
+    ) -> Result<Self, crate::client::ClientBuilderError>
+    where
+        Ext: Default,
+        T: Default + Clone,
+    {
+        let api_key = builder.get_api_key();
+        let base_url = builder.get_base_url(OLLAMA_API_BASE_URL);
+        let http_client = builder.get_http_client();
+
+        // API key is optional for Ollama (empty string means no auth)
+        let api_key = if api_key.is_empty() {
+            None
+        } else {
+            Some(api_key.to_string())
+        };
+
+        Ok(Client {
+            base_url: base_url.to_string(),
+            api_key,
+            http_client,
+        })
+    }
+}
+
 impl<T> ProviderClient for Client<T>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     fn from_env() -> Self {
-        let api_base = std::env::var("OLLAMA_API_BASE_URL").expect("OLLAMA_API_BASE_URL not set");
-        ClientBuilder::new().base_url(&api_base).build()
+        let api_key = std::env::var("OLLAMA_API_KEY").unwrap_or_default();
+        let api_base = std::env::var("OLLAMA_API_BASE_URL")
+            .unwrap_or_else(|_| OLLAMA_API_BASE_URL.to_string());
+        Self::builder(&api_key)
+            .base_url(&api_base)
+            .build()
+            .expect("Ollama client should build")
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
-        let crate::client::ProviderValue::Simple(_) = input else {
-            panic!("Incorrect provider value type")
+        let api_key = match input {
+            crate::client::ProviderValue::Simple(key) => key,
+            _ => String::new(),
         };
-
-        ClientBuilder::new().build()
+        Self::builder(&api_key)
+            .build()
+            .expect("Ollama client should build")
     }
 }
 
@@ -207,7 +213,7 @@ where
     #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         let req = self
-            .get("api/tags")
+            .get("api/tags")?
             .body(http_client::NoBody)
             .map_err(http_client::Error::from)?;
 
@@ -323,7 +329,7 @@ where
 
         let req = self
             .client
-            .post("api/embed")
+            .post("api/embed")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
@@ -596,7 +602,7 @@ where
 
         let req = self
             .client
-            .post("api/chat")
+            .post("api/chat")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
@@ -676,7 +682,7 @@ where
 
         let req = self
             .client
-            .post("api/chat")
+            .post("api/chat")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;

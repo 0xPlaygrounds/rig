@@ -1,6 +1,6 @@
 use crate::{
     Embed,
-    client::{VerifyClient, VerifyError},
+    client::{StandardClientBuilder, VerifyClient, VerifyError},
     embeddings::EmbeddingsBuilder,
     http_client::{self, HttpClientExt},
     wasm_compat::*,
@@ -28,53 +28,6 @@ pub enum ApiResponse<T> {
 // ================================================================
 const COHERE_API_BASE_URL: &str = "https://api.cohere.ai";
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    api_key: &'a str,
-    base_url: &'a str,
-    http_client: T,
-}
-
-impl<'a> ClientBuilder<'a, reqwest::Client> {
-    pub fn new(api_key: &'a str) -> ClientBuilder<'a, reqwest::Client> {
-        ClientBuilder {
-            api_key,
-            base_url: COHERE_API_BASE_URL,
-            http_client: Default::default(),
-        }
-    }
-}
-
-impl<'a, T> ClientBuilder<'a, T> {
-    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
-        ClientBuilder {
-            api_key,
-            base_url: COHERE_API_BASE_URL,
-            http_client,
-        }
-    }
-
-    pub fn with_client<U>(api_key: &str, http_client: U) -> ClientBuilder<'_, U> {
-        ClientBuilder {
-            api_key,
-            base_url: COHERE_API_BASE_URL,
-            http_client,
-        }
-    }
-
-    pub fn base_url(mut self, base_url: &'a str) -> ClientBuilder<'a, T> {
-        self.base_url = base_url;
-        self
-    }
-
-    pub fn build(self) -> Client<T> {
-        Client {
-            base_url: self.base_url.to_string(),
-            api_key: self.api_key.to_string(),
-            http_client: self.http_client,
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct Client<T = reqwest::Client> {
     base_url: String,
@@ -96,20 +49,20 @@ where
 }
 
 impl Client<reqwest::Client> {
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::new(api_key)
-    }
-
     /// Create a new Cohere client. For more control, use the `builder` method.
-    ///
-    /// # Panics
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
-        ClientBuilder::new(api_key).build()
+        Self::builder(api_key)
+            .build()
+            .expect("Cohere client should build")
     }
 
     pub fn from_env() -> Self {
         <Self as ProviderClient>::from_env()
+    }
+
+    /// Create a new Cohere client builder
+    pub fn builder(api_key: &str) -> crate::client::Builder<'_, Self, reqwest::Client> {
+        <Self as StandardClientBuilder<reqwest::Client>>::builder(api_key)
     }
 }
 
@@ -187,6 +140,28 @@ where
     }
 }
 
+impl<T> StandardClientBuilder<T> for Client<T>
+where
+    T: HttpClientExt,
+{
+    fn build_from_builder<Ext>(
+        builder: crate::client::Builder<'_, Self, T, Ext>,
+    ) -> Result<Self, crate::client::ClientBuilderError>
+    where
+        Ext: Default,
+        T: Default + Clone,
+    {
+        let api_key = builder.get_api_key();
+        let base_url = builder.get_base_url(COHERE_API_BASE_URL);
+        let http_client = builder.get_http_client();
+        Ok(Client {
+            base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
+            http_client,
+        })
+    }
+}
+
 impl<T> ProviderClient for Client<T>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
@@ -195,14 +170,18 @@ where
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set");
-        ClientBuilder::new_with_client(&api_key, T::default()).build()
+        Self::builder(&api_key)
+            .build()
+            .expect("Cohere client should build")
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        ClientBuilder::new_with_client(&api_key, T::default()).build()
+        Self::builder(&api_key)
+            .build()
+            .expect("Cohere client should build")
     }
 }
 

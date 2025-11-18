@@ -2,7 +2,7 @@ use super::{
     completion::CompletionModel, embedding::EmbeddingModel, transcription::TranscriptionModel,
 };
 use crate::client::{
-    ClientBuilderError, CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient,
+    CompletionClient, EmbeddingsClient, ProviderClient, StandardClientBuilder, TranscriptionClient,
     VerifyClient, VerifyError, impl_conversion_traits,
 };
 use crate::http_client::{self, HttpClientExt};
@@ -20,63 +20,6 @@ use std::fmt::Debug;
 // ================================================================
 const GEMINI_API_BASE_URL: &str = "https://generativelanguage.googleapis.com";
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    api_key: &'a str,
-    base_url: &'a str,
-    http_client: T,
-}
-
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: HttpClientExt + Default,
-{
-    pub fn new(api_key: &'a str) -> ClientBuilder<'a, T> {
-        ClientBuilder {
-            api_key,
-            base_url: GEMINI_API_BASE_URL,
-            http_client: Default::default(),
-        }
-    }
-
-    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
-        Self {
-            api_key,
-            base_url: GEMINI_API_BASE_URL,
-            http_client,
-        }
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U>
-    where
-        U: HttpClientExt,
-    {
-        ClientBuilder {
-            api_key: self.api_key,
-            base_url: self.base_url,
-            http_client,
-        }
-    }
-
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
-
-    pub fn build(self) -> Result<Client<T>, ClientBuilderError> {
-        let mut default_headers = reqwest::header::HeaderMap::new();
-        default_headers.insert(
-            reqwest::header::CONTENT_TYPE,
-            "application/json".parse().unwrap(),
-        );
-
-        Ok(Client {
-            base_url: self.base_url.to_string(),
-            api_key: self.api_key.to_string(),
-            default_headers,
-            http_client: self.http_client,
-        })
-    }
-}
 #[derive(Clone)]
 pub struct Client<T = reqwest::Client> {
     base_url: String,
@@ -173,23 +116,49 @@ where
     }
 }
 
-impl Client<reqwest::Client> {
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::<reqwest::Client>::new(api_key)
-    }
+impl<T> StandardClientBuilder<T> for Client<T>
+where
+    T: HttpClientExt,
+{
+    fn build_from_builder<Ext>(
+        builder: crate::client::Builder<'_, Self, T, Ext>,
+    ) -> Result<Self, crate::client::ClientBuilderError>
+    where
+        Ext: Default,
+        T: Default + Clone,
+    {
+        let api_key = builder.get_api_key();
+        let base_url = builder.get_base_url(GEMINI_API_BASE_URL);
+        let http_client = builder.get_http_client();
+        let default_headers = builder.get_headers(true);
 
+        Ok(Client {
+            base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
+            default_headers,
+            http_client,
+        })
+    }
+}
+
+impl Client<reqwest::Client> {
     /// Create a new Gemini client. For more control, use the `builder` method.
     ///
     /// # Panics
     /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
-        ClientBuilder::<reqwest::Client>::new(api_key)
+        Client::builder(api_key)
             .build()
-            .unwrap()
+            .expect("Gemini client should build")
     }
 
     pub fn from_env() -> Self {
         <Self as ProviderClient>::from_env()
+    }
+
+    /// Create a new Gemini client builder
+    pub fn builder(api_key: &str) -> crate::client::Builder<'_, Self, reqwest::Client> {
+        <Self as StandardClientBuilder<reqwest::Client>>::builder(api_key)
     }
 }
 
@@ -201,14 +170,18 @@ where
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
-        ClientBuilder::<T>::new(&api_key).build().unwrap()
+        Self::builder(&api_key)
+            .build()
+            .expect("Gemini client should build")
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
         let crate::client::ProviderValue::Simple(api_key) = input else {
             panic!("Incorrect provider value type")
         };
-        ClientBuilder::<T>::new(&api_key).build().unwrap()
+        Self::builder(&api_key)
+            .build()
+            .expect("Gemini client should build")
     }
 }
 

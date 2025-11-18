@@ -16,6 +16,7 @@ use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
+    client::StandardClientBuilder,
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
     json_utils,
@@ -34,72 +35,12 @@ use serde_json::json;
 
 const DEFAULT_API_VERSION: &str = "2024-10-21";
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    auth: AzureOpenAIAuth,
-    api_version: Option<&'a str>,
-    azure_endpoint: &'a str,
-    http_client: T,
-}
-
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
-    pub fn new(auth: impl Into<AzureOpenAIAuth>, endpoint: &'a str) -> Self {
-        Self {
-            auth: auth.into(),
-            api_version: None,
-            azure_endpoint: endpoint,
-            http_client: Default::default(),
-        }
-    }
-}
-
-impl<'a, T> ClientBuilder<'a, T> {
-    pub fn new_with_client(
-        auth: impl Into<AzureOpenAIAuth>,
-        endpoint: &'a str,
-        http_client: T,
-    ) -> Self {
-        Self {
-            auth: auth.into(),
-            api_version: None,
-            azure_endpoint: endpoint,
-            http_client,
-        }
-    }
-
-    /// API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
-    pub fn api_version(mut self, api_version: &'a str) -> Self {
-        self.api_version = Some(api_version);
-        self
-    }
-
-    /// Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
-    pub fn azure_endpoint(mut self, azure_endpoint: &'a str) -> Self {
-        self.azure_endpoint = azure_endpoint;
-        self
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            auth: self.auth,
-            api_version: self.api_version,
-            azure_endpoint: self.azure_endpoint,
-            http_client,
-        }
-    }
-
-    pub fn build(self) -> Client<T> {
-        let api_version = self.api_version.unwrap_or(DEFAULT_API_VERSION);
-
-        Client {
-            api_version: api_version.to_string(),
-            azure_endpoint: self.azure_endpoint.to_string(),
-            auth: self.auth,
-            http_client: self.http_client,
-        }
-    }
+/// Extension data for Azure OpenAI client builder
+#[derive(Clone, Default)]
+pub struct BuilderExtension {
+    pub azure_endpoint: Option<String>,
+    pub api_version: Option<String>,
+    pub auth: Option<AzureOpenAIAuth>,
 }
 
 #[derive(Clone)]
@@ -162,27 +103,122 @@ impl AzureOpenAIAuth {
     }
 }
 
+impl<T> StandardClientBuilder<T> for Client<T>
+where
+    T: crate::http_client::HttpClientExt,
+{
+    fn build_from_builder<Ext>(
+        builder: crate::client::Builder<'_, Self, T, Ext>,
+    ) -> Result<Self, crate::client::ClientBuilderError>
+    where
+        Ext: Default + 'static,
+        T: Default + Clone,
+    {
+        let api_key = builder.get_api_key();
+        let base_url = builder.get_base_url(""); // Not used for Azure, azure_endpoint is required
+        let http_client = builder.get_http_client();
+
+        // Extract extension data using try_get_extension
+        let (azure_endpoint, api_version, auth) =
+            if let Some(ext) = builder.try_get_extension::<BuilderExtension>() {
+                (
+                    ext.azure_endpoint.ok_or_else(|| {
+                        crate::client::ClientBuilderError::InvalidProperty(
+                            "azure_endpoint is required for Azure client",
+                        )
+                    })?,
+                    ext.api_version
+                        .unwrap_or_else(|| DEFAULT_API_VERSION.to_string()),
+                    ext.auth.ok_or_else(|| {
+                        crate::client::ClientBuilderError::InvalidProperty(
+                            "auth is required for Azure client",
+                        )
+                    })?,
+                )
+            } else {
+                // For standard builder (Ext = ()), use base_url as azure_endpoint
+                let azure_endpoint = if base_url.is_empty() {
+                    return Err(crate::client::ClientBuilderError::InvalidProperty(
+                        "azure_endpoint is required for Azure client",
+                    ));
+                } else {
+                    base_url.to_string()
+                };
+                (
+                    azure_endpoint,
+                    DEFAULT_API_VERSION.to_string(),
+                    AzureOpenAIAuth::ApiKey(api_key.to_string()),
+                )
+            };
+
+        Ok(Client {
+            api_version,
+            azure_endpoint,
+            auth,
+            http_client,
+        })
+    }
+}
+
+// Helper implementation for Builder with AzureBuilderExtension
+impl<'a, T> crate::client::Builder<'a, Client<T>, T, BuilderExtension>
+where
+    T: crate::http_client::HttpClientExt + Default,
+{
+    pub fn azure_endpoint(self, endpoint: &str) -> Self {
+        self.update_extension(|mut ext| {
+            ext.azure_endpoint = Some(endpoint.to_string());
+            ext
+        })
+    }
+
+    pub fn api_version(self, version: &str) -> Self {
+        self.update_extension(|mut ext| {
+            ext.api_version = Some(version.to_string());
+            ext
+        })
+    }
+
+    pub fn auth(self, auth: impl Into<AzureOpenAIAuth>) -> Self {
+        self.update_extension(|mut ext| {
+            ext.auth = Some(auth.into());
+            ext
+        })
+    }
+}
+
 impl Client<reqwest::Client> {
-    /// Create a new Azure OpenAI client builder.
+    /// Create a new Azure OpenAI client builder using StandardClientBuilder.
     ///
     /// # Example
     /// ```
-    /// use rig::providers::azure::{ClientBuilder, self};
+    /// use rig::providers::azure::Client;
     ///
     /// // Initialize the Azure OpenAI client
-    /// let azure = Client::builder("your-azure-api-key", "https://{your-resource-name}.openai.azure.com")
+    /// let azure = Client::builder("your-azure-api-key")
+    ///    .azure_endpoint("https://{your-resource-name}.openai.azure.com")
+    ///    .api_version("2024-10-21")
     ///    .build()
+    ///    .expect("Azure client should build");
     /// ```
     pub fn builder(
-        auth: impl Into<AzureOpenAIAuth>,
-        endpoint: &str,
-    ) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::new(auth, endpoint)
+        api_key: &str,
+    ) -> crate::client::Builder<'_, Self, reqwest::Client, BuilderExtension> {
+        <Self as StandardClientBuilder<reqwest::Client>>::builder(api_key).with_extension(
+            BuilderExtension {
+                auth: Some(AzureOpenAIAuth::ApiKey(api_key.to_string())),
+                ..Default::default()
+            },
+        )
     }
 
     /// Creates a new Azure OpenAI client. For more control, use the `builder` method.
     pub fn new(auth: impl Into<AzureOpenAIAuth>, endpoint: &str) -> Self {
-        Self::builder(auth, endpoint).build()
+        Self::builder("")
+            .auth(auth)
+            .azure_endpoint(endpoint)
+            .build()
+            .expect("Azure client should build")
     }
 
     pub fn from_env() -> Self {
@@ -286,9 +322,13 @@ where
         let api_version = std::env::var("AZURE_API_VERSION").expect("AZURE_API_VERSION not set");
         let azure_endpoint = std::env::var("AZURE_ENDPOINT").expect("AZURE_ENDPOINT not set");
 
-        ClientBuilder::<T>::new(auth, &azure_endpoint)
+        <Self as StandardClientBuilder<T>>::builder("")
+            .with_extension(BuilderExtension::default())
+            .auth(auth)
+            .azure_endpoint(&azure_endpoint)
             .api_version(&api_version)
             .build()
+            .expect("Azure client should build")
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
@@ -298,9 +338,13 @@ where
             panic!("Incorrect provider value type")
         };
         let auth = AzureOpenAIAuth::ApiKey(api_key.to_string());
-        ClientBuilder::<T>::new(auth, &header)
+        <Self as StandardClientBuilder<T>>::builder("")
+            .with_extension(BuilderExtension::default())
+            .auth(auth)
+            .azure_endpoint(&header)
             .api_version(&version)
             .build()
+            .expect("Azure client should build")
     }
 }
 

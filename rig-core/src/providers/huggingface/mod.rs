@@ -19,7 +19,7 @@ pub mod image_generation;
 pub mod streaming;
 pub mod transcription;
 
-pub use client::{Client, ClientBuilder, SubProvider};
+pub use client::{Client, SubProvider};
 pub use completion::{
     GEMMA_2, META_LLAMA_3_1, PHI_4, QWEN_QVQ_PREVIEW, QWEN2_5, QWEN2_5_CODER, QWEN2_VL,
     SMALLTHINKER_PREVIEW,

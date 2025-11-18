@@ -155,7 +155,7 @@ pub trait Op: WasmCompatSend + WasmCompatSync {
     /// ```rust
     /// use rig::chain::{self, Chain};
     ///
-    /// let agent = &openai_client.agent("gpt-4").build();
+    /// let agent = &openai_client.agent("gpt-4").build()?;
     ///
     /// let chain = chain::new()
     ///    .map(|name| format!("Find funny nicknames for the following name: {name}!"))

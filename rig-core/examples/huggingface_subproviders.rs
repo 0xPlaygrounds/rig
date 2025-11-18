@@ -27,7 +27,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
 fn client(sub_provider: SubProvider) -> providers::huggingface::Client {
     let api_key = &env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY not set");
-    providers::huggingface::ClientBuilder::new(api_key)
+    providers::huggingface::Client::builder(api_key)
         .sub_provider(sub_provider)
         .build()
         .expect("Failed to build client")

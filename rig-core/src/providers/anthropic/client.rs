@@ -5,8 +5,8 @@ use http_client::Method;
 use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
 use crate::{
     client::{
-        ClientBuilderError, CompletionClient, ProviderClient, ProviderValue, VerifyClient,
-        VerifyError, impl_conversion_traits,
+        ClientBuilderError, CompletionClient, ProviderClient, ProviderValue, StandardClientBuilder,
+        VerifyClient, VerifyError, impl_conversion_traits,
     },
     http_client::{self, HttpClientExt},
     wasm_compat::WasmCompatSend,
@@ -17,111 +17,11 @@ use crate::{
 // ================================================================
 const ANTHROPIC_API_BASE_URL: &str = "https://api.anthropic.com";
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    api_key: &'a str,
-    base_url: &'a str,
-    anthropic_version: &'a str,
-    anthropic_betas: Option<Vec<&'a str>>,
-    http_client: T,
-}
-
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
-    pub fn new(api_key: &'a str) -> Self {
-        ClientBuilder {
-            api_key,
-            base_url: ANTHROPIC_API_BASE_URL,
-            anthropic_version: ANTHROPIC_VERSION_LATEST,
-            anthropic_betas: None,
-            http_client: Default::default(),
-        }
-    }
-}
-
-/// Create a new anthropic client using the builder
-///
-/// # Example
-/// ```
-/// use rig::providers::anthropic::{ClientBuilder, self};
-///
-/// // Initialize the Anthropic client
-/// let anthropic_client = ClientBuilder::new("your-claude-api-key")
-///    .anthropic_version(ANTHROPIC_VERSION_LATEST)
-///    .anthropic_beta("prompt-caching-2024-07-31")
-///    .build()
-/// ```
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: HttpClientExt,
-{
-    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
-        Self {
-            api_key,
-            base_url: ANTHROPIC_API_BASE_URL,
-            anthropic_version: ANTHROPIC_VERSION_LATEST,
-            anthropic_betas: None,
-            http_client,
-        }
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            api_key: self.api_key,
-            base_url: self.base_url,
-            anthropic_version: self.anthropic_version,
-            anthropic_betas: self.anthropic_betas,
-            http_client,
-        }
-    }
-
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
-
-    pub fn anthropic_version(mut self, anthropic_version: &'a str) -> Self {
-        self.anthropic_version = anthropic_version;
-        self
-    }
-
-    pub fn anthropic_beta(mut self, anthropic_beta: &'a str) -> Self {
-        if let Some(mut betas) = self.anthropic_betas {
-            betas.push(anthropic_beta);
-            self.anthropic_betas = Some(betas);
-        } else {
-            self.anthropic_betas = Some(vec![anthropic_beta]);
-        }
-        self
-    }
-
-    pub fn build(self) -> Result<Client<T>, ClientBuilderError> {
-        let mut default_headers = reqwest::header::HeaderMap::new();
-        default_headers.insert(
-            "anthropic-version",
-            self.anthropic_version
-                .parse()
-                .map_err(|_| ClientBuilderError::InvalidProperty("anthropic-version"))?,
-        );
-
-        if let Some(betas) = self.anthropic_betas {
-            default_headers.insert(
-                "anthropic-beta",
-                betas
-                    .join(",")
-                    .parse()
-                    .map_err(|_| ClientBuilderError::InvalidProperty("anthropic-beta"))?,
-            );
-        };
-
-        Ok(Client {
-            base_url: self.base_url.to_string(),
-            api_key: self.api_key.to_string(),
-            default_headers,
-            http_client: self.http_client,
-        })
-    }
+/// Extension data for Anthropic client builder
+#[derive(Default, Clone)]
+pub struct BuilderExtension {
+    pub anthropic_version: Option<String>,
+    pub anthropic_betas: Option<Vec<String>>,
 }
 
 #[derive(Clone)]
@@ -205,9 +105,89 @@ where
     }
 }
 
+impl<T> StandardClientBuilder<T> for Client<T>
+where
+    T: HttpClientExt,
+{
+    fn build_from_builder<Ext>(
+        builder: crate::client::Builder<'_, Self, T, Ext>,
+    ) -> Result<Self, crate::client::ClientBuilderError>
+    where
+        Ext: Default + 'static,
+        T: Default + Clone,
+    {
+        let api_key = builder.get_api_key();
+        let base_url = builder.get_base_url(ANTHROPIC_API_BASE_URL);
+        let http_client = builder.get_http_client();
+        let mut default_headers = builder.get_headers(false);
+
+        // Extract extension data using try_get_extension
+        let (anthropic_version, anthropic_betas) =
+            if let Some(ext) = builder.try_get_extension::<BuilderExtension>() {
+                (
+                    ext.anthropic_version
+                        .unwrap_or_else(|| ANTHROPIC_VERSION_LATEST.to_string()),
+                    ext.anthropic_betas,
+                )
+            } else {
+                (ANTHROPIC_VERSION_LATEST.to_string(), None)
+            };
+
+        default_headers.insert(
+            "anthropic-version",
+            anthropic_version
+                .parse()
+                .map_err(|_| ClientBuilderError::InvalidProperty("anthropic-version"))?,
+        );
+
+        if let Some(betas) = anthropic_betas {
+            default_headers.insert(
+                "anthropic-beta",
+                betas
+                    .join(",")
+                    .parse()
+                    .map_err(|_| ClientBuilderError::InvalidProperty("anthropic-beta"))?,
+            );
+        }
+
+        Ok(Client {
+            base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
+            default_headers,
+            http_client,
+        })
+    }
+}
+
+// Helper implementation for Builder with AnthropicBuilderExtension
+impl<'a, T> crate::client::Builder<'a, Client<T>, T, BuilderExtension>
+where
+    T: crate::http_client::HttpClientExt + Default,
+{
+    pub fn anthropic_version(self, version: &str) -> Self {
+        self.update_extension(|mut ext| {
+            ext.anthropic_version = Some(version.to_string());
+            ext
+        })
+    }
+
+    pub fn anthropic_beta(self, beta: &str) -> Self {
+        self.update_extension(|mut ext| {
+            match &mut ext.anthropic_betas {
+                Some(betas) => betas.push(beta.to_string()),
+                None => ext.anthropic_betas = Some(vec![beta.to_string()]),
+            }
+            ext
+        })
+    }
+}
+
 impl Client<reqwest::Client> {
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::new(api_key)
+    pub fn builder(
+        api_key: &str,
+    ) -> crate::client::Builder<'_, Self, reqwest::Client, BuilderExtension> {
+        <Self as StandardClientBuilder<reqwest::Client>>::builder(api_key)
+            .with_extension(BuilderExtension::default())
     }
 
     pub fn from_env() -> Self {
@@ -219,7 +199,7 @@ impl Client<reqwest::Client> {
     /// - If the API key or version cannot be parsed as a Json value from a String.
     /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
     pub fn new(api_key: &str) -> Self {
-        ClientBuilder::new(api_key)
+        Self::builder(api_key)
             .build()
             .expect("Anthropic client should build")
     }
@@ -234,7 +214,9 @@ where
     fn from_env() -> Self {
         let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
 
-        ClientBuilder::<T>::new(&api_key).build().unwrap()
+        Self::builder(&api_key)
+            .build()
+            .expect("Anthropic client should build")
     }
 
     fn from_val(input: crate::client::ProviderValue) -> Self {
@@ -242,7 +224,9 @@ where
             panic!("Incorrect provider value type")
         };
 
-        ClientBuilder::<T>::new(&api_key).build().unwrap()
+        Self::builder(&api_key)
+            .build()
+            .expect("Anthropic client should build")
     }
 }
 

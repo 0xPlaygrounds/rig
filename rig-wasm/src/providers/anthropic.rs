@@ -4,6 +4,7 @@ use futures::{StreamExt, TryStreamExt};
 use rig::client::completion::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::completion::{Chat, Prompt};
+use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::js_sys::{Array, Reflect};
@@ -107,7 +108,7 @@ impl AnthropicAgent {
                 }
             });
 
-        let mut agent = rig::providers::anthropic::ClientBuilder::new(&api_key)
+        let mut agent = anthropic::Client::builder(&api_key)
             .build()
             .map_err(|x| JsError::new(x.to_string().as_ref()))?
             .agent(&model);
@@ -204,7 +205,7 @@ impl AnthropicCompletionModel {
         let model_opts: ModelOpts = serde_wasm_bindgen::from_value(opts.obj)
             .map_err(|x| JsError::new(format!("Failed to create model options: {x}").as_ref()))?;
 
-        let client = rig::providers::anthropic::ClientBuilder::new(&model_opts.api_key)
+        let client = anthropic::Client::builder(&model_opts.api_key)
             .build()
             .map_err(|x| JsError::new(x.to_string().as_ref()))?;
 

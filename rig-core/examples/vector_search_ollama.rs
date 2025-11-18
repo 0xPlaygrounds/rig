@@ -22,9 +22,9 @@ struct WordDefinition {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create ollama client
-    let client = providers::ollama::Client::builder()
+    let client = providers::ollama::Client::builder("")
         .base_url("http://localhost:11434")
-        .build();
+        .build()?;
     let embedding_model = client.embedding_model("nomic-embed-text");
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())

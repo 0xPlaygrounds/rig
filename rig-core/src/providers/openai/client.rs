@@ -11,8 +11,8 @@ use super::transcription::TranscriptionModel;
 
 use crate::{
     client::{
-        CompletionClient, EmbeddingsClient, ProviderClient, TranscriptionClient, VerifyClient,
-        VerifyError,
+        CompletionClient, EmbeddingsClient, ProviderClient, StandardClientBuilder,
+        TranscriptionClient, VerifyClient, VerifyError,
     },
     extractor::ExtractorBuilder,
     http_client::{self, HttpClientExt},
@@ -32,55 +32,6 @@ use serde::{Deserialize, Serialize};
 // Main OpenAI Client
 // ================================================================
 const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
-
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    api_key: &'a str,
-    base_url: &'a str,
-    http_client: T,
-}
-
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
-    pub fn new(api_key: &'a str) -> Self {
-        Self {
-            api_key,
-            base_url: OPENAI_API_BASE_URL,
-            http_client: Default::default(),
-        }
-    }
-}
-
-impl<'a, T> ClientBuilder<'a, T> {
-    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
-        ClientBuilder {
-            api_key,
-            base_url: OPENAI_API_BASE_URL,
-            http_client,
-        }
-    }
-
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            api_key: self.api_key,
-            base_url: self.base_url,
-            http_client,
-        }
-    }
-    pub fn build(self) -> Client<T> {
-        Client {
-            base_url: self.base_url.to_string(),
-            api_key: self.api_key.to_string(),
-            http_client: self.http_client,
-        }
-    }
-}
 
 #[derive(Clone)]
 pub struct Client<T = reqwest::Client> {
@@ -103,28 +54,20 @@ where
 }
 
 impl Client<reqwest::Client> {
-    /// Create a new OpenAI client builder.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::openai::{ClientBuilder, self};
-    ///
-    /// // Initialize the OpenAI client
-    /// let openai_client = Client::builder("your-open-ai-api-key")
-    ///    .build()
-    /// ```
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::new(api_key)
-    }
-
     /// Create a new OpenAI client. For more control, use the `builder` method.
-    ///
     pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key).build()
+        Self::builder(api_key)
+            .build()
+            .expect("OpenAI client should build")
     }
 
     pub fn from_env() -> Self {
         <Self as ProviderClient>::from_env()
+    }
+
+    /// Create a new OpenAI client builder
+    pub fn builder(api_key: &str) -> crate::client::Builder<'_, Self, reqwest::Client> {
+        <Self as StandardClientBuilder<reqwest::Client>>::builder(api_key)
     }
 }
 
@@ -170,6 +113,29 @@ where
     }
 }
 
+impl<T> StandardClientBuilder<T> for Client<T>
+where
+    T: HttpClientExt,
+{
+    fn build_from_builder<Ext>(
+        builder: crate::client::Builder<'_, Self, T, Ext>,
+    ) -> Result<Self, crate::client::ClientBuilderError>
+    where
+        Ext: Default,
+        T: Default + Clone,
+    {
+        let api_key = builder.get_api_key();
+        let base_url = builder.get_base_url(OPENAI_API_BASE_URL);
+        let http_client = builder.get_http_client();
+
+        Ok(Client {
+            base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
+            http_client,
+        })
+    }
+}
+
 impl<T> ProviderClient for Client<T>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
@@ -181,8 +147,13 @@ where
         let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
 
         match base_url {
-            Some(url) => ClientBuilder::<T>::new(&api_key).base_url(&url).build(),
-            None => ClientBuilder::<T>::new(&api_key).build(),
+            Some(url) => Self::builder(&api_key)
+                .base_url(&url)
+                .build()
+                .expect("OpenAI client should build"),
+            None => Self::builder(&api_key)
+                .build()
+                .expect("OpenAI client should build"),
         }
     }
 
@@ -191,7 +162,9 @@ where
             panic!("Incorrect provider value type")
         };
 
-        ClientBuilder::<T>::new(&api_key).build()
+        Self::builder(&api_key)
+            .build()
+            .expect("OpenAI client should build")
     }
 }
 
