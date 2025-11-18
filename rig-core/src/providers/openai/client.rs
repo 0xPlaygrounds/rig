@@ -3,7 +3,7 @@ use crate::{
         self, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient, SimpleKey,
     },
     extractor::ExtractorBuilder,
-    http_client::HttpClientExt,
+    http_client::{self, HttpClientExt},
     prelude::CompletionClient,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -51,8 +51,10 @@ impl Provider for OpenAIResponsesExt {
 
     const VERIFY_PATH: &'static str = "/models";
 
-    fn build<H>(_: &crate::client::ClientBuilder<Self::Builder, OpenAIApiKey, H>) -> Self {
-        Self
+    fn build<H>(
+        _: &crate::client::ClientBuilder<Self::Builder, OpenAIApiKey, H>,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 
@@ -61,8 +63,10 @@ impl Provider for OpenAICompletionsExt {
 
     const VERIFY_PATH: &'static str = "/models";
 
-    fn build<H>(_: &crate::client::ClientBuilder<Self::Builder, OpenAIApiKey, H>) -> Self {
-        Self
+    fn build<H>(
+        _: &crate::client::ClientBuilder<Self::Builder, OpenAIApiKey, H>,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 

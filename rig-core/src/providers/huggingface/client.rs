@@ -2,6 +2,7 @@ use crate::client::{
     self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
     SimpleKey,
 };
+use crate::http_client;
 #[cfg(feature = "image")]
 use crate::image_generation::ImageGenerationError;
 use crate::transcription::TranscriptionError;
@@ -117,10 +118,12 @@ impl Provider for HuggingFaceExt {
 
     const VERIFY_PATH: &'static str = "/api/whoami-v2";
 
-    fn build<H>(builder: &client::ClientBuilder<Self::Builder, HuggingFaceApiKey, H>) -> Self {
-        Self {
+    fn build<H>(
+        builder: &client::ClientBuilder<Self::Builder, HuggingFaceApiKey, H>,
+    ) -> http_client::Result<Self> {
+        Ok(Self {
             subprovider: builder.ext().subprovider.clone(),
-        }
+        })
     }
 }
 

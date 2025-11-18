@@ -161,14 +161,14 @@ pub enum Transport {
     NdJson,
 }
 
-pub trait Provider {
+pub trait Provider: Sized {
     const VERIFY_PATH: &'static str;
 
     type Builder: ProviderBuilder;
 
     fn build<H>(
         builder: &ClientBuilder<Self::Builder, <Self::Builder as ProviderBuilder>::ApiKey, H>,
-    ) -> Self;
+    ) -> http_client::Result<Self>;
 
     fn build_uri(&self, base_url: &str, path: &str, _transport: Transport) -> String {
         base_url.to_string() + "/" + path.trim_start_matches('/')
@@ -209,6 +209,8 @@ pub trait ProviderBuilder: Sized {
 
     const BASE_URL: &'static str;
 
+    /// This method can be used to customize the fields of `builder` before it is used to create
+    /// a client. For example, adding default headers
     fn finish<H>(
         &self,
         builder: ClientBuilder<Self, Self::ApiKey, H>,
@@ -510,7 +512,7 @@ where
         let ext = self.ext.clone();
 
         self = ext.finish(self)?;
-        let ext = Ext::build(&self);
+        let ext = Ext::build(&self)?;
 
         let ClientBuilder {
             http_client,

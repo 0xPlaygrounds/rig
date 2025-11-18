@@ -43,8 +43,10 @@ impl Provider for AnthropicExt {
 
     const VERIFY_PATH: &'static str = "/v1/models";
 
-    fn build<H>(_builder: &client::ClientBuilder<Self::Builder, AnthropicKey, H>) -> Self {
-        Self
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self::Builder, AnthropicKey, H>,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 

@@ -1,6 +1,9 @@
-use crate::client::{
-    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-    SimpleKey,
+use crate::{
+    client::{
+        self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+        SimpleKey,
+    },
+    http_client,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
@@ -22,8 +25,10 @@ impl Provider for MistralExt {
 
     const VERIFY_PATH: &'static str = "/models";
 
-    fn build<H>(_: &client::ClientBuilder<Self::Builder, MistralApiKey, H>) -> Self {
-        Self
+    fn build<H>(
+        _: &client::ClientBuilder<Self::Builder, MistralApiKey, H>,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 

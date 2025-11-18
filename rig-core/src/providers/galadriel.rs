@@ -59,10 +59,10 @@ impl Provider for GaladrielExt {
             <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
             H,
         >,
-    ) -> Self {
+    ) -> http_client::Result<Self> {
         let GaladrielBuilder { fine_tune_api_key } = builder.ext().clone();
 
-        Self { fine_tune_api_key }
+        Ok(Self { fine_tune_api_key })
     }
 }
 

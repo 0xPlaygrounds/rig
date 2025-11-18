@@ -46,8 +46,8 @@ impl Provider for MiraExt {
             <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
             H,
         >,
-    ) -> Self {
-        Self
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 

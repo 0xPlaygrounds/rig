@@ -3,7 +3,7 @@ use crate::client::{
     SimpleKey,
 };
 use crate::embeddings::EmbeddingError;
-use crate::http_client::HttpClientExt;
+use crate::http_client::{self, HttpClientExt};
 use crate::{embeddings, models};
 use bytes::Bytes;
 use serde::Deserialize;
@@ -34,8 +34,8 @@ impl Provider for VoyageExt {
             <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
             H,
         >,
-    ) -> Self {
-        Self
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 

@@ -48,10 +48,12 @@ impl Provider for GeminiExt {
 
     const VERIFY_PATH: &'static str = "/v1beta/models";
 
-    fn build<H>(builder: &client::ClientBuilder<Self::Builder, GeminiApiKey, H>) -> Self {
-        Self {
+    fn build<H>(
+        builder: &client::ClientBuilder<Self::Builder, GeminiApiKey, H>,
+    ) -> http_client::Result<Self> {
+        Ok(Self {
             api_key: builder.get_api_key().0.clone(),
-        }
+        })
     }
 
     fn build_uri(&self, base_url: &str, path: &str, transport: Transport) -> String {

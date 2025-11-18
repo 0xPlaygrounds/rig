@@ -1,5 +1,8 @@
-use crate::client::{
-    self, Capabilities, Capable, Nothing, Provider, ProviderBuilder, ProviderClient, SimpleKey,
+use crate::{
+    client::{
+        self, Capabilities, Capable, Nothing, Provider, ProviderBuilder, ProviderClient, SimpleKey,
+    },
+    http_client,
 };
 
 // ================================================================
@@ -23,8 +26,10 @@ impl Provider for TogetherExt {
 
     const VERIFY_PATH: &'static str = "/models";
 
-    fn build<H>(_: &client::ClientBuilder<Self::Builder, TogetherApiKey, H>) -> Self {
-        Self
+    fn build<H>(
+        _: &client::ClientBuilder<Self::Builder, TogetherApiKey, H>,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 

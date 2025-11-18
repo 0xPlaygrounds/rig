@@ -4,6 +4,7 @@ use crate::{
         SimpleKey,
     },
     completion::GetTokenUsage,
+    http_client,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
@@ -29,8 +30,10 @@ impl Provider for OpenRouterExt {
 
     const VERIFY_PATH: &'static str = "/key";
 
-    fn build<H>(_: &crate::client::ClientBuilder<Self::Builder, OpenRouterApiKey, H>) -> Self {
-        Self
+    fn build<H>(
+        _: &crate::client::ClientBuilder<Self::Builder, OpenRouterApiKey, H>,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 

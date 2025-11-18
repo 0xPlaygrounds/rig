@@ -1,5 +1,6 @@
 //! All supported models: <https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/gemini>
 
+use super::Client;
 use crate::types::{
     completion_request::VertexCompletionRequest, completion_response::VertexGenerateContentOutput,
 };
@@ -63,6 +64,13 @@ impl CompletionModel {
 impl CompletionModelTrait for CompletionModel {
     type Response = VertexGenerateContentOutput;
     type StreamingResponse = PlaceholderStreamingResponse;
+
+    type Client = Client;
+    type Models = String;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        Self::new(client.clone(), &model.into())
+    }
 
     async fn completion(
         &self,

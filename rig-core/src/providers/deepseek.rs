@@ -21,8 +21,8 @@ use crate::client::{
     SimpleKey,
 };
 use crate::completion::GetTokenUsage;
-use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
 use crate::message::{Document, DocumentSourceKind};
 use crate::models;
@@ -59,8 +59,8 @@ impl Provider for DeepSeekExt {
             <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
             H,
         >,
-    ) -> Self {
-        Self
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 

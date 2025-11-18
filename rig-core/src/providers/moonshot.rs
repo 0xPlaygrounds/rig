@@ -49,8 +49,8 @@ impl Provider for MoonshotExt {
             <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
             H,
         >,
-    ) -> Self {
-        Self
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 

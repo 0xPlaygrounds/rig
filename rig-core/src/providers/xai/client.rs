@@ -1,6 +1,9 @@
-use crate::client::{
-    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-    SimpleKey,
+use crate::{
+    client::{
+        self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+        SimpleKey,
+    },
+    http_client,
 };
 
 // ================================================================
@@ -24,8 +27,10 @@ impl Provider for XAiExt {
 
     const VERIFY_PATH: &'static str = "/v1/api-key";
 
-    fn build<H>(_: &client::ClientBuilder<Self::Builder, XAiApiKey, H>) -> Self {
-        Self
+    fn build<H>(
+        _: &client::ClientBuilder<Self::Builder, XAiApiKey, H>,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 

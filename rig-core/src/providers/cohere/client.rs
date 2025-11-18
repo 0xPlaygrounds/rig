@@ -32,8 +32,10 @@ impl Provider for CohereExt {
 
     const VERIFY_PATH: &'static str = "/models";
 
-    fn build<H>(_: &client::ClientBuilder<Self::Builder, CohereApiKey, H>) -> Self {
-        Self
+    fn build<H>(
+        _: &client::ClientBuilder<Self::Builder, CohereApiKey, H>,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 

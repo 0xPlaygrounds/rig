@@ -92,7 +92,7 @@ impl Provider for AzureExt {
             <Self::Builder as ProviderBuilder>::ApiKey,
             H,
         >,
-    ) -> Self {
+    ) -> http_client::Result<Self> {
         let AzureExtBuilder {
             endpoint,
             api_version,
@@ -100,11 +100,13 @@ impl Provider for AzureExt {
         } = builder.ext().clone();
 
         match endpoint {
-            Some(endpoint) => Self {
+            Some(endpoint) => Ok(Self {
                 endpoint,
                 api_version,
-            },
-            None => panic!("Azure endpoint must be set"),
+            }),
+            None => Err(http_client::Error::Instance(
+                "Azure client must be provided an endpoint prior to building".into(),
+            )),
         }
     }
 }
