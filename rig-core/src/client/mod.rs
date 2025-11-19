@@ -51,11 +51,8 @@ pub enum ClientBuilderError {
     InvalidProperty(&'static str),
 }
 
-/// The base ProviderClient trait, facilitates conversion between client types
-/// and creating a client from the environment.
-///
-/// All conversion traits must be implemented, they are automatically
-/// implemented if the respective client trait is implemented.
+/// Abstracts over the ability to instantiate a client, either via environment variables or some
+/// `Self::Input`
 pub trait ProviderClient {
     type Input;
 
@@ -107,6 +104,8 @@ where
     }
 }
 
+/// A type containing nothing at all. For `Option`-like behavior on the type level, i.e. to describe
+/// the lack of an API key in a `ClientBuilder`
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Nothing;
 
@@ -161,6 +160,9 @@ pub enum Transport {
     NdJson,
 }
 
+/// An API provider extension, this abstracts over extensions which may be use in conjunction with
+/// the `Client<Ext, H>` struct to define the behavior of a provider with respect to networking,
+/// auth, instantiating models
 pub trait Provider: Sized {
     const VERIFY_PATH: &'static str;
 
@@ -179,6 +181,7 @@ pub trait Provider: Sized {
     }
 }
 
+/// A wrapper type providing runtime checks on a provider's capabilities via the [Capability] trait
 pub struct Capable<M>(PhantomData<M>);
 
 pub trait Capability {
@@ -193,6 +196,7 @@ impl Capability for Nothing {
     const CAPABLE: bool = false;
 }
 
+/// The capabilities of a given provider, i.e. embeddings, audio transcriptions, text completion
 pub trait Capabilities<H = reqwest::Client> {
     type Completion: Capability;
     type Embeddings: Capability;
@@ -203,6 +207,10 @@ pub trait Capabilities<H = reqwest::Client> {
     type AudioGeneration: Capability;
 }
 
+/// An API provider extension *builder*, this abstracts over provider-specific builders which are
+/// able to configure and produce a given provider's extension type
+///
+/// See [Provider]
 pub trait ProviderBuilder: Sized {
     type Output: Provider;
     type ApiKey;
