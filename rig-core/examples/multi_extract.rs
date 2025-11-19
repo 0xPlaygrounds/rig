@@ -1,4 +1,5 @@
 use rig::prelude::*;
+use rig::providers::openai::CompletionModels::GPT4;
 use rig::{
     pipeline::{self, TryOp, agent_ops},
     providers::openai,
@@ -35,15 +36,15 @@ async fn main() -> anyhow::Result<()> {
     let openai = openai::Client::from_env();
 
     let names_extractor = openai
-        .extractor::<Names>("gpt-4")
+        .extractor::<Names>(GPT4)
         .preamble("Extract names (e.g.: of people, places) from the given text.")
         .build();
     let topics_extractor = openai
-        .extractor::<Topics>("gpt-4")
+        .extractor::<Topics>(GPT4)
         .preamble("Extract topics from the given text.")
         .build();
     let sentiment_extractor = openai
-        .extractor::<Sentiment>("gpt-4")
+        .extractor::<Sentiment>(GPT4)
         .preamble(
             "Extract sentiment (and how confident you are of the sentiment) from the given text.",
         )

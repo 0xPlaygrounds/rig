@@ -10,7 +10,6 @@ use crate::telemetry::SpanCombinator;
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
-use http::Method;
 use serde::{Deserialize, Serialize};
 use tracing::info_span;
 use tracing_futures::Instrument;
@@ -129,13 +128,9 @@ where
 
         let body = serde_json::to_vec(&request)?;
 
-        let req = self
-            .client
-            .req(Method::POST, "/v2/chat")?
-            .body(body)
-            .unwrap();
+        let req = self.client.post("/v2/chat")?.body(body).unwrap();
 
-        let mut event_source = GenericEventSource::new(self.client.http_client(), req);
+        let mut event_source = GenericEventSource::new(self.client.http_client().clone(), req);
 
         let stream = stream! {
             let mut current_tool_call: Option<(String, String, String)> = None;

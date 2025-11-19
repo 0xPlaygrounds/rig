@@ -64,7 +64,7 @@
 //! the individual traits, structs, and enums defined in this module.
 
 use super::message::{AssistantContent, DocumentMediaType};
-use crate::client::builder::FinalCompletionResponse;
+use crate::client::FinalCompletionResponse;
 use crate::client::completion::CompletionModelHandle;
 use crate::message::ToolChoice;
 use crate::streaming::StreamingCompletionResponse;
@@ -352,6 +352,11 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
         + DeserializeOwned
         + GetTokenUsage;
 
+    type Client;
+    type Models: TryFrom<String>;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self;
+
     /// Generates a completion response for the given completion request.
     fn completion(
         &self,
@@ -372,6 +377,7 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
         CompletionRequestBuilder::new(self.clone(), prompt)
     }
 }
+
 pub trait CompletionModelDyn: WasmCompatSend + WasmCompatSync {
     fn completion(
         &self,
@@ -436,12 +442,7 @@ where
         &self,
         prompt: Message,
     ) -> CompletionRequestBuilder<CompletionModelHandle<'_>> {
-        CompletionRequestBuilder::new(
-            CompletionModelHandle {
-                inner: Arc::new(self.clone()),
-            },
-            prompt,
-        )
+        CompletionRequestBuilder::new(CompletionModelHandle::new(Arc::new(self.clone())), prompt)
     }
 }
 

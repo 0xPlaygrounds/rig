@@ -8,7 +8,7 @@ use rig::{
     completion::Prompt,
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     prelude::CompletionClient,
-    providers::openai,
+    providers::openai::{self, CompletionModels::GPT4O},
     vector_store::{VectorStoreIndex, request::VectorSearchRequest},
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
@@ -107,12 +107,14 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::Client::builder("TEST")
-        .base_url(&server.base_url())
-        .build();
+    let openai_client: openai::Client = openai::Client::builder()
+        .api_key("TEST")
+        .base_url(server.base_url())
+        .build()
+        .unwrap();
 
     // Select an embedding model.
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding_model(openai::TextEmbeddingAda2);
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store")
@@ -321,12 +323,14 @@ async fn agent_with_dynamic_context_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::Client::builder("TEST")
-        .base_url(&server.base_url())
-        .build();
+    let openai_client = openai::Client::builder()
+        .api_key("TEST")
+        .base_url(server.base_url())
+        .build()
+        .unwrap();
 
     // Select an embedding model.
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding_model(openai::TextEmbeddingAda2);
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store")
@@ -392,7 +396,7 @@ async fn agent_with_dynamic_context_test() {
 
     // Build RAG agent with dynamic context
     let agent = openai_client
-        .completion_model("gpt-4o")
+        .completion_model(GPT4O)
         .completions_api()
         .into_agent_builder()
         .dynamic_context(top_k, vector_store_index)

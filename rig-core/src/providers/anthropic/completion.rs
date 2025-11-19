@@ -7,6 +7,7 @@ use crate::{
     json_utils,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, Reasoning},
     one_or_many::string_or_one_or_many,
+    providers::anthropic::client::AnthropicModels,
     telemetry::{ProviderResponseExt, SpanCombinator},
     wasm_compat::*,
 };
@@ -23,30 +24,6 @@ use tracing::{Instrument, info_span};
 // ================================================================
 // Anthropic Completion API
 // ================================================================
-
-/// `claude-opus-4-0` completion model
-pub const CLAUDE_4_OPUS: &str = "claude-opus-4-0";
-
-/// `claude-sonnet-4-0` completion model
-pub const CLAUDE_4_SONNET: &str = "claude-sonnet-4-0";
-
-/// `claude-3-7-sonnet-latest` completion model
-pub const CLAUDE_3_7_SONNET: &str = "claude-3-7-sonnet-latest";
-
-/// `claude-3-5-sonnet-latest` completion model
-pub const CLAUDE_3_5_SONNET: &str = "claude-3-5-sonnet-latest";
-
-/// `claude-3-5-haiku-latest` completion model
-pub const CLAUDE_3_5_HAIKU: &str = "claude-3-5-haiku-latest";
-
-/// `claude-3-5-haiku-latest` completion model
-pub const CLAUDE_3_OPUS: &str = "claude-3-opus-latest";
-
-/// `claude-3-sonnet-20240229` completion model
-pub const CLAUDE_3_SONNET: &str = "claude-3-sonnet-20240229";
-
-/// `claude-3-haiku-20240307` completion model
-pub const CLAUDE_3_HAIKU: &str = "claude-3-haiku-20240307";
 
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
@@ -636,10 +613,7 @@ impl TryFrom<Message> for message::Message {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client>
-where
-    T: WasmCompatSend,
-{
+pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
@@ -649,11 +623,11 @@ impl<T> CompletionModel<T>
 where
     T: HttpClientExt,
 {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: AnthropicModels) -> Self {
         Self {
             client,
             model: model.to_string(),
-            default_max_tokens: calculate_max_tokens(model),
+            default_max_tokens: Some(calculate_max_tokens(model)),
         }
     }
 }
@@ -661,22 +635,14 @@ where
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on the models
 /// available at the time of writing.
-///
-/// Dev Note: This is really bad design, I'm not sure why they did it like this..
-fn calculate_max_tokens(model: &str) -> Option<u64> {
-    if model.starts_with("claude-opus-4") {
-        Some(32000)
-    } else if model.starts_with("claude-sonnet-4") || model.starts_with("claude-3-7-sonnet") {
-        Some(64000)
-    } else if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
-        Some(8192)
-    } else if model.starts_with("claude-3-opus")
-        || model.starts_with("claude-3-sonnet")
-        || model.starts_with("claude-3-haiku")
-    {
-        Some(4096)
-    } else {
-        None
+fn calculate_max_tokens(model: AnthropicModels) -> u64 {
+    use AnthropicModels::*;
+
+    match model {
+        Claude4Opus => 32_000,
+        Claude4Sonnet | Claude37Sonnet => 64_000,
+        Claude35Sonnet | Claude35Haiku => 8_192,
+        Claude3Opus | Claude3Sonnet | Claude3Haiku => 4_096,
     }
 }
 
@@ -726,6 +692,12 @@ where
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
+    type Client = Client<T>;
+    type Models = AnthropicModels;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        CompletionModel::new(client.clone(), model.into())
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -825,7 +797,7 @@ where
 
             let req = self
                 .client
-                .post("/v1/messages")
+                .post("/v1/messages")?
                 .header("Content-Type", "application/json")
                 .body(request)
                 .map_err(|e| CompletionError::HttpError(e.into()))?;

@@ -106,15 +106,15 @@ where
 
         let req = self
             .client
-            .post_sse(&format!(
+            .post_sse(format!(
                 "/v1beta/models/{}:streamGenerateContent",
                 self.model
-            ))
+            ))?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let mut event_source = GenericEventSource::new(self.client.http_client.clone(), req);
+        let mut event_source = GenericEventSource::new(self.client.http_client().clone(), req);
 
         let stream = stream! {
             let mut text_response = String::new();

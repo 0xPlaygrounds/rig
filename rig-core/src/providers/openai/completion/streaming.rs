@@ -67,7 +67,10 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl CompletionModel<reqwest::Client> {
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -110,11 +113,9 @@ impl CompletionModel<reqwest::Client> {
             tracing::Span::current()
         };
 
-        tracing::Instrument::instrument(
-            send_compatible_streaming_request(self.client.http_client.clone(), req),
-            span,
-        )
-        .await
+        let client = self.client.http_client().clone();
+
+        tracing::Instrument::instrument(send_compatible_streaming_request(client, req), span).await
     }
 }
 

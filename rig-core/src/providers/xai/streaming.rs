@@ -36,7 +36,7 @@ where
                 "chat_streaming",
                 gen_ai.operation.name = "chat_streaming",
                 gen_ai.provider.name = "xai",
-                gen_ai.request.model = self.model,
+                gen_ai.request.model = <super::CompletionModels as Into<&str>>::into(self.model),
                 gen_ai.system_instructions = preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
@@ -49,7 +49,7 @@ where
             tracing::Span::current()
         };
 
-        send_compatible_streaming_request(self.client.http_client.clone(), req)
+        send_compatible_streaming_request(self.client.http_client().clone(), req)
             .instrument(span)
             .await
     }

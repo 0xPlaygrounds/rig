@@ -1,12 +1,8 @@
 use anyhow::Result;
 use rig::prelude::*;
+use rig::providers::anthropic::{self, Client};
 use rig::{
-    Embed,
-    completion::Prompt,
-    embeddings::EmbeddingsBuilder,
-    message::Message,
-    providers::anthropic::{CLAUDE_3_7_SONNET, ClientBuilder},
-    tools::ThinkTool,
+    Embed, completion::Prompt, embeddings::EmbeddingsBuilder, message::Message, tools::ThinkTool,
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
@@ -31,16 +27,15 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create Anthropic client
     let anthropic_api_key = env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
-    let anthropic_client = ClientBuilder::<reqwest::Client>::new(&anthropic_api_key)
+    let anthropic_client: anthropic::Client = Client::builder()
+        .api_key(&anthropic_api_key)
         .anthropic_beta("token-efficient-tools-2025-02-19") // Enable efficient tool calling
         .build()?;
 
     // Create the embedding model for our vector store
     // We'll use OpenAI's embedding model for this example
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = rig::providers::openai::Client::new(&openai_api_key);
-    let embedding_model =
-        openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
+    let openai_client = rig::providers::openai::Client::from_env();
+    let embedding_model = openai_client.embedding_model(rig::providers::openai::TextEmbeddingAda2);
 
     // Create a knowledge base with sample entries
     let knowledge_entries = vec![
@@ -89,7 +84,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create specialized research agent that will be used as a tool
     let research_agent = anthropic_client
-        .agent(CLAUDE_3_7_SONNET)
+        .agent(anthropic::Claude37Sonnet)
         .preamble(
             "You are a specialized research agent focused on environmental science and sustainability.
             Your role is to provide detailed, accurate information about climate change, renewable energy,
@@ -101,7 +96,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a data analysis agent that will be used as a tool
     let analysis_agent = anthropic_client
-        .agent(CLAUDE_3_7_SONNET)
+        .agent(anthropic::Claude37Sonnet)
         .preamble(
             "You are a data analysis agent specialized in interpreting environmental and sustainability data.
             When given data or statistics, you analyze trends, identify patterns, and draw meaningful conclusions.
@@ -113,7 +108,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a recommendation agent that will be used as a tool
     let recommendation_agent = anthropic_client
-        .agent(CLAUDE_3_7_SONNET)
+        .agent(anthropic::Claude37Sonnet)
         .preamble(
             "You are a recommendation agent specialized in suggesting practical sustainability solutions.
             Based on research findings and analysis, you provide actionable recommendations for individuals,
@@ -126,7 +121,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create the main orchestrator agent that will use all the tools
     let orchestrator_agent = anthropic_client
-        .agent(CLAUDE_3_7_SONNET)
+        .agent(anthropic::Claude37Sonnet)
         .preamble(
             "You are an environmental sustainability advisor that helps users understand complex environmental issues
             and find practical solutions. You have access to several specialized tools:

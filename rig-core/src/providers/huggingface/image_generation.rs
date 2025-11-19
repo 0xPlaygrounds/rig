@@ -1,12 +1,17 @@
 use super::Client;
 use crate::http_client::HttpClientExt;
-use crate::image_generation;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+use crate::{image_generation, models};
 use serde_json::json;
 
-pub const FLUX_1: &str = "black-forest-labs/FLUX.1-dev";
-pub const KOLORS: &str = "Kwai-Kolors/Kolors";
-pub const STABLE_DIFFUSION_3: &str = "stabilityai/stable-diffusion-3-medium-diffusers";
+models! {
+    pub enum ImageGenerationModels {
+        Flux1 => "black-forest-labs/FLUX.1-dev",
+        Kolors => "Kwai-Kolors/Kolors",
+        StableDiffusion3 => "stabilityai/stable-diffusion-3-medium-diffusers"
+    }
+}
+pub use ImageGenerationModels::*;
 
 #[derive(Debug)]
 pub struct ImageGenerationResponse {
@@ -47,6 +52,13 @@ where
 {
     type Response = ImageGenerationResponse;
 
+    type Client = Client<T>;
+    type Models = ImageGenerationModels;
+
+    fn make(client: &Self::Client, model: Self::Models) -> Self {
+        ImageGenerationModel::new(client.clone(), &model.to_string())
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn image_generation(
         &self,
@@ -63,7 +75,7 @@ where
 
         let route = self
             .client
-            .sub_provider
+            .subprovider()
             .image_generation_endpoint(&self.model)?;
 
         let body = serde_json::to_vec(&request)?;

@@ -2,8 +2,7 @@ use crate::completion::CompletionModel;
 use google_cloud_aiplatform_v1 as vertexai;
 use google_cloud_auth::credentials;
 use google_cloud_auth::credentials::Credentials;
-use rig::client::{CompletionClient, ProviderValue};
-use rig::impl_conversion_traits;
+use rig::client::{CompletionClient, Nothing};
 use rig::prelude::*;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
@@ -209,6 +208,8 @@ impl Default for Client {
 }
 
 impl ProviderClient for Client {
+    type Input = Nothing;
+
     fn from_env() -> Self
     where
         Self: Sized,
@@ -216,7 +217,7 @@ impl ProviderClient for Client {
         Client::new()
     }
 
-    fn from_val(_: ProviderValue) -> Self
+    fn from_val(_: Self::Input) -> Self
     where
         Self: Sized,
     {
@@ -229,8 +230,11 @@ impl ProviderClient for Client {
 impl CompletionClient for Client {
     type CompletionModel = CompletionModel;
 
-    fn completion_model(&self, model: &str) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model)
+    fn completion_model(
+        &self,
+        model: impl Into<<Self::CompletionModel as rig::completion::CompletionModel>::Models>,
+    ) -> Self::CompletionModel {
+        CompletionModel::new(self.clone(), &model.into())
     }
 }
 
@@ -240,10 +244,3 @@ impl VerifyClient for Client {
         Ok(())
     }
 }
-
-impl_conversion_traits!(
-    AsTranscription,
-    AsEmbeddings,
-    AsImageGeneration,
-    AsAudioGeneration for Client
-);

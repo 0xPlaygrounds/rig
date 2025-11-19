@@ -8,22 +8,22 @@
 //!
 //! let llama_3_1_sonar_small_online = client.completion_model(perplexity::LLAMA_3_1_SONAR_SMALL_ONLINE);
 //! ```
-use crate::{
-    OneOrMany,
-    client::{VerifyClient, VerifyError},
-    completion::{self, CompletionError, MessageError, message},
-    http_client::{self, HttpClientExt},
-    impl_conversion_traits, json_utils,
-};
-
-use crate::client::{CompletionClient, ProviderClient};
+use crate::client::BearerAuth;
 use crate::completion::CompletionRequest;
 use crate::json_utils::merge;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
+use crate::{
+    OneOrMany,
+    client::{
+        self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+    },
+    completion::{self, CompletionError, MessageError, message},
+    http_client::{self, HttpClientExt},
+    json_utils, models,
+};
 use bytes::Bytes;
-use http::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
@@ -33,153 +33,69 @@ use tracing::{Instrument, info_span};
 // ================================================================
 const PERPLEXITY_API_BASE_URL: &str = "https://api.perplexity.ai";
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    api_key: &'a str,
-    base_url: &'a str,
-    http_client: T,
-}
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PerplexityExt;
 
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
-    pub fn new(api_key: &'a str) -> Self {
-        Self {
-            api_key,
-            base_url: PERPLEXITY_API_BASE_URL,
-            http_client: Default::default(),
-        }
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PerplexityBuilder;
+
+type PerplexityApiKey = BearerAuth;
+
+impl Provider for PerplexityExt {
+    type Builder = PerplexityBuilder;
+
+    // There is currently no way to verify a perplexity api key without consuming tokens
+    const VERIFY_PATH: &'static str = "";
+
+    fn build<H>(
+        _: &crate::client::ClientBuilder<
+            Self::Builder,
+            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
+            H,
+        >,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 
-impl<'a, T> ClientBuilder<'a, T> {
-    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
-        Self {
-            api_key,
-            base_url: PERPLEXITY_API_BASE_URL,
-            http_client,
-        }
-    }
+impl<H> Capabilities<H> for PerplexityExt {
+    type Completion = Capable<CompletionModel<H>>;
+    type Transcription = Nothing;
+    type Embeddings = Nothing;
+    #[cfg(feature = "image")]
+    type ImageGeneration = Nothing;
 
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            api_key: self.api_key,
-            base_url: self.base_url,
-            http_client,
-        }
-    }
-
-    pub fn build(self) -> Client<T> {
-        Client {
-            base_url: self.base_url.to_string(),
-            api_key: self.api_key.to_string(),
-            http_client: self.http_client,
-        }
-    }
+    #[cfg(feature = "audio")]
+    type AudioGeneration = Nothing;
 }
 
-#[derive(Clone)]
-pub struct Client<T = reqwest::Client> {
-    base_url: String,
-    api_key: String,
-    http_client: T,
+impl DebugExt for PerplexityExt {}
+
+impl ProviderBuilder for PerplexityBuilder {
+    type Output = PerplexityExt;
+    type ApiKey = PerplexityApiKey;
+
+    const BASE_URL: &'static str = PERPLEXITY_API_BASE_URL;
 }
 
-impl<T> std::fmt::Debug for Client<T>
-where
-    T: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client")
-            .field("base_url", &self.base_url)
-            .field("http_client", &self.http_client)
-            .field("api_key", &"<REDACTED>")
-            .finish()
-    }
-}
+pub type Client<H = reqwest::Client> = client::Client<PerplexityExt, H>;
+pub type ClientBuilder<H = reqwest::Client> =
+    client::ClientBuilder<PerplexityBuilder, PerplexityApiKey, H>;
 
-impl<T> Client<T>
-where
-    T: HttpClientExt,
-{
-    fn req(
-        &self,
-        method: http_client::Method,
-        path: &str,
-    ) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
-        let req = http_client::Builder::new().method(method).uri(url);
+impl ProviderClient for Client {
+    type Input = String;
 
-        http_client::with_bearer_auth(req, &self.api_key)
-    }
-}
-
-impl Client<reqwest::Client> {
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::new(api_key)
-    }
-
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key).build()
-    }
-
-    pub fn from_env() -> Self {
-        <Self as ProviderClient>::from_env()
-    }
-}
-
-impl<T> ProviderClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
     /// Create a new Perplexity client from the `PERPLEXITY_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("PERPLEXITY_API_KEY").expect("PERPLEXITY_API_KEY not set");
-        ClientBuilder::<T>::new(&api_key).build()
+        Self::new(&api_key).unwrap()
     }
 
-    fn from_val(input: crate::client::ProviderValue) -> Self {
-        let crate::client::ProviderValue::Simple(api_key) = input else {
-            panic!("Incorrect provider value type")
-        };
-        ClientBuilder::<T>::new(&api_key).build()
+    fn from_val(input: Self::Input) -> Self {
+        Self::new(&input).unwrap()
     }
 }
-
-impl<T> CompletionClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    type CompletionModel = CompletionModel<T>;
-
-    fn completion_model(&self, model: &str) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model)
-    }
-}
-
-impl<T> VerifyClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn verify(&self) -> Result<(), VerifyError> {
-        // No API endpoint to verify the API key
-        Ok(())
-    }
-}
-
-impl_conversion_traits!(
-    AsTranscription,
-    AsEmbeddings,
-    AsImageGeneration,
-    AsAudioGeneration for Client<T>
-);
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
@@ -196,10 +112,16 @@ enum ApiResponse<T> {
 // ================================================================
 // Perplexity Completion API
 // ================================================================
-/// `sonar-pro` completion model
-pub const SONAR_PRO: &str = "sonar-pro";
-/// `sonar` completion model
-pub const SONAR: &str = "sonar";
+
+models! {
+    pub enum CompletionModels {
+        /// `sonar-pro` completion model
+        SonarPro => "sonar-pro",
+        /// `sonar` completion model
+        Sonar => "sonar",
+    }
+}
+pub use CompletionModels::*;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -417,6 +339,13 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
+    type Client = Client<T>;
+    type Models = CompletionModels;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        Self::new(client.clone(), model.into().into())
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -448,13 +377,13 @@ where
 
         let req = self
             .client
-            .req(Method::POST, "/v1/chat/completions")?
+            .post("/v1/chat/completions")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
         let async_block = async move {
-            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let response = self.client.http_client().send::<_, Bytes>(req).await?;
 
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
@@ -501,7 +430,7 @@ where
 
         let req = self
             .client
-            .req(Method::POST, "/chat/completions")?
+            .post("/chat/completions")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
@@ -524,7 +453,7 @@ where
         } else {
             tracing::Span::current()
         };
-        send_compatible_streaming_request(self.client.http_client.clone(), req)
+        send_compatible_streaming_request(self.client.http_client().clone(), req)
             .instrument(span)
             .await
     }

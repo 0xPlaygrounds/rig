@@ -1,4 +1,4 @@
-use rig::client::CompletionClient;
+use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers;
 use rig::tool::Tool;
@@ -34,7 +34,7 @@ async fn main() {
     tracing_subscriber::fmt().pretty().init();
 
     let calculator_agent = providers::openai::Client::from_env()
-        .agent(providers::openai::GPT_4O)
+        .agent(providers::openai::GPT4O)
         .preamble("You are an agent with tools access, always use the tools")
         .max_tokens(1024)
         .tool(Calculator)

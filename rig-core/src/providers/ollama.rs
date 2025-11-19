@@ -39,7 +39,7 @@
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2");
 //! ```
 use crate::client::{
-    CompletionClient, EmbeddingsClient, ProviderClient, VerifyClient, VerifyError,
+    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
 };
 use crate::completion::{GetTokenUsage, Usage};
 use crate::http_client::{self, HttpClientExt};
@@ -47,18 +47,16 @@ use crate::json_utils::merge_inplace;
 use crate::message::DocumentSourceKind;
 use crate::streaming::RawStreamingChoice;
 use crate::{
-    Embed, OneOrMany,
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
-    embeddings::{self, EmbeddingError, EmbeddingsBuilder},
-    impl_conversion_traits, json_utils, message,
+    embeddings::{self, EmbeddingError},
+    json_utils, message,
     message::{ImageDetail, Text},
     streaming,
 };
 use async_stream::try_stream;
 use bytes::Bytes;
 use futures::StreamExt;
-use reqwest;
-// use reqwest_eventsource::{Event, RequestBuilderExt}; // (Not used currently as Ollama does not support SSE)
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{convert::TryFrom, str::FromStr};
@@ -68,173 +66,68 @@ use tracing_futures::Instrument;
 
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    base_url: &'a str,
-    http_client: T,
-}
+#[derive(Debug, Default, Clone, Copy)]
+pub struct OllamaExt;
 
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self {
-            base_url: OLLAMA_API_BASE_URL,
-            http_client: Default::default(),
-        }
+#[derive(Debug, Default, Clone, Copy)]
+pub struct OllamaBuilder;
+
+impl Provider for OllamaExt {
+    type Builder = OllamaBuilder;
+
+    const VERIFY_PATH: &'static str = "api/tags";
+
+    fn build<H>(
+        _: &crate::client::ClientBuilder<
+            Self::Builder,
+            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
+            H,
+        >,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 
-impl<'a, T> ClientBuilder<'a, T> {
-    pub fn new_with_client(http_client: T) -> Self {
-        Self {
-            base_url: OLLAMA_API_BASE_URL,
-            http_client,
-        }
-    }
+impl<H> Capabilities<H> for OllamaExt {
+    type Completion = Capable<CompletionModel<H>>;
+    type Transcription = Nothing;
+    type Embeddings = Capable<EmbeddingModel<H>>;
+    #[cfg(feature = "image")]
+    type ImageGeneration = Nothing;
 
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            base_url: self.base_url,
-            http_client,
-        }
-    }
-
-    pub fn build(self) -> Client<T> {
-        Client {
-            base_url: self.base_url.into(),
-            http_client: self.http_client,
-        }
-    }
+    #[cfg(feature = "audio")]
+    type AudioGeneration = Nothing;
 }
 
-#[derive(Clone, Debug)]
-pub struct Client<T = reqwest::Client> {
-    base_url: String,
-    http_client: T,
+impl DebugExt for OllamaExt {}
+
+impl ProviderBuilder for OllamaBuilder {
+    type Output = OllamaExt;
+    type ApiKey = Nothing;
+
+    const BASE_URL: &'static str = OLLAMA_API_BASE_URL;
 }
 
-impl<T> Client<T> {
-    fn req(&self, method: http_client::Method, path: &str) -> http_client::Builder {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
-        http_client::Builder::new().method(method).uri(url)
-    }
+pub type Client<H = reqwest::Client> = client::Client<OllamaExt, H>;
+pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<OllamaBuilder, Nothing, H>;
 
-    pub(crate) fn post(&self, path: &str) -> http_client::Builder {
-        self.req(http_client::Method::POST, path)
-    }
+impl ProviderClient for Client {
+    type Input = Nothing;
 
-    pub(crate) fn get(&self, path: &str) -> http_client::Builder {
-        self.req(http_client::Method::GET, path)
-    }
-}
-
-impl Client<reqwest::Client> {
-    pub fn builder<'a>() -> ClientBuilder<'a, reqwest::Client> {
-        ClientBuilder::new()
-    }
-
-    pub fn new() -> Self {
-        Self::builder().build()
-    }
-
-    pub fn from_env() -> Self {
-        <Self as ProviderClient>::from_env()
-    }
-}
-
-impl Default for Client<reqwest::Client> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<T> ProviderClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
     fn from_env() -> Self {
         let api_base = std::env::var("OLLAMA_API_BASE_URL").expect("OLLAMA_API_BASE_URL not set");
-        ClientBuilder::new().base_url(&api_base).build()
+
+        Self::builder()
+            .api_key(Nothing)
+            .base_url(&api_base)
+            .build()
+            .unwrap()
     }
 
-    fn from_val(input: crate::client::ProviderValue) -> Self {
-        let crate::client::ProviderValue::Simple(_) = input else {
-            panic!("Incorrect provider value type")
-        };
-
-        ClientBuilder::new().build()
-    }
-}
-
-impl<T> CompletionClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    type CompletionModel = CompletionModel<T>;
-
-    fn completion_model(&self, model: &str) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model)
+    fn from_val(_: Self::Input) -> Self {
+        Self::builder().api_key(Nothing).build().unwrap()
     }
 }
-
-impl<T> EmbeddingsClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    type EmbeddingModel = EmbeddingModel<T>;
-    fn embedding_model(&self, model: &str) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, 0)
-    }
-    fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, ndims)
-    }
-    fn embeddings<D: Embed>(&self, model: &str) -> EmbeddingsBuilder<Self::EmbeddingModel, D> {
-        EmbeddingsBuilder::new(self.embedding_model(model))
-    }
-}
-
-impl<T> VerifyClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn verify(&self) -> Result<(), VerifyError> {
-        let req = self
-            .get("api/tags")
-            .body(http_client::NoBody)
-            .map_err(http_client::Error::from)?;
-
-        let response = HttpClientExt::send(&self.http_client, req).await?;
-
-        match response.status() {
-            reqwest::StatusCode::OK => Ok(()),
-            reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
-            reqwest::StatusCode::INTERNAL_SERVER_ERROR
-            | reqwest::StatusCode::SERVICE_UNAVAILABLE
-            | reqwest::StatusCode::BAD_GATEWAY => {
-                let text = http_client::text(response).await?;
-                Err(VerifyError::ProviderError(text))
-            }
-            _ => {
-                //response.error_for_status()?;
-                Ok(())
-            }
-        }
-    }
-}
-
-impl_conversion_traits!(
-    AsTranscription,
-    AsImageGeneration,
-    AsAudioGeneration for Client<T>
-);
 
 // ---------- API Error and Response Structures ----------
 
@@ -305,6 +198,13 @@ impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
+    type Client = Client<T>;
+    type Models = String;
+
+    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
+        Self::new(client.clone(), model.as_str(), dims.unwrap())
+    }
+
     const MAX_DOCUMENTS: usize = 1024;
     fn ndims(&self) -> usize {
         self.ndims
@@ -323,12 +223,12 @@ where
 
         let req = self
             .client
-            .post("api/embed")
+            .post("api/embed")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
-        let response = HttpClientExt::send(&self.client.http_client, req).await?;
+        let response = HttpClientExt::send(self.client.http_client(), req).await?;
 
         if !response.status().is_success() {
             let text = http_client::text(response).await?;
@@ -565,6 +465,13 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
+    type Client = Client<T>;
+    type Models = String;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        Self::new(client.clone(), model.into().as_str())
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -596,13 +503,13 @@ where
 
         let req = self
             .client
-            .post("api/chat")
+            .post("api/chat")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
         let async_block = async move {
-            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let response = self.client.http_client().send::<_, Bytes>(req).await?;
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
 
@@ -676,12 +583,12 @@ where
 
         let req = self
             .client
-            .post("api/chat")
+            .post("api/chat")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
-        let response = self.client.http_client.send_streaming(req).await?;
+        let response = self.client.http_client().send_streaming(req).await?;
         let status = response.status();
         let mut byte_stream = response.into_body();
 
