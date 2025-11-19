@@ -16,8 +16,8 @@ use tracing_futures::Instrument;
 
 use super::openai::{CompletionResponse, StreamingToolCall, TranscriptionResponse, Usage};
 use crate::client::{
-    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-    SimpleKey,
+    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient,
 };
 use crate::completion::GetTokenUsage;
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -50,7 +50,7 @@ pub struct GroqExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct GroqBuilder;
 
-type GroqApiKey = SimpleKey;
+type GroqApiKey = BearerAuth;
 
 impl Provider for GroqExt {
     type Builder = GroqBuilder;

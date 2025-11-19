@@ -58,13 +58,9 @@ pub trait ProviderClient {
 
     /// Create a client from the process's environment.
     /// Panics if an environment is improperly configured.
-    fn from_env() -> Self
-    where
-        Self: Sized;
+    fn from_env() -> Self;
 
-    fn from_val(input: Self::Input) -> Self
-    where
-        Self: Sized;
+    fn from_val(input: Self::Input) -> Self;
 }
 
 use crate::completion::{GetTokenUsage, Usage};
@@ -81,21 +77,24 @@ impl GetTokenUsage for FinalCompletionResponse {
     }
 }
 
+/// A trait for API keys. This determines whether the key is inserted into a [Client]'s default
+/// headers (in the `Some` case) or handled by a given provider extension (in the `None` case)
 pub trait ApiKey: Sized {
     fn into_header(self) -> Option<http_client::Result<(HeaderName, HeaderValue)>> {
         None
     }
 }
 
-pub struct SimpleKey(String);
+/// An API key which will be inserted into a `Client`'s default headers as a bearer auth token
+pub struct BearerAuth(String);
 
-impl ApiKey for SimpleKey {
+impl ApiKey for BearerAuth {
     fn into_header(self) -> Option<http_client::Result<(HeaderName, HeaderValue)>> {
         Some(make_auth_header(self.0))
     }
 }
 
-impl<S> From<S> for SimpleKey
+impl<S> From<S> for BearerAuth
 where
     S: Into<String>,
 {
@@ -112,14 +111,16 @@ pub struct Nothing;
 impl ApiKey for Nothing {}
 
 impl TryFrom<String> for Nothing {
-    type Error = String;
+    type Error = &'static str;
 
     fn try_from(_: String) -> Result<Self, Self::Error> {
-        Ok(Nothing)
+        Err(
+            "Tried to create a Nothing from a string - this should not happen, please file an issue",
+        )
     }
 }
 
-// So that i.e Ollama can ignore auth
+// So that Ollama can ignore auth
 #[derive(Clone)]
 pub struct Client<Ext = Nothing, H = reqwest::Client> {
     base_url: String,

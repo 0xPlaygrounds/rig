@@ -1,6 +1,7 @@
 use crate::{
     client::{
-        self, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient, SimpleKey,
+        self, BearerAuth, Capabilities, Capable, DebugExt, Provider, ProviderBuilder,
+        ProviderClient,
     },
     extractor::ExtractorBuilder,
     http_client::{self, HttpClientExt},
@@ -34,7 +35,7 @@ pub struct OpenAICompletionsExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OpenAICompletionsExtBuilder;
 
-type OpenAIApiKey = SimpleKey;
+type OpenAIApiKey = BearerAuth;
 
 // Responses API client (default)
 pub type Client<H = reqwest::Client> = client::Client<OpenAIResponsesExt, H>;

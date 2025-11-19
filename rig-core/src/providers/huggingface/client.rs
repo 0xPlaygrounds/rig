@@ -1,6 +1,6 @@
 use crate::client::{
-    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-    SimpleKey,
+    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient,
 };
 use crate::http_client;
 #[cfg(feature = "image")]
@@ -107,7 +107,7 @@ pub struct HuggingFaceBuilder {
     subprovider: SubProvider,
 }
 
-type HuggingFaceApiKey = SimpleKey;
+type HuggingFaceApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<HuggingFaceExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =

@@ -8,8 +8,8 @@
 //!
 //! ```
 use crate::client::{
-    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-    SimpleKey,
+    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient,
 };
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
@@ -33,7 +33,7 @@ pub struct MiraExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MiraBuilder;
 
-type MiraApiKey = SimpleKey;
+type MiraApiKey = BearerAuth;
 
 impl Provider for MiraExt {
     type Builder = MiraBuilder;

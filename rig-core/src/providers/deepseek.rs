@@ -17,8 +17,8 @@ use std::collections::HashMap;
 use tracing::{Instrument, info_span};
 
 use crate::client::{
-    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-    SimpleKey,
+    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient,
 };
 use crate::completion::GetTokenUsage;
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -46,7 +46,7 @@ pub struct DeepSeekExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DeepSeekExtBuilder;
 
-type DeepSeekApiKey = SimpleKey;
+type DeepSeekApiKey = BearerAuth;
 
 impl Provider for DeepSeekExt {
     type Builder = DeepSeekExtBuilder;

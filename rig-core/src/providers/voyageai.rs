@@ -1,6 +1,6 @@
 use crate::client::{
-    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-    SimpleKey,
+    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient,
 };
 use crate::embeddings::EmbeddingError;
 use crate::http_client::{self, HttpClientExt};
@@ -20,7 +20,7 @@ pub struct VoyageExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct VoyageBuilder;
 
-type VoyageApiKey = SimpleKey;
+type VoyageApiKey = BearerAuth;
 
 impl Provider for VoyageExt {
     type Builder = VoyageBuilder;

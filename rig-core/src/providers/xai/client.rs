@@ -1,7 +1,7 @@
 use crate::{
     client::{
-        self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-        SimpleKey,
+        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+        ProviderClient,
     },
     http_client,
 };
@@ -15,7 +15,7 @@ pub struct XAiExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct XAiExtBuilder;
 
-type XAiApiKey = SimpleKey;
+type XAiApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<XAiExt, H>;
 pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<XAiExtBuilder, XAiApiKey, H>;

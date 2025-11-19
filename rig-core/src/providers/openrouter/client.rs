@@ -1,7 +1,7 @@
 use crate::{
     client::{
-        self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-        SimpleKey,
+        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+        ProviderClient,
     },
     completion::GetTokenUsage,
     http_client,
@@ -19,7 +19,7 @@ pub struct OpenRouterExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OpenRouterExtBuilder;
 
-type OpenRouterApiKey = SimpleKey;
+type OpenRouterApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<OpenRouterExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =

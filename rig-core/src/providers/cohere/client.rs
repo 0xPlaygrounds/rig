@@ -1,8 +1,8 @@
 use crate::{
     Embed,
     client::{
-        self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-        SimpleKey,
+        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+        ProviderClient,
     },
     embeddings::EmbeddingsBuilder,
     http_client::{self, HttpClientExt},
@@ -22,7 +22,7 @@ pub struct CohereExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CohereBuilder;
 
-type CohereApiKey = SimpleKey;
+type CohereApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<CohereExt, H>;
 pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<CohereBuilder, CohereApiKey, H>;

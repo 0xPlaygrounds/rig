@@ -1,7 +1,7 @@
 use crate::{
     client::{
-        self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-        SimpleKey,
+        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+        ProviderClient,
     },
     http_client,
 };
@@ -15,7 +15,7 @@ pub struct MistralExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MistralBuilder;
 
-type MistralApiKey = SimpleKey;
+type MistralApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<MistralExt, H>;
 pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<MistralBuilder, String, H>;

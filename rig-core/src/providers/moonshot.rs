@@ -9,8 +9,8 @@
 //! let moonshot_model = client.completion_model(moonshot::MOONSHOT_CHAT);
 //! ```
 use crate::client::{
-    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-    SimpleKey,
+    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient,
 };
 use crate::http_client::HttpClientExt;
 use crate::json_utils::merge;
@@ -36,7 +36,7 @@ pub struct MoonshotExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MoonshotBuilder;
 
-type MoonshotApiKey = SimpleKey;
+type MoonshotApiKey = BearerAuth;
 
 impl Provider for MoonshotExt {
     type Builder = MoonshotBuilder;

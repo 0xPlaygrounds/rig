@@ -12,8 +12,8 @@
 //! ```
 use super::openai;
 use crate::client::{
-    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-    SimpleKey,
+    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient,
 };
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
@@ -45,7 +45,7 @@ pub struct GaladrielBuilder {
     fine_tune_api_key: Option<String>,
 }
 
-type GaladrielApiKey = SimpleKey;
+type GaladrielApiKey = BearerAuth;
 
 impl Provider for GaladrielExt {
     type Builder = GaladrielBuilder;

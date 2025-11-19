@@ -8,7 +8,7 @@
 //!
 //! let llama_3_1_sonar_small_online = client.completion_model(perplexity::LLAMA_3_1_SONAR_SMALL_ONLINE);
 //! ```
-use crate::client::SimpleKey;
+use crate::client::BearerAuth;
 use crate::completion::CompletionRequest;
 use crate::json_utils::merge;
 use crate::providers::openai;
@@ -39,7 +39,7 @@ pub struct PerplexityExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PerplexityBuilder;
 
-type PerplexityApiKey = SimpleKey;
+type PerplexityApiKey = BearerAuth;
 
 impl Provider for PerplexityExt {
     type Builder = PerplexityBuilder;

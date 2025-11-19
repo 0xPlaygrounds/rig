@@ -1,6 +1,6 @@
 use crate::{
     client::{
-        self, Capabilities, Capable, Nothing, Provider, ProviderBuilder, ProviderClient, SimpleKey,
+        self, BearerAuth, Capabilities, Capable, Nothing, Provider, ProviderBuilder, ProviderClient,
     },
     http_client,
 };
@@ -15,7 +15,7 @@ pub struct TogetherExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TogetherExtBuilder;
 
-type TogetherApiKey = SimpleKey;
+type TogetherApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<TogetherExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =

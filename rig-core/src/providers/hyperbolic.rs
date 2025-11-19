@@ -11,7 +11,7 @@
 use super::openai::{AssistantContent, send_compatible_streaming_request};
 
 use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder};
-use crate::client::{ProviderClient, SimpleKey};
+use crate::client::{BearerAuth, ProviderClient};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
 use crate::message;
@@ -37,7 +37,7 @@ pub struct HyperbolicExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HyperbolicBuilder;
 
-type HyperbolicApiKey = SimpleKey;
+type HyperbolicApiKey = BearerAuth;
 
 impl Provider for HyperbolicExt {
     type Builder = HyperbolicBuilder;
