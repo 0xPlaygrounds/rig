@@ -489,7 +489,6 @@ where
         self.ndims
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
@@ -656,7 +655,6 @@ where
     type Response = openai::CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: CompletionRequest,
@@ -728,7 +726,6 @@ where
         .await
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         request: CompletionRequest,
@@ -803,7 +800,6 @@ where
 {
     type Response = TranscriptionResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn transcription(
         &self,
         request: transcription::TranscriptionRequest,
@@ -890,7 +886,6 @@ mod image_generation {
     {
         type Response = ImageGenerationResponse;
 
-        #[cfg_attr(feature = "worker", worker::send)]
         async fn image_generation(
             &self,
             generation_request: ImageGenerationRequest,
@@ -979,7 +974,6 @@ mod audio_generation {
     {
         type Response = Bytes;
 
-        #[cfg_attr(feature = "worker", worker::send)]
         async fn audio_generation(
             &self,
             request: AudioGenerationRequest,
@@ -1037,7 +1031,6 @@ impl<T> VerifyClient for Client<T>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
 {
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn verify(&self) -> Result<(), VerifyError> {
         // There is currently no way to verify the Azure OpenAI API key or token without
         // consuming tokens
