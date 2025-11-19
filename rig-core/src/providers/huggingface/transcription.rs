@@ -1,17 +1,22 @@
 use crate::http_client::HttpClientExt;
 use crate::providers::huggingface::Client;
 use crate::providers::huggingface::completion::ApiResponse;
-use crate::transcription;
 use crate::transcription::TranscriptionError;
 use crate::wasm_compat::WasmCompatSync;
+use crate::{models, transcription};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde::Deserialize;
 use serde_json::json;
 
-pub const WHISPER_LARGE_V3: &str = "openai/whisper-large-v3";
-pub const WHISPER_LARGE_V3_TURBO: &str = "openai/whisper-large-v3-turbo";
-pub const WHISPER_SMALL: &str = "openai/whisper-small";
+models! {
+    pub enum TranscriptionModels {
+        WhisperLargeV3 => "openai/whisper-large-v3",
+        WhisperLargeV3Turbo => "openai/whisper-large-v3-turbo",
+        WhisperSmall => "openai/whisper-small",
+    }
+}
+pub use TranscriptionModels::*;
 
 #[derive(Debug, Deserialize)]
 pub struct TranscriptionResponse {
@@ -52,6 +57,13 @@ where
 {
     type Response = TranscriptionResponse;
 
+    type Client = Client<T>;
+    type Models = TranscriptionModels;
+
+    fn make(client: &Self::Client, model: Self::Models) -> Self {
+        TranscriptionModel::new(client.clone(), model.into())
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn transcription(
         &self,
@@ -66,7 +78,7 @@ where
 
         let route = self
             .client
-            .sub_provider
+            .subprovider()
             .transcription_endpoint(&self.model)?;
 
         let request = serde_json::to_vec(&request)?;

@@ -1,16 +1,22 @@
 use bytes::Bytes;
 
 use crate::http_client::HttpClientExt;
-use crate::providers::openai::{ApiResponse, Client};
-use crate::transcription;
+use crate::providers::openai::{Client, client::ApiResponse};
 use crate::transcription::TranscriptionError;
+use crate::{models, transcription};
 use reqwest::multipart::Part;
 use serde::Deserialize;
 
 // ================================================================
 // OpenAI Transcription API
 // ================================================================
-pub const WHISPER_1: &str = "whisper-1";
+
+models! {
+    pub enum TranscriptionModels {
+        Whisper1 => "whisper-1",
+    }
+}
+pub use TranscriptionModels::*;
 
 #[derive(Debug, Deserialize)]
 pub struct TranscriptionResponse {
@@ -33,16 +39,12 @@ impl TryFrom<TranscriptionResponse>
 #[derive(Clone)]
 pub struct TranscriptionModel<T = reqwest::Client> {
     client: Client<T>,
-    /// Name of the model (e.g.: gpt-3.5-turbo-1106)
-    pub model: String,
+    pub model: TranscriptionModels,
 }
 
 impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
+    pub fn new(client: Client<T>, model: TranscriptionModels) -> Self {
+        Self { client, model }
     }
 }
 
@@ -51,6 +53,13 @@ where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     type Response = TranscriptionResponse;
+
+    type Client = Client<T>;
+    type Models = TranscriptionModels;
+
+    fn make(client: &Self::Client, model: Self::Models) -> Self {
+        Self::new(client.clone(), model)
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn transcription(
@@ -63,7 +72,10 @@ where
         let data = request.data;
 
         let mut body = reqwest::multipart::Form::new()
-            .text("model", self.model.clone())
+            .text(
+                "model",
+                <TranscriptionModels as Into<&str>>::into(self.model),
+            )
             .part(
                 "file",
                 Part::bytes(data).file_name(request.filename.clone()),
@@ -98,7 +110,7 @@ where
 
         let response = self
             .client
-            .http_client
+            .http_client()
             .send_multipart::<Bytes>(req)
             .await
             .unwrap();

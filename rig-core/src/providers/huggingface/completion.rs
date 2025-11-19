@@ -1,6 +1,7 @@
 use super::client::Client;
 use crate::completion::GetTokenUsage;
 use crate::http_client::HttpClientExt;
+use crate::models;
 use crate::providers::openai::StreamingCompletionResponse;
 use crate::telemetry::SpanCombinator;
 use crate::{
@@ -28,25 +29,27 @@ pub enum ApiResponse<T> {
 
 // Conversational LLMs
 
-/// `google/gemma-2-2b-it` completion model
-pub const GEMMA_2: &str = "google/gemma-2-2b-it";
-/// `meta-llama/Meta-Llama-3.1-8B-Instruct` completion model
-pub const META_LLAMA_3_1: &str = "meta-llama/Meta-Llama-3.1-8B-Instruct";
-/// `microsoft/phi-4` completion model
-pub const PHI_4: &str = "microsoft/phi-4";
-/// `PowerInfer/SmallThinker-3B-Preview` completion model
-pub const SMALLTHINKER_PREVIEW: &str = "PowerInfer/SmallThinker-3B-Preview";
-/// `Qwen/Qwen2.5-7B-Instruct` completion model
-pub const QWEN2_5: &str = "Qwen/Qwen2.5-7B-Instruct";
-/// `Qwen/Qwen2.5-Coder-32B-Instruct` completion model
-pub const QWEN2_5_CODER: &str = "Qwen/Qwen2.5-Coder-32B-Instruct";
-
-// Conversational VLMs
-
-/// `Qwen/Qwen2-VL-7B-Instruct` visual-language completion model
-pub const QWEN2_VL: &str = "Qwen/Qwen2-VL-7B-Instruct";
-/// `Qwen/QVQ-72B-Preview` visual-language completion model
-pub const QWEN_QVQ_PREVIEW: &str = "Qwen/QVQ-72B-Preview";
+models! {
+    pub enum CompletionModels {
+        /// `google/gemma-2-2b-it` completion model
+        Gemma2 => "google/gemma-2-2b-it",
+        /// `meta-llama/Meta-Llama-3.1-8B-Instruct` completion model
+        MetaLlama31 => "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        /// `microsoft/phi-4` completion model
+        Phi4 => "microsoft/phi-4",
+        /// `PowerInfer/SmallThinker-3B-Preview` completion model
+        SmallThinkerPreview => "PowerInfer/SmallThinker-3B-Preview",
+        /// `Qwen/Qwen2.5-7B-Instruct` completion model
+        Qwen25 => "Qwen/Qwen2.5-7B-Instruct",
+        /// `Qwen/Qwen2.5-Coder-32B-Instruct` completion model
+        Qwen25Coder => "Qwen/Qwen2.5-Coder-32B-Instruct",
+        /// `Qwen/Qwen2-VL-7B-Instruct` visual-language completion model
+        Qwen2VL => "Qwen/Qwen2-VL-7B-Instruct",
+        /// `Qwen/QVQ-72B-Preview` visual-language completion model
+        QwenQVQPreview => "Qwen/QVQ-72B-Preview",
+    }
+}
+pub use CompletionModels::*;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub struct Function {
@@ -649,7 +652,7 @@ impl<T> CompletionModel<T> {
 
         full_history.extend(chat_history);
 
-        let model = self.client.sub_provider.model_identifier(&self.model);
+        let model = self.client.subprovider().model_identifier(&self.model);
 
         let tool_choice = completion_request
             .tool_choice
@@ -683,6 +686,13 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
+    type Client = Client<T>;
+    type Models = String;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        CompletionModel::new(client.clone(), &model.into())
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -709,7 +719,7 @@ where
         let request = self.create_request_body(&completion_request)?;
         span.record_model_input(&request.get("messages"));
 
-        let path = self.client.sub_provider.completion_endpoint(&self.model);
+        let path = self.client.subprovider().completion_endpoint(&self.model);
 
         let request = if let Some(ref params) = completion_request.additional_params {
             json_utils::merge(request, params.clone())

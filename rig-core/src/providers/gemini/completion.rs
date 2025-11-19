@@ -30,6 +30,7 @@ pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 use self::gemini_api_types::Schema;
 use crate::http_client::HttpClientExt;
 use crate::message::Reasoning;
+use crate::models;
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
@@ -53,14 +54,49 @@ use super::Client;
 // Rig Implementation Types
 // =================================================================
 
-#[derive(Clone)]
+models! {
+    #[allow(non_camel_case_types)]
+    pub enum CompletionModels {
+        /// `gemini-2.5-pro` completion model
+        Gemini25Pro => "gemini-2.5-pro",
+        /// `gemini-2.5-pro-preview-06-05` completion model
+        Gemini25ProPreview_06_05 => "gemini-2.5-pro-preview-06-05",
+        /// `gemini-2.5-pro-preview-05-06` completion model
+        Gemini25ProPreview_05_06 => "gemini-2.5-pro-preview-05-06",
+        /// `gemini-2.5-pro-preview-03-25` completion model
+        Gemini25ProPreview_03_25 => "gemini-2.5-pro-preview-03-25",
+        /// `gemini-2.5-flash` completion model
+        Gemini25Flash => "gemini-2.5-flash",
+        /// `gemini-2.5-flash-preview-05-20` completion model
+        Gemini25FlashPreview_05_20 => "gemini-2.5-flash-preview-05-20",
+        /// `gemini-2.5-flash-preview-04-17` completion model
+        Gemini25FlashPreview_04_17 => "gemini-2.5-flash-preview-04-17",
+        /// `gemini-2.5-pro-exp-03-25` experimental completion model
+        Gemini25ProExp_03_25 => "gemini-2.5-pro-exp-03-25",
+        /// `gemini-2.0-flash-lite` completion model
+        Gemini20FlashLite => "gemini-2.0-flash-lite",
+        /// `gemini-2.0-flash` completion model
+        Gemini20Flash => "gemini-2.0-flash",
+        /// `gemini-1.5-flash` completion model
+        Gemini15Flash => "gemini-1.5-flash",
+        /// `gemini-1.5-pro` completion model
+        Gemini15Pro => "gemini-1.5-pro",
+        /// `gemini-1.5-pro-8b` completion model
+        Gemini15Pro8B => "gemini-1.5-pro-8b",
+        /// `gemini-1.0-pro` completion model
+        Gemini10Pro => "gemini-1.0-pro",
+    }
+}
+pub use CompletionModels::*;
+
+#[derive(Clone, Debug)]
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -74,6 +110,12 @@ where
 {
     type Response = GenerateContentResponse;
     type StreamingResponse = StreamingCompletionResponse;
+    type Client = super::Client<T>;
+    type Models = CompletionModels;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        Self::new(client.clone(), model.into())
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -112,9 +154,11 @@ where
 
         let body = serde_json::to_vec(&request)?;
 
+        let path = format!("/v1beta/models/{}:generateContent", self.model);
+
         let request = self
             .client
-            .post(&format!("/v1beta/models/{}:generateContent", self.model))
+            .post(path.as_str())?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;

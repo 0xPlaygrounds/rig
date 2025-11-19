@@ -1,5 +1,5 @@
-use rig::client::ImageGenerationClient;
-use rig::image_generation::ImageGenerationModel;
+use rig::client::ProviderClient;
+use rig::client::image_generation::ImageGenerationClientDyn;
 use rig::providers::huggingface;
 use std::env::args;
 use std::fs::File;
@@ -22,7 +22,7 @@ async fn main() {
     let mut file = File::create_new(path).expect("Failed to create file");
 
     let huggingface = huggingface::Client::from_env();
-    let dalle = huggingface.image_generation_model(huggingface::STABLE_DIFFUSION_3);
+    let dalle = huggingface.image_generation_model(huggingface::StableDiffusion3.into());
 
     let response = dalle
         .image_generation_request()

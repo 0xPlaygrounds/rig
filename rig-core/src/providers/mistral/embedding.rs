@@ -4,6 +4,7 @@ use serde_json::json;
 use crate::{
     embeddings::{self, EmbeddingError},
     http_client::{self, HttpClientExt},
+    models,
 };
 
 use super::client::{ApiResponse, Client, Usage};
@@ -11,8 +12,13 @@ use super::client::{ApiResponse, Client, Usage};
 // ================================================================
 // Mistral Embedding API
 // ================================================================
-/// `mistral-embed` embedding model
-pub const MISTRAL_EMBED: &str = "mistral-embed";
+models! {
+    pub enum EmbeddingModels {
+        MistralEmbed => "mistral-embed"
+    }
+}
+pub use EmbeddingModels::*;
+
 pub const MAX_DOCUMENTS: usize = 1024;
 
 #[derive(Clone)]
@@ -36,7 +42,15 @@ impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
     T: HttpClientExt + Clone,
 {
+    type Client = Client<T>;
+    type Models = EmbeddingModels;
+
     const MAX_DOCUMENTS: usize = MAX_DOCUMENTS;
+
+    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
+        EmbeddingModel::new(client.clone(), model.into(), dims.unwrap())
+    }
+
     fn ndims(&self) -> usize {
         self.ndims
     }

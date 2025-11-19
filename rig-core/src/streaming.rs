@@ -11,7 +11,7 @@
 use crate::OneOrMany;
 use crate::agent::Agent;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
-use crate::client::builder::FinalCompletionResponse;
+use crate::client::FinalCompletionResponse;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
     Message, Usage,

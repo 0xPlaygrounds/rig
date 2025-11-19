@@ -81,8 +81,15 @@ impl EmbeddingModel {
 impl embeddings::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 1024;
 
+    type Client = Client;
+    type Models = String;
+
+    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
+        Self::new(client.clone(), model.as_str(), dims)
+    }
+
     fn ndims(&self) -> usize {
-        self.ndims.unwrap_or(0)
+        self.ndims.unwrap_or_default()
     }
 
     async fn embed_texts(

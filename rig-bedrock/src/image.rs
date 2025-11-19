@@ -31,6 +31,13 @@ impl ImageGenerationModel {
 impl image_generation::ImageGenerationModel for ImageGenerationModel {
     type Response = TextToImageResponse;
 
+    type Client = Client;
+    type Models = String;
+
+    fn make(client: &Self::Client, model: Self::Models) -> Self {
+        Self::new(client.clone(), model.as_str())
+    }
+
     async fn image_generation(
         &self,
         generation_request: ImageGenerationRequest,

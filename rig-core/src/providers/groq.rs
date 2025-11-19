@@ -9,17 +9,21 @@
 //! let gpt4o = client.completion_model(groq::GPT_4O);
 //! ```
 use bytes::Bytes;
-use http::{Method, Request};
+use http::Request;
 use std::collections::HashMap;
 use tracing::info_span;
 use tracing_futures::Instrument;
 
 use super::openai::{CompletionResponse, StreamingToolCall, TranscriptionResponse, Usage};
-use crate::client::{CompletionClient, TranscriptionClient, VerifyClient, VerifyError};
+use crate::client::{
+    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient,
+};
 use crate::completion::GetTokenUsage;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
+use crate::models;
 use crate::providers::openai::{AssistantContent, Function, ToolType};
 use async_stream::stream;
 use futures::StreamExt;
@@ -33,8 +37,6 @@ use crate::{
     transcription::{self, TranscriptionError},
 };
 use reqwest::multipart::Part;
-use rig::client::ProviderClient;
-use rig::impl_conversion_traits;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -43,210 +45,66 @@ use serde_json::{Value, json};
 // ================================================================
 const GROQ_API_BASE_URL: &str = "https://api.groq.com/openai/v1";
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    api_key: &'a str,
-    base_url: &'a str,
-    http_client: T,
-}
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GroqExt;
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GroqBuilder;
 
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
-    pub fn new(api_key: &'a str) -> Self {
-        Self {
-            api_key,
-            base_url: GROQ_API_BASE_URL,
-            http_client: Default::default(),
-        }
+type GroqApiKey = BearerAuth;
+
+impl Provider for GroqExt {
+    type Builder = GroqBuilder;
+
+    const VERIFY_PATH: &'static str = "/models";
+
+    fn build<H>(
+        _: &crate::client::ClientBuilder<
+            Self::Builder,
+            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
+            H,
+        >,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 
-impl<'a, T> ClientBuilder<'a, T> {
-    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
-        Self {
-            api_key,
-            base_url: GROQ_API_BASE_URL,
-            http_client,
-        }
-    }
+impl<H> Capabilities<H> for GroqExt {
+    type Completion = Capable<CompletionModel<H>>;
+    type Embeddings = Nothing;
+    type Transcription = Capable<TranscriptionModel<H>>;
+    #[cfg(feature = "image")]
+    type ImageGeneration = Nothing;
 
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            api_key: self.api_key,
-            base_url: self.base_url,
-            http_client,
-        }
-    }
-
-    pub fn build(self) -> Client<T> {
-        Client {
-            base_url: self.base_url.to_string(),
-            api_key: self.api_key.to_string(),
-            http_client: self.http_client,
-        }
-    }
+    #[cfg(feature = "audio")]
+    type AudioGeneration = Nothing;
 }
 
-#[derive(Clone)]
-pub struct Client<T = reqwest::Client> {
-    base_url: String,
-    api_key: String,
-    http_client: T,
+impl DebugExt for GroqExt {}
+
+impl ProviderBuilder for GroqBuilder {
+    type Output = GroqExt;
+    type ApiKey = GroqApiKey;
+
+    const BASE_URL: &'static str = GROQ_API_BASE_URL;
 }
 
-impl<T> std::fmt::Debug for Client<T>
-where
-    T: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client")
-            .field("base_url", &self.base_url)
-            .field("http_client", &self.http_client)
-            .field("api_key", &"<REDACTED>")
-            .finish()
-    }
-}
+pub type Client<H = reqwest::Client> = client::Client<GroqExt, H>;
+pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<GroqBuilder, String, H>;
 
-impl<T> Client<T>
-where
-    T: HttpClientExt,
-{
-    fn req(
-        &self,
-        method: http_client::Method,
-        path: &str,
-    ) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+impl ProviderClient for Client {
+    type Input = String;
 
-        http_client::with_bearer_auth(
-            http_client::Builder::new().method(method).uri(url),
-            &self.api_key,
-        )
-    }
-
-    fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        self.req(http_client::Method::GET, path)
-    }
-}
-
-impl Client<reqwest::Client> {
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::new(api_key)
-    }
-
-    pub fn new(api_key: &str) -> Self {
-        ClientBuilder::new(api_key).build()
-    }
-
-    pub fn from_env() -> Self {
-        <Self as ProviderClient>::from_env()
-    }
-}
-
-impl<T> ProviderClient for Client<T>
-where
-    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
-{
     /// Create a new Groq client from the `GROQ_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("GROQ_API_KEY").expect("GROQ_API_KEY not set");
-        ClientBuilder::<T>::new(&api_key).build()
+        Self::new(&api_key).unwrap()
     }
 
-    fn from_val(input: crate::client::ProviderValue) -> Self {
-        let crate::client::ProviderValue::Simple(api_key) = input else {
-            panic!("Incorrect provider value type")
-        };
-        ClientBuilder::<T>::new(&api_key).build()
+    fn from_val(input: Self::Input) -> Self {
+        Self::new(&input).unwrap()
     }
 }
-
-impl<T> CompletionClient for Client<T>
-where
-    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
-{
-    type CompletionModel = CompletionModel<T>;
-
-    /// Create a completion model with the given name.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::groq::{Client, self};
-    ///
-    /// // Initialize the Groq client
-    /// let groq = Client::new("your-groq-api-key");
-    ///
-    /// let gpt4 = groq.completion_model(groq::GPT_4);
-    /// ```
-    fn completion_model(&self, model: &str) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model)
-    }
-}
-
-impl<T> TranscriptionClient for Client<T>
-where
-    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
-{
-    type TranscriptionModel = TranscriptionModel<T>;
-
-    /// Create a transcription model with the given name.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::groq::{Client, self};
-    ///
-    /// // Initialize the Groq client
-    /// let groq = Client::new("your-groq-api-key");
-    ///
-    /// let gpt4 = groq.transcription_model(groq::WHISPER_LARGE_V3);
-    /// ```
-    fn transcription_model(&self, model: &str) -> Self::TranscriptionModel {
-        TranscriptionModel::new(self.clone(), model)
-    }
-}
-
-impl<T> VerifyClient for Client<T>
-where
-    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
-{
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn verify(&self) -> Result<(), VerifyError> {
-        let req = self
-            .get("/models")?
-            .body(http_client::NoBody)
-            .map_err(http_client::Error::from)?;
-
-        let response = HttpClientExt::send(&self.http_client, req).await?;
-
-        match response.status() {
-            reqwest::StatusCode::OK => Ok(()),
-            reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
-            reqwest::StatusCode::INTERNAL_SERVER_ERROR
-            | reqwest::StatusCode::SERVICE_UNAVAILABLE
-            | reqwest::StatusCode::BAD_GATEWAY => {
-                let text = http_client::text(response).await?;
-                Err(VerifyError::ProviderError(text))
-            }
-            _ => {
-                //response.error_for_status()?;
-                Ok(())
-            }
-        }
-    }
-}
-
-impl_conversion_traits!(
-    AsEmbeddings,
-    AsImageGeneration,
-    AsAudioGeneration for Client<T>
-);
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
@@ -362,32 +220,38 @@ impl TryFrom<message::Message> for Message {
 // ================================================================
 // Groq Completion API
 // ================================================================
-/// The `deepseek-r1-distill-llama-70b` model. Used for chat completion.
-pub const DEEPSEEK_R1_DISTILL_LLAMA_70B: &str = "deepseek-r1-distill-llama-70b";
-/// The `gemma2-9b-it` model. Used for chat completion.
-pub const GEMMA2_9B_IT: &str = "gemma2-9b-it";
-/// The `llama-3.1-8b-instant` model. Used for chat completion.
-pub const LLAMA_3_1_8B_INSTANT: &str = "llama-3.1-8b-instant";
-/// The `llama-3.2-11b-vision-preview` model. Used for chat completion.
-pub const LLAMA_3_2_11B_VISION_PREVIEW: &str = "llama-3.2-11b-vision-preview";
-/// The `llama-3.2-1b-preview` model. Used for chat completion.
-pub const LLAMA_3_2_1B_PREVIEW: &str = "llama-3.2-1b-preview";
-/// The `llama-3.2-3b-preview` model. Used for chat completion.
-pub const LLAMA_3_2_3B_PREVIEW: &str = "llama-3.2-3b-preview";
-/// The `llama-3.2-90b-vision-preview` model. Used for chat completion.
-pub const LLAMA_3_2_90B_VISION_PREVIEW: &str = "llama-3.2-90b-vision-preview";
-/// The `llama-3.2-70b-specdec` model. Used for chat completion.
-pub const LLAMA_3_2_70B_SPECDEC: &str = "llama-3.2-70b-specdec";
-/// The `llama-3.2-70b-versatile` model. Used for chat completion.
-pub const LLAMA_3_2_70B_VERSATILE: &str = "llama-3.2-70b-versatile";
-/// The `llama-guard-3-8b` model. Used for chat completion.
-pub const LLAMA_GUARD_3_8B: &str = "llama-guard-3-8b";
-/// The `llama3-70b-8192` model. Used for chat completion.
-pub const LLAMA_3_70B_8192: &str = "llama3-70b-8192";
-/// The `llama3-8b-8192` model. Used for chat completion.
-pub const LLAMA_3_8B_8192: &str = "llama3-8b-8192";
-/// The `mixtral-8x7b-32768` model. Used for chat completion.
-pub const MIXTRAL_8X7B_32768: &str = "mixtral-8x7b-32768";
+models! {
+    #[allow(non_camel_case_types)]
+    pub enum CompletionModels {
+        /// The `deepseek-r1-distill-llama-70b` model. Used for chat completion.
+        DEEPSEEK_R1_DISTILL_LLAMA_70B => "deepseek-r1-distill-llama-70b",
+        /// The `gemma2-9b-it` model. Used for chat completion.
+        GEMMA2_9B_IT => "gemma2-9b-it",
+        /// The `llama-3.1-8b-instant` model. Used for chat completion.
+        LLAMA_3_1_8B_INSTANT => "llama-3.1-8b-instant",
+        /// The `llama-3.2-11b-vision-preview` model. Used for chat completion.
+        LLAMA_3_2_11B_VISION_PREVIEW => "llama-3.2-11b-vision-preview",
+        /// The `llama-3.2-1b-preview` model. Used for chat completion.
+        LLAMA_3_2_1B_PREVIEW => "llama-3.2-1b-preview",
+        /// The `llama-3.2-3b-preview` model. Used for chat completion.
+        LLAMA_3_2_3B_PREVIEW => "llama-3.2-3b-preview",
+        /// The `llama-3.2-90b-vision-preview` model. Used for chat completion.
+        LLAMA_3_2_90B_VISION_PREVIEW => "llama-3.2-90b-vision-preview",
+        /// The `llama-3.2-70b-specdec` model. Used for chat completion.
+        LLAMA_3_2_70B_SPECDEC => "llama-3.2-70b-specdec",
+        /// The `llama-3.2-70b-versatile` model. Used for chat completion.
+        LLAMA_3_2_70B_VERSATILE => "llama-3.2-70b-versatile",
+        /// The `llama-guard-3-8b` model. Used for chat completion.
+        LLAMA_GUARD_3_8B => "llama-guard-3-8b",
+        /// The `llama3-70b-8192` model. Used for chat completion.
+        LLAMA_3_70B_8192 => "llama3-70b-8192",
+        /// The `llama3-8b-8192` model. Used for chat completion.
+        LLAMA_3_8B_8192 => "llama3-8b-8192",
+        /// The `mixtral-8x7b-32768` model. Used for chat completion.
+        MIXTRAL_8X7B_32768 => "mixtral-8x7b-32768",
+    }
+}
+pub use CompletionModels::*;
 
 #[derive(Clone, Debug)]
 pub struct CompletionModel<T = reqwest::Client> {
@@ -474,6 +338,13 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
+    type Client = Client<T>;
+    type Models = CompletionModels;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        Self::new(client.clone(), model.into().into())
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -504,13 +375,13 @@ where
         let body = serde_json::to_vec(&request)?;
         let req = self
             .client
-            .req(Method::POST, "/chat/completions")?
+            .post("/chat/completions")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| http_client::Error::Instance(e.into()))?;
 
         let async_block = async move {
-            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let response = self.client.http_client().send::<_, Bytes>(req).await?;
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
 
@@ -564,7 +435,7 @@ where
         let body = serde_json::to_vec(&request)?;
         let req = self
             .client
-            .req(Method::POST, "/chat/completions")?
+            .post("/chat/completions")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| http_client::Error::Instance(e.into()))?;
@@ -589,7 +460,7 @@ where
         };
 
         tracing::Instrument::instrument(
-            send_compatible_streaming_request(self.client.http_client.clone(), req),
+            send_compatible_streaming_request(self.client.http_client().clone(), req),
             span,
         )
         .await
@@ -599,9 +470,15 @@ where
 // ================================================================
 // Groq Transcription API
 // ================================================================
-pub const WHISPER_LARGE_V3: &str = "whisper-large-v3";
-pub const WHISPER_LARGE_V3_TURBO: &str = "whisper-large-v3-turbo";
-pub const DISTIL_WHISPER_LARGE_V3: &str = "distil-whisper-large-v3-en";
+
+models! {
+    pub enum TranscriptionModels {
+        WhisperLargeV3 => "whisper-large-v3",
+        WhisperLargeV3Turbo => "whisper-large-v3-turbo",
+        DistilWhisperLargeV3en => "distil-whisper-large-v3-en",
+    }
+}
+pub use TranscriptionModels::*;
 
 #[derive(Clone)]
 pub struct TranscriptionModel<T> {
@@ -623,6 +500,13 @@ where
     T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
 {
     type Response = TranscriptionResponse;
+
+    type Client = Client<T>;
+    type Models = TranscriptionModels;
+
+    fn make(client: &Self::Client, model: Self::Models) -> Self {
+        Self::new(client.clone(), model.into())
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn transcription(
@@ -664,13 +548,13 @@ where
 
         let req = self
             .client
-            .req(Method::POST, "/audio/transcriptions")?
+            .post("/audio/transcriptions")?
             .body(body)
             .unwrap();
 
         let response = self
             .client
-            .http_client
+            .http_client()
             .send_multipart::<Bytes>(req)
             .await
             .unwrap();
