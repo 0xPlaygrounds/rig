@@ -22,7 +22,6 @@ use crate::client::{
 use crate::completion::GetTokenUsage;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
-use crate::json_utils::merge;
 use crate::models;
 use crate::providers::openai::{AssistantContent, Function, ToolType};
 use async_stream::stream;
@@ -38,7 +37,6 @@ use crate::{
 };
 use reqwest::multipart::Part;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 
 // ================================================================
 // Main Groq Client
@@ -124,6 +122,16 @@ pub struct Message {
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<String>,
+}
+
+impl Message {
+    fn system(preamble: &str) -> Self {
+        Self {
+            role: "system".to_string(),
+            content: Some(preamble.to_string()),
+            reasoning: None,
+        }
+    }
 }
 
 impl TryFrom<Message> for message::Message {
@@ -253,6 +261,75 @@ models! {
 }
 pub use CompletionModels::*;
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningFormat {
+    Parsed,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct GroqCompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
+    reasoning_format: ReasoningFormat,
+}
+
+impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        // Build up the order of messages (context, chat_history, prompt)
+        let mut partial_history = vec![];
+        if let Some(docs) = req.normalized_documents() {
+            partial_history.push(docs);
+        }
+        partial_history.extend(req.chat_history);
+
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<Message> = match &req.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
+        };
+
+        // Convert and extend the rest of the history
+        full_history.extend(
+            partial_history
+                .into_iter()
+                .map(message::Message::try_into)
+                .collect::<Result<Vec<Message>, _>>()?,
+        );
+
+        let tool_choice = req
+            .tool_choice
+            .clone()
+            .map(crate::providers::openai::ToolChoice::try_from)
+            .transpose()?;
+
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+            reasoning_format: ReasoningFormat::Parsed,
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
@@ -266,68 +343,6 @@ impl<T> CompletionModel<T> {
             client,
             model: model.to_string(),
         }
-    }
-
-    fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        // Build up the order of messages (context, chat_history, prompt)
-        let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
-            partial_history.push(docs);
-        }
-        partial_history.extend(completion_request.chat_history);
-
-        // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<Message> =
-            completion_request
-                .preamble
-                .map_or_else(Vec::new, |preamble| {
-                    vec![Message {
-                        role: "system".to_string(),
-                        content: Some(preamble),
-                        reasoning: None,
-                    }]
-                });
-
-        // Convert and extend the rest of the history
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(message::Message::try_into)
-                .collect::<Result<Vec<Message>, _>>()?,
-        );
-
-        let tool_choice = completion_request
-            .tool_choice
-            .map(crate::providers::openai::ToolChoice::try_from)
-            .transpose()?;
-
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": tool_choice,
-                "reasoning_format": "parsed"
-            })
-        };
-
-        let request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
-
-        Ok(request)
     }
 }
 
@@ -352,7 +367,7 @@ where
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
 
-        let request = self.create_completion_request(completion_request)?;
+        let request = GroqCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -365,7 +380,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
@@ -393,7 +408,7 @@ where
                         span.record("gen_ai.response.model_name", response.model.clone());
                         span.record(
                             "gen_ai.output.messages",
-                            serde_json::to_string(&response.choices).unwrap(),
+                            serde_json::to_string(&response.choices)?,
                         );
                         if let Some(ref usage) = response.usage {
                             span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
@@ -425,12 +440,14 @@ where
         CompletionError,
     > {
         let preamble = request.preamble.clone();
-        let mut request = self.create_completion_request(request)?;
+        let mut request = GroqCompletionRequest::try_from((self.model.as_ref(), request))?;
 
-        request = merge(
-            request,
-            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        let params = json_utils::merge(
+            request.additional_params.unwrap_or(serde_json::json!({})),
+            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
         );
+
+        request.additional_params = Some(params);
 
         let body = serde_json::to_vec(&request)?;
         let req = self
@@ -452,7 +469,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {

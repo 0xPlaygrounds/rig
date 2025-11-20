@@ -4,7 +4,7 @@ use async_stream::stream;
 use futures::StreamExt;
 use http::Request;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use tracing::info_span;
 use tracing_futures::Instrument;
 
@@ -14,6 +14,7 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils;
 use crate::message::{ToolCall, ToolFunction};
+use crate::providers::openrouter::OpenrouterCompletionRequest;
 use crate::streaming;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -114,9 +115,15 @@ where
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let preamble = completion_request.preamble.clone();
-        let request = self.create_completion_request(completion_request)?;
+        let mut request =
+            OpenrouterCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
-        let request = json_utils::merge(request, json!({"stream": true}));
+        let params = json_utils::merge(
+            request.additional_params.unwrap_or(serde_json::json!({})),
+            serde_json::json!({"stream": true }),
+        );
+
+        request.additional_params = Some(params);
 
         let body = serde_json::to_vec(&request)?;
 
@@ -139,7 +146,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
