@@ -337,7 +337,7 @@ where
             tracing::warn!("WARNING: `tool_choice` not supported on Mira AI");
         }
 
-        if !completion_request.additional_params.is_none() {
+        if completion_request.additional_params.is_some() {
             tracing::warn!("WARNING: Additional parameters not supported on Mira AI");
         }
 
@@ -439,7 +439,7 @@ where
             tracing::warn!("WARNING: `tool_choice` not supported on Mira AI");
         }
 
-        if !completion_request.additional_params.is_none() {
+        if completion_request.additional_params.is_some() {
             tracing::warn!("WARNING: Additional parameters not supported on Mira AI");
         }
         let preamble = completion_request.preamble.clone();
