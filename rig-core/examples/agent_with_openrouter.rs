@@ -1,6 +1,7 @@
 use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openrouter;
+use rig::providers::openrouter::CompletionModels::Gemini25ProExp_03_25_Free;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -9,7 +10,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let comedian_agent = client
-        .agent("google/gemini-2.5-pro-exp-03-25:free")
+        .agent(Gemini25ProExp_03_25_Free)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

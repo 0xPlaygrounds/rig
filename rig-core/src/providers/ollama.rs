@@ -192,6 +192,14 @@ impl<T> EmbeddingModel<T> {
             ndims,
         }
     }
+
+    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
+        Self {
+            client,
+            model: model.into(),
+            ndims,
+        }
+    }
 }
 
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
@@ -203,6 +211,10 @@ where
 
     fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
         Self::new(client.clone(), model.as_str(), dims.unwrap())
+    }
+
+    fn make_custom(client: &Self::Client, model: &str, dims: Option<usize>) -> Self {
+        Self::with_model(client.clone(), model, dims.unwrap_or_default())
     }
 
     const MAX_DOCUMENTS: usize = 1024;
@@ -470,6 +482,10 @@ where
 
     fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
         Self::new(client.clone(), model.into().as_str())
+    }
+
+    fn make_custom(client: &Self::Client, model: &str) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

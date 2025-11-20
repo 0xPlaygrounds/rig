@@ -1,17 +1,16 @@
-use super::Client;
+use super::client::Client;
 use crate::http_client::HttpClientExt;
+use crate::image_generation;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
-use crate::{image_generation, models};
 use serde_json::json;
 
-models! {
-    pub enum ImageGenerationModels {
-        Flux1 => "black-forest-labs/FLUX.1-dev",
-        Kolors => "Kwai-Kolors/Kolors",
-        StableDiffusion3 => "stabilityai/stable-diffusion-3-medium-diffusers"
-    }
+#[allow(non_upper_case_globals)]
+pub mod image_generation_models {
+    pub const Flux1: &str = "black-forest-labs/FLUX.1-dev";
+    pub const Kolors: &str = "Kwai-Kolors/Kolors";
+    pub const StableDiffusion3: &str = "stabilityai/stable-diffusion-3-medium-diffusers";
 }
-pub use ImageGenerationModels::*;
+pub use image_generation_models::*;
 
 #[derive(Debug)]
 pub struct ImageGenerationResponse {
@@ -53,10 +52,14 @@ where
     type Response = ImageGenerationResponse;
 
     type Client = Client<T>;
-    type Models = ImageGenerationModels;
+    type Models = String;
 
     fn make(client: &Self::Client, model: Self::Models) -> Self {
-        ImageGenerationModel::new(client.clone(), &model.to_string())
+        Self::new(client.clone(), &model.to_string())
+    }
+
+    fn make_custom(client: &Self::Client, model: &str) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

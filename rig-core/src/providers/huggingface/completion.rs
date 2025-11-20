@@ -1,7 +1,6 @@
 use super::client::Client;
 use crate::completion::GetTokenUsage;
 use crate::http_client::HttpClientExt;
-use crate::models;
 use crate::providers::openai::StreamingCompletionResponse;
 use crate::telemetry::SpanCombinator;
 use crate::{
@@ -29,27 +28,30 @@ pub enum ApiResponse<T> {
 
 // Conversational LLMs
 
-models! {
-    pub enum CompletionModels {
-        /// `google/gemma-2-2b-it` completion model
-        Gemma2 => "google/gemma-2-2b-it",
-        /// `meta-llama/Meta-Llama-3.1-8B-Instruct` completion model
-        MetaLlama31 => "meta-llama/Meta-Llama-3.1-8B-Instruct",
-        /// `microsoft/phi-4` completion model
-        Phi4 => "microsoft/phi-4",
-        /// `PowerInfer/SmallThinker-3B-Preview` completion model
-        SmallThinkerPreview => "PowerInfer/SmallThinker-3B-Preview",
-        /// `Qwen/Qwen2.5-7B-Instruct` completion model
-        Qwen25 => "Qwen/Qwen2.5-7B-Instruct",
-        /// `Qwen/Qwen2.5-Coder-32B-Instruct` completion model
-        Qwen25Coder => "Qwen/Qwen2.5-Coder-32B-Instruct",
-        /// `Qwen/Qwen2-VL-7B-Instruct` visual-language completion model
-        Qwen2VL => "Qwen/Qwen2-VL-7B-Instruct",
-        /// `Qwen/QVQ-72B-Preview` visual-language completion model
-        QwenQVQPreview => "Qwen/QVQ-72B-Preview",
-    }
+#[allow(non_upper_case_globals)]
+mod completion_models {
+    /// `google/gemma-2-2b-it` completion model
+    pub const Gemma2: &str = "google/gemma-2-2b-it";
+    /// `meta-llama/Meta-Llama-3.1-8B-Instruct` completion model
+    pub const MetaLlama31: &str = "meta-llama/Meta-Llama-3.1-8B-Instruct";
+    /// `microsoft/phi-4` completion model
+    pub const Phi4: &str = "microsoft/phi-4";
+    /// `PowerInfer/SmallThinker-3B-Preview` completion model
+    pub const SmallThinkerPreview: &str = "PowerInfer/SmallThinker-3B-Preview";
+    /// `Qwen/Qwen2.5-7B-Instruct` completion model
+    pub const Qwen25: &str = "Qwen/Qwen2.5-7B-Instruct";
+    /// `Qwen/Qwen2.5-Coder-32B-Instruct` completion model
+    pub const Qwen25Coder: &str = "Qwen/Qwen2.5-Coder-32B-Instruct";
+    /// `deepseek-ai/DeepSeek-R1` completion model
+    pub const DeepSeekR1: &str = "deepseek-ai/DeepSeek-R1";
+    /// `deepseek-ai/DeepSeek-R1-Distill-Qwen-32B` completion model
+    pub const DeepSeekR1DistillQwen32B: &str = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B";
+    /// `Qwen/Qwen2-VL-7B-Instruct` visual-language completion model
+    pub const Qwen2VL: &str = "Qwen/Qwen2-VL-7B-Instruct";
+    /// `Qwen/QVQ-72B-Preview` visual-language completion model
+    pub const QwenQVQPreview: &str = "Qwen/QVQ-72B-Preview";
 }
-pub use CompletionModels::*;
+pub use completion_models::*;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub struct Function {
@@ -690,7 +692,11 @@ where
     type Models = String;
 
     fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        CompletionModel::new(client.clone(), &model.into())
+        Self::new(client.clone(), &model.into())
+    }
+
+    fn make_custom(client: &Self::Client, model: &str) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

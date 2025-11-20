@@ -138,14 +138,23 @@ pub use CompletionModels::*;
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
-    pub model: CompletionModels,
+    pub model: String,
 }
 
 impl<T> CompletionModel<T> {
     pub fn new(client: Client<T>, model: CompletionModels) -> Self {
-        Self { client, model }
+        Self {
+            client,
+            model: model.to_string(),
+        }
     }
 
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
+    }
     pub(crate) fn create_completion_request(
         &self,
         completion_request: completion::CompletionRequest,
@@ -176,13 +185,13 @@ impl<T> CompletionModel<T> {
 
         let mut request = if completion_request.tools.is_empty() {
             json!({
-                "model": <CompletionModels as Into<&str>>::into(self.model),
+                "model": self.model,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
             })
         } else {
             json!({
-                "model": <CompletionModels as Into<&str>>::into(self.model),
+                "model": self.model,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(openai::ToolDefinition::from).collect::<Vec<_>>(),
@@ -212,6 +221,10 @@ where
         Self::new(client.clone(), model.into())
     }
 
+    fn make_custom(client: &Self::Client, model: &str) -> Self {
+        Self::with_model(client.clone(), model)
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -228,7 +241,7 @@ where
                 "chat",
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "together",
-                gen_ai.request.model = <CompletionModels as Into<&str>>::into(self.model),
+                gen_ai.request.model = self.model,
                 gen_ai.system_instructions = preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,

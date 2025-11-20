@@ -85,6 +85,14 @@ impl<T> EmbeddingModel<T> {
             ndims,
         }
     }
+
+    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
+        Self {
+            client,
+            model: model.into(),
+            ndims,
+        }
+    }
 }
 
 // ================================================================
@@ -190,6 +198,10 @@ where
             model.into(),
             dims.unwrap_or_else(|| model.dims()),
         )
+    }
+
+    fn make_custom(client: &Self::Client, model: &str, dims: Option<usize>) -> Self {
+        Self::with_model(client.clone(), model, dims.unwrap_or_default())
     }
 
     fn ndims(&self) -> usize {

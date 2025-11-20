@@ -127,10 +127,17 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
         Self {
             client,
             model: model.to_string(),
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
         }
     }
 
@@ -207,7 +214,11 @@ where
     type Models = CompletionModels;
 
     fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into().into())
+        Self::new(client.clone(), model.into())
+    }
+
+    fn make_custom(client: &Self::Client, model: &str) -> Self {
+        Self::with_model(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

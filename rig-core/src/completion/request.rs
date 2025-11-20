@@ -357,6 +357,8 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
 
     fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self;
 
+    fn make_custom(client: &Self::Client, model: &str) -> Self;
+
     /// Generates a completion response for the given completion request.
     fn completion(
         &self,

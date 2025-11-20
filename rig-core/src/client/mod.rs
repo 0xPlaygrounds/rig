@@ -572,12 +572,8 @@ where
         M::make(self, model, None)
     }
 
-    fn embedding_model_with_ndims(
-        &self,
-        model: <M as EmbeddingModel>::Models,
-        ndims: usize,
-    ) -> Self::EmbeddingModel {
-        M::make(self, model, Some(ndims))
+    fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> Self::EmbeddingModel {
+        M::make_custom(self, model, Some(ndims))
     }
 }
 

@@ -58,7 +58,7 @@ pub struct EmbeddingData {
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
-    pub model: EmbeddingModels,
+    pub model: String,
     ndims: usize,
 }
 
@@ -80,6 +80,12 @@ where
         Self::new(client.clone(), model, dims)
     }
 
+    fn make_custom(client: &Self::Client, model: &str, dims: Option<usize>) -> Self {
+        let dims = dims.unwrap_or_default();
+
+        Self::with_model(client.clone(), model, dims)
+    }
+
     fn ndims(&self) -> usize {
         self.ndims
     }
@@ -92,11 +98,14 @@ where
         let documents = documents.into_iter().collect::<Vec<_>>();
 
         let mut body = json!({
-            "model": <EmbeddingModels as Into<&str>>::into(self.model),
+            "model": self.model,
             "input": documents,
         });
 
-        if self.ndims > 0 && self.model != EmbeddingModels::TextEmbeddingAda2 {
+        if self.ndims > 0
+            && self.model.as_str()
+                != <EmbeddingModels as Into<&str>>::into(EmbeddingModels::TextEmbeddingAda2)
+        {
             body["dimensions"] = json!(self.ndims);
         }
 
@@ -151,7 +160,15 @@ impl<T> EmbeddingModel<T> {
     pub fn new(client: Client<T>, model: EmbeddingModels, ndims: usize) -> Self {
         Self {
             client,
-            model,
+            model: model.to_string(),
+            ndims,
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
+        Self {
+            client,
+            model: model.into(),
             ndims,
         }
     }

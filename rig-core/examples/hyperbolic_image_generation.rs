@@ -22,7 +22,7 @@ async fn main() {
     let mut file = File::create_new(path).expect("Failed to create file");
 
     let hyperbolic = hyperbolic::Client::from_env();
-    let stable_diffusion = hyperbolic.image_generation_model(hyperbolic::SDXL_TURBO.into());
+    let stable_diffusion = hyperbolic.image_generation_model(hyperbolic::SDXLTurbo);
 
     let response = stable_diffusion
         .image_generation_request()

@@ -16,9 +16,9 @@ use std::sync::Arc;
 /// Clone is required for conversions between client types.
 pub trait CompletionClient {
     /// The type of CompletionModel used by the client.
-    type CompletionModel: CompletionModel;
+    type CompletionModel: CompletionModel<Client = Self>;
 
-    /// Create a completion model with the given name.
+    /// Create a completion model with the given model.
     ///
     /// # Example with OpenAI
     /// ```
@@ -28,12 +28,30 @@ pub trait CompletionClient {
     /// // Initialize the OpenAI client
     /// let openai = Client::new("your-open-ai-api-key");
     ///
-    /// let gpt4 = openai.completion_model(openai::GPT_4);
+    /// let gpt4 = openai.completion_model(openai::GPT4);
     /// ```
     fn completion_model(
         &self,
         model: impl Into<<Self::CompletionModel as CompletionModel>::Models>,
-    ) -> Self::CompletionModel;
+    ) -> Self::CompletionModel {
+        Self::CompletionModel::make(self, model.into())
+    }
+
+    /// Create a completion model with the given model identifier.
+    ///
+    /// # Example with OpenAI
+    /// ```
+    /// use rig::prelude::*;
+    /// use rig::providers::openai::{Client, self};
+    ///
+    /// // Initialize the OpenAI client
+    /// let openai = Client::new("your-open-ai-api-key");
+    ///
+    /// let gpt4 = openai.custom_completion_model("gpt-4");
+    /// ```
+    fn custom_completion_model(&self, model: &'static str) -> Self::CompletionModel {
+        Self::CompletionModel::make_custom(self, model)
+    }
 
     /// Create an agent builder with the given completion model.
     ///
@@ -85,7 +103,11 @@ impl CompletionModel for CompletionModelHandle<'_> {
     type Client = ();
     type Models = String;
 
-    fn make(_client: &Self::Client, _model: impl Into<Self::Models>) -> Self {
+    fn make(_: &Self::Client, _: impl Into<Self::Models>) -> Self {
+        panic!("Cannot create a completion model handle from a client")
+    }
+
+    fn make_custom(_: &Self::Client, _: &str) -> Self {
         panic!("Cannot create a completion model handle from a client")
     }
 

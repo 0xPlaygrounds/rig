@@ -50,6 +50,7 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     type Client;
 
     fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self;
+    fn make_custom(client: &Self::Client, model: &str, dims: Option<usize>) -> Self;
 
     /// The number of dimensions in the embedding vector.
     fn ndims(&self) -> usize;

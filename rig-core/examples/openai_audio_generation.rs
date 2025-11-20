@@ -23,7 +23,7 @@ async fn main() {
     let mut file = File::create_new(path).expect("Failed to create file");
 
     let openai = openai::Client::from_env();
-    let tts = openai.audio_generation_model(openai::TTS_1);
+    let tts = openai.audio_generation_model(openai::TTS1);
 
     let response = tts
         .audio_generation_request()
