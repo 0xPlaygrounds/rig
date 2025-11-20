@@ -4,7 +4,6 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError, GetTokenUsage},
     http_client::HttpClientExt,
-    json_utils,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, Reasoning},
     one_or_many::string_or_one_or_many,
     providers::anthropic::client::AnthropicModels,
@@ -18,7 +17,6 @@ use crate::completion::CompletionRequest;
 use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use tracing::{Instrument, info_span};
 
 // ================================================================
@@ -686,6 +684,68 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
         Ok(res)
     }
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+struct AnthropicCompletionRequest {
+    model: String,
+    messages: Vec<Message>,
+    max_tokens: u64,
+    system: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<ToolChoice>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinition>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    additional_params: Option<serde_json::Value>,
+}
+
+impl TryFrom<(&str, CompletionRequest)> for AnthropicCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        // Check if max_tokens is set, required for Anthropic
+        let Some(max_tokens) = req.max_tokens else {
+            return Err(CompletionError::RequestError(
+                "`max_tokens` must be set for Anthropic".into(),
+            ));
+        };
+
+        let mut full_history = vec![];
+        if let Some(docs) = req.normalized_documents() {
+            full_history.push(docs);
+        }
+        full_history.extend(req.chat_history);
+
+        let messages = full_history
+            .into_iter()
+            .map(Message::try_from)
+            .collect::<Result<Vec<Message>, _>>()?;
+
+        let tools = req
+            .tools
+            .into_iter()
+            .map(|tool| ToolDefinition {
+                name: tool.name,
+                description: Some(tool.description),
+                input_schema: tool.parameters,
+            })
+            .collect::<Vec<_>>();
+
+        Ok(Self {
+            model: model.to_string(),
+            messages,
+            max_tokens,
+            system: req.preamble.unwrap_or_default(),
+            temperature: req.temperature,
+            tool_choice: req.tool_choice.and_then(|x| ToolChoice::try_from(x).ok()),
+            tools,
+            additional_params: req.additional_params,
+        })
+    }
+}
+
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
     T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
@@ -702,7 +762,7 @@ where
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
-        completion_request: completion::CompletionRequest,
+        mut completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -710,7 +770,7 @@ where
                 "chat",
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "anthropic",
-                gen_ai.request.model = self.model,
+                gen_ai.request.model = &self.model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
@@ -722,75 +782,21 @@ where
         } else {
             tracing::Span::current()
         };
-        // Note: Ideally we'd introduce provider-specific Request models to handle the
-        // specific requirements of each provider. For now, we just manually check while
-        // building the request as a raw JSON document.
 
         // Check if max_tokens is set, required for Anthropic
-        let max_tokens = if let Some(tokens) = completion_request.max_tokens {
-            tokens
-        } else if let Some(tokens) = self.default_max_tokens {
-            tokens
-        } else {
-            return Err(CompletionError::RequestError(
-                "`max_tokens` must be set for Anthropic".into(),
-            ));
-        };
-
-        let mut full_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
-            full_history.push(docs);
-        }
-        full_history.extend(completion_request.chat_history);
-        span.record_model_input(&full_history);
-
-        let full_history = full_history
-            .into_iter()
-            .map(Message::try_from)
-            .collect::<Result<Vec<Message>, _>>()?;
-
-        let mut request = json!({
-            "model": self.model,
-            "messages": full_history,
-            "max_tokens": max_tokens,
-            "system": completion_request.preamble.unwrap_or("".to_string()),
-        });
-
-        if let Some(temperature) = completion_request.temperature {
-            json_utils::merge_inplace(&mut request, json!({ "temperature": temperature }));
-        }
-
-        let tool_choice = if let Some(tool_choice) = completion_request.tool_choice {
-            Some(ToolChoice::try_from(tool_choice)?)
-        } else {
-            None
-        };
-
-        if !completion_request.tools.is_empty() {
-            let mut tools_json = json!({
-                "tools": completion_request
-                    .tools
-                    .into_iter()
-                    .map(|tool| ToolDefinition {
-                        name: tool.name,
-                        description: Some(tool.description),
-                        input_schema: tool.parameters,
-                    })
-                    .collect::<Vec<_>>(),
-            });
-
-            // Only include tool_choice if it's explicitly set (not None)
-            // When omitted, Anthropic defaults to "auto"
-            if let Some(tc) = tool_choice {
-                tools_json["tool_choice"] = serde_json::to_value(tc)?;
+        if completion_request.max_tokens.is_none() {
+            if let Some(tokens) = self.default_max_tokens {
+                completion_request.max_tokens = Some(tokens);
+            } else {
+                return Err(CompletionError::RequestError(
+                    "`max_tokens` must be set for Anthropic".into(),
+                ));
             }
-
-            json_utils::merge_inplace(&mut request, tools_json);
         }
 
-        if let Some(ref params) = completion_request.additional_params {
-            json_utils::merge_inplace(&mut request, params.clone())
-        }
+        let request =
+            AnthropicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+        span.record_model_input(&request.messages);
 
         async move {
             let request: Vec<u8> = serde_json::to_vec(&request)?;
@@ -875,6 +881,7 @@ enum ApiResponse<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use serde_path_to_error::deserialize;
 
     #[test]

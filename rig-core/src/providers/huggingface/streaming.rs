@@ -1,10 +1,10 @@
 use super::completion::CompletionModel;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
-use crate::json_utils::merge_inplace;
+use crate::json_utils::{self};
+use crate::providers::huggingface::completion::HuggingfaceCompletionRequest;
 use crate::providers::openai::{StreamingCompletionResponse, send_compatible_streaming_request};
 use crate::streaming;
-use serde_json::json;
 use tracing::{Instrument, info_span};
 
 impl<T> CompletionModel<T>
@@ -16,17 +16,16 @@ where
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
-        let mut request = self.create_request_body(&completion_request)?;
+        let model = self.client.subprovider().model_identifier(&self.model);
+        let mut request =
+            HuggingfaceCompletionRequest::try_from((model.as_ref(), completion_request))?;
 
-        // Enable streaming
-        merge_inplace(
-            &mut request,
-            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        let params = json_utils::merge(
+            request.additional_params.unwrap_or(serde_json::json!({})),
+            serde_json::json!({"stream": true, "stream_options": {"include_usage": true }}),
         );
 
-        if let Some(ref params) = completion_request.additional_params {
-            merge_inplace(&mut request, params.clone());
-        }
+        request.additional_params = Some(params);
 
         // HF Inference API uses the model in the path even though its specified in the request body
         let path = self.client.subprovider().completion_endpoint(&self.model);
@@ -51,7 +50,7 @@ where
             gen_ai.response.model = self.model,
             gen_ai.usage.output_tokens = tracing::field::Empty,
             gen_ai.usage.input_tokens = tracing::field::Empty,
-            gen_ai.input.messages = serde_json::to_string(&request["messages"]).unwrap(),
+            gen_ai.input.messages = serde_json::to_string(&request.messages)?,
             gen_ai.output.messages = tracing::field::Empty,
             )
         } else {

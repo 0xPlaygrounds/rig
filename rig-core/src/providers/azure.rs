@@ -19,7 +19,6 @@ use crate::client::{
 };
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt, bearer_auth_header};
-use crate::json_utils::merge;
 use crate::models;
 use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::TranscriptionError;
@@ -33,7 +32,7 @@ use crate::{
 };
 use bytes::Bytes;
 use reqwest::multipart::Part;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 // ================================================================
 // Main Azure OpenAI Client
@@ -544,6 +543,75 @@ models! {
 }
 pub use CompletionModels::*;
 
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct AzureOpenAICompletionRequest {
+    model: String,
+    pub messages: Vec<openai::Message>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<openai::ToolDefinition>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openrouter::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
+}
+
+impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        //FIXME: Must fix!
+        if req.tool_choice.is_some() {
+            tracing::warn!(
+                "Tool choice is currently not supported in Azure OpenAI. This should be fixed by Rig 0.25."
+            );
+        }
+
+        let mut full_history: Vec<openai::Message> = match &req.preamble {
+            Some(preamble) => vec![openai::Message::system(preamble)],
+            None => vec![],
+        };
+
+        if let Some(docs) = req.normalized_documents() {
+            let docs: Vec<openai::Message> = docs.try_into()?;
+            full_history.extend(docs);
+        }
+
+        let chat_history: Vec<openai::Message> = req
+            .chat_history
+            .clone()
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        full_history.extend(chat_history);
+
+        let tool_choice = req
+            .tool_choice
+            .clone()
+            .map(crate::providers::openrouter::ToolChoice::try_from)
+            .transpose()?;
+
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(openai::ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
@@ -557,54 +625,6 @@ impl<T> CompletionModel<T> {
             client,
             model: model.to_string(),
         }
-    }
-
-    fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<serde_json::Value, CompletionError> {
-        let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
-            Some(preamble) => vec![openai::Message::system(preamble)],
-            None => vec![],
-        };
-        if let Some(docs) = completion_request.normalized_documents() {
-            let docs: Vec<openai::Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
-        let chat_history: Vec<openai::Message> = completion_request
-            .chat_history
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        full_history.extend(chat_history);
-
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "tools": completion_request.tools.into_iter().map(openai::ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": "auto",
-            })
-        };
-
-        let request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
-
-        Ok(request)
     }
 }
 
@@ -644,12 +664,11 @@ where
         } else {
             tracing::Span::current()
         };
-        let request = self.create_completion_request(completion_request)?;
-        span.record_model_input(
-            &request
-                .get("messages")
-                .expect("Converting JSON should not fail"),
-        );
+
+        let request =
+            AzureOpenAICompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        span.record_model_input(&request.messages);
         let body = serde_json::to_vec(&request)?;
 
         let req = self
@@ -701,15 +720,18 @@ where
     #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
-        request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let preamble = request.preamble.clone();
-        let mut request = self.create_completion_request(request)?;
+        let preamble = completion_request.preamble.clone();
+        let mut request =
+            AzureOpenAICompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
-        request = merge(
-            request,
-            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        let params = json_utils::merge(
+            request.additional_params.unwrap_or(serde_json::json!({})),
+            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
         );
+
+        request.additional_params = Some(params);
 
         let body = serde_json::to_vec(&request)?;
 
@@ -732,7 +754,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {

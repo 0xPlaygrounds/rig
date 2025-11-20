@@ -6,7 +6,7 @@
 use crate::{
     completion::{self, CompletionError},
     http_client::HttpClientExt,
-    json_utils, models,
+    models,
     providers::openai,
 };
 
@@ -15,7 +15,6 @@ use crate::completion::CompletionRequest;
 use crate::streaming::StreamingCompletionResponse;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use tracing::{Instrument, info_span};
 
 // ================================================================
@@ -135,31 +134,36 @@ pub use CompletionModels::*;
 // Rig Implementation Types
 // =================================================================
 
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
-    pub model: CompletionModels,
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct TogetherAICompletionRequest {
+    model: String,
+    pub messages: Vec<openai::Message>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<crate::providers::openai::completion::ToolDefinition>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
 }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
-        Self { client, model }
-    }
+impl TryFrom<(&str, CompletionRequest)> for TogetherAICompletionRequest {
+    type Error = CompletionError;
 
-    pub(crate) fn create_completion_request(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<serde_json::Value, CompletionError> {
-        let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let mut full_history: Vec<openai::Message> = match &req.preamble {
             Some(preamble) => vec![openai::Message::system(preamble)],
             None => vec![],
         };
-        if let Some(docs) = completion_request.normalized_documents() {
+        if let Some(docs) = req.normalized_documents() {
             let docs: Vec<openai::Message> = docs.try_into()?;
             full_history.extend(docs);
         }
-        let chat_history: Vec<openai::Message> = completion_request
+
+        let chat_history: Vec<openai::Message> = req
             .chat_history
+            .clone()
             .into_iter()
             .map(|message| message.try_into())
             .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
@@ -169,32 +173,37 @@ impl<T> CompletionModel<T> {
 
         full_history.extend(chat_history);
 
-        let tool_choice = completion_request
+        let tool_choice = req
             .tool_choice
+            .clone()
             .map(ToolChoice::try_from)
             .transpose()?;
 
-        let mut request = if completion_request.tools.is_empty() {
-            json!({
-                "model": <CompletionModels as Into<&str>>::into(self.model),
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-            })
-        } else {
-            json!({
-                "model": <CompletionModels as Into<&str>>::into(self.model),
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "tools": completion_request.tools.into_iter().map(openai::ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": tool_choice,
-            })
-        };
-        request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
-        Ok(request)
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(crate::providers::openai::completion::ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct CompletionModel<T = reqwest::Client> {
+    pub(crate) client: Client<T>,
+    pub model: CompletionModels,
+}
+
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
+        Self { client, model }
     }
 }
 
@@ -218,9 +227,11 @@ where
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
-        let request = self.create_completion_request(completion_request)?;
-        let messages_as_json_string =
-            serde_json::to_string(request.get("messages").unwrap()).unwrap();
+        let request = TogetherAICompletionRequest::try_from((
+            self.model.to_string().as_ref(),
+            completion_request,
+        ))?;
+        let messages_as_json_string = serde_json::to_string(&request.messages)?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -228,7 +239,7 @@ where
                 "chat",
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "together",
-                gen_ai.request.model = <CompletionModels as Into<&str>>::into(self.model),
+                gen_ai.request.model = self.model.to_string(),
                 gen_ai.system_instructions = preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,

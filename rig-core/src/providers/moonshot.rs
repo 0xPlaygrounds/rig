@@ -13,7 +13,6 @@ use crate::client::{
     ProviderClient,
 };
 use crate::http_client::HttpClientExt;
-use crate::json_utils::merge;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
@@ -23,7 +22,6 @@ use crate::{
 };
 use crate::{http_client, message, models};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
 
 // ================================================================
@@ -120,37 +118,38 @@ models! {
 }
 pub use CompletionModels::*;
 
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct MoonshotCompletionRequest {
+    model: String,
+    pub messages: Vec<openai::Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<openai::ToolDefinition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
 }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
+impl TryFrom<(&str, CompletionRequest)> for MoonshotCompletionRequest {
+    type Error = CompletionError;
 
-    fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        // Build up the order of messages (context, chat_history)
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
+        if let Some(docs) = req.normalized_documents() {
             partial_history.push(docs);
         }
-        partial_history.extend(completion_request.chat_history);
+        partial_history.extend(req.chat_history);
 
-        // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<openai::Message> = completion_request
-            .preamble
-            .map_or_else(Vec::new, |preamble| {
-                vec![openai::Message::system(&preamble)]
-            });
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<openai::Message> = match &req.preamble {
+            Some(preamble) => vec![openai::Message::system(preamble)],
+            None => vec![],
+        };
 
         // Convert and extend the rest of the history
         full_history.extend(
@@ -163,36 +162,41 @@ impl<T> CompletionModel<T> {
                 .collect::<Vec<_>>(),
         );
 
-        let tool_choice = completion_request
+        let tool_choice = req
             .tool_choice
-            .map(ToolChoice::try_from)
+            .clone()
+            .map(crate::providers::openai::ToolChoice::try_from)
             .transpose()?;
 
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "max_tokens": completion_request.max_tokens,
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "max_tokens": completion_request.max_tokens,
-                "tools": completion_request.tools.into_iter().map(openai::ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": tool_choice,
-            })
-        };
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            max_tokens: req.max_tokens,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(openai::ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+        })
+    }
+}
 
-        let request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
+#[derive(Clone)]
+pub struct CompletionModel<T = reqwest::Client> {
+    client: Client<T>,
+    pub model: String,
+}
 
-        Ok(request)
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.to_string(),
+        }
     }
 }
 
@@ -216,9 +220,10 @@ where
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
-        let request = self.create_completion_request(completion_request)?;
+        let request =
+            MoonshotCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
-        println!(
+        tracing::trace!(
             "Moonshot API input: {request}",
             request = serde_json::to_string_pretty(&request).unwrap()
         );
@@ -235,7 +240,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
@@ -304,7 +309,7 @@ where
         request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
         let preamble = request.preamble.clone();
-        let mut request = self.create_completion_request(request)?;
+        let mut request = MoonshotCompletionRequest::try_from((self.model.as_ref(), request))?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -318,17 +323,19 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
-        request = merge(
-            request,
-            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        let params = json_utils::merge(
+            request.additional_params.unwrap_or(serde_json::json!({})),
+            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
         );
+
+        request.additional_params = Some(params);
 
         let body = serde_json::to_vec(&request)?;
         let req = self

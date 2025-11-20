@@ -3,7 +3,7 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::{
-    AssistantContent, Message, ToolCall, ToolCallFunction, ToolType, Usage,
+    AssistantContent, CohereCompletionRequest, Message, ToolCall, ToolCallFunction, ToolType, Usage,
 };
 use crate::streaming::RawStreamingChoice;
 use crate::telemetry::SpanCombinator;
@@ -99,7 +99,7 @@ where
         request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
-        let request = self.create_completion_request(request)?;
+        let mut request = CohereCompletionRequest::try_from((self.model.as_ref(), request))?;
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -111,14 +111,19 @@ where
                 gen_ai.response.model = self.model,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
-        let request = json_utils::merge(request, serde_json::json!({"stream": true}));
+        let params = json_utils::merge(
+            request.additional_params.unwrap_or(serde_json::json!({})),
+            serde_json::json!({"stream": true}),
+        );
+
+        request.additional_params = Some(params);
 
         tracing::trace!(
             target: "rig::streaming",
