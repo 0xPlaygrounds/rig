@@ -8,10 +8,9 @@ use crate::{
 };
 use std::collections::HashMap;
 
-use super::client::Client;
+use super::{CompletionModels, client::Client};
 use crate::completion::CompletionRequest;
 use crate::providers::cohere::streaming::StreamingCompletionResponse;
-use http::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
@@ -525,7 +524,7 @@ impl<T> CompletionModel<T>
 where
     T: HttpClientExt,
 {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -586,6 +585,12 @@ where
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
+    type Client = Client<T>;
+    type Models = CompletionModels;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        CompletionModel::new(client.clone(), model.into())
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -619,11 +624,7 @@ where
 
         let req_body = serde_json::to_vec(&request)?;
 
-        let req = self
-            .client
-            .req(Method::POST, "/v2/chat")?
-            .body(req_body)
-            .unwrap();
+        let req = self.client.post("/v2/chat")?.body(req_body).unwrap();
 
         async {
             let response = self

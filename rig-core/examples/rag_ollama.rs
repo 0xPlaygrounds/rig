@@ -1,3 +1,4 @@
+use rig::client::Nothing;
 use rig::prelude::*;
 use rig::{
     Embed, completion::Prompt, embeddings::EmbeddingsBuilder, providers::ollama::Client,
@@ -25,8 +26,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Create ollama client
-    let ollama_client = Client::new();
-    let embedding_model = ollama_client.embedding_model("nomic-embed-text");
+    let ollama_client = Client::from_val(Nothing);
+    let embedding_model = ollama_client.embedding_model("nomic-embed-text".into());
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())

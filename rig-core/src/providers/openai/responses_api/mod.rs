@@ -20,6 +20,7 @@ use crate::message::{
 };
 use crate::one_or_many::string_or_one_or_many;
 
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, message};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -715,7 +716,7 @@ where
 
     /// Use the Completions API instead of Responses.
     pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel<T> {
-        crate::providers::openai::completion::CompletionModel::new(self.client, &self.model)
+        super::completion::CompletionModel::new(self.client.completions_api(), &self.model)
     }
 
     /// Attempt to create a completion request from [`crate::completion::CompletionRequest`].
@@ -1038,12 +1039,24 @@ pub enum OutputRole {
 
 impl<T> completion::CompletionModel for ResponsesCompletionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+    T: HttpClientExt
+        + Clone
+        + std::fmt::Debug
+        + Default
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
+    type Client = super::Client<T>;
+    type Models = super::CompletionModels;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        Self::new(client.clone(), model.into().into())
+    }
+
     async fn completion(
         &self,
         completion_request: crate::completion::CompletionRequest,

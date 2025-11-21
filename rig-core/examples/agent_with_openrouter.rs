@@ -1,13 +1,11 @@
+use rig::completion::Prompt;
 use rig::prelude::*;
-use rig::{completion::Prompt, providers};
-use std::env;
+use rig::providers::openrouter;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let client = providers::openrouter::Client::new(
-        &env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY not set"),
-    );
+    let client = openrouter::Client::from_env();
 
     // Create agent with a single context prompt
     let comedian_agent = client

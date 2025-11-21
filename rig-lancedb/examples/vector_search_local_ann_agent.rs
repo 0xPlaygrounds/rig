@@ -3,12 +3,14 @@ use std::sync::Arc;
 use arrow_array::RecordBatchIterator;
 use fixture::{Word, as_record_batch, schema, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
-use rig::client::EmbeddingsClient;
+use rig::client::{EmbeddingsClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::prelude::CompletionClient;
+use rig::providers::openai::CompletionModels::GPT4O;
+use rig::providers::openai::EmbeddingModels::TextEmbeddingAda2;
 use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+    providers::openai::Client,
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 
@@ -21,7 +23,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = Client::from_env();
 
     // Select an embedding model.
-    let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding_model(TextEmbeddingAda2);
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store").execute().await?;
@@ -79,7 +81,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Build RAG agent with dynamic context
     // Use OpenAI-compatible API interface to build agent
     let agent = openai_client
-        .completion_model("gpt-4o")
+        .completion_model(GPT4O)
         .completions_api()
         .into_agent_builder()
         .temperature(0.5)

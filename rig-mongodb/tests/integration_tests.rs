@@ -112,12 +112,14 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::Client::builder("TEST")
-        .base_url(&server.base_url())
-        .build();
+    let openai_client = openai::Client::builder()
+        .api_key("TEST")
+        .base_url(server.base_url())
+        .build()
+        .unwrap();
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding_model(openai::TextEmbeddingAda2);
 
     // Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
     let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")
@@ -217,10 +219,13 @@ async fn insert_documents_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::Client::builder("TEST")
-        .base_url(&server.base_url())
-        .build();
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let openai_client: openai::Client = openai::Client::builder()
+        .api_key("TEST")
+        .base_url(server.base_url())
+        .build()
+        .unwrap();
+
+    let model = openai_client.embedding_model(openai::TextEmbeddingAda2);
 
     // Setup MongoDB container
     let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")

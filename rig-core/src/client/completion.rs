@@ -1,6 +1,5 @@
 use crate::agent::AgentBuilder;
-use crate::client::builder::FinalCompletionResponse;
-use crate::client::{AsCompletion, ProviderClient};
+use crate::client::FinalCompletionResponse;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionModelDyn, CompletionRequest, CompletionResponse,
     GetTokenUsage,
@@ -15,7 +14,7 @@ use std::sync::Arc;
 
 /// A provider client with completion capabilities.
 /// Clone is required for conversions between client types.
-pub trait CompletionClient: ProviderClient + Clone {
+pub trait CompletionClient {
     /// The type of CompletionModel used by the client.
     type CompletionModel: CompletionModel;
 
@@ -31,7 +30,10 @@ pub trait CompletionClient: ProviderClient + Clone {
     ///
     /// let gpt4 = openai.completion_model(openai::GPT_4);
     /// ```
-    fn completion_model(&self, model: &str) -> Self::CompletionModel;
+    fn completion_model(
+        &self,
+        model: impl Into<<Self::CompletionModel as CompletionModel>::Models>,
+    ) -> Self::CompletionModel;
 
     /// Create an agent builder with the given completion model.
     ///
@@ -48,12 +50,18 @@ pub trait CompletionClient: ProviderClient + Clone {
     ///    .temperature(0.0)
     ///    .build();
     /// ```
-    fn agent(&self, model: &str) -> AgentBuilder<Self::CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
+    fn agent(
+        &self,
+        model: impl Into<<Self::CompletionModel as CompletionModel>::Models>,
+    ) -> AgentBuilder<Self::CompletionModel> {
+        AgentBuilder::new(self.completion_model(model.into()))
     }
 
     /// Create an extractor builder with the given completion model.
-    fn extractor<T>(&self, model: &str) -> ExtractorBuilder<Self::CompletionModel, T>
+    fn extractor<T>(
+        &self,
+        model: <Self::CompletionModel as CompletionModel>::Models,
+    ) -> ExtractorBuilder<Self::CompletionModel, T>
     where
         T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
     {
@@ -63,20 +71,30 @@ pub trait CompletionClient: ProviderClient + Clone {
 
 /// Wraps a CompletionModel in a dyn-compatible way for AgentBuilder.
 #[derive(Clone)]
-pub struct CompletionModelHandle<'a> {
-    pub inner: Arc<dyn CompletionModelDyn + 'a>,
+pub struct CompletionModelHandle<'a>(Arc<dyn CompletionModelDyn + 'a>);
+
+impl<'a> CompletionModelHandle<'a> {
+    pub fn new(handle: Arc<dyn CompletionModelDyn + 'a>) -> Self {
+        Self(handle)
+    }
 }
 
 impl CompletionModel for CompletionModelHandle<'_> {
     type Response = ();
     type StreamingResponse = FinalCompletionResponse;
+    type Client = ();
+    type Models = String;
+
+    fn make(_client: &Self::Client, _model: impl Into<Self::Models>) -> Self {
+        panic!("Cannot create a completion model handle from a client")
+    }
 
     fn completion(
         &self,
         request: CompletionRequest,
     ) -> impl Future<Output = Result<CompletionResponse<Self::Response>, CompletionError>> + WasmCompatSend
     {
-        self.inner.completion(request)
+        self.0.completion(request)
     }
 
     fn stream(
@@ -85,11 +103,11 @@ impl CompletionModel for CompletionModelHandle<'_> {
     ) -> impl Future<
         Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
     > + WasmCompatSend {
-        self.inner.stream(request)
+        self.0.stream(request)
     }
 }
 
-pub trait CompletionClientDyn: ProviderClient {
+pub trait CompletionClientDyn {
     /// Create a completion model with the given name.
     fn completion_model<'a>(&self, model: &str) -> Box<dyn CompletionModelDyn + 'a>;
 
@@ -104,21 +122,22 @@ where
     R: Clone + Unpin + GetTokenUsage + 'static,
 {
     fn completion_model<'a>(&self, model: &str) -> Box<dyn CompletionModelDyn + 'a> {
+        let model = match M::Models::try_from(model.to_string()) {
+            Ok(model) => model,
+            Err(_) => panic!("Invalid model '{model}'"),
+        };
+
         Box::new(self.completion_model(model))
     }
 
     fn agent<'a>(&self, model: &str) -> AgentBuilder<CompletionModelHandle<'a>> {
-        AgentBuilder::new(CompletionModelHandle {
-            inner: Arc::new(self.completion_model(model)),
-        })
-    }
-}
+        let model = match M::Models::try_from(model.to_string()) {
+            Ok(model) => model,
+            Err(_) => panic!("Invalid model '{model}'"),
+        };
 
-impl<T> AsCompletion for T
-where
-    T: CompletionClientDyn + Clone + 'static,
-{
-    fn as_completion(&self) -> Option<Box<dyn CompletionClientDyn>> {
-        Some(Box::new(self.clone()))
+        AgentBuilder::new(CompletionModelHandle(Arc::new(
+            self.completion_model(model),
+        )))
     }
 }

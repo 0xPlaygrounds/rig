@@ -59,6 +59,11 @@ pub struct ImageGenerationResponse<T> {
 pub trait ImageGenerationModel: Clone + Send + Sync {
     type Response: Send + Sync;
 
+    type Client;
+    type Models: TryFrom<String>;
+
+    fn make(client: &Self::Client, model: Self::Models) -> Self;
+
     fn image_generation(
         &self,
         request: ImageGenerationRequest,

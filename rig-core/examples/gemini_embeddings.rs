@@ -15,7 +15,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let client = gemini::Client::from_env();
 
     let embeddings = client
-        .embeddings(gemini::embedding::EMBEDDING_001)
+        .embeddings(gemini::Embedding001)
         .document(Greetings {
             message: "Hello, world!".to_string(),
         })?
