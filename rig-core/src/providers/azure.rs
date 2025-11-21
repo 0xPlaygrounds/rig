@@ -118,7 +118,7 @@ impl<H> Capabilities<H> for AzureExt {
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<AudioGenerationModel>;
+    type AudioGeneration = Capable<AudioGenerationModel<H>>;
 }
 
 impl ProviderBuilder for AzureExtBuilder {
@@ -421,7 +421,7 @@ impl std::fmt::Display for Usage {
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
-    pub model: EmbeddingModels,
+    pub model: String,
     ndims: usize,
 }
 
@@ -436,6 +436,10 @@ where
 
     fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
         Self::new(client.clone(), model, dims)
+    }
+
+    fn make_custom(client: &Self::Client, model: &str, dims: Option<usize>) -> Self {
+        Self::with_model(client.clone(), model, dims)
     }
 
     fn ndims(&self) -> usize {
@@ -455,7 +459,7 @@ where
 
         let req = self
             .client
-            .post_embedding(self.model.into())?
+            .post_embedding(self.model.as_str())?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
@@ -504,7 +508,17 @@ impl<T> EmbeddingModel<T> {
 
         Self {
             client,
-            model,
+            model: model.to_string(),
+            ndims,
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str, ndims: Option<usize>) -> Self {
+        let ndims = ndims.unwrap_or_default();
+
+        Self {
+            client,
+            model: model.into(),
             ndims,
         }
     }
@@ -552,10 +566,17 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
         Self {
             client,
             model: model.to_string(),
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
         }
     }
 
@@ -618,7 +639,11 @@ where
     type Models = CompletionModels;
 
     fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into().into())
+        Self::new(client.clone(), model.into())
+    }
+
+    fn make_custom(client: &Self::Client, model: &str) -> Self {
+        Self::with_model(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -873,9 +898,16 @@ mod image_generation {
         type Models = super::CompletionModels;
 
         fn make(client: &Self::Client, model: Self::Models) -> Self {
-            ImageGenerationModel {
+            Self {
                 client: client.clone(),
                 model: model.to_string(),
+            }
+        }
+
+        fn make_custom(client: &Self::Client, model: &str) -> Self {
+            Self {
+                client: client.clone(),
+                model: model.into(),
             }
         }
 
@@ -943,6 +975,15 @@ mod audio_generation {
         model: String,
     }
 
+    impl<T> AudioGenerationModel<T> {
+        pub fn new(client: Client<T>, deployment_name: &str) -> Self {
+            Self {
+                client,
+                model: deployment_name.into(),
+            }
+        }
+    }
+
     impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
     where
         T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
@@ -952,10 +993,11 @@ mod audio_generation {
         type Model = String;
 
         fn make(client: &Self::Client, model: impl Into<Self::Model>) -> Self {
-            Self {
-                client: client.clone(),
-                model: model.into(),
-            }
+            Self::new(client.clone(), &model.into())
+        }
+
+        fn make_custom(client: &Self::Client, model: &str) -> Self {
+            Self::new(client.clone(), model)
         }
 
         async fn audio_generation(

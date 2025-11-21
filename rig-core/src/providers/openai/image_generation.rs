@@ -56,12 +56,22 @@ impl TryFrom<ImageGenerationResponse>
 pub struct ImageGenerationModel<T = reqwest::Client> {
     client: Client<T>,
     /// Name of the model (e.g.: dall-e-2)
-    pub model: ImageGenerationModels,
+    pub model: String,
 }
 
 impl<T> ImageGenerationModel<T> {
     pub(crate) fn new(client: Client<T>, model: ImageGenerationModels) -> Self {
-        Self { client, model }
+        Self {
+            client,
+            model: model.to_string(),
+        }
+    }
+
+    pub(crate) fn with_model(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 
@@ -78,6 +88,10 @@ where
         Self::new(client.clone(), model)
     }
 
+    fn make_custom(client: &Self::Client, model: &str) -> Self {
+        Self::with_model(client.clone(), model)
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn image_generation(
         &self,
@@ -85,12 +99,14 @@ where
     ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
     {
         let mut request = json!({
-            "model": <ImageGenerationModels as Into<&str>>::into(self.model),
+            "model": self.model,
             "prompt": generation_request.prompt,
             "size": format!("{}x{}", generation_request.width, generation_request.height),
         });
 
-        if self.model != ImageGenerationModels::GPTImage1 {
+        if self.model.as_str()
+            != <ImageGenerationModels as Into<&str>>::into(ImageGenerationModels::GPTImage1)
+        {
             merge_inplace(
                 &mut request,
                 json!({

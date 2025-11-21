@@ -5,13 +5,19 @@ use aws_smithy_types::Blob;
 use rig::image_generation::{
     self, ImageGenerationError, ImageGenerationRequest, ImageGenerationResponse,
 };
+use rig::models;
 
-/// `amazon.titan-image-generator-v1`
-pub const AMAZON_TITAN_IMAGE_GENERATOR_V1: &str = "amazon.titan-image-generator-v1";
-/// `amazon.titan-image-generator-v2:0`
-pub const AMAZON_TITAN_IMAGE_GENERATOR_V2_0: &str = "amazon.titan-image-generator-v2:0";
-/// `amazon.nova-canvas-v1:0`
-pub const AMAZON_NOVA_CANVAS: &str = "amazon.nova-canvas-v1:0";
+models! {
+    pub enum ImageGenerationModels {
+        /// `amazon.titan-image-generator-v1`
+        AmazonTitanImageGenerator1 => "amazon.titan-image-generator-v1",
+        /// `amazon.titan-image-generator-v2:0`
+        AmazonTitanImageGenerator2 => "amazon.titan-image-generator-v2:0",
+        /// `amazon.nova-canvas-v1:0`
+        AmazonNovaCanvas => "amazon.nova-canvas-v1:0",
+    }
+}
+pub use ImageGenerationModels::*;
 
 #[derive(Clone)]
 pub struct ImageGenerationModel {
@@ -26,6 +32,13 @@ impl ImageGenerationModel {
             model: model.to_string(),
         }
     }
+
+    pub fn with_model(client: Client, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
+    }
 }
 
 impl image_generation::ImageGenerationModel for ImageGenerationModel {
@@ -36,6 +49,10 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
 
     fn make(client: &Self::Client, model: Self::Models) -> Self {
         Self::new(client.clone(), model.as_str())
+    }
+
+    fn make_custom(client: &Self::Client, model: &str) -> Self {
+        Self::with_model(client.clone(), model)
     }
 
     async fn image_generation(

@@ -22,7 +22,8 @@ async fn main() {
     let mut file = File::create_new(path).expect("Failed to create file");
 
     let huggingface = huggingface::Client::from_env();
-    let dalle = huggingface.image_generation_model(huggingface::StableDiffusion3.into());
+    let dalle =
+        huggingface.image_generation_model("stabilityai/stable-diffusion-3-medium-diffusers");
 
     let response = dalle
         .image_generation_request()

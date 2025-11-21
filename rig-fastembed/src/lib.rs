@@ -127,6 +127,10 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         Self::new(&model, dims.unwrap_or_default())
     }
 
+    fn make_custom(_: &Self::Client, _: &str, _: Option<usize>) -> Self {
+        panic!("User defined models must be provided via `new_from_user_defined`")
+    }
+
     fn ndims(&self) -> usize {
         self.ndims
     }

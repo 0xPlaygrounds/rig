@@ -12,7 +12,7 @@ mod audio {
     /// Clone is required for conversions between client types.
     pub trait AudioGenerationClient {
         /// The AudioGenerationModel used by the Client
-        type AudioGenerationModel: AudioGenerationModel;
+        type AudioGenerationModel: AudioGenerationModel<Client = Self>;
 
         /// Create an audio generation model with the given name.
         ///
@@ -28,7 +28,24 @@ mod audio {
         fn audio_generation_model(
             &self,
             model: impl Into<<Self::AudioGenerationModel as AudioGenerationModel>::Model>,
-        ) -> Self::AudioGenerationModel;
+        ) -> Self::AudioGenerationModel {
+            Self::AudioGenerationModel::make(self, model)
+        }
+
+        /// Create an audio generation model with the given name.
+        ///
+        /// # Example
+        /// ```
+        /// use rig::providers::openai::{Client, self};
+        ///
+        /// // Initialize the OpenAI client
+        /// let openai = Client::new("your-open-ai-api-key");
+        ///
+        /// let tts = openai.audio_generation_model(openai::TTS_1);
+        /// ```
+        fn custom_audio_generation_model(&self, model: &str) -> Self::AudioGenerationModel {
+            Self::AudioGenerationModel::make_custom(self, model)
+        }
     }
 
     pub trait AudioGenerationClientDyn {
@@ -62,6 +79,12 @@ mod audio {
         type Model = Nothing;
 
         fn make(_: &Self::Client, _: impl Into<Self::Model>) -> Self {
+            panic!(
+                "Function should be unreachable as Self can only be constructed from another 'AudioGenerationModel'"
+            )
+        }
+
+        fn make_custom(_: &Self::Client, _: &str) -> Self {
             panic!(
                 "Function should be unreachable as Self can only be constructed from another 'AudioGenerationModel'"
             )

@@ -234,7 +234,7 @@ impl CompletionClient for Client {
         &self,
         model: impl Into<<Self::CompletionModel as rig::completion::CompletionModel>::Models>,
     ) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), &model.into())
+        CompletionModel::new(self.clone(), model.into())
     }
 }
 

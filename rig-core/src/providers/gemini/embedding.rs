@@ -37,6 +37,14 @@ impl<T> EmbeddingModel<T> {
             ndims,
         }
     }
+
+    pub fn with_model(client: Client<T>, model: &str, ndims: Option<usize>) -> Self {
+        Self {
+            client,
+            model: model.to_string(),
+            ndims,
+        }
+    }
 }
 
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
@@ -50,6 +58,10 @@ where
 
     fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
         Self::new(client.clone(), model, dims)
+    }
+
+    fn make_custom(client: &Self::Client, model: &str, dims: Option<usize>) -> Self {
+        Self::with_model(client.clone(), model, dims)
     }
 
     fn ndims(&self) -> usize {

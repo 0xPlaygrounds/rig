@@ -176,7 +176,11 @@ mod tests {
         type Client = Nothing;
 
         fn make(_: &Self::Client, _: Self::Models, _: Option<usize>) -> Self {
-            Model
+            Self
+        }
+
+        fn make_custom(_: &Self::Client, _: &str, _: Option<usize>) -> Self {
+            Self
         }
 
         fn ndims(&self) -> usize {

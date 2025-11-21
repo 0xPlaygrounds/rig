@@ -130,7 +130,7 @@ impl CompletionClient for Client {
         &self,
         model: impl Into<<Self::CompletionModel as rig::completion::CompletionModel>::Models>,
     ) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model.into().as_str())
+        CompletionModel::new(self.clone(), model.into().into())
     }
 }
 
@@ -144,12 +144,8 @@ impl EmbeddingsClient for Client {
         EmbeddingModel::new(self.clone(), model.as_str(), None)
     }
 
-    fn embedding_model_with_ndims(
-        &self,
-        model: <Self::EmbeddingModel as rig::embeddings::EmbeddingModel>::Models,
-        ndims: usize,
-    ) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model.as_str(), Some(ndims))
+    fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> Self::EmbeddingModel {
+        EmbeddingModel::new(self.clone(), model, Some(ndims))
     }
 }
 

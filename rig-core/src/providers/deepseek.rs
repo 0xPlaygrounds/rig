@@ -516,6 +516,13 @@ where
         }
     }
 
+    fn make_custom(client: &Self::Client, model: &str) -> Self {
+        Self {
+            client: client.clone(),
+            model: model.into(),
+        }
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,

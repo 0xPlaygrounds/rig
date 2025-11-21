@@ -62,7 +62,7 @@ impl std::fmt::Display for BilledUnits {
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
-    pub model: EmbeddingModels,
+    pub model: String,
     pub input_type: String,
     ndims: usize,
 }
@@ -78,6 +78,11 @@ where
     fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
         let dims = dims.unwrap_or_else(|| model.default_dimensions());
         Self::new(client.clone(), model, "search_document", dims)
+    }
+
+    fn make_custom(client: &Self::Client, model: &str, dims: Option<usize>) -> Self {
+        let dims = dims.unwrap_or_default();
+        Self::with_model(client.clone(), model, "search_document", dims)
     }
 
     fn ndims(&self) -> usize {
@@ -162,8 +167,17 @@ impl<T> EmbeddingModel<T> {
     pub fn new(client: Client<T>, model: EmbeddingModels, input_type: &str, ndims: usize) -> Self {
         Self {
             client,
-            model,
+            model: model.to_string(),
             input_type: input_type.to_string(),
+            ndims,
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str, input_type: &str, ndims: usize) -> Self {
+        Self {
+            client,
+            model: model.into(),
+            input_type: input_type.into(),
             ndims,
         }
     }

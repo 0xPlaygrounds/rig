@@ -75,7 +75,7 @@ pub struct Usage {
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
-    pub model: EmbeddingModels,
+    pub model: String,
     ndims: usize,
 }
 
@@ -92,6 +92,10 @@ where
         Self::new(client.clone(), model, dims.unwrap_or_default())
     }
 
+    fn make_custom(client: &Self::Client, model: &str, dims: Option<usize>) -> Self {
+        Self::with_model(client.clone(), model, dims.unwrap_or_default())
+    }
+
     fn ndims(&self) -> usize {
         self.ndims
     }
@@ -104,7 +108,7 @@ where
         let documents = documents.into_iter().collect::<Vec<_>>();
 
         let body = serde_json::to_vec(&json!({
-            "model": <EmbeddingModels as Into<&str>>::into(self.model),
+            "model": self.model,
             "input": documents,
         }))?;
 
@@ -155,7 +159,15 @@ where
     pub fn new(client: Client<T>, model: EmbeddingModels, ndims: usize) -> Self {
         Self {
             client,
-            model,
+            model: model.to_string(),
+            ndims,
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
+        Self {
+            client,
+            model: model.into(),
             ndims,
         }
     }

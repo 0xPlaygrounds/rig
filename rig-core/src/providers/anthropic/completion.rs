@@ -630,6 +630,14 @@ where
             default_max_tokens: Some(calculate_max_tokens(model)),
         }
     }
+
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.to_string(),
+            default_max_tokens: Some(calculate_max_tokens_custom(model)),
+        }
+    }
 }
 
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
@@ -643,6 +651,15 @@ fn calculate_max_tokens(model: AnthropicModels) -> u64 {
         Claude4Sonnet | Claude37Sonnet => 64_000,
         Claude35Sonnet | Claude35Haiku => 8_192,
         Claude3Opus | Claude3Sonnet | Claude3Haiku => 4_096,
+    }
+}
+
+fn calculate_max_tokens_custom(model: &str) -> u64 {
+    match model {
+        "claude-4-opus" => 32_000,
+        "claude-4-sonnet" | "claude-3.7-sonnet" => 64_000,
+        "claude-3.5-sonnet" | "claude-3.5-haiku" => 8_192,
+        _ => 4_096,
     }
 }
 
@@ -697,6 +714,10 @@ where
 
     fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
         CompletionModel::new(client.clone(), model.into())
+    }
+
+    fn make_custom(client: &Self::Client, model: &str) -> Self {
+        Self::with_model(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

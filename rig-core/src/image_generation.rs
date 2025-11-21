@@ -63,6 +63,7 @@ pub trait ImageGenerationModel: Clone + Send + Sync {
     type Models: TryFrom<String>;
 
     fn make(client: &Self::Client, model: Self::Models) -> Self;
+    fn make_custom(client: &Self::Client, model: &str) -> Self;
 
     fn image_generation(
         &self,

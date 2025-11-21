@@ -21,6 +21,7 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     message::{self, AssistantContent, Message, UserContent},
+    models,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -213,11 +214,34 @@ pub struct CompletionModel<T = reqwest::Client> {
     pub model: String,
 }
 
+models! {
+    #[allow(non_camel_case_types)]
+    pub enum CompletionModels {
+        Gpt4o => "gpt-4o",
+        O4Mini => "o4-mini",
+        DeepseekR1 => "deepseek-r1",
+        Gpt4oMini => "gpt-4o-mini",
+        Claude35Sonnect => "claude-3.5-sonnet",
+        Qwen2_1_5b_Instruct => "qwen2-1.5b-instruct",
+        Llama_3_1_8b_Instruct => "llama-3.1-8b-instruct",
+        Qwen25_32b_Instruct => "qwen-2.5-32b-instruct",
+        Llama33_70b_Instruct => "llama-3.3-70b-instruct",
+    }
+}
+pub use CompletionModels::*;
+
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
         Self {
             client,
             model: model.to_string(),
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
         }
     }
 
@@ -314,10 +338,14 @@ where
     type StreamingResponse = openai::StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = String;
+    type Models = CompletionModels;
 
     fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), &model.into())
+        Self::new(client.clone(), model.into())
+    }
+
+    fn make_custom(client: &Self::Client, model: &str) -> Self {
+        Self::with_model(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

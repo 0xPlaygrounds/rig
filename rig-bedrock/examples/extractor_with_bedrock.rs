@@ -20,7 +20,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     let client = Client::from_env();
-    let data_extractor = client.extractor::<Person>(AMAZON_NOVA_LITE.into()).build();
+    let data_extractor = client.extractor::<Person>(AMAZON_NOVA_LITE).build();
     let person = data_extractor
         .extract("Hello my name is John Doe! I am a software engineer.")
         .await?;
