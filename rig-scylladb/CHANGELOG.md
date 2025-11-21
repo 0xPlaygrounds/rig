@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.17](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.1.16...rig-scylladb-v0.1.17) - 2025-11-21
+
+### Added
+
+- *(rig-985)* Consolidate provider clients ([#1050](https://github.com/0xPlaygrounds/rig/pull/1050))
+
 ## [0.1.16](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.1.15...rig-scylladb-v0.1.16) - 2025-11-10
 
 ### Added
