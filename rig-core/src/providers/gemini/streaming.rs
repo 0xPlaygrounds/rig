@@ -158,7 +158,10 @@ where
                                     thought: Some(true),
                                     ..
                                 } => {
-                                    yield Ok(streaming::RawStreamingChoice::Reasoning { reasoning: text.clone(), id: None, signature: None });
+                                    yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
+                                        id: None,
+                                        reasoning: text.clone(),
+                                    });
                                 },
                                 Part {
                                     part: PartKind::Text(text),

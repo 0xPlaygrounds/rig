@@ -252,10 +252,9 @@ where
 
                     // Streamed reasoning content
                     if let Some(reasoning) = &delta.reasoning && !reasoning.is_empty() {
-                        yield Ok(streaming::RawStreamingChoice::Reasoning {
+                        yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
                             reasoning: reasoning.clone(),
                             id: None,
-                            signature: None,
                         });
                     }
 

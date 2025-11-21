@@ -107,10 +107,9 @@ impl CompletionModel {
                                         }
 
                                         if !text.is_empty() {
-                                            yield Ok(RawStreamingChoice::Reasoning {
+                                            yield Ok(RawStreamingChoice::ReasoningDelta {
                                                 reasoning: text.clone(),
                                                 id: None,
-                                                signature: None,
                                             })
                                         }
                                     },
