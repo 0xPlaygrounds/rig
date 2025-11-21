@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.24.0...rig-core-v0.25.0) - 2025-11-21
+
+### Added
+
+- *(rig-985)* Consolidate provider clients ([#1050](https://github.com/0xPlaygrounds/rig/pull/1050))
+
+### Fixed
+
+- *(gemini-request)* add `#[serde(default)]` for missing `generation_config` field ([#1060](https://github.com/0xPlaygrounds/rig/pull/1060))
+- update imported packages in the code example ([#1041](https://github.com/0xPlaygrounds/rig/pull/1041))
+
+### Other
+
+- OpenAI parsing ([#1058](https://github.com/0xPlaygrounds/rig/pull/1058))
+- *(rig-1046)* update list of who's using rig ([#1061](https://github.com/0xPlaygrounds/rig/pull/1061))
+- clean up provider code ([#1052](https://github.com/0xPlaygrounds/rig/pull/1052))
+
 ## [0.24.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.23.1...rig-core-v0.24.0) - 2025-11-10
 
 ### Added

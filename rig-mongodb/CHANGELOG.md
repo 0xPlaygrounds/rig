@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.3.0...rig-mongodb-v0.3.1) - 2025-11-21
+
+### Added
+
+- *(rig-985)* Consolidate provider clients ([#1050](https://github.com/0xPlaygrounds/rig/pull/1050))
+
 ## [0.3.0](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.2.26...rig-mongodb-v0.3.0) - 2025-11-10
 
 ### Added
