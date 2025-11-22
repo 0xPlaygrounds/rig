@@ -216,13 +216,17 @@ where
     }
 }
 
-// enum for index strategy
+/// Index strategy for the super::InMemoryVectorStore
 #[derive(Clone, Debug)]
 pub enum IndexStrategy {
+    /// Checks all documents in the vector store to find the most relevant documents.
     BruteForce,
 
+    /// Uses LSH to find candidates then computes exact distances.
     LSH {
+        /// Number of tables to use for LSH.
         num_tables: usize,
+        /// Number of hyperplanes to use for LSH.
         num_hyperplanes: usize,
     },
 }

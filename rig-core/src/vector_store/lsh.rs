@@ -1,7 +1,10 @@
 use fastrand::Rng;
 use std::collections::HashMap;
 
-/// Random Projection LSH
+/// Locality Sensitive Hashing (LSH) with random projection.
+/// Uses random hyperplanes to hash similar vectors into the same buckets for efficient
+/// approximate nearest neighbor search. See <https://www.pinecone.io/learn/series/faiss/locality-sensitive-hashing-random-projection/>
+/// for details on how LSH works.
 #[derive(Clone, Default)]
 pub struct LSH {
     hyperplanes: Vec<Vec<f32>>,
@@ -10,20 +13,24 @@ pub struct LSH {
 }
 
 impl LSH {
+    /// Create a new LSH instance.
     pub fn new(dim: usize, num_tables: usize, num_hyperplanes: usize) -> Self {
         let mut rng = Rng::new();
         let mut hyperplanes = Vec::new();
 
-        // Generate random hyperplanes for all tables
         for _ in 0..(num_tables * num_hyperplanes) {
             let mut plane = vec![0.0; dim];
 
-            // Generate random values in [-1, 1]
+            // Generate random values in [-1, 1] to ensure uniform distribution across all directions
+            // before normalization. This guarantees that after normalization to unit vectors, the
+            // hyperplanes are uniformly distributed across the unit sphere, which is essential for
+            // LSH to maintain good locality-sensitive hashing properties.
             for val in plane.iter_mut() {
                 *val = rng.f32() * 2.0 - 1.0;
             }
 
-            // Normalize to unit vector
+            // Normalize to unit vector so the dot product reflects only direction, ensuring
+            // the hash correctly identifies which side of the hyperplane each point lies on.
             let norm: f32 = plane.iter().map(|x| x * x).sum::<f32>().sqrt();
             if norm > 0.0 {
                 for val in plane.iter_mut() {
@@ -67,7 +74,9 @@ impl LSH {
     }
 }
 
-/// LSH Index for document IDs
+/// LSH Index for document IDs.
+/// Stores document IDs in a hashmap of hash values to document IDs.
+/// This allows for efficient lookup of document IDs by hash value.
 #[derive(Clone, Default)]
 pub struct LSHIndex {
     lsh: LSH,
@@ -75,6 +84,7 @@ pub struct LSHIndex {
 }
 
 impl LSHIndex {
+    /// Create a new LSHIndex.
     pub fn new(dim: usize, num_tables: usize, num_hyperplanes: usize) -> Self {
         let lsh = LSH::new(dim, num_tables, num_hyperplanes);
         let tables = vec![HashMap::new(); num_tables];
@@ -107,8 +117,6 @@ impl LSHIndex {
                 candidates.extend(ids.iter().cloned());
             }
         }
-
-        dbg!(&candidates);
 
         candidates.into_iter().collect()
     }

@@ -6,18 +6,30 @@ use crate::{OneOrMany, embeddings::Embedding};
 use super::{IndexStrategy, in_memory_store::InMemoryVectorStore};
 
 /// Builder for creating an [InMemoryVectorStore] with custom configuration.
-pub struct InMemoryVectorStoreBuilder<D: Serialize> {
+pub struct InMemoryVectorStoreBuilder<D>
+where
+    D: Serialize,
+{
+    /// Embeddings of the documents.
     embeddings: HashMap<String, (D, OneOrMany<Embedding>)>,
+
+    /// Index strategy for the vector store.
     index_strategy: IndexStrategy,
 }
 
-impl<D: Serialize + Eq> Default for InMemoryVectorStoreBuilder<D> {
+impl<D> Default for InMemoryVectorStoreBuilder<D>
+where
+    D: Serialize + Eq,
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<D: Serialize + Eq> InMemoryVectorStoreBuilder<D> {
+impl<D> InMemoryVectorStoreBuilder<D>
+where
+    D: Serialize + Eq,
+{
     /// Create a new builder with default settings.
     /// Default index strategy is BruteForce.
     pub fn new() -> Self {
