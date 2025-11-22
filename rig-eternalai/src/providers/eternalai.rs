@@ -300,6 +300,13 @@ pub struct EmbeddingModel {
 impl embeddings::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 1024;
 
+    type Client = Client;
+    type Models = String;
+
+    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
+        Self::new(client.clone(), model.as_str(), dims.unwrap_or_default())
+    }
+
     fn ndims(&self) -> usize {
         self.ndims
     }
@@ -546,6 +553,13 @@ impl CompletionModel {
 impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
     type StreamingResponse = CompletionResponse;
+
+    type Client = Client;
+    type Models = String;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        Self::new(client.clone(), &model.into(), None)
+    }
 
     async fn completion(
         &self,

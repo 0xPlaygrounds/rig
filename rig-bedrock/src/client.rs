@@ -1,8 +1,7 @@
 use crate::image::ImageGenerationModel;
 use crate::{completion::CompletionModel, embedding::EmbeddingModel};
 use aws_config::{BehaviorVersion, Region};
-use rig::client::ProviderValue;
-use rig::impl_conversion_traits;
+use rig::client::Nothing;
 use rig::prelude::*;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
@@ -105,6 +104,8 @@ impl Client {
 }
 
 impl ProviderClient for Client {
+    type Input = Nothing;
+
     fn from_env() -> Self
     where
         Self: Sized,
@@ -112,7 +113,7 @@ impl ProviderClient for Client {
         Client::new()
     }
 
-    fn from_val(_: ProviderValue) -> Self
+    fn from_val(_: Nothing) -> Self
     where
         Self: Sized,
     {
@@ -125,28 +126,41 @@ impl ProviderClient for Client {
 impl CompletionClient for Client {
     type CompletionModel = CompletionModel;
 
-    fn completion_model(&self, model: &str) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model)
+    fn completion_model(
+        &self,
+        model: impl Into<<Self::CompletionModel as rig::completion::CompletionModel>::Models>,
+    ) -> Self::CompletionModel {
+        CompletionModel::new(self.clone(), model.into().as_str())
     }
 }
 
 impl EmbeddingsClient for Client {
     type EmbeddingModel = EmbeddingModel;
 
-    fn embedding_model(&self, model: &str) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, None)
+    fn embedding_model(
+        &self,
+        model: <Self::EmbeddingModel as rig::embeddings::EmbeddingModel>::Models,
+    ) -> Self::EmbeddingModel {
+        EmbeddingModel::new(self.clone(), model.as_str(), None)
     }
 
-    fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, Some(ndims))
+    fn embedding_model_with_ndims(
+        &self,
+        model: <Self::EmbeddingModel as rig::embeddings::EmbeddingModel>::Models,
+        ndims: usize,
+    ) -> Self::EmbeddingModel {
+        EmbeddingModel::new(self.clone(), model.as_str(), Some(ndims))
     }
 }
 
 impl ImageGenerationClient for Client {
     type ImageGenerationModel = ImageGenerationModel;
 
-    fn image_generation_model(&self, model: &str) -> ImageGenerationModel {
-        ImageGenerationModel::new(self.clone(), model)
+    fn image_generation_model(
+        &self,
+        model: <Self::ImageGenerationModel as rig::image_generation::ImageGenerationModel>::Models,
+    ) -> Self::ImageGenerationModel {
+        ImageGenerationModel::new(self.clone(), model.as_str())
     }
 }
 
@@ -156,8 +170,3 @@ impl VerifyClient for Client {
         Ok(())
     }
 }
-
-impl_conversion_traits!(
-    AsTranscription,
-    AsAudioGeneration for Client
-);

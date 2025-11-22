@@ -1,21 +1,19 @@
-use rig::client::CompletionClient;
+use rig::client::{CompletionClient, ProviderClient};
+use rig::providers::perplexity::CompletionModels::Sonar;
 use rig::{
     completion::Prompt,
-    providers::{self, perplexity::SONAR},
+    providers::{self},
 };
 use serde_json::json;
-use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let client = providers::perplexity::Client::new(
-        &env::var("PERPLEXITY_API_KEY").expect("PERPLEXITY_API_KEY not set"),
-    );
+    let client = providers::perplexity::Client::from_env();
 
     // Create agent with a single context prompt
     let agent = client
-        .agent(SONAR)
+        .agent(Sonar)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .additional_params(json!({

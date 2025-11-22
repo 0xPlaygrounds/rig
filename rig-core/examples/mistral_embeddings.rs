@@ -1,10 +1,10 @@
-use rig::Embed;
 use rig::client::EmbeddingsClient;
 use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::mistral;
 use rig::vector_store::VectorStoreIndex;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;
 use rig::vector_store::request::VectorSearchRequest;
+use rig::{Embed, client::ProviderClient};
 use serde::{Deserialize, Serialize};
 
 #[derive(Embed, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -17,7 +17,7 @@ struct Greetings {
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize the Mistral client
     let client = mistral::Client::from_env();
-    let embedding_model = client.embedding_model(mistral::embedding::MISTRAL_EMBED);
+    let embedding_model = client.embedding_model(mistral::embedding::MistralEmbed);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .document(Greetings {
             message: "Hello, world!".to_string(),

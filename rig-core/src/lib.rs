@@ -14,7 +14,7 @@
 //!
 //! # Simple example:
 //! ```
-//! use rig::{completion::Prompt, providers::openai};
+//! use rig::{client::CompletionClient, completion::Prompt, providers::openai};
 //!
 //! #[tokio::main]
 //! async fn main() {
@@ -129,6 +129,9 @@ pub mod one_or_many;
 pub mod pipeline;
 pub mod prelude;
 pub mod providers;
+#[macro_use]
+pub mod models;
+
 pub mod streaming;
 pub mod tool;
 pub mod tools;

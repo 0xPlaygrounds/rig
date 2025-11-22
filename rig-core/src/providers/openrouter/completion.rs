@@ -1,34 +1,39 @@
-use bytes::Bytes;
-use serde::{Deserialize, Serialize};
-use tracing::{Instrument, info_span};
-
-use super::client::{ApiErrorResponse, ApiResponse, Client, Usage};
-
+use super::{
+    client::{ApiErrorResponse, ApiResponse, Client, Usage},
+    streaming::StreamingCompletionResponse,
+};
+use crate::message;
+use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     http_client::HttpClientExt,
-    json_utils,
-    providers::openai::Message,
+    json_utils, models,
+    one_or_many::string_or_one_or_many,
+    providers::openai,
 };
+use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-
-use crate::providers::openai::AssistantContent;
-use crate::providers::openrouter::streaming::FinalCompletionResponse;
-use crate::streaming::StreamingCompletionResponse;
-use crate::telemetry::SpanCombinator;
+use tracing::{Instrument, info_span};
 
 // ================================================================
 // OpenRouter Completion API
 // ================================================================
-/// The `qwen/qwq-32b` model. Find more models at <https://openrouter.ai/models>.
-pub const QWEN_QWQ_32B: &str = "qwen/qwq-32b";
-/// The `anthropic/claude-3.7-sonnet` model. Find more models at <https://openrouter.ai/models>.
-pub const CLAUDE_3_7_SONNET: &str = "anthropic/claude-3.7-sonnet";
-/// The `perplexity/sonar-pro` model. Find more models at <https://openrouter.ai/models>.
-pub const PERPLEXITY_SONAR_PRO: &str = "perplexity/sonar-pro";
-/// The `google/gemini-2.0-flash-001` model. Find more models at <https://openrouter.ai/models>.
-pub const GEMINI_FLASH_2_0: &str = "google/gemini-2.0-flash-001";
+
+models! {
+    pub enum CompletionModels {
+        /// The `qwen/qwq-32b` model. Find more models at <https://openrouter.ai/models>.
+        QwenQWQ32b => "qwen/qwq-32b",
+        /// The `anthropic/claude-3.7-sonnet` model. Find more models at <https://openrouter.ai/models>.
+        Claude37Sonnet => "anthropic/claude-3.7-sonnet",
+        /// The `perplexity/sonar-pro` model. Find more models at <https://openrouter.ai/models>.
+        PerplexitySonarPro => "perplexity/sonar-pro",
+        /// The `google/gemini-2.0-flash-001` model. Find more models at <https://openrouter.ai/models>.
+        GeminiFlash2 => "google/gemini-2.0-flash-001",
+    }
+}
+pub use CompletionModels::*;
 
 /// A openrouter completion object.
 ///
@@ -62,13 +67,16 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             Message::Assistant {
                 content,
                 tool_calls,
+                reasoning,
                 ..
             } => {
                 let mut content = content
                     .iter()
                     .map(|c| match c {
-                        AssistantContent::Text { text } => completion::AssistantContent::text(text),
-                        AssistantContent::Refusal { refusal } => {
+                        openai::AssistantContent::Text { text } => {
+                            completion::AssistantContent::text(text)
+                        }
+                        openai::AssistantContent::Refusal { refusal } => {
                             completion::AssistantContent::text(refusal)
                         }
                     })
@@ -86,6 +94,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         })
                         .collect::<Vec<_>>(),
                 );
+
+                if let Some(reasoning) = reasoning {
+                    content.push(completion::AssistantContent::reasoning(reasoning));
+                }
+
                 Ok(content)
             }
             _ => Err(CompletionError::ResponseError(
@@ -123,6 +136,143 @@ pub struct Choice {
     pub native_finish_reason: Option<String>,
     pub message: Message,
     pub finish_reason: Option<String>,
+}
+
+/// OpenRouter message.
+///
+/// Almost identical to OpenAI's Message, but supports more parameters
+/// for some providers like `reasoning`.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum Message {
+    #[serde(alias = "developer")]
+    System {
+        #[serde(deserialize_with = "string_or_one_or_many")]
+        content: OneOrMany<openai::SystemContent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    User {
+        #[serde(deserialize_with = "string_or_one_or_many")]
+        content: OneOrMany<openai::UserContent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    Assistant {
+        #[serde(default, deserialize_with = "json_utils::string_or_vec")]
+        content: Vec<openai::AssistantContent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        refusal: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        audio: Option<openai::AudioAssistant>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(
+            default,
+            deserialize_with = "json_utils::null_or_vec",
+            skip_serializing_if = "Vec::is_empty"
+        )]
+        tool_calls: Vec<openai::ToolCall>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reasoning: Option<String>,
+    },
+    #[serde(rename = "tool")]
+    ToolResult {
+        tool_call_id: String,
+        content: OneOrMany<openai::ToolResultContent>,
+    },
+}
+
+impl Message {
+    pub fn system(content: &str) -> Self {
+        Message::System {
+            content: OneOrMany::one(content.to_owned().into()),
+            name: None,
+        }
+    }
+}
+
+impl From<openai::Message> for Message {
+    fn from(value: openai::Message) -> Self {
+        match value {
+            openai::Message::System { content, name } => Self::System { content, name },
+            openai::Message::User { content, name } => Self::User { content, name },
+            openai::Message::Assistant {
+                content,
+                refusal,
+                audio,
+                name,
+                tool_calls,
+            } => Self::Assistant {
+                content,
+                refusal,
+                audio,
+                name,
+                tool_calls,
+                reasoning: None,
+            },
+            openai::Message::ToolResult {
+                tool_call_id,
+                content,
+            } => Self::ToolResult {
+                tool_call_id,
+                content,
+            },
+        }
+    }
+}
+
+impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
+    type Error = message::MessageError;
+
+    fn try_from(value: OneOrMany<message::AssistantContent>) -> Result<Self, Self::Error> {
+        let (text_content, tool_calls, reasoning) = value.into_iter().fold(
+            (Vec::new(), Vec::new(), None),
+            |(mut texts, mut tools, mut reasoning), content| {
+                match content {
+                    message::AssistantContent::Text(text) => texts.push(text),
+                    message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
+                    message::AssistantContent::Reasoning(r) => {
+                        reasoning = r.reasoning.into_iter().next();
+                    }
+                }
+                (texts, tools, reasoning)
+            },
+        );
+
+        // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
+        //  so either `content` or `tool_calls` will have some content.
+        Ok(vec![Message::Assistant {
+            content: text_content
+                .into_iter()
+                .map(|content| content.text.into())
+                .collect::<Vec<_>>(),
+            refusal: None,
+            audio: None,
+            name: None,
+            tool_calls: tool_calls
+                .into_iter()
+                .map(|tool_call| tool_call.into())
+                .collect::<Vec<_>>(),
+            reasoning,
+        }])
+    }
+}
+
+// We re-use most of the openai implementation when we can and we re-implement
+// only the part that differentate for openrouter (like reasoning support).
+impl TryFrom<message::Message> for Vec<Message> {
+    type Error = message::MessageError;
+
+    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
+        match message {
+            message::Message::User { content } => {
+                let messages: Vec<openai::Message> = content.try_into()?;
+                Ok(messages.into_iter().map(Message::from).collect::<Vec<_>>())
+            }
+            message::Message::Assistant { content, .. } => content.try_into(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -165,15 +315,14 @@ pub enum ToolChoiceFunctionKind {
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
-    /// Name of the model (e.g.: deepseek-ai/DeepSeek-R1)
     pub model: String,
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 
@@ -246,7 +395,14 @@ where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
     type Response = CompletionResponse;
-    type StreamingResponse = FinalCompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
+
+    type Client = Client<T>;
+    type Models = String;
+
+    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+        Self::new(client.clone(), model.into())
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -257,7 +413,7 @@ where
         let request = self.create_completion_request(completion_request)?;
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
-                target: "rig::completion",
+                target: "rig::completions",
                 "chat",
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "openrouter",
@@ -284,7 +440,7 @@ where
             .map_err(|x| CompletionError::HttpError(x.into()))?;
 
         async move {
-            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let response = self.client.http_client().send::<_, Bytes>(req).await?;
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
 
@@ -297,7 +453,7 @@ where
                         span.record("gen_ai.response.id", &response.id);
                         span.record("gen_ai.response.model_name", &response.model);
 
-                        tracing::debug!(target: "rig::completion",
+                        tracing::debug!(target: "rig::completions",
                             "OpenRouter response: {response:?}");
                         response.try_into()
                     }
@@ -317,7 +473,10 @@ where
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<
+        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+        CompletionError,
+    > {
         CompletionModel::stream(self, completion_request).await
     }
 }

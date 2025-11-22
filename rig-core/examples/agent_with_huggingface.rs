@@ -1,5 +1,4 @@
-use rig::prelude::*;
-use std::env;
+use rig::{prelude::*, providers::huggingface};
 
 use rig::{
     agent::AgentBuilder,
@@ -31,8 +30,7 @@ async fn main() -> Result<(), anyhow::Error> {
 }
 
 fn client() -> providers::huggingface::Client {
-    let api_key = &env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY not set");
-    providers::huggingface::Client::new(api_key)
+    huggingface::Client::from_env()
 }
 
 /// Create a partial huggingface agent (deepseek R1)

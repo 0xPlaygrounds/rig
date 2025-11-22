@@ -4,13 +4,13 @@ mod audio {
         AudioGenerationError, AudioGenerationModel, AudioGenerationModelDyn,
         AudioGenerationRequest, AudioGenerationResponse,
     };
-    use crate::client::{AsAudioGeneration, ProviderClient};
+    use crate::client::Nothing;
     use std::future::Future;
     use std::sync::Arc;
 
     /// A provider client with audio generation capabilities.
     /// Clone is required for conversions between client types.
-    pub trait AudioGenerationClient: ProviderClient + Clone {
+    pub trait AudioGenerationClient {
         /// The AudioGenerationModel used by the Client
         type AudioGenerationModel: AudioGenerationModel;
 
@@ -25,10 +25,13 @@ mod audio {
         ///
         /// let tts = openai.audio_generation_model(openai::TTS_1);
         /// ```
-        fn audio_generation_model(&self, model: &str) -> Self::AudioGenerationModel;
+        fn audio_generation_model(
+            &self,
+            model: impl Into<<Self::AudioGenerationModel as AudioGenerationModel>::Model>,
+        ) -> Self::AudioGenerationModel;
     }
 
-    pub trait AudioGenerationClientDyn: ProviderClient {
+    pub trait AudioGenerationClientDyn {
         fn audio_generation_model<'a>(&self, model: &str) -> Box<dyn AudioGenerationModelDyn + 'a>;
     }
 
@@ -38,16 +41,12 @@ mod audio {
         M: AudioGenerationModel + 'static,
     {
         fn audio_generation_model<'a>(&self, model: &str) -> Box<dyn AudioGenerationModelDyn + 'a> {
-            Box::new(self.audio_generation_model(model))
-        }
-    }
+            let model = match M::Model::try_from(model.into()) {
+                Ok(model) => model,
+                Err(_) => panic!("Invalid model '{model}'"),
+            };
 
-    impl<T> AsAudioGeneration for T
-    where
-        T: AudioGenerationClientDyn + Clone + 'static,
-    {
-        fn as_audio_generation(&self) -> Option<Box<dyn AudioGenerationClientDyn>> {
-            Some(Box::new(self.clone()))
+            Box::new(self.audio_generation_model(model))
         }
     }
 
@@ -59,6 +58,14 @@ mod audio {
 
     impl AudioGenerationModel for AudioGenerationModelHandle<'_> {
         type Response = ();
+        type Client = Nothing;
+        type Model = Nothing;
+
+        fn make(_: &Self::Client, _: impl Into<Self::Model>) -> Self {
+            panic!(
+                "Function should be unreachable as Self can only be constructed from another 'AudioGenerationModel'"
+            )
+        }
 
         fn audio_generation(
             &self,

@@ -1,35 +1,27 @@
-use http::Request;
 use std::collections::HashMap;
-use tracing::info_span;
 
-use crate::{
-    completion::GetTokenUsage,
-    http_client::{self, HttpClientExt},
-    json_utils,
-    message::{ToolCall, ToolFunction},
-    streaming::{self},
-};
 use async_stream::stream;
 use futures::StreamExt;
-use serde_json::{Value, json};
-
-use crate::completion::{CompletionError, CompletionRequest};
+use http::Request;
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use tracing::info_span;
+use tracing_futures::Instrument;
 
-#[derive(Serialize, Deserialize, Debug)]
+use crate::completion::GetTokenUsage;
+use crate::completion::{CompletionError, CompletionRequest};
+use crate::http_client::HttpClientExt;
+use crate::http_client::sse::{Event, GenericEventSource};
+use crate::json_utils;
+use crate::message::{ToolCall, ToolFunction};
+use crate::streaming;
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct StreamingCompletionResponse {
-    pub id: String,
-    pub choices: Vec<StreamingChoice>,
-    pub created: u64,
-    pub model: String,
-    pub object: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub system_fingerprint: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub usage: Option<ResponseUsage>,
+    pub usage: Usage,
 }
 
-impl GetTokenUsage for FinalCompletionResponse {
+impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         let mut usage = crate::completion::Usage::new();
 
@@ -41,76 +33,75 @@ impl GetTokenUsage for FinalCompletionResponse {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct StreamingChoice {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub finish_reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+#[derive(Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum FinishReason {
+    ToolCalls,
+    Stop,
+    Error,
+    ContentFilter,
+    Length,
+    #[serde(untagged)]
+    Other(String),
+}
+
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct StreamingChoice {
+    pub finish_reason: Option<FinishReason>,
     pub native_finish_reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub logprobs: Option<Value>,
     pub index: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<MessageResponse>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub delta: Option<DeltaResponse>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<ErrorResponse>,
+    pub delta: StreamingDelta,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct MessageResponse {
-    pub role: String,
-    pub content: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub refusal: Option<Value>,
-    #[serde(default)]
-    pub tool_calls: Vec<OpenRouterToolCall>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct OpenRouterToolFunction {
+#[derive(Deserialize, Debug)]
+struct StreamingFunction {
     pub name: Option<String>,
     pub arguments: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct OpenRouterToolCall {
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct StreamingToolCall {
     pub index: usize,
     pub id: Option<String>,
     pub r#type: Option<String>,
-    pub function: OpenRouterToolFunction,
+    pub function: StreamingFunction,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct ResponseUsage {
+pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ErrorResponse {
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct ErrorResponse {
     pub code: i32,
     pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<HashMap<String, Value>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DeltaResponse {
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct StreamingDelta {
     pub role: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
-    #[serde(default)]
-    pub tool_calls: Vec<OpenRouterToolCall>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub native_finish_reason: Option<String>,
+    pub reasoning: Option<String>,
+    #[serde(default, deserialize_with = "json_utils::null_or_vec")]
+    pub tool_calls: Vec<StreamingToolCall>,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
-pub struct FinalCompletionResponse {
-    pub usage: ResponseUsage,
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct StreamingCompletionChunk {
+    id: String,
+    model: String,
+    choices: Vec<StreamingChoice>,
+    usage: Option<Usage>,
+    error: Option<ErrorResponse>,
 }
 
 impl<T> super::CompletionModel<T>
@@ -120,7 +111,7 @@ where
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<FinalCompletionResponse>, CompletionError>
+    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let preamble = completion_request.preamble.clone();
         let request = self.create_completion_request(completion_request)?;
@@ -156,103 +147,56 @@ where
         };
 
         tracing::Instrument::instrument(
-            send_streaming_request(self.client.http_client.clone(), req),
+            send_compatible_streaming_request(self.client.http_client().clone(), req),
             span,
         )
         .await
     }
 }
 
-pub async fn send_streaming_request<T>(
-    client: T,
+pub async fn send_compatible_streaming_request<T>(
+    http_client: T,
     req: Request<Vec<u8>>,
-) -> Result<streaming::StreamingCompletionResponse<FinalCompletionResponse>, CompletionError>
+) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    let response = client.send_streaming(req).await?;
-    let status = response.status();
+    let span = tracing::Span::current();
+    // Build the request with proper headers for SSE
+    let mut event_source = GenericEventSource::new(http_client, req);
 
-    if !status.is_success() {
-        return Err(CompletionError::ProviderError(format!(
-            "Got response error trying to send a completion request to OpenRouter: {status}"
-        )));
-    }
-
-    let mut stream = response.into_body();
-
-    // Handle OpenAI Compatible SSE chunks
     let stream = stream! {
-        let mut tool_calls = HashMap::new();
-        let mut partial_line = String::new();
+        // Accumulate tool calls by index while streaming
+        let mut tool_calls: HashMap<usize, ToolCall> = HashMap::new();
         let mut final_usage = None;
 
-        while let Some(chunk_result) = stream.next().await {
-            let chunk = match chunk_result {
-                Ok(c) => c,
-                Err(e) => {
-                    yield Err(CompletionError::from(http_client::Error::Instance(e.into())));
-                    break;
-                }
-            };
-
-            let text = match String::from_utf8(chunk.to_vec()) {
-                Ok(t) => t,
-                Err(e) => {
-                    yield Err(CompletionError::ResponseError(e.to_string()));
-                    break;
-                }
-            };
-
-            for line in text.lines() {
-                let mut line = line.to_string();
-
-                // Skip empty lines and processing messages, as well as [DONE] (might be useful though)
-                if line.trim().is_empty() || line.trim() == ": OPENROUTER PROCESSING" || line.trim() == "data: [DONE]" {
+        while let Some(event_result) = event_source.next().await {
+            match event_result {
+                Ok(Event::Open) => {
+                    tracing::trace!("SSE connection opened");
                     continue;
                 }
 
-                // Handle data: prefix
-                line = line.strip_prefix("data: ").unwrap_or(&line).to_string();
-
-                // If line starts with { but doesn't end with }, it's a partial JSON
-                if line.starts_with('{') && !line.ends_with('}') {
-                    partial_line = line;
-                    continue;
-                }
-
-                // If we have a partial line and this line ends with }, complete it
-                if !partial_line.is_empty() {
-                    if line.ends_with('}') {
-                        partial_line.push_str(&line);
-                        line = partial_line;
-                        partial_line = String::new();
-                    } else {
-                        partial_line.push_str(&line);
+                Ok(Event::Message(message)) => {
+                    if message.data.trim().is_empty() || message.data == "[DONE]" {
                         continue;
                     }
-                }
 
-                let data = match serde_json::from_str::<StreamingCompletionResponse>(&line) {
-                    Ok(data) => data,
-                    Err(_) => {
+                    let data = match serde_json::from_str::<StreamingCompletionChunk>(&message.data) {
+                        Ok(data) => data,
+                        Err(error) => {
+                            tracing::error!(?error, message = message.data, "Failed to parse SSE message");
+                            continue;
+                        }
+                    };
+
+                    // Expect at least one choice
+                     let Some(choice) = data.choices.first() else {
+                        tracing::debug!("There is no choice");
                         continue;
-                    }
-                };
+                    };
+                    let delta = &choice.delta;
 
-
-                let choice = data.choices.first().expect("Should have at least one choice");
-
-                // TODO this has to handle outputs like this:
-                // [{"index": 0, "id": "call_DdmO9pD3xa9XTPNJ32zg2hcA", "function": {"arguments": "", "name": "get_weather"}, "type": "function"}]
-                // [{"index": 0, "id": null, "function": {"arguments": "{\"", "name": null}, "type": null}]
-                // [{"index": 0, "id": null, "function": {"arguments": "location", "name": null}, "type": null}]
-                // [{"index": 0, "id": null, "function": {"arguments": "\":\"", "name": null}, "type": null}]
-                // [{"index": 0, "id": null, "function": {"arguments": "Paris", "name": null}, "type": null}]
-                // [{"index": 0, "id": null, "function": {"arguments": ",", "name": null}, "type": null}]
-                // [{"index": 0, "id": null, "function": {"arguments": " France", "name": null}, "type": null}]
-                // [{"index": 0, "id": null, "function": {"arguments": "\"}", "name": null}, "type": null}]
-                if let Some(delta) = &choice.delta {
                     if !delta.tool_calls.is_empty() {
                         for tool_call in &delta.tool_calls {
                             let index = tool_call.index;
@@ -296,71 +240,287 @@ where
                                 } else {
                                     existing_tool_call.function.arguments = serde_json::Value::String(combined);
                                 }
+
+                                // Emit the delta so UI can show progress
+                                yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                                    id: existing_tool_call.id.clone(),
+                                    delta: chunk.clone(),
+                                });
                             }
                         }
                     }
 
-                    if let Some(content) = &delta.content &&!content.is_empty() {
-                            yield Ok(streaming::RawStreamingChoice::Message(content.clone()))
+                    // Streamed reasoning content
+                    if let Some(reasoning) = &delta.reasoning && !reasoning.is_empty() {
+                        yield Ok(streaming::RawStreamingChoice::Reasoning {
+                            reasoning: reasoning.clone(),
+                            id: None,
+                            signature: None,
+                        });
                     }
 
+                    // Streamed text content
+                    if let Some(content) = &delta.content && !content.is_empty() {
+                        yield Ok(streaming::RawStreamingChoice::Message(content.clone()));
+                    }
+
+                    // Usage updates
                     if let Some(usage) = data.usage {
                         final_usage = Some(usage);
                     }
-                }
 
-                // Handle message format
-                if let Some(message) = &choice.message {
-                    if !message.tool_calls.is_empty() {
-                        for tool_call in &message.tool_calls {
-                            let name = tool_call.function.name.clone();
-                            let id = tool_call.id.clone();
-                            let arguments = if let Some(args) = &tool_call.function.arguments {
-                                // Try to parse the string as JSON, fallback to string value
-                                match serde_json::from_str(args) {
-                                    Ok(v) => v,
-                                    Err(_) => serde_json::Value::String(args.to_string()),
-                                }
-                            } else {
-                                serde_json::Value::Null
-                            };
-                            let index = tool_call.index;
-
-                            tool_calls.insert(index, ToolCall {
-                                id: id.unwrap_or_default(),
+                    // Finish reason
+                    if let Some(finish_reason) = &choice.finish_reason && *finish_reason == FinishReason::ToolCalls {
+                        for (_idx, tool_call) in tool_calls.into_iter() {
+                            yield Ok(streaming::RawStreamingChoice::ToolCall {
+                                name: tool_call.function.name,
+                                id: tool_call.id,
+                                arguments: tool_call.function.arguments,
                                 call_id: None,
-                                function: ToolFunction {
-                                    name: name.unwrap_or_default(),
-                                    arguments,
-                                },
                             });
                         }
+                        tool_calls = HashMap::new();
                     }
-
-                    if !message.content.is_empty() {
-                        yield Ok(streaming::RawStreamingChoice::Message(message.content.clone()))
-                    }
+                }
+                Err(crate::http_client::Error::StreamEnded) => {
+                    break;
+                }
+                Err(error) => {
+                    tracing::error!(?error, "SSE error");
+                    yield Err(CompletionError::ProviderError(error.to_string()));
+                    break;
                 }
             }
         }
 
-        for (_, tool_call) in tool_calls.into_iter() {
+        // Ensure event source is closed when stream ends
+        event_source.close();
 
-            yield Ok(streaming::RawStreamingChoice::ToolCall{
+        // Flush any accumulated tool calls (that weren't emitted as ToolCall earlier)
+        for (_idx, tool_call) in tool_calls.into_iter() {
+            yield Ok(streaming::RawStreamingChoice::ToolCall {
                 name: tool_call.function.name,
                 id: tool_call.id,
                 arguments: tool_call.function.arguments,
-                call_id: None
+                call_id: None,
             });
         }
 
-        yield Ok(streaming::RawStreamingChoice::FinalResponse(FinalCompletionResponse {
-            usage: final_usage.unwrap_or_default()
-        }))
-
-    };
+        // Final response with usage
+        yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+            usage: final_usage.unwrap_or_default(),
+        }));
+    }.instrument(span);
 
     Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
         stream,
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_streaming_completion_response_deserialization() {
+        let json = json!({
+            "id": "gen-abc123",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "role": "assistant",
+                    "content": "Hello"
+                }
+            }],
+            "created": 1234567890u64,
+            "model": "gpt-3.5-turbo",
+            "object": "chat.completion.chunk"
+        });
+
+        let response: StreamingCompletionChunk = serde_json::from_value(json).unwrap();
+        assert_eq!(response.id, "gen-abc123");
+        assert_eq!(response.model, "gpt-3.5-turbo");
+        assert_eq!(response.choices.len(), 1);
+    }
+
+    #[test]
+    fn test_delta_with_content() {
+        let json = json!({
+            "role": "assistant",
+            "content": "Hello, world!"
+        });
+
+        let delta: StreamingDelta = serde_json::from_value(json).unwrap();
+        assert_eq!(delta.role, Some("assistant".to_string()));
+        assert_eq!(delta.content, Some("Hello, world!".to_string()));
+    }
+
+    #[test]
+    fn test_delta_with_tool_call() {
+        let json = json!({
+            "role": "assistant",
+            "tool_calls": [{
+                "index": 0,
+                "id": "call_abc",
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "arguments": "{\"location\":"
+                }
+            }]
+        });
+
+        let delta: StreamingDelta = serde_json::from_value(json).unwrap();
+        assert_eq!(delta.tool_calls.len(), 1);
+        assert_eq!(delta.tool_calls[0].index, 0);
+        assert_eq!(delta.tool_calls[0].id, Some("call_abc".to_string()));
+    }
+
+    #[test]
+    fn test_tool_call_with_partial_arguments() {
+        let json = json!({
+            "index": 0,
+            "id": null,
+            "type": null,
+            "function": {
+                "name": null,
+                "arguments": "Paris"
+            }
+        });
+
+        let tool_call: StreamingToolCall = serde_json::from_value(json).unwrap();
+        assert_eq!(tool_call.index, 0);
+        assert!(tool_call.id.is_none());
+        assert_eq!(tool_call.function.arguments, Some("Paris".to_string()));
+    }
+
+    #[test]
+    fn test_streaming_with_usage() {
+        let json = json!({
+            "id": "gen-xyz",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "content": null
+                }
+            }],
+            "created": 1234567890u64,
+            "model": "gpt-4",
+            "object": "chat.completion.chunk",
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150
+            }
+        });
+
+        let response: StreamingCompletionChunk = serde_json::from_value(json).unwrap();
+        assert!(response.usage.is_some());
+        let usage = response.usage.unwrap();
+        assert_eq!(usage.prompt_tokens, 100);
+        assert_eq!(usage.completion_tokens, 50);
+        assert_eq!(usage.total_tokens, 150);
+    }
+
+    #[test]
+    fn test_multiple_tool_call_deltas() {
+        // Simulates the sequence of deltas for a tool call with arguments
+        let start_json = json!({
+            "id": "gen-1",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "tool_calls": [{
+                        "index": 0,
+                        "id": "call_123",
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "arguments": ""
+                        }
+                    }]
+                }
+            }],
+            "created": 1234567890u64,
+            "model": "gpt-4",
+            "object": "chat.completion.chunk"
+        });
+
+        let delta1_json = json!({
+            "id": "gen-2",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "tool_calls": [{
+                        "index": 0,
+                        "function": {
+                            "arguments": "{\"query\":"
+                        }
+                    }]
+                }
+            }],
+            "created": 1234567890u64,
+            "model": "gpt-4",
+            "object": "chat.completion.chunk"
+        });
+
+        let delta2_json = json!({
+            "id": "gen-3",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "tool_calls": [{
+                        "index": 0,
+                        "function": {
+                            "arguments": "\"Rust programming\"}"
+                        }
+                    }]
+                }
+            }],
+            "created": 1234567890u64,
+            "model": "gpt-4",
+            "object": "chat.completion.chunk"
+        });
+
+        // Verify all chunks deserialize
+        let start: StreamingCompletionChunk = serde_json::from_value(start_json).unwrap();
+        assert_eq!(
+            start.choices[0].delta.tool_calls[0].id,
+            Some("call_123".to_string())
+        );
+
+        let delta1: StreamingCompletionChunk = serde_json::from_value(delta1_json).unwrap();
+        assert_eq!(
+            delta1.choices[0].delta.tool_calls[0].function.arguments,
+            Some("{\"query\":".to_string())
+        );
+
+        let delta2: StreamingCompletionChunk = serde_json::from_value(delta2_json).unwrap();
+        assert_eq!(
+            delta2.choices[0].delta.tool_calls[0].function.arguments,
+            Some("\"Rust programming\"}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_response_with_error() {
+        let json = json!({
+            "id": "cmpl-abc123",
+            "object": "chat.completion.chunk",
+            "created": 1234567890,
+            "model": "gpt-3.5-turbo",
+            "provider": "openai",
+            "error": { "code": 500, "message": "Provider disconnected" },
+            "choices": [
+                { "index": 0, "delta": { "content": "" }, "finish_reason": "error" }
+            ]
+        });
+
+        let response: StreamingCompletionChunk = serde_json::from_value(json).unwrap();
+        assert!(response.error.is_some());
+        let error = response.error.as_ref().unwrap();
+        assert_eq!(error.code, 500);
+        assert_eq!(error.message, "Provider disconnected");
+    }
 }

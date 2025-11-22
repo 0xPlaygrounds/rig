@@ -11,12 +11,12 @@
 use crate::OneOrMany;
 use crate::agent::Agent;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
-use crate::client::builder::FinalCompletionResponse;
+use crate::client::FinalCompletionResponse;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
     Message, Usage,
 };
-use crate::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction};
+use crate::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction, ToolResult};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
@@ -604,5 +604,18 @@ where
 
     pub fn final_response(res: R) -> Self {
         Self::Final(res)
+    }
+}
+
+/// Streamed user content. This content is primarily used to represent tool results from tool calls made during a multi-turn/step agent prompt.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(untagged)]
+pub enum StreamedUserContent {
+    ToolResult(ToolResult),
+}
+
+impl StreamedUserContent {
+    pub fn tool_result(tool_result: ToolResult) -> Self {
+        Self::ToolResult(tool_result)
     }
 }

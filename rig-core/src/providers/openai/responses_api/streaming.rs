@@ -8,6 +8,7 @@ use crate::providers::openai::responses_api::{
 };
 use crate::streaming;
 use crate::streaming::RawStreamingChoice;
+use crate::wasm_compat::WasmCompatSend;
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -201,7 +202,7 @@ pub enum SummaryPartChunkPart {
 
 impl<T> ResponsesCompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + WasmCompatSend + 'static,
 {
     pub(crate) async fn stream(
         &self,
@@ -246,7 +247,7 @@ where
             serde_json::to_string(&request.input).expect("This should always work"),
         );
         // Build the request with proper headers for SSE
-        let client = self.clone().client.http_client;
+        let client = self.client.http_client().clone();
 
         let mut event_source = GenericEventSource::new(client, req);
 
@@ -334,14 +335,14 @@ where
                     }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
-                        yield Err(CompletionError::ResponseError(error.to_string()));
+                        yield Err(CompletionError::ProviderError(error.to_string()));
                         break;
                     }
                 }
             }
 
-            // // Ensure event source is closed when stream ends
-            // event_source.close();
+            // Ensure event source is closed when stream ends
+            event_source.close();
 
             for tool_call in &tool_calls {
                 yield Ok(tool_call.to_owned())
@@ -352,7 +353,7 @@ where
             tracing::info!("OpenAI stream finished");
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.clone()
+                usage: final_usage
             }));
         }.instrument(span);
 

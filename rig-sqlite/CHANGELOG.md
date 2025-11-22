@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.27](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.1.26...rig-sqlite-v0.1.27) - 2025-11-10
+
+### Added
+
+- *(rig-1014)* add backend specific vector search filters ([#1032](https://github.com/0xPlaygrounds/rig/pull/1032))
+
 ## [0.1.26](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.1.25...rig-sqlite-v0.1.26) - 2025-10-28
 
 ### Other

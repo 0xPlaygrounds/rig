@@ -15,10 +15,6 @@ use crate::{
 
 use super::{Client, completion::gemini_api_types::GenerateContentResponse};
 
-pub use super::completion::{
-    GEMINI_1_5_FLASH, GEMINI_1_5_PRO, GEMINI_1_5_PRO_8B, GEMINI_2_0_FLASH,
-};
-
 const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
 
@@ -30,7 +26,7 @@ pub struct TranscriptionModel<T = reqwest::Client> {
 }
 
 impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: super::completion::CompletionModels) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -43,6 +39,12 @@ where
     T: HttpClientExt + WasmCompatSend + WasmCompatSync + Clone,
 {
     type Response = GenerateContentResponse;
+    type Client = Client<T>;
+    type Models = super::completion::CompletionModels;
+
+    fn make(client: &Self::Client, model: Self::Models) -> Self {
+        TranscriptionModel::new(client.clone(), model)
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn transcription(
@@ -96,7 +98,8 @@ where
             additional_params: None,
         };
 
-        tracing::debug!(
+        tracing::trace!(
+            target: "rig::transcription",
             "Sending completion request to Gemini API {}",
             serde_json::to_string_pretty(&request)?
         );
@@ -104,7 +107,7 @@ where
         let body = serde_json::to_vec(&request)?;
         let req = self
             .client
-            .post(&format!("/v1beta/models/{}:generateContent", self.model))
+            .post(format!("/v1beta/models/{}:generateContent", self.model))?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| TranscriptionError::HttpError(e.into()))?;
@@ -145,7 +148,10 @@ impl TryFrom<GenerateContentResponse>
             TranscriptionError::ResponseError("No response candidates in response".into())
         })?;
 
-        let part = candidate.content.parts.first();
+        let part = candidate
+            .content
+            .as_ref()
+            .and_then(|content| content.parts.first());
 
         let text = match part {
             Some(Part {
