@@ -226,19 +226,24 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
     type Error = message::MessageError;
 
     fn try_from(value: OneOrMany<message::AssistantContent>) -> Result<Self, Self::Error> {
-        let (text_content, tool_calls, reasoning) = value.into_iter().fold(
-            (Vec::new(), Vec::new(), None),
-            |(mut texts, mut tools, mut reasoning), content| {
-                match content {
-                    message::AssistantContent::Text(text) => texts.push(text),
-                    message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
-                    message::AssistantContent::Reasoning(r) => {
-                        reasoning = r.reasoning.into_iter().next();
-                    }
+        let mut text_content = Vec::new();
+        let mut tool_calls = Vec::new();
+        let mut reasoning = None;
+
+        for content in value.into_iter() {
+            match content {
+                message::AssistantContent::Text(text) => text_content.push(text),
+                message::AssistantContent::ToolCall(tool_call) => tool_calls.push(tool_call),
+                message::AssistantContent::Reasoning(r) => {
+                    reasoning = r.reasoning.into_iter().next();
                 }
-                (texts, tools, reasoning)
-            },
-        );
+                message::AssistantContent::Image(_) => {
+                    return Err(Self::Error::ConversionError(
+                        "OpenRouter currently doesn't support images.".to_string(),
+                    ));
+                }
+            }
+        }
 
         // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
         //  so either `content` or `tool_calls` will have some content.
