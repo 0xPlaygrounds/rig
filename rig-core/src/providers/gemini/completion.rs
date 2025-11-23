@@ -1445,7 +1445,10 @@ pub mod gemini_api_types {
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct ImageConfig {
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub aspect_ratio: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub image_size: Option<String>,
     }
 
     /// The Schema object allows the definition of input and output data types. These types can be objects, but also
