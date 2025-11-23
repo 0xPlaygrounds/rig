@@ -239,7 +239,7 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                 }
                 message::AssistantContent::Image(_) => {
                     return Err(Self::Error::ConversionError(
-                        "OpenRouter currently doesn't support images.".to_string(),
+                        "OpenRouter currently doesn't support images.".into(),
                     ));
                 }
             }
