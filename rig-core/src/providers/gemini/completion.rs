@@ -1309,17 +1309,17 @@ pub mod gemini_api_types {
         /// types: application/json: Schema for JSON response. Refer to the JSON text generation guide for more details.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub response_schema: Option<Schema>,
-        /// Internal or alternative representation for `response_json_schema`.
-        #[serde(
-            skip_serializing_if = "Option::is_none",
-            rename = "_responseJsonSchema"
-        )]
-        pub _response_json_schema: Option<Value>,
         /// Optional. The output schema of the generated response.
         /// This is an alternative to responseSchema that accepts a standard JSON Schema.
         /// If this is set, responseSchema must be omitted.
         /// Compatible MIME type: application/json.
         /// Supported properties: $id, $defs, $ref, type, properties, etc.
+        #[serde(
+            skip_serializing_if = "Option::is_none",
+            rename = "_responseJsonSchema"
+        )]
+        pub _response_json_schema: Option<Value>,
+        /// Internal or alternative representation for `response_json_schema`.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub response_json_schema: Option<Value>,
         /// Number of generated responses to return. Currently, this value can only be set to 1. If
