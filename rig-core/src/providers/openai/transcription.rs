@@ -2,8 +2,8 @@ use bytes::Bytes;
 
 use crate::http_client::HttpClientExt;
 use crate::providers::openai::{Client, client::ApiResponse};
+use crate::transcription;
 use crate::transcription::TranscriptionError;
-use crate::{models, transcription};
 use reqwest::multipart::Part;
 use serde::Deserialize;
 
@@ -11,12 +11,7 @@ use serde::Deserialize;
 // OpenAI Transcription API
 // ================================================================
 
-models! {
-    pub enum TranscriptionModels {
-        Whisper1 => "whisper-1",
-    }
-}
-pub use TranscriptionModels::*;
+pub const WHISPER_1: &str = "whisper-1";
 
 #[derive(Debug, Deserialize)]
 pub struct TranscriptionResponse {
@@ -39,12 +34,15 @@ impl TryFrom<TranscriptionResponse>
 #[derive(Clone)]
 pub struct TranscriptionModel<T = reqwest::Client> {
     client: Client<T>,
-    pub model: TranscriptionModels,
+    pub model: String,
 }
 
 impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: TranscriptionModels) -> Self {
-        Self { client, model }
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 
@@ -55,9 +53,8 @@ where
     type Response = TranscriptionResponse;
 
     type Client = Client<T>;
-    type Models = TranscriptionModels;
 
-    fn make(client: &Self::Client, model: Self::Models) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model)
     }
 
@@ -72,10 +69,7 @@ where
         let data = request.data;
 
         let mut body = reqwest::multipart::Form::new()
-            .text(
-                "model",
-                <TranscriptionModels as Into<&str>>::into(self.model),
-            )
+            .text("model", self.model.clone())
             .part(
                 "file",
                 Part::bytes(data).file_name(request.filename.clone()),

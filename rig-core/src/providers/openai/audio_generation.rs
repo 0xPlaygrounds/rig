@@ -7,13 +7,8 @@ use crate::providers::openai::Client;
 use bytes::{Buf, Bytes};
 use serde_json::json;
 
-models! {
-    pub enum AudioGenerationModels {
-        TTS1 => "tts-1",
-        TTS1hd => "tts-1-hd",
-    }
-}
-pub use AudioGenerationModels::*;
+pub const TTS_1: &str = "tts-1";
+pub const TTS_1_HD: &str = "tts-1-hd";
 
 #[derive(Clone)]
 pub struct AudioGenerationModel<T = reqwest::Client> {

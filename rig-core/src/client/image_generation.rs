@@ -26,10 +26,7 @@ mod image {
         ///
         /// let gpt4 = openai.image_generation_model(openai::DALL_E_3);
         /// ```
-        fn image_generation_model(
-            &self,
-            model: <Self::ImageGenerationModel as ImageGenerationModel>::Models,
-        ) -> Self::ImageGenerationModel;
+        fn image_generation_model(&self, model: impl Into<String>) -> Self::ImageGenerationModel;
 
         /// Create an image generation model with the given name.
         ///
@@ -43,8 +40,11 @@ mod image {
         ///
         /// let gpt4 = openai.image_generation_model(openai::DALL_E_3);
         /// ```
-        fn custom_image_generation_model(&self, model: &str) -> Self::ImageGenerationModel {
-            Self::ImageGenerationModel::make_custom(self, model)
+        fn custom_image_generation_model(
+            &self,
+            model: impl Into<String>,
+        ) -> Self::ImageGenerationModel {
+            Self::ImageGenerationModel::make(self, model)
         }
     }
 
@@ -57,11 +57,6 @@ mod image {
         ImageGenerationClientDyn for T
     {
         fn image_generation_model<'a>(&self, model: &str) -> Box<dyn ImageGenerationModelDyn + 'a> {
-            let model = model
-                .to_string()
-                .try_into()
-                .unwrap_or_else(|_| panic!("Invalid model name '{model}'"));
-
             Box::new(self.image_generation_model(model))
         }
     }
@@ -74,19 +69,10 @@ mod image {
 
     impl ImageGenerationModel for ImageGenerationModelHandle<'_> {
         type Response = ();
-        type Models = Nothing;
         type Client = Nothing;
 
-        // NOTE: @FayCarsons - This is not ideal, we would ideally have a way to statically prevent
-        // anyone from calling this method but that doesn't seem possible without gutting the trait
-        // and finding a new wait to implement `ImageGenerationClient` for arbitrary `Client<Ext, H>`
-        fn make(_client: &Self::Client, _model: Self::Models) -> Self {
-            panic!(
-                "'ImageGenerationModel::make' should not be called on 'ImageGenerationModelHandle'"
-            )
-        }
-
-        fn make_custom(_: &Self::Client, _: &str) -> Self {
+        /// **PANICS** if called
+        fn make(_client: &Self::Client, _model: impl Into<String>) -> Self {
             panic!(
                 "'ImageGenerationModel::make' should not be called on 'ImageGenerationModelHandle'"
             )

@@ -26,10 +26,10 @@ pub struct TranscriptionModel<T = reqwest::Client> {
 }
 
 impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: super::completion::CompletionModels) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -40,9 +40,8 @@ where
 {
     type Response = GenerateContentResponse;
     type Client = Client<T>;
-    type Models = super::completion::CompletionModels;
 
-    fn make(client: &Self::Client, model: Self::Models) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         TranscriptionModel::new(client.clone(), model)
     }
 

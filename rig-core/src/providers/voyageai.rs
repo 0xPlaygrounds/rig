@@ -78,10 +78,10 @@ impl ProviderClient for Client {
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: &str, ndims: usize) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
             ndims,
         }
     }
@@ -119,12 +119,14 @@ models! {
 }
 pub use EmbeddingModels::*;
 
-impl EmbeddingModels {
-    pub fn dims(&self) -> usize {
-        match self {
-            VoyageCode2 => 1536,
-            _ => 1024,
-        }
+impl EmbeddingModels {}
+
+pub fn model_dimensions_from_identifier(model_identifier: &str) -> Option<usize> {
+    match model_identifier {
+        "voyage-code-2" => Some(1536),
+        "voyage-3-large" | "voyage-3.5" | "voyage.3-5.lite" | "voyage-code-3"
+        | "voyage-finance-2" | "voyage-law-2" => Some(1024),
+        _ => None,
     }
 }
 
@@ -190,18 +192,14 @@ where
     const MAX_DOCUMENTS: usize = 1024;
 
     type Client = Client<T>;
-    type Models = EmbeddingModels;
 
-    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
-        Self::new(
-            client.clone(),
-            model.into(),
-            dims.unwrap_or_else(|| model.dims()),
-        )
-    }
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
+        let model = model.into();
+        let dims = dims
+            .or(model_dimensions_from_identifier(&model))
+            .unwrap_or_default();
 
-    fn make_custom(client: &Self::Client, model: &str, dims: Option<usize>) -> Self {
-        Self::with_model(client.clone(), model, dims.unwrap_or_default())
+        Self::new(client.clone(), model, dims)
     }
 
     fn ndims(&self) -> usize {

@@ -123,7 +123,7 @@ where
     /// Uses the OpenAI Responses API (default behavior).
     pub fn extractor<U>(
         &self,
-        model: super::CompletionModels,
+        model: impl Into<String>,
     ) -> ExtractorBuilder<super::responses_api::ResponsesCompletionModel<H>, U>
     where
         U: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
@@ -157,7 +157,7 @@ where
     /// Uses the OpenAI Chat Completions API.
     pub fn extractor<U>(
         &self,
-        model: super::CompletionModels,
+        model: impl Into<String>,
     ) -> ExtractorBuilder<super::completion::CompletionModel<H>, U>
     where
         U: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,

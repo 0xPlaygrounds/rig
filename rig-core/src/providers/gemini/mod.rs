@@ -16,8 +16,6 @@ pub mod streaming;
 pub mod transcription;
 
 pub use client::Client;
-pub use completion::CompletionModels::*;
-pub use embedding::EmbeddingModels::*;
 
 pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};

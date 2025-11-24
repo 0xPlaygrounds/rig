@@ -22,4 +22,3 @@ pub mod transcription;
 pub use client::{Client, ClientBuilder, SubProvider};
 #[cfg(feature = "image")]
 pub use image_generation::image_generation_models::*;
-pub use transcription::TranscriptionModels::*;

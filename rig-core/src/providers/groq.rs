@@ -251,7 +251,12 @@ models! {
         MIXTRAL_8X7B_32768 => "mixtral-8x7b-32768",
     }
 }
-pub use CompletionModels::*;
+pub use CompletionModels::{
+    DEEPSEEK_R1_DISTILL_LLAMA_70B, GEMMA2_9B_IT, LLAMA_3_1_8B_INSTANT, LLAMA_3_2_1B_PREVIEW,
+    LLAMA_3_2_3B_PREVIEW, LLAMA_3_2_11B_VISION_PREVIEW, LLAMA_3_2_70B_SPECDEC,
+    LLAMA_3_2_70B_VERSATILE, LLAMA_3_2_90B_VISION_PREVIEW, LLAMA_3_8B_8192, LLAMA_3_70B_8192,
+    LLAMA_GUARD_3_8B, MIXTRAL_8X7B_32768,
+};
 
 #[derive(Clone, Debug)]
 pub struct CompletionModel<T = reqwest::Client> {
@@ -261,10 +266,10 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 
@@ -346,14 +351,9 @@ where
     type StreamingResponse = StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
-    fn make_custom(client: &Self::Client, model: &str) -> Self {
-        Self::with_model(client.clone(), model)
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -499,10 +499,10 @@ pub struct TranscriptionModel<T> {
 }
 
 impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -513,10 +513,9 @@ where
     type Response = TranscriptionResponse;
 
     type Client = Client<T>;
-    type Models = TranscriptionModels;
 
-    fn make(client: &Self::Client, model: Self::Models) -> Self {
-        Self::new(client.clone(), model.into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

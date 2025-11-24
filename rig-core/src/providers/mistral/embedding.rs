@@ -4,7 +4,6 @@ use serde_json::json;
 use crate::{
     embeddings::{self, EmbeddingError},
     http_client::{self, HttpClientExt},
-    models,
 };
 
 use super::client::{ApiResponse, Client, Usage};
@@ -12,12 +11,7 @@ use super::client::{ApiResponse, Client, Usage};
 // ================================================================
 // Mistral Embedding API
 // ================================================================
-models! {
-    pub enum EmbeddingModels {
-        MistralEmbed => "mistral-embed"
-    }
-}
-pub use EmbeddingModels::*;
+pub const MISTRAL_EMBED: &str = "mistral-embed";
 
 pub const MAX_DOCUMENTS: usize = 1024;
 
@@ -29,10 +23,10 @@ pub struct EmbeddingModel<T = reqwest::Client> {
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: EmbeddingModels, ndims: usize) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
             ndims,
         }
     }
@@ -51,16 +45,11 @@ where
     T: HttpClientExt + Clone,
 {
     type Client = Client<T>;
-    type Models = EmbeddingModels;
 
     const MAX_DOCUMENTS: usize = MAX_DOCUMENTS;
 
-    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
         Self::new(client.clone(), model, dims.unwrap_or_default())
-    }
-
-    fn make_custom(client: &Self::Client, model: &str, dims: Option<usize>) -> Self {
-        Self::with_model(client.clone(), model, dims.unwrap_or_default())
     }
 
     fn ndims(&self) -> usize {

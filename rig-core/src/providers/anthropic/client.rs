@@ -7,30 +7,8 @@ use crate::{
         self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
         ProviderClient,
     },
-    http_client, models,
+    http_client,
 };
-
-models! {
-    pub enum AnthropicModels {
-        /// `claude-opus-4-0` completion model
-        Claude4Opus => "claude-opus-4-0",
-        /// `claude-sonnet-4-0` completion model
-        Claude4Sonnet => "claude-sonnet-4-0",
-        /// `claude-3-7-sonnet-latest` completion model
-        Claude37Sonnet => "claude-3-7-sonnet-latest",
-        /// `claude-3-5-sonnet-latest` completion model
-        Claude35Sonnet => "claude-3-5-sonnet-latest",
-        /// `claude-3-5-haiku-latest` completion model
-        Claude35Haiku => "claude-3-5-haiku-latest",
-        /// `claude-3-5-haiku-latest` completion model
-        Claude3Opus => "claude-3-opus-latest",
-        /// `claude-3-sonnet-20240229` completion model
-        Claude3Sonnet => "claude-3-sonnet-20240229",
-        /// `claude-3-haiku-20240307` completion model
-        Claude3Haiku => "claude-3-haiku-20240307",
-    }
-}
-pub use AnthropicModels::*;
 
 // ================================================================
 // Main Anthropic Client

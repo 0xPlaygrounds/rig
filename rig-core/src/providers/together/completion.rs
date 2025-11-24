@@ -6,7 +6,7 @@
 use crate::{
     completion::{self, CompletionError},
     http_client::HttpClientExt,
-    json_utils, models,
+    json_utils,
     providers::openai,
 };
 
@@ -22,115 +22,111 @@ use tracing::{Instrument, info_span};
 // Together Completion Models
 // ================================================================
 
-models! {
-    #[allow(non_camel_case_types)]
-    pub enum CompletionModels {
-        YI_34B_CHAT => "zero-one-ai/Yi-34B-Chat",
-        OLMO_7B_INSTRUCT => "allenai/OLMo-7B-Instruct",
-        CHRONOS_HERMES_13B => "Austism/chronos-hermes-13b",
-        ML318BR => "carson/ml318br",
-        DOLPHIN_2_5_MIXTRAL_8X7B => "cognitivecomputations/dolphin-2.5-mixtral-8x7b",
-        DBRX_INSTRUCT => "databricks/dbrx-instruct",
-        DEEPSEEK_LLM_67B_CHAT => "deepseek-ai/deepseek-llm-67b-chat",
-        DEEPSEEK_CODER_33B_INSTRUCT => "deepseek-ai/deepseek-coder-33b-instruct",
-        PLATYPUS2_70B_INSTRUCT => "garage-bAInd/Platypus2-70B-instruct",
-        GEMMA_2_9B_IT => "google/gemma-2-9b-it",
-        GEMMA_2B_IT => "google/gemma-2b-it",
-        GEMMA_2_27B_IT => "google/gemma-2-27b-it",
-        GEMMA_7B_IT => "google/gemma-7b-it",
-        LLAMA_3_70B_INSTRUCT_GRADIENT_1048K => "gradientai/Llama-3-70B-Instruct-Gradient-1048k",
-        MYTHOMAX_L2_13B => "Gryphe/MythoMax-L2-13b",
-        MYTHOMAX_L2_13B_LITE => "Gryphe/MythoMax-L2-13b-Lite",
-        LLAVA_NEXT_MISTRAL_7B => "llava-hf/llava-v1.6-mistral-7b-hf",
-        ZEPHYR_7B_BETA => "HuggingFaceH4/zephyr-7b-beta",
-        KOALA_7B => "togethercomputer/Koala-7B",
-        VICUNA_7B_V1_3 => "lmsys/vicuna-7b-v1.3",
-        VICUNA_13B_V1_5_16K => "lmsys/vicuna-13b-v1.5-16k",
-        VICUNA_13B_V1_5 => "lmsys/vicuna-13b-v1.5",
-        VICUNA_13B_V1_3 => "lmsys/vicuna-13b-v1.3",
-        KOALA_13B => "togethercomputer/Koala-13B",
-        VICUNA_7B_V1_5 => "lmsys/vicuna-7b-v1.5",
-        CODE_LLAMA_34B_INSTRUCT => "codellama/CodeLlama-34b-Instruct-hf",
-        LLAMA_3_8B_CHAT_HF_INT4 => "togethercomputer/Llama-3-8b-chat-hf-int4",
-        LLAMA_3_2_90B_VISION_INSTRUCT_TURBO =>
-            "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
-        LLAMA_3_2_11B_VISION_INSTRUCT_TURBO =>
-            "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo",
-        LLAMA_3_2_3B_INSTRUCT_TURBO => "meta-llama/Llama-3.2-3B-Instruct-Turbo",
-        LLAMA_3_8B_CHAT_HF_INT8 => "togethercomputer/Llama-3-8b-chat-hf-int8",
-        LLAMA_3_1_70B_INSTRUCT_TURBO => "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
-        LLAMA_2_13B_CHAT => "meta-llama/Llama-2-13b-chat-hf",
-        LLAMA_3_70B_INSTRUCT_LITE => "meta-llama/Meta-Llama-3-70B-Instruct-Lite",
-        LLAMA_3_8B_CHAT_HF => "meta-llama/Llama-3-8b-chat-hf",
-        LLAMA_3_70B_CHAT_HF => "meta-llama/Llama-3-70b-chat-hf",
-        LLAMA_3_8B_INSTRUCT_TURBO => "meta-llama/Meta-Llama-3-8B-Instruct-Turbo",
-        LLAMA_3_8B_INSTRUCT_LITE => "meta-llama/Meta-Llama-3-8B-Instruct-Lite",
-        LLAMA_3_1_405B_INSTRUCT_LITE_PRO =>
-            "meta-llama/Meta-Llama-3.1-405B-Instruct-Lite-Pro",
-        LLAMA_2_7B_CHAT => "meta-llama/Llama-2-7b-chat-hf",
-        LLAMA_3_1_405B_INSTRUCT_TURBO => "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
-        LLAMA_VISION_FREE => "meta-llama/Llama-Vision-Free",
-        LLAMA_3_70B_INSTRUCT_TURBO => "meta-llama/Meta-Llama-3-70B-Instruct-Turbo",
-        LLAMA_3_1_8B_INSTRUCT_TURBO => "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
-        CODE_LLAMA_7B_INSTRUCT_TOGETHER => "togethercomputer/CodeLlama-7b-Instruct",
-        CODE_LLAMA_34B_INSTRUCT_TOGETHER => "togethercomputer/CodeLlama-34b-Instruct",
-        CODE_LLAMA_13B_INSTRUCT => "codellama/CodeLlama-13b-Instruct-hf",
-        CODE_LLAMA_13B_INSTRUCT_TOGETHER => "togethercomputer/CodeLlama-13b-Instruct",
-        LLAMA_2_13B_CHAT_TOGETHER => "togethercomputer/llama-2-13b-chat",
-        LLAMA_2_7B_CHAT_TOGETHER => "togethercomputer/llama-2-7b-chat",
-        LLAMA_3_8B_INSTRUCT => "meta-llama/Meta-Llama-3-8B-Instruct",
-        LLAMA_3_70B_INSTRUCT => "meta-llama/Meta-Llama-3-70B-Instruct",
-        CODE_LLAMA_70B_INSTRUCT => "codellama/CodeLlama-70b-Instruct-hf",
-        LLAMA_2_70B_CHAT_TOGETHER => "togethercomputer/llama-2-70b-chat",
-        LLAMA_3_1_8B_INSTRUCT_REFERENCE => "meta-llama/Meta-Llama-3.1-8B-Instruct-Reference",
-        LLAMA_3_1_70B_INSTRUCT_REFERENCE =>
-            "meta-llama/Meta-Llama-3.1-70B-Instruct-Reference",
-        WIZARDLM_2_8X22B => "microsoft/WizardLM-2-8x22B",
-        MISTRAL_7B_INSTRUCT_V0_1 => "mistralai/Mistral-7B-Instruct-v0.1",
-        MISTRAL_7B_INSTRUCT_V0_2 => "mistralai/Mistral-7B-Instruct-v0.2",
-        MISTRAL_7B_INSTRUCT_V0_3 => "mistralai/Mistral-7B-Instruct-v0.3",
-        MIXTRAL_8X7B_INSTRUCT_V0_1 => "mistralai/Mixtral-8x7B-Instruct-v0.1",
-        MIXTRAL_8X22B_INSTRUCT_V0_1 => "mistralai/Mixtral-8x22B-Instruct-v0.1",
-        NOUS_HERMES_2_MIXTRAL_8X7B_DPO => "NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO",
-        NOUS_HERMES_LLAMA2_70B => "NousResearch/Nous-Hermes-Llama2-70b",
-        NOUS_HERMES_2_MIXTRAL_8X7B_SFT => "NousResearch/Nous-Hermes-2-Mixtral-8x7B-SFT",
-        NOUS_HERMES_LLAMA2_13B => "NousResearch/Nous-Hermes-Llama2-13b",
-        NOUS_HERMES_2_MISTRAL_DPO => "NousResearch/Nous-Hermes-2-Mistral-7B-DPO",
-        NOUS_HERMES_LLAMA2_7B => "NousResearch/Nous-Hermes-llama-2-7b",
-        NOUS_CAPYBARA_V1_9 => "NousResearch/Nous-Capybara-7B-V1p9",
-        HERMES_2_THETA_LLAMA_3_70B => "NousResearch/Hermes-2-Theta-Llama-3-70B",
-        OPENCHAT_3_5 => "openchat/openchat-3.5-1210",
-        OPENORCA_MISTRAL_7B_8K => "Open-Orca/Mistral-7B-OpenOrca",
-        QWEN_2_72B_INSTRUCT => "Qwen/Qwen2-72B-Instruct",
-        QWEN2_5_72B_INSTRUCT_TURBO => "Qwen/Qwen2.5-72B-Instruct-Turbo",
-        QWEN2_5_7B_INSTRUCT_TURBO => "Qwen/Qwen2.5-7B-Instruct-Turbo",
-        QWEN1_5_110B_CHAT => "Qwen/Qwen1.5-110B-Chat",
-        QWEN1_5_72B_CHAT => "Qwen/Qwen1.5-72B-Chat",
-        QWEN_2_1_5B_INSTRUCT => "Qwen/Qwen2-1.5B-Instruct",
-        QWEN_2_7B_INSTRUCT => "Qwen/Qwen2-7B-Instruct",
-        QWEN1_5_14B_CHAT => "Qwen/Qwen1.5-14B-Chat",
-        QWEN1_5_1_8B_CHAT => "Qwen/Qwen1.5-1.8B-Chat",
-        QWEN1_5_32B_CHAT => "Qwen/Qwen1.5-32B-Chat",
-        QWEN1_5_7B_CHAT => "Qwen/Qwen1.5-7B-Chat",
-        QWEN1_5_0_5B_CHAT => "Qwen/Qwen1.5-0.5B-Chat",
-        QWEN1_5_4B_CHAT => "Qwen/Qwen1.5-4B-Chat",
-        SNORKEL_MISTRAL_PAIRRM_DPO => "snorkelai/Snorkel-Mistral-PairRM-DPO",
-        SNOWFLAKE_ARCTIC_INSTRUCT => "Snowflake/snowflake-arctic-instruct",
-        ALPACA_7B => "togethercomputer/alpaca-7b",
-        OPENHERMES_2_MISTRAL_7B => "teknium/OpenHermes-2-Mistral-7B",
-        OPENHERMES_2_5_MISTRAL_7B => "teknium/OpenHermes-2p5-Mistral-7B",
-        GUANACO_65B => "togethercomputer/guanaco-65b",
-        GUANACO_13B => "togethercomputer/guanaco-13b",
-        GUANACO_33B => "togethercomputer/guanaco-33b",
-        GUANACO_7B => "togethercomputer/guanaco-7b",
-        REMM_SLERP_L2_13B => "Undi95/ReMM-SLERP-L2-13B",
-        TOPPY_M_7B => "Undi95/Toppy-M-7B",
-        SOLAR_10_7B_INSTRUCT_V1 => "upstage/SOLAR-10.7B-Instruct-v1.0",
-        SOLAR_10_7B_INSTRUCT_V1_INT4 => "togethercomputer/SOLAR-10.7B-Instruct-v1.0-int4",
-        WIZARDLM_13B_V1_2 => "WizardLM/WizardLM-13B-V1.2",
-    }
-}
-pub use CompletionModels::*;
+pub const YI_34B_CHAT: &str = "zero-one-ai/Yi-34B-Chat";
+pub const OLMO_7B_INSTRUCT: &str = "allenai/OLMo-7B-Instruct";
+pub const CHRONOS_HERMES_13B: &str = "Austism/chronos-hermes-13b";
+pub const ML318BR: &str = "carson/ml318br";
+pub const DOLPHIN_2_5_MIXTRAL_8X7B: &str = "cognitivecomputations/dolphin-2.5-mixtral-8x7b";
+pub const DBRX_INSTRUCT: &str = "databricks/dbrx-instruct";
+pub const DEEPSEEK_LLM_67B_CHAT: &str = "deepseek-ai/deepseek-llm-67b-chat";
+pub const DEEPSEEK_CODER_33B_INSTRUCT: &str = "deepseek-ai/deepseek-coder-33b-instruct";
+pub const PLATYPUS2_70B_INSTRUCT: &str = "garage-bAInd/Platypus2-70B-instruct";
+pub const GEMMA_2_9B_IT: &str = "google/gemma-2-9b-it";
+pub const GEMMA_2B_IT: &str = "google/gemma-2b-it";
+pub const GEMMA_2_27B_IT: &str = "google/gemma-2-27b-it";
+pub const GEMMA_7B_IT: &str = "google/gemma-7b-it";
+pub const LLAMA_3_70B_INSTRUCT_GRADIENT_1048K: &str =
+    "gradientai/Llama-3-70B-Instruct-Gradient-1048k";
+pub const MYTHOMAX_L2_13B: &str = "Gryphe/MythoMax-L2-13b";
+pub const MYTHOMAX_L2_13B_LITE: &str = "Gryphe/MythoMax-L2-13b-Lite";
+pub const LLAVA_NEXT_MISTRAL_7B: &str = "llava-hf/llava-v1.6-mistral-7b-hf";
+pub const ZEPHYR_7B_BETA: &str = "HuggingFaceH4/zephyr-7b-beta";
+pub const KOALA_7B: &str = "togethercomputer/Koala-7B";
+pub const VICUNA_7B_V1_3: &str = "lmsys/vicuna-7b-v1.3";
+pub const VICUNA_13B_V1_5_16K: &str = "lmsys/vicuna-13b-v1.5-16k";
+pub const VICUNA_13B_V1_5: &str = "lmsys/vicuna-13b-v1.5";
+pub const VICUNA_13B_V1_3: &str = "lmsys/vicuna-13b-v1.3";
+pub const KOALA_13B: &str = "togethercomputer/Koala-13B";
+pub const VICUNA_7B_V1_5: &str = "lmsys/vicuna-7b-v1.5";
+pub const CODE_LLAMA_34B_INSTRUCT: &str = "codellama/CodeLlama-34b-Instruct-hf";
+pub const LLAMA_3_8B_CHAT_HF_INT4: &str = "togethercomputer/Llama-3-8b-chat-hf-int4";
+pub const LLAMA_3_2_90B_VISION_INSTRUCT_TURBO: &str =
+    "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo";
+pub const LLAMA_3_2_11B_VISION_INSTRUCT_TURBO: &str =
+    "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo";
+pub const LLAMA_3_2_3B_INSTRUCT_TURBO: &str = "meta-llama/Llama-3.2-3B-Instruct-Turbo";
+pub const LLAMA_3_8B_CHAT_HF_INT8: &str = "togethercomputer/Llama-3-8b-chat-hf-int8";
+pub const LLAMA_3_1_70B_INSTRUCT_TURBO: &str = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo";
+pub const LLAMA_2_13B_CHAT: &str = "meta-llama/Llama-2-13b-chat-hf";
+pub const LLAMA_3_70B_INSTRUCT_LITE: &str = "meta-llama/Meta-Llama-3-70B-Instruct-Lite";
+pub const LLAMA_3_8B_CHAT_HF: &str = "meta-llama/Llama-3-8b-chat-hf";
+pub const LLAMA_3_70B_CHAT_HF: &str = "meta-llama/Llama-3-70b-chat-hf";
+pub const LLAMA_3_8B_INSTRUCT_TURBO: &str = "meta-llama/Meta-Llama-3-8B-Instruct-Turbo";
+pub const LLAMA_3_8B_INSTRUCT_LITE: &str = "meta-llama/Meta-Llama-3-8B-Instruct-Lite";
+pub const LLAMA_3_1_405B_INSTRUCT_LITE_PRO: &str =
+    "meta-llama/Meta-Llama-3.1-405B-Instruct-Lite-Pro";
+pub const LLAMA_2_7B_CHAT: &str = "meta-llama/Llama-2-7b-chat-hf";
+pub const LLAMA_3_1_405B_INSTRUCT_TURBO: &str = "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo";
+pub const LLAMA_VISION_FREE: &str = "meta-llama/Llama-Vision-Free";
+pub const LLAMA_3_70B_INSTRUCT_TURBO: &str = "meta-llama/Meta-Llama-3-70B-Instruct-Turbo";
+pub const LLAMA_3_1_8B_INSTRUCT_TURBO: &str = "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo";
+pub const CODE_LLAMA_7B_INSTRUCT_TOGETHER: &str = "togethercomputer/CodeLlama-7b-Instruct";
+pub const CODE_LLAMA_34B_INSTRUCT_TOGETHER: &str = "togethercomputer/CodeLlama-34b-Instruct";
+pub const CODE_LLAMA_13B_INSTRUCT: &str = "codellama/CodeLlama-13b-Instruct-hf";
+pub const CODE_LLAMA_13B_INSTRUCT_TOGETHER: &str = "togethercomputer/CodeLlama-13b-Instruct";
+pub const LLAMA_2_13B_CHAT_TOGETHER: &str = "togethercomputer/llama-2-13b-chat";
+pub const LLAMA_2_7B_CHAT_TOGETHER: &str = "togethercomputer/llama-2-7b-chat";
+pub const LLAMA_3_8B_INSTRUCT: &str = "meta-llama/Meta-Llama-3-8B-Instruct";
+pub const LLAMA_3_70B_INSTRUCT: &str = "meta-llama/Meta-Llama-3-70B-Instruct";
+pub const CODE_LLAMA_70B_INSTRUCT: &str = "codellama/CodeLlama-70b-Instruct-hf";
+pub const LLAMA_2_70B_CHAT_TOGETHER: &str = "togethercomputer/llama-2-70b-chat";
+pub const LLAMA_3_1_8B_INSTRUCT_REFERENCE: &str = "meta-llama/Meta-Llama-3.1-8B-Instruct-Reference";
+pub const LLAMA_3_1_70B_INSTRUCT_REFERENCE: &str =
+    "meta-llama/Meta-Llama-3.1-70B-Instruct-Reference";
+pub const WIZARDLM_2_8X22B: &str = "microsoft/WizardLM-2-8x22B";
+pub const MISTRAL_7B_INSTRUCT_V0_1: &str = "mistralai/Mistral-7B-Instruct-v0.1";
+pub const MISTRAL_7B_INSTRUCT_V0_2: &str = "mistralai/Mistral-7B-Instruct-v0.2";
+pub const MISTRAL_7B_INSTRUCT_V0_3: &str = "mistralai/Mistral-7B-Instruct-v0.3";
+pub const MIXTRAL_8X7B_INSTRUCT_V0_1: &str = "mistralai/Mixtral-8x7B-Instruct-v0.1";
+pub const MIXTRAL_8X22B_INSTRUCT_V0_1: &str = "mistralai/Mixtral-8x22B-Instruct-v0.1";
+pub const NOUS_HERMES_2_MIXTRAL_8X7B_DPO: &str = "NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO";
+pub const NOUS_HERMES_LLAMA2_70B: &str = "NousResearch/Nous-Hermes-Llama2-70b";
+pub const NOUS_HERMES_2_MIXTRAL_8X7B_SFT: &str = "NousResearch/Nous-Hermes-2-Mixtral-8x7B-SFT";
+pub const NOUS_HERMES_LLAMA2_13B: &str = "NousResearch/Nous-Hermes-Llama2-13b";
+pub const NOUS_HERMES_2_MISTRAL_DPO: &str = "NousResearch/Nous-Hermes-2-Mistral-7B-DPO";
+pub const NOUS_HERMES_LLAMA2_7B: &str = "NousResearch/Nous-Hermes-llama-2-7b";
+pub const NOUS_CAPYBARA_V1_9: &str = "NousResearch/Nous-Capybara-7B-V1p9";
+pub const HERMES_2_THETA_LLAMA_3_70B: &str = "NousResearch/Hermes-2-Theta-Llama-3-70B";
+pub const OPENCHAT_3_5: &str = "openchat/openchat-3.5-1210";
+pub const OPENORCA_MISTRAL_7B_8K: &str = "Open-Orca/Mistral-7B-OpenOrca";
+pub const QWEN_2_72B_INSTRUCT: &str = "Qwen/Qwen2-72B-Instruct";
+pub const QWEN2_5_72B_INSTRUCT_TURBO: &str = "Qwen/Qwen2.5-72B-Instruct-Turbo";
+pub const QWEN2_5_7B_INSTRUCT_TURBO: &str = "Qwen/Qwen2.5-7B-Instruct-Turbo";
+pub const QWEN1_5_110B_CHAT: &str = "Qwen/Qwen1.5-110B-Chat";
+pub const QWEN1_5_72B_CHAT: &str = "Qwen/Qwen1.5-72B-Chat";
+pub const QWEN_2_1_5B_INSTRUCT: &str = "Qwen/Qwen2-1.5B-Instruct";
+pub const QWEN_2_7B_INSTRUCT: &str = "Qwen/Qwen2-7B-Instruct";
+pub const QWEN1_5_14B_CHAT: &str = "Qwen/Qwen1.5-14B-Chat";
+pub const QWEN1_5_1_8B_CHAT: &str = "Qwen/Qwen1.5-1.8B-Chat";
+pub const QWEN1_5_32B_CHAT: &str = "Qwen/Qwen1.5-32B-Chat";
+pub const QWEN1_5_7B_CHAT: &str = "Qwen/Qwen1.5-7B-Chat";
+pub const QWEN1_5_0_5B_CHAT: &str = "Qwen/Qwen1.5-0.5B-Chat";
+pub const QWEN1_5_4B_CHAT: &str = "Qwen/Qwen1.5-4B-Chat";
+pub const SNORKEL_MISTRAL_PAIRRM_DPO: &str = "snorkelai/Snorkel-Mistral-PairRM-DPO";
+pub const SNOWFLAKE_ARCTIC_INSTRUCT: &str = "Snowflake/snowflake-arctic-instruct";
+pub const ALPACA_7B: &str = "togethercomputer/alpaca-7b";
+pub const OPENHERMES_2_MISTRAL_7B: &str = "teknium/OpenHermes-2-Mistral-7B";
+pub const OPENHERMES_2_5_MISTRAL_7B: &str = "teknium/OpenHermes-2p5-Mistral-7B";
+pub const GUANACO_65B: &str = "togethercomputer/guanaco-65b";
+pub const GUANACO_13B: &str = "togethercomputer/guanaco-13b";
+pub const GUANACO_33B: &str = "togethercomputer/guanaco-33b";
+pub const GUANACO_7B: &str = "togethercomputer/guanaco-7b";
+pub const REMM_SLERP_L2_13B: &str = "Undi95/ReMM-SLERP-L2-13B";
+pub const TOPPY_M_7B: &str = "Undi95/Toppy-M-7B";
+pub const SOLAR_10_7B_INSTRUCT_V1: &str = "upstage/SOLAR-10.7B-Instruct-v1.0";
+pub const SOLAR_10_7B_INSTRUCT_V1_INT4: &str = "togethercomputer/SOLAR-10.7B-Instruct-v1.0-int4";
+pub const WIZARDLM_13B_V1_2: &str = "WizardLM/WizardLM-13B-V1.2";
+
 // =================================================================
 // Rig Implementation Types
 // =================================================================
@@ -142,10 +138,10 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 
@@ -215,14 +211,9 @@ where
     type StreamingResponse = openai::StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
-    fn make_custom(client: &Self::Client, model: &str) -> Self {
-        Self::with_model(client.clone(), model)
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

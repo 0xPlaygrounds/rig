@@ -347,16 +347,18 @@ models! {
         TextEmbeddingAda002 => "text-embedding-ada-002",
     }
 }
-pub use EmbeddingModels::*;
 
-impl EmbeddingModels {
-    pub fn dims(self) -> usize {
-        use EmbeddingModels::*;
+pub const TEXT_EMBEDDING_3_LARGE: &str = "text-embedding-3-large";
+/// `text-embedding-3-small` embedding model
+pub const TEXT_EMBEDDING_3_SMALL: &str = "text-embedding-3-small";
+/// `text-embedding-ada-002` embedding model
+pub const TEXT_EMBEDDING_ADA_002: &str = "text-embedding-ada-002";
 
-        match self {
-            TextEmbedding3Large => 3072,
-            _ => 1536,
-        }
+fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
+    match identifier {
+        TEXT_EMBEDDING_3_LARGE => Some(3_072),
+        TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => Some(1_536),
+        _ => None,
     }
 }
 
@@ -432,14 +434,9 @@ where
     const MAX_DOCUMENTS: usize = 1024;
 
     type Client = Client<T>;
-    type Models = EmbeddingModels;
 
-    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
         Self::new(client.clone(), model, dims)
-    }
-
-    fn make_custom(client: &Self::Client, model: &str, dims: Option<usize>) -> Self {
-        Self::with_model(client.clone(), model, dims)
     }
 
     fn ndims(&self) -> usize {
@@ -503,12 +500,15 @@ where
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: EmbeddingModels, ndims: Option<usize>) -> Self {
-        let ndims = ndims.unwrap_or_else(|| model.dims());
+    pub fn new(client: Client<T>, model: impl Into<String>, ndims: Option<usize>) -> Self {
+        let model = model.into();
+        let ndims = ndims
+            .or(model_dimensions_from_identifier(&model))
+            .unwrap_or_default();
 
         Self {
             client,
-            model: model.to_string(),
+            model,
             ndims,
         }
     }
@@ -527,36 +527,33 @@ impl<T> EmbeddingModel<T> {
 // ================================================================
 // Azure OpenAI Completion API
 // ================================================================
-models! {
-    #[allow(non_camel_case_types)]
-    pub enum CompletionModels {
-        /// `o1` completion model
-        O1 => "o1",
-        /// `o1-preview` completion model
-        O1Preview => "o1-preview",
-        /// `o1-mini` completion model
-        O1Mini => "o1-mini",
-        /// `gpt-4o` completion model
-        Gpt4o => "gpt-4o",
-        /// `gpt-4o-mini` completion model
-        Gpt4oMini => "gpt-4o-mini",
-        /// `gpt-4o-realtime-preview` completion model
-        Gpt4oRealtimePreview => "gpt-4o-realtime-preview",
-        /// `gpt-4-turbo` completion model
-        Gpt4Turbo => "gpt-4-turbo",
-        /// `gpt-4` completion model
-        Gpt4 => "gpt-4",
-        /// `gpt-4-32k` completion model
-        Gpt4_32k => "gpt-4-32k",
-        /// `gpt-3.5-turbo` completion model
-        Gpt35Turbo => "gpt-3.5-turbo",
-        /// `gpt-3.5-turbo-instruct` completion model
-        Gpt35TurboInstruct => "gpt-3.5-turbo-instruct",
-        /// `gpt-3.5-turbo-16k` completion model
-        Gpt35Turbo16K => "gpt-3.5-turbo-16k",
-    }
-}
-pub use CompletionModels::*;
+
+/// `o1` completion model
+pub const O1: &str = "o1";
+/// `o1-preview` completion model
+pub const O1_PREVIEW: &str = "o1-preview";
+/// `o1-mini` completion model
+pub const O1_MINI: &str = "o1-mini";
+/// `gpt-4o` completion model
+pub const GPT_4O: &str = "gpt-4o";
+/// `gpt-4o-mini` completion model
+pub const GPT_4O_MINI: &str = "gpt-4o-mini";
+/// `gpt-4o-realtime-preview` completion model
+pub const GPT_4O_REALTIME_PREVIEW: &str = "gpt-4o-realtime-preview";
+/// `gpt-4-turbo` completion model
+pub const GPT_4_TURBO: &str = "gpt-4";
+/// `gpt-4` completion model
+pub const GPT_4: &str = "gpt-4";
+/// `gpt-4-32k` completion model
+pub const GPT_4_32K: &str = "gpt-4-32k";
+/// `gpt-4-32k` completion model
+pub const GPT_4_32K_0613: &str = "gpt-4-32k";
+/// `gpt-3.5-turbo` completion model
+pub const GPT_35_TURBO: &str = "gpt-3.5-turbo";
+/// `gpt-3.5-turbo-instruct` completion model
+pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
+/// `gpt-3.5-turbo-16k` completion model
+pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
@@ -566,10 +563,10 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 
@@ -636,14 +633,9 @@ where
     type Response = openai::CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model.into())
-    }
-
-    fn make_custom(client: &Self::Client, model: &str) -> Self {
-        Self::with_model(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -784,10 +776,10 @@ pub struct TranscriptionModel<T = reqwest::Client> {
 }
 
 impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -798,10 +790,9 @@ where
 {
     type Response = TranscriptionResponse;
     type Client = Client<T>;
-    type Models = String;
 
-    fn make(client: &Self::Client, model: Self::Models) -> Self {
-        Self::new(client.clone(), model.as_str())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -895,16 +886,8 @@ mod image_generation {
         type Response = ImageGenerationResponse;
 
         type Client = Client<T>;
-        type Models = super::CompletionModels;
 
-        fn make(client: &Self::Client, model: Self::Models) -> Self {
-            Self {
-                client: client.clone(),
-                model: model.to_string(),
-            }
-        }
-
-        fn make_custom(client: &Self::Client, model: &str) -> Self {
+        fn make(client: &Self::Client, model: impl Into<String>) -> Self {
             Self {
                 client: client.clone(),
                 model: model.into(),
@@ -1052,7 +1035,7 @@ mod azure_tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let client = Client::<reqwest::Client>::from_env();
-        let model = client.embedding_model(TextEmbedding3Small.into());
+        let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
         let embeddings = model
             .embed_texts(vec!["Hello, world!".to_string()])
             .await
@@ -1067,7 +1050,7 @@ mod azure_tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let client = Client::<reqwest::Client>::from_env();
-        let model = client.completion_model(Gpt4oMini.into());
+        let model = client.completion_model(GPT_4O_MINI);
         let completion = model
             .completion(CompletionRequest {
                 preamble: Some("You are a helpful assistant.".to_string()),

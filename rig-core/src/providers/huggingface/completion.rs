@@ -27,31 +27,25 @@ pub enum ApiResponse<T> {
 // ================================================================
 
 // Conversational LLMs
+/// `google/gemma-2-2b-it` completion model
+pub const GEMMA_2: &str = "google/gemma-2-2b-it";
+/// `meta-llama/Meta-Llama-3.1-8B-Instruct` completion model
+pub const META_LLAMA_3_1: &str = "meta-llama/Meta-Llama-3.1-8B-Instruct";
+/// `microsoft/phi-4` completion model
+pub const PHI_4: &str = "microsoft/phi-4";
+/// `PowerInfer/SmallThinker-3B-Preview` completion model
+pub const SMALLTHINKER_PREVIEW: &str = "PowerInfer/SmallThinker-3B-Preview";
+/// `Qwen/Qwen2.5-7B-Instruct` completion model
+pub const QWEN2_5: &str = "Qwen/Qwen2.5-7B-Instruct";
+/// `Qwen/Qwen2.5-Coder-32B-Instruct` completion model
+pub const QWEN2_5_CODER: &str = "Qwen/Qwen2.5-Coder-32B-Instruct";
 
-#[allow(non_upper_case_globals)]
-mod completion_models {
-    /// `google/gemma-2-2b-it` completion model
-    pub const Gemma2: &str = "google/gemma-2-2b-it";
-    /// `meta-llama/Meta-Llama-3.1-8B-Instruct` completion model
-    pub const MetaLlama31: &str = "meta-llama/Meta-Llama-3.1-8B-Instruct";
-    /// `microsoft/phi-4` completion model
-    pub const Phi4: &str = "microsoft/phi-4";
-    /// `PowerInfer/SmallThinker-3B-Preview` completion model
-    pub const SmallThinkerPreview: &str = "PowerInfer/SmallThinker-3B-Preview";
-    /// `Qwen/Qwen2.5-7B-Instruct` completion model
-    pub const Qwen25: &str = "Qwen/Qwen2.5-7B-Instruct";
-    /// `Qwen/Qwen2.5-Coder-32B-Instruct` completion model
-    pub const Qwen25Coder: &str = "Qwen/Qwen2.5-Coder-32B-Instruct";
-    /// `deepseek-ai/DeepSeek-R1` completion model
-    pub const DeepSeekR1: &str = "deepseek-ai/DeepSeek-R1";
-    /// `deepseek-ai/DeepSeek-R1-Distill-Qwen-32B` completion model
-    pub const DeepSeekR1DistillQwen32B: &str = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B";
-    /// `Qwen/Qwen2-VL-7B-Instruct` visual-language completion model
-    pub const Qwen2VL: &str = "Qwen/Qwen2-VL-7B-Instruct";
-    /// `Qwen/QVQ-72B-Preview` visual-language completion model
-    pub const QwenQVQPreview: &str = "Qwen/QVQ-72B-Preview";
-}
-pub use completion_models::*;
+// Conversational VLMs
+
+/// `Qwen/Qwen2-VL-7B-Instruct` visual-language completion model
+pub const QWEN2_VL: &str = "Qwen/Qwen2-VL-7B-Instruct";
+/// `Qwen/QVQ-72B-Preview` visual-language completion model
+pub const QWEN_QVQ_PREVIEW: &str = "Qwen/QVQ-72B-Preview";
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub struct Function {
@@ -689,14 +683,9 @@ where
     type StreamingResponse = StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = String;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), &model.into())
-    }
-
-    fn make_custom(client: &Self::Client, model: &str) -> Self {
-        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

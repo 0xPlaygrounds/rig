@@ -707,10 +707,10 @@ where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
 {
     /// Creates a new [`ResponsesCompletionModel`].
-    pub fn new(client: Client<T>, model: super::CompletionModels) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 
@@ -1058,14 +1058,9 @@ where
     type StreamingResponse = StreamingCompletionResponse;
 
     type Client = super::Client<T>;
-    type Models = super::CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
-    fn make_custom(client: &Self::Client, model: &str) -> Self {
-        Self::with_model(client.clone(), model)
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     async fn completion(

@@ -46,11 +46,10 @@ pub enum EmbeddingError {
 pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     /// The maximum number of documents that can be embedded in a single request.
     const MAX_DOCUMENTS: usize;
-    type Models: TryFrom<String>;
+
     type Client;
 
-    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self;
-    fn make_custom(client: &Self::Client, model: &str, dims: Option<usize>) -> Self;
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self;
 
     /// The number of dimensions in the embedding vector.
     fn ndims(&self) -> usize;

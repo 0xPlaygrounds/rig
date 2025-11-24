@@ -37,10 +37,10 @@ pub struct ImageGenerationModel<T = reqwest::Client> {
 }
 
 impl<T> ImageGenerationModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         ImageGenerationModel {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -52,13 +52,8 @@ where
     type Response = ImageGenerationResponse;
 
     type Client = Client<T>;
-    type Models = String;
 
-    fn make(client: &Self::Client, model: Self::Models) -> Self {
-        Self::new(client.clone(), &model.to_string())
-    }
-
-    fn make_custom(client: &Self::Client, model: &str) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model)
     }
 

@@ -8,7 +8,7 @@ use crate::{
 };
 use std::collections::HashMap;
 
-use super::{CompletionModels, client::Client};
+use super::client::Client;
 use crate::completion::CompletionRequest;
 use crate::providers::cohere::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
@@ -524,10 +524,10 @@ impl<T> CompletionModel<T>
 where
     T: HttpClientExt,
 {
-    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 
@@ -593,14 +593,9 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model.into())
-    }
-
-    fn make_custom(client: &Self::Client, model: &str) -> Self {
-        Self::with_model(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

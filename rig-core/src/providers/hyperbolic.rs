@@ -21,7 +21,7 @@ use crate::providers::openai;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
-    json_utils, models,
+    json_utils,
     providers::openai::Message,
 };
 use serde::{Deserialize, Serialize};
@@ -131,36 +131,30 @@ impl std::fmt::Display for Usage {
 // Hyperbolic Completion API
 // ================================================================
 
-models! {
-    #[allow(non_camel_case_types)]
-    pub enum CompletionModels {
-        /// Meta Llama 3.1b Instruct model with 8B parameters.
-        LLAMA_3_1_8B => "meta-llama/Meta-Llama-3.1-8B-Instruct",
-        /// Meta Llama 3.3b Instruct model with 70B parameters.
-        LLAMA_3_3_70B => "meta-llama/Llama-3.3-70B-Instruct",
-        /// Meta Llama 3.1b Instruct model with 70B parameters.
-        LLAMA_3_1_70B => "meta-llama/Meta-Llama-3.1-70B-Instruct",
-        /// Meta Llama 3 Instruct model with 70B parameters.
-        LLAMA_3_70B => "meta-llama/Meta-Llama-3-70B-Instruct",
-        /// Hermes 3 Instruct model with 70B parameters.
-        HERMES_3_70B => "NousResearch/Hermes-3-Llama-3.1-70b",
-        /// Deepseek v2.5 model.
-        DEEPSEEK_2_5 => "deepseek-ai/DeepSeek-V2.5",
-        /// Qwen 2.5 model with 72B parameters.
-        QWEN_2_5_72B => "Qwen/Qwen2.5-72B-Instruct",
-        /// Meta Llama 3.2b Instruct model with 3B parameters.
-        LLAMA_3_2_3B => "meta-llama/Llama-3.2-3B-Instruct",
-        /// Qwen 2.5 Coder Instruct model with 32B parameters.
-        QWEN_2_5_CODER_32B => "Qwen/Qwen2.5-Coder-32B-Instruct",
-        /// Preview (latest) version of Qwen model with 32B parameters.
-        QWEN_QWQ_PREVIEW_32B => "Qwen/QwQ-32B-Preview",
-        /// Deepseek R1 Zero model.
-        DEEPSEEK_R1_ZERO => "deepseek-ai/DeepSeek-R1-Zero",
-        /// Deepseek R1 model.
-        DEEPSEEK_R1 => "deepseek-ai/DeepSeek-R1",
-    }
-}
-pub use CompletionModels::*;
+/// Meta Llama 3.1b Instruct model with 8B parameters.
+pub const LLAMA_3_1_8B: &str = "meta-llama/Meta-Llama-3.1-8B-Instruct";
+/// Meta Llama 3.3b Instruct model with 70B parameters.
+pub const LLAMA_3_3_70B: &str = "meta-llama/Llama-3.3-70B-Instruct";
+/// Meta Llama 3.1b Instruct model with 70B parameters.
+pub const LLAMA_3_1_70B: &str = "meta-llama/Meta-Llama-3.1-70B-Instruct";
+/// Meta Llama 3 Instruct model with 70B parameters.
+pub const LLAMA_3_70B: &str = "meta-llama/Meta-Llama-3-70B-Instruct";
+/// Hermes 3 Instruct model with 70B parameters.
+pub const HERMES_3_70B: &str = "NousResearch/Hermes-3-Llama-3.1-70b";
+/// Deepseek v2.5 model.
+pub const DEEPSEEK_2_5: &str = "deepseek-ai/DeepSeek-V2.5";
+/// Qwen 2.5 model with 72B parameters.
+pub const QWEN_2_5_72B: &str = "Qwen/Qwen2.5-72B-Instruct";
+/// Meta Llama 3.2b Instruct model with 3B parameters.
+pub const LLAMA_3_2_3B: &str = "meta-llama/Llama-3.2-3B-Instruct";
+/// Qwen 2.5 Coder Instruct model with 32B parameters.
+pub const QWEN_2_5_CODER_32B: &str = "Qwen/Qwen2.5-Coder-32B-Instruct";
+/// Preview (latest) version of Qwen model with 32B parameters.
+pub const QWEN_QWQ_PREVIEW_32B: &str = "Qwen/QwQ-32B-Preview";
+/// Deepseek R1 Zero model.
+pub const DEEPSEEK_R1_ZERO: &str = "deepseek-ai/DeepSeek-R1-Zero";
+/// Deepseek R1 model.
+pub const DEEPSEEK_R1: &str = "deepseek-ai/DeepSeek-R1";
 
 /// A Hyperbolic completion object.
 ///
@@ -263,10 +257,10 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 
@@ -331,14 +325,9 @@ where
     type StreamingResponse = openai::StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
-    fn make_custom(client: &Self::Client, model: &str) -> Self {
-        Self::with_model(client.clone(), model)
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -467,27 +456,21 @@ pub use image_generation::*;
 mod image_generation {
     use super::{ApiResponse, Client};
     use crate::http_client::HttpClientExt;
+    use crate::image_generation;
     use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
     use crate::json_utils::merge_inplace;
-    use crate::{image_generation, models};
     use base64::Engine;
     use base64::prelude::BASE64_STANDARD;
     use serde::Deserialize;
     use serde_json::json;
 
-    models! {
-        pub enum ImageGenerationModels {
-            Flux => "flux.1",
-            SDXL1Base => "SDXL1.0-base",
-            SD2 => "SD2",
-            SD1_5 => "SD1.5",
-            SSD => "SSD",
-            SDXLTurbo => "SDXL-turbo",
-            SDXLControlNet => "SDXL-ControlNet",
-            SD15ControlNet => "SD1.5-ControlNet",
-        }
-    }
-    pub use ImageGenerationModels::*;
+    pub const SDXL1_0_BASE: &str = "SDXL1.0-base";
+    pub const SD2: &str = "SD2";
+    pub const SD1_5: &str = "SD1.5";
+    pub const SSD: &str = "SSD";
+    pub const SDXL_TURBO: &str = "SDXL-turbo";
+    pub const SDXL_CONTROLNET: &str = "SDXL-ControlNet";
+    pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
 
     #[derive(Clone)]
     pub struct ImageGenerationModel<T> {
@@ -496,10 +479,10 @@ mod image_generation {
     }
 
     impl<T> ImageGenerationModel<T> {
-        pub(crate) fn new(client: Client<T>, model: ImageGenerationModels) -> Self {
+        pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
             Self {
                 client,
-                model: model.to_string(),
+                model: model.into(),
             }
         }
 
@@ -545,14 +528,9 @@ mod image_generation {
         type Response = ImageGenerationResponse;
 
         type Client = Client<T>;
-        type Models = ImageGenerationModels;
 
-        fn make(client: &Self::Client, model: Self::Models) -> Self {
+        fn make(client: &Self::Client, model: impl Into<String>) -> Self {
             Self::new(client.clone(), model)
-        }
-
-        fn make_custom(client: &Self::Client, model: &str) -> Self {
-            Self::with_model(client.clone(), model)
         }
 
         #[cfg_attr(feature = "worker", worker::send)]

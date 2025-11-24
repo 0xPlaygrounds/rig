@@ -507,19 +507,11 @@ where
     type StreamingResponse = StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self {
             client: client.clone(),
             model: model.into().to_string(),
-        }
-    }
-
-    fn make_custom(client: &Self::Client, model: &str) -> Self {
-        Self {
-            client: client.clone(),
-            model: model.into(),
         }
     }
 

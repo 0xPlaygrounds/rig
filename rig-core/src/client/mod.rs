@@ -553,10 +553,7 @@ where
 {
     type CompletionModel = M;
 
-    fn completion_model(
-        &self,
-        model: impl Into<<Self::CompletionModel as CompletionModel>::Models>,
-    ) -> Self::CompletionModel {
+    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
         M::make(self, model)
     }
 }
@@ -568,12 +565,16 @@ where
 {
     type EmbeddingModel = M;
 
-    fn embedding_model(&self, model: <M as EmbeddingModel>::Models) -> Self::EmbeddingModel {
+    fn embedding_model(&self, model: impl Into<String>) -> Self::EmbeddingModel {
         M::make(self, model, None)
     }
 
-    fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> Self::EmbeddingModel {
-        M::make_custom(self, model, Some(ndims))
+    fn embedding_model_with_ndims(
+        &self,
+        model: impl Into<String>,
+        ndims: usize,
+    ) -> Self::EmbeddingModel {
+        M::make(self, model, Some(ndims))
     }
 }
 
@@ -584,10 +585,7 @@ where
 {
     type TranscriptionModel = M;
 
-    fn transcription_model(
-        &self,
-        model: <M as TranscriptionModel>::Models,
-    ) -> Self::TranscriptionModel {
+    fn transcription_model(&self, model: impl Into<String>) -> Self::TranscriptionModel {
         M::make(self, model)
     }
 }
@@ -600,10 +598,7 @@ where
 {
     type ImageGenerationModel = M;
 
-    fn image_generation_model(
-        &self,
-        model: <M as ImageGenerationModel>::Models,
-    ) -> Self::ImageGenerationModel {
+    fn image_generation_model(&self, model: impl Into<String>) -> Self::ImageGenerationModel {
         M::make(self, model)
     }
 }

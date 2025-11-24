@@ -1,22 +1,18 @@
 use crate::http_client::HttpClientExt;
 use crate::providers::huggingface::Client;
 use crate::providers::huggingface::completion::ApiResponse;
+use crate::transcription;
 use crate::transcription::TranscriptionError;
 use crate::wasm_compat::WasmCompatSync;
-use crate::{models, transcription};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde::Deserialize;
 use serde_json::json;
 
-models! {
-    pub enum TranscriptionModels {
-        WhisperLargeV3 => "openai/whisper-large-v3",
-        WhisperLargeV3Turbo => "openai/whisper-large-v3-turbo",
-        WhisperSmall => "openai/whisper-small",
-    }
-}
-pub use TranscriptionModels::*;
+pub const WHISPER_LARGE_V3: &str = "openai/whisper-large-v3";
+pub const WHISPER_LARGE_V3_TURBO: &str = "openai/whisper-large-v3-turbo";
+
+pub const WHISPER_SMALL: &str = "openai/whisper-small";
 
 #[derive(Debug, Deserialize)]
 pub struct TranscriptionResponse {
@@ -44,10 +40,10 @@ pub struct TranscriptionModel<T = reqwest::Client> {
 }
 
 impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -58,10 +54,9 @@ where
     type Response = TranscriptionResponse;
 
     type Client = Client<T>;
-    type Models = TranscriptionModels;
 
-    fn make(client: &Self::Client, model: Self::Models) -> Self {
-        TranscriptionModel::new(client.clone(), model.into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        TranscriptionModel::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
