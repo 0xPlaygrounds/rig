@@ -8,7 +8,7 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     http_client::HttpClientExt,
-    json_utils, models,
+    json_utils,
     one_or_many::string_or_one_or_many,
     providers::openai,
 };
@@ -21,22 +21,14 @@ use tracing::{Instrument, info_span};
 // OpenRouter Completion API
 // ================================================================
 
-models! {
-    #[allow(non_camel_case_types)]
-    pub enum CompletionModels {
-        /// The `qwen/qwq-32b` model. Find more models at <https://openrouter.ai/models>.
-        QwenQWQ32b => "qwen/qwq-32b",
-        /// The `anthropic/claude-3.7-sonnet` model. Find more models at <https://openrouter.ai/models>.
-        Claude37Sonnet => "anthropic/claude-3.7-sonnet",
-        /// The `perplexity/sonar-pro` model. Find more models at <https://openrouter.ai/models>.
-        PerplexitySonarPro => "perplexity/sonar-pro",
-        /// The `google/gemini-2.0-flash-001` model. Find more models at <https://openrouter.ai/models>.
-        GeminiFlash2 => "google/gemini-2.0-flash-001",
-        /// `google/gemini-2.5-pro-exp-03-25:free` model
-        Gemini25ProExp_03_25_Free => "google/gemini-2.5-pro-exp-03-25:free"
-    }
-}
-pub use CompletionModels::*;
+/// The `qwen/qwq-32b` model. Find more models at <https://openrouter.ai/models>.
+pub const QWEN_QWQ_32B: &str = "qwen/qwq-32b";
+/// The `anthropic/claude-3.7-sonnet` model. Find more models at <https://openrouter.ai/models>.
+pub const CLAUDE_3_7_SONNET: &str = "anthropic/claude-3.7-sonnet";
+/// The `perplexity/sonar-pro` model. Find more models at <https://openrouter.ai/models>.
+pub const PERPLEXITY_SONAR_PRO: &str = "perplexity/sonar-pro";
+/// The `google/gemini-2.0-flash-001` model. Find more models at <https://openrouter.ai/models>.
+pub const GEMINI_FLASH_2_0: &str = "google/gemini-2.0-flash-001";
 
 /// A openrouter completion object.
 ///

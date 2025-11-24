@@ -10,7 +10,6 @@ use crate::{
     completion::{CompletionError, CompletionModelDyn, CompletionRequest},
     embeddings::EmbeddingModelDyn,
     message::Message,
-    models,
     providers::{
         anthropic, azure, cohere, deepseek, galadriel, gemini, groq, huggingface, hyperbolic, mira,
         mistral, moonshot, ollama, openai, openrouter, perplexity, together, xai,
@@ -193,10 +192,10 @@ impl From<DefaultProviders> for &'static str {
 }
 pub use DefaultProviders::*;
 
-impl ToString for DefaultProviders {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for DefaultProviders {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s: &str = (*self).into();
-        s.to_string()
+        f.write_str(s)
     }
 }
 

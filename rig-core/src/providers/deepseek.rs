@@ -25,7 +25,6 @@ use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge;
 use crate::message::{Document, DocumentSourceKind};
-use crate::models;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -840,16 +839,8 @@ where
 // ================================================================
 // DeepSeek Completion API
 // ================================================================
-
-models! {
-    pub enum CompletionModels {
-        /// `deepseek-chat` completion model
-        DeepSeekChat => "deepseek-chat",
-        /// `deepseek-reasoner` completion model
-        DeepSeekReasoner => "deepseek-reasoner",
-    }
-}
-pub use CompletionModels::*;
+pub const DEEPSEEK_CHAT: &str = "deepseek-chat";
+pub const DEEPSEEK_REASONER: &str = "deepseek-reasoner";
 
 // Tests
 #[cfg(test)]

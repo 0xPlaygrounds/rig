@@ -20,7 +20,6 @@ use crate::client::{
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt, bearer_auth_header};
 use crate::json_utils::merge;
-use crate::models;
 use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::TranscriptionError;
 use crate::{
@@ -337,17 +336,7 @@ enum ApiResponse<T> {
 // Azure OpenAI Embedding API
 // ================================================================
 
-models! {
-    pub enum EmbeddingModels {
-        /// `text-embedding-3-large` embedding model
-        TextEmbedding3Large => "text-embedding-3-large",
-        /// `text-embedding-3-small` embedding model
-        TextEmbedding3Small => "text-embedding-3-small",
-        /// `text-embedding-ada-002` embedding model
-        TextEmbeddingAda002 => "text-embedding-ada-002",
-    }
-}
-
+/// `text-embedding-3-large` embedding model
 pub const TEXT_EMBEDDING_3_LARGE: &str = "text-embedding-3-large";
 /// `text-embedding-3-small` embedding model
 pub const TEXT_EMBEDDING_3_SMALL: &str = "text-embedding-3-small";

@@ -2,9 +2,9 @@ use crate::client::{
     self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
     ProviderClient,
 };
+use crate::embeddings;
 use crate::embeddings::EmbeddingError;
 use crate::http_client::{self, HttpClientExt};
-use crate::{embeddings, models};
 use bytes::Bytes;
 use serde::Deserialize;
 use serde_json::json;
@@ -99,27 +99,20 @@ impl<T> EmbeddingModel<T> {
 // Voyage AI Embedding API
 // ================================================================
 
-models! {
-    pub enum EmbeddingModels {
-        /// `voyage-3-large` embedding model (Voyage AI)
-        Voyage3Large => "voyage-3-large",
-        /// `voyage-3.5` embedding model (Voyage AI)
-        Voyage35 => "voyage-3.5",
-        /// `voyage-3.5-lite` embedding model (Voyage AI)
-        Voyage35Lite => "voyage.3-5.lite",
-        /// `voyage-code-3` embedding model (Voyage AI)
-        VoyageCode3 => "voyage-code-3",
-        /// `voyage-finance-2` embedding model (Voyage AI)
-        VoyageFinance2 => "voyage-finance-2",
-        /// `voyage-law-2` embedding model (Voyage AI)
-        VoyageLaw2 => "voyage-law-2",
-        /// `voyage-code-2` embedding model (Voyage AI)
-        VoyageCode2 => "voyage-code-2",
-    }
-}
-pub use EmbeddingModels::*;
-
-impl EmbeddingModels {}
+/// `voyage-3-large` embedding model (Voyage AI)
+pub const VOYAGE_3_LARGE: &str = "voyage-3-large";
+/// `voyage-3.5` embedding model (Voyage AI)
+pub const VOYAGE_3_5: &str = "voyage-3.5";
+/// `voyage-3.5-lite` embedding model (Voyage AI)
+pub const VOYAGE_3_5_LITE: &str = "voyage.3-5.lite";
+/// `voyage-code-3` embedding model (Voyage AI)
+pub const VOYAGE_CODE_3: &str = "voyage-code-3";
+/// `voyage-finance-2` embedding model (Voyage AI)
+pub const VOYAGE_FINANCE_2: &str = "voyage-finance-2";
+/// `voyage-law-2` embedding model (Voyage AI)
+pub const VOYAGE_LAW_2: &str = "voyage-law-2";
+/// `voyage-code-2` embedding model (Voyage AI)
+pub const VOYAGE_CODE_2: &str = "voyage-code-2";
 
 pub fn model_dimensions_from_identifier(model_identifier: &str) -> Option<usize> {
     match model_identifier {
