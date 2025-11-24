@@ -50,9 +50,12 @@ impl TranscriptionModel for TranscriptionModelHandle<'_> {
     type Response = ();
     type Client = ();
 
-    /// **PANICS** if called
+    /// **PANICS**: We are deprecating DynClientBuilder and related functionality, during this
+    /// transition some methods will be invalid, like this one
     fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        panic!("TranscriptionModelHandle::TranscriptionModel::make should not be called")
+        panic!(
+            "Invalid method: Cannot make a TranscriptionModelHandle from a client + model identifier"
+        )
     }
 
     async fn transcription(

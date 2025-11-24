@@ -124,7 +124,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 
     /// **PANICS**: FastEmbed models cannot be created via this method, which will panic
     fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-        panic!("Invalid method: `fastembed::EmbeddingModel::make`")
+        panic!("Cannot create a fastembed model via `EmbeddingModel::make`")
     }
 
     fn ndims(&self) -> usize {

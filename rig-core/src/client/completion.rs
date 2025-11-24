@@ -77,6 +77,8 @@ impl CompletionModel for CompletionModelHandle<'_> {
     type StreamingResponse = FinalCompletionResponse;
     type Client = ();
 
+    /// **PANICS**: We are deprecating DynClientBuilder and related functionality, in the meantime
+    /// there may be some invalid methods which panic when called, such as this one
     fn make(_: &Self::Client, _: impl Into<String>) -> Self {
         panic!("Cannot create a completion model handle from a client")
     }
