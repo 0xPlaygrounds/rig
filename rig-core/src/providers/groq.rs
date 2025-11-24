@@ -573,7 +573,7 @@ where
 
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
-pub enum StreamingDelta {
+enum StreamingDelta {
     Reasoning {
         reasoning: String,
     },
@@ -672,7 +672,7 @@ where
 
                                     // Start of tool call
                                     if function.name.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
-                                        && function.arguments.is_empty()
+                                        && empty_or_none(&function.arguments)
                                     {
                                         let id = tool_call.id.clone().unwrap_or_default();
                                         let name = function.name.clone().unwrap();
@@ -680,10 +680,11 @@ where
                                     }
                                     // Continuation
                                     else if function.name.as_ref().map(|s| s.is_empty()).unwrap_or(true)
-                                        && !function.arguments.is_empty()
+                                        && let Some(arguments) = &function.arguments
+                                        && !arguments.is_empty()
                                     {
                                         if let Some((id, name, existing_args)) = calls.get(&tool_call.index) {
-                                            let combined = format!("{}{}", existing_args, function.arguments);
+                                            let combined = format!("{}{}", existing_args, arguments);
                                             calls.insert(tool_call.index, (id.clone(), name.clone(), combined));
                                         } else {
                                             tracing::debug!("Partial tool call received but tool call was never started.");
@@ -693,7 +694,7 @@ where
                                     else {
                                         let id = tool_call.id.clone().unwrap_or_default();
                                         let name = function.name.clone().unwrap_or_default();
-                                        let arguments_str = function.arguments.clone();
+                                        let arguments_str = function.arguments.clone().unwrap_or_default();
 
                                         let Ok(arguments_json) = serde_json::from_str::<serde_json::Value>(&arguments_str) else {
                                             tracing::debug!("Couldn't parse tool call args '{}'", arguments_str);
