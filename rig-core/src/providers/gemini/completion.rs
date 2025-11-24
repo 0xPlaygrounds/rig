@@ -1310,7 +1310,10 @@ pub mod gemini_api_types {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub response_schema: Option<Schema>,
         /// Internal or alternative representation for `response_json_schema`.
-        #[serde(skip_serializing_if = "Option::is_none", rename = "_responseJsonSchema")]
+        #[serde(
+            skip_serializing_if = "Option::is_none",
+            rename = "_responseJsonSchema"
+        )]
         pub _response_json_schema: Option<Value>,
         /// Optional. The output schema of the generated response.
         /// This is an alternative to responseSchema that accepts a standard JSON Schema.
