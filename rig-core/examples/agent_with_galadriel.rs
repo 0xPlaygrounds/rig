@@ -1,6 +1,5 @@
 use rig::prelude::*;
 use rig::providers::galadriel;
-use rig::providers::galadriel::CompletionModels::Gpt4o;
 use rig::{completion::Prompt, providers};
 
 use std::env;
@@ -21,7 +20,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let comedian_agent = client
-        .agent(Gpt4o)
+        .agent(galadriel::GPT_4O)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

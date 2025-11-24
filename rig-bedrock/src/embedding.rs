@@ -1,8 +1,5 @@
 use aws_smithy_types::Blob;
-use rig::{
-    embeddings::{self, Embedding, EmbeddingError},
-    models,
-};
+use rig::embeddings::{self, Embedding, EmbeddingError};
 use serde::{Deserialize, Serialize};
 
 use crate::{client::Client, types::errors::AwsSdkInvokeModelError};
@@ -22,21 +19,16 @@ pub struct EmbeddingResponse {
     pub input_text_token_count: usize,
 }
 
-models! {
-    pub enum EmbeddingModels {
-        /// `amazon.titan-embed-text-v1`
-        AmazonTitanEmbedTextV1 => "amazon.titan-embed-text-v1",
-        /// `amazon.titan-embed-text-v2:0`
-        AmazonTitanEmbedTextV2 => "amazon.titan-embed-text-v2:0",
-        /// `amazon.titan-embed-image-v1`
-        AmazonTitanEmbedImageV1 => "amazon.titan-embed-image-v1",
-        /// `cohere.embed-english-v3`
-        CohereEmbedEnglishV3 => "cohere.embed-english-v3",
-        /// `cohere.embed-multilingual-v3`
-        CohereEmbedMultilingualV3 => "cohere.embed-multilingual-v3",
-    }
-}
-pub use EmbeddingModels::*;
+/// `amazon.titan-embed-text-v1`
+pub const AMAZON_TITAN_EMBED_TEXT_V1: &str = "amazon.titan-embed-text-v1";
+/// `amazon.titan-embed-text-v2:0`
+pub const AMAZON_TITAN_EMBED_TEXT_V2_0: &str = "amazon.titan-embed-text-v2:0";
+/// `amazon.titan-embed-image-v1`
+pub const AMAZON_TITAN_EMBED_IMAGE_V1: &str = "amazon.titan-embed-image-v1";
+/// `cohere.embed-english-v3`
+pub const COHERE_EMBED_ENGLISH_V3: &str = "cohere.embed-english-v3";
+/// `cohere.embed-multilingual-v3`
+pub const COHERE_EMBED_MULTILINGUAL_V3: &str = "cohere.embed-multilingual-v3";
 
 #[derive(Clone)]
 pub struct EmbeddingModel {
@@ -46,18 +38,10 @@ pub struct EmbeddingModel {
 }
 
 impl EmbeddingModel {
-    pub fn new(client: Client, model: &str, ndims: Option<usize>) -> Self {
+    pub fn new(client: Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
         Self {
             client,
-            model: model.to_string(),
-            ndims,
-        }
-    }
-
-    pub fn with_model(client: Client, model: &str, ndims: Option<usize>) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
+            model: model.into(),
             ndims,
         }
     }
@@ -98,14 +82,9 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 1024;
 
     type Client = Client;
-    type Models = String;
 
-    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model.as_str(), dims)
-    }
-
-    fn make_custom(client: &Self::Client, model: &str, dims: Option<usize>) -> Self {
-        Self::with_model(client.clone(), model, dims)
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
+        Self::new(client.clone(), model, dims)
     }
 
     fn ndims(&self) -> usize {

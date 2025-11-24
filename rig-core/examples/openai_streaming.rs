@@ -10,7 +10,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create streaming agent with a single context prompt
     let agent = openai::Client::from_env()
-        .agent(openai::GPT4O)
+        .agent(openai::GPT_4O)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

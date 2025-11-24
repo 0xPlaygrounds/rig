@@ -62,11 +62,8 @@ pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync 
     type Response: Send + Sync;
 
     type Client;
-    type Model: TryFrom<String>;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Model>) -> Self;
-
-    fn make_custom(client: &Self::Client, model: &str) -> Self;
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
 
     fn audio_generation(
         &self,

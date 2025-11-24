@@ -1,5 +1,5 @@
 use rig::prelude::*;
-use rig::providers::cohere::CompletionModels::CommandR;
+use rig::providers::cohere::COMMAND_R;
 use rig::{agent::AgentBuilder, completion::Prompt, providers::cohere};
 
 #[tokio::main]
@@ -9,7 +9,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let cohere_client = cohere::Client::from_env();
 
     // let model = openai_client.completion_model("gpt-4");
-    let model = cohere_client.completion_model(CommandR);
+    let model = cohere_client.completion_model(COMMAND_R);
 
     // Create an agent with multiple context documents
     let agent = AgentBuilder::new(model)

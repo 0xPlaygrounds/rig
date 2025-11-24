@@ -8,31 +8,25 @@ use rig::completion::{
     CompletionError, CompletionModel as CompletionModelTrait, CompletionRequest,
     CompletionResponse, GetTokenUsage,
 };
-use rig::models;
 use rig::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
 
-models! {
-    pub enum CompletionModels {
-        /// `gemini-1.5-pro`
-        Gemini15Pro => "gemini-1.5-pro",
-        /// `gemini-1.5-flash`
-        Gemini15Flash => "gemini-1.5-flash",
-        /// `gemini-1.5-pro-latest`
-        Gemini15ProLatest => "gemini-1.5-pro-latest",
-        /// `gemini-1.5-flash-latest`
-        Gemini15FlashLatest => "gemini-1.5-flash-latest",
-        /// `gemini-2.0-flash-exp`
-        Gemini20FlashExp => "gemini-2.0-flash-exp",
-        /// `gemini-2.5-flash-lite`
-        Gemini25FlashLite => "gemini-2.5-flash-lite",
-        /// `gemini-2.5-flash`
-        Gemini25Flash => "gemini-2.5-flash",
-        /// `gemini-2.5-pro`
-        Gemini25Pro => "gemini-2.5-pro",
-    }
-}
-pub use CompletionModels::*;
+/// `gemini-1.5-pro`
+pub const GEMINI_1_5_PRO: &str = "gemini-1.5-pro";
+/// `gemini-1.5-flash`
+pub const GEMINI_1_5_FLASH: &str = "gemini-1.5-flash";
+/// `gemini-1.5-pro-latest`
+pub const GEMINI_1_5_PRO_LATEST: &str = "gemini-1.5-pro-latest";
+/// `gemini-1.5-flash-latest`
+pub const GEMINI_1_5_FLASH_LATEST: &str = "gemini-1.5-flash-latest";
+/// `gemini-2.0-flash-exp`
+pub const GEMINI_2_0_FLASH_EXP: &str = "gemini-2.0-flash-exp";
+/// `gemini-2.5-flash-lite`
+pub const GEMINI_2_5_FLASH_LITE: &str = "gemini-2.5-flash-lite";
+/// `gemini-2.5-flash`
+pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
+/// `gemini-2.5-pro`
+pub const GEMINI_2_5_PRO: &str = "gemini-2.5-pro";
 
 #[derive(Clone)]
 pub struct CompletionModel {
@@ -50,10 +44,10 @@ impl GetTokenUsage for PlaceholderStreamingResponse {
 }
 
 impl CompletionModel {
-    pub fn new(client: Client, model: CompletionModels) -> Self {
+    pub fn new(client: Client, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 
@@ -79,14 +73,9 @@ impl CompletionModelTrait for CompletionModel {
     type StreamingResponse = PlaceholderStreamingResponse;
 
     type Client = Client;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model.into())
-    }
-
-    fn make_custom(client: &Self::Client, model: &str) -> Self {
-        Self::with_model(client.clone(), model)
     }
 
     async fn completion(

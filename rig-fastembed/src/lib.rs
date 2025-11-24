@@ -121,14 +121,10 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 1024;
 
     type Client = Client;
-    type Models = fastembed::EmbeddingModel;
 
-    fn make(_: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
-        Self::new(&model, dims.unwrap_or_default())
-    }
-
-    fn make_custom(_: &Self::Client, _: &str, _: Option<usize>) -> Self {
-        panic!("User defined models must be provided via `new_from_user_defined`")
+    /// **PANICS**: FastEmbed models cannot be created via this method, which will panic
+    fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
+        panic!("Invalid method: `fastembed::EmbeddingModel::make`")
     }
 
     fn ndims(&self) -> usize {

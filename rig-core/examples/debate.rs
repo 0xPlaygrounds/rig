@@ -1,6 +1,5 @@
 use anyhow::Result;
 use rig::prelude::*;
-use rig::providers::cohere::CompletionModels::CommandR;
 use rig::{
     agent::Agent,
     completion::Prompt,
@@ -24,10 +23,13 @@ impl Debater {
 
         Self {
             gpt_4: openai_client
-                .agent(openai::GPT4)
+                .agent(openai::GPT_4)
                 .preamble(position_a)
                 .build(),
-            coral: cohere_client.agent(CommandR).preamble(position_b).build(),
+            coral: cohere_client
+                .agent(cohere::COMMAND_R)
+                .preamble(position_b)
+                .build(),
         }
     }
 

@@ -11,11 +11,9 @@ use serde_json::json;
 // ================================================================
 // OpenAI Image Generation API
 // ================================================================
-pub mod image_generation_models {
-    pub const DALL_E_2: &str = "dall-e-2";
-    pub const DALL_E_3: &str = "dall-e-3";
-    pub const GPT_IMAGE_1: &str = "gpt-image-1";
-}
+pub const DALL_E_2: &str = "dall-e-2";
+pub const DALL_E_3: &str = "dall-e-3";
+pub const GPT_IMAGE_1: &str = "gpt-image-1";
 
 #[derive(Debug, Deserialize)]
 pub struct ImageGenerationData {
@@ -61,13 +59,6 @@ impl<T> ImageGenerationModel<T> {
             model: model.into(),
         }
     }
-
-    pub(crate) fn with_model(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
 }
 
 impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
@@ -94,7 +85,7 @@ where
             "size": format!("{}x{}", generation_request.width, generation_request.height),
         });
 
-        if self.model.as_str() != image_generation_models::GPT_IMAGE_1 {
+        if self.model.as_str() != GPT_IMAGE_1 {
             merge_inplace(
                 &mut request,
                 json!({

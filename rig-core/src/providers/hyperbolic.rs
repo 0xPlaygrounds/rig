@@ -637,16 +637,8 @@ mod audio_generation {
     {
         type Response = AudioGenerationResponse;
         type Client = Client<T>;
-        type Model = String;
 
-        fn make(client: &Self::Client, language: impl Into<Self::Model>) -> Self {
-            Self {
-                client: client.clone(),
-                language: language.into(),
-            }
-        }
-
-        fn make_custom(client: &Self::Client, language: &str) -> Self {
+        fn make(client: &Self::Client, language: impl Into<String>) -> Self {
             Self {
                 client: client.clone(),
                 language: language.into(),

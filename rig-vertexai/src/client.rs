@@ -230,10 +230,7 @@ impl ProviderClient for Client {
 impl CompletionClient for Client {
     type CompletionModel = CompletionModel;
 
-    fn completion_model(
-        &self,
-        model: impl Into<<Self::CompletionModel as rig::completion::CompletionModel>::Models>,
-    ) -> Self::CompletionModel {
+    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
         CompletionModel::new(self.clone(), model.into())
     }
 }

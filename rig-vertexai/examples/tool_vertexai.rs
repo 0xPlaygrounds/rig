@@ -4,7 +4,7 @@ use rig::{
     completion::{Prompt, ToolDefinition},
     tool::Tool,
 };
-use rig_vertexai::{Client, completion::Gemini25FlashLite};
+use rig_vertexai::{Client, completion::GEMINI_2_5_FLASH_LITE};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 
@@ -52,7 +52,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a calculator tool
     let calculator_agent = client
-        .agent(Gemini25FlashLite)
+        .agent(GEMINI_2_5_FLASH_LITE)
         .tool(Adder)
         .max_tokens(1024)
         .build();

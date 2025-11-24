@@ -57,18 +57,6 @@ impl std::fmt::Display for BilledUnits {
     }
 }
 
-fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
-    use super::*;
-
-    match identifier {
-        EMBED_ENGLISH_V3 | EMBED_MULTILINGUAL_V3 | EMBED_ENGLISH_LIGHT_V2 => Some(1_024),
-        EMBED_ENGLISH_LIGHT_V3 | EMBED_MULTILINGUAL_LIGHT_V3 => Some(384),
-        EMBED_ENGLISH_V2 => Some(4_096),
-        EMBED_MULTILINGUAL_V2 => Some(768),
-        _ => None,
-    }
-}
-
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
@@ -87,7 +75,7 @@ where
     fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
         let model = model.into();
         let dims = dims
-            .or(model_dimensions_from_identifier(&model))
+            .or(super::model_dimensions_from_identifier(&model))
             .unwrap_or_default();
 
         Self::new(client.clone(), model, "search_document", dims)

@@ -2,7 +2,6 @@ use crate::audio_generation::{
     self, AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
 };
 use crate::http_client::{self, HttpClientExt};
-use crate::models;
 use crate::providers::openai::Client;
 use bytes::{Buf, Bytes};
 use serde_json::json;
@@ -17,14 +16,7 @@ pub struct AudioGenerationModel<T = reqwest::Client> {
 }
 
 impl<T> AudioGenerationModel<T> {
-    pub fn new(client: Client<T>, model: AudioGenerationModels) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
-
-    pub fn with_model(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
             model: model.into(),
@@ -39,14 +31,9 @@ where
     type Response = Bytes;
 
     type Client = Client<T>;
-    type Model = AudioGenerationModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Model>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
-    fn make_custom(client: &Self::Client, model: &str) -> Self {
-        Self::with_model(client.clone(), model)
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

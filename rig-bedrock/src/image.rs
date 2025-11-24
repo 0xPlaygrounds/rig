@@ -5,19 +5,13 @@ use aws_smithy_types::Blob;
 use rig::image_generation::{
     self, ImageGenerationError, ImageGenerationRequest, ImageGenerationResponse,
 };
-use rig::models;
 
-models! {
-    pub enum ImageGenerationModels {
-        /// `amazon.titan-image-generator-v1`
-        AmazonTitanImageGenerator1 => "amazon.titan-image-generator-v1",
-        /// `amazon.titan-image-generator-v2:0`
-        AmazonTitanImageGenerator2 => "amazon.titan-image-generator-v2:0",
-        /// `amazon.nova-canvas-v1:0`
-        AmazonNovaCanvas => "amazon.nova-canvas-v1:0",
-    }
-}
-pub use ImageGenerationModels::*;
+/// `amazon.titan-image-generator-v1`
+pub const AMAZON_TITAN_IMAGE_GENERATOR_V1: &str = "amazon.titan-image-generator-v1";
+/// `amazon.titan-image-generator-v2:0`
+pub const AMAZON_TITAN_IMAGE_GENERATOR_V2_0: &str = "amazon.titan-image-generator-v2:0";
+/// `amazon.nova-canvas-v1:0`
+pub const AMAZON_NOVA_CANVAS: &str = "amazon.nova-canvas-v1:0";
 
 #[derive(Clone)]
 pub struct ImageGenerationModel {
@@ -26,14 +20,7 @@ pub struct ImageGenerationModel {
 }
 
 impl ImageGenerationModel {
-    pub fn new(client: Client, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
-
-    pub fn with_model(client: Client, model: &str) -> Self {
+    pub fn new(client: Client, model: impl Into<String>) -> Self {
         Self {
             client,
             model: model.into(),
@@ -45,14 +32,9 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
     type Response = TextToImageResponse;
 
     type Client = Client;
-    type Models = String;
 
-    fn make(client: &Self::Client, model: Self::Models) -> Self {
-        Self::new(client.clone(), model.as_str())
-    }
-
-    fn make_custom(client: &Self::Client, model: &str) -> Self {
-        Self::with_model(client.clone(), model)
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     async fn image_generation(

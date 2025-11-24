@@ -2,8 +2,7 @@ use rig::agent::{CancelSignal, PromptHook};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, CompletionResponse, Message, Prompt};
 use rig::message::{AssistantContent, UserContent};
-use rig::providers;
-use rig::providers::openai::CompletionModels::GPT4O;
+use rig::providers::{self, openai};
 
 #[derive(Clone)]
 struct SessionIdHook<'a> {
@@ -88,7 +87,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let comedian_agent = client
-        .agent(GPT4O)
+        .agent(openai::GPT_4O)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

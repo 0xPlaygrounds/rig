@@ -126,25 +126,23 @@ impl ProviderClient for Client {
 impl CompletionClient for Client {
     type CompletionModel = CompletionModel;
 
-    fn completion_model(
-        &self,
-        model: impl Into<<Self::CompletionModel as rig::completion::CompletionModel>::Models>,
-    ) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model.into().into())
+    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
+        CompletionModel::new(self.clone(), model)
     }
 }
 
 impl EmbeddingsClient for Client {
     type EmbeddingModel = EmbeddingModel;
 
-    fn embedding_model(
-        &self,
-        model: <Self::EmbeddingModel as rig::embeddings::EmbeddingModel>::Models,
-    ) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model.as_str(), None)
+    fn embedding_model(&self, model: impl Into<String>) -> Self::EmbeddingModel {
+        EmbeddingModel::new(self.clone(), model, None)
     }
 
-    fn embedding_model_with_ndims(&self, model: &str, ndims: usize) -> Self::EmbeddingModel {
+    fn embedding_model_with_ndims(
+        &self,
+        model: impl Into<String>,
+        ndims: usize,
+    ) -> Self::EmbeddingModel {
         EmbeddingModel::new(self.clone(), model, Some(ndims))
     }
 }
@@ -152,11 +150,8 @@ impl EmbeddingsClient for Client {
 impl ImageGenerationClient for Client {
     type ImageGenerationModel = ImageGenerationModel;
 
-    fn image_generation_model(
-        &self,
-        model: <Self::ImageGenerationModel as rig::image_generation::ImageGenerationModel>::Models,
-    ) -> Self::ImageGenerationModel {
-        ImageGenerationModel::new(self.clone(), model.as_str())
+    fn image_generation_model(&self, model: impl Into<String>) -> Self::ImageGenerationModel {
+        ImageGenerationModel::new(self.clone(), model)
     }
 }
 

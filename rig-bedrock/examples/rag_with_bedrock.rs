@@ -7,7 +7,7 @@ use rig::{
 };
 use rig_bedrock::client::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
-use rig_bedrock::embedding::AmazonTitanEmbedTextV2;
+use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
 use serde::Serialize;
 use tracing::info;
 
@@ -30,7 +30,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     let client = Client::from_env();
-    let embedding_model = client.embedding_model_with_ndims(AmazonTitanEmbedTextV2.into(), 256);
+    let embedding_model = client.embedding_model_with_ndims(AMAZON_TITAN_EMBED_TEXT_V2_0, 256);
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())

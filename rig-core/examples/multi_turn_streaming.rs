@@ -22,7 +22,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Create agent with a single context prompt and a calculator tools
     let calculator_agent = anthropic_client
-        .agent(anthropic::Claude35Sonnet)
+        .agent(anthropic::completion::CLAUDE_3_5_SONNET)
         .preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
             Follow these instructions closely.

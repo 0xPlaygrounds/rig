@@ -1,5 +1,5 @@
+use rig::prelude::*;
 use rig::providers::openai;
-use rig::{prelude::*, providers::openai::CompletionModels::GPT4};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +23,9 @@ async fn main() {
     let openai_client = openai::Client::from_env();
 
     // Create extractor
-    let data_extractor = openai_client.extractor::<DocumentSentiment>(GPT4).build();
+    let data_extractor = openai_client
+        .extractor::<DocumentSentiment>(openai::GPT_4)
+        .build();
 
     let sentiment = data_extractor
         .extract("I am happy")

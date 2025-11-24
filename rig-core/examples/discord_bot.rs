@@ -11,7 +11,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let mut discord_bot = client
-        .agent(openai::GPT4O)
+        .agent(openai::GPT_4O)
         .preamble("You are a helpful assistant.")
         .build()
         .into_discord_bot(&discord_bot_token)

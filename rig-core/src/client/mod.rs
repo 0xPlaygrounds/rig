@@ -611,10 +611,7 @@ where
 {
     type AudioGenerationModel = M;
 
-    fn audio_generation_model(
-        &self,
-        model: impl Into<<Self::AudioGenerationModel as AudioGenerationModel>::Model>,
-    ) -> Self::AudioGenerationModel {
+    fn audio_generation_model(&self, model: impl Into<String>) -> Self::AudioGenerationModel {
         M::make(self, model)
     }
 }

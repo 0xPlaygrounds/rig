@@ -78,7 +78,7 @@ impl<H> Capabilities<H> for OpenAIResponsesExt {
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<super::AudioGenerationModel<H>>;
+    type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
 }
 
 impl<H> Capabilities<H> for OpenAICompletionsExt {
@@ -88,7 +88,7 @@ impl<H> Capabilities<H> for OpenAICompletionsExt {
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<super::AudioGenerationModel<H>>;
+    type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
 }
 
 impl DebugExt for OpenAIResponsesExt {}

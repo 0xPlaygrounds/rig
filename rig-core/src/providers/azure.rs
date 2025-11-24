@@ -948,7 +948,7 @@ mod audio_generation {
     }
 
     impl<T> AudioGenerationModel<T> {
-        pub fn new(client: Client<T>, deployment_name: &str) -> Self {
+        pub fn new(client: Client<T>, deployment_name: impl Into<String>) -> Self {
             Self {
                 client,
                 model: deployment_name.into(),
@@ -962,13 +962,8 @@ mod audio_generation {
     {
         type Response = Bytes;
         type Client = Client<T>;
-        type Model = String;
 
-        fn make(client: &Self::Client, model: impl Into<Self::Model>) -> Self {
-            Self::new(client.clone(), &model.into())
-        }
-
-        fn make_custom(client: &Self::Client, model: &str) -> Self {
+        fn make(client: &Self::Client, model: impl Into<String>) -> Self {
             Self::new(client.clone(), model)
         }
 
