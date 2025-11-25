@@ -9,18 +9,13 @@ use super::{Client, client::ApiResponse};
 use crate::{
     embeddings::{self, EmbeddingError},
     http_client::HttpClientExt,
-    models,
     wasm_compat::WasmCompatSend,
 };
 
-models! {
-    pub enum EmbeddingModels {
-        /// `embedding-001` embedding model
-        Embedding001 => "embedding-001",
-        /// `text-embedding-004` embedding model
-        Embedding004 => "text-embedding-004",
-    }
-}
+/// `embedding-001` embedding model
+pub const EMBEDDING_001: &str = "embedding-001";
+/// `text-embedding-004` embedding model
+pub const EMBEDDING_004: &str = "text-embedding-004";
 
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
@@ -30,7 +25,15 @@ pub struct EmbeddingModel<T = reqwest::Client> {
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: EmbeddingModels, ndims: Option<usize>) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>, ndims: Option<usize>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+            ndims,
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str, ndims: Option<usize>) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -44,11 +47,10 @@ where
     T: Clone + HttpClientExt,
 {
     type Client = Client<T>;
-    type Models = EmbeddingModels;
 
     const MAX_DOCUMENTS: usize = 1024;
 
-    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
         Self::new(client.clone(), model, dims)
     }
 

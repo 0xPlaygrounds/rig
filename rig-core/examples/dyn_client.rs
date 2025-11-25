@@ -22,7 +22,10 @@ async fn main() {
 
     // set up Anthropic client
     let completion_anthropic = multi_client
-        .agent(DefaultProviders::Anthropic, anthropic::Claude37Sonnet)
+        .agent(
+            DefaultProviders::Anthropic,
+            anthropic::completion::CLAUDE_3_7_SONNET,
+        )
         .unwrap();
 
     let agent_anthropic = completion_anthropic

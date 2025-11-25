@@ -14,4 +14,4 @@ pub mod completion;
 pub mod decoders;
 pub mod streaming;
 
-pub use client::{AnthropicModels::*, Client, ClientBuilder};
+pub use client::{Client, ClientBuilder};

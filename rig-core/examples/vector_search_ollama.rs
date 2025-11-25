@@ -29,7 +29,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .unwrap();
 
-    let embedding_model = client.embedding_model("nomic-embed-text".into());
+    let embedding_model = client.embedding_model("nomic-embed-text");
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(vec![

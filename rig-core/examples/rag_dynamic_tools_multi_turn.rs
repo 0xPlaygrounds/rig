@@ -3,7 +3,7 @@ use rig::{
     completion::{Prompt, ToolDefinition},
     embeddings::EmbeddingsBuilder,
     prelude::*,
-    providers::openai::{Client, CompletionModels::GPT4, EmbeddingModels::TextEmbeddingAda2},
+    providers::openai::{self, Client},
     tool::{Tool, ToolEmbedding, ToolSet},
     vector_store::in_memory_store::InMemoryVectorStore,
 };
@@ -142,7 +142,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
     let openai_client = Client::from_env();
 
-    let embedding_model = openai_client.embedding_model(TextEmbeddingAda2);
+    let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     let toolset = ToolSet::builder()
         .dynamic_tool(Add)
@@ -163,7 +163,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create RAG agent with a single context prompt and a dynamic tool source
     let calculator_rag = openai_client
-        .agent(GPT4)
+        .agent(openai::GPT_4)
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations.
             Use the tools provided to answer the user's question and do not do any math on your own.",

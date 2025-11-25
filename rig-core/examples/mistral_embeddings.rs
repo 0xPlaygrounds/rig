@@ -17,7 +17,7 @@ struct Greetings {
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize the Mistral client
     let client = mistral::Client::from_env();
-    let embedding_model = client.embedding_model(mistral::embedding::MistralEmbed);
+    let embedding_model = client.embedding_model(mistral::embedding::MISTRAL_EMBED);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .document(Greetings {
             message: "Hello, world!".to_string(),

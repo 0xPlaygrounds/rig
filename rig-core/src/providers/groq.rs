@@ -23,7 +23,6 @@ use crate::completion::GetTokenUsage;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::{empty_or_none, merge};
-use crate::models;
 use crate::providers::openai::{AssistantContent, Function, ToolType};
 use async_stream::stream;
 use futures::StreamExt;
@@ -220,38 +219,33 @@ impl TryFrom<message::Message> for Message {
 // ================================================================
 // Groq Completion API
 // ================================================================
-models! {
-    #[allow(non_camel_case_types)]
-    pub enum CompletionModels {
-        /// The `deepseek-r1-distill-llama-70b` model. Used for chat completion.
-        DEEPSEEK_R1_DISTILL_LLAMA_70B => "deepseek-r1-distill-llama-70b",
-        /// The `gemma2-9b-it` model. Used for chat completion.
-        GEMMA2_9B_IT => "gemma2-9b-it",
-        /// The `llama-3.1-8b-instant` model. Used for chat completion.
-        LLAMA_3_1_8B_INSTANT => "llama-3.1-8b-instant",
-        /// The `llama-3.2-11b-vision-preview` model. Used for chat completion.
-        LLAMA_3_2_11B_VISION_PREVIEW => "llama-3.2-11b-vision-preview",
-        /// The `llama-3.2-1b-preview` model. Used for chat completion.
-        LLAMA_3_2_1B_PREVIEW => "llama-3.2-1b-preview",
-        /// The `llama-3.2-3b-preview` model. Used for chat completion.
-        LLAMA_3_2_3B_PREVIEW => "llama-3.2-3b-preview",
-        /// The `llama-3.2-90b-vision-preview` model. Used for chat completion.
-        LLAMA_3_2_90B_VISION_PREVIEW => "llama-3.2-90b-vision-preview",
-        /// The `llama-3.2-70b-specdec` model. Used for chat completion.
-        LLAMA_3_2_70B_SPECDEC => "llama-3.2-70b-specdec",
-        /// The `llama-3.2-70b-versatile` model. Used for chat completion.
-        LLAMA_3_2_70B_VERSATILE => "llama-3.2-70b-versatile",
-        /// The `llama-guard-3-8b` model. Used for chat completion.
-        LLAMA_GUARD_3_8B => "llama-guard-3-8b",
-        /// The `llama3-70b-8192` model. Used for chat completion.
-        LLAMA_3_70B_8192 => "llama3-70b-8192",
-        /// The `llama3-8b-8192` model. Used for chat completion.
-        LLAMA_3_8B_8192 => "llama3-8b-8192",
-        /// The `mixtral-8x7b-32768` model. Used for chat completion.
-        MIXTRAL_8X7B_32768 => "mixtral-8x7b-32768",
-    }
-}
-pub use CompletionModels::*;
+
+/// The `deepseek-r1-distill-llama-70b` model. Used for chat completion.
+pub const DEEPSEEK_R1_DISTILL_LLAMA_70B: &str = "deepseek-r1-distill-llama-70b";
+/// The `gemma2-9b-it` model. Used for chat completion.
+pub const GEMMA2_9B_IT: &str = "gemma2-9b-it";
+/// The `llama-3.1-8b-instant` model. Used for chat completion.
+pub const LLAMA_3_1_8B_INSTANT: &str = "llama-3.1-8b-instant";
+/// The `llama-3.2-11b-vision-preview` model. Used for chat completion.
+pub const LLAMA_3_2_11B_VISION_PREVIEW: &str = "llama-3.2-11b-vision-preview";
+/// The `llama-3.2-1b-preview` model. Used for chat completion.
+pub const LLAMA_3_2_1B_PREVIEW: &str = "llama-3.2-1b-preview";
+/// The `llama-3.2-3b-preview` model. Used for chat completion.
+pub const LLAMA_3_2_3B_PREVIEW: &str = "llama-3.2-3b-preview";
+/// The `llama-3.2-90b-vision-preview` model. Used for chat completion.
+pub const LLAMA_3_2_90B_VISION_PREVIEW: &str = "llama-3.2-90b-vision-preview";
+/// The `llama-3.2-70b-specdec` model. Used for chat completion.
+pub const LLAMA_3_2_70B_SPECDEC: &str = "llama-3.2-70b-specdec";
+/// The `llama-3.2-70b-versatile` model. Used for chat completion.
+pub const LLAMA_3_2_70B_VERSATILE: &str = "llama-3.2-70b-versatile";
+/// The `llama-guard-3-8b` model. Used for chat completion.
+pub const LLAMA_GUARD_3_8B: &str = "llama-guard-3-8b";
+/// The `llama3-70b-8192` model. Used for chat completion.
+pub const LLAMA_3_70B_8192: &str = "llama3-70b-8192";
+/// The `llama3-8b-8192` model. Used for chat completion.
+pub const LLAMA_3_8B_8192: &str = "llama3-8b-8192";
+/// The `mixtral-8x7b-32768` model. Used for chat completion.
+pub const MIXTRAL_8X7B_32768: &str = "mixtral-8x7b-32768";
 
 #[derive(Clone, Debug)]
 pub struct CompletionModel<T = reqwest::Client> {
@@ -261,10 +255,17 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
         }
     }
 
@@ -339,10 +340,9 @@ where
     type StreamingResponse = StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into().into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -471,14 +471,9 @@ where
 // Groq Transcription API
 // ================================================================
 
-models! {
-    pub enum TranscriptionModels {
-        WhisperLargeV3 => "whisper-large-v3",
-        WhisperLargeV3Turbo => "whisper-large-v3-turbo",
-        DistilWhisperLargeV3en => "distil-whisper-large-v3-en",
-    }
-}
-pub use TranscriptionModels::*;
+pub const WHISPER_LARGE_V3: &str = "whisper-large-v3";
+pub const WHISPER_LARGE_V3_TURBO: &str = "whisper-large-v3-turbo";
+pub const DISTIL_WHISPER_LARGE_V3_EN: &str = "distil-whisper-large-v3-en";
 
 #[derive(Clone)]
 pub struct TranscriptionModel<T> {
@@ -488,10 +483,10 @@ pub struct TranscriptionModel<T> {
 }
 
 impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -502,10 +497,9 @@ where
     type Response = TranscriptionResponse;
 
     type Client = Client<T>;
-    type Models = TranscriptionModels;
 
-    fn make(client: &Self::Client, model: Self::Models) -> Self {
-        Self::new(client.clone(), model.into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

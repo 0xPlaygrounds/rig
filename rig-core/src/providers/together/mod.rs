@@ -15,5 +15,5 @@ pub mod embedding;
 pub mod streaming;
 
 pub use client::Client;
-pub use completion::{CompletionModel, CompletionModels, CompletionModels::*};
-pub use embedding::{EmbeddingModel, EmbeddingModels, EmbeddingModels::*};
+pub use completion::*;
+pub use embedding::*;

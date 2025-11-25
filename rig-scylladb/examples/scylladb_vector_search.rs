@@ -28,7 +28,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create OpenAI client and embedding model
     let openai_client = Client::from_env();
-    let model = openai_client.embedding_model(openai::TextEmbeddingAda2);
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Create ScyllaDB vector store
     let vector_store = ScyllaDbVectorStore::new(

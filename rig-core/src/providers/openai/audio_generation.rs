@@ -16,10 +16,10 @@ pub struct AudioGenerationModel<T = reqwest::Client> {
 }
 
 impl<T> AudioGenerationModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -31,10 +31,9 @@ where
     type Response = Bytes;
 
     type Client = Client<T>;
-    type Model = String;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Model>) -> Self {
-        Self::new(client.clone(), model.into().as_str())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

@@ -9,7 +9,6 @@ use serde_json::json;
 use crate::{
     embeddings::{self, EmbeddingError},
     http_client::{self, HttpClientExt},
-    models,
 };
 
 use super::{
@@ -20,22 +19,15 @@ use super::{
 // ================================================================
 // Together AI Embedding API
 // ================================================================
-
-models! {
-    #[allow(non_camel_case_types)]
-    pub enum EmbeddingModels {
-        BGE_BASE_EN_V1_5=> "BAAI/bge-base-en-v1.5",
-        BGE_LARGE_EN_V1_5=> "BAAI/bge-large-en-v1.5",
-        BERT_BASE_UNCASED=> "bert-base-uncased",
-        M2_BERT_2K_RETRIEVAL_ENCODER_V1=> "hazyresearch/M2-BERT-2k-Retrieval-Encoder-V1",
-        M2_BERT_80M_32K_RETRIEVAL=> "togethercomputer/m2-bert-80M-32k-retrieval",
-        M2_BERT_80M_2K_RETRIEVAL=> "togethercomputer/m2-bert-80M-2k-retrieval",
-        M2_BERT_80M_8K_RETRIEVAL=> "togethercomputer/m2-bert-80M-8k-retrieval",
-        SENTENCE_BERT=> "sentence-transformers/msmarco-bert-base-dot-v5",
-        UAE_LARGE_V1=> "WhereIsAI/UAE-Large-V1",
-    }
-}
-pub use EmbeddingModels::*;
+pub const BGE_BASE_EN_V1_5: &str = "BAAI/bge-base-en-v1.5";
+pub const BGE_LARGE_EN_V1_5: &str = "BAAI/bge-large-en-v1.5";
+pub const BERT_BASE_UNCASED: &str = "bert-base-uncased";
+pub const M2_BERT_2K_RETRIEVAL_ENCODER_V1: &str = "hazyresearch/M2-BERT-2k-Retrieval-Encoder-V1";
+pub const M2_BERT_80M_32K_RETRIEVAL: &str = "togethercomputer/m2-bert-80M-32k-retrieval";
+pub const M2_BERT_80M_2K_RETRIEVAL: &str = "togethercomputer/m2-bert-80M-2k-retrieval";
+pub const M2_BERT_80M_8K_RETRIEVAL: &str = "togethercomputer/m2-bert-80M-8k-retrieval";
+pub const SENTENCE_BERT: &str = "sentence-transformers/msmarco-bert-base-dot-v5";
+pub const UAE_LARGE_V1: &str = "WhereIsAI/UAE-Large-V1";
 
 #[derive(Debug, Deserialize)]
 pub struct EmbeddingResponse {
@@ -75,7 +67,7 @@ pub struct Usage {
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
-    pub model: EmbeddingModels,
+    pub model: String,
     ndims: usize,
 }
 
@@ -86,9 +78,8 @@ where
     const MAX_DOCUMENTS: usize = 1024; // This might need to be adjusted based on Together AI's actual limit
 
     type Client = Client<T>;
-    type Models = EmbeddingModels;
 
-    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
         Self::new(client.clone(), model, dims.unwrap_or_default())
     }
 
@@ -104,7 +95,7 @@ where
         let documents = documents.into_iter().collect::<Vec<_>>();
 
         let body = serde_json::to_vec(&json!({
-            "model": <EmbeddingModels as Into<&str>>::into(self.model),
+            "model": self.model,
             "input": documents,
         }))?;
 
@@ -152,10 +143,10 @@ impl<T> EmbeddingModel<T>
 where
     T: Default,
 {
-    pub fn new(client: Client<T>, model: EmbeddingModels, ndims: usize) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
         Self {
             client,
-            model,
+            model: model.into(),
             ndims,
         }
     }

@@ -19,7 +19,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let client = Client::from_env();
     let embeddings = client
-        .embeddings_with_ndims(AMAZON_TITAN_EMBED_TEXT_V2_0.into(), 256)
+        .embeddings_with_ndims(AMAZON_TITAN_EMBED_TEXT_V2_0, 256)
         .document(Greetings {
             message: "aa".to_string(),
         })?

@@ -130,6 +130,7 @@ impl std::fmt::Display for Usage {
 // ================================================================
 // Hyperbolic Completion API
 // ================================================================
+
 /// Meta Llama 3.1b Instruct model with 8B parameters.
 pub const LLAMA_3_1_8B: &str = "meta-llama/Meta-Llama-3.1-8B-Instruct";
 /// Meta Llama 3.3b Instruct model with 70B parameters.
@@ -256,10 +257,17 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
         }
     }
 
@@ -317,10 +325,9 @@ where
     type StreamingResponse = openai::StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = String;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), &model.into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -472,10 +479,17 @@ mod image_generation {
     }
 
     impl<T> ImageGenerationModel<T> {
-        pub(crate) fn new(client: Client<T>, model: &str) -> ImageGenerationModel<T> {
+        pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
             Self {
                 client,
-                model: model.to_string(),
+                model: model.into(),
+            }
+        }
+
+        pub fn with_model(client: Client<T>, model: &str) -> Self {
+            Self {
+                client,
+                model: model.into(),
             }
         }
     }
@@ -514,10 +528,9 @@ mod image_generation {
         type Response = ImageGenerationResponse;
 
         type Client = Client<T>;
-        type Models = String;
 
-        fn make(client: &Self::Client, model: Self::Models) -> Self {
-            Self::new(client.clone(), &model)
+        fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+            Self::new(client.clone(), model)
         }
 
         #[cfg_attr(feature = "worker", worker::send)]
@@ -596,15 +609,6 @@ mod audio_generation {
         pub language: String,
     }
 
-    impl<T> AudioGenerationModel<T> {
-        pub(crate) fn new(client: Client<T>, language: &str) -> AudioGenerationModel<T> {
-            Self {
-                client,
-                language: language.to_string(),
-            }
-        }
-    }
-
     #[derive(Clone, Deserialize)]
     pub struct AudioGenerationResponse {
         audio: String,
@@ -633,10 +637,12 @@ mod audio_generation {
     {
         type Response = AudioGenerationResponse;
         type Client = Client<T>;
-        type Model = String;
 
-        fn make(client: &Self::Client, language: impl Into<Self::Model>) -> Self {
-            Self::new(client.clone(), language.into().as_str())
+        fn make(client: &Self::Client, language: impl Into<String>) -> Self {
+            Self {
+                client: client.clone(),
+                language: language.into(),
+            }
         }
 
         #[cfg_attr(feature = "worker", worker::send)]

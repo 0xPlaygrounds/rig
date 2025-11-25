@@ -185,10 +185,18 @@ pub struct EmbeddingModel<T> {
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: &str, ndims: usize) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
         Self {
             client,
-            model: model.to_owned(),
+            model: model.into(),
+            ndims,
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
+        Self {
+            client,
+            model: model.into(),
             ndims,
         }
     }
@@ -199,10 +207,9 @@ where
     T: HttpClientExt + Clone + 'static,
 {
     type Client = Client<T>;
-    type Models = String;
 
-    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model.as_str(), dims.unwrap())
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
+        Self::new(client.clone(), model, dims.unwrap())
     }
 
     const MAX_DOCUMENTS: usize = 1024;
@@ -466,9 +473,8 @@ where
     type StreamingResponse = StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = String;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model.into().as_str())
     }
 

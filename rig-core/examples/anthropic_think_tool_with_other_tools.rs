@@ -239,7 +239,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with the Think tool and other tools
     let agent = client
-        .agent(providers::anthropic::Claude37Sonnet)
+        .agent(providers::anthropic::completion::CLAUDE_3_7_SONNET)
         .name("Customer Service Agent")
         .preamble(
             "You are a customer service agent for an online store.

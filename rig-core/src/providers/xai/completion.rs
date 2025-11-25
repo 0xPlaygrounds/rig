@@ -6,7 +6,7 @@
 use crate::{
     completion::{self, CompletionError},
     http_client::HttpClientExt,
-    json_utils, models,
+    json_utils,
     providers::openai::Message,
 };
 
@@ -19,21 +19,15 @@ use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
 use xai_api_types::{CompletionResponse, ToolDefinition};
 
-models! {
-    #[allow(non_camel_case_types)]
-    /// xAI completion models as of 2025-06-04
-    pub enum CompletionModels {
-        Grok2_1212 => "grok-2-1212",
-        Grok2Vision_1212 => "grok-2-vision-1212",
-        Grok3 => "grok-3",
-        Grok3Fast => "grok-3-fast",
-        Grok3Mini => "grok-3-mini",
-        Grok3MiniFast => "grok-3-mini-fast",
-        Grok2Image_1212 => "grok-2-image-1212",
-        Grok4 => "grok-4-0709",
-    }
-}
-pub use CompletionModels::*;
+/// xAI completion models as of 2025-06-04
+pub const GROK_2_1212: &str = "grok-2-1212";
+pub const GROK_2_VISION_1212: &str = "grok-2-vision-1212";
+pub const GROK_3: &str = "grok-3";
+pub const GROK_3_FAST: &str = "grok-3-fast";
+pub const GROK_3_MINI: &str = "grok-3-mini";
+pub const GROK_3_MINI_FAST: &str = "grok-3-mini-fast";
+pub const GROK_2_IMAGE_1212: &str = "grok-2-image-1212";
+pub const GROK_4: &str = "grok-4-0709";
 
 // =================================================================
 // Rig Implementation Types
@@ -42,7 +36,7 @@ pub use CompletionModels::*;
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
-    pub model: CompletionModels,
+    pub model: String,
 }
 
 impl<T> CompletionModel<T> {
@@ -87,13 +81,13 @@ impl<T> CompletionModel<T> {
 
         let mut request = if completion_request.tools.is_empty() {
             json!({
-                "model": <CompletionModels as Into<&str>>::into(self.model),
+                "model": self.model,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
             })
         } else {
             json!({
-                "model": <CompletionModels as Into<&str>>::into(self.model),
+                "model": self.model,
                 "messages": full_history,
                 "temperature": completion_request.temperature,
                 "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
@@ -110,8 +104,18 @@ impl<T> CompletionModel<T> {
         Ok(request)
     }
 
-    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
-        Self { client, model }
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 
@@ -123,10 +127,9 @@ where
     type StreamingResponse = openai::StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -145,7 +148,7 @@ where
                 "chat",
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "xai",
-                gen_ai.request.model = <CompletionModels as Into<&str>>::into(self.model),
+                gen_ai.request.model = self.model,
                 gen_ai.system_instructions = preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,

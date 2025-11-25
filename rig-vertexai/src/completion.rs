@@ -44,10 +44,17 @@ impl GetTokenUsage for PlaceholderStreamingResponse {
 }
 
 impl CompletionModel {
-    pub fn new(client: crate::client::Client, model: &str) -> Self {
+    pub fn new(client: Client, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
+        }
+    }
+
+    pub fn with_model(client: Client, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
         }
     }
 
@@ -66,10 +73,9 @@ impl CompletionModelTrait for CompletionModel {
     type StreamingResponse = PlaceholderStreamingResponse;
 
     type Client = Client;
-    type Models = String;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), &model.into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model.into())
     }
 
     async fn completion(

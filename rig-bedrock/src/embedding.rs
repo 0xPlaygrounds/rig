@@ -38,10 +38,10 @@ pub struct EmbeddingModel {
 }
 
 impl EmbeddingModel {
-    pub fn new(client: Client, model: &str, ndims: Option<usize>) -> Self {
+    pub fn new(client: Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
             ndims,
         }
     }
@@ -82,10 +82,9 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 1024;
 
     type Client = Client;
-    type Models = String;
 
-    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model.as_str(), dims)
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
+        Self::new(client.clone(), model, dims)
     }
 
     fn ndims(&self) -> usize {

@@ -146,7 +146,7 @@ async fn vector_search_test() {
         .unwrap();
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TextEmbeddingAda2);
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     let embeddings = create_embeddings(model.clone()).await;
 

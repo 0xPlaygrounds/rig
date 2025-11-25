@@ -42,7 +42,7 @@ async fn test_openai_streaming(
     let mut stream = client
         .stream_prompt(
             DefaultProviders::OpenAI,
-            openai::GPT4O,
+            openai::GPT_4O,
             "Tell me a short story about a robot learning to paint",
         )
         .await?;
@@ -86,7 +86,7 @@ async fn test_anthropic_streaming(
     let mut stream = client
         .stream_prompt(
             DefaultProviders::Anthropic,
-            anthropic::Claude37Sonnet,
+            anthropic::completion::CLAUDE_3_7_SONNET,
             "Explain quantum computing in simple terms",
         )
         .await?;
@@ -130,7 +130,7 @@ async fn test_provider_model_id_streaming(
     let mut stream = client
         .stream_prompt(
             DefaultProviders::OpenAI,
-            openai::GPT4,
+            openai::GPT_4,
             "What are the benefits of renewable energy?",
         )
         .await?;

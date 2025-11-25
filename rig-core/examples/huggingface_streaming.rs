@@ -23,7 +23,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
 async fn hf_inference(api_key: &str) -> Result<(), anyhow::Error> {
     let agent = huggingface::Client::<reqwest::Client>::new(api_key)?
-        .agent("meta-llama/Llama-3.1-8B-Instruct")
+        .agent("meta-llama/Meta-Llama-3.1-8B-Instruct")
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

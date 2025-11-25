@@ -1,4 +1,6 @@
 use rig::prelude::*;
+use rig::providers::anthropic::completion::CLAUDE_3_SONNET;
+use rig::providers::openai::GPT_4O;
 use rig::{
     completion::{Prompt, ToolDefinition},
     providers,
@@ -41,7 +43,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a basic agent for general conversation
     let agent = client
-        .agent("gpt-4o")
+        .agent(GPT_4O)
         .preamble("You are a helpful AI assistant.")
         .temperature(0.7)
         .build();
@@ -52,7 +54,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a calculator agent with tools
     let calculator_agent = client
-        .agent("claude-3.5-sonnet")
+        .agent(CLAUDE_3_SONNET)
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
         .max_tokens(1024)
         .tool(Adder)

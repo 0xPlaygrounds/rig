@@ -29,7 +29,7 @@ async fn whisper(file_path: &str) {
     // Create an OAI client
     let openai = openai::Client::from_env();
     // Create the whisper transcription model
-    let whisper = openai.transcription_model(openai::Whisper1);
+    let whisper = openai.transcription_model(openai::WHISPER_1);
     let response = whisper
         .transcription_request()
         .load_file(file_path)
@@ -44,7 +44,7 @@ async fn gemini(file_path: &str) {
     // Create an OAI client
     let gemini = gemini::Client::from_env();
     // Create the whisper transcription model
-    let gemini = gemini.transcription_model(gemini::Gemini20Flash);
+    let gemini = gemini.transcription_model(gemini::completion::GEMINI_2_0_FLASH);
     let response = gemini
         .transcription_request()
         .load_file(file_path)
@@ -57,7 +57,7 @@ async fn gemini(file_path: &str) {
 
 async fn azure(file_path: &str) {
     let azure = azure::Client::from_env();
-    let whisper = azure.transcription_model("whisper".into());
+    let whisper = azure.transcription_model("whisper");
     let response = whisper
         .transcription_request()
         .load_file(file_path)
@@ -71,7 +71,7 @@ async fn azure(file_path: &str) {
 async fn groq(file_path: &str) {
     let groq = groq::Client::from_env();
     // Create the whisper transcription model
-    let whisper = groq.transcription_model(groq::WhisperLargeV3);
+    let whisper = groq.transcription_model(groq::WHISPER_LARGE_V3);
     let response = whisper
         .transcription_request()
         .load_file(file_path)
@@ -84,7 +84,7 @@ async fn groq(file_path: &str) {
 
 async fn huggingface(file_path: &str) {
     let huggingface = huggingface::Client::from_env();
-    let whisper = huggingface.transcription_model(huggingface::WhisperLargeV3);
+    let whisper = huggingface.transcription_model("whisper-large-v3");
     let response = whisper
         .transcription_request()
         .load_file(file_path)

@@ -6,7 +6,7 @@ use rmcp::ServiceExt;
 use rig::{
     client::{CompletionClient, ProviderClient},
     completion::Prompt,
-    providers::openai::{self, CompletionModels::GPT4O},
+    providers::openai,
 };
 use rmcp::{
     RoleServer, ServerHandler,
@@ -260,7 +260,7 @@ async fn main() -> anyhow::Result<()> {
     // takes the `OPENAI_API_KEY` as an env var on usage
     let openai_client = openai::Client::from_env();
     let agent = openai_client
-        .agent(GPT4O)
+        .agent(openai::GPT_4O)
         .preamble("You are a helpful assistant who has access to a number of tools from an MCP server designed to be used for incrementing and decrementing a counter.")
         .rmcp_tools(tools, client.peer().to_owned())
         .build();
