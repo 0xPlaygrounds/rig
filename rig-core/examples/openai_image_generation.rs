@@ -22,7 +22,7 @@ async fn main() {
     let mut file = File::create_new(path).expect("Failed to create file");
 
     let openai = openai::Client::from_env();
-    let dalle = openai.image_generation_model(openai::DallE2);
+    let dalle = openai.image_generation_model(openai::DALL_E_2);
 
     let response = dalle
         .image_generation_request()

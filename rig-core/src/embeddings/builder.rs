@@ -172,11 +172,11 @@ mod tests {
 
     impl EmbeddingModel for Model {
         const MAX_DOCUMENTS: usize = 5;
-        type Models = Nothing;
+
         type Client = Nothing;
 
-        fn make(_: &Self::Client, _: Self::Models, _: Option<usize>) -> Self {
-            Model
+        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
+            Self
         }
 
         fn ndims(&self) -> usize {

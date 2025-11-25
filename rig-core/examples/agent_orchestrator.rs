@@ -1,5 +1,5 @@
 use rig::prelude::*;
-use rig::providers::openai::CompletionModels::GPT4;
+use rig::providers::openai;
 use rig::providers::openai::client::Client;
 use schemars::JsonSchema;
 
@@ -28,7 +28,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Note that you can also create your own semantic router for this
     // that uses a vector store under the hood
-    let classify_agent = openai_client.extractor::<Specification>(GPT4)
+    let classify_agent = openai_client.extractor::<Specification>(openai::GPT_4)
         .preamble("
             Analyze the given task and break it down into 2-3 distinct approaches.
 
@@ -52,7 +52,7 @@ async fn main() -> Result<(), anyhow::Error> {
         ").await.unwrap();
 
     let content_agent = openai_client
-        .extractor::<TaskResults>(GPT4)
+        .extractor::<TaskResults>(openai::GPT_4)
         .preamble(
             "
                 Generate content based on the original task, style, and guidelines.
@@ -79,7 +79,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     let judge_agent = openai_client
-        .extractor::<Specification>(GPT4)
+        .extractor::<Specification>(openai::GPT_4)
         .preamble(
             "
             Analyze the given written materials and decide the best one, giving your reasoning.

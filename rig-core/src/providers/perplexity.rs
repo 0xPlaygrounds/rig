@@ -20,7 +20,7 @@ use crate::{
     },
     completion::{self, CompletionError, MessageError, message},
     http_client::{self, HttpClientExt},
-    models,
+    json_utils,
 };
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -111,15 +111,8 @@ enum ApiResponse<T> {
 // Perplexity Completion API
 // ================================================================
 
-models! {
-    pub enum CompletionModels {
-        /// `sonar-pro` completion model
-        SonarPro => "sonar-pro",
-        /// `sonar` completion model
-        Sonar => "sonar",
-    }
-}
-pub use CompletionModels::*;
+pub const SONAR_PRO: &str = "sonar_pro";
+pub const SONAR: &str = "sonar";
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -338,10 +331,9 @@ where
     type StreamingResponse = openai::StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into().into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

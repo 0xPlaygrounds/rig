@@ -50,7 +50,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Get your API key from https://platform.openai.com/api-keys
     let openai_client = Client::from_env();
 
-    let model = openai_client.embedding_model(openai::TextEmbeddingAda2);
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     let documents = EmbeddingsBuilder::new(model.clone())
         .document(Word {

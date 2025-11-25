@@ -20,7 +20,7 @@ use crate::{
     json_utils,
     providers::openai,
 };
-use crate::{http_client, message, models};
+use crate::{http_client, message};
 use serde::{Deserialize, Serialize};
 use tracing::{Instrument, info_span};
 
@@ -111,12 +111,7 @@ enum ApiResponse<T> {
 // Moonshot Completion API
 // ================================================================
 
-models! {
-    pub enum CompletionModels {
-        MoonshotChat => "moonshot-v1-128k",
-    }
-}
-pub use CompletionModels::*;
+pub const MOONSHOT_CHAT: &str = "moonshot-v1-128k";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct MoonshotCompletionRequest {
@@ -208,10 +203,9 @@ where
     type StreamingResponse = openai::StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into().into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

@@ -20,7 +20,5 @@ pub mod streaming;
 pub mod transcription;
 
 pub use client::{Client, ClientBuilder, SubProvider};
-pub use completion::CompletionModels::*;
 #[cfg(feature = "image")]
-pub use image_generation::ImageGenerationModels::*;
-pub use transcription::TranscriptionModels::*;
+pub use image_generation::image_generation_models::*;

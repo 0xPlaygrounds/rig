@@ -1,7 +1,6 @@
 use rig::agent::AgentBuilder;
 use rig::prelude::*;
-use rig::providers::moonshot::CompletionModel;
-use rig::providers::moonshot::CompletionModels::MoonshotChat;
+use rig::providers::moonshot::{CompletionModel, MOONSHOT_CHAT};
 use rig::{completion::Prompt, providers};
 
 #[tokio::main]
@@ -20,7 +19,7 @@ fn client() -> providers::moonshot::Client {
 
 fn partial_agent_moonshot() -> AgentBuilder<CompletionModel> {
     let client = client();
-    client.agent(MoonshotChat)
+    client.agent(MOONSHOT_CHAT)
 }
 
 async fn basic_moonshot() -> Result<(), anyhow::Error> {
@@ -37,7 +36,7 @@ async fn basic_moonshot() -> Result<(), anyhow::Error> {
 }
 
 async fn context_moonshot() -> Result<(), anyhow::Error> {
-    let model = client().completion_model(MoonshotChat);
+    let model = client().completion_model(MOONSHOT_CHAT);
 
     // Create an agent with multiple context documents
     let agent = AgentBuilder::new(model)

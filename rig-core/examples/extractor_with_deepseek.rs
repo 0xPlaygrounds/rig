@@ -21,7 +21,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create extractor
     let data_extractor = deepseek_client
-        .extractor::<Person>(deepseek::DeepSeekChat)
+        .extractor::<Person>(deepseek::DEEPSEEK_CHAT)
         .build();
     let person = data_extractor
         .extract("Hello my name is John Doe! I am a software engineer.")

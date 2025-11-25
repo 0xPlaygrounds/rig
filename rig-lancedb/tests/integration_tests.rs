@@ -8,7 +8,7 @@ use rig::{
     completion::Prompt,
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     prelude::CompletionClient,
-    providers::openai::{self, CompletionModels::GPT4O},
+    providers::openai,
     vector_store::{VectorStoreIndex, request::VectorSearchRequest},
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
@@ -114,7 +114,7 @@ async fn vector_search_test() {
         .unwrap();
 
     // Select an embedding model.
-    let model = openai_client.embedding_model(openai::TextEmbeddingAda2);
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store")
@@ -330,7 +330,7 @@ async fn agent_with_dynamic_context_test() {
         .unwrap();
 
     // Select an embedding model.
-    let model = openai_client.embedding_model(openai::TextEmbeddingAda2);
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store")
@@ -396,7 +396,7 @@ async fn agent_with_dynamic_context_test() {
 
     // Build RAG agent with dynamic context
     let agent = openai_client
-        .completion_model(GPT4O)
+        .completion_model(openai::GPT_4O)
         .completions_api()
         .into_agent_builder()
         .dynamic_context(top_k, vector_store_index)

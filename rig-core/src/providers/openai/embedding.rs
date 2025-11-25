@@ -5,25 +5,19 @@ use super::{
 };
 use crate::embeddings::EmbeddingError;
 use crate::http_client::HttpClientExt;
-use crate::{embeddings, http_client, models};
+use crate::{embeddings, http_client};
 use serde::Deserialize;
 use serde_json::json;
 
 // ================================================================
 // OpenAI Embedding API
 // ================================================================
-
-models! {
-    pub enum EmbeddingModels {
-        /// `text-embedding-3-large` embedding model
-        TextEmbedding3Large => "text-embedding-3-large",
-        /// `text-embedding-3-small` embedding model
-        TextEmbedding3Small => "text-embedding-3-small",
-        /// `text-embedding-ada-002` embedding model
-        TextEmbeddingAda2 => "text-embedding-ada-002",
-    }
-}
-pub use EmbeddingModels::*;
+/// `text-embedding-3-large` embedding model
+pub const TEXT_EMBEDDING_3_LARGE: &str = "text-embedding-3-large";
+/// `text-embedding-3-small` embedding model
+pub const TEXT_EMBEDDING_3_SMALL: &str = "text-embedding-3-small";
+/// `text-embedding-ada-002` embedding model
+pub const TEXT_EMBEDDING_ADA_002: &str = "text-embedding-ada-002";
 
 #[derive(Debug, Deserialize)]
 pub struct EmbeddingResponse {
@@ -58,8 +52,16 @@ pub struct EmbeddingData {
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
-    pub model: EmbeddingModels,
+    pub model: String,
     ndims: usize,
+}
+
+fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
+    match identifier {
+        TEXT_EMBEDDING_3_LARGE => Some(3_072),
+        TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => Some(1_536),
+        _ => None,
+    }
 }
 
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
@@ -69,13 +71,12 @@ where
     const MAX_DOCUMENTS: usize = 1024;
 
     type Client = Client<T>;
-    type Models = EmbeddingModels;
 
-    fn make(client: &Self::Client, model: Self::Models, ndims: Option<usize>) -> Self {
-        let dims = ndims.unwrap_or(match model {
-            EmbeddingModels::TextEmbedding3Large => 3072,
-            _ => 1536,
-        });
+    fn make(client: &Self::Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
+        let model = model.into();
+        let dims = ndims
+            .or(model_dimensions_from_identifier(&model))
+            .unwrap_or_default();
 
         Self::new(client.clone(), model, dims)
     }
@@ -92,11 +93,11 @@ where
         let documents = documents.into_iter().collect::<Vec<_>>();
 
         let mut body = json!({
-            "model": <EmbeddingModels as Into<&str>>::into(self.model),
+            "model": self.model,
             "input": documents,
         });
 
-        if self.ndims > 0 && self.model != EmbeddingModels::TextEmbeddingAda2 {
+        if self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002 {
             body["dimensions"] = json!(self.ndims);
         }
 
@@ -148,10 +149,18 @@ where
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: EmbeddingModels, ndims: usize) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
         Self {
             client,
-            model,
+            model: model.into(),
+            ndims,
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
+        Self {
+            client,
+            model: model.into(),
             ndims,
         }
     }

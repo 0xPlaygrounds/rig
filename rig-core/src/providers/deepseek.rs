@@ -24,7 +24,6 @@ use crate::completion::GetTokenUsage;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{Document, DocumentSourceKind};
-use crate::models;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -506,9 +505,8 @@ where
     type StreamingResponse = StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self {
             client: client.clone(),
             model: model.into().to_string(),
@@ -729,7 +727,7 @@ where
 
                                 // Start of tool call
                                 if function.name.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
-                                    && function.arguments.is_empty()
+                                    && empty_or_none(&function.arguments)
                                 {
                                     let id = tool_call.id.clone().unwrap_or_default();
                                     let name = function.name.clone().unwrap();
@@ -737,10 +735,11 @@ where
                                 }
                                 // Continuation of tool call
                                 else if function.name.as_ref().map(|s| s.is_empty()).unwrap_or(true)
-                                    && !function.arguments.is_empty()
+                                    && let Some(arguments) = &function.arguments
+                                    && !arguments.is_empty()
                                 {
                                     if let Some((id, name, existing_args)) = calls.get(&tool_call.index) {
-                                        let combined = format!("{}{}", existing_args, function.arguments);
+                                        let combined = format!("{}{}", existing_args, arguments);
                                         calls.insert(tool_call.index, (id.clone(), name.clone(), combined));
                                     } else {
                                         tracing::debug!("Partial tool call received but tool call was never started.");
@@ -750,7 +749,7 @@ where
                                 else {
                                     let id = tool_call.id.clone().unwrap_or_default();
                                     let name = function.name.clone().unwrap_or_default();
-                                    let arguments_str = function.arguments.clone();
+                                    let arguments_str = function.arguments.clone().unwrap_or_default();
 
                                     let Ok(arguments_json) = serde_json::from_str::<serde_json::Value>(&arguments_str) else {
                                         tracing::debug!("Couldn't parse tool call args '{}'", arguments_str);
@@ -844,16 +843,8 @@ where
 // ================================================================
 // DeepSeek Completion API
 // ================================================================
-
-models! {
-    pub enum CompletionModels {
-        /// `deepseek-chat` completion model
-        DeepSeekChat => "deepseek-chat",
-        /// `deepseek-reasoner` completion model
-        DeepSeekReasoner => "deepseek-reasoner",
-    }
-}
-pub use CompletionModels::*;
+pub const DEEPSEEK_CHAT: &str = "deepseek-chat";
+pub const DEEPSEEK_REASONER: &str = "deepseek-reasoner";
 
 // Tests
 #[cfg(test)]

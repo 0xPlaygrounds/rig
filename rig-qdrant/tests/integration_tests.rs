@@ -146,7 +146,7 @@ async fn vector_search_test() {
         .build()
         .unwrap();
 
-    let model = openai_client.embedding_model(openai::TextEmbeddingAda2);
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     let points = create_points(model.clone()).await;
 

@@ -1,7 +1,7 @@
 use anyhow::Context;
 use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
-use rig_vertexai::{Client, GEMINI_2_5_FLASH_LITE};
+use rig_vertexai::{Client, completion::GEMINI_2_5_FLASH_LITE};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {

@@ -121,10 +121,10 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 1024;
 
     type Client = Client;
-    type Models = fastembed::EmbeddingModel;
 
-    fn make(_: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
-        Self::new(&model, dims.unwrap_or_default())
+    /// **PANICS**: FastEmbed models cannot be created via this method, which will panic
+    fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
+        panic!("Cannot create a fastembed model via `EmbeddingModel::make`")
     }
 
     fn ndims(&self) -> usize {

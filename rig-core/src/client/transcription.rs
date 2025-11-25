@@ -1,9 +1,6 @@
-use crate::{
-    client::Nothing,
-    transcription::{
-        TranscriptionError, TranscriptionModel, TranscriptionModelDyn, TranscriptionRequest,
-        TranscriptionResponse,
-    },
+use crate::transcription::{
+    TranscriptionError, TranscriptionModel, TranscriptionModelDyn, TranscriptionRequest,
+    TranscriptionResponse,
 };
 use std::sync::Arc;
 
@@ -25,10 +22,7 @@ pub trait TranscriptionClient {
     ///
     /// let whisper = openai.transcription_model(openai::WHISPER_1);
     /// ```
-    fn transcription_model(
-        &self,
-        model: <Self::TranscriptionModel as TranscriptionModel>::Models,
-    ) -> Self::TranscriptionModel;
+    fn transcription_model(&self, model: impl Into<String>) -> Self::TranscriptionModel;
 }
 
 pub trait TranscriptionClientDyn {
@@ -42,11 +36,6 @@ where
     M: TranscriptionModel + 'static,
 {
     fn transcription_model<'a>(&self, model: &str) -> Box<dyn TranscriptionModelDyn + 'a> {
-        let model = match model.to_string().try_into() {
-            Ok(model) => model,
-            Err(_) => panic!("Invalid model '{model}'"),
-        };
-
         Box::new(self.transcription_model(model))
     }
 }
@@ -60,10 +49,13 @@ pub struct TranscriptionModelHandle<'a> {
 impl TranscriptionModel for TranscriptionModelHandle<'_> {
     type Response = ();
     type Client = ();
-    type Models = Nothing;
 
-    fn make(_: &Self::Client, _: Self::Models) -> Self {
-        panic!("TranscriptionModelHandle::TranscriptionModel::make should not be called")
+    /// **PANICS**: We are deprecating DynClientBuilder and related functionality, during this
+    /// transition some methods will be invalid, like this one
+    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
+        panic!(
+            "Invalid method: Cannot make a TranscriptionModelHandle from a client + model identifier"
+        )
     }
 
     async fn transcription(

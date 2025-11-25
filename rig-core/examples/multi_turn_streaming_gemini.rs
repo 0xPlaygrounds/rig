@@ -44,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Create agent with a single context prompt and a calculator tools
     let calculator_agent = llm_client
-        .agent(gemini::Gemini25Flash)
+        .agent(gemini::completion::GEMINI_2_5_FLASH_PREVIEW_05_20)
         .preamble("You are an calculator. You must use tools to get the user result")
         .tool(Add)
         .tool(Subtract)

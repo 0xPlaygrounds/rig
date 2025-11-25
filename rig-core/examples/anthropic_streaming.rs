@@ -8,7 +8,7 @@ use rig::{
 async fn main() -> Result<(), anyhow::Error> {
     // Create streaming agent with a single context prompt
     let agent = anthropic::Client::from_env()
-        .agent(anthropic::Claude35Sonnet)
+        .agent(anthropic::completion::CLAUDE_3_5_SONNET)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

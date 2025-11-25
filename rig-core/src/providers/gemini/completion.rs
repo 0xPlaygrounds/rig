@@ -30,7 +30,6 @@ pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 use self::gemini_api_types::Schema;
 use crate::http_client::HttpClientExt;
 use crate::message::Reasoning;
-use crate::models;
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
@@ -54,41 +53,6 @@ use super::Client;
 // Rig Implementation Types
 // =================================================================
 
-models! {
-    #[allow(non_camel_case_types)]
-    pub enum CompletionModels {
-        /// `gemini-2.5-pro` completion model
-        Gemini25Pro => "gemini-2.5-pro",
-        /// `gemini-2.5-pro-preview-06-05` completion model
-        Gemini25ProPreview_06_05 => "gemini-2.5-pro-preview-06-05",
-        /// `gemini-2.5-pro-preview-05-06` completion model
-        Gemini25ProPreview_05_06 => "gemini-2.5-pro-preview-05-06",
-        /// `gemini-2.5-pro-preview-03-25` completion model
-        Gemini25ProPreview_03_25 => "gemini-2.5-pro-preview-03-25",
-        /// `gemini-2.5-flash` completion model
-        Gemini25Flash => "gemini-2.5-flash",
-        /// `gemini-2.5-flash-preview-05-20` completion model
-        Gemini25FlashPreview_05_20 => "gemini-2.5-flash-preview-05-20",
-        /// `gemini-2.5-flash-preview-04-17` completion model
-        Gemini25FlashPreview_04_17 => "gemini-2.5-flash-preview-04-17",
-        /// `gemini-2.5-pro-exp-03-25` experimental completion model
-        Gemini25ProExp_03_25 => "gemini-2.5-pro-exp-03-25",
-        /// `gemini-2.0-flash-lite` completion model
-        Gemini20FlashLite => "gemini-2.0-flash-lite",
-        /// `gemini-2.0-flash` completion model
-        Gemini20Flash => "gemini-2.0-flash",
-        /// `gemini-1.5-flash` completion model
-        Gemini15Flash => "gemini-1.5-flash",
-        /// `gemini-1.5-pro` completion model
-        Gemini15Pro => "gemini-1.5-pro",
-        /// `gemini-1.5-pro-8b` completion model
-        Gemini15Pro8B => "gemini-1.5-pro-8b",
-        /// `gemini-1.0-pro` completion model
-        Gemini10Pro => "gemini-1.0-pro",
-    }
-}
-pub use CompletionModels::*;
-
 #[derive(Clone, Debug)]
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
@@ -96,10 +60,17 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
         }
     }
 }
@@ -111,10 +82,9 @@ where
     type Response = GenerateContentResponse;
     type StreamingResponse = StreamingCompletionResponse;
     type Client = super::Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -1309,6 +1279,19 @@ pub mod gemini_api_types {
         /// types: application/json: Schema for JSON response. Refer to the JSON text generation guide for more details.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub response_schema: Option<Schema>,
+        /// Optional. The output schema of the generated response.
+        /// This is an alternative to responseSchema that accepts a standard JSON Schema.
+        /// If this is set, responseSchema must be omitted.
+        /// Compatible MIME type: application/json.
+        /// Supported properties: $id, $defs, $ref, type, properties, etc.
+        #[serde(
+            skip_serializing_if = "Option::is_none",
+            rename = "_responseJsonSchema"
+        )]
+        pub _response_json_schema: Option<Value>,
+        /// Internal or alternative representation for `response_json_schema`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub response_json_schema: Option<Value>,
         /// Number of generated responses to return. Currently, this value can only be set to 1. If
         /// unset, this will default to 1.
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1372,6 +1355,8 @@ pub mod gemini_api_types {
                 stop_sequences: None,
                 response_mime_type: None,
                 response_schema: None,
+                _response_json_schema: None,
+                response_json_schema: None,
                 candidate_count: None,
                 top_p: None,
                 top_k: None,

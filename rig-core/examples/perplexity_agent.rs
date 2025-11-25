@@ -1,5 +1,5 @@
 use rig::client::{CompletionClient, ProviderClient};
-use rig::providers::perplexity::CompletionModels::Sonar;
+use rig::providers::perplexity::SONAR;
 use rig::{
     completion::Prompt,
     providers::{self},
@@ -13,7 +13,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let agent = client
-        .agent(Sonar)
+        .agent(SONAR)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .additional_params(json!({
