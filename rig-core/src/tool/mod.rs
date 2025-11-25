@@ -194,6 +194,7 @@ pub mod rmcp {
     use rmcp::model::RawContent;
     use std::borrow::Cow;
 
+    #[derive(Clone)]
     pub struct McpTool {
         definition: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
