@@ -454,7 +454,7 @@ fn add_props_false(schema: &mut serde_json::Value) {
                     .collect()
             } else {
                 vec![]
-            };
+            }; 
 
             obj.insert("required".to_string(), Value::Array(prop_names));
         }
