@@ -12,7 +12,6 @@ use crate::client::{
     ProviderClient,
 };
 use crate::http_client::{self, HttpClientExt};
-use crate::json_utils::merge;
 use crate::message::{Document, DocumentSourceKind};
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
@@ -23,7 +22,6 @@ use crate::{
     message::{self, AssistantContent, Message, UserContent},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use std::string::FromUtf8Error;
 use thiserror::Error;
 use tracing::{self, Instrument, info_span};
@@ -206,48 +204,31 @@ impl ProviderClient for Client {
     }
 }
 
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model
-    pub model: String,
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct MiraCompletionRequest {
+    model: String,
+    pub messages: Vec<RawMessage>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u64>,
+    pub stream: bool,
 }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
+impl TryFrom<(&str, CompletionRequest)> for MiraCompletionRequest {
+    type Error = CompletionError;
 
-    pub fn with_model(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-
-    fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        if completion_request.tool_choice.is_some() {
-            tracing::warn!("WARNING: `tool_choice` not supported on Mira AI");
-        }
-
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         let mut messages = Vec::new();
 
-        // Add preamble as user message if available
-        if let Some(preamble) = &completion_request.preamble {
-            messages.push(serde_json::json!({
-                "role": "user",
-                "content": preamble.to_string()
-            }));
+        if let Some(content) = &req.preamble {
+            messages.push(RawMessage {
+                role: "user".to_string(),
+                content: content.to_string(),
+            });
         }
 
-        // Add docs
-        if let Some(Message::User { content }) = completion_request.normalized_documents() {
+        if let Some(Message::User { content }) = req.normalized_documents() {
             let text = content
                 .into_iter()
                 .filter_map(|doc| match doc {
@@ -263,14 +244,13 @@ impl<T> CompletionModel<T> {
                 .collect::<Vec<_>>()
                 .join("\n");
 
-            messages.push(serde_json::json!({
-                "role": "user",
-                "content": text
-            }));
+            messages.push(RawMessage {
+                role: "user".to_string(),
+                content: text,
+            });
         }
 
-        // Add chat history
-        for msg in completion_request.chat_history {
+        for msg in req.chat_history {
             let (role, content) = match msg {
                 Message::User { content } => {
                     let text = content
@@ -295,21 +275,35 @@ impl<T> CompletionModel<T> {
                     ("assistant", text)
                 }
             };
-            messages.push(serde_json::json!({
-                "role": role,
-                "content": content
-            }));
+            messages.push(RawMessage {
+                role: role.to_string(),
+                content,
+            });
         }
 
-        let request = serde_json::json!({
-            "model": self.model,
-            "messages": messages,
-            "temperature": completion_request.temperature.map(|t| t as f32).unwrap_or(0.7),
-            "max_tokens": completion_request.max_tokens.map(|t| t as u32).unwrap_or(100),
-            "stream": false
-        });
+        Ok(Self {
+            model: model.to_string(),
+            messages,
+            temperature: req.temperature,
+            max_tokens: req.max_tokens,
+            stream: false,
+        })
+    }
+}
 
-        Ok(request)
+#[derive(Clone)]
+pub struct CompletionModel<T = reqwest::Client> {
+    client: Client<T>,
+    /// Name of the model
+    pub model: String,
+}
+
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 
@@ -333,14 +327,21 @@ where
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         if !completion_request.tools.is_empty() {
             tracing::warn!(target: "rig::completions",
-                "Tool calls are not supported by the Mira provider. {len} tools will be ignored.",
+                "Tool calls are not supported by Mira AI. {len} tools will be ignored.",
                 len = completion_request.tools.len()
             );
         }
 
-        let preamble = completion_request.preamble.clone();
+        if completion_request.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported on Mira AI");
+        }
 
-        let request = self.create_completion_request(completion_request)?;
+        if completion_request.additional_params.is_some() {
+            tracing::warn!("WARNING: Additional parameters not supported on Mira AI");
+        }
+
+        let preamble = completion_request.preamble.clone();
+        let request = MiraCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -354,7 +355,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
@@ -426,8 +427,24 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        if !completion_request.tools.is_empty() {
+            tracing::warn!(target: "rig::completions",
+                "Tool calls are not supported by Mira AI. {len} tools will be ignored.",
+                len = completion_request.tools.len()
+            );
+        }
+
+        if completion_request.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported on Mira AI");
+        }
+
+        if completion_request.additional_params.is_some() {
+            tracing::warn!("WARNING: Additional parameters not supported on Mira AI");
+        }
         let preamble = completion_request.preamble.clone();
-        let mut request = self.create_completion_request(completion_request)?;
+        let mut request =
+            MiraCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+        request.stream = true;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -441,13 +458,12 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
-        request = merge(request, json!({"stream": true}));
         let body = serde_json::to_vec(&request)?;
 
         let req = self

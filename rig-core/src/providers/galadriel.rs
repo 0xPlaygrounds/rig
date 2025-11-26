@@ -16,7 +16,6 @@ use crate::client::{
     ProviderClient,
 };
 use crate::http_client::{self, HttpClientExt};
-use crate::json_utils::merge;
 use crate::message::MessageError;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
@@ -26,7 +25,6 @@ use crate::{
     json_utils, message,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
 
 // ================================================================
@@ -291,6 +289,16 @@ pub struct Message {
     pub tool_calls: Vec<openai::ToolCall>,
 }
 
+impl Message {
+    fn system(preamble: &str) -> Self {
+        Self {
+            role: "system".to_string(),
+            content: Some(preamble.to_string()),
+            tool_calls: Vec::new(),
+        }
+    }
+}
+
 impl TryFrom<Message> for message::Message {
     type Error = message::MessageError;
 
@@ -409,6 +417,67 @@ pub struct Function {
     pub arguments: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct GaladrielCompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinition>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
+}
+
+impl TryFrom<(&str, CompletionRequest)> for GaladrielCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        // Build up the order of messages (context, chat_history, prompt)
+        let mut partial_history = vec![];
+        if let Some(docs) = req.normalized_documents() {
+            partial_history.push(docs);
+        }
+        partial_history.extend(req.chat_history);
+
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<Message> = match &req.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
+        };
+
+        // Convert and extend the rest of the history
+        full_history.extend(
+            partial_history
+                .into_iter()
+                .map(message::Message::try_into)
+                .collect::<Result<Vec<Message>, _>>()?,
+        );
+
+        let tool_choice = req
+            .tool_choice
+            .clone()
+            .map(crate::providers::openai::completion::ToolChoice::try_from)
+            .transpose()?;
+
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
@@ -433,66 +502,6 @@ where
             model: model.into(),
         }
     }
-
-    pub(crate) fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        // Build up the order of messages (context, chat_history, prompt)
-        let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
-            partial_history.push(docs);
-        }
-        partial_history.extend(completion_request.chat_history);
-
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
-            Some(preamble) => vec![Message {
-                role: "system".to_string(),
-                content: Some(preamble.to_string()),
-                tool_calls: vec![],
-            }],
-            None => vec![],
-        };
-
-        // Convert and extend the rest of the history
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(message::Message::try_into)
-                .collect::<Result<Vec<Message>, _>>()?,
-        );
-
-        let tool_choice = completion_request
-            .tool_choice
-            .clone()
-            .map(crate::providers::openai::completion::ToolChoice::try_from)
-            .transpose()?;
-
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": tool_choice,
-            })
-        };
-
-        let request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
-
-        Ok(request)
-    }
 }
 
 impl<T> completion::CompletionModel for CompletionModel<T>
@@ -514,7 +523,8 @@ where
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
-        let request = self.create_completion_request(completion_request)?;
+        let request =
+            GaladrielCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
         let body = serde_json::to_vec(&request)?;
 
         let req = self
@@ -536,7 +546,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
@@ -583,15 +593,18 @@ where
     #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
-        request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let preamble = request.preamble.clone();
-        let mut request = self.create_completion_request(request)?;
+        let preamble = completion_request.preamble.clone();
+        let mut request =
+            GaladrielCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
-        request = merge(
-            request,
-            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        let params = json_utils::merge(
+            request.additional_params.unwrap_or(serde_json::json!({})),
+            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
         );
+
+        request.additional_params = Some(params);
 
         let body = serde_json::to_vec(&request)?;
 
@@ -614,7 +627,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {

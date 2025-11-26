@@ -13,8 +13,6 @@ use super::openai::{AssistantContent, send_compatible_streaming_request};
 use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder};
 use crate::client::{BearerAuth, ProviderClient};
 use crate::http_client::{self, HttpClientExt};
-use crate::json_utils::merge_inplace;
-use crate::message;
 use crate::streaming::StreamingCompletionResponse;
 
 use crate::providers::openai;
@@ -25,7 +23,6 @@ use crate::{
     providers::openai::Message,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 
 // ================================================================
 // Main Hyperbolic Client
@@ -249,6 +246,59 @@ pub struct Choice {
     pub finish_reason: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct HyperbolicCompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
+}
+
+impl TryFrom<(&str, CompletionRequest)> for HyperbolicCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported on Hyperbolic");
+        }
+
+        if !req.tools.is_empty() {
+            tracing::warn!("WARNING: `tools` not supported on Hyperbolic");
+        }
+
+        let mut full_history: Vec<Message> = match &req.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
+        };
+
+        if let Some(docs) = req.normalized_documents() {
+            let docs: Vec<Message> = docs.try_into()?;
+            full_history.extend(docs);
+        }
+
+        let chat_history: Vec<Message> = req
+            .chat_history
+            .clone()
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        full_history.extend(chat_history);
+
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            additional_params: req.additional_params,
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
@@ -269,51 +319,6 @@ impl<T> CompletionModel<T> {
             client,
             model: model.into(),
         }
-    }
-
-    pub(crate) fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        if completion_request.tool_choice.is_some() {
-            tracing::warn!("WARNING: `tool_choice` not supported on Hyperbolic");
-        }
-        // Build up the order of messages (context, chat_history, prompt)
-        let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
-            partial_history.push(docs);
-        }
-        partial_history.extend(completion_request.chat_history);
-
-        // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<Message> = completion_request
-            .preamble
-            .map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
-
-        // Convert and extend the rest of the history
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(message::Message::try_into)
-                .collect::<Result<Vec<Vec<Message>>, _>>()?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
-        );
-
-        let request = json!({
-            "model": self.model,
-            "messages": full_history,
-            "temperature": completion_request.temperature,
-        });
-
-        let request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
-
-        Ok(request)
     }
 }
 
@@ -336,7 +341,8 @@ where
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
-        let request = self.create_completion_request(completion_request)?;
+        let request =
+            HyperbolicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
         let body = serde_json::to_vec(&request)?;
 
         let span = if tracing::Span::current().is_disabled() {
@@ -351,7 +357,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
@@ -403,7 +409,8 @@ where
         completion_request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
-        let mut request = self.create_completion_request(completion_request)?;
+        let mut request =
+            HyperbolicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -417,17 +424,19 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
-        merge_inplace(
-            &mut request,
-            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        let params = json_utils::merge(
+            request.additional_params.unwrap_or(serde_json::json!({})),
+            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
         );
+
+        request.additional_params = Some(params);
 
         let body = serde_json::to_vec(&request)?;
 

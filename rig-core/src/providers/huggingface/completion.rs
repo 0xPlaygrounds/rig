@@ -11,7 +11,7 @@ use crate::{
     one_or_many::string_or_one_or_many,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::{convert::Infallible, str::FromStr};
 use tracing::info_span;
 
@@ -608,6 +608,67 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct HuggingfaceCompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinition>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
+}
+
+impl TryFrom<(&str, CompletionRequest)> for HuggingfaceCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let mut full_history: Vec<Message> = match &req.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
+        };
+        if let Some(docs) = req.normalized_documents() {
+            let docs: Vec<Message> = docs.try_into()?;
+            full_history.extend(docs);
+        }
+
+        let chat_history: Vec<Message> = req
+            .chat_history
+            .clone()
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        full_history.extend(chat_history);
+
+        let tool_choice = req
+            .tool_choice
+            .clone()
+            .map(crate::providers::openai::completion::ToolChoice::try_from)
+            .transpose()?;
+
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
@@ -621,57 +682,6 @@ impl<T> CompletionModel<T> {
             client,
             model: model.to_string(),
         }
-    }
-
-    pub(crate) fn create_request_body(
-        &self,
-        completion_request: &CompletionRequest,
-    ) -> Result<serde_json::Value, CompletionError> {
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
-        if let Some(docs) = completion_request.normalized_documents() {
-            let docs: Vec<Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
-
-        let chat_history: Vec<Message> = completion_request
-            .chat_history
-            .clone()
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        full_history.extend(chat_history);
-
-        let model = self.client.subprovider().model_identifier(&self.model);
-
-        let tool_choice = completion_request
-            .tool_choice
-            .clone()
-            .map(crate::providers::openai::completion::ToolChoice::try_from)
-            .transpose()?;
-
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-            })
-        } else {
-            json!({
-                "model": model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "tools": completion_request.tools.clone().into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": tool_choice,
-            })
-        };
-        Ok(request)
     }
 }
 
@@ -711,19 +721,15 @@ where
         } else {
             tracing::Span::current()
         };
-        let request = self.create_request_body(&completion_request)?;
-        span.record_model_input(&request.get("messages"));
 
-        let path = self.client.subprovider().completion_endpoint(&self.model);
+        let model = self.client.subprovider().model_identifier(&self.model);
+        let request = HuggingfaceCompletionRequest::try_from((model.as_ref(), completion_request))?;
 
-        let request = if let Some(ref params) = completion_request.additional_params {
-            json_utils::merge(request, params.clone())
-        } else {
-            request
-        };
+        span.record_model_input(&request.messages);
 
         let request = serde_json::to_vec(&request)?;
 
+        let path = self.client.subprovider().completion_endpoint(&self.model);
         let request = self
             .client
             .post(&path)?
