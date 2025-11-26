@@ -29,7 +29,8 @@ pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 
 use self::gemini_api_types::Schema;
 use crate::http_client::HttpClientExt;
-use crate::message::Reasoning;
+use crate::message::{self, MimeType, Reasoning};
+
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
@@ -358,6 +359,24 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                             completion::AssistantContent::text(text)
                         }
                     }
+                    PartKind::InlineData(inline_data) => {
+                        let mime_type = message::MediaType::from_mime_type(&inline_data.mime_type);
+
+                        match mime_type {
+                            Some(message::MediaType::Image(media_type)) => {
+                                message::AssistantContent::image_base64(
+                                    &inline_data.data,
+                                    Some(media_type),
+                                    Some(message::ImageDetail::default()),
+                                )
+                            }
+                            _ => {
+                                return Err(CompletionError::ResponseError(format!(
+                                    "Unsupported media type {mime_type:?}"
+                                )));
+                            }
+                        }
+                    }
                     PartKind::FunctionCall(function_call) => {
                         completion::AssistantContent::tool_call(
                             &function_call.name,
@@ -565,7 +584,10 @@ pub mod gemini_api_types {
                 },
                 message::Message::Assistant { content, .. } => Content {
                     role: Some(Role::Model),
-                    parts: content.into_iter().map(|content| content.into()).collect(),
+                    parts: content
+                        .into_iter()
+                        .map(|content| content.try_into())
+                        .collect::<Result<Vec<_>, _>>()?,
                 },
             })
         }
@@ -984,20 +1006,47 @@ pub mod gemini_api_types {
         }
     }
 
-    impl From<message::AssistantContent> for Part {
-        fn from(content: message::AssistantContent) -> Self {
+    impl TryFrom<message::AssistantContent> for Part {
+        type Error = message::MessageError;
+
+        fn try_from(content: message::AssistantContent) -> Result<Self, Self::Error> {
             match content {
-                message::AssistantContent::Text(message::Text { text }) => text.into(),
-                message::AssistantContent::ToolCall(tool_call) => tool_call.into(),
+                message::AssistantContent::Text(message::Text { text }) => Ok(text.into()),
+                message::AssistantContent::Image(message::Image {
+                    data, media_type, ..
+                }) => match media_type {
+                    Some(media_type) => match media_type {
+                        message::ImageMediaType::JPEG
+                        | message::ImageMediaType::PNG
+                        | message::ImageMediaType::WEBP
+                        | message::ImageMediaType::HEIC
+                        | message::ImageMediaType::HEIF => {
+                            let part = PartKind::try_from((media_type, data))?;
+                            Ok(Part {
+                                thought: Some(false),
+                                thought_signature: None,
+                                part,
+                                additional_params: None,
+                            })
+                        }
+                        _ => Err(message::MessageError::ConversionError(format!(
+                            "Unsupported image media type {media_type:?}"
+                        ))),
+                    },
+                    None => Err(message::MessageError::ConversionError(
+                        "Media type for image is required for Gemini".to_string(),
+                    )),
+                },
+                message::AssistantContent::ToolCall(tool_call) => Ok(tool_call.into()),
                 message::AssistantContent::Reasoning(message::Reasoning { reasoning, .. }) => {
-                    Part {
+                    Ok(Part {
                         thought: Some(true),
                         thought_signature: None,
                         part: PartKind::Text(
                             reasoning.first().cloned().unwrap_or_else(|| "".to_string()),
                         ),
                         additional_params: None,
-                    }
+                    })
                 }
             }
         }
@@ -1345,6 +1394,8 @@ pub mod gemini_api_types {
         /// Configuration for thinking/reasoning.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thinking_config: Option<ThinkingConfig>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub image_config: Option<ImageConfig>,
     }
 
     impl Default for GenerationConfig {
@@ -1365,6 +1416,7 @@ pub mod gemini_api_types {
                 response_logprobs: None,
                 logprobs: None,
                 thinking_config: None,
+                image_config: None,
             }
         }
     }
@@ -1375,6 +1427,16 @@ pub mod gemini_api_types {
         pub thinking_budget: u32,
         pub include_thoughts: Option<bool>,
     }
+
+    #[derive(Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ImageConfig {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub aspect_ratio: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub image_size: Option<String>,
+    }
+
     /// The Schema object allows the definition of input and output data types. These types can be objects, but also
     /// primitives and arrays. Represents a select subset of an OpenAPI 3.0 schema object.
     /// From [Gemini API Reference](https://ai.google.dev/api/caching#Schema)

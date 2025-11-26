@@ -400,25 +400,29 @@ impl TryFrom<DocumentMediaType> for DocumentFormat {
     }
 }
 
-impl From<message::AssistantContent> for Content {
-    fn from(text: message::AssistantContent) -> Self {
+impl TryFrom<message::AssistantContent> for Content {
+    type Error = MessageError;
+    fn try_from(text: message::AssistantContent) -> Result<Self, Self::Error> {
         match text {
-            message::AssistantContent::Text(message::Text { text }) => Content::Text { text },
+            message::AssistantContent::Text(message::Text { text }) => Ok(Content::Text { text }),
+            message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
+                "Anthropic currently doesn't support images.".to_string(),
+            )),
             message::AssistantContent::ToolCall(message::ToolCall { id, function, .. }) => {
-                Content::ToolUse {
+                Ok(Content::ToolUse {
                     id,
                     name: function.name,
                     input: function.arguments,
-                }
+                })
             }
             message::AssistantContent::Reasoning(Reasoning {
                 reasoning,
                 signature,
                 ..
-            }) => Content::Thinking {
+            }) => Ok(Content::Thinking {
                 thinking: reasoning.first().cloned().unwrap_or(String::new()),
                 signature,
-            },
+            }),
         }
     }
 }
@@ -466,7 +470,7 @@ impl TryFrom<message::Message> for Message {
                         data, media_type, ..
                     }) => {
                         let media_type = media_type.ok_or(MessageError::ConversionError(
-                            "Image media type is required for Claude API".into(),
+                            "Image media type is required for Claude API".to_string(),
                         ))?;
 
                         let source = match data {
@@ -529,7 +533,7 @@ impl TryFrom<message::Message> for Message {
             },
 
             message::Message::Assistant { content, .. } => Message {
-                content: content.map(|content| content.into()),
+                content: content.try_map(|content| content.try_into())?,
                 role: Role::Assistant,
             },
         })
