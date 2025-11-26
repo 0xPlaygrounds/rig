@@ -158,7 +158,6 @@ impl TryFrom<(&str, CompletionRequest)> for TogetherAICompletionRequest {
 
         let chat_history: Vec<openai::Message> = req
             .chat_history
-            .clone()
             .into_iter()
             .map(|message| message.try_into())
             .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
