@@ -22,7 +22,7 @@ use crate::client::{
 use crate::completion::GetTokenUsage;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
-use crate::json_utils::{empty_or_none, merge};
+use crate::json_utils::empty_or_none;
 use crate::providers::openai::{AssistantContent, Function, ToolType};
 use async_stream::stream;
 use futures::StreamExt;
@@ -333,10 +333,10 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }

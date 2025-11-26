@@ -19,7 +19,6 @@ use crate::client::{
 };
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt, bearer_auth_header};
-use crate::json_utils::merge;
 use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::TranscriptionError;
 use crate::{
@@ -621,10 +620,10 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }

@@ -299,10 +299,10 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }

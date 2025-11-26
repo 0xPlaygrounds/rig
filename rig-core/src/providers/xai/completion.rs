@@ -6,7 +6,6 @@
 use crate::{
     completion::{self, CompletionError},
     http_client::HttpClientExt,
-    json_utils,
     providers::openai::Message,
 };
 
@@ -97,8 +96,11 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
-        Self { client, model: model.to_string() }
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 

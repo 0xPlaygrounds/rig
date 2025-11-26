@@ -6,7 +6,6 @@
 use crate::{
     completion::{self, CompletionError},
     http_client::HttpClientExt,
-    json_utils,
     providers::openai,
 };
 
@@ -194,12 +193,15 @@ impl TryFrom<(&str, CompletionRequest)> for TogetherAICompletionRequest {
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
-    pub model: CompletionModels,
+    pub model: String,
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
-        Self { client, model }
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 

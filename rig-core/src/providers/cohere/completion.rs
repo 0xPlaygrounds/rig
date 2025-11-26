@@ -586,10 +586,10 @@ impl<T> CompletionModel<T>
 where
     T: HttpClientExt,
 {
-    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
