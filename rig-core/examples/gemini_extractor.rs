@@ -37,7 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create extractor
     let data_extractor = client
-        .extractor::<Person>(gemini::Gemini20Flash)
+        .extractor::<Person>(gemini::completion::GEMINI_2_0_FLASH)
         .additional_params(serde_json::to_value(cfg).unwrap())
         .build();
 

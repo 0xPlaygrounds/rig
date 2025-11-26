@@ -8,7 +8,7 @@
 use std::env;
 
 use rig::{
-    providers::openai::{Client, EmbeddingModels::TextEmbeddingAda2},
+    providers::openai::{self, Client},
     vector_store::{
         VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
@@ -101,7 +101,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(TextEmbeddingAda2);
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Since we are starting from scratch, we need to create the DB vector index
     neo4j_client

@@ -7,7 +7,7 @@ use rig::streaming::StreamingPrompt;
 async fn main() -> Result<(), anyhow::Error> {
     // Create streaming agent with a single context prompt
     let agent = cohere::Client::from_env()
-        .agent(cohere::Command)
+        .agent(cohere::COMMAND)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

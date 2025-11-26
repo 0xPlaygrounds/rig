@@ -18,62 +18,48 @@ pub use client::{ApiErrorResponse, ApiResponse, Client};
 pub use completion::CompletionModel;
 pub use embeddings::EmbeddingModel;
 
-use crate::models;
-
 // ================================================================
 // Cohere Completion Models
 // ================================================================
 
-models! {
-    pub enum CompletionModels {
-        /// `command-r-plus` completion model
-        CommandRPlus => "command-r-plus",
-        /// `command-r` completion model
-        CommandR => "command-r",
-        /// `command` completion model
-        Command => "command",
-        /// `command-nightly` completion model
-        CommandNightly => "command-nightly",
-        /// `command-light` completion model
-        CommandLight => "command-light",
-        /// `command-light-nightly` completion model
-        CommandLightNightly => "command-light-nightly",
-    }
-}
-pub use CompletionModels::*;
+/// `command-r-plus` completion model
+pub const COMMAND_R_PLUS: &str = "command-r-plus";
+/// `command-r` completion model
+pub const COMMAND_R: &str = "command-r";
+/// `command` completion model
+pub const COMMAND: &str = "command";
+/// `command-nightly` completion model
+pub const COMMAND_NIGHTLY: &str = "command-nightly";
+/// `command-light` completion model
+pub const COMMAND_LIGHT: &str = "command-light";
+/// `command-light-nightly` completion model
+pub const COMMAND_LIGHT_NIGHTLY: &str = "command-light-nightly";
 
 // ================================================================
 // Cohere Embedding Models
 // ================================================================
-models! {
-    pub enum EmbeddingModels {
-        /// `embed-english-v3.0` embedding model
-        EmbedEnglish3 => "embed-english-v3.0",
-        /// `embed-english-light-v3.0` embedding model
-        EmbedEnglishLight3 => "embed-english-light-v3.0",
-        /// `embed-multilingual-v3.0` embedding model
-        EmbedMulti3 => "embed-multilingual-v3.0",
-        /// `embed-multilingual-light-v3.0` embedding model
-        EmbedMultiLight3 =>"embed-multilingual-light-v3.0",
-        /// `embed-english-v2.0` embedding model
-        EmbedEnglish2 => "embed-english-v2.0",
-        /// `embed-english-light-v2.0` embedding model
-        EmbedEnglishLight2 => "embed-english-light-v2.0",
-        /// `embed-multilingual-v2.0` embedding model
-        EmbedMulti2 => "embed-multilingual-v2.0",
-    }
-}
-pub use EmbeddingModels::*;
 
-impl EmbeddingModels {
-    pub fn default_dimensions(&self) -> usize {
-        use EmbeddingModels::*;
+/// `embed-english-v3.0` embedding model
+pub const EMBED_ENGLISH_V3: &str = "embed-english-v3.0";
+/// `embed-english-light-v3.0` embedding model
+pub const EMBED_ENGLISH_LIGHT_V3: &str = "embed-english-light-v3.0";
+/// `embed-multilingual-v3.0` embedding model
+pub const EMBED_MULTILINGUAL_V3: &str = "embed-multilingual-v3.0";
+/// `embed-multilingual-light-v3.0` embedding model
+pub const EMBED_MULTILINGUAL_LIGHT_V3: &str = "embed-multilingual-light-v3.0";
+/// `embed-english-v2.0` embedding model
+pub const EMBED_ENGLISH_V2: &str = "embed-english-v2.0";
+/// `embed-english-light-v2.0` embedding model
+pub const EMBED_ENGLISH_LIGHT_V2: &str = "embed-english-light-v2.0";
+/// `embed-multilingual-v2.0` embedding model
+pub const EMBED_MULTILINGUAL_V2: &str = "embed-multilingual-v2.0";
 
-        match self {
-            EmbedEnglish3 | EmbedMulti3 | EmbedEnglishLight2 => 1024,
-            EmbedEnglishLight3 | EmbedMultiLight3 => 384,
-            EmbedEnglish2 => 4096,
-            EmbedMulti2 => 768,
-        }
+pub(crate) fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
+    match identifier {
+        EMBED_ENGLISH_V3 | EMBED_MULTILINGUAL_V3 | EMBED_ENGLISH_LIGHT_V2 => Some(1_024),
+        EMBED_ENGLISH_LIGHT_V3 | EMBED_MULTILINGUAL_LIGHT_V3 => Some(384),
+        EMBED_ENGLISH_V2 => Some(4_096),
+        EMBED_MULTILINGUAL_V2 => Some(768),
+        _ => None,
     }
 }

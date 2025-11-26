@@ -102,7 +102,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt and two tools
     let calculator_agent = providers::gemini::Client::from_env()
-        .agent(gemini::completion::Gemini15Flash)
+        .agent(gemini::completion::GEMINI_1_5_FLASH)
         .preamble(
             "You are a calculator here to help the user perform arithmetic
             operations. Use the tools provided to answer the user's question.

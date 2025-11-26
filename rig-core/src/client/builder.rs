@@ -10,7 +10,6 @@ use crate::{
     completion::{CompletionError, CompletionModelDyn, CompletionRequest},
     embeddings::EmbeddingModelDyn,
     message::Message,
-    models,
     providers::{
         anthropic, azure, cohere, deepseek, galadriel, gemini, groq, huggingface, hyperbolic, mira,
         mistral, moonshot, ollama, openai, openrouter, perplexity, together, xai,
@@ -126,10 +125,6 @@ impl AnyClient {
     }
 }
 
-// #[deprecated(
-//     since = "0.24.0",
-//     note = "This is not idiomatic and comes with considerable costs on both performance and type safety, we discourage its use"
-// )]
 #[derive(Debug, Clone)]
 pub struct ProviderFactory {
     /// Create a client from environment variables
@@ -146,30 +141,63 @@ impl Default for DynClientBuilder {
     }
 }
 
-models! {
-    #[repr(u8)]
-    pub enum DefaultProviders {
-        Anthropic => "anthropic",
-        Cohere => "cohere",
-        Gemini => "gemini",
-        HuggingFace => "huggingface",
-        OpenAI => "openai",
-        OpenRouter => "openrouter",
-        Together => "together",
-        XAI => "xai",
-        Azure => "azure",
-        DeepSeek => "deepseek",
-        Galadriel => "galadriel",
-        Groq => "groq",
-        Hyperbolic => "hyperbolic",
-        Moonshot => "moonshot",
-        Mira => "mira",
-        Mistral => "mistral",
-        Ollama => "ollama",
-        Perplexity => "perplexity",
+#[repr(u8)]
+#[derive(Debug, Clone, Copy)]
+pub enum DefaultProviders {
+    Anthropic,
+    Cohere,
+    Gemini,
+    HuggingFace,
+    OpenAI,
+    OpenRouter,
+    Together,
+    XAI,
+    Azure,
+    DeepSeek,
+    Galadriel,
+    Groq,
+    Hyperbolic,
+    Moonshot,
+    Mira,
+    Mistral,
+    Ollama,
+    Perplexity,
+}
+
+impl From<DefaultProviders> for &'static str {
+    fn from(value: DefaultProviders) -> Self {
+        use DefaultProviders::*;
+
+        match value {
+            Anthropic => "anthropic",
+            Cohere => "cohere",
+            Gemini => "gemini",
+            HuggingFace => "huggingface",
+            OpenAI => "openai",
+            OpenRouter => "openrouter",
+            Together => "together",
+            XAI => "xai",
+            Azure => "azure",
+            DeepSeek => "deepseek",
+            Galadriel => "galadriel",
+            Groq => "groq",
+            Hyperbolic => "hyperbolic",
+            Moonshot => "moonshot",
+            Mira => "mira",
+            Mistral => "mistral",
+            Ollama => "ollama",
+            Perplexity => "perplexity",
+        }
     }
 }
 pub use DefaultProviders::*;
+
+impl std::fmt::Display for DefaultProviders {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s: &str = (*self).into();
+        f.write_str(s)
+    }
+}
 
 impl DefaultProviders {
     fn all() -> impl Iterator<Item = Self> {

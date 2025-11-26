@@ -22,8 +22,7 @@ use crate::client::{
 use crate::completion::GetTokenUsage;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
-use crate::json_utils::{empty_or_none, merge};
-use crate::models;
+use crate::json_utils::empty_or_none;
 use crate::providers::openai::{AssistantContent, Function, ToolType};
 use async_stream::stream;
 use futures::StreamExt;
@@ -38,7 +37,6 @@ use crate::{
 };
 use reqwest::multipart::Part;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 
 // ================================================================
 // Main Groq Client
@@ -124,6 +122,16 @@ pub struct Message {
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<String>,
+}
+
+impl Message {
+    fn system(preamble: &str) -> Self {
+        Self {
+            role: "system".to_string(),
+            content: Some(preamble.to_string()),
+            reasoning: None,
+        }
+    }
 }
 
 impl TryFrom<Message> for message::Message {
@@ -225,76 +233,71 @@ impl TryFrom<message::Message> for Message {
 // ================================================================
 // Groq Completion API
 // ================================================================
-models! {
-    #[allow(non_camel_case_types)]
-    pub enum CompletionModels {
-        /// The `deepseek-r1-distill-llama-70b` model. Used for chat completion.
-        DEEPSEEK_R1_DISTILL_LLAMA_70B => "deepseek-r1-distill-llama-70b",
-        /// The `gemma2-9b-it` model. Used for chat completion.
-        GEMMA2_9B_IT => "gemma2-9b-it",
-        /// The `llama-3.1-8b-instant` model. Used for chat completion.
-        LLAMA_3_1_8B_INSTANT => "llama-3.1-8b-instant",
-        /// The `llama-3.2-11b-vision-preview` model. Used for chat completion.
-        LLAMA_3_2_11B_VISION_PREVIEW => "llama-3.2-11b-vision-preview",
-        /// The `llama-3.2-1b-preview` model. Used for chat completion.
-        LLAMA_3_2_1B_PREVIEW => "llama-3.2-1b-preview",
-        /// The `llama-3.2-3b-preview` model. Used for chat completion.
-        LLAMA_3_2_3B_PREVIEW => "llama-3.2-3b-preview",
-        /// The `llama-3.2-90b-vision-preview` model. Used for chat completion.
-        LLAMA_3_2_90B_VISION_PREVIEW => "llama-3.2-90b-vision-preview",
-        /// The `llama-3.2-70b-specdec` model. Used for chat completion.
-        LLAMA_3_2_70B_SPECDEC => "llama-3.2-70b-specdec",
-        /// The `llama-3.2-70b-versatile` model. Used for chat completion.
-        LLAMA_3_2_70B_VERSATILE => "llama-3.2-70b-versatile",
-        /// The `llama-guard-3-8b` model. Used for chat completion.
-        LLAMA_GUARD_3_8B => "llama-guard-3-8b",
-        /// The `llama3-70b-8192` model. Used for chat completion.
-        LLAMA_3_70B_8192 => "llama3-70b-8192",
-        /// The `llama3-8b-8192` model. Used for chat completion.
-        LLAMA_3_8B_8192 => "llama3-8b-8192",
-        /// The `mixtral-8x7b-32768` model. Used for chat completion.
-        MIXTRAL_8X7B_32768 => "mixtral-8x7b-32768",
-    }
-}
-pub use CompletionModels::*;
 
-#[derive(Clone, Debug)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: deepseek-r1-distill-llama-70b)
-    pub model: String,
+/// The `deepseek-r1-distill-llama-70b` model. Used for chat completion.
+pub const DEEPSEEK_R1_DISTILL_LLAMA_70B: &str = "deepseek-r1-distill-llama-70b";
+/// The `gemma2-9b-it` model. Used for chat completion.
+pub const GEMMA2_9B_IT: &str = "gemma2-9b-it";
+/// The `llama-3.1-8b-instant` model. Used for chat completion.
+pub const LLAMA_3_1_8B_INSTANT: &str = "llama-3.1-8b-instant";
+/// The `llama-3.2-11b-vision-preview` model. Used for chat completion.
+pub const LLAMA_3_2_11B_VISION_PREVIEW: &str = "llama-3.2-11b-vision-preview";
+/// The `llama-3.2-1b-preview` model. Used for chat completion.
+pub const LLAMA_3_2_1B_PREVIEW: &str = "llama-3.2-1b-preview";
+/// The `llama-3.2-3b-preview` model. Used for chat completion.
+pub const LLAMA_3_2_3B_PREVIEW: &str = "llama-3.2-3b-preview";
+/// The `llama-3.2-90b-vision-preview` model. Used for chat completion.
+pub const LLAMA_3_2_90B_VISION_PREVIEW: &str = "llama-3.2-90b-vision-preview";
+/// The `llama-3.2-70b-specdec` model. Used for chat completion.
+pub const LLAMA_3_2_70B_SPECDEC: &str = "llama-3.2-70b-specdec";
+/// The `llama-3.2-70b-versatile` model. Used for chat completion.
+pub const LLAMA_3_2_70B_VERSATILE: &str = "llama-3.2-70b-versatile";
+/// The `llama-guard-3-8b` model. Used for chat completion.
+pub const LLAMA_GUARD_3_8B: &str = "llama-guard-3-8b";
+/// The `llama3-70b-8192` model. Used for chat completion.
+pub const LLAMA_3_70B_8192: &str = "llama3-70b-8192";
+/// The `llama3-8b-8192` model. Used for chat completion.
+pub const LLAMA_3_8B_8192: &str = "llama3-8b-8192";
+/// The `mixtral-8x7b-32768` model. Used for chat completion.
+pub const MIXTRAL_8X7B_32768: &str = "mixtral-8x7b-32768";
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningFormat {
+    Parsed,
 }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct GroqCompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
+    reasoning_format: ReasoningFormat,
+}
 
-    fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
+impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
+        if let Some(docs) = req.normalized_documents() {
             partial_history.push(docs);
         }
-        partial_history.extend(completion_request.chat_history);
+        partial_history.extend(req.chat_history);
 
-        // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<Message> =
-            completion_request
-                .preamble
-                .map_or_else(Vec::new, |preamble| {
-                    vec![Message {
-                        role: "system".to_string(),
-                        content: Some(preamble),
-                        reasoning: None,
-                    }]
-                });
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<Message> = match &req.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
+        };
 
         // Convert and extend the rest of the history
         full_history.extend(
@@ -304,35 +307,42 @@ impl<T> CompletionModel<T> {
                 .collect::<Result<Vec<Message>, _>>()?,
         );
 
-        let tool_choice = completion_request
+        let tool_choice = req
             .tool_choice
+            .clone()
             .map(crate::providers::openai::ToolChoice::try_from)
             .transpose()?;
 
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": tool_choice,
-                "reasoning_format": "parsed"
-            })
-        };
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+            reasoning_format: ReasoningFormat::Parsed,
+        })
+    }
+}
 
-        let request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
+#[derive(Clone, Debug)]
+pub struct CompletionModel<T = reqwest::Client> {
+    client: Client<T>,
+    /// Name of the model (e.g.: deepseek-r1-distill-llama-70b)
+    pub model: String,
+}
 
-        Ok(request)
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 
@@ -344,10 +354,9 @@ where
     type StreamingResponse = StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into().into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -357,7 +366,7 @@ where
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
 
-        let request = self.create_completion_request(completion_request)?;
+        let request = GroqCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -370,7 +379,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
@@ -398,7 +407,7 @@ where
                         span.record("gen_ai.response.model_name", response.model.clone());
                         span.record(
                             "gen_ai.output.messages",
-                            serde_json::to_string(&response.choices).unwrap(),
+                            serde_json::to_string(&response.choices)?,
                         );
                         if let Some(ref usage) = response.usage {
                             span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
@@ -430,12 +439,14 @@ where
         CompletionError,
     > {
         let preamble = request.preamble.clone();
-        let mut request = self.create_completion_request(request)?;
+        let mut request = GroqCompletionRequest::try_from((self.model.as_ref(), request))?;
 
-        request = merge(
-            request,
-            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        let params = json_utils::merge(
+            request.additional_params.unwrap_or(serde_json::json!({})),
+            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
         );
+
+        request.additional_params = Some(params);
 
         let body = serde_json::to_vec(&request)?;
         let req = self
@@ -457,7 +468,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
@@ -476,14 +487,9 @@ where
 // Groq Transcription API
 // ================================================================
 
-models! {
-    pub enum TranscriptionModels {
-        WhisperLargeV3 => "whisper-large-v3",
-        WhisperLargeV3Turbo => "whisper-large-v3-turbo",
-        DistilWhisperLargeV3en => "distil-whisper-large-v3-en",
-    }
-}
-pub use TranscriptionModels::*;
+pub const WHISPER_LARGE_V3: &str = "whisper-large-v3";
+pub const WHISPER_LARGE_V3_TURBO: &str = "whisper-large-v3-turbo";
+pub const DISTIL_WHISPER_LARGE_V3_EN: &str = "distil-whisper-large-v3-en";
 
 #[derive(Clone)]
 pub struct TranscriptionModel<T> {
@@ -493,10 +499,10 @@ pub struct TranscriptionModel<T> {
 }
 
 impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -507,10 +513,9 @@ where
     type Response = TranscriptionResponse;
 
     type Client = Client<T>;
-    type Models = TranscriptionModels;
 
-    fn make(client: &Self::Client, model: Self::Models) -> Self {
-        Self::new(client.clone(), model.into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

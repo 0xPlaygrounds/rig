@@ -10,7 +10,6 @@
 //! ```
 use crate::client::BearerAuth;
 use crate::completion::CompletionRequest;
-use crate::json_utils::merge;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
@@ -21,11 +20,9 @@ use crate::{
     },
     completion::{self, CompletionError, MessageError, message},
     http_client::{self, HttpClientExt},
-    json_utils, models,
 };
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
 
 // ================================================================
@@ -113,15 +110,8 @@ enum ApiResponse<T> {
 // Perplexity Completion API
 // ================================================================
 
-models! {
-    pub enum CompletionModels {
-        /// `sonar-pro` completion model
-        SonarPro => "sonar-pro",
-        /// `sonar` completion model
-        Sonar => "sonar",
-    }
-}
-pub use CompletionModels::*;
+pub const SONAR_PRO: &str = "sonar_pro";
+pub const SONAR: &str = "sonar";
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -207,45 +197,36 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct PerplexityCompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u64>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    additional_params: Option<serde_json::Value>,
+    pub stream: bool,
 }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
+impl TryFrom<(&str, CompletionRequest)> for PerplexityCompletionRequest {
+    type Error = CompletionError;
 
-    fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        if completion_request.tool_choice.is_some() {
-            tracing::warn!("WARNING: `tool_choice` not supported on Perplexity");
-        }
-
-        // Build up the order of messages (context, chat_history, prompt)
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
+        if let Some(docs) = req.normalized_documents() {
             partial_history.push(docs);
         }
-        partial_history.extend(completion_request.chat_history);
+        partial_history.extend(req.chat_history);
 
         // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<Message> =
-            completion_request
-                .preamble
-                .map_or_else(Vec::new, |preamble| {
-                    vec![Message {
-                        role: Role::System,
-                        content: preamble,
-                    }]
-                });
+        let mut full_history: Vec<Message> = req.preamble.map_or_else(Vec::new, |preamble| {
+            vec![Message {
+                role: Role::System,
+                content: preamble,
+            }]
+        });
 
         // Convert and extend the rest of the history
         full_history.extend(
@@ -255,20 +236,29 @@ impl<T> CompletionModel<T> {
                 .collect::<Result<Vec<Message>, _>>()?,
         );
 
-        // Compose request
-        let request = json!({
-            "model": self.model,
-            "messages": full_history,
-            "temperature": completion_request.temperature,
-        });
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            max_tokens: req.max_tokens,
+            additional_params: req.additional_params,
+            stream: false,
+        })
+    }
+}
 
-        let request = if let Some(ref params) = completion_request.additional_params {
-            json_utils::merge(request, params.clone())
-        } else {
-            request
-        };
+#[derive(Clone)]
+pub struct CompletionModel<T = reqwest::Client> {
+    client: Client<T>,
+    pub model: String,
+}
 
-        Ok(request)
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 
@@ -340,10 +330,9 @@ where
     type StreamingResponse = openai::StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into().into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -351,8 +340,16 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        if completion_request.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported on Perplexity");
+        }
+
+        if !completion_request.tools.is_empty() {
+            tracing::warn!("WARNING: `tools` not supported on Perplexity");
+        }
         let preamble = completion_request.preamble.clone();
-        let request = self.create_completion_request(completion_request)?;
+        let request =
+            PerplexityCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -366,7 +363,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
@@ -422,10 +419,20 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let mut request = self.create_completion_request(completion_request)?;
+        if completion_request.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported on Perplexity");
+        }
 
-        request = merge(request, json!({"stream": true}));
+        if !completion_request.tools.is_empty() {
+            tracing::warn!("WARNING: `tools` not supported on Perplexity");
+        }
+
+        let preamble = completion_request.preamble.clone();
+
+        let mut request =
+            PerplexityCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+        request.stream = true;
+
         let body = serde_json::to_vec(&request)?;
 
         let req = self
@@ -447,7 +454,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {

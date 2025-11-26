@@ -19,8 +19,6 @@ use crate::client::{
 };
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt, bearer_auth_header};
-use crate::json_utils::merge;
-use crate::models;
 use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::TranscriptionError;
 use crate::{
@@ -33,7 +31,7 @@ use crate::{
 };
 use bytes::Bytes;
 use reqwest::multipart::Part;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 // ================================================================
 // Main Azure OpenAI Client
@@ -118,7 +116,7 @@ impl<H> Capabilities<H> for AzureExt {
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<AudioGenerationModel>;
+    type AudioGeneration = Capable<AudioGenerationModel<H>>;
 }
 
 impl ProviderBuilder for AzureExtBuilder {
@@ -337,26 +335,18 @@ enum ApiResponse<T> {
 // Azure OpenAI Embedding API
 // ================================================================
 
-models! {
-    pub enum EmbeddingModels {
-        /// `text-embedding-3-large` embedding model
-        TextEmbedding3Large => "text-embedding-3-large",
-        /// `text-embedding-3-small` embedding model
-        TextEmbedding3Small => "text-embedding-3-small",
-        /// `text-embedding-ada-002` embedding model
-        TextEmbeddingAda002 => "text-embedding-ada-002",
-    }
-}
-pub use EmbeddingModels::*;
+/// `text-embedding-3-large` embedding model
+pub const TEXT_EMBEDDING_3_LARGE: &str = "text-embedding-3-large";
+/// `text-embedding-3-small` embedding model
+pub const TEXT_EMBEDDING_3_SMALL: &str = "text-embedding-3-small";
+/// `text-embedding-ada-002` embedding model
+pub const TEXT_EMBEDDING_ADA_002: &str = "text-embedding-ada-002";
 
-impl EmbeddingModels {
-    pub fn dims(self) -> usize {
-        use EmbeddingModels::*;
-
-        match self {
-            TextEmbedding3Large => 3072,
-            _ => 1536,
-        }
+fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
+    match identifier {
+        TEXT_EMBEDDING_3_LARGE => Some(3_072),
+        TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => Some(1_536),
+        _ => None,
     }
 }
 
@@ -421,7 +411,7 @@ impl std::fmt::Display for Usage {
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
-    pub model: EmbeddingModels,
+    pub model: String,
     ndims: usize,
 }
 
@@ -432,9 +422,8 @@ where
     const MAX_DOCUMENTS: usize = 1024;
 
     type Client = Client<T>;
-    type Models = EmbeddingModels;
 
-    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
         Self::new(client.clone(), model, dims)
     }
 
@@ -455,7 +444,7 @@ where
 
         let req = self
             .client
-            .post_embedding(self.model.into())?
+            .post_embedding(self.model.as_str())?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
@@ -499,12 +488,25 @@ where
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: EmbeddingModels, ndims: Option<usize>) -> Self {
-        let ndims = ndims.unwrap_or_else(|| model.dims());
+    pub fn new(client: Client<T>, model: impl Into<String>, ndims: Option<usize>) -> Self {
+        let model = model.into();
+        let ndims = ndims
+            .or(model_dimensions_from_identifier(&model))
+            .unwrap_or_default();
 
         Self {
             client,
             model,
+            ndims,
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str, ndims: Option<usize>) -> Self {
+        let ndims = ndims.unwrap_or_default();
+
+        Self {
+            client,
+            model: model.into(),
             ndims,
         }
     }
@@ -513,66 +515,72 @@ impl<T> EmbeddingModel<T> {
 // ================================================================
 // Azure OpenAI Completion API
 // ================================================================
-models! {
-    #[allow(non_camel_case_types)]
-    pub enum CompletionModels {
-        /// `o1` completion model
-        O1 => "o1",
-        /// `o1-preview` completion model
-        O1Preview => "o1-preview",
-        /// `o1-mini` completion model
-        O1Mini => "o1-mini",
-        /// `gpt-4o` completion model
-        Gpt4o => "gpt-4o",
-        /// `gpt-4o-mini` completion model
-        Gpt4oMini => "gpt-4o-mini",
-        /// `gpt-4o-realtime-preview` completion model
-        Gpt4oRealtimePreview => "gpt-4o-realtime-preview",
-        /// `gpt-4-turbo` completion model
-        Gpt4Turbo => "gpt-4-turbo",
-        /// `gpt-4` completion model
-        Gpt4 => "gpt-4",
-        /// `gpt-4-32k` completion model
-        Gpt4_32k => "gpt-4-32k",
-        /// `gpt-3.5-turbo` completion model
-        Gpt35Turbo => "gpt-3.5-turbo",
-        /// `gpt-3.5-turbo-instruct` completion model
-        Gpt35TurboInstruct => "gpt-3.5-turbo-instruct",
-        /// `gpt-3.5-turbo-16k` completion model
-        Gpt35Turbo16K => "gpt-3.5-turbo-16k",
-    }
-}
-pub use CompletionModels::*;
 
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: gpt-4o-mini)
-    pub model: String,
+/// `o1` completion model
+pub const O1: &str = "o1";
+/// `o1-preview` completion model
+pub const O1_PREVIEW: &str = "o1-preview";
+/// `o1-mini` completion model
+pub const O1_MINI: &str = "o1-mini";
+/// `gpt-4o` completion model
+pub const GPT_4O: &str = "gpt-4o";
+/// `gpt-4o-mini` completion model
+pub const GPT_4O_MINI: &str = "gpt-4o-mini";
+/// `gpt-4o-realtime-preview` completion model
+pub const GPT_4O_REALTIME_PREVIEW: &str = "gpt-4o-realtime-preview";
+/// `gpt-4-turbo` completion model
+pub const GPT_4_TURBO: &str = "gpt-4";
+/// `gpt-4` completion model
+pub const GPT_4: &str = "gpt-4";
+/// `gpt-4-32k` completion model
+pub const GPT_4_32K: &str = "gpt-4-32k";
+/// `gpt-4-32k` completion model
+pub const GPT_4_32K_0613: &str = "gpt-4-32k";
+/// `gpt-3.5-turbo` completion model
+pub const GPT_35_TURBO: &str = "gpt-3.5-turbo";
+/// `gpt-3.5-turbo-instruct` completion model
+pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
+/// `gpt-3.5-turbo-16k` completion model
+pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct AzureOpenAICompletionRequest {
+    model: String,
+    pub messages: Vec<openai::Message>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<openai::ToolDefinition>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openrouter::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
 }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
+impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        //FIXME: Must fix!
+        if req.tool_choice.is_some() {
+            tracing::warn!(
+                "Tool choice is currently not supported in Azure OpenAI. This should be fixed by Rig 0.25."
+            );
         }
-    }
 
-    fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<serde_json::Value, CompletionError> {
-        let mut full_history: Vec<openai::Message> = match &completion_request.preamble {
+        let mut full_history: Vec<openai::Message> = match &req.preamble {
             Some(preamble) => vec![openai::Message::system(preamble)],
             None => vec![],
         };
-        if let Some(docs) = completion_request.normalized_documents() {
+
+        if let Some(docs) = req.normalized_documents() {
             let docs: Vec<openai::Message> = docs.try_into()?;
             full_history.extend(docs);
         }
-        let chat_history: Vec<openai::Message> = completion_request
+
+        let chat_history: Vec<openai::Message> = req
             .chat_history
+            .clone()
             .into_iter()
             .map(|message| message.try_into())
             .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
@@ -582,29 +590,41 @@ impl<T> CompletionModel<T> {
 
         full_history.extend(chat_history);
 
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "tools": completion_request.tools.into_iter().map(openai::ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": "auto",
-            })
-        };
+        let tool_choice = req
+            .tool_choice
+            .clone()
+            .map(crate::providers::openrouter::ToolChoice::try_from)
+            .transpose()?;
 
-        let request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(openai::ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+        })
+    }
+}
 
-        Ok(request)
+#[derive(Clone)]
+pub struct CompletionModel<T = reqwest::Client> {
+    client: Client<T>,
+    /// Name of the model (e.g.: gpt-4o-mini)
+    pub model: String,
+}
+
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 
@@ -615,10 +635,9 @@ where
     type Response = openai::CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into().into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model.into())
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -644,12 +663,11 @@ where
         } else {
             tracing::Span::current()
         };
-        let request = self.create_completion_request(completion_request)?;
-        span.record_model_input(
-            &request
-                .get("messages")
-                .expect("Converting JSON should not fail"),
-        );
+
+        let request =
+            AzureOpenAICompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        span.record_model_input(&request.messages);
         let body = serde_json::to_vec(&request)?;
 
         let req = self
@@ -701,15 +719,18 @@ where
     #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
-        request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let preamble = request.preamble.clone();
-        let mut request = self.create_completion_request(request)?;
+        let preamble = completion_request.preamble.clone();
+        let mut request =
+            AzureOpenAICompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
-        request = merge(
-            request,
-            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        let params = json_utils::merge(
+            request.additional_params.unwrap_or(serde_json::json!({})),
+            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
         );
+
+        request.additional_params = Some(params);
 
         let body = serde_json::to_vec(&request)?;
 
@@ -732,7 +753,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
@@ -759,10 +780,10 @@ pub struct TranscriptionModel<T = reqwest::Client> {
 }
 
 impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -773,10 +794,9 @@ where
 {
     type Response = TranscriptionResponse;
     type Client = Client<T>;
-    type Models = String;
 
-    fn make(client: &Self::Client, model: Self::Models) -> Self {
-        Self::new(client.clone(), model.as_str())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -870,12 +890,11 @@ mod image_generation {
         type Response = ImageGenerationResponse;
 
         type Client = Client<T>;
-        type Models = super::CompletionModels;
 
-        fn make(client: &Self::Client, model: Self::Models) -> Self {
-            ImageGenerationModel {
+        fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+            Self {
                 client: client.clone(),
-                model: model.to_string(),
+                model: model.into(),
             }
         }
 
@@ -943,19 +962,24 @@ mod audio_generation {
         model: String,
     }
 
+    impl<T> AudioGenerationModel<T> {
+        pub fn new(client: Client<T>, deployment_name: impl Into<String>) -> Self {
+            Self {
+                client,
+                model: deployment_name.into(),
+            }
+        }
+    }
+
     impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
     where
         T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
     {
         type Response = Bytes;
         type Client = Client<T>;
-        type Model = String;
 
-        fn make(client: &Self::Client, model: impl Into<Self::Model>) -> Self {
-            Self {
-                client: client.clone(),
-                model: model.into(),
-            }
+        fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+            Self::new(client.clone(), model)
         }
 
         async fn audio_generation(
@@ -1010,7 +1034,7 @@ mod azure_tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let client = Client::<reqwest::Client>::from_env();
-        let model = client.embedding_model(TextEmbedding3Small.into());
+        let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
         let embeddings = model
             .embed_texts(vec!["Hello, world!".to_string()])
             .await
@@ -1025,7 +1049,7 @@ mod azure_tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let client = Client::<reqwest::Client>::from_env();
-        let model = client.completion_model(Gpt4oMini.into());
+        let model = client.completion_model(GPT_4O_MINI);
         let completion = model
             .completion(CompletionRequest {
                 preamble: Some("You are a helpful assistant.".to_string()),

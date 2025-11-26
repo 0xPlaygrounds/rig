@@ -43,7 +43,6 @@ use crate::client::{
 };
 use crate::completion::{GetTokenUsage, Usage};
 use crate::http_client::{self, HttpClientExt};
-use crate::json_utils::merge_inplace;
 use crate::message::DocumentSourceKind;
 use crate::streaming::RawStreamingChoice;
 use crate::{
@@ -185,10 +184,18 @@ pub struct EmbeddingModel<T> {
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: &str, ndims: usize) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
         Self {
             client,
-            model: model.to_owned(),
+            model: model.into(),
+            ndims,
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
+        Self {
+            client,
+            model: model.into(),
             ndims,
         }
     }
@@ -199,10 +206,9 @@ where
     T: HttpClientExt + Clone + 'static,
 {
     type Client = Client<T>;
-    type Models = String;
 
-    fn make(client: &Self::Client, model: Self::Models, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model.as_str(), dims.unwrap())
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
+        Self::new(client.clone(), model, dims.unwrap())
     }
 
     const MAX_DOCUMENTS: usize = 1024;
@@ -348,7 +354,83 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-// ---------- Completion Model ----------
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct OllamaCompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinition>,
+    pub stream: bool,
+    think: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u64>,
+    options: serde_json::Value,
+}
+
+impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported for Ollama");
+        }
+        // Build up the order of messages (context, chat_history, prompt)
+        let mut partial_history = vec![];
+        if let Some(docs) = req.normalized_documents() {
+            partial_history.push(docs);
+        }
+        partial_history.extend(req.chat_history);
+
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<Message> = match &req.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
+        };
+
+        // Convert and extend the rest of the history
+        full_history.extend(
+            partial_history
+                .into_iter()
+                .map(message::Message::try_into)
+                .collect::<Result<Vec<Vec<Message>>, _>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>(),
+        );
+
+        let mut think = false;
+
+        // TODO: Fix this up to include the full range of ollama options
+        let options = if let Some(mut extra) = req.additional_params {
+            if extra.get("think").is_some() {
+                think = extra["think"].take().as_bool().ok_or_else(|| {
+                    CompletionError::RequestError("`think` must be a bool".into())
+                })?;
+            }
+            json_utils::merge(json!({ "temperature": req.temperature }), extra)
+        } else {
+            json!({ "temperature": req.temperature })
+        };
+
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            max_tokens: req.max_tokens,
+            stream: false,
+            think,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            options,
+        })
+    }
+}
 
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
@@ -362,73 +444,6 @@ impl<T> CompletionModel<T> {
             client,
             model: model.to_owned(),
         }
-    }
-
-    fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        if completion_request.tool_choice.is_some() {
-            tracing::warn!("WARNING: `tool_choice` not supported for Ollama");
-        }
-
-        // Build up the order of messages (context, chat_history)
-        let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
-            partial_history.push(docs);
-        }
-        partial_history.extend(completion_request.chat_history);
-
-        // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<Message> = completion_request
-            .preamble
-            .map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
-
-        // Convert and extend the rest of the history
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(|msg| msg.try_into())
-                .collect::<Result<Vec<Vec<Message>>, _>>()?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<Message>>(),
-        );
-
-        let mut request_payload = json!({
-            "model": self.model,
-            "messages": full_history,
-            "stream": false,
-        });
-
-        // Convert internal prompt into a provider Message
-        let options = if let Some(mut extra) = completion_request.additional_params {
-            if extra.get("think").is_some() {
-                request_payload["think"] = extra["think"].take();
-            }
-            json_utils::merge(
-                json!({ "temperature": completion_request.temperature }),
-                extra,
-            )
-        } else {
-            json!({ "temperature": completion_request.temperature })
-        };
-
-        request_payload["options"] = options;
-
-        if !completion_request.tools.is_empty() {
-            request_payload["tools"] = json!(
-                completion_request
-                    .tools
-                    .into_iter()
-                    .map(|tool| tool.into())
-                    .collect::<Vec<ToolDefinition>>()
-            );
-        }
-
-        tracing::debug!(target: "rig", "Chat mode payload: {}", request_payload);
-
-        Ok(request_payload)
     }
 }
 
@@ -466,9 +481,8 @@ where
     type StreamingResponse = StreamingCompletionResponse;
 
     type Client = Client<T>;
-    type Models = String;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model.into().as_str())
     }
 
@@ -478,7 +492,7 @@ where
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
         let preamble = completion_request.preamble.clone();
-        let request = self.create_completion_request(completion_request)?;
+        let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -492,7 +506,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
@@ -557,8 +571,8 @@ where
     ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
     {
         let preamble = request.preamble.clone();
-        let mut request = self.create_completion_request(request)?;
-        merge_inplace(&mut request, json!({"stream": true}));
+        let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
+        request.stream = true;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -572,7 +586,7 @@ where
                 gen_ai.response.model = self.model,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {

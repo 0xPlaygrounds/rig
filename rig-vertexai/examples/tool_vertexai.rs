@@ -4,7 +4,7 @@ use rig::{
     completion::{Prompt, ToolDefinition},
     tool::Tool,
 };
-use rig_vertexai::{Client, GEMINI_2_5_FLASH_LITE};
+use rig_vertexai::{Client, completion::GEMINI_2_5_FLASH_LITE};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 

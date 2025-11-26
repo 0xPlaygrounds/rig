@@ -713,7 +713,14 @@ where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
 {
     /// Creates a new [`ResponsesCompletionModel`].
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -722,7 +729,7 @@ where
 
     /// Use the Completions API instead of Responses.
     pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel<T> {
-        super::completion::CompletionModel::new(self.client.completions_api(), &self.model)
+        super::completion::CompletionModel::with_model(self.client.completions_api(), &self.model)
     }
 
     /// Attempt to create a completion request from [`crate::completion::CompletionRequest`].
@@ -1057,10 +1064,9 @@ where
     type StreamingResponse = StreamingCompletionResponse;
 
     type Client = super::Client<T>;
-    type Models = super::CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        Self::new(client.clone(), model.into().into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
     }
 
     async fn completion(

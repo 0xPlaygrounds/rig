@@ -12,7 +12,7 @@ mod audio {
     /// Clone is required for conversions between client types.
     pub trait AudioGenerationClient {
         /// The AudioGenerationModel used by the Client
-        type AudioGenerationModel: AudioGenerationModel;
+        type AudioGenerationModel: AudioGenerationModel<Client = Self>;
 
         /// Create an audio generation model with the given name.
         ///
@@ -25,10 +25,9 @@ mod audio {
         ///
         /// let tts = openai.audio_generation_model(openai::TTS_1);
         /// ```
-        fn audio_generation_model(
-            &self,
-            model: impl Into<<Self::AudioGenerationModel as AudioGenerationModel>::Model>,
-        ) -> Self::AudioGenerationModel;
+        fn audio_generation_model(&self, model: impl Into<String>) -> Self::AudioGenerationModel {
+            Self::AudioGenerationModel::make(self, model)
+        }
     }
 
     pub trait AudioGenerationClientDyn {
@@ -41,11 +40,6 @@ mod audio {
         M: AudioGenerationModel + 'static,
     {
         fn audio_generation_model<'a>(&self, model: &str) -> Box<dyn AudioGenerationModelDyn + 'a> {
-            let model = match M::Model::try_from(model.into()) {
-                Ok(model) => model,
-                Err(_) => panic!("Invalid model '{model}'"),
-            };
-
             Box::new(self.audio_generation_model(model))
         }
     }
@@ -59,9 +53,10 @@ mod audio {
     impl AudioGenerationModel for AudioGenerationModelHandle<'_> {
         type Response = ();
         type Client = Nothing;
-        type Model = Nothing;
 
-        fn make(_: &Self::Client, _: impl Into<Self::Model>) -> Self {
+        /// **PANICS**: DynClientBuilder and related features (like this model handle) are being phased out,
+        /// during this transition period some methods will panic when called
+        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
             panic!(
                 "Function should be unreachable as Self can only be constructed from another 'AudioGenerationModel'"
             )

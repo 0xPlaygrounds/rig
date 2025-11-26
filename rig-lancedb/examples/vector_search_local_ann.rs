@@ -22,7 +22,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = Client::from_env();
 
     // Select an embedding model.
-    let model = openai_client.embedding_model(openai::TextEmbeddingAda2);
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store").execute().await?;

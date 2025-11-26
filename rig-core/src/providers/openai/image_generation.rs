@@ -2,7 +2,6 @@ use super::{Client, client::ApiResponse};
 use crate::http_client::HttpClientExt;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge_inplace;
-use crate::models;
 use crate::{http_client, image_generation};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
@@ -12,15 +11,9 @@ use serde_json::json;
 // ================================================================
 // OpenAI Image Generation API
 // ================================================================
-
-models! {
-    pub enum ImageGenerationModels {
-        DallE2 => "dall-e-2",
-        DallE3 => "dall-e-3",
-        GPTImage1 => "gpt-image-1",
-    }
-}
-pub use ImageGenerationModels::*;
+pub const DALL_E_2: &str = "dall-e-2";
+pub const DALL_E_3: &str = "dall-e-3";
+pub const GPT_IMAGE_1: &str = "gpt-image-1";
 
 #[derive(Debug, Deserialize)]
 pub struct ImageGenerationData {
@@ -56,12 +49,15 @@ impl TryFrom<ImageGenerationResponse>
 pub struct ImageGenerationModel<T = reqwest::Client> {
     client: Client<T>,
     /// Name of the model (e.g.: dall-e-2)
-    pub model: ImageGenerationModels,
+    pub model: String,
 }
 
 impl<T> ImageGenerationModel<T> {
-    pub(crate) fn new(client: Client<T>, model: ImageGenerationModels) -> Self {
-        Self { client, model }
+    pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 
@@ -72,9 +68,8 @@ where
     type Response = ImageGenerationResponse;
 
     type Client = Client<T>;
-    type Models = ImageGenerationModels;
 
-    fn make(client: &Self::Client, model: Self::Models) -> Self {
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model)
     }
 
@@ -85,12 +80,12 @@ where
     ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
     {
         let mut request = json!({
-            "model": <ImageGenerationModels as Into<&str>>::into(self.model),
+            "model": self.model,
             "prompt": generation_request.prompt,
             "size": format!("{}x{}", generation_request.width, generation_request.height),
         });
 
-        if self.model != ImageGenerationModels::GPTImage1 {
+        if self.model.as_str() != GPT_IMAGE_1 {
             merge_inplace(
                 &mut request,
                 json!({

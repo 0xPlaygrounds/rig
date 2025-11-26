@@ -1,5 +1,5 @@
+use rig::prelude::*;
 use rig::providers::openai;
-use rig::{prelude::*, providers::openai::CompletionModels::GPT4};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +23,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = openai::Client::from_env();
 
     // Create extractor
-    let data_extractor = openai_client.extractor::<Person>(GPT4).build();
+    let data_extractor = openai_client.extractor::<Person>(openai::GPT_4).build();
     let person = data_extractor
         .extract("Hello my name is John Doe! I am a software engineer.")
         .await?;

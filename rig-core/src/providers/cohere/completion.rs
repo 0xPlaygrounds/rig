@@ -8,11 +8,10 @@ use crate::{
 };
 use std::collections::HashMap;
 
-use super::{CompletionModels, client::Client};
+use super::client::Client;
 use crate::completion::CompletionRequest;
 use crate::providers::cohere::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -528,36 +527,35 @@ pub struct CompletionModel<T = reqwest::Client> {
     pub model: String,
 }
 
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt,
-{
-    pub fn new(client: Client<T>, model: CompletionModels) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct CohereCompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    documents: Vec<crate::completion::Document>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<Tool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
+}
 
-    pub(crate) fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        // Build up the order of messages (context, chat_history)
+impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
+        if let Some(docs) = req.normalized_documents() {
             partial_history.push(docs);
         }
-        partial_history.extend(completion_request.chat_history);
+        partial_history.extend(req.chat_history);
 
-        // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<Message> = completion_request
-            .preamble
-            .map_or_else(Vec::new, |preamble| {
-                vec![Message::System { content: preamble }]
-            });
+        let mut full_history: Vec<Message> = req.preamble.map_or_else(Vec::new, |preamble| {
+            vec![Message::System { content: preamble }]
+        });
 
-        // Convert and extend the rest of the history
         full_history.extend(
             partial_history
                 .into_iter()
@@ -568,21 +566,38 @@ where
                 .collect::<Vec<_>>(),
         );
 
-        let request = json!({
-            "model": self.model,
-            "messages": full_history,
-            "documents": completion_request.documents,
-            "temperature": completion_request.temperature,
-            "tools": completion_request.tools.into_iter().map(Tool::from).collect::<Vec<_>>(),
-            "tool_choice": if let Some(tool_choice) = completion_request.tool_choice && !matches!(tool_choice, ToolChoice::Auto) { tool_choice } else {
-                return Err(CompletionError::RequestError("\"auto\" is not an allowed tool_choice value in the Cohere API".into()))
-            },
-        });
-
-        if let Some(ref params) = completion_request.additional_params {
-            Ok(json_utils::merge(request.clone(), params.clone()))
+        let tool_choice = if let Some(tool_choice) = req.tool_choice {
+            if !matches!(tool_choice, ToolChoice::Auto) {
+                Some(tool_choice)
+            } else {
+                return Err(CompletionError::RequestError(
+                    "\"auto\" is not an allowed tool_choice value in the Cohere API".into(),
+                ));
+            }
         } else {
-            Ok(request)
+            None
+        };
+
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            documents: req.documents,
+            temperature: req.temperature,
+            tools: req.tools.into_iter().map(Tool::from).collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+        })
+    }
+}
+
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt,
+{
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
         }
     }
 }
@@ -594,10 +609,9 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        CompletionModel::new(client.clone(), model.into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model.into())
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -605,7 +619,7 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let request = self.create_completion_request(completion_request)?;
+        let request = CohereCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
         let llm_span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -618,7 +632,7 @@ where
             gen_ai.response.model = self.model,
             gen_ai.usage.output_tokens = tracing::field::Empty,
             gen_ai.usage.input_tokens = tracing::field::Empty,
-            gen_ai.input.messages = serde_json::to_string(request.get("messages").expect("Converting request messages to JSON should not fail!")).unwrap(),
+            gen_ai.input.messages = serde_json::to_string(&request.messages)?,
             gen_ai.output.messages = tracing::field::Empty,
             )
         } else {

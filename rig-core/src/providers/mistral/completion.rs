@@ -1,13 +1,11 @@
 use async_stream::stream;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use std::{convert::Infallible, str::FromStr};
 use tracing::{Instrument, info_span};
 
 use super::client::{Client, Usage};
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
-use crate::models;
 use crate::streaming::{RawStreamingChoice, StreamingCompletionResponse};
 use crate::{
     OneOrMany,
@@ -17,22 +15,18 @@ use crate::{
     telemetry::SpanCombinator,
 };
 
-models! {
-    pub enum CompletionModels {
-        Codestral => "codestral-latest",
-        MistralLarge => "mistral-large-latest",
-        PixtralLarge => "pixtral-large-latest",
-        MistralSaba => "mistral-saba-latest",
-        Ministral3b => "ministral-3b-latest",
-        Ministral8b => "ministral-8b-latest",
-        //Free models
-        MistralSmall => "mistral-small-latest",
-        PixtralSmall => "pixtral-12b-2409",
-        MistralNemo => "open-mistral-nemo",
-        CodestralMamba => "open-codestral-mamba",
-    }
-}
-pub use CompletionModels::*;
+pub const CODESTRAL: &str = "codestral-latest";
+pub const MISTRAL_LARGE: &str = "mistral-large-latest";
+pub const PIXTRAL_LARGE: &str = "pixtral-large-latest";
+pub const MISTRAL_SABA: &str = "mistral-saba-latest";
+pub const MINISTRAL_3B: &str = "ministral-3b-latest";
+pub const MINISTRAL_8B: &str = "ministral-8b-latest";
+
+//Free models
+pub const MISTRAL_SMALL: &str = "mistral-small-latest";
+pub const PIXTRAL_SMALL: &str = "pixtral-12b-2409";
+pub const MISTRAL_NEMO: &str = "open-mistral-nemo";
+pub const CODESTRAL_MAMBA: &str = "open-codestral-mamba";
 
 // =================================================================
 // Rig Implementation Types
@@ -293,78 +287,80 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
     }
 }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct MistralCompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinition>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
+}
 
-    pub(crate) fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
-            partial_history.push(docs);
-        }
+impl TryFrom<(&str, CompletionRequest)> for MistralCompletionRequest {
+    type Error = CompletionError;
 
-        partial_history.extend(completion_request.chat_history);
-
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble.clone())],
             None => vec![],
         };
+        if let Some(docs) = req.normalized_documents() {
+            let docs: Vec<Message> = docs.try_into()?;
+            full_history.extend(docs);
+        }
 
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(message::Message::try_into)
-                .collect::<Result<Vec<Vec<Message>>, _>>()?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
-        );
+        let chat_history: Vec<Message> = req
+            .chat_history
+            .clone()
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
 
-        let tool_choice = completion_request
+        full_history.extend(chat_history);
+
+        let tool_choice = req
             .tool_choice
-            .map(ToolChoice::try_from)
+            .clone()
+            .map(crate::providers::openai::completion::ToolChoice::try_from)
             .transpose()?;
 
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+        })
+    }
+}
 
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": tool_choice,
-            })
-        };
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
+    }
 
-        let request = if let Some(temperature) = completion_request.temperature {
-            json_utils::merge(
-                request,
-                json!({
-                    "temperature": temperature,
-                }),
-            )
-        } else {
-            request
-        };
-
-        let request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
-
-        Ok(request)
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 
@@ -503,10 +499,9 @@ where
     type StreamingResponse = CompletionResponse;
 
     type Client = Client<T>;
-    type Models = CompletionModels;
 
-    fn make(client: &Self::Client, model: impl Into<Self::Models>) -> Self {
-        CompletionModel::new(client.clone(), model.into().into())
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model.into())
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -515,8 +510,8 @@ where
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
-        let request = self.create_completion_request(completion_request)?;
-        let body = serde_json::to_vec(&request)?;
+        let request =
+            MistralCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -530,12 +525,14 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(request.get("messages").unwrap()).unwrap(),
+                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
+
+        let body = serde_json::to_vec(&request)?;
 
         let request = self
             .client
@@ -648,10 +645,7 @@ mod tests {
         }
         "#;
         let completion_response = serde_json::from_str::<CompletionResponse>(json_data).unwrap();
-        assert_eq!(
-            completion_response.model,
-            CompletionModels::MistralSmall.to_string()
-        );
+        assert_eq!(completion_response.model, MISTRAL_SMALL);
 
         let CompletionResponse {
             id,
