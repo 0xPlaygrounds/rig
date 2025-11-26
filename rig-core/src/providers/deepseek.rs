@@ -9,8 +9,8 @@
 //! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_CHAT);
 //! ```
 
-use async_stream::stream;
 use crate::json_utils::empty_or_none;
+use async_stream::stream;
 use bytes::Bytes;
 use futures::StreamExt;
 use http::Request;
