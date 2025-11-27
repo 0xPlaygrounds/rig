@@ -29,6 +29,16 @@ pub fn merge_inplace(a: &mut serde_json::Value, b: serde_json::Value) {
     }
 }
 
+/// Convert a serde_json::Value to a JSON string for tool arguments.
+/// Handles the case where vLLM returns arguments as a JSON string (Value::String)
+/// instead of a JSON object (Value::Object) like OpenAI does.
+pub fn value_to_json_string(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
 /// This module is helpful in cases where raw json objects are serialized and deserialized as
 ///  strings such as `"{\"key\": \"value\"}"`. This might seem odd but it's actually how some
 ///  some providers such as OpenAI return function arguments (for some reason).
