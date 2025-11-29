@@ -12,19 +12,12 @@ pub const GEMINI_2_5_PRO_PREVIEW_03_25: &str = "gemini-2.5-pro-preview-03-25";
 pub const GEMINI_2_5_FLASH_PREVIEW_04_17: &str = "gemini-2.5-flash-preview-04-17";
 /// `gemini-2.5-pro-exp-03-25` experimental completion model
 pub const GEMINI_2_5_PRO_EXP_03_25: &str = "gemini-2.5-pro-exp-03-25";
+/// `gemini-2.5-flash` completion model
 pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
 /// `gemini-2.0-flash-lite` completion model
 pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 /// `gemini-2.0-flash` completion model
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
-/// `gemini-1.5-flash` completion model
-pub const GEMINI_1_5_FLASH: &str = "gemini-1.5-flash";
-/// `gemini-1.5-pro` completion model
-pub const GEMINI_1_5_PRO: &str = "gemini-1.5-pro";
-/// `gemini-1.5-pro-8b` completion model
-pub const GEMINI_1_5_PRO_8B: &str = "gemini-1.5-pro-8b";
-/// `gemini-1.0-pro` completion model
-pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 
 use self::gemini_api_types::Schema;
 use crate::http_client::HttpClientExt;
