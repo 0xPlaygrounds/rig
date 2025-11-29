@@ -32,12 +32,6 @@ pub const CLAUDE_3_7_SONNET: &str = "claude-3-7-sonnet-latest";
 pub const CLAUDE_3_5_SONNET: &str = "claude-3-5-sonnet-latest";
 /// `claude-3-5-haiku-latest` completion model
 pub const CLAUDE_3_5_HAIKU: &str = "claude-3-5-haiku-latest";
-/// `claude-3-5-haiku-latest` completion model
-pub const CLAUDE_3_OPUS: &str = "claude-3-opus-latest";
-/// `claude-3-sonnet-20240229` completion model
-pub const CLAUDE_3_SONNET: &str = "claude-3-sonnet-20240229";
-/// `claude-3-haiku-20240307` completion model
-pub const CLAUDE_3_HAIKU: &str = "claude-3-haiku-20240307";
 
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
@@ -669,7 +663,6 @@ fn calculate_max_tokens(model: &str) -> Option<u64> {
         CLAUDE_4_OPUS => Some(32_000),
         CLAUDE_4_SONNET | CLAUDE_3_7_SONNET => Some(64_000),
         CLAUDE_3_5_SONNET | CLAUDE_3_5_HAIKU => Some(8_192),
-        CLAUDE_3_OPUS | CLAUDE_3_SONNET | CLAUDE_3_HAIKU => Some(4_096),
         _ => None,
     }
 }

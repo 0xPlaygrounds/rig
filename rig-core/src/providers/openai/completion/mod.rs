@@ -25,39 +25,16 @@ use std::str::FromStr;
 
 pub mod streaming;
 
-/// `o4-mini-2025-04-16` completion model
-pub const O4_MINI_2025_04_16: &str = "o4-mini-2025-04-16";
-/// `o4-mini` completion model
-pub const O4_MINI: &str = "o4-mini";
-/// `o3` completion model
-pub const O3: &str = "o3";
-/// `o3-mini` completion model
-pub const O3_MINI: &str = "o3-mini";
-/// `o3-mini-2025-01-31` completion model
-pub const O3_MINI_2025_01_31: &str = "o3-mini-2025-01-31";
-/// `o1-pro` completion model
-pub const O1_PRO: &str = "o1-pro";
-/// `o1`` completion model
-pub const O1: &str = "o1";
-/// `o1-2024-12-17` completion model
-pub const O1_2024_12_17: &str = "o1-2024-12-17";
-/// `o1-preview` completion model
-pub const O1_PREVIEW: &str = "o1-preview";
-/// `o1-preview-2024-09-12` completion model
-pub const O1_PREVIEW_2024_09_12: &str = "o1-preview-2024-09-12";
-/// `o1-mini completion model
-pub const O1_MINI: &str = "o1-mini";
-/// `o1-mini-2024-09-12` completion model
-pub const O1_MINI_2024_09_12: &str = "o1-mini-2024-09-12";
+/// `gpt-5.1` completion model
+pub const GPT_5_1: &str = "gpt-5.1";
 
-/// `gpt-4.1-mini` completion model
-pub const GPT_4_1_MINI: &str = "gpt-4.1-mini";
-/// `gpt-4.1-nano` completion model
-pub const GPT_4_1_NANO: &str = "gpt-4.1-nano";
-/// `gpt-4.1-2025-04-14` completion model
-pub const GPT_4_1_2025_04_14: &str = "gpt-4.1-2025-04-14";
-/// `gpt-4.1` completion model
-pub const GPT_4_1: &str = "gpt-4.1";
+/// `gpt-5` completion model
+pub const GPT_5: &str = "gpt-5";
+/// `gpt-5` completion model
+pub const GPT_5_MINI: &str = "gpt-5-mini";
+/// `gpt-5` completion model
+pub const GPT_5_NANO: &str = "gpt-5-nano";
+
 /// `gpt-4.5-preview` completion model
 pub const GPT_4_5_PREVIEW: &str = "gpt-4.5-preview";
 /// `gpt-4.5-preview-2025-02-27` completion model
@@ -92,14 +69,40 @@ pub const GPT_4_0613: &str = "gpt-4-0613";
 pub const GPT_4_32K: &str = "gpt-4-32k";
 /// `gpt-4-32k-0613` completion model
 pub const GPT_4_32K_0613: &str = "gpt-4-32k-0613";
-/// `gpt-3.5-turbo` completion model
-pub const GPT_35_TURBO: &str = "gpt-3.5-turbo";
-/// `gpt-3.5-turbo-0125` completion model
-pub const GPT_35_TURBO_0125: &str = "gpt-3.5-turbo-0125";
-/// `gpt-3.5-turbo-1106` completion model
-pub const GPT_35_TURBO_1106: &str = "gpt-3.5-turbo-1106";
-/// `gpt-3.5-turbo-instruct` completion model
-pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
+
+/// `o4-mini-2025-04-16` completion model
+pub const O4_MINI_2025_04_16: &str = "o4-mini-2025-04-16";
+/// `o4-mini` completion model
+pub const O4_MINI: &str = "o4-mini";
+/// `o3` completion model
+pub const O3: &str = "o3";
+/// `o3-mini` completion model
+pub const O3_MINI: &str = "o3-mini";
+/// `o3-mini-2025-01-31` completion model
+pub const O3_MINI_2025_01_31: &str = "o3-mini-2025-01-31";
+/// `o1-pro` completion model
+pub const O1_PRO: &str = "o1-pro";
+/// `o1`` completion model
+pub const O1: &str = "o1";
+/// `o1-2024-12-17` completion model
+pub const O1_2024_12_17: &str = "o1-2024-12-17";
+/// `o1-preview` completion model
+pub const O1_PREVIEW: &str = "o1-preview";
+/// `o1-preview-2024-09-12` completion model
+pub const O1_PREVIEW_2024_09_12: &str = "o1-preview-2024-09-12";
+/// `o1-mini completion model
+pub const O1_MINI: &str = "o1-mini";
+/// `o1-mini-2024-09-12` completion model
+pub const O1_MINI_2024_09_12: &str = "o1-mini-2024-09-12";
+
+/// `gpt-4.1-mini` completion model
+pub const GPT_4_1_MINI: &str = "gpt-4.1-mini";
+/// `gpt-4.1-nano` completion model
+pub const GPT_4_1_NANO: &str = "gpt-4.1-nano";
+/// `gpt-4.1-2025-04-14` completion model
+pub const GPT_4_1_2025_04_14: &str = "gpt-4.1-2025-04-14";
+/// `gpt-4.1` completion model
+pub const GPT_4_1: &str = "gpt-4.1";
 
 impl From<ApiErrorResponse> for CompletionError {
     fn from(err: ApiErrorResponse) -> Self {
