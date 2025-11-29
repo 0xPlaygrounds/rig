@@ -215,13 +215,17 @@ pub(crate) fn create_request_body(
         additional_params,
     } = serde_json::from_value::<AdditionalParameters>(additional_params)?;
 
-    if let Some(temp) = completion_request.temperature {
-        generation_config.temperature = Some(temp);
-    }
+    generation_config = generation_config.map(|mut cfg| {
+        if let Some(temp) = completion_request.temperature {
+            cfg.temperature = Some(temp);
+        };
 
-    if let Some(max_tokens) = completion_request.max_tokens {
-        generation_config.max_output_tokens = Some(max_tokens);
-    }
+        if let Some(max_tokens) = completion_request.max_tokens {
+            cfg.max_output_tokens = Some(max_tokens);
+        };
+
+        cfg
+    });
 
     let system_instruction = completion_request.preamble.clone().map(|preamble| Content {
         parts: vec![preamble.into()],
@@ -250,7 +254,7 @@ pub(crate) fn create_request_body(
                     .map_err(|e| CompletionError::RequestError(Box::new(e)))
             })
             .collect::<Result<Vec<_>, _>>()?,
-        generation_config: Some(generation_config),
+        generation_config,
         safety_settings: None,
         tools,
         tool_config,
@@ -439,8 +443,7 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct AdditionalParameters {
         /// Change your Gemini request configuration.
-        #[serde(default)]
-        pub generation_config: GenerationConfig,
+        pub generation_config: Option<GenerationConfig>,
         /// Any additional parameters that you want.
         #[serde(flatten, skip_serializing_if = "Option::is_none")]
         pub additional_params: Option<serde_json::Value>,
@@ -448,7 +451,7 @@ pub mod gemini_api_types {
 
     impl AdditionalParameters {
         pub fn with_config(mut self, cfg: GenerationConfig) -> Self {
-            self.generation_config = cfg;
+            self.generation_config = Some(cfg);
             self
         }
 
