@@ -31,8 +31,6 @@ pub enum ApiResponse<T> {
 pub const GEMMA_2: &str = "google/gemma-2-2b-it";
 /// `meta-llama/Meta-Llama-3.1-8B-Instruct` completion model
 pub const META_LLAMA_3_1: &str = "meta-llama/Meta-Llama-3.1-8B-Instruct";
-/// `microsoft/phi-4` completion model
-pub const PHI_4: &str = "microsoft/phi-4";
 /// `PowerInfer/SmallThinker-3B-Preview` completion model
 pub const SMALLTHINKER_PREVIEW: &str = "PowerInfer/SmallThinker-3B-Preview";
 /// `Qwen/Qwen2.5-7B-Instruct` completion model

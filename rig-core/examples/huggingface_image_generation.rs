@@ -1,5 +1,6 @@
 use rig::client::ProviderClient;
-use rig::client::image_generation::ImageGenerationClientDyn;
+use rig::client::image_generation::ImageGenerationClient;
+use rig::image_generation::ImageGenerationModel;
 use rig::providers::huggingface;
 use std::env::args;
 use std::fs::File;
