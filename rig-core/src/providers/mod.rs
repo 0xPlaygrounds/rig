@@ -11,6 +11,7 @@
 //! - DeepSeek
 //! - Azure OpenAI
 //! - Mira
+//! - YandexGPT
 //!
 //! Each provider has its own module, which contains a `Client` implementation that can
 //! be used to initialize completion and embedding models and execute requests to those models.
@@ -64,3 +65,4 @@ pub mod perplexity;
 pub mod together;
 pub mod voyageai;
 pub mod xai;
+pub mod yandex;
