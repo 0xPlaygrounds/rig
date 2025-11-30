@@ -145,7 +145,13 @@ where
 
         d = d
             .field("base_url", &self.base_url)
-            .field("headers", &self.headers)
+            .field(
+                "headers",
+                &self.headers.iter().filter_map(|(k, v)| {
+                    (k == http::header::AUTHORIZATION || k.as_str().contains("api-key"))
+                        .then_some((k, v))
+                }),
+            )
             .field("http_client", &self.http_client);
 
         self.ext
@@ -401,6 +407,7 @@ where
 pub struct NeedsApiKey;
 
 // ApiKey is generic because Anthropic uses custom auth header, local models like Ollama use none
+#[derive(Clone)]
 pub struct ClientBuilder<Ext, ApiKey = NeedsApiKey, H = reqwest::Client> {
     base_url: String,
     api_key: ApiKey,
