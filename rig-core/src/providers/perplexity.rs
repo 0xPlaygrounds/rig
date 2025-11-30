@@ -13,6 +13,7 @@ use crate::completion::CompletionRequest;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
+use crate::telemetry::{SpanCombinator, TelemetryConfiguration};
 use crate::{
     OneOrMany,
     client::{
@@ -251,6 +252,7 @@ impl TryFrom<(&str, CompletionRequest)> for PerplexityCompletionRequest {
 pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<T> CompletionModel<T> {
@@ -258,6 +260,7 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 }
@@ -335,22 +338,16 @@ where
         Self::new(client.clone(), model)
     }
 
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        if completion_request.tool_choice.is_some() {
-            tracing::warn!("WARNING: `tool_choice` not supported on Perplexity");
-        }
-
-        if !completion_request.tools.is_empty() {
-            tracing::warn!("WARNING: `tools` not supported on Perplexity");
-        }
-        let preamble = completion_request.preamble.clone();
-        let request =
-            PerplexityCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -358,17 +355,36 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "perplexity",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
+                gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
+
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
+        if completion_request.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported on Perplexity");
+        }
+
+        if !completion_request.tools.is_empty() {
+            tracing::warn!("WARNING: `tools` not supported on Perplexity");
+        }
+
+        let request =
+            PerplexityCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
 
         let body = serde_json::to_vec(&request)?;
 
@@ -394,10 +410,9 @@ where
                             "gen_ai.usage.output_tokens",
                             completion.usage.completion_tokens,
                         );
-                        span.record(
-                            "gen_ai.output.messages",
-                            serde_json::to_string(&completion.choices).unwrap(),
-                        );
+                        if self.telemetry_config.include_message_contents {
+                            span.record_model_output(&completion.choices);
+                        }
                         span.record("gen_ai.response.id", completion.id.to_string());
                         span.record("gen_ai.response.model_name", completion.model.to_string());
                         Ok(completion.try_into()?)
@@ -419,6 +434,29 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "perplexity",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = tracing::field::Empty,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
         if completion_request.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported on Perplexity");
         }
@@ -427,11 +465,13 @@ where
             tracing::warn!("WARNING: `tools` not supported on Perplexity");
         }
 
-        let preamble = completion_request.preamble.clone();
-
         let mut request =
             PerplexityCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
         request.stream = true;
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
 
         let body = serde_json::to_vec(&request)?;
 
@@ -442,27 +482,13 @@ where
             .body(body)
             .map_err(http_client::Error::from)?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "perplexity",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
-                gen_ai.output.messages = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-        send_compatible_streaming_request(self.client.http_client().clone(), req)
-            .instrument(span)
-            .await
+        send_compatible_streaming_request(
+            self.client.http_client().clone(),
+            req,
+            self.telemetry_config.include_message_contents,
+        )
+        .instrument(span)
+        .await
     }
 }
 

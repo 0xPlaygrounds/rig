@@ -126,13 +126,22 @@ where
 
         let client = self.client.http_client().clone();
 
-        tracing::Instrument::instrument(send_compatible_streaming_request(client, req), span).await
+        tracing::Instrument::instrument(
+            send_compatible_streaming_request(
+                client,
+                req,
+                self.telemetry_config.include_message_contents,
+            ),
+            span,
+        )
+        .await
     }
 }
 
 pub async fn send_compatible_streaming_request<T>(
     http_client: T,
     req: Request<Vec<u8>>,
+    include_message_contents: bool,
 ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
@@ -149,6 +158,7 @@ where
         let mut text_content = String::new();
         let mut final_tool_calls: Vec<completion::ToolCall> = Vec::new();
         let mut final_usage = None;
+
 
         while let Some(event_result) = event_source.next().await {
             match event_result {
@@ -289,16 +299,20 @@ where
 
         let final_usage = final_usage.unwrap_or_default();
         if !span.is_disabled() {
-            let message_output = super::Message::Assistant {
-                content: vec![super::AssistantContent::Text { text: text_content }],
-                refusal: None,
-                audio: None,
-                name: None,
-                tool_calls: final_tool_calls
-            };
             span.record("gen_ai.usage.input_tokens", final_usage.prompt_tokens);
             span.record("gen_ai.usage.output_tokens", final_usage.total_tokens - final_usage.prompt_tokens);
-            span.record("gen_ai.output.messages", serde_json::to_string(&vec![message_output]).expect("Converting from a Rust struct should always convert to JSON without failing"));
+
+            if include_message_contents {
+                let message_output = super::Message::Assistant {
+                    content: vec![super::AssistantContent::Text { text: text_content }],
+                    refusal: None,
+                    audio: None,
+                    name: None,
+                    tool_calls: final_tool_calls
+                };
+                span.record("gen_ai.output.messages", serde_json::to_string(&vec![message_output]).expect("Converting from a Rust struct should always convert to JSON without failing"));
+            }
+
         }
 
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {

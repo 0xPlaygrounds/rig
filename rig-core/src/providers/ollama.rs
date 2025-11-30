@@ -45,6 +45,7 @@ use crate::completion::{GetTokenUsage, Usage};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
 use crate::streaming::RawStreamingChoice;
+use crate::telemetry::{SpanCombinator, TelemetryConfiguration};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -436,6 +437,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
 pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<T> CompletionModel<T> {
@@ -443,6 +445,7 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.to_owned(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 }
@@ -486,14 +489,16 @@ where
         Self::new(client.clone(), model.into().as_str())
     }
 
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -501,17 +506,26 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "ollama",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
+                gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
+        let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
 
         let body = serde_json::to_vec(&request)?;
 
@@ -536,10 +550,9 @@ where
             let response: CompletionResponse = serde_json::from_slice(&response_body)?;
             let span = tracing::Span::current();
             span.record("gen_ai.response.model_name", &response.model);
-            span.record(
-                "gen_ai.output.messages",
-                serde_json::to_string(&vec![&response.message]).unwrap(),
-            );
+            if self.telemetry_config.include_message_contents {
+                span.record_model_output(&vec![&response.message]);
+            }
             span.record(
                 "gen_ai.usage.input_tokens",
                 response.prompt_eval_count.unwrap_or_default(),
@@ -549,11 +562,13 @@ where
                 response.eval_count.unwrap_or_default(),
             );
 
-            tracing::trace!(
-                target: "rig::completions",
-                "Ollama completion response: {}",
-                serde_json::to_string_pretty(&response)?
-            );
+            if self.telemetry_config.debug_logging {
+                tracing::trace!(
+                    target: "rig::completions",
+                    "Ollama completion response: {}",
+                    serde_json::to_string_pretty(&response)?
+                );
+            }
 
             let response: completion::CompletionResponse<CompletionResponse> =
                 response.try_into()?;
@@ -570,10 +585,6 @@ where
         request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
     {
-        let preamble = request.preamble.clone();
-        let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
-        request.stream = true;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -581,17 +592,29 @@ where
                 gen_ai.operation.name = "chat_streaming",
                 gen_ai.provider.name = "ollama",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = self.model,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
+                gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
+
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&request.preamble);
+        }
+
+        let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
+
+        request.stream = true;
 
         let body = serde_json::to_vec(&request)?;
 
@@ -611,6 +634,8 @@ where
                 "Got error status code trying to send a request to Ollama: {status}"
             )));
         }
+
+        let include_message_contents = self.telemetry_config.include_message_contents;
 
         let stream = try_stream! {
             let span = tracing::Span::current();
@@ -633,14 +658,18 @@ where
                     if response.done {
                         span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
                         span.record("gen_ai.usage.output_tokens", response.eval_count);
-                        let message = Message::Assistant {
-                            content: text_response.clone(),
-                            thinking: if thinking_response.is_empty() { None } else { Some(thinking_response.clone()) },
-                            images: None,
-                            name: None,
-                            tool_calls: tool_calls_final.clone()
-                        };
-                        span.record("gen_ai.output.messages", serde_json::to_string(&vec![message]).unwrap());
+
+                        if include_message_contents {
+                            let message = Message::Assistant {
+                                content: text_response.clone(),
+                                thinking: if thinking_response.is_empty() { None } else { Some(thinking_response.clone()) },
+                                images: None,
+                                name: None,
+                                tool_calls: tool_calls_final.clone()
+                            };
+                            span.record_model_output(&vec![message]);
+                        }
+
                         yield RawStreamingChoice::FinalResponse(
                             StreamingCompletionResponse {
                                 total_duration: response.total_duration,

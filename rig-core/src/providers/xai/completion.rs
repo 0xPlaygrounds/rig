@@ -7,6 +7,7 @@ use crate::{
     completion::{self, CompletionError},
     http_client::HttpClientExt,
     providers::openai::Message,
+    telemetry::{SpanCombinator, TelemetryConfiguration},
 };
 
 use super::client::{Client, xai_api_types::ApiResponse};
@@ -93,6 +94,7 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<T> CompletionModel<T> {
@@ -100,6 +102,7 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 }
@@ -117,16 +120,16 @@ where
         Self::new(client.clone(), model)
     }
 
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let request =
-            XAICompletionRequest::try_from((self.model.to_string().as_ref(), completion_request))?;
-        let request_messages_json_str = serde_json::to_string(&request.messages).unwrap();
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -134,19 +137,29 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "xai",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = &request_messages_json_str,
+                gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
-        tracing::debug!("xAI completion request: {request_messages_json_str}");
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
+        let request =
+            XAICompletionRequest::try_from((self.model.to_string().as_ref(), completion_request))?;
+
+        if self.telemetry_config.debug_logging {
+            let request_messages_json_str = serde_json::to_string(&request.messages).unwrap();
+            tracing::trace!("xAI completion request: {request_messages_json_str}");
+        }
 
         let body = serde_json::to_vec(&request)?;
         let req = self

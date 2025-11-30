@@ -68,6 +68,7 @@ use crate::client::FinalCompletionResponse;
 use crate::client::completion::CompletionModelHandle;
 use crate::message::ToolChoice;
 use crate::streaming::StreamingCompletionResponse;
+use crate::telemetry::TelemetryConfiguration;
 use crate::tool::server::ToolServerError;
 use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, http_client, streaming};
@@ -355,6 +356,14 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
     type Client;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self;
+
+    /// Add telemetry configuration to your model. The default provided method simply outputs a debug trace saying no telemetry config is supported then returns self.
+    /// In practical usage, you should use `mut self` (omitted from provided method for linting reasons)
+    fn telemetry_config(self, _telemetry_config: TelemetryConfiguration) -> Self {
+        tracing::debug!("No telemetry config supported, calling default creation method");
+
+        self
+    }
 
     /// Generates a completion response for the given completion request.
     fn completion(

@@ -2,7 +2,6 @@ use super::{
     client::{ApiErrorResponse, ApiResponse, Client, Usage},
     streaming::StreamingCompletionResponse,
 };
-use crate::message;
 use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
@@ -12,6 +11,7 @@ use crate::{
     one_or_many::string_or_one_or_many,
     providers::openai,
 };
+use crate::{message, telemetry::TelemetryConfiguration};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use tracing::{Instrument, info_span};
@@ -376,6 +376,7 @@ impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<T> CompletionModel<T> {
@@ -383,6 +384,7 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 }
@@ -398,6 +400,11 @@ where
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model)
+    }
+
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -420,12 +427,16 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
+                gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
 
         let body = serde_json::to_vec(&request)?;
 
@@ -446,12 +457,16 @@ where
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_token_usage(&response.usage);
-                        span.record_model_output(&response.choices);
+                        if self.telemetry_config.include_message_contents {
+                            span.record_model_output(&response.choices);
+                        }
                         span.record("gen_ai.response.id", &response.id);
                         span.record("gen_ai.response.model_name", &response.model);
 
-                        tracing::debug!(target: "rig::completions",
-                            "OpenRouter response: {response:?}");
+                        if self.telemetry_config.debug_logging {
+                            tracing::trace!(target: "rig::completions",
+                                "OpenRouter response: {response:?}");
+                        }
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),

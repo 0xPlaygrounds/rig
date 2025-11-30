@@ -300,7 +300,9 @@ where
             &mut vec![self.prompt.to_owned()]
         };
 
-        if let Some(text) = self.prompt.rag_text() {
+        if let Some(text) = self.prompt.rag_text()
+            && self.agent.telemetry_config.include_message_contents
+        {
             agent_span.record("gen_ai.prompt", text);
         }
 
@@ -417,7 +419,10 @@ where
                     tracing::info!("Depth reached: {}/{}", current_max_depth, self.max_depth);
                 }
 
-                agent_span.record("gen_ai.completion", &merged_texts);
+                if self.agent.telemetry_config.include_message_contents {
+                    agent_span.record("gen_ai.completion", &merged_texts);
+                }
+
                 agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
                 agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
 

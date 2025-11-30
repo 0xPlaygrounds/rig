@@ -6,7 +6,7 @@ use crate::{
     http_client::HttpClientExt,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, Reasoning},
     one_or_many::string_or_one_or_many,
-    telemetry::{ProviderResponseExt, SpanCombinator},
+    telemetry::{ProviderResponseExt, SpanCombinator, TelemetryConfiguration},
     wasm_compat::*,
 };
 use std::{convert::Infallible, str::FromStr};
@@ -629,6 +629,7 @@ pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<T> CompletionModel<T>
@@ -643,6 +644,7 @@ where
             client,
             model,
             default_max_tokens,
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 
@@ -651,6 +653,7 @@ where
             client,
             model: model.to_string(),
             default_max_tokens: Some(calculate_max_tokens_custom(model)),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 }
@@ -790,6 +793,11 @@ where
         Self::new(client.clone(), model.into())
     }
 
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -802,7 +810,7 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "anthropic",
                 gen_ai.request.model = &self.model,
-                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
@@ -813,6 +821,10 @@ where
         } else {
             tracing::Span::current()
         };
+
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
 
         // Check if max_tokens is set, required for Anthropic
         if completion_request.max_tokens.is_none() {
@@ -827,7 +839,10 @@ where
 
         let request =
             AnthropicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-        span.record_model_input(&request.messages);
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
 
         async move {
             let request: Vec<u8> = serde_json::to_vec(&request)?;
@@ -856,14 +871,20 @@ where
                 )? {
                     ApiResponse::Message(completion) => {
                         let span = tracing::Span::current();
-                        span.record_model_output(&completion.content);
+                        if self.telemetry_config.include_message_contents {
+                            span.record_model_output(&completion.content);
+                        }
                         span.record_response_metadata(&completion);
                         span.record_token_usage(&completion.usage);
-                        tracing::trace!(
-                            target: "rig::completions",
-                            "Anthropic completion response: {}",
-                            serde_json::to_string_pretty(&completion)?
-                        );
+
+                        if self.telemetry_config.debug_logging {
+                            tracing::trace!(
+                                target: "rig::completions",
+                                "Anthropic completion response: {}",
+                                serde_json::to_string_pretty(&completion)?
+                            );
+                        }
+
                         completion.try_into()
                     }
                     ApiResponse::Error(ApiErrorResponse { message }) => {

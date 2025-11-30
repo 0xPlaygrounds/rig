@@ -27,7 +27,7 @@ use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
 use crate::providers::gemini::streaming::StreamingCompletionResponse;
-use crate::telemetry::SpanCombinator;
+use crate::telemetry::{SpanCombinator, TelemetryConfiguration};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -50,6 +50,7 @@ use super::Client;
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<T> CompletionModel<T> {
@@ -57,6 +58,7 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 
@@ -64,6 +66,7 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 }
@@ -80,6 +83,11 @@ where
         Self::new(client.clone(), model)
     }
 
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -92,7 +100,7 @@ where
                 gen_ai.operation.name = "generate_content",
                 gen_ai.provider.name = "gcp.gemini",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
@@ -104,16 +112,23 @@ where
             tracing::Span::current()
         };
 
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
         let request = create_request_body(completion_request)?;
-        span.record_model_input(&request.contents);
 
-        span.record_model_input(&request.contents);
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.contents);
+        }
 
-        tracing::trace!(
-            target: "rig::completions",
-            "Sending completion request to Gemini API {}",
-            serde_json::to_string_pretty(&request)?
-        );
+        if self.telemetry_config.debug_logging {
+            tracing::trace!(
+                target: "rig::completions",
+                "Sending completion request to Gemini API {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let body = serde_json::to_vec(&request)?;
 
@@ -135,7 +150,6 @@ where
                 .map_err(CompletionError::HttpError)?;
 
             let response_text = String::from_utf8_lossy(&response_body).to_string();
-            tracing::debug!("Received raw response from Gemini API: {}", response_text);
 
             let response: GenerateContentResponse = serde_json::from_slice(&response_body)
                 .map_err(|err| {
@@ -158,14 +172,20 @@ where
             }
 
             let span = tracing::Span::current();
-            span.record_model_output(&response.candidates);
+
+            if self.telemetry_config.include_message_contents {
+                span.record_model_output(&response.candidates);
+            }
+
             span.record_response_metadata(&response);
             span.record_token_usage(&response.usage_metadata);
 
-            tracing::trace!(
-                "Received response from Gemini API: {}",
-                serde_json::to_string_pretty(&response)?
-            );
+            if self.telemetry_config.debug_logging {
+                tracing::trace!(
+                    "Received response from Gemini API: {}",
+                    serde_json::to_string_pretty(&response)?
+                );
+            }
 
             response.try_into()
         } else {

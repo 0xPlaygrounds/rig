@@ -16,6 +16,7 @@ use crate::http_client::{self, HttpClientExt};
 use crate::streaming::StreamingCompletionResponse;
 
 use crate::providers::openai;
+use crate::telemetry::{SpanCombinator, TelemetryConfiguration};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -304,6 +305,7 @@ pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
     /// Name of the model (e.g.: deepseek-ai/DeepSeek-R1)
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<T> CompletionModel<T> {
@@ -311,13 +313,7 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.into(),
-        }
-    }
-
-    pub fn with_model(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 }
@@ -335,16 +331,16 @@ where
         Self::new(client.clone(), model)
     }
 
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let request =
-            HyperbolicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-        let body = serde_json::to_vec(&request)?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -352,17 +348,30 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "hyperbolic",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
+                gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
+
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
+        let request =
+            HyperbolicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
+
+        let body = serde_json::to_vec(&request)?;
 
         let req = self
             .client
@@ -389,6 +398,11 @@ where
                             response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
                         );
 
+                        let span = Span::current();
+                        if self.telemetry_config.include_message_contents {
+                            span.record_model_output(&response.choices);
+                        }
+
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
@@ -408,10 +422,6 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let mut request =
-            HyperbolicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -419,17 +429,28 @@ where
                 gen_ai.operation.name = "chat_streaming",
                 gen_ai.provider.name = "hyperbolic",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
+                gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
+
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
+        let mut request =
+            HyperbolicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages)
+        }
 
         let params = json_utils::merge(
             request.additional_params.unwrap_or(serde_json::json!({})),
@@ -447,9 +468,13 @@ where
             .body(body)
             .map_err(http_client::Error::from)?;
 
-        send_compatible_streaming_request(self.client.http_client().clone(), req)
-            .instrument(span)
-            .await
+        send_compatible_streaming_request(
+            self.client.http_client().clone(),
+            req,
+            self.telemetry_config.include_message_contents,
+        )
+        .instrument(span)
+        .await
     }
 }
 
@@ -597,7 +622,7 @@ mod image_generation {
 // ======================================
 #[cfg(feature = "audio")]
 pub use audio_generation::*;
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Span, info_span};
 
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]

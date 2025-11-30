@@ -19,6 +19,7 @@ use crate::http_client::{self, HttpClientExt};
 use crate::message::MessageError;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
+use crate::telemetry::{SpanCombinator, TelemetryConfiguration};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -488,6 +489,7 @@ pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<T> CompletionModel<T>
@@ -498,6 +500,7 @@ where
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 
@@ -505,6 +508,7 @@ where
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 }
@@ -522,14 +526,46 @@ where
         Self::new(client.clone(), model.into())
     }
 
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "galadriel",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = tracing::field::Empty,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
         let request =
             GaladrielCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
+
         let body = serde_json::to_vec(&request)?;
 
         let req = self
@@ -539,41 +575,24 @@ where
             .body(body)
             .map_err(http_client::Error::from)?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "galadriel",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
-                gen_ai.output.messages = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
         async move {
             let response = self.client.http_client().send(req).await?;
 
             if response.status().is_success() {
                 let t = http_client::text(response).await?;
-                tracing::debug!(target: "rig::completions", "Galadriel completion response: {t}");
+
+                if self.telemetry_config.debug_logging {
+                    tracing::trace!(target: "rig::completions", "Galadriel completion response: {t}");
+                }
 
                 match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record("gen_ai.response.id", response.id.clone());
                         span.record("gen_ai.response.model_name", response.model.clone());
-                        span.record(
-                            "gen_ai.output.messages",
-                            serde_json::to_string(&response.choices).unwrap(),
-                        );
+                        if self.telemetry_config.include_message_contents {
+                            span.record_model_output(&response.choices);
+                        }
                         if let Some(ref usage) = response.usage {
                             span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
                             span.record(
@@ -600,9 +619,35 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "galadriel",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = tracing::field::Empty,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
         let mut request =
             GaladrielCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
 
         let params = json_utils::merge(
             request.additional_params.unwrap_or(serde_json::json!({})),
@@ -620,27 +665,12 @@ where
             .body(body)
             .map_err(http_client::Error::from)?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "galadriel",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
-                gen_ai.output.messages = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        send_compatible_streaming_request(self.client.http_client().clone(), req)
-            .instrument(span)
-            .await
+        send_compatible_streaming_request(
+            self.client.http_client().clone(),
+            req,
+            self.telemetry_config.include_message_contents,
+        )
+        .instrument(span)
+        .await
     }
 }

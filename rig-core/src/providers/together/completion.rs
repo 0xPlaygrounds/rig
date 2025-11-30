@@ -7,6 +7,7 @@ use crate::{
     completion::{self, CompletionError},
     http_client::HttpClientExt,
     providers::openai,
+    telemetry::{SpanCombinator, TelemetryConfiguration},
 };
 
 use super::client::{Client, together_ai_api_types::ApiResponse};
@@ -193,6 +194,7 @@ impl TryFrom<(&str, CompletionRequest)> for TogetherAICompletionRequest {
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<T> CompletionModel<T> {
@@ -200,6 +202,7 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 }
@@ -217,18 +220,16 @@ where
         Self::new(client.clone(), model)
     }
 
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let request = TogetherAICompletionRequest::try_from((
-            self.model.to_string().as_ref(),
-            completion_request,
-        ))?;
-        let messages_as_json_string = serde_json::to_string(&request.messages)?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -236,19 +237,31 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "together",
                 gen_ai.request.model = self.model.to_string(),
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = &messages_as_json_string,
+                gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
-        tracing::debug!(target: "rig::completions", "TogetherAI completion request: {messages_as_json_string}");
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
+        let request = TogetherAICompletionRequest::try_from((
+            self.model.to_string().as_ref(),
+            completion_request,
+        ))?;
+        let messages_as_json_string = serde_json::to_string(&request.messages)?;
+
+        if self.telemetry_config.debug_logging {
+            tracing::trace!(target: "rig::completions", "TogetherAI completion request: {messages_as_json_string}");
+        }
 
         let body = serde_json::to_vec(&request)?;
 
@@ -270,10 +283,9 @@ where
                 )? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
-                        span.record(
-                            "gen_ai.output.messages",
-                            serde_json::to_string(&response.choices).unwrap(),
-                        );
+                        if self.telemetry_config.include_message_contents {
+                            span.record_model_output(&response.choices);
+                        }
                         span.record("gen_ai.response.id", &response.id);
                         span.record("gen_ai.response.model_name", &response.model);
                         if let Some(ref usage) = response.usage {
@@ -283,11 +295,13 @@ where
                                 usage.total_tokens - usage.prompt_tokens,
                             );
                         }
-                        tracing::trace!(
-                            target: "rig::completions",
-                            "TogetherAI completion response: {}",
-                            serde_json::to_string_pretty(&response)?
-                        );
+                        if self.telemetry_config.debug_logging {
+                            tracing::trace!(
+                                target: "rig::completions",
+                                "TogetherAI completion response: {}",
+                                serde_json::to_string_pretty(&response)?
+                            );
+                        }
                         response.try_into()
                     }
                     ApiResponse::Error(err) => Err(CompletionError::ProviderError(err.error)),

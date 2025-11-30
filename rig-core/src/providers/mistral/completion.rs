@@ -7,6 +7,7 @@ use super::client::{Client, Usage};
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
 use crate::streaming::{RawStreamingChoice, StreamingCompletionResponse};
+use crate::telemetry::TelemetryConfiguration;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -267,6 +268,7 @@ impl FromStr for AssistantContent {
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -362,6 +364,7 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 
@@ -369,6 +372,7 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 }
@@ -513,6 +517,11 @@ where
         Self::new(client.clone(), model.into())
     }
 
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -529,17 +538,25 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "mistral",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = &preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
+                gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
+
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&preamble);
+        }
 
         let body = serde_json::to_vec(&request)?;
 
@@ -559,7 +576,9 @@ where
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_token_usage(&response);
-                        span.record_model_output(&response.choices);
+                        if self.telemetry_config.include_message_contents {
+                            span.record_model_output(&response.choices);
+                        }
                         span.record_response_metadata(&response);
                         response.try_into()
                     }

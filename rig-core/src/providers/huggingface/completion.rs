@@ -2,7 +2,7 @@ use super::client::Client;
 use crate::completion::GetTokenUsage;
 use crate::http_client::HttpClientExt;
 use crate::providers::openai::StreamingCompletionResponse;
-use crate::telemetry::SpanCombinator;
+use crate::telemetry::{SpanCombinator, TelemetryConfiguration};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -677,6 +677,7 @@ pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     /// Name of the model (e.g: google/gemma-2-2b-it)
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<T> CompletionModel<T> {
@@ -684,6 +685,7 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.to_string(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 }
@@ -701,6 +703,11 @@ where
         Self::new(client.clone(), &model.into())
     }
 
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -713,7 +720,7 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "huggingface",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
@@ -725,10 +732,16 @@ where
             tracing::Span::current()
         };
 
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
         let model = self.client.subprovider().model_identifier(&self.model);
         let request = HuggingfaceCompletionRequest::try_from((model.as_ref(), completion_request))?;
 
-        span.record_model_input(&request.messages);
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
 
         let request = serde_json::to_vec(&request)?;
 
@@ -752,8 +765,11 @@ where
                 ApiResponse::Ok(response) => {
                     let span = tracing::Span::current();
                     span.record_token_usage(&response.usage);
-                    span.record_model_output(&response.choices);
                     span.record_response_metadata(&response);
+
+                    if self.telemetry_config.include_message_contents {
+                        span.record_model_output(&response.choices);
+                    }
 
                     response.try_into()
                 }

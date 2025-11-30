@@ -209,6 +209,8 @@ where
 
         let stream = GenericEventSource::new(self.client.http_client().clone(), req);
 
+        let include_message_contents = self.telemetry_config.include_message_contents;
+
         // Use our SSE decoder to directly handle Server-Sent Events format
         let stream: StreamingResult<StreamingCompletionResponse> = Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
@@ -243,10 +245,13 @@ where
 
                                             let span = tracing::Span::current();
                                             span.record_token_usage(&usage);
-                                            span.record_model_output(&Message {
-                                                role: super::completion::Role::Assistant,
-                                                content: OneOrMany::one(Content::Text { text: text_content.clone() })}
-                                            );
+
+                                            if include_message_contents {
+                                                span.record_model_output(&Message {
+                                                    role: super::completion::Role::Assistant,
+                                                    content: OneOrMany::one(Content::Text { text: text_content.clone() })}
+                                                );
+                                            }
 
                                             final_usage = Some(usage);
                                             break;

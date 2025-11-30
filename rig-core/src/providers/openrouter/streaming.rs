@@ -16,6 +16,7 @@ use crate::json_utils;
 use crate::message::{ToolCall, ToolFunction};
 use crate::providers::openrouter::OpenrouterCompletionRequest;
 use crate::streaming;
+use crate::telemetry::SpanCombinator;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct StreamingCompletionResponse {
@@ -146,12 +147,16 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
+                gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
 
         tracing::Instrument::instrument(
             send_compatible_streaming_request(self.client.http_client().clone(), req),

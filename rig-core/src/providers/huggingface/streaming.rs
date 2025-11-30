@@ -5,6 +5,7 @@ use crate::json_utils::{self};
 use crate::providers::huggingface::completion::HuggingfaceCompletionRequest;
 use crate::providers::openai::{StreamingCompletionResponse, send_compatible_streaming_request};
 use crate::streaming;
+use crate::telemetry::SpanCombinator;
 use tracing::{Instrument, info_span};
 
 impl<T> CompletionModel<T>
@@ -16,6 +17,29 @@ where
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+            target: "rig::completions",
+            "chat",
+            gen_ai.operation.name = "chat",
+            gen_ai.provider.name = "huggingface",
+            gen_ai.request.model = self.model,
+            gen_ai.response.id = tracing::field::Empty,
+            gen_ai.system_instructions = tracing::field::Empty,
+            gen_ai.response.model = self.model,
+            gen_ai.usage.output_tokens = tracing::field::Empty,
+            gen_ai.usage.input_tokens = tracing::field::Empty,
+            gen_ai.input.messages = tracing::field::Empty,
+            gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
         let model = self.client.subprovider().model_identifier(&self.model);
         let mut request =
             HuggingfaceCompletionRequest::try_from((model.as_ref(), completion_request))?;
@@ -39,26 +63,16 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-            target: "rig::completions",
-            "chat",
-            gen_ai.operation.name = "chat",
-            gen_ai.provider.name = "huggingface",
-            gen_ai.request.model = self.model,
-            gen_ai.response.id = tracing::field::Empty,
-            gen_ai.response.model = self.model,
-            gen_ai.usage.output_tokens = tracing::field::Empty,
-            gen_ai.usage.input_tokens = tracing::field::Empty,
-            gen_ai.input.messages = serde_json::to_string(&request.messages)?,
-            gen_ai.output.messages = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
 
-        send_compatible_streaming_request(self.client.http_client().clone(), req)
-            .instrument(span)
-            .await
+        send_compatible_streaming_request(
+            self.client.http_client().clone(),
+            req,
+            self.telemetry_config.include_message_contents,
+        )
+        .instrument(span)
+        .await
     }
 }

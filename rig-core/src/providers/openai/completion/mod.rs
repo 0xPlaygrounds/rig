@@ -7,15 +7,16 @@ use super::{
     client::{ApiErrorResponse, ApiResponse},
     streaming::StreamingCompletionResponse,
 };
-use crate::completion::{
-    CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
-};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{ProviderResponseExt, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, json_utils, message};
+use crate::{
+    completion::{CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage},
+    telemetry::TelemetryConfiguration,
+};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::fmt;
@@ -838,6 +839,7 @@ pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<T> CompletionModel<T>
@@ -848,6 +850,7 @@ where
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 
@@ -855,6 +858,7 @@ where
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 }
@@ -988,6 +992,11 @@ where
         Self::new(client.clone(), model)
     }
 
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
+    }
+
     async fn completion(
         &self,
         completion_request: CoreCompletionRequest,
@@ -999,7 +1008,7 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "openai",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
@@ -1011,9 +1020,15 @@ where
             tracing::Span::current()
         };
 
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
         let request = CompletionRequest::try_from((self.model.to_owned(), completion_request))?;
 
-        span.record_model_input(&request.messages);
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
 
         let body = serde_json::to_vec(&request)?;
 
@@ -1033,8 +1048,9 @@ where
                 match serde_json::from_str::<ApiResponse<CompletionResponse>>(&text)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
-                        span.record_model_output(&response.choices);
-                        span.record_response_metadata(&response);
+                        if self.telemetry_config.include_message_contents {
+                            span.record_response_metadata(&response);
+                        }
                         span.record_token_usage(&response.usage);
                         tracing::debug!("OpenAI response: {response:?}");
                         response.try_into()

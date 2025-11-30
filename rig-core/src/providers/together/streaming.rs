@@ -6,6 +6,7 @@ use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::providers::together::completion::TogetherAICompletionRequest;
 use crate::streaming::StreamingCompletionResponse;
+use crate::telemetry::SpanCombinator;
 
 use tracing::{Instrument, info_span};
 
@@ -18,7 +19,29 @@ where
         completion_request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<openai::StreamingCompletionResponse>, CompletionError>
     {
-        let preamble = completion_request.preamble.clone();
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "together",
+                gen_ai.request.model = self.model.to_string(),
+                gen_ai.system_instructions = tracing::field::Empty,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
         let mut request = TogetherAICompletionRequest::try_from((
             self.model.to_string().as_ref(),
             completion_request,
@@ -40,27 +63,16 @@ where
             .body(body)
             .map_err(|x| CompletionError::HttpError(x.into()))?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "together",
-                gen_ai.request.model = self.model.to_string(),
-                gen_ai.system_instructions = preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
-                gen_ai.output.messages = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
 
-        send_compatible_streaming_request(self.client.http_client().clone(), req)
-            .instrument(span)
-            .await
+        send_compatible_streaming_request(
+            self.client.http_client().clone(),
+            req,
+            self.telemetry_config.include_message_contents,
+        )
+        .instrument(span)
+        .await
     }
 }

@@ -20,6 +20,7 @@ use crate::message::{
 };
 use crate::one_or_many::string_or_one_or_many;
 
+use crate::telemetry::{SpanCombinator, TelemetryConfiguration};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, message};
 use serde::{Deserialize, Serialize};
@@ -714,6 +715,7 @@ pub struct ResponsesCompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<T> ResponsesCompletionModel<T>
@@ -725,6 +727,7 @@ where
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 
@@ -732,12 +735,19 @@ where
         Self {
             client,
             model: model.to_string(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 
     /// Use the Completions API instead of Responses.
     pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel<T> {
-        super::completion::CompletionModel::with_model(self.client.completions_api(), &self.model)
+        let mut model = super::completion::CompletionModel::with_model(
+            self.client.completions_api(),
+            &self.model,
+        );
+        model.telemetry_config = self.telemetry_config;
+
+        model
     }
 
     /// Attempt to create a completion request from [`crate::completion::CompletionRequest`].
@@ -1077,6 +1087,11 @@ where
         Self::new(client.clone(), model)
     }
 
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
+    }
+
     async fn completion(
         &self,
         completion_request: crate::completion::CompletionRequest,
@@ -1086,6 +1101,7 @@ where
                 target: "rig::completions",
                 "chat",
                 gen_ai.operation.name = "chat",
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.provider.name = tracing::field::Empty,
                 gen_ai.request.model = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
@@ -1102,17 +1118,22 @@ where
         span.record("gen_ai.provider.name", "openai");
         span.record("gen_ai.request.model", &self.model);
         let request = self.create_completion_request(completion_request)?;
-        span.record(
-            "gen_ai.input.messages",
-            serde_json::to_string(&request.input)
-                .expect("openai request to successfully turn into a JSON value"),
-        );
+        if self.telemetry_config.include_message_contents {
+            span.record(
+                "gen_ai.input.messages",
+                serde_json::to_string(&request.input)
+                    .expect("openai request to successfully turn into a JSON value"),
+            );
+        }
+
         let body = serde_json::to_vec(&request)?;
-        tracing::trace!(
-            target: "rig::completions",
-            "OpenAI Responses API input: {request}",
-            request = serde_json::to_string_pretty(&request).unwrap()
-        );
+        if self.telemetry_config.debug_logging {
+            tracing::trace!(
+                target: "rig::completions",
+                "OpenAI Responses API input: {request}",
+                request = serde_json::to_string_pretty(&request).unwrap()
+            );
+        }
 
         let req = self
             .client
@@ -1128,10 +1149,11 @@ where
                 let t = http_client::text(response).await?;
                 let response = serde_json::from_str::<Self::Response>(&t)?;
                 let span = tracing::Span::current();
-                span.record(
-                    "gen_ai.output.messages",
-                    serde_json::to_string(&response.output).unwrap(),
-                );
+
+                if self.telemetry_config.include_message_contents {
+                    span.record_model_output(&response.output);
+                }
+
                 span.record("gen_ai.response.id", &response.id);
                 span.record("gen_ai.response.model", &response.model);
                 if let Some(ref usage) = response.usage {

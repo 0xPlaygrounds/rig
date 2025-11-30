@@ -20,6 +20,7 @@ use crate::client::{
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt, bearer_auth_header};
 use crate::streaming::StreamingCompletionResponse;
+use crate::telemetry::TelemetryConfiguration;
 use crate::transcription::TranscriptionError;
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
@@ -617,6 +618,7 @@ pub struct CompletionModel<T = reqwest::Client> {
     client: Client<T>,
     /// Name of the model (e.g.: gpt-4o-mini)
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<T> CompletionModel<T> {
@@ -624,6 +626,7 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 }
@@ -638,6 +641,11 @@ where
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model.into())
+    }
+
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -664,10 +672,25 @@ where
             tracing::Span::current()
         };
 
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
         let request =
             AzureOpenAICompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
-        span.record_model_input(&request.messages);
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
+
+        if self.telemetry_config.debug_logging {
+            tracing::trace!(
+                target: "rig::completions",
+                "Azure completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let body = serde_json::to_vec(&request)?;
 
         let req = self
@@ -694,14 +717,18 @@ where
                 )? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
-                        span.record_model_output(&response.choices);
+                        if self.telemetry_config.include_message_contents {
+                            span.record_model_output(&response.choices);
+                        }
                         span.record_response_metadata(&response);
                         span.record_token_usage(&response.usage);
-                        tracing::trace!(
-                            target: "rig::completions",
-                            "Azure completion response: {}",
-                            serde_json::to_string_pretty(&response)?
-                        );
+                        if self.telemetry_config.debug_logging {
+                            tracing::trace!(
+                                target: "rig::completions",
+                                "Azure completion response: {}",
+                                serde_json::to_string_pretty(&response)?
+                            );
+                        }
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
@@ -721,7 +748,29 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "azure.openai",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = tracing::field::Empty,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
         let mut request =
             AzureOpenAICompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
@@ -741,27 +790,12 @@ where
             .body(body)
             .map_err(http_client::Error::from)?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "azure.openai",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = &preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
-                gen_ai.output.messages = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
         tracing_futures::Instrument::instrument(
-            send_compatible_streaming_request(self.client.http_client().clone(), req),
+            send_compatible_streaming_request(
+                self.client.http_client().clone(),
+                req,
+                self.telemetry_config.include_message_contents,
+            ),
             span,
         )
         .await

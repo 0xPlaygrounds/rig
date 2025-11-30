@@ -7,6 +7,7 @@ use crate::{
     },
     message::ToolChoice,
     streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
+    telemetry::TelemetryConfiguration,
     tool::server::ToolServerHandle,
     vector_store::{VectorStoreError, request::VectorSearchRequest},
     wasm_compat::WasmCompatSend,
@@ -52,7 +53,7 @@ pub struct Agent<M>
 where
     M: CompletionModel,
 {
-    /// Name of the agent used for logging and debugging
+    /// Name of the agent. Used in logging and debugging as well as being an identifier when using agents as a `rig::tool::Tool`.
     pub name: Option<String>,
     /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
     pub description: Option<String>,
@@ -68,11 +69,14 @@ where
     pub max_tokens: Option<u64>,
     /// Additional parameters to be passed to the model
     pub additional_params: Option<serde_json::Value>,
+    /// The handle to a given tool server.
     pub tool_server_handle: ToolServerHandle,
     /// List of vector store, with the sample number
     pub dynamic_context: DynamicContextStore,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     pub tool_choice: Option<ToolChoice>,
+    /// The telemetry configuration.
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<M> Agent<M>

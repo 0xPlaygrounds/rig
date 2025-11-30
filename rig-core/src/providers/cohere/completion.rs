@@ -4,7 +4,7 @@ use crate::{
     http_client::{self, HttpClientExt},
     json_utils,
     message::{self, Reasoning, ToolChoice},
-    telemetry::SpanCombinator,
+    telemetry::{SpanCombinator, TelemetryConfiguration},
 };
 use std::collections::HashMap;
 
@@ -525,6 +525,7 @@ impl TryFrom<Message> for message::Message {
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -598,6 +599,7 @@ where
         Self {
             client,
             model: model.into(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 }
@@ -614,6 +616,11 @@ where
         Self::new(client.clone(), model.into())
     }
 
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
@@ -628,24 +635,35 @@ where
             gen_ai.operation.name = "chat",
             gen_ai.provider.name = "cohere",
             gen_ai.request.model = self.model,
+            gen_ai.system_instructions = tracing::field::Empty,
             gen_ai.response.id = tracing::field::Empty,
             gen_ai.response.model = self.model,
             gen_ai.usage.output_tokens = tracing::field::Empty,
             gen_ai.usage.input_tokens = tracing::field::Empty,
-            gen_ai.input.messages = serde_json::to_string(&request.messages)?,
+            gen_ai.input.messages = tracing::field::Empty,
             gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
-        tracing::trace!(
-            "Cohere request: {}",
-            serde_json::to_string_pretty(&request)?
-        );
+        if self.telemetry_config.include_message_contents {
+            llm_span.record(
+                "gen_ai.input.messages",
+                serde_json::to_string(&request.messages)?,
+            );
+        }
+
+        if self.telemetry_config.debug_logging {
+            tracing::trace!(
+                "Cohere request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let req_body = serde_json::to_vec(&request)?;
 
+        // SAFETY: This shouldn't theoretically fail... although we shouldn't really unwrap this
         let req = self.client.post("/v2/chat")?.body(req_body).unwrap();
 
         async {
@@ -663,13 +681,17 @@ where
                 let json_response: CompletionResponse = serde_json::from_slice(&body)?;
                 let span = tracing::Span::current();
                 span.record_token_usage(&json_response.usage);
-                span.record_model_output(&json_response.message);
+                if self.telemetry_config.include_message_contents {
+                    span.record_model_output(&json_response.message);
+                }
                 span.record_response_metadata(&json_response);
-                tracing::trace!(
-                    target: "rig::completions",
-                    "Cohere completion response: {}",
-                    serde_json::to_string_pretty(&json_response)?
-                );
+                if self.telemetry_config.debug_logging {
+                    tracing::trace!(
+                        target: "rig::completions",
+                        "Cohere completion response: {}",
+                        serde_json::to_string_pretty(&json_response)?
+                    );
+                }
                 let completion: completion::CompletionResponse<CompletionResponse> =
                     json_response.try_into()?;
                 Ok(completion)

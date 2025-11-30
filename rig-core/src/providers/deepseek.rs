@@ -10,6 +10,7 @@
 //! ```
 
 use crate::json_utils::empty_or_none;
+use crate::telemetry::{SpanCombinator, TelemetryConfiguration};
 use async_stream::stream;
 use bytes::Bytes;
 use futures::StreamExt;
@@ -496,6 +497,7 @@ impl TryFrom<(&str, CompletionRequest)> for DeepseekCompletionRequest {
 pub struct CompletionModel<T = reqwest::Client> {
     pub client: Client<T>,
     pub model: String,
+    pub telemetry_config: TelemetryConfiguration,
 }
 
 impl<T> completion::CompletionModel for CompletionModel<T>
@@ -511,7 +513,13 @@ where
         Self {
             client: client.clone(),
             model: model.into().to_string(),
+            telemetry_config: TelemetryConfiguration::new(),
         }
+    }
+
+    fn telemetry_config(mut self, telemetry_config: TelemetryConfiguration) -> Self {
+        self.telemetry_config = telemetry_config;
+        self
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -522,10 +530,6 @@ where
         completion::CompletionResponse<CompletionResponse>,
         crate::completion::CompletionError,
     > {
-        let preamble = completion_request.preamble.clone();
-        let request =
-            DeepseekCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -533,19 +537,32 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "deepseek",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
+                gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
-        tracing::debug!("DeepSeek completion request: {request:?}");
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
+        let request =
+            DeepseekCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
+
+        if self.telemetry_config.debug_logging {
+            tracing::trace!("DeepSeek completion request: {request:?}");
+        }
 
         let body = serde_json::to_vec(&request)?;
         let req = self
@@ -564,20 +581,21 @@ where
                 match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
-                        span.record(
-                            "gen_ai.output.messages",
-                            serde_json::to_string(&response.choices).unwrap(),
-                        );
+                        if self.telemetry_config.include_message_contents {
+                            span.record_model_output(&response.choices);
+                        }
                         span.record("gen_ai.usage.input_tokens", response.usage.prompt_tokens);
                         span.record(
                             "gen_ai.usage.output_tokens",
                             response.usage.completion_tokens,
                         );
-                        tracing::trace!(
-                            target: "rig::completions",
-                            "DeepSeek completion output: {}",
-                            serde_json::to_string_pretty(&response_body)?
-                        );
+                        if self.telemetry_config.debug_logging {
+                            tracing::trace!(
+                                target: "rig::completions",
+                                "DeepSeek completion output: {}",
+                                serde_json::to_string_pretty(&response_body)?
+                            );
+                        }
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
@@ -600,9 +618,35 @@ where
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        let preamble = completion_request.preamble.clone();
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "deepseek",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = tracing::field::Empty,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
         let mut request =
             DeepseekCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
 
         let params = json_utils::merge(
             request.additional_params.unwrap_or(serde_json::json!({})),
@@ -620,27 +664,12 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "deepseek",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
-                gen_ai.output.messages = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
         tracing::Instrument::instrument(
-            send_compatible_streaming_request(self.client.http_client().clone(), req),
+            send_compatible_streaming_request(
+                self.client.http_client().clone(),
+                req,
+                self.telemetry_config.include_message_contents,
+            ),
             span,
         )
         .await
@@ -686,6 +715,7 @@ impl GetTokenUsage for StreamingCompletionResponse {
 pub async fn send_compatible_streaming_request<T>(
     http_client: T,
     req: Request<Vec<u8>>,
+    include_message_contents: bool,
 ) -> Result<
     crate::streaming::StreamingCompletionResponse<StreamingCompletionResponse>,
     CompletionError,
@@ -823,13 +853,15 @@ where
             });
         }
 
-        let message = Message::Assistant {
-            content: text_response,
-            name: None,
-            tool_calls
-        };
+        if include_message_contents {
+            let message = Message::Assistant {
+                content: text_response,
+                name: None,
+                tool_calls
+            };
 
-        span.record("gen_ai.output.messages", serde_json::to_string(&message).unwrap());
+            span.record_model_output(&message);
+        }
 
         yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse { usage: final_usage.clone() }

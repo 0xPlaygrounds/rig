@@ -8,6 +8,7 @@ use crate::providers::openai::responses_api::{
 };
 use crate::streaming;
 use crate::streaming::RawStreamingChoice;
+use crate::telemetry::SpanCombinator;
 use crate::wasm_compat::WasmCompatSend;
 use async_stream::stream;
 use futures::StreamExt;
@@ -242,12 +243,12 @@ where
         };
         span.record("gen_ai.provider.name", "openai");
         span.record("gen_ai.request.model", &self.model);
-        span.record(
-            "gen_ai.input.messages",
-            serde_json::to_string(&request.input).expect("This should always work"),
-        );
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.input);
+        }
         // Build the request with proper headers for SSE
         let client = self.client.http_client().clone();
+        let include_message_contents = self.telemetry_config.include_message_contents;
 
         let mut event_source = GenericEventSource::new(client, req);
 
@@ -319,7 +320,9 @@ where
 
                         if let StreamingCompletionChunk::Response(chunk) = data {
                             if let ResponseChunk { kind: ResponseChunkKind::ResponseCompleted, response, .. } = *chunk {
-                                span.record("gen_ai.output.messages", serde_json::to_string(&response.output).unwrap());
+                                if include_message_contents {
+                                    span.record_model_output(&response.output);
+                                }
                                 span.record("gen_ai.response.id", response.id);
                                 span.record("gen_ai.response.model", response.model);
                                 if let Some(usage) = response.usage {
