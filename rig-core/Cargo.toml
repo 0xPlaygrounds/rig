@@ -60,14 +60,14 @@ base64 = { workspace = true }
 # Required for `rmcp` example
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
 rmcp = { version = "0.9", features = [
-    "client",
-    "macros",
-    "reqwest",                                  # required for some strange reason
-    "transport-streamable-http-client",
-    "transport-streamable-http-client-reqwest",
-    "transport-streamable-http-server-session",
-    "transport-streamable-http-server",
-    "transport-worker",
+  "client",
+  "macros",
+  "reqwest",                                  # required for some strange reason
+  "transport-streamable-http-client",
+  "transport-streamable-http-client-reqwest",
+  "transport-streamable-http-server-session",
+  "transport-streamable-http-server",
+  "transport-worker",
 ] }
 axum = "0.8.4"
 
@@ -89,16 +89,20 @@ discord-bot = ["dep:serenity"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
-worker = ["dep:worker", "dep:wasm-bindgen-futures", "futures-timer/wasm-bindgen"]
+worker = [
+  "dep:worker",
+  "dep:wasm-bindgen-futures",
+  "futures-timer/wasm-bindgen",
+]
 rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
 reqwest-tls = ["reqwest/default"]
 # Replace "default-tls" with "rustls-tls" in "reqwest/default"
 reqwest-rustls = [
-    "reqwest/rustls-tls",
-    "reqwest/charset",
-    "reqwest/http2",
-    "reqwest/macos-system-configuration",
+  "reqwest/rustls-tls",
+  "reqwest/charset",
+  "reqwest/http2",
+  "reqwest/macos-system-configuration",
 ]
 
 [[test]]

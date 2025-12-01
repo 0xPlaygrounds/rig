@@ -1,3 +1,16 @@
+#[allow(deprecated)]
+#[cfg(feature = "audio")]
+use super::audio_generation::AudioGenerationClientDyn;
+#[cfg(feature = "image")]
+#[allow(deprecated)]
+use super::image_generation::ImageGenerationClientDyn;
+#[allow(deprecated)]
+#[cfg(feature = "audio")]
+use crate::audio_generation::AudioGenerationModelDyn;
+#[cfg(feature = "image")]
+#[allow(deprecated)]
+use crate::image_generation::ImageGenerationModelDyn;
+#[allow(deprecated)]
 use crate::{
     OneOrMany,
     agent::AgentBuilder,
@@ -20,16 +33,6 @@ use crate::{
 };
 use std::{any::Any, collections::HashMap};
 
-#[cfg(feature = "image")]
-use super::image_generation::ImageGenerationClientDyn;
-#[cfg(feature = "image")]
-use crate::image_generation::ImageGenerationModelDyn;
-
-#[cfg(feature = "audio")]
-use super::audio_generation::AudioGenerationClientDyn;
-#[cfg(feature = "audio")]
-use crate::audio_generation::AudioGenerationModelDyn;
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Provider '{0}' not found")]
@@ -40,21 +43,31 @@ pub enum Error {
     Completion(#[from] CompletionError),
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release."
+)]
 pub struct AnyClient {
     client: Box<dyn Any + 'static>,
     vtable: AnyClientVTable,
 }
 
 struct AnyClientVTable {
+    #[allow(deprecated)]
     as_completion: fn(&dyn Any) -> Option<&&dyn CompletionClientDyn>,
+    #[allow(deprecated)]
     as_embedding: fn(&dyn Any) -> Option<&&dyn EmbeddingsClientDyn>,
+    #[allow(deprecated)]
     as_transcription: fn(&dyn Any) -> Option<&&dyn TranscriptionClientDyn>,
+    #[allow(deprecated)]
     #[cfg(feature = "image")]
     as_image_generation: fn(&dyn Any) -> Option<&&dyn ImageGenerationClientDyn>,
+    #[allow(deprecated)]
     #[cfg(feature = "audio")]
     as_audio_generation: fn(&dyn Any) -> Option<&&dyn AudioGenerationClientDyn>,
 }
 
+#[allow(deprecated)]
 impl AnyClient {
     pub fn new<Ext, H>(client: Client<Ext, H>) -> Self
     where
@@ -125,15 +138,26 @@ impl AnyClient {
     }
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release."
+)]
 #[derive(Debug, Clone)]
 pub struct ProviderFactory {
     /// Create a client from environment variables
+    #[allow(deprecated)]
     from_env: fn() -> Result<AnyClient, Error>,
 }
 
+#[allow(deprecated)]
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release."
+)]
 #[derive(Debug, Clone)]
 pub struct DynClientBuilder(HashMap<String, ProviderFactory>);
 
+#[allow(deprecated)]
 impl Default for DynClientBuilder {
     fn default() -> Self {
         // Give it a capacity ~the number of providers we have from the start
@@ -226,6 +250,7 @@ impl DefaultProviders {
         .into_iter()
     }
 
+    #[allow(deprecated)]
     fn get_env_fn(self) -> fn() -> Result<AnyClient, Error> {
         use DefaultProviders::*;
 
@@ -252,6 +277,7 @@ impl DefaultProviders {
     }
 }
 
+#[allow(deprecated)]
 impl DynClientBuilder {
     pub fn new() -> Self {
         Self::default().register_all()

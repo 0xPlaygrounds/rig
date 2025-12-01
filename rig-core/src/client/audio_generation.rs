@@ -1,8 +1,9 @@
 #[cfg(feature = "audio")]
 mod audio {
+    #[allow(deprecated)]
+    use crate::audio_generation::AudioGenerationModelDyn;
     use crate::audio_generation::{
-        AudioGenerationError, AudioGenerationModel, AudioGenerationModelDyn,
-        AudioGenerationRequest, AudioGenerationResponse,
+        AudioGenerationError, AudioGenerationModel, AudioGenerationRequest, AudioGenerationResponse,
     };
     use crate::client::Nothing;
     use std::future::Future;
@@ -30,10 +31,16 @@ mod audio {
         }
     }
 
+    #[allow(deprecated)]
+    #[deprecated(
+        since = "0.25.0",
+        note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `ImageGenerationModel` instead."
+    )]
     pub trait AudioGenerationClientDyn {
         fn audio_generation_model<'a>(&self, model: &str) -> Box<dyn AudioGenerationModelDyn + 'a>;
     }
 
+    #[allow(deprecated)]
     impl<T, M> AudioGenerationClientDyn for T
     where
         T: AudioGenerationClient<AudioGenerationModel = M>,
@@ -44,12 +51,18 @@ mod audio {
         }
     }
 
+    #[deprecated(
+        since = "0.25.0",
+        note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `ImageGenerationModel` instead."
+    )]
     /// Wraps a AudioGenerationModel in a dyn-compatible way for AudioGenerationRequestBuilder.
     #[derive(Clone)]
     pub struct AudioGenerationModelHandle<'a> {
+        #[allow(deprecated)]
         pub(crate) inner: Arc<dyn AudioGenerationModelDyn + 'a>,
     }
 
+    #[allow(deprecated)]
     impl AudioGenerationModel for AudioGenerationModelHandle<'_> {
         type Response = ();
         type Client = Nothing;

@@ -1,7 +1,8 @@
 //! Everything related to audio generation (ie, Text To Speech).
 //! Rig abstracts over a number of different providers using the [AudioGenerationModel] trait.
+#[allow(deprecated)]
+use crate::client::audio_generation::AudioGenerationModelHandle;
 use crate::{
-    client::audio_generation::AudioGenerationModelHandle,
     http_client,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -77,6 +78,11 @@ pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync 
     }
 }
 
+#[allow(deprecated)]
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `AudioGenerationModel` instead."
+)]
 pub trait AudioGenerationModelDyn: Send + Sync {
     fn audio_generation(
         &self,
@@ -88,6 +94,7 @@ pub trait AudioGenerationModelDyn: Send + Sync {
     ) -> AudioGenerationRequestBuilder<AudioGenerationModelHandle<'_>>;
 }
 
+#[allow(deprecated)]
 impl<T> AudioGenerationModelDyn for T
 where
     T: AudioGenerationModel,

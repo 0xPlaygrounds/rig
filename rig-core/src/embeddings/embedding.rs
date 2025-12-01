@@ -75,6 +75,10 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     }
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `EmbeddingModel` instead."
+)]
 pub trait EmbeddingModelDyn: WasmCompatSend + WasmCompatSync {
     fn max_documents(&self) -> usize;
     fn ndims(&self) -> usize;
@@ -88,6 +92,7 @@ pub trait EmbeddingModelDyn: WasmCompatSend + WasmCompatSync {
     ) -> WasmBoxedFuture<'_, Result<Vec<Embedding>, EmbeddingError>>;
 }
 
+#[allow(deprecated)]
 impl<T> EmbeddingModelDyn for T
 where
     T: EmbeddingModel + WasmCompatSend + WasmCompatSync,

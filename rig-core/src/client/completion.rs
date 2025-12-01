@@ -1,8 +1,10 @@
 use crate::agent::AgentBuilder;
 use crate::client::FinalCompletionResponse;
+
+#[allow(deprecated)]
+use crate::completion::CompletionModelDyn;
 use crate::completion::{
-    CompletionError, CompletionModel, CompletionModelDyn, CompletionRequest, CompletionResponse,
-    GetTokenUsage,
+    CompletionError, CompletionModel, CompletionRequest, CompletionResponse, GetTokenUsage,
 };
 use crate::extractor::ExtractorBuilder;
 use crate::streaming::StreamingCompletionResponse;
@@ -62,16 +64,23 @@ pub trait CompletionClient {
     }
 }
 
+#[allow(deprecated)]
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release."
+)]
 /// Wraps a CompletionModel in a dyn-compatible way for AgentBuilder.
 #[derive(Clone)]
 pub struct CompletionModelHandle<'a>(Arc<dyn CompletionModelDyn + 'a>);
 
+#[allow(deprecated)]
 impl<'a> CompletionModelHandle<'a> {
     pub fn new(handle: Arc<dyn CompletionModelDyn + 'a>) -> Self {
         Self(handle)
     }
 }
 
+#[allow(deprecated)]
 impl CompletionModel for CompletionModelHandle<'_> {
     type Response = ();
     type StreamingResponse = FinalCompletionResponse;
@@ -101,6 +110,11 @@ impl CompletionModel for CompletionModelHandle<'_> {
     }
 }
 
+#[allow(deprecated)]
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `CompletionClient` instead."
+)]
 pub trait CompletionClientDyn {
     /// Create a completion model with the given name.
     fn completion_model<'a>(&self, model: &str) -> Box<dyn CompletionModelDyn + 'a>;
@@ -109,6 +123,7 @@ pub trait CompletionClientDyn {
     fn agent<'a>(&self, model: &str) -> AgentBuilder<CompletionModelHandle<'a>>;
 }
 
+#[allow(deprecated)]
 impl<T, M, R> CompletionClientDyn for T
 where
     T: CompletionClient<CompletionModel = M>,

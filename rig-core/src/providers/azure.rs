@@ -1026,7 +1026,9 @@ mod azure_tests {
     use super::*;
 
     use crate::OneOrMany;
-    use crate::client::{completion::CompletionClientDyn, embeddings::EmbeddingsClientDyn};
+    use crate::client::{completion::CompletionClient, embeddings::EmbeddingsClient};
+    use crate::completion::CompletionModel;
+    use crate::embeddings::EmbeddingModel;
 
     #[tokio::test]
     #[ignore]
