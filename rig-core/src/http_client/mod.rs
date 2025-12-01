@@ -93,6 +93,16 @@ pub fn with_bearer_auth(mut req: Builder, auth: &str) -> Result<Builder> {
     Ok(req)
 }
 
+/// Adds the `Content-Type: application/json` header to the given request builder.
+pub fn json(mut req: Builder) -> Result<Builder> {
+    let headers = req.headers_mut().ok_or(Error::NoHeaders)?;
+    headers.insert(
+        http::header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    Ok(req)
+}
+
 /// A helper trait to make generic requests (both regular and SSE) possible.
 pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
     /// Send a HTTP request, get a response back (as bytes). Response must be able to be turned back into Bytes.
