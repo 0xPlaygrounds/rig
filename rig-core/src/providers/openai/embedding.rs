@@ -109,7 +109,7 @@ where
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
-        let response = self.client.http_client().send(req).await?;
+        let response = self.client.send(req).await?;
 
         if response.status().is_success() {
             let body: Vec<u8> = response.into_body().await?;

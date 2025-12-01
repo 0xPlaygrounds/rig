@@ -676,12 +676,7 @@ where
             .map_err(http_client::Error::from)?;
 
         async move {
-            let response = self
-                .client
-                .http_client()
-                .send::<_, Bytes>(req)
-                .await
-                .unwrap();
+            let response = self.client.send::<_, Bytes>(req).await.unwrap();
 
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
@@ -916,7 +911,7 @@ mod image_generation {
                 .body(body)
                 .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
 
-            let response = self.client.http_client().send::<_, Bytes>(req).await?;
+            let response = self.client.send::<_, Bytes>(req).await?;
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
 
@@ -998,7 +993,7 @@ mod audio_generation {
                 .body(body)
                 .map_err(|e| AudioGenerationError::HttpError(e.into()))?;
 
-            let response = self.client.http_client().send::<_, Bytes>(req).await?;
+            let response = self.client.send::<_, Bytes>(req).await?;
             let status = response.status();
             let response_body = response.into_body().into_future().await?;
 

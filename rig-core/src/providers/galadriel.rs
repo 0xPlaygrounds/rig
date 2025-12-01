@@ -558,7 +558,7 @@ where
         };
 
         async move {
-            let response = self.client.http_client().send(req).await?;
+            let response = self.client.send(req).await?;
 
             if response.status().is_success() {
                 let t = http_client::text(response).await?;

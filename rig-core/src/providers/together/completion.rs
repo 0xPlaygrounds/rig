@@ -259,7 +259,7 @@ where
             .map_err(|x| CompletionError::HttpError(x.into()))?;
 
         async move {
-            let response = self.client.http_client().send::<_, Bytes>(req).await?;
+            let response = self.client.send::<_, Bytes>(req).await?;
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
 

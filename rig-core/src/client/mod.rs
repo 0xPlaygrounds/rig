@@ -353,6 +353,8 @@ where
             http::HeaderValue::from_static("application/json"),
         );
 
+        dbg!(&req);
+
         self.http_client.send(req).await
     }
 

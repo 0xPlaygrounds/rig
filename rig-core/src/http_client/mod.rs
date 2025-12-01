@@ -53,6 +53,7 @@ pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
 
 pub type StreamingResponse = Response<BoxedStream>;
 
+#[derive(Debug, Clone, Copy)]
 pub struct NoBody;
 
 impl From<NoBody> for Bytes {

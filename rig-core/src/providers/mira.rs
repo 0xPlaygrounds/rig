@@ -167,7 +167,7 @@ where
                 .map_err(http_client::Error::Protocol)
         })?;
 
-        let response = self.http_client().send(req).await?;
+        let response = self.send(req).await?;
 
         let status = response.status();
 
@@ -373,7 +373,6 @@ where
         let async_block = async move {
             let response = self
                 .client
-                .http_client()
                 .send::<_, bytes::Bytes>(req)
                 .await
                 .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
