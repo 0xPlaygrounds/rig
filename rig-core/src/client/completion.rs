@@ -62,6 +62,10 @@ pub trait CompletionClient {
     }
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release."
+)]
 /// Wraps a CompletionModel in a dyn-compatible way for AgentBuilder.
 #[derive(Clone)]
 pub struct CompletionModelHandle<'a>(Arc<dyn CompletionModelDyn + 'a>);
@@ -101,6 +105,10 @@ impl CompletionModel for CompletionModelHandle<'_> {
     }
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `CompletionClient` instead."
+)]
 pub trait CompletionClientDyn {
     /// Create a completion model with the given name.
     fn completion_model<'a>(&self, model: &str) -> Box<dyn CompletionModelDyn + 'a>;

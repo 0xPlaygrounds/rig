@@ -93,6 +93,10 @@ pub trait TranscriptionModel: Clone + WasmCompatSend + WasmCompatSync {
     }
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `TranscriptionModel` instead."
+)]
 pub trait TranscriptionModelDyn: WasmCompatSend + WasmCompatSync {
     fn transcription(
         &self,

@@ -48,6 +48,10 @@ mod image {
         }
     }
 
+    #[deprecated(
+        since = "0.25.0",
+        note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `ImageGenerationClient` instead."
+    )]
     pub trait ImageGenerationClientDyn {
         /// Create an image generation model with the given name.
         fn image_generation_model<'a>(&self, model: &str) -> Box<dyn ImageGenerationModelDyn + 'a>;
@@ -61,6 +65,10 @@ mod image {
         }
     }
 
+    #[deprecated(
+        since = "0.25.0",
+        note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release."
+    )]
     /// Wraps a ImageGenerationModel in a dyn-compatible way for ImageGenerationRequestBuilder.
     #[derive(Clone)]
     pub struct ImageGenerationModelHandle<'a> {

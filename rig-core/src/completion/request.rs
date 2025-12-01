@@ -377,6 +377,10 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
     }
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `CompletionModel` instead."
+)]
 pub trait CompletionModelDyn: WasmCompatSend + WasmCompatSync {
     fn completion(
         &self,

@@ -92,6 +92,10 @@ pub trait EmbeddingsClient {
     }
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `EmbeddingsClient` instead."
+)]
 pub trait EmbeddingsClientDyn {
     /// Create an embedding model with the given name.
     /// Note: default embedding dimension of 0 will be used if model is not known.

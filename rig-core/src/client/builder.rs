@@ -40,6 +40,10 @@ pub enum Error {
     Completion(#[from] CompletionError),
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release."
+)]
 pub struct AnyClient {
     client: Box<dyn Any + 'static>,
     vtable: AnyClientVTable,
@@ -125,12 +129,20 @@ impl AnyClient {
     }
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release."
+)]
 #[derive(Debug, Clone)]
 pub struct ProviderFactory {
     /// Create a client from environment variables
     from_env: fn() -> Result<AnyClient, Error>,
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release."
+)]
 #[derive(Debug, Clone)]
 pub struct DynClientBuilder(HashMap<String, ProviderFactory>);
 

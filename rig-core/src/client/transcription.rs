@@ -25,6 +25,10 @@ pub trait TranscriptionClient {
     fn transcription_model(&self, model: impl Into<String>) -> Self::TranscriptionModel;
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `TranscriptionClient` instead."
+)]
 pub trait TranscriptionClientDyn {
     /// Create a transcription model with the given name.
     fn transcription_model<'a>(&self, model: &str) -> Box<dyn TranscriptionModelDyn + 'a>;
@@ -40,6 +44,10 @@ where
     }
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release."
+)]
 /// Wraps a TranscriptionModel in a dyn-compatible way for TranscriptionRequestBuilder.
 #[derive(Clone)]
 pub struct TranscriptionModelHandle<'a> {

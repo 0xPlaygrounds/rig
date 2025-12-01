@@ -77,6 +77,10 @@ pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync 
     }
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `AudioGenerationModel` instead."
+)]
 pub trait AudioGenerationModelDyn: Send + Sync {
     fn audio_generation(
         &self,
