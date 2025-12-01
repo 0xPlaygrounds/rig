@@ -245,16 +245,11 @@ where
         let req = self
             .client
             .post("/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
         let async_block = async move {
-            let response = self
-                .client
-                .http_client()
-                .send::<_, bytes::Bytes>(req)
-                .await?;
+            let response = self.client.send::<_, bytes::Bytes>(req).await?;
 
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
@@ -335,7 +330,6 @@ where
         let req = self
             .client
             .post("/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 

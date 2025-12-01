@@ -367,16 +367,11 @@ where
         let req = self
             .client
             .post("/v1/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
         let async_block = async move {
-            let response = self
-                .client
-                .http_client()
-                .send::<_, bytes::Bytes>(req)
-                .await?;
+            let response = self.client.send::<_, bytes::Bytes>(req).await?;
 
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
@@ -443,7 +438,6 @@ where
         let req = self
             .client
             .post("/v1/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
@@ -568,11 +562,7 @@ mod image_generation {
                 .body(body)
                 .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
 
-            let response = self
-                .client
-                .http_client()
-                .send::<_, bytes::Bytes>(request)
-                .await?;
+            let response = self.client.send::<_, bytes::Bytes>(request).await?;
 
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
@@ -672,11 +662,10 @@ mod audio_generation {
             let req = self
                 .client
                 .post("/v1/audio/generation")?
-                .header("Content-Type", "application/json")
                 .body(body)
                 .map_err(http_client::Error::from)?;
 
-            let response = self.client.http_client().send::<_, Bytes>(req).await?;
+            let response = self.client.send::<_, Bytes>(req).await?;
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
 

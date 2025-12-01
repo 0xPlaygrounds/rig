@@ -535,7 +535,6 @@ where
         let req = self
             .client
             .post("/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
@@ -559,7 +558,7 @@ where
         };
 
         async move {
-            let response = self.client.http_client().send(req).await?;
+            let response = self.client.send(req).await?;
 
             if response.status().is_success() {
                 let t = http_client::text(response).await?;
@@ -616,7 +615,6 @@ where
         let req = self
             .client
             .post("/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 

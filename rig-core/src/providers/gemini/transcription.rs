@@ -107,7 +107,6 @@ where
         let req = self
             .client
             .post(format!("/v1beta/models/{}:generateContent", self.model))?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| TranscriptionError::HttpError(e.into()))?;
 

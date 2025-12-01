@@ -51,7 +51,6 @@ where
         let req = self
             .client
             .post("/audio/speech")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
