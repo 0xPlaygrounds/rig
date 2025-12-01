@@ -92,6 +92,7 @@ pub trait EmbeddingModelDyn: WasmCompatSend + WasmCompatSync {
     ) -> WasmBoxedFuture<'_, Result<Vec<Embedding>, EmbeddingError>>;
 }
 
+#[allow(deprecated)]
 impl<T> EmbeddingModelDyn for T
 where
     T: EmbeddingModel + WasmCompatSend + WasmCompatSync,

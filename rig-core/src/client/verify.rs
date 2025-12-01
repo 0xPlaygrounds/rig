@@ -34,6 +34,7 @@ pub trait VerifyClientDyn {
     fn verify(&self) -> WasmBoxedFuture<'_, Result<(), VerifyError>>;
 }
 
+#[allow(deprecated)]
 impl<T> VerifyClientDyn for T
 where
     T: VerifyClient,

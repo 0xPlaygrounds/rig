@@ -65,6 +65,7 @@
 
 use super::message::{AssistantContent, DocumentMediaType};
 use crate::client::FinalCompletionResponse;
+#[allow(deprecated)]
 use crate::client::completion::CompletionModelHandle;
 use crate::message::ToolChoice;
 use crate::streaming::StreamingCompletionResponse;
@@ -377,6 +378,7 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
     }
 }
 
+#[allow(deprecated)]
 #[deprecated(
     since = "0.25.0",
     note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `CompletionModel` instead."
@@ -401,6 +403,7 @@ pub trait CompletionModelDyn: WasmCompatSend + WasmCompatSync {
     ) -> CompletionRequestBuilder<CompletionModelHandle<'_>>;
 }
 
+#[allow(deprecated)]
 impl<T, R> CompletionModelDyn for T
 where
     T: CompletionModel<StreamingResponse = R>,

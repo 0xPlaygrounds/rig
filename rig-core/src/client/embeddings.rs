@@ -1,4 +1,5 @@
 use crate::Embed;
+#[allow(deprecated)]
 use crate::embeddings::embedding::EmbeddingModelDyn;
 use crate::embeddings::{EmbeddingModel, EmbeddingsBuilder};
 
@@ -92,6 +93,7 @@ pub trait EmbeddingsClient {
     }
 }
 
+#[allow(deprecated)]
 #[deprecated(
     since = "0.25.0",
     note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `EmbeddingsClient` instead."
@@ -110,6 +112,7 @@ pub trait EmbeddingsClientDyn {
     ) -> Box<dyn EmbeddingModelDyn + 'a>;
 }
 
+#[allow(deprecated)]
 impl<M, T> EmbeddingsClientDyn for T
 where
     T: EmbeddingsClient<EmbeddingModel = M>,

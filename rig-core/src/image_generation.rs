@@ -1,6 +1,8 @@
 //! Everything related to core image generation abstractions in Rig.
 //! Rig allows calling a number of different providers (that support image generation) using the [ImageGenerationModel] trait.
-use crate::{client::image_generation::ImageGenerationModelHandle, http_client};
+#[allow(deprecated)]
+use crate::client::image_generation::ImageGenerationModelHandle;
+use crate::http_client;
 use futures::future::BoxFuture;
 use serde_json::Value;
 use std::sync::Arc;
@@ -75,6 +77,7 @@ pub trait ImageGenerationModel: Clone + Send + Sync {
     }
 }
 
+#[allow(deprecated)]
 #[deprecated(
     since = "0.25.0",
     note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `ImageGenerationModel` instead."
@@ -90,6 +93,7 @@ pub trait ImageGenerationModelDyn: Send + Sync {
     ) -> ImageGenerationRequestBuilder<ImageGenerationModelHandle<'_>>;
 }
 
+#[allow(deprecated)]
 impl<T> ImageGenerationModelDyn for T
 where
     T: ImageGenerationModel,

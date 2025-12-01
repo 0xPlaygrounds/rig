@@ -1,9 +1,10 @@
 #[cfg(feature = "image")]
 mod image {
     use crate::client::Nothing;
+    #[allow(deprecated)]
+    use crate::image_generation::ImageGenerationModelDyn;
     use crate::image_generation::{
-        ImageGenerationError, ImageGenerationModel, ImageGenerationModelDyn,
-        ImageGenerationRequest, ImageGenerationResponse,
+        ImageGenerationError, ImageGenerationModel, ImageGenerationRequest, ImageGenerationResponse,
     };
     use std::future::Future;
     use std::sync::Arc;
@@ -48,6 +49,7 @@ mod image {
         }
     }
 
+    #[allow(deprecated)]
     #[deprecated(
         since = "0.25.0",
         note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `ImageGenerationClient` instead."
@@ -57,6 +59,7 @@ mod image {
         fn image_generation_model<'a>(&self, model: &str) -> Box<dyn ImageGenerationModelDyn + 'a>;
     }
 
+    #[allow(deprecated)]
     impl<T: ImageGenerationClient<ImageGenerationModel = M>, M: ImageGenerationModel + 'static>
         ImageGenerationClientDyn for T
     {
@@ -72,9 +75,11 @@ mod image {
     /// Wraps a ImageGenerationModel in a dyn-compatible way for ImageGenerationRequestBuilder.
     #[derive(Clone)]
     pub struct ImageGenerationModelHandle<'a> {
+        #[allow(deprecated)]
         pub(crate) inner: Arc<dyn ImageGenerationModelDyn + 'a>,
     }
 
+    #[allow(deprecated)]
     impl ImageGenerationModel for ImageGenerationModelHandle<'_> {
         type Response = ();
         type Client = Nothing;

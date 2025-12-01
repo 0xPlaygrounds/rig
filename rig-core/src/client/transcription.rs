@@ -1,6 +1,7 @@
+#[allow(deprecated)]
+use crate::transcription::TranscriptionModelDyn;
 use crate::transcription::{
-    TranscriptionError, TranscriptionModel, TranscriptionModelDyn, TranscriptionRequest,
-    TranscriptionResponse,
+    TranscriptionError, TranscriptionModel, TranscriptionRequest, TranscriptionResponse,
 };
 use std::sync::Arc;
 
@@ -25,6 +26,7 @@ pub trait TranscriptionClient {
     fn transcription_model(&self, model: impl Into<String>) -> Self::TranscriptionModel;
 }
 
+#[allow(deprecated)]
 #[deprecated(
     since = "0.25.0",
     note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `TranscriptionClient` instead."
@@ -34,6 +36,7 @@ pub trait TranscriptionClientDyn {
     fn transcription_model<'a>(&self, model: &str) -> Box<dyn TranscriptionModelDyn + 'a>;
 }
 
+#[allow(deprecated)]
 impl<M, T> TranscriptionClientDyn for T
 where
     T: TranscriptionClient<TranscriptionModel = M>,
@@ -44,6 +47,7 @@ where
     }
 }
 
+#[allow(deprecated)]
 #[deprecated(
     since = "0.25.0",
     note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release."
@@ -54,6 +58,7 @@ pub struct TranscriptionModelHandle<'a> {
     pub inner: Arc<dyn TranscriptionModelDyn + 'a>,
 }
 
+#[allow(deprecated)]
 impl TranscriptionModel for TranscriptionModelHandle<'_> {
     type Response = ();
     type Client = ();
