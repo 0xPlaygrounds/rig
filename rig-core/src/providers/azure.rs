@@ -445,7 +445,6 @@ where
         let req = self
             .client
             .post_embedding(self.model.as_str())?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
@@ -673,7 +672,6 @@ where
         let req = self
             .client
             .post_chat_completion(&self.model)?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
@@ -737,7 +735,6 @@ where
         let req = self
             .client
             .post_chat_completion(&self.model)?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
@@ -916,7 +913,6 @@ mod image_generation {
             let req = self
                 .client
                 .post_image_generation(&self.model)?
-                .header("Content-Type", "application/json")
                 .body(body)
                 .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
 

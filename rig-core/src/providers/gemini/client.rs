@@ -94,18 +94,6 @@ impl ProviderBuilder for GeminiBuilder {
     type ApiKey = GeminiApiKey;
 
     const BASE_URL: &'static str = GEMINI_API_BASE_URL;
-
-    fn finish<H>(
-        &self,
-        mut builder: client::ClientBuilder<Self, GeminiApiKey, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, GeminiApiKey, H>> {
-        builder.headers_mut().insert(
-            http::header::CONTENT_TYPE,
-            http::HeaderValue::from_static("application/json"),
-        );
-
-        Ok(builder)
-    }
 }
 
 impl ProviderClient for Client {

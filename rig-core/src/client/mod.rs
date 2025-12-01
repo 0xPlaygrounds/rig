@@ -340,11 +340,19 @@ impl<Ext, H> Client<Ext, H>
 where
     H: HttpClientExt,
 {
-    pub async fn send<T, U>(&self, req: Request<T>) -> http_client::Result<Response<LazyBody<U>>>
+    pub async fn send<T, U>(
+        &self,
+        mut req: Request<T>,
+    ) -> http_client::Result<Response<LazyBody<U>>>
     where
         T: std::fmt::Debug + Into<Bytes> + WasmCompatSend,
         U: std::fmt::Debug + From<Bytes> + WasmCompatSend + 'static,
     {
+        req.headers_mut().insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("application/json"),
+        );
+
         self.http_client.send(req).await
     }
 

@@ -546,7 +546,6 @@ where
         let request = self
             .client
             .post("v1/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 

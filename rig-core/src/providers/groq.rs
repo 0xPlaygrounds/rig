@@ -390,7 +390,6 @@ where
         let req = self
             .client
             .post("/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| http_client::Error::Instance(e.into()))?;
 
@@ -452,7 +451,6 @@ where
         let req = self
             .client
             .post("/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| http_client::Error::Instance(e.into()))?;
 

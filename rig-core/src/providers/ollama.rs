@@ -230,7 +230,6 @@ where
         let req = self
             .client
             .post("api/embed")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
@@ -518,7 +517,6 @@ where
         let req = self
             .client
             .post("api/chat")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
@@ -598,7 +596,6 @@ where
         let req = self
             .client
             .post("api/chat")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 

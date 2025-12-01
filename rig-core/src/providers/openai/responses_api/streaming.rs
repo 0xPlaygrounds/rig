@@ -217,7 +217,6 @@ where
         let req = self
             .client
             .post("/responses")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 

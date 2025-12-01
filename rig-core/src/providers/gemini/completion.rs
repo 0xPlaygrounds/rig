@@ -122,7 +122,6 @@ where
         let request = self
             .client
             .post(path.as_str())?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 

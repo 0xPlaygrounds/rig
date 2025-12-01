@@ -835,7 +835,6 @@ where
             let req = self
                 .client
                 .post("/v1/messages")?
-                .header("Content-Type", "application/json")
                 .body(request)
                 .map_err(|e| CompletionError::HttpError(e.into()))?;
 

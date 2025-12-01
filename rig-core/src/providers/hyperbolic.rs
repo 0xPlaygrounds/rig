@@ -367,7 +367,6 @@ where
         let req = self
             .client
             .post("/v1/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
@@ -443,7 +442,6 @@ where
         let req = self
             .client
             .post("/v1/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 
@@ -672,7 +670,6 @@ mod audio_generation {
             let req = self
                 .client
                 .post("/v1/audio/generation")?
-                .header("Content-Type", "application/json")
                 .body(body)
                 .map_err(http_client::Error::from)?;
 

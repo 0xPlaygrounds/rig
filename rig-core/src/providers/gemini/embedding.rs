@@ -95,7 +95,6 @@ where
         let req = self
             .client
             .post(path.as_str())?
-            .header("Content-Type", "application/json")
             .body(request_body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
         let response = self.client.send::<_, Vec<u8>>(req).await?;
