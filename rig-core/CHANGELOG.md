@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.24.0...rig-core-v0.25.0) - 2025-12-01
+
+### Added
+
+- Gemini Assistant Image Responses ([#1048](https://github.com/0xPlaygrounds/rig/pull/1048))
+- *(gemini-request)* add response_json_schema to GenerationConfig ([#1077](https://github.com/0xPlaygrounds/rig/pull/1077))
+- *(rig-985)* Consolidate provider clients ([#1050](https://github.com/0xPlaygrounds/rig/pull/1050))
+
+### Fixed
+
+- *(rig-1093)* gemini config error when no additional params used ([#1094](https://github.com/0xPlaygrounds/rig/pull/1094))
+- OpenAI required props for structured output ([#1090](https://github.com/0xPlaygrounds/rig/pull/1090))
+- *(rig-1055)* remove deprecated gemini-2.5-flash preview ([#1084](https://github.com/0xPlaygrounds/rig/pull/1084))
+- rmcp derive clone ([#1080](https://github.com/0xPlaygrounds/rig/pull/1080))
+- *(rig-1050)* Inconsistent model/agent initialisation methods ([#1069](https://github.com/0xPlaygrounds/rig/pull/1069))
+- *(gemini-request)* add `#[serde(default)]` for missing `generation_config` field ([#1060](https://github.com/0xPlaygrounds/rig/pull/1060))
+- update imported packages in the code example ([#1041](https://github.com/0xPlaygrounds/rig/pull/1041))
+
+### Other
+
+- add `Content-Type: application/json` to regular http requests ([#1106](https://github.com/0xPlaygrounds/rig/pull/1106))
+- Deprecate `DynClientBuilder` ([#1105](https://github.com/0xPlaygrounds/rig/pull/1105))
+- `client::Client` can leak api keys that have been inserted into its headers ([#1102](https://github.com/0xPlaygrounds/rig/pull/1102))
+- *(rig-1071)* remove outdated models ([#1096](https://github.com/0xPlaygrounds/rig/pull/1096))
+- *(rig-1068)* remove unused chatbot module ([#1092](https://github.com/0xPlaygrounds/rig/pull/1092))
+- Simple JSON passthrough unwrapper ([#1086](https://github.com/0xPlaygrounds/rig/pull/1086))
+- *(rig-777)* proper request modelling for every provider ([#1067](https://github.com/0xPlaygrounds/rig/pull/1067))
+- *(deps)* upgrade `rmcp` ([#1079](https://github.com/0xPlaygrounds/rig/pull/1079))
+- OpenAI parsing ([#1058](https://github.com/0xPlaygrounds/rig/pull/1058))
+- *(rig-1046)* update list of who's using rig ([#1061](https://github.com/0xPlaygrounds/rig/pull/1061))
+- clean up provider code ([#1052](https://github.com/0xPlaygrounds/rig/pull/1052))
+
 ## [0.24.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.23.1...rig-core-v0.24.0) - 2025-11-10
 
 ### Added

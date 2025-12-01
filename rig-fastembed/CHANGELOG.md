@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.17](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.2.16...rig-fastembed-v0.2.17) - 2025-12-01
+
+### Added
+
+- *(rig-985)* Consolidate provider clients ([#1050](https://github.com/0xPlaygrounds/rig/pull/1050))
+
+### Fixed
+
+- *(rig-1050)* Inconsistent model/agent initialisation methods ([#1069](https://github.com/0xPlaygrounds/rig/pull/1069))
+
 ## [0.2.16](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.2.15...rig-fastembed-v0.2.16) - 2025-11-10
 
 ### Other
