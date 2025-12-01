@@ -301,7 +301,7 @@ where
         let mut req = Request::post(uri);
 
         if let Some(hs) = req.headers_mut() {
-            *hs = self.headers.clone()
+            hs.extend(self.headers.clone());
         }
 
         self.ext.with_custom(req)
@@ -318,7 +318,7 @@ where
         let mut req = Request::post(uri);
 
         if let Some(hs) = req.headers_mut() {
-            *hs = self.headers.clone()
+            hs.extend(self.headers.clone());
         }
 
         self.ext.with_custom(req)
