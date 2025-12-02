@@ -1004,16 +1004,12 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
         let request = CompletionRequest::try_from((self.model.to_owned(), completion_request))?;
-
-        span.record_model_input(&request.messages);
 
         let body = serde_json::to_vec(&request)?;
 
@@ -1032,7 +1028,6 @@ where
                 match serde_json::from_str::<ApiResponse<CompletionResponse>>(&text)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
-                        span.record_model_output(&response.choices);
                         span.record_response_metadata(&response);
                         span.record_token_usage(&response.usage);
                         tracing::debug!("OpenAI response: {response:?}");

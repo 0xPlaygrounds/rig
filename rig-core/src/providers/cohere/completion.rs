@@ -632,8 +632,6 @@ where
             gen_ai.response.model = self.model,
             gen_ai.usage.output_tokens = tracing::field::Empty,
             gen_ai.usage.input_tokens = tracing::field::Empty,
-            gen_ai.input.messages = serde_json::to_string(&request.messages)?,
-            gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -663,7 +661,6 @@ where
                 let json_response: CompletionResponse = serde_json::from_slice(&body)?;
                 let span = tracing::Span::current();
                 span.record_token_usage(&json_response.usage);
-                span.record_model_output(&json_response.message);
                 span.record_response_metadata(&json_response);
                 tracing::trace!(
                     target: "rig::completions",

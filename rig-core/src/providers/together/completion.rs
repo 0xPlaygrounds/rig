@@ -241,8 +241,6 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = &messages_as_json_string,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -269,10 +267,6 @@ where
                 )? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
-                        span.record(
-                            "gen_ai.output.messages",
-                            serde_json::to_string(&response.choices).unwrap(),
-                        );
                         span.record("gen_ai.response.id", &response.id);
                         span.record("gen_ai.response.model_name", &response.model);
                         if let Some(ref usage) = response.usage {

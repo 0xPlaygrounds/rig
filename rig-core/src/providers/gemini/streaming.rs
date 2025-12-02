@@ -2,6 +2,7 @@ use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tracing::info_span;
+use tracing_futures::Instrument;
 
 use super::completion::gemini_api_types::{ContentCandidate, Part, PartKind};
 use super::completion::{CompletionModel, create_request_body};
@@ -87,19 +88,15 @@ where
                 gen_ai.response.model = self.model,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
         let request = create_request_body(completion_request)?;
 
-        span.record_model_input(&request.contents);
-
         tracing::trace!(
             target: "rig::streaming",
-            "Sending completion request to Gemini API {}",
+            "Gemini completion request: {}",
             serde_json::to_string_pretty(&request)?
         );
         let body = serde_json::to_vec(&request)?;
@@ -195,7 +192,6 @@ where
                                 model_outputs.push(Part { thought: None, thought_signature: None, part: PartKind::Text(text_response), additional_params: None });
                             }
                             let span = tracing::Span::current();
-                            span.record_model_output(&model_outputs);
                             span.record_token_usage(&data.usage_metadata);
                             final_usage = data.usage_metadata;
                             break;
@@ -218,7 +214,7 @@ where
             yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                 usage_metadata: final_usage.unwrap_or_default()
             }));
-        };
+        }.instrument(span);
 
         Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
             stream,
