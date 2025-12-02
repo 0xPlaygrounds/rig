@@ -417,7 +417,7 @@ pub struct EmbeddingModel<T = reqwest::Client> {
 
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
-    T: HttpClientExt + Default + Clone,
+    T: HttpClientExt + Default + Clone + 'static,
 {
     const MAX_DOCUMENTS: usize = 1024;
 
@@ -753,7 +753,7 @@ where
         };
 
         tracing_futures::Instrument::instrument(
-            send_compatible_streaming_request(self.client.http_client().clone(), req),
+            send_compatible_streaming_request(self.client.clone(), req),
             span,
         )
         .await
@@ -829,11 +829,7 @@ where
             .body(body)
             .map_err(|e| TranscriptionError::HttpError(e.into()))?;
 
-        let response = self
-            .client
-            .http_client()
-            .send_multipart::<Bytes>(req)
-            .await?;
+        let response = self.client.send_multipart::<Bytes>(req).await?;
         let status = response.status();
         let response_body = response.into_body().into_future().await?.to_vec();
 

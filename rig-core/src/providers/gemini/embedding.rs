@@ -44,7 +44,7 @@ impl<T> EmbeddingModel<T> {
 
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
-    T: Clone + HttpClientExt,
+    T: Clone + HttpClientExt + 'static,
 {
     type Client = Client<T>;
 

@@ -51,7 +51,7 @@ where
             tracing::Span::current()
         };
 
-        send_compatible_streaming_request(self.client.http_client().clone(), req)
+        send_compatible_streaming_request(self.client.clone(), req)
             .instrument(span)
             .await
     }
