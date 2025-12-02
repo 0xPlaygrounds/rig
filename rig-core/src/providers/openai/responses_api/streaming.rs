@@ -233,18 +233,12 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
         span.record("gen_ai.provider.name", "openai");
         span.record("gen_ai.request.model", &self.model);
-        span.record(
-            "gen_ai.input.messages",
-            serde_json::to_string(&request.input).expect("This should always work"),
-        );
         // Build the request with proper headers for SSE
         let client = self.client.http_client().clone();
 
@@ -318,7 +312,6 @@ where
 
                         if let StreamingCompletionChunk::Response(chunk) = data {
                             if let ResponseChunk { kind: ResponseChunkKind::ResponseCompleted, response, .. } = *chunk {
-                                span.record("gen_ai.output.messages", serde_json::to_string(&response.output).unwrap());
                                 span.record("gen_ai.response.id", response.id);
                                 span.record("gen_ai.response.model", response.model);
                                 if let Some(usage) = response.usage {

@@ -6,7 +6,6 @@ use tracing::info_span;
 use tracing_futures::Instrument;
 
 use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefinition, Usage};
-use crate::OneOrMany;
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
@@ -157,7 +156,6 @@ where
             full_history.push(docs);
         }
         full_history.extend(completion_request.chat_history);
-        span.record_model_input(&full_history);
 
         let full_history = full_history
             .into_iter()
@@ -242,11 +240,6 @@ where
 
                                             let span = tracing::Span::current();
                                             span.record_token_usage(&usage);
-                                            span.record_model_output(&Message {
-                                                role: super::completion::Role::Assistant,
-                                                content: OneOrMany::one(Content::Text { text: text_content.clone() })}
-                                            );
-
                                             final_usage = Some(usage);
                                             break;
                                         }
