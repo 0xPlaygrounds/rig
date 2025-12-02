@@ -296,16 +296,8 @@ where
 
         let final_usage = final_usage.unwrap_or_default();
         if !span.is_disabled() {
-            let message_output = super::Message::Assistant {
-                content: vec![super::AssistantContent::Text { text: text_content }],
-                refusal: None,
-                audio: None,
-                name: None,
-                tool_calls: final_tool_calls
-            };
             span.record("gen_ai.usage.input_tokens", final_usage.prompt_tokens);
             span.record("gen_ai.usage.output_tokens", final_usage.total_tokens - final_usage.prompt_tokens);
-            span.record("gen_ai.output.messages", serde_json::to_string(&vec![message_output]).expect("Converting from a Rust struct should always convert to JSON without failing"));
         }
 
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {

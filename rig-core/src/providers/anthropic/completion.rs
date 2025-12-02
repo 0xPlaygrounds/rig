@@ -807,8 +807,6 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -827,7 +825,6 @@ where
 
         let request =
             AnthropicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-        span.record_model_input(&request.messages);
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
@@ -863,7 +860,6 @@ where
                 )? {
                     ApiResponse::Message(completion) => {
                         let span = tracing::Span::current();
-                        span.record_model_output(&completion.content);
                         span.record_response_metadata(&completion);
                         span.record_token_usage(&completion.usage);
                         if enabled!(Level::TRACE) {

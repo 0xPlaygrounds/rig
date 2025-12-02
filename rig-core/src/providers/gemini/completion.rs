@@ -104,9 +104,6 @@ where
         };
 
         let request = create_request_body(completion_request)?;
-        span.record_model_input(&request.contents);
-
-        span.record_model_input(&request.contents);
 
         if enabled!(Level::TRACE) {
             tracing::trace!(

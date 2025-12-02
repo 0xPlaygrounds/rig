@@ -1102,11 +1102,6 @@ where
         span.record("gen_ai.provider.name", "openai");
         span.record("gen_ai.request.model", &self.model);
         let request = self.create_completion_request(completion_request)?;
-        span.record(
-            "gen_ai.input.messages",
-            serde_json::to_string(&request.input)
-                .expect("openai request to successfully turn into a JSON value"),
-        );
         let body = serde_json::to_vec(&request)?;
 
         if enabled!(Level::TRACE) {
@@ -1130,10 +1125,6 @@ where
                 let t = http_client::text(response).await?;
                 let response = serde_json::from_str::<Self::Response>(&t)?;
                 let span = tracing::Span::current();
-                span.record(
-                    "gen_ai.output.messages",
-                    serde_json::to_string(&response.output).unwrap(),
-                );
                 span.record("gen_ai.response.id", &response.id);
                 span.record("gen_ai.response.model", &response.model);
                 if let Some(ref usage) = response.usage {
