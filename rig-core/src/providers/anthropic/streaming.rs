@@ -2,7 +2,7 @@ use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::info_span;
+use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefinition, Usage};
@@ -194,6 +194,14 @@ where
 
         if let Some(ref params) = completion_request.additional_params {
             merge_inplace(&mut body, params.clone())
+        }
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "Anthropic completion request: {}",
+                serde_json::to_string_pretty(&body)?
+            );
         }
 
         let body: Vec<u8> = serde_json::to_vec(&body)?;

@@ -14,7 +14,7 @@ use crate::{
 };
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Level, enabled, info_span};
 
 // ================================================================
 // OpenRouter Completion API
@@ -408,6 +408,15 @@ where
         let preamble = completion_request.preamble.clone();
         let request =
             OpenrouterCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "OpenRouter completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -443,7 +452,6 @@ where
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_token_usage(&response.usage);
-                        span.record_model_output(&response.choices);
                         span.record("gen_ai.response.id", &response.id);
                         span.record("gen_ai.response.model_name", &response.model);
 

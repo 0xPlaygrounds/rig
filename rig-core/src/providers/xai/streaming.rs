@@ -5,7 +5,7 @@ use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::providers::xai::completion::{CompletionModel, XAICompletionRequest};
 use crate::streaming::StreamingCompletionResponse;
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Level, enabled, info_span};
 
 impl<T> CompletionModel<T>
 where
@@ -26,6 +26,13 @@ where
         );
 
         request.additional_params = Some(params);
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "xAI streaming completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let body = serde_json::to_vec(&request)?;
         let req = self

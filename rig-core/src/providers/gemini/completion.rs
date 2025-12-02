@@ -38,7 +38,7 @@ use gemini_api_types::{
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
-use tracing::info_span;
+use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::Client;
@@ -105,11 +105,13 @@ where
 
         let request = create_request_body(completion_request)?;
 
-        tracing::trace!(
-            target: "rig::completions",
-            "Gemini completion request: {}",
-            serde_json::to_string_pretty(&request)?
-        );
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "Gemini completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let body = serde_json::to_vec(&request)?;
 
@@ -121,7 +123,7 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let api_call = async move {
+        async move {
             let response = self.client.send::<_, Vec<u8>>(request).await?;
 
             if response.status().is_success() {
@@ -131,7 +133,6 @@ where
                     .map_err(CompletionError::HttpError)?;
 
                 let response_text = String::from_utf8_lossy(&response_body).to_string();
-                tracing::debug!("Received raw response from Gemini API: {}", response_text);
 
                 let response: GenerateContentResponse = serde_json::from_slice(&response_body)
                     .map_err(|err| {
@@ -143,24 +144,17 @@ where
                         CompletionError::JsonError(err)
                     })?;
 
-                match response.usage_metadata {
-                    Some(ref usage) => tracing::info!(target: "rig",
-                    "Gemini completion token usage: {}",
-                    usage
-                    ),
-                    None => tracing::info!(target: "rig",
-                        "Gemini completion token usage: n/a",
-                    ),
-                }
-
                 let span = tracing::Span::current();
                 span.record_response_metadata(&response);
                 span.record_token_usage(&response.usage_metadata);
 
-                tracing::trace!(
-                    "Received response from Gemini API: {}",
-                    serde_json::to_string_pretty(&response)?
-                );
+                if enabled!(Level::TRACE) {
+                    tracing::trace!(
+                        target: "rig::completions",
+                        "Gemini completion response: {}",
+                        serde_json::to_string_pretty(&response)?
+                    );
+                }
 
                 response.try_into()
             } else {
@@ -174,9 +168,9 @@ where
 
                 Err(CompletionError::ProviderError(text))
             }
-        };
-
-        api_call.instrument(span).await
+        }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

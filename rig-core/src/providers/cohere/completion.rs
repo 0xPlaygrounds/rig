@@ -12,7 +12,7 @@ use super::client::Client;
 use crate::completion::CompletionRequest;
 use crate::providers::cohere::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Level, enabled, info_span};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -637,10 +637,12 @@ where
             tracing::Span::current()
         };
 
-        tracing::trace!(
-            "Cohere request: {}",
-            serde_json::to_string_pretty(&request)?
-        );
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                "Cohere completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let req_body = serde_json::to_vec(&request)?;
 
@@ -661,11 +663,15 @@ where
                 let span = tracing::Span::current();
                 span.record_token_usage(&json_response.usage);
                 span.record_response_metadata(&json_response);
-                tracing::trace!(
-                    target: "rig::completions",
-                    "Cohere completion response: {}",
-                    serde_json::to_string_pretty(&json_response)?
-                );
+
+                if enabled!(Level::TRACE) {
+                    tracing::trace!(
+                        target: "rig::completions",
+                        "Cohere completion response: {}",
+                        serde_json::to_string_pretty(&json_response)?
+                    );
+                }
+
                 let completion: completion::CompletionResponse<CompletionResponse> =
                     json_response.try_into()?;
                 Ok(completion)

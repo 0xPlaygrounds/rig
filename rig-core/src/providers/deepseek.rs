@@ -15,7 +15,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 use http::Request;
 use std::collections::HashMap;
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Level, enabled, info_span};
 
 use crate::client::{
     self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
@@ -522,10 +522,6 @@ where
         completion::CompletionResponse<CompletionResponse>,
         crate::completion::CompletionError,
     > {
-        let preamble = completion_request.preamble.clone();
-        let request =
-            DeepseekCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -533,19 +529,27 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "deepseek",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
-        tracing::debug!("DeepSeek completion request: {request:?}");
+        span.record("gen_ai.system_instructions", &completion_request.preamble);
+
+        let request =
+            DeepseekCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "DeepSeek completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let body = serde_json::to_vec(&request)?;
         let req = self
@@ -563,20 +567,17 @@ where
                 match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
-                        span.record(
-                            "gen_ai.output.messages",
-                            serde_json::to_string(&response.choices).unwrap(),
-                        );
                         span.record("gen_ai.usage.input_tokens", response.usage.prompt_tokens);
                         span.record(
                             "gen_ai.usage.output_tokens",
                             response.usage.completion_tokens,
                         );
-                        tracing::trace!(
-                            target: "rig::completions",
-                            "DeepSeek completion output: {}",
-                            serde_json::to_string_pretty(&response_body)?
-                        );
+                        if enabled!(Level::TRACE) {
+                            tracing::trace!(target: "rig::completions",
+                                "DeepSeek completion response: {}",
+                                serde_json::to_string_pretty(&response)?
+                            );
+                        }
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
@@ -610,6 +611,13 @@ where
 
         request.additional_params = Some(params);
 
+        if enabled!(Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "DeepSeek streaming completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let body = serde_json::to_vec(&request)?;
 
         let req = self
@@ -630,8 +638,6 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()

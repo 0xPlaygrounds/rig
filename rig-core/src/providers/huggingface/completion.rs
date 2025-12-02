@@ -13,7 +13,7 @@ use crate::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use std::{convert::Infallible, str::FromStr};
-use tracing::info_span;
+use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 #[derive(Debug, Deserialize)]
@@ -727,6 +727,14 @@ where
         let model = self.client.subprovider().model_identifier(&self.model);
         let request = HuggingfaceCompletionRequest::try_from((model.as_ref(), completion_request))?;
 
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "Huggingface completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let request = serde_json::to_vec(&request)?;
 
         let path = self.client.subprovider().completion_endpoint(&self.model);
@@ -737,7 +745,7 @@ where
             .body(request)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let api_call = async move {
+        async move {
             let response = self.client.send(request).await?;
 
             if response.status().is_success() {
@@ -748,6 +756,14 @@ where
 
                 match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&bytes)? {
                     ApiResponse::Ok(response) => {
+                        if enabled!(Level::TRACE) {
+                            tracing::trace!(
+                                target: "rig::completions",
+                                "Huggingface completion response: {}",
+                                serde_json::to_string_pretty(&response)?
+                            );
+                        }
+
                         let span = tracing::Span::current();
                         span.record_token_usage(&response.usage);
                         span.record_response_metadata(&response);
@@ -766,9 +782,9 @@ where
                     status, text
                 )))
             }
-        };
-
-        api_call.instrument(span).await
+        }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

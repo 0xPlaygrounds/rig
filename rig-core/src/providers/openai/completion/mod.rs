@@ -19,7 +19,7 @@ use crate::{OneOrMany, completion, json_utils, message};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::fmt;
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Level, enabled, info_span};
 
 use std::str::FromStr;
 
@@ -1011,6 +1011,14 @@ where
 
         let request = CompletionRequest::try_from((self.model.to_owned(), completion_request))?;
 
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "OpenAI Chat Completions completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let body = serde_json::to_vec(&request)?;
 
         let req = self
@@ -1030,7 +1038,15 @@ where
                         let span = tracing::Span::current();
                         span.record_response_metadata(&response);
                         span.record_token_usage(&response.usage);
-                        tracing::debug!("OpenAI response: {response:?}");
+
+                        if enabled!(Level::TRACE) {
+                            tracing::trace!(
+                                target: "rig::completions",
+                                "OpenAI Chat Completions completion response: {}",
+                                serde_json::to_string_pretty(&response)?
+                            );
+                        }
+
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),

@@ -25,7 +25,7 @@ use crate::{
     json_utils, message,
 };
 use serde::{Deserialize, Serialize};
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, enabled, info_span};
 
 // ================================================================
 // Main Galadriel Client
@@ -527,17 +527,6 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let request =
-            GaladrielCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/chat/completions")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -545,7 +534,7 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "galadriel",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
@@ -555,12 +544,38 @@ where
             tracing::Span::current()
         };
 
+        span.record("gen_ai.system_instructions", &completion_request.preamble);
+
+        let request =
+            GaladrielCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if enabled!(tracing::Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "Galadriel completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .post("/chat/completions")?
+            .body(body)
+            .map_err(http_client::Error::from)?;
+
         async move {
             let response = self.client.send(req).await?;
 
             if response.status().is_success() {
                 let t = http_client::text(response).await?;
-                tracing::debug!(target: "rig::completions", "Galadriel completion response: {t}");
+
+                if enabled!(tracing::Level::TRACE) {
+                    tracing::trace!(target: "rig::completions",
+                        "Galadriel completion response: {}",
+                        serde_json::to_string_pretty(&t)?
+                    );
+                }
 
                 match serde_json::from_str::<ApiResponse<CompletionResponse>>(&t)? {
                     ApiResponse::Ok(response) => {

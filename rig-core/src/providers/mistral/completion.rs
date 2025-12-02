@@ -1,7 +1,7 @@
 use async_stream::stream;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Level, enabled, info_span};
 
 use super::client::{Client, Usage};
 use crate::completion::GetTokenUsage;
@@ -521,6 +521,14 @@ where
         let preamble = completion_request.preamble.clone();
         let request =
             MistralCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "Mistral completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
