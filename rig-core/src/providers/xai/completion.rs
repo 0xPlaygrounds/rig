@@ -15,7 +15,7 @@ use crate::providers::openai;
 use crate::streaming::StreamingCompletionResponse;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Level, enabled, info_span};
 use xai_api_types::{CompletionResponse, ToolDefinition};
 
 /// xAI completion models as of 2025-06-04
@@ -122,11 +122,6 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let request =
-            XAICompletionRequest::try_from((self.model.to_string().as_ref(), completion_request))?;
-        let request_messages_json_str = serde_json::to_string(&request.messages).unwrap();
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -134,19 +129,27 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "xai",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = &request_messages_json_str,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
-        tracing::debug!("xAI completion request: {request_messages_json_str}");
+        span.record("gen_ai.system_instructions", &completion_request.preamble);
+
+        let request =
+            XAICompletionRequest::try_from((self.model.to_string().as_ref(), completion_request))?;
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "xAI completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let body = serde_json::to_vec(&request)?;
         let req = self
@@ -162,7 +165,16 @@ where
 
             if status.is_success() {
                 match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
-                    ApiResponse::Ok(completion) => completion.try_into(),
+                    ApiResponse::Ok(response) => {
+                        if enabled!(Level::TRACE) {
+                            tracing::trace!(target: "rig::completions",
+                                "xAI completion response: {}",
+                                serde_json::to_string_pretty(&response)?
+                            );
+                        }
+
+                        response.try_into()
+                    }
                     ApiResponse::Error(error) => {
                         Err(CompletionError::ProviderError(error.message()))
                     }

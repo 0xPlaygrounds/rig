@@ -38,7 +38,8 @@ use gemini_api_types::{
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
-use tracing::info_span;
+use tracing::{Level, enabled, info_span};
+use tracing_futures::Instrument;
 
 use super::Client;
 
@@ -97,8 +98,6 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -109,11 +108,13 @@ where
 
         span.record_model_input(&request.contents);
 
-        tracing::trace!(
-            target: "rig::completions",
-            "Sending completion request to Gemini API {}",
-            serde_json::to_string_pretty(&request)?
-        );
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "Gemini completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let body = serde_json::to_vec(&request)?;
 
@@ -125,59 +126,54 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let response = self.client.send::<_, Vec<u8>>(request).await?;
+        async move {
+            let response = self.client.send::<_, Vec<u8>>(request).await?;
 
-        if response.status().is_success() {
-            let response_body = response
-                .into_body()
-                .await
-                .map_err(CompletionError::HttpError)?;
-
-            let response_text = String::from_utf8_lossy(&response_body).to_string();
-            tracing::debug!("Received raw response from Gemini API: {}", response_text);
-
-            let response: GenerateContentResponse = serde_json::from_slice(&response_body)
-                .map_err(|err| {
-                    tracing::error!(
-                        error = %err,
-                        body = %response_text,
-                        "Failed to deserialize Gemini completion response"
-                    );
-                    CompletionError::JsonError(err)
-                })?;
-
-            match response.usage_metadata {
-                Some(ref usage) => tracing::info!(target: "rig",
-                "Gemini completion token usage: {}",
-                usage
-                ),
-                None => tracing::info!(target: "rig",
-                    "Gemini completion token usage: n/a",
-                ),
-            }
-
-            let span = tracing::Span::current();
-            span.record_model_output(&response.candidates);
-            span.record_response_metadata(&response);
-            span.record_token_usage(&response.usage_metadata);
-
-            tracing::trace!(
-                "Received response from Gemini API: {}",
-                serde_json::to_string_pretty(&response)?
-            );
-
-            response.try_into()
-        } else {
-            let text = String::from_utf8_lossy(
-                &response
+            if response.status().is_success() {
+                let response_body = response
                     .into_body()
                     .await
-                    .map_err(CompletionError::HttpError)?,
-            )
-            .into();
+                    .map_err(CompletionError::HttpError)?;
 
-            Err(CompletionError::ProviderError(text))
+                let response_text = String::from_utf8_lossy(&response_body).to_string();
+
+                let response: GenerateContentResponse = serde_json::from_slice(&response_body)
+                    .map_err(|err| {
+                        tracing::error!(
+                            error = %err,
+                            body = %response_text,
+                            "Failed to deserialize Gemini completion response"
+                        );
+                        CompletionError::JsonError(err)
+                    })?;
+
+                let span = tracing::Span::current();
+                span.record_response_metadata(&response);
+                span.record_token_usage(&response.usage_metadata);
+
+                if enabled!(Level::TRACE) {
+                    tracing::trace!(
+                        target: "rig::completions",
+                        "Gemini completion response: {}",
+                        serde_json::to_string_pretty(&response)?
+                    );
+                }
+
+                response.try_into()
+            } else {
+                let text = String::from_utf8_lossy(
+                    &response
+                        .into_body()
+                        .await
+                        .map_err(CompletionError::HttpError)?,
+                )
+                .into();
+
+                Err(CompletionError::ProviderError(text))
+            }
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

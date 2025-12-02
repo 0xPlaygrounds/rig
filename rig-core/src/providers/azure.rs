@@ -656,8 +656,6 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -666,7 +664,13 @@ where
         let request =
             AzureOpenAICompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
-        span.record_model_input(&request.messages);
+        if enabled!(Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "Azure OpenAI completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let body = serde_json::to_vec(&request)?;
 
         let req = self
@@ -687,14 +691,14 @@ where
                 )? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
-                        span.record_model_output(&response.choices);
                         span.record_response_metadata(&response);
                         span.record_token_usage(&response.usage);
-                        tracing::trace!(
-                            target: "rig::completions",
-                            "Azure completion response: {}",
-                            serde_json::to_string_pretty(&response)?
-                        );
+                        if enabled!(Level::TRACE) {
+                            tracing::trace!(target: "rig::completions",
+                                "Azure OpenAI completion response: {}",
+                                serde_json::to_string_pretty(&response)?
+                            );
+                        }
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
@@ -725,6 +729,13 @@ where
 
         request.additional_params = Some(params);
 
+        if enabled!(Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "Azure OpenAI completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let body = serde_json::to_vec(&request)?;
 
         let req = self
@@ -745,8 +756,6 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -857,7 +866,7 @@ where
 // ================================================================
 #[cfg(feature = "image")]
 pub use image_generation::*;
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Level, enabled, info_span};
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod image_generation {

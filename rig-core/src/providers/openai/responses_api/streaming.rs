@@ -12,7 +12,7 @@ use crate::wasm_compat::WasmCompatSend;
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info_span};
+use tracing::{Level, debug, enabled, info_span};
 use tracing_futures::Instrument as _;
 
 use super::{CompletionResponse, Output};
@@ -211,6 +211,14 @@ where
     {
         let mut request = self.create_completion_request(completion_request)?;
         request.stream = Some(true);
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "OpenAI Responses streaming completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let body = serde_json::to_vec(&request)?;
 

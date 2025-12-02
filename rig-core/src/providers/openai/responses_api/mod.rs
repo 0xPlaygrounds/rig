@@ -24,7 +24,7 @@ use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, message};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Level, enabled, info_span};
 
 use std::convert::Infallible;
 use std::ops::Add;
@@ -1108,11 +1108,14 @@ where
                 .expect("openai request to successfully turn into a JSON value"),
         );
         let body = serde_json::to_vec(&request)?;
-        tracing::trace!(
-            target: "rig::completions",
-            "OpenAI Responses API input: {request}",
-            request = serde_json::to_string_pretty(&request).unwrap()
-        );
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "OpenAI Responses completion request: {request}",
+                request = serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let req = self
             .client
@@ -1137,8 +1140,13 @@ where
                     span.record("gen_ai.usage.output_tokens", usage.output_tokens);
                     span.record("gen_ai.usage.input_tokens", usage.input_tokens);
                 }
-                // We need to call the event here to get the span to actually send anything
-                tracing::info!("API successfully called");
+                if enabled!(Level::TRACE) {
+                    tracing::trace!(
+                        target: "rig::completions",
+                        "OpenAI Responses completion response: {response}",
+                        response = serde_json::to_string_pretty(&response)?
+                    );
+                }
                 response.try_into()
             } else {
                 let text = http_client::text(response).await?;

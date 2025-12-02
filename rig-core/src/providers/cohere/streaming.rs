@@ -11,7 +11,7 @@ use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::info_span;
+use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 #[derive(Debug, Deserialize)]
@@ -125,11 +125,13 @@ where
 
         request.additional_params = Some(params);
 
-        tracing::trace!(
-            target: "rig::streaming",
-            "Cohere streaming completion input: {}",
-            serde_json::to_string_pretty(&request)?
-        );
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::streaming",
+                "Cohere streaming completion input: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let body = serde_json::to_vec(&request)?;
 

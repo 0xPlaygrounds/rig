@@ -5,7 +5,7 @@ use futures::StreamExt;
 use http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::info_span;
+use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
@@ -96,6 +96,14 @@ where
             request_as_json,
             json!({"stream": true, "stream_options": {"include_usage": true}}),
         );
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "OpenAI Chat Completions streaming completion request: {}",
+                serde_json::to_string_pretty(&request_as_json)?
+            );
+        }
 
         let req_body = serde_json::to_vec(&request_as_json)?;
 

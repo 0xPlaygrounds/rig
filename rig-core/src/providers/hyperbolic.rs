@@ -340,11 +340,6 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let request =
-            HyperbolicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-        let body = serde_json::to_vec(&request)?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -352,17 +347,28 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "hyperbolic",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
+
+        span.record("gen_ai.system_instructions", &completion_request.preamble);
+        let request =
+            HyperbolicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if tracing::enabled!(tracing::Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "Hyperbolic completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
+        let body = serde_json::to_vec(&request)?;
 
         let req = self
             .client
@@ -379,10 +385,12 @@ where
             if status.is_success() {
                 match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(response) => {
-                        tracing::info!(target: "rig",
-                            "Hyperbolic completion token usage: {:?}",
-                            response.usage.clone().map(|usage| format!("{usage}")).unwrap_or("N/A".to_string())
-                        );
+                        if tracing::enabled!(tracing::Level::TRACE) {
+                            tracing::trace!(target: "rig::completions",
+                                "Hyperbolic completion response: {}",
+                                serde_json::to_string_pretty(&response)?
+                            );
+                        }
 
                         response.try_into()
                     }
@@ -403,10 +411,6 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let mut request =
-            HyperbolicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -414,17 +418,19 @@ where
                 gen_ai.operation.name = "chat_streaming",
                 gen_ai.provider.name = "hyperbolic",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
+
+        span.record("gen_ai.system_instructions", &completion_request.preamble);
+        let mut request =
+            HyperbolicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
         let params = json_utils::merge(
             request.additional_params.unwrap_or(serde_json::json!({})),
@@ -432,6 +438,13 @@ where
         );
 
         request.additional_params = Some(params);
+
+        if tracing::enabled!(tracing::Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "Hyperbolic streaming completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let body = serde_json::to_vec(&request)?;
 

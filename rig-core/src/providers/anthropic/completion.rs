@@ -16,7 +16,7 @@ use crate::completion::CompletionRequest;
 use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Level, enabled, info_span};
 
 // ================================================================
 // Anthropic Completion API
@@ -829,6 +829,14 @@ where
             AnthropicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
         span.record_model_input(&request.messages);
 
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "Anthropic completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         async move {
             let request: Vec<u8> = serde_json::to_vec(&request)?;
 
@@ -858,11 +866,13 @@ where
                         span.record_model_output(&completion.content);
                         span.record_response_metadata(&completion);
                         span.record_token_usage(&completion.usage);
-                        tracing::trace!(
-                            target: "rig::completions",
-                            "Anthropic completion response: {}",
-                            serde_json::to_string_pretty(&completion)?
-                        );
+                        if enabled!(Level::TRACE) {
+                            tracing::trace!(
+                                target: "rig::completions",
+                                "Anthropic completion response: {}",
+                                serde_json::to_string_pretty(&completion)?
+                            );
+                        }
                         completion.try_into()
                     }
                     ApiResponse::Error(ApiErrorResponse { message }) => {
