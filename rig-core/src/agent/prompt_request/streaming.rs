@@ -199,8 +199,13 @@ where
 
         let cancel_signal = CancelSignal::new();
 
-        Box::pin(async_stream::stream! {
-            let _guard = agent_span.enter();
+        // NOTE: We use .instrument(agent_span) instead of span.enter() to avoid
+        // span context leaking to other concurrent tasks. Using span.enter() inside
+        // async_stream::stream! holds the guard across yield points, which causes
+        // thread-local span context to leak when other tasks run on the same thread.
+        // See: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#in-asynchronous-code
+        // See also: https://github.com/rust-lang/rust-clippy/issues/8722
+        let stream = async_stream::stream! {
             let mut current_prompt = prompt.clone();
             let mut did_call_tool = false;
 
@@ -435,8 +440,9 @@ where
                     prompt: last_prompt_error.clone().into(),
                 }).into());
             }
+        };
 
-        })
+        Box::pin(stream.instrument(agent_span))
     }
 }
 
@@ -564,3 +570,113 @@ where
 }
 
 impl<M> StreamingPromptHook<M> for () where M: CompletionModel {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::ProviderClient;
+    use crate::client::completion::CompletionClient;
+    use crate::providers::anthropic;
+    use crate::streaming::StreamingPrompt;
+    use futures::StreamExt;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use std::time::Duration;
+
+    /// Background task that logs periodically to detect span leakage.
+    /// If span leakage occurs, these logs will be prefixed with `invoke_agent{...}`.
+    async fn background_logger(stop: Arc<AtomicBool>, leak_count: Arc<AtomicU32>) {
+        let mut interval = tokio::time::interval(Duration::from_millis(50));
+        let mut count = 0u32;
+
+        while !stop.load(Ordering::Relaxed) {
+            interval.tick().await;
+            count += 1;
+
+            tracing::event!(
+                target: "background_logger",
+                tracing::Level::INFO,
+                count = count,
+                "Background tick"
+            );
+
+            // Check if we're inside an unexpected span
+            let current = tracing::Span::current();
+            if !current.is_disabled() && !current.is_none() {
+                leak_count.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+
+        tracing::info!(target: "background_logger", total_ticks = count, "Background logger stopped");
+    }
+
+    /// Test that span context doesn't leak to concurrent tasks during streaming.
+    ///
+    /// This test verifies that using `.instrument()` instead of `span.enter()` in
+    /// async_stream prevents thread-local span context from leaking to other tasks.
+    ///
+    /// Uses single-threaded runtime to force all tasks onto the same thread,
+    /// making the span leak deterministic (it only occurs when tasks share a thread).
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "This requires an API key"]
+    async fn test_span_context_isolation() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let leak_count = Arc::new(AtomicU32::new(0));
+
+        // Start background logger
+        let bg_stop = stop.clone();
+        let bg_leak = leak_count.clone();
+        let bg_handle = tokio::spawn(async move {
+            background_logger(bg_stop, bg_leak).await;
+        });
+
+        // Small delay to let background logger start
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Make streaming request WITHOUT an outer span so rig creates its own invoke_agent span
+        // (rig reuses current span if one exists, so we need to ensure there's no current span)
+        let client = anthropic::Client::from_env();
+        let agent = client
+            .agent(anthropic::completion::CLAUDE_3_5_HAIKU)
+            .preamble("You are a helpful assistant.")
+            .temperature(0.1)
+            .max_tokens(100)
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("Say 'hello world' and nothing else.")
+            .await;
+
+        let mut full_content = String::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    text,
+                ))) => {
+                    full_content.push_str(&text.text);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => {
+                    break;
+                }
+                Err(e) => {
+                    tracing::warn!("Error: {:?}", e);
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        tracing::info!("Got response: {:?}", full_content);
+
+        // Stop background logger
+        stop.store(true, Ordering::Relaxed);
+        bg_handle.await.unwrap();
+
+        let leaks = leak_count.load(Ordering::Relaxed);
+        assert_eq!(
+            leaks, 0,
+            "SPAN LEAK DETECTED: Background logger was inside unexpected spans {leaks} times. \
+             This indicates that span.enter() is being used inside async_stream instead of .instrument()"
+        );
+    }
+}
