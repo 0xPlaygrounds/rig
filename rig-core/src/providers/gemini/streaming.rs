@@ -82,7 +82,7 @@ where
                 gen_ai.operation.name = "chat_streaming",
                 gen_ai.provider.name = "gcp.gemini",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = self.model,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
@@ -93,15 +93,25 @@ where
         } else {
             tracing::Span::current()
         };
+
+        if self.telemetry_config.include_preamble {
+            span.record_preamble(&completion_request.preamble);
+        }
+
         let request = create_request_body(completion_request)?;
 
-        span.record_model_input(&request.contents);
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.contents);
+        }
 
-        tracing::trace!(
-            target: "rig::streaming",
-            "Sending completion request to Gemini API {}",
-            serde_json::to_string_pretty(&request)?
-        );
+        if self.telemetry_config.debug_logging {
+            tracing::trace!(
+                target: "rig::streaming",
+                "Sending completion request to Gemini API {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let body = serde_json::to_vec(&request)?;
 
         let req = self

@@ -5,6 +5,7 @@ use tokio::sync::RwLock;
 use crate::{
     completion::{CompletionModel, Document},
     message::ToolChoice,
+    telemetry::TelemetryConfiguration,
     tool::{
         Tool, ToolSet,
         server::{ToolServer, ToolServerHandle},
@@ -65,6 +66,8 @@ where
     tool_server_handle: Option<ToolServerHandle>,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     tool_choice: Option<ToolChoice>,
+    /// Telemetry configuration
+    telemetry_config: TelemetryConfiguration,
 }
 
 impl<M> AgentBuilder<M>
@@ -84,6 +87,7 @@ where
             dynamic_context: vec![],
             tool_server_handle: None,
             tool_choice: None,
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 
@@ -151,6 +155,7 @@ where
             temperature: self.temperature,
             tools,
             tool_choice: self.tool_choice,
+            telemetry_config: self.telemetry_config,
         }
     }
 
@@ -185,7 +190,22 @@ where
             temperature: self.temperature,
             tools,
             tool_choice: self.tool_choice,
+            telemetry_config: self.telemetry_config,
         }
+    }
+
+    pub fn with_debug_logging(mut self, debug_logging: bool) -> Self {
+        self.telemetry_config = self.telemetry_config.debug_logging(debug_logging);
+
+        self
+    }
+
+    pub fn with_include_message_contents(mut self, include_message_contents: bool) -> Self {
+        self.telemetry_config = self
+            .telemetry_config
+            .include_message_contents(include_message_contents);
+
+        self
     }
 
     /// Add an array of MCP tools (from `rmcp`) to the agent
@@ -223,6 +243,7 @@ where
             temperature: self.temperature,
             tools,
             tool_choice: self.tool_choice,
+            telemetry_config: self.telemetry_config,
         }
     }
 
@@ -268,6 +289,7 @@ where
             temperature: self.temperature,
             tools: toolset,
             tool_choice: self.tool_choice,
+            telemetry_config: self.telemetry_config,
         }
     }
 
@@ -297,10 +319,12 @@ where
             ToolServer::new().run()
         };
 
+        let model = self.model.telemetry_config(self.telemetry_config.clone());
+
         Agent {
             name: self.name,
             description: self.description,
-            model: Arc::new(self.model),
+            model: Arc::new(model),
             preamble: self.preamble,
             static_context: self.static_context,
             temperature: self.temperature,
@@ -309,6 +333,7 @@ where
             tool_choice: self.tool_choice,
             dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
             tool_server_handle,
+            telemetry_config: self.telemetry_config,
         }
     }
 }
@@ -364,6 +389,8 @@ where
     tools: ToolSet,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     tool_choice: Option<ToolChoice>,
+    /// Telemetry configuration
+    telemetry_config: TelemetryConfiguration,
 }
 
 impl<M> AgentBuilderSimple<M>
@@ -385,6 +412,7 @@ where
             dynamic_tools: vec![],
             tools: ToolSet::default(),
             tool_choice: None,
+            telemetry_config: TelemetryConfiguration::new(),
         }
     }
 
@@ -458,6 +486,20 @@ where
         self
     }
 
+    pub fn with_debug_logging(mut self, debug_logging: bool) -> Self {
+        self.telemetry_config = self.telemetry_config.debug_logging(debug_logging);
+
+        self
+    }
+
+    pub fn with_include_message_contents(mut self, include_message_contents: bool) -> Self {
+        self.telemetry_config = self
+            .telemetry_config
+            .include_message_contents(include_message_contents);
+
+        self
+    }
+
     /// Add some dynamic context to the agent. On each prompt, `sample` documents from the
     /// dynamic context will be inserted in the request.
     pub fn dynamic_context(
@@ -514,10 +556,12 @@ where
             .add_dynamic_tools(self.dynamic_tools)
             .run();
 
+        let model = self.model.telemetry_config(self.telemetry_config.clone());
+
         Agent {
             name: self.name,
             description: self.description,
-            model: Arc::new(self.model),
+            model: Arc::new(model),
             preamble: self.preamble,
             static_context: self.static_context,
             temperature: self.temperature,
@@ -526,6 +570,7 @@ where
             tool_choice: self.tool_choice,
             dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
             tool_server_handle,
+            telemetry_config: self.telemetry_config,
         }
     }
 }

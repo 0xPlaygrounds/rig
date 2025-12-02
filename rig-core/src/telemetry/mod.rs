@@ -33,6 +33,8 @@ pub trait ProviderResponseExt {
 /// A trait designed specifically to be used with Spans for the purpose of recording telemetry.
 /// Nearly all methods
 pub trait SpanCombinator {
+    fn record_preamble(&self, preamble: &Option<String>);
+
     fn record_token_usage<U>(&self, usage: &U)
     where
         U: GetTokenUsage;
@@ -51,6 +53,16 @@ pub trait SpanCombinator {
 }
 
 impl SpanCombinator for tracing::Span {
+    fn record_preamble(&self, preamble: &Option<String>) {
+        if self.is_disabled() {
+            return;
+        }
+
+        if let Some(preamble) = preamble {
+            self.record("gen_ai.system_instructions", preamble);
+        }
+    }
+
     fn record_token_usage<U>(&self, usage: &U)
     where
         U: GetTokenUsage,
@@ -108,5 +120,57 @@ impl SpanCombinator for tracing::Span {
             .expect("Serializing a Rust type to JSON should not break");
 
         self.record("gen_ai.output.messages", output_as_json_string);
+    }
+}
+
+/// Telemetry configuration for all LLM model related ops (completions, agent workflows).
+/// By default, all options are set to false.
+#[derive(Clone, Debug, Default)]
+pub struct TelemetryConfiguration {
+    /// Whether or not debug-print logging should be shown (ie, the raw contents of a given request to a provider).
+    /// These are provided as `trace` level logs due to potentially containing large JSON blobs.
+    pub debug_logging: bool,
+    /// Whether or not the preamble ("system prompt") should be included in traces.
+    pub include_preamble: bool,
+    /// Whether or not message contents should be included in traces.
+    /// Ensure this is disabled if you would like to exclude message contents for PII purposes.
+    pub include_message_contents: bool,
+}
+
+impl TelemetryConfiguration {
+    /// Creates a new instance of `TelemetryConfiguration`.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Whether or not to include debug logging.
+    pub fn debug_logging(mut self, debug_logging: bool) -> Self {
+        self.debug_logging = debug_logging;
+
+        self
+    }
+
+    /// Whether or not to include the preamble ("system prompt")
+    pub fn include_preamble(mut self, include_preamble: bool) -> Self {
+        self.include_preamble = include_preamble;
+
+        self
+    }
+
+    /// Whether or not to include message contents in traces.
+    pub fn include_message_contents(mut self, include_message_contents: bool) -> Self {
+        self.include_message_contents = include_message_contents;
+
+        self
+    }
+
+    /// Creates a telemetry configuration with all telemetry enabled.
+    /// This will log ALL messages, prompts as well as debug logging in Rig's traces.
+    pub fn all_telemetry_enabled() -> Self {
+        Self {
+            debug_logging: true,
+            include_preamble: true,
+            include_message_contents: true,
+        }
     }
 }

@@ -111,12 +111,16 @@ where
                 gen_ai.response.model = self.model,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.messages)?,
+                gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
+
+        if self.telemetry_config.include_message_contents {
+            span.record_model_input(&request.messages);
+        }
 
         let params = json_utils::merge(
             request.additional_params.unwrap_or(serde_json::json!({})),
@@ -125,11 +129,13 @@ where
 
         request.additional_params = Some(params);
 
-        tracing::trace!(
-            target: "rig::streaming",
-            "Cohere streaming completion input: {}",
-            serde_json::to_string_pretty(&request)?
-        );
+        if self.telemetry_config.debug_logging {
+            tracing::trace!(
+                target: "rig::streaming",
+                "Cohere streaming completion input: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let body = serde_json::to_vec(&request)?;
 
