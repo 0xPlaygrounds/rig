@@ -63,7 +63,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create vector store with the embeddings
     let vector_store = InMemoryVectorStore::from_documents(embeddings);
-
     // Create vector store index
     let index = vector_store.index(embedding_model);
     let rag_agent = openai_client.agent(openai::GPT_4O)
