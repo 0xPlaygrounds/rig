@@ -240,7 +240,7 @@ where
         span.record("gen_ai.provider.name", "openai");
         span.record("gen_ai.request.model", &self.model);
         // Build the request with proper headers for SSE
-        let client = self.client.http_client().clone();
+        let client = self.client.clone();
 
         let mut event_source = GenericEventSource::new(client, req);
 

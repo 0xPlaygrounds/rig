@@ -36,7 +36,7 @@ impl<T> TranscriptionModel<T> {
 
 impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
 where
-    T: HttpClientExt + WasmCompatSend + WasmCompatSync + Clone,
+    T: HttpClientExt + WasmCompatSend + WasmCompatSync + Clone + 'static,
 {
     type Response = GenerateContentResponse;
     type Client = Client<T>;
