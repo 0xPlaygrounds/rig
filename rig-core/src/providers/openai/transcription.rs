@@ -102,12 +102,7 @@ where
             .body(body)
             .unwrap();
 
-        let response = self
-            .client
-            .http_client()
-            .send_multipart::<Bytes>(req)
-            .await
-            .unwrap();
+        let response = self.client.send_multipart::<Bytes>(req).await.unwrap();
 
         let status = response.status();
         let response_body = response.into_body().into_future().await?.to_vec();

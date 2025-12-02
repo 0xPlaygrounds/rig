@@ -233,7 +233,7 @@ where
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
-        let response = HttpClientExt::send(self.client.http_client(), req).await?;
+        let response = self.client.send(req).await?;
 
         if !response.status().is_success() {
             let text = http_client::text(response).await?;
@@ -607,7 +607,7 @@ where
             .body(body)
             .map_err(http_client::Error::from)?;
 
-        let response = self.client.http_client().send_streaming(req).await?;
+        let response = self.client.send_streaming(req).await?;
         let status = response.status();
         let mut byte_stream = response.into_body();
 

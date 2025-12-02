@@ -134,12 +134,7 @@ where
     /// Create a Completions API client from this Responses API client.
     /// Useful for switching to the traditional Chat Completions API.
     pub fn completions_api(self) -> CompletionsClient<H> {
-        client::Client::from_parts(
-            self.base_url().to_string(),
-            self.headers().clone(),
-            self.http_client().clone(),
-            OpenAICompletionsExt,
-        )
+        self.with_ext(OpenAICompletionsExt)
     }
 }
 
@@ -168,12 +163,7 @@ where
     /// Create a Responses API client from this Completions API client.
     /// Useful for switching to the newer Responses API.
     pub fn responses_api(self) -> Client<H> {
-        client::Client::from_parts(
-            self.base_url().to_string(),
-            self.headers().clone(),
-            self.http_client().clone(),
-            OpenAIResponsesExt,
-        )
+        self.with_ext(OpenAIResponsesExt)
     }
 }
 

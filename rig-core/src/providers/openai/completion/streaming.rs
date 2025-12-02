@@ -131,7 +131,7 @@ where
             tracing::Span::current()
         };
 
-        let client = self.client.http_client().clone();
+        let client = self.client.clone();
 
         tracing::Instrument::instrument(send_compatible_streaming_request(client, req), span).await
     }
