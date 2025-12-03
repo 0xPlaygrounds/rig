@@ -69,7 +69,7 @@ impl ProviderResponseExt for CompletionResponse {
             .content
             .iter()
             .filter_map(|x| {
-                if let Content::Text { text } = x {
+                if let Content::Text { text, .. } = x {
                     Some(text.to_owned())
                 } else {
                     None
@@ -134,10 +134,22 @@ pub struct ToolDefinition {
     pub input_schema: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+/// Cache control directive for Anthropic prompt caching
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CacheControl {
     Ephemeral,
+}
+
+/// System message content block with optional cache control
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SystemContent {
+    Text {
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<CacheControl>,
+    },
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
@@ -189,9 +201,13 @@ pub enum Role {
 pub enum Content {
     Text {
         text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<CacheControl>,
     },
     Image {
         source: ImageSource,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<CacheControl>,
     },
     ToolUse {
         id: String,
@@ -204,12 +220,17 @@ pub enum Content {
         content: OneOrMany<ToolResultContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<CacheControl>,
     },
     Document {
         source: DocumentSource,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<CacheControl>,
     },
     Thinking {
         thinking: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
         signature: Option<String>,
     },
 }
@@ -218,7 +239,10 @@ impl FromStr for Content {
     type Err = Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Content::Text { text: s.to_owned() })
+        Ok(Content::Text {
+            text: s.to_owned(),
+            cache_control: None,
+        })
     }
 }
 
@@ -319,7 +343,10 @@ pub enum SourceType {
 
 impl From<String> for Content {
     fn from(text: String) -> Self {
-        Content::Text { text }
+        Content::Text {
+            text,
+            cache_control: None,
+        }
     }
 }
 
@@ -398,7 +425,10 @@ impl TryFrom<message::AssistantContent> for Content {
     type Error = MessageError;
     fn try_from(text: message::AssistantContent) -> Result<Self, Self::Error> {
         match text {
-            message::AssistantContent::Text(message::Text { text }) => Ok(Content::Text { text }),
+            message::AssistantContent::Text(message::Text { text }) => Ok(Content::Text {
+                text,
+                cache_control: None,
+            }),
             message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
                 "Anthropic currently doesn't support images.".to_string(),
             )),
@@ -429,9 +459,10 @@ impl TryFrom<message::Message> for Message {
             message::Message::User { content } => Message {
                 role: Role::User,
                 content: content.try_map(|content| match content {
-                    message::UserContent::Text(message::Text { text }) => {
-                        Ok(Content::Text { text })
-                    }
+                    message::UserContent::Text(message::Text { text }) => Ok(Content::Text {
+                        text,
+                        cache_control: None,
+                    }),
                     message::UserContent::ToolResult(message::ToolResult {
                         id, content, ..
                     }) => Ok(Content::ToolResult {
@@ -459,6 +490,7 @@ impl TryFrom<message::Message> for Message {
                             }
                         })?,
                         is_error: None,
+                        cache_control: None,
                     }),
                     message::UserContent::Image(message::Image {
                         data, media_type, ..
@@ -490,7 +522,10 @@ impl TryFrom<message::Message> for Message {
                             }
                         };
 
-                        Ok(Content::Image { source })
+                        Ok(Content::Image {
+                            source,
+                            cache_control: None,
+                        })
                     }
                     message::UserContent::Document(message::Document {
                         data, media_type, ..
@@ -515,7 +550,10 @@ impl TryFrom<message::Message> for Message {
                             media_type: media_type.try_into()?,
                             r#type: SourceType::BASE64,
                         };
-                        Ok(Content::Document { source })
+                        Ok(Content::Document {
+                            source,
+                            cache_control: None,
+                        })
                     }
                     message::UserContent::Audio { .. } => Err(MessageError::ConversionError(
                         "Audio is not supported in Anthropic".to_owned(),
@@ -539,7 +577,7 @@ impl TryFrom<Content> for message::AssistantContent {
 
     fn try_from(content: Content) -> Result<Self, Self::Error> {
         Ok(match content {
-            Content::Text { text } => message::AssistantContent::text(text),
+            Content::Text { text, .. } => message::AssistantContent::text(text),
             Content::ToolUse { id, name, input } => {
                 message::AssistantContent::tool_call(id, name, input)
             }
@@ -579,7 +617,7 @@ impl TryFrom<Message> for message::Message {
             Role::User => message::Message::User {
                 content: message.content.try_map(|content| {
                     Ok(match content {
-                        Content::Text { text } => message::UserContent::text(text),
+                        Content::Text { text, .. } => message::UserContent::text(text),
                         Content::ToolResult {
                             tool_use_id,
                             content,
@@ -588,13 +626,15 @@ impl TryFrom<Message> for message::Message {
                             tool_use_id,
                             content.map(|content| content.into()),
                         ),
-                        Content::Image { source } => message::UserContent::Image(message::Image {
-                            data: source.data.into(),
-                            media_type: Some(source.media_type.into()),
-                            detail: None,
-                            additional_params: None,
-                        }),
-                        Content::Document { source } => message::UserContent::document(
+                        Content::Image { source, .. } => {
+                            message::UserContent::Image(message::Image {
+                                data: source.data.into(),
+                                media_type: Some(source.media_type.into()),
+                                detail: None,
+                                additional_params: None,
+                            })
+                        }
+                        Content::Document { source, .. } => message::UserContent::document(
                             source.data,
                             Some(message::DocumentMediaType::PDF),
                         ),
@@ -629,6 +669,8 @@ pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
+    /// Enable automatic prompt caching (adds cache_control breakpoints to system prompt and messages)
+    pub prompt_caching: bool,
 }
 
 impl<T> CompletionModel<T>
@@ -643,6 +685,7 @@ where
             client,
             model,
             default_max_tokens,
+            prompt_caching: false, // Default to off
         }
     }
 
@@ -651,7 +694,20 @@ where
             client,
             model: model.to_string(),
             default_max_tokens: Some(calculate_max_tokens_custom(model)),
+            prompt_caching: false, // Default to off
         }
+    }
+
+    /// Enable automatic prompt caching.
+    ///
+    /// When enabled, cache_control breakpoints are automatically added to:
+    /// - The system prompt (marked with ephemeral cache)
+    /// - The last content block of the last message (marked with ephemeral cache)
+    ///
+    /// This allows Anthropic to cache the conversation history for cost savings.
+    pub fn with_prompt_caching(mut self) -> Self {
+        self.prompt_caching = true;
+        self
     }
 }
 
@@ -722,7 +778,9 @@ struct AnthropicCompletionRequest {
     model: String,
     messages: Vec<Message>,
     max_tokens: u64,
-    system: String,
+    /// System prompt as array of content blocks to support cache_control
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    system: Vec<SystemContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -733,10 +791,57 @@ struct AnthropicCompletionRequest {
     additional_params: Option<serde_json::Value>,
 }
 
-impl TryFrom<(&str, CompletionRequest)> for AnthropicCompletionRequest {
+/// Helper to set cache_control on a Content block
+fn set_content_cache_control(content: &mut Content, value: Option<CacheControl>) {
+    match content {
+        Content::Text { cache_control, .. } => *cache_control = value,
+        Content::Image { cache_control, .. } => *cache_control = value,
+        Content::ToolResult { cache_control, .. } => *cache_control = value,
+        Content::Document { cache_control, .. } => *cache_control = value,
+        _ => {}
+    }
+}
+
+/// Apply cache control breakpoints to system prompt and messages.
+/// Strategy: cache the system prompt, and mark the last content block of the last message
+/// for caching. This allows the conversation history to be cached while new messages
+/// are added.
+pub fn apply_cache_control(system: &mut Vec<SystemContent>, messages: &mut [Message]) {
+    // Add cache_control to the system prompt (if non-empty)
+    if let Some(SystemContent::Text { cache_control, .. }) = system.last_mut() {
+        *cache_control = Some(CacheControl::Ephemeral);
+    }
+
+    // Clear any existing cache_control from all message content blocks
+    for msg in messages.iter_mut() {
+        for content in msg.content.iter_mut() {
+            set_content_cache_control(content, None);
+        }
+    }
+
+    // Add cache_control to the last content block of the last message
+    if let Some(last_msg) = messages.last_mut() {
+        set_content_cache_control(last_msg.content.last_mut(), Some(CacheControl::Ephemeral));
+    }
+}
+
+/// Parameters for building an AnthropicCompletionRequest
+pub struct AnthropicRequestParams<'a> {
+    pub model: &'a str,
+    pub request: CompletionRequest,
+    pub prompt_caching: bool,
+}
+
+impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     type Error = CompletionError;
 
-    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+    fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
+        let AnthropicRequestParams {
+            model,
+            request: req,
+            prompt_caching,
+        } = params;
+
         // Check if max_tokens is set, required for Anthropic
         let Some(max_tokens) = req.max_tokens else {
             return Err(CompletionError::RequestError(
@@ -750,7 +855,7 @@ impl TryFrom<(&str, CompletionRequest)> for AnthropicCompletionRequest {
         }
         full_history.extend(req.chat_history);
 
-        let messages = full_history
+        let mut messages = full_history
             .into_iter()
             .map(Message::try_from)
             .collect::<Result<Vec<Message>, _>>()?;
@@ -765,11 +870,30 @@ impl TryFrom<(&str, CompletionRequest)> for AnthropicCompletionRequest {
             })
             .collect::<Vec<_>>();
 
+        // Convert system prompt to array format for cache_control support
+        let mut system = if let Some(preamble) = req.preamble {
+            if preamble.is_empty() {
+                vec![]
+            } else {
+                vec![SystemContent::Text {
+                    text: preamble,
+                    cache_control: None,
+                }]
+            }
+        } else {
+            vec![]
+        };
+
+        // Apply cache control breakpoints only if prompt_caching is enabled
+        if prompt_caching {
+            apply_cache_control(&mut system, &mut messages);
+        }
+
         Ok(Self {
             model: model.to_string(),
             messages,
             max_tokens,
-            system: req.preamble.unwrap_or_default(),
+            system,
             temperature: req.temperature,
             tool_choice: req.tool_choice.and_then(|x| ToolChoice::try_from(x).ok()),
             tools,
@@ -823,8 +947,11 @@ where
             }
         }
 
-        let request =
-            AnthropicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: &self.model,
+            request: completion_request,
+            prompt_caching: self.prompt_caching,
+        })?;
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
@@ -998,7 +1125,8 @@ mod tests {
         assert_eq!(
             content.first(),
             Content::Text {
-                text: "\n\nHello there, how may I assist you today?".to_owned()
+                text: "\n\nHello there, how may I assist you today?".to_owned(),
+                cache_control: None,
             }
         );
 
@@ -1010,7 +1138,7 @@ mod tests {
             let mut iter = content.into_iter();
 
             match iter.next().unwrap() {
-                Content::Text { text } => {
+                Content::Text { text, .. } => {
                     assert_eq!(text, "\n\nHello there, how may I assist you today?");
                 }
                 _ => panic!("Expected text content"),
@@ -1036,7 +1164,7 @@ mod tests {
             let mut iter = content.into_iter();
 
             match iter.next().unwrap() {
-                Content::Image { source } => {
+                Content::Image { source, .. } => {
                     assert_eq!(
                         source,
                         ImageSource {
@@ -1050,7 +1178,7 @@ mod tests {
             }
 
             match iter.next().unwrap() {
-                Content::Text { text } => {
+                Content::Text { text, .. } => {
                     assert_eq!(text, "What is in this image?");
                 }
                 _ => panic!("Expected text content"),
@@ -1061,6 +1189,7 @@ mod tests {
                     tool_use_id,
                     content,
                     is_error,
+                    ..
                 } => {
                     assert_eq!(tool_use_id, "toolu_01A09q90qw90lq917835lq9");
                     assert_eq!(
@@ -1128,6 +1257,7 @@ mod tests {
                     text: "15 degrees".to_string(),
                 }),
                 is_error: None,
+                cache_control: None,
             }),
         };
 
@@ -1245,5 +1375,85 @@ mod tests {
                 .to_string()
                 .contains("ContentFormat::String is deprecated")
         );
+    }
+
+    #[test]
+    fn test_cache_control_serialization() {
+        // Test SystemContent with cache_control
+        let system = SystemContent::Text {
+            text: "You are a helpful assistant.".to_string(),
+            cache_control: Some(CacheControl::Ephemeral),
+        };
+        let json = serde_json::to_string(&system).unwrap();
+        assert!(json.contains(r#""cache_control":{"type":"ephemeral"}"#));
+        assert!(json.contains(r#""type":"text""#));
+
+        // Test SystemContent without cache_control (should not have cache_control field)
+        let system_no_cache = SystemContent::Text {
+            text: "Hello".to_string(),
+            cache_control: None,
+        };
+        let json_no_cache = serde_json::to_string(&system_no_cache).unwrap();
+        assert!(!json_no_cache.contains("cache_control"));
+
+        // Test Content::Text with cache_control
+        let content = Content::Text {
+            text: "Test message".to_string(),
+            cache_control: Some(CacheControl::Ephemeral),
+        };
+        let json_content = serde_json::to_string(&content).unwrap();
+        assert!(json_content.contains(r#""cache_control":{"type":"ephemeral"}"#));
+
+        // Test apply_cache_control function
+        let mut system_vec = vec![SystemContent::Text {
+            text: "System prompt".to_string(),
+            cache_control: None,
+        }];
+        let mut messages = vec![
+            Message {
+                role: Role::User,
+                content: OneOrMany::one(Content::Text {
+                    text: "First message".to_string(),
+                    cache_control: None,
+                }),
+            },
+            Message {
+                role: Role::Assistant,
+                content: OneOrMany::one(Content::Text {
+                    text: "Response".to_string(),
+                    cache_control: None,
+                }),
+            },
+        ];
+
+        apply_cache_control(&mut system_vec, &mut messages);
+
+        // System should have cache_control
+        match &system_vec[0] {
+            SystemContent::Text { cache_control, .. } => {
+                assert!(cache_control.is_some());
+            }
+        }
+
+        // Only the last content block of last message should have cache_control
+        // First message should NOT have cache_control
+        for content in messages[0].content.iter() {
+            match content {
+                Content::Text { cache_control, .. } => {
+                    assert!(cache_control.is_none());
+                }
+                _ => {}
+            }
+        }
+
+        // Last message SHOULD have cache_control
+        for content in messages[1].content.iter() {
+            match content {
+                Content::Text { cache_control, .. } => {
+                    assert!(cache_control.is_some());
+                }
+                _ => {}
+            }
+        }
     }
 }
