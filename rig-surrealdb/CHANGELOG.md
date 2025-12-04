@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.24](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.1.23...rig-surrealdb-v0.1.24) - 2025-12-04
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.1.23](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.1.22...rig-surrealdb-v0.1.23) - 2025-12-01
 
 ### Added
