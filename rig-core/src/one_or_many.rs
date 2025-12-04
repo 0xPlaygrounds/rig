@@ -30,6 +30,34 @@ impl<T: Clone> OneOrMany<T> {
         self.first.clone()
     }
 
+    /// Get a reference to the first item in the list.
+    pub fn first_ref(&self) -> &T {
+        &self.first
+    }
+
+    /// Get a mutable reference to the first item in the list.
+    pub fn first_mut(&mut self) -> &mut T {
+        &mut self.first
+    }
+
+    /// Get the last item in the list.
+    pub fn last(&self) -> T {
+        self.rest
+            .last()
+            .cloned()
+            .unwrap_or_else(|| self.first.clone())
+    }
+
+    /// Get a reference to the last item in the list.
+    pub fn last_ref(&self) -> &T {
+        self.rest.last().unwrap_or(&self.first)
+    }
+
+    /// Get a mutable reference to the last item in the list.
+    pub fn last_mut(&mut self) -> &mut T {
+        self.rest.last_mut().unwrap_or(&mut self.first)
+    }
+
     /// Get the rest of the items in the list (excluding the first one).
     pub fn rest(&self) -> Vec<T> {
         self.rest.clone()
