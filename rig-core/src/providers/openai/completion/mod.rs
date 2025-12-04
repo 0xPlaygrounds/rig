@@ -345,7 +345,6 @@ impl TryFrom<message::ToolResult> for Message {
     type Error = message::MessageError;
 
     fn try_from(value: message::ToolResult) -> Result<Self, Self::Error> {
-        // Concatenate all text content into a single string
         let content = value
             .content
             .into_iter()
@@ -976,7 +975,6 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
 
         let tool_choice = tool_choice.map(ToolChoice::try_from).transpose()?;
 
-        // Convert tools, applying strict mode if enabled
         let tools: Vec<ToolDefinition> = tools
             .into_iter()
             .map(|tool| {

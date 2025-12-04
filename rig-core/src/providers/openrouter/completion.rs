@@ -369,7 +369,6 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             .map(crate::providers::openai::completion::ToolChoice::try_from)
             .transpose()?;
 
-        // Convert tools, applying strict mode if enabled
         let tools: Vec<crate::providers::openai::completion::ToolDefinition> = req
             .tools
             .clone()
