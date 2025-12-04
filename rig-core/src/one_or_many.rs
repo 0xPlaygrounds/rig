@@ -42,7 +42,10 @@ impl<T: Clone> OneOrMany<T> {
 
     /// Get the last item in the list.
     pub fn last(&self) -> T {
-        self.rest.last().cloned().unwrap_or_else(|| self.first.clone())
+        self.rest
+            .last()
+            .cloned()
+            .unwrap_or_else(|| self.first.clone())
     }
 
     /// Get a reference to the last item in the list.

@@ -806,7 +806,7 @@ fn set_content_cache_control(content: &mut Content, value: Option<CacheControl>)
 /// Strategy: cache the system prompt, and mark the last content block of the last message
 /// for caching. This allows the conversation history to be cached while new messages
 /// are added.
-pub fn apply_cache_control(system: &mut Vec<SystemContent>, messages: &mut [Message]) {
+pub fn apply_cache_control(system: &mut [SystemContent], messages: &mut [Message]) {
     // Add cache_control to the system prompt (if non-empty)
     if let Some(SystemContent::Text { cache_control, .. }) = system.last_mut() {
         *cache_control = Some(CacheControl::Ephemeral);
@@ -1438,21 +1438,15 @@ mod tests {
         // Only the last content block of last message should have cache_control
         // First message should NOT have cache_control
         for content in messages[0].content.iter() {
-            match content {
-                Content::Text { cache_control, .. } => {
-                    assert!(cache_control.is_none());
-                }
-                _ => {}
+            if let Content::Text { cache_control, .. } = content {
+                assert!(cache_control.is_none());
             }
         }
 
         // Last message SHOULD have cache_control
         for content in messages[1].content.iter() {
-            match content {
-                Content::Text { cache_control, .. } => {
-                    assert!(cache_control.is_some());
-                }
-                _ => {}
+            if let Content::Text { cache_control, .. } = content {
+                assert!(cache_control.is_some());
             }
         }
     }
