@@ -297,72 +297,12 @@ impl From<completion::ToolDefinition> for ToolDefinition {
     }
 }
 
-/// Recursively ensures all object schemas respect OpenAI strict mode restrictions.
-/// When strict mode is enabled, all objects must have `additionalProperties: false`
-/// and all properties must be in the `required` array.
-fn sanitize_schema_for_strict(schema: &mut serde_json::Value) {
-    let serde_json::Value::Object(obj) = schema else {
-        return;
-    };
-
-    let is_object_schema = obj.get("type")
-        == Some(&serde_json::Value::String("object".to_string()))
-        || obj.contains_key("properties");
-
-    // Add additionalProperties: false for objects
-    if is_object_schema && !obj.contains_key("additionalProperties") {
-        obj.insert(
-            "additionalProperties".to_string(),
-            serde_json::Value::Bool(false),
-        );
-    }
-
-    // Ensure all properties are marked as required
-    if is_object_schema
-        && let Some(serde_json::Value::Object(props)) = obj.get("properties")
-    {
-        let prop_keys: Vec<serde_json::Value> = props
-            .keys()
-            .map(|k| serde_json::Value::String(k.clone()))
-            .collect();
-        obj.insert("required".to_string(), serde_json::Value::Array(prop_keys));
-    }
-
-    // Recurse into nested schemas
-    if let Some(serde_json::Value::Object(props)) = obj.get_mut("properties") {
-        for value in props.values_mut() {
-            sanitize_schema_for_strict(value);
-        }
-    }
-
-    // Handle array items
-    if let Some(items) = obj.get_mut("items") {
-        sanitize_schema_for_strict(items);
-    }
-
-    // Handle $defs
-    if let Some(serde_json::Value::Object(defs_obj)) = obj.get_mut("$defs") {
-        for value in defs_obj.values_mut() {
-            sanitize_schema_for_strict(value);
-        }
-    }
-
-    // Handle anyOf, oneOf, allOf
-    for key in ["anyOf", "oneOf", "allOf"] {
-        if let Some(serde_json::Value::Array(arr)) = obj.get_mut(key) {
-            for item in arr {
-                sanitize_schema_for_strict(item);
-            }
-        }
-    }
-}
-
 impl ToolDefinition {
     /// Apply strict mode to this tool definition.
     /// This sets `strict: true` and sanitizes the schema to meet OpenAI requirements.
     pub fn with_strict(mut self) -> Self {
         self.function.strict = Some(true);
-        sanitize_schema_for_strict(&mut self.function.parameters);
+        super::sanitize_schema(&mut self.function.parameters);
         self
     }
 }
@@ -1041,11 +981,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             .into_iter()
             .map(|tool| {
                 let def = ToolDefinition::from(tool);
-                if strict_tools {
-                    def.with_strict()
-                } else {
-                    def
-                }
+                if strict_tools { def.with_strict() } else { def }
             })
             .collect();
 

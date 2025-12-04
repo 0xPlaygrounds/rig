@@ -376,11 +376,7 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             .into_iter()
             .map(|tool| {
                 let def = crate::providers::openai::completion::ToolDefinition::from(tool);
-                if strict_tools {
-                    def.with_strict()
-                } else {
-                    def
-                }
+                if strict_tools { def.with_strict() } else { def }
             })
             .collect();
 
