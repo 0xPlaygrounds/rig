@@ -173,7 +173,7 @@ pub enum Message {
     #[serde(rename = "tool")]
     ToolResult {
         tool_call_id: String,
-        content: OneOrMany<openai::ToolResultContent>,
+        content: String,
     },
 }
 
@@ -325,10 +325,23 @@ pub(super) struct OpenrouterCompletionRequest {
     pub additional_params: Option<serde_json::Value>,
 }
 
-impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
+/// Parameters for building an OpenRouter CompletionRequest
+pub struct OpenRouterRequestParams<'a> {
+    pub model: &'a str,
+    pub request: CompletionRequest,
+    pub strict_tools: bool,
+}
+
+impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
     type Error = CompletionError;
 
-    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+    fn try_from(params: OpenRouterRequestParams) -> Result<Self, Self::Error> {
+        let OpenRouterRequestParams {
+            model,
+            request: req,
+            strict_tools,
+        } = params;
+
         let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
@@ -356,18 +369,40 @@ impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
             .map(crate::providers::openai::completion::ToolChoice::try_from)
             .transpose()?;
 
+        // Convert tools, applying strict mode if enabled
+        let tools: Vec<crate::providers::openai::completion::ToolDefinition> = req
+            .tools
+            .clone()
+            .into_iter()
+            .map(|tool| {
+                let def = crate::providers::openai::completion::ToolDefinition::from(tool);
+                if strict_tools {
+                    def.with_strict()
+                } else {
+                    def
+                }
+            })
+            .collect();
+
         Ok(Self {
             model: model.to_string(),
             messages: full_history,
             temperature: req.temperature,
-            tools: req
-                .tools
-                .clone()
-                .into_iter()
-                .map(crate::providers::openai::completion::ToolDefinition::from)
-                .collect::<Vec<_>>(),
+            tools,
             tool_choice,
             additional_params: req.additional_params,
+        })
+    }
+}
+
+impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model,
+            request: req,
+            strict_tools: false,
         })
     }
 }
@@ -376,6 +411,9 @@ impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
+    /// Enable strict mode for tool schemas.
+    /// When enabled, tool schemas are sanitized to meet OpenAI's strict mode requirements.
+    pub strict_tools: bool,
 }
 
 impl<T> CompletionModel<T> {
@@ -383,7 +421,21 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.into(),
+            strict_tools: false,
         }
+    }
+
+    /// Enable strict mode for tool schemas.
+    ///
+    /// When enabled, tool schemas are automatically sanitized to meet OpenAI's strict mode requirements:
+    /// - `additionalProperties: false` is added to all objects
+    /// - All properties are marked as required
+    /// - `strict: true` is set on each function definition
+    ///
+    /// Note: Not all models on OpenRouter support strict mode. This works best with OpenAI models.
+    pub fn with_strict_tools(mut self) -> Self {
+        self.strict_tools = true;
+        self
     }
 }
 
@@ -406,8 +458,11 @@ where
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
-        let request =
-            OpenrouterCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+        let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: self.model.as_ref(),
+            request: completion_request,
+            strict_tools: self.strict_tools,
+        })?;
 
         if enabled!(Level::TRACE) {
             tracing::trace!(

@@ -145,7 +145,7 @@ pub enum Message {
     #[serde(rename = "tool")]
     ToolResult {
         tool_call_id: String,
-        content: OneOrMany<ToolResultContent>,
+        content: String,
     },
 }
 
@@ -267,18 +267,103 @@ pub enum ToolType {
     Function,
 }
 
+/// Function definition for a tool, with optional strict mode
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FunctionDefinition {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strict: Option<bool>,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ToolDefinition {
     pub r#type: String,
-    pub function: completion::ToolDefinition,
+    pub function: FunctionDefinition,
 }
 
 impl From<completion::ToolDefinition> for ToolDefinition {
     fn from(tool: completion::ToolDefinition) -> Self {
         Self {
             r#type: "function".into(),
-            function: tool,
+            function: FunctionDefinition {
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.parameters,
+                strict: None,
+            },
         }
+    }
+}
+
+/// Recursively ensures all object schemas respect OpenAI strict mode restrictions.
+/// When strict mode is enabled, all objects must have `additionalProperties: false`
+/// and all properties must be in the `required` array.
+fn sanitize_schema_for_strict(schema: &mut serde_json::Value) {
+    let serde_json::Value::Object(obj) = schema else {
+        return;
+    };
+
+    let is_object_schema = obj.get("type")
+        == Some(&serde_json::Value::String("object".to_string()))
+        || obj.contains_key("properties");
+
+    // Add additionalProperties: false for objects
+    if is_object_schema && !obj.contains_key("additionalProperties") {
+        obj.insert(
+            "additionalProperties".to_string(),
+            serde_json::Value::Bool(false),
+        );
+    }
+
+    // Ensure all properties are marked as required
+    if is_object_schema
+        && let Some(serde_json::Value::Object(props)) = obj.get("properties")
+    {
+        let prop_keys: Vec<serde_json::Value> = props
+            .keys()
+            .map(|k| serde_json::Value::String(k.clone()))
+            .collect();
+        obj.insert("required".to_string(), serde_json::Value::Array(prop_keys));
+    }
+
+    // Recurse into nested schemas
+    if let Some(serde_json::Value::Object(props)) = obj.get_mut("properties") {
+        for value in props.values_mut() {
+            sanitize_schema_for_strict(value);
+        }
+    }
+
+    // Handle array items
+    if let Some(items) = obj.get_mut("items") {
+        sanitize_schema_for_strict(items);
+    }
+
+    // Handle $defs
+    if let Some(serde_json::Value::Object(defs_obj)) = obj.get_mut("$defs") {
+        for value in defs_obj.values_mut() {
+            sanitize_schema_for_strict(value);
+        }
+    }
+
+    // Handle anyOf, oneOf, allOf
+    for key in ["anyOf", "oneOf", "allOf"] {
+        if let Some(serde_json::Value::Array(arr)) = obj.get_mut(key) {
+            for item in arr {
+                sanitize_schema_for_strict(item);
+            }
+        }
+    }
+}
+
+impl ToolDefinition {
+    /// Apply strict mode to this tool definition.
+    /// This sets `strict: true` and sanitizes the schema to meet OpenAI requirements.
+    pub fn with_strict(mut self) -> Self {
+        self.function.strict = Some(true);
+        sanitize_schema_for_strict(&mut self.function.parameters);
+        self
     }
 }
 
@@ -320,14 +405,22 @@ impl TryFrom<message::ToolResult> for Message {
     type Error = message::MessageError;
 
     fn try_from(value: message::ToolResult) -> Result<Self, Self::Error> {
-        Ok(Message::ToolResult {
-            tool_call_id: value.id,
-            content: value.content.try_map(|content| match content {
-                message::ToolResultContent::Text(message::Text { text }) => Ok(text.into()),
+        // Concatenate all text content into a single string
+        let content = value
+            .content
+            .into_iter()
+            .map(|content| match content {
+                message::ToolResultContent::Text(message::Text { text }) => Ok(text),
                 _ => Err(message::MessageError::ConversionError(
                     "Tool result content does not support non-text".into(),
                 )),
-            })?,
+            })
+            .collect::<Result<Vec<_>, _>>()?
+            .join("\n");
+
+        Ok(Message::ToolResult {
+            tool_call_id: value.id,
+            content,
         })
     }
 }
@@ -586,7 +679,7 @@ impl TryFrom<Message> for message::Message {
             } => message::Message::User {
                 content: OneOrMany::one(message::UserContent::tool_result(
                     tool_call_id,
-                    content.map(|content| message::ToolResultContent::text(content.text)),
+                    OneOrMany::one(message::ToolResultContent::text(content)),
                 )),
             },
 
@@ -838,6 +931,12 @@ pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
+    /// Enable strict mode for tool schemas.
+    /// When enabled, tool schemas are sanitized to meet OpenAI's strict mode requirements:
+    /// - `additionalProperties: false` is added to all objects
+    /// - All properties are marked as required
+    /// - `strict: true` is set on each function definition
+    pub strict_tools: bool,
 }
 
 impl<T> CompletionModel<T>
@@ -848,6 +947,7 @@ where
         Self {
             client,
             model: model.into(),
+            strict_tools: false,
         }
     }
 
@@ -855,7 +955,21 @@ where
         Self {
             client,
             model: model.into(),
+            strict_tools: false,
         }
+    }
+
+    /// Enable strict mode for tool schemas.
+    ///
+    /// When enabled, tool schemas are automatically sanitized to meet OpenAI's strict mode requirements:
+    /// - `additionalProperties: false` is added to all objects
+    /// - All properties are marked as required
+    /// - `strict: true` is set on each function definition
+    ///
+    /// This allows OpenAI to guarantee that the model's tool calls will match the schema exactly.
+    pub fn with_strict_tools(mut self) -> Self {
+        self.strict_tools = true;
+        self
     }
 }
 
@@ -873,10 +987,23 @@ pub struct CompletionRequest {
     additional_params: Option<serde_json::Value>,
 }
 
-impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
+/// Parameters for building an OpenAI CompletionRequest
+pub struct OpenAIRequestParams {
+    pub model: String,
+    pub request: CoreCompletionRequest,
+    pub strict_tools: bool,
+}
+
+impl TryFrom<OpenAIRequestParams> for CompletionRequest {
     type Error = CompletionError;
 
-    fn try_from((model, req): (String, CoreCompletionRequest)) -> Result<Self, Self::Error> {
+    fn try_from(params: OpenAIRequestParams) -> Result<Self, Self::Error> {
+        let OpenAIRequestParams {
+            model,
+            request: req,
+            strict_tools,
+        } = params;
+
         let mut partial_history = vec![];
         if let Some(docs) = req.normalized_documents() {
             partial_history.push(docs);
@@ -909,19 +1036,41 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
 
         let tool_choice = tool_choice.map(ToolChoice::try_from).transpose()?;
 
+        // Convert tools, applying strict mode if enabled
+        let tools: Vec<ToolDefinition> = tools
+            .into_iter()
+            .map(|tool| {
+                let def = ToolDefinition::from(tool);
+                if strict_tools {
+                    def.with_strict()
+                } else {
+                    def
+                }
+            })
+            .collect();
+
         let res = Self {
             model,
             messages: full_history,
-            tools: tools
-                .into_iter()
-                .map(ToolDefinition::from)
-                .collect::<Vec<_>>(),
+            tools,
             tool_choice,
             temperature,
             additional_params,
         };
 
         Ok(res)
+    }
+}
+
+impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (String, CoreCompletionRequest)) -> Result<Self, Self::Error> {
+        CompletionRequest::try_from(OpenAIRequestParams {
+            model,
+            request: req,
+            strict_tools: false,
+        })
     }
 }
 
@@ -1009,7 +1158,11 @@ where
             tracing::Span::current()
         };
 
-        let request = CompletionRequest::try_from((self.model.to_owned(), completion_request))?;
+        let request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: self.model.to_owned(),
+            request: completion_request,
+            strict_tools: self.strict_tools,
+        })?;
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
