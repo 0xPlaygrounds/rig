@@ -6,6 +6,9 @@ license = "MIT"
 description = "Internal crate that implements Rig derive macros."
 repository = "https://github.com/0xPlaygrounds/rig"
 
+[lints]
+workspace = true
+
 [dependencies]
 convert_case = { workspace = true }
 deluxe = { workspace = true, features = ["full"] }

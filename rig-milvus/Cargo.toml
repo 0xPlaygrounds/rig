@@ -5,6 +5,9 @@ edition = { workspace = true }
 description = "Milvus vector store implementation for the rig framework"
 license = "MIT"
 
+[lints]
+workspace = true
+
 [dependencies]
 reqwest = { workspace = true, features = ["json"] }
 rig-core = { path = "../rig-core", version = "0.26.0", default-features = false }

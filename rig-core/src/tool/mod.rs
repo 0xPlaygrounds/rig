@@ -322,10 +322,10 @@ pub mod rmcp {
                             ),
                         },
                         RawContent::Audio(_) => {
-                            unimplemented!("Support for audio results from an MCP tool is currently unimplemented. Come back later!")
+                            panic!("Support for audio results from an MCP tool is currently unimplemented. Come back later!")
                         }
                         thing => {
-                            unimplemented!("Unsupported type found: {thing:?}")
+                            panic!("Unsupported type found: {thing:?}")
                         }
                     })
                     .collect::<String>())

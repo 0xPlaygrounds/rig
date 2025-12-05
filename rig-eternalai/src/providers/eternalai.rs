@@ -742,10 +742,10 @@ impl completion::CompletionModel for CompletionModel {
                         })
                     }
                     AssistantContent::Image(_) => {
-                        unimplemented!("Image content is currently unimplemented on Eternal AI. If you need this, please open a ticket!")
+                        panic!("Image content is currently unimplemented on Eternal AI. If you need this, please open a ticket!")
                     }
                     AssistantContent::Reasoning(_) => {
-                        unimplemented!("Reasoning is currently unimplemented on Eternal AI. If you need this, please open a ticket!")
+                        panic!("Reasoning is currently unimplemented on Eternal AI. If you need this, please open a ticket!")
                     }
                 }
             }

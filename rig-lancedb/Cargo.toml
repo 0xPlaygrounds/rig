@@ -7,6 +7,9 @@ readme = "README.md"
 description = "Rig vector store index integration for LanceDB."
 repository = "https://github.com/0xPlaygrounds/rig"
 
+[lints]
+workspace = true
+
 [dependencies]
 lancedb = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.26.0", default-features = false }

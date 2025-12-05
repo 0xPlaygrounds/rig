@@ -469,10 +469,10 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                     message::AssistantContent::Text(text) => texts.push(text),
                     message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
                     message::AssistantContent::Reasoning(_) => {
-                        unimplemented!("The OpenAI Completions API doesn't support reasoning!");
+                        panic!("The OpenAI Completions API doesn't support reasoning!");
                     }
                     message::AssistantContent::Image(_) => {
-                        unimplemented!(
+                        panic!(
                             "The OpenAI Completions API doesn't support image content in assistant messages!"
                         );
                     }
