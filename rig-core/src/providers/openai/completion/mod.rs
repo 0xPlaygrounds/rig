@@ -282,9 +282,11 @@ impl ToolResultContentValue {
 
     pub fn as_text(&self) -> String {
         match self {
-            ToolResultContentValue::Array(arr) => {
-                arr.iter().map(|c| c.text.clone()).collect::<Vec<_>>().join("\n")
-            }
+            ToolResultContentValue::Array(arr) => arr
+                .iter()
+                .map(|c| c.text.clone())
+                .collect::<Vec<_>>()
+                .join("\n"),
             ToolResultContentValue::String(s) => s.clone(),
         }
     }
