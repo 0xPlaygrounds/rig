@@ -7,6 +7,9 @@ readme = "README.md"
 description = "EternalAI model provider Rig integration."
 repository = "https://github.com/0xPlaygrounds/rig"
 
+[lints]
+workspace = true
+
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.26.0", default-features = false }
 ethers = { workspace = true }

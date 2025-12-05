@@ -11,6 +11,9 @@ repository = "https://github.com/0xPlaygrounds/rig"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [lib]
 name = "rig"
 path = "src/lib.rs"

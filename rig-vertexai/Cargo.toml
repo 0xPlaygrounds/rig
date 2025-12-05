@@ -6,6 +6,8 @@ license = "MIT"
 readme = "README.md"
 description = "VertexAI model provider for Rig integration."
 
+[lints]
+workspace = true
 
 [dependencies]
 google-cloud-aiplatform-v1 = { workspace = true }

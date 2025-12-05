@@ -362,12 +362,10 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::AssistantContent::Text(text) => texts.push(text),
                             message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
                             message::AssistantContent::Reasoning(_) => {
-                                unimplemented!("Reasoning is not supported on HuggingFace via Rig");
+                                panic!("Reasoning is not supported on HuggingFace via Rig");
                             }
                             message::AssistantContent::Image(_) => {
-                                unimplemented!(
-                                    "Image content is not supported on HuggingFace via Rig"
-                                );
+                                panic!("Image content is not supported on HuggingFace via Rig");
                             }
                         }
                         (texts, tools)

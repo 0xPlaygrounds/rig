@@ -7,6 +7,9 @@ readme = "README.md"
 description = "Rig vector store index integration for HelixDB."
 repository = "https://github.com/0xPlaygrounds/rig"
 
+[lints]
+workspace = true
+
 [dependencies]
 helix-rs = "0.1.9"
 serde = { workspace = true, features = ["derive"] }

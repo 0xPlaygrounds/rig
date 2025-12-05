@@ -7,6 +7,9 @@ readme = "README.md"
 description = "Neo4j implementation of a Rig vector store."
 repository = "https://github.com/0xPlaygrounds/rig"
 
+[lints]
+workspace = true
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
