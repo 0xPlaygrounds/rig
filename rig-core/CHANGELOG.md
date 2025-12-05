@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.26.0...rig-core-v0.26.1) - 2025-12-05
+
+### Other
+
+- deny `dbg!`, `todo!`, and `unimplemented!` in CI ([#1121](https://github.com/0xPlaygrounds/rig/pull/1121))
+
 ## [0.26.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.25.0...rig-core-v0.26.0) - 2025-12-04
 
 ### Added
