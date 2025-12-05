@@ -91,6 +91,7 @@ where
             model: self.model.clone(),
             request: completion_request,
             strict_tools: self.strict_tools,
+            tool_result_array_content: self.tool_result_array_content,
         })?;
         let request_messages = serde_json::to_string(&request.messages)
             .expect("Converting to JSON from a Rust struct shouldn't fail");

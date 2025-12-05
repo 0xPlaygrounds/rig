@@ -210,7 +210,7 @@ impl From<openai::Message> for Message {
                 content,
             } => Self::ToolResult {
                 tool_call_id,
-                content,
+                content: content.as_text(),
             },
         }
     }

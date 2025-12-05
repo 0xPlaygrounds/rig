@@ -145,7 +145,7 @@ pub enum Message {
     #[serde(rename = "tool")]
     ToolResult {
         tool_call_id: String,
-        content: String,
+        content: ToolResultContentValue,
     },
 }
 
@@ -252,6 +252,53 @@ impl From<String> for ToolResultContent {
     }
 }
 
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum ToolResultContentValue {
+    Array(Vec<ToolResultContent>),
+    String(String),
+}
+
+impl Serialize for ToolResultContentValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            ToolResultContentValue::Array(arr) => arr.serialize(serializer),
+            ToolResultContentValue::String(s) => s.serialize(serializer),
+        }
+    }
+}
+
+impl ToolResultContentValue {
+    pub fn from_string(s: String, use_array_format: bool) -> Self {
+        if use_array_format {
+            ToolResultContentValue::Array(vec![ToolResultContent::from(s)])
+        } else {
+            ToolResultContentValue::String(s)
+        }
+    }
+
+    pub fn as_text(&self) -> String {
+        match self {
+            ToolResultContentValue::Array(arr) => {
+                arr.iter().map(|c| c.text.clone()).collect::<Vec<_>>().join("\n")
+            }
+            ToolResultContentValue::String(s) => s.clone(),
+        }
+    }
+
+    pub fn to_array(&self) -> Self {
+        match self {
+            ToolResultContentValue::Array(_) => self.clone(),
+            ToolResultContentValue::String(s) => {
+                ToolResultContentValue::Array(vec![ToolResultContent::from(s.clone())])
+            }
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolCall {
     pub id: String,
@@ -345,7 +392,7 @@ impl TryFrom<message::ToolResult> for Message {
     type Error = message::MessageError;
 
     fn try_from(value: message::ToolResult) -> Result<Self, Self::Error> {
-        let content = value
+        let text = value
             .content
             .into_iter()
             .map(|content| match content {
@@ -359,7 +406,7 @@ impl TryFrom<message::ToolResult> for Message {
 
         Ok(Message::ToolResult {
             tool_call_id: value.id,
-            content,
+            content: ToolResultContentValue::String(text),
         })
     }
 }
@@ -618,7 +665,7 @@ impl TryFrom<Message> for message::Message {
             } => message::Message::User {
                 content: OneOrMany::one(message::UserContent::tool_result(
                     tool_call_id,
-                    OneOrMany::one(message::ToolResultContent::text(content)),
+                    OneOrMany::one(message::ToolResultContent::text(content.as_text())),
                 )),
             },
 
@@ -868,14 +915,9 @@ impl GetTokenUsage for Usage {
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
-    /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
-    /// Enable strict mode for tool schemas.
-    /// When enabled, tool schemas are sanitized to meet OpenAI's strict mode requirements:
-    /// - `additionalProperties: false` is added to all objects
-    /// - All properties are marked as required
-    /// - `strict: true` is set on each function definition
     pub strict_tools: bool,
+    pub tool_result_array_content: bool,
 }
 
 impl<T> CompletionModel<T>
@@ -887,6 +929,7 @@ where
             client,
             model: model.into(),
             strict_tools: false,
+            tool_result_array_content: false,
         }
     }
 
@@ -895,6 +938,7 @@ where
             client,
             model: model.into(),
             strict_tools: false,
+            tool_result_array_content: false,
         }
     }
 
@@ -908,6 +952,11 @@ where
     /// This allows OpenAI to guarantee that the model's tool calls will match the schema exactly.
     pub fn with_strict_tools(mut self) -> Self {
         self.strict_tools = true;
+        self
+    }
+
+    pub fn with_tool_result_array_content(mut self) -> Self {
+        self.tool_result_array_content = true;
         self
     }
 }
@@ -926,11 +975,11 @@ pub struct CompletionRequest {
     additional_params: Option<serde_json::Value>,
 }
 
-/// Parameters for building an OpenAI CompletionRequest
 pub struct OpenAIRequestParams {
     pub model: String,
     pub request: CoreCompletionRequest,
     pub strict_tools: bool,
+    pub tool_result_array_content: bool,
 }
 
 impl TryFrom<OpenAIRequestParams> for CompletionRequest {
@@ -941,6 +990,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             model,
             request: req,
             strict_tools,
+            tool_result_array_content,
         } = params;
 
         let mut partial_history = vec![];
@@ -962,7 +1012,6 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         let mut full_history: Vec<Message> =
             preamble.map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
 
-        // Convert and extend the rest of the history
         full_history.extend(
             partial_history
                 .into_iter()
@@ -972,6 +1021,14 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
                 .flatten()
                 .collect::<Vec<_>>(),
         );
+
+        if tool_result_array_content {
+            for msg in &mut full_history {
+                if let Message::ToolResult { content, .. } = msg {
+                    *content = content.to_array();
+                }
+            }
+        }
 
         let tool_choice = tool_choice.map(ToolChoice::try_from).transpose()?;
 
@@ -1004,6 +1061,7 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
             model,
             request: req,
             strict_tools: false,
+            tool_result_array_content: false,
         })
     }
 }
@@ -1096,6 +1154,7 @@ where
             model: self.model.to_owned(),
             request: completion_request,
             strict_tools: self.strict_tools,
+            tool_result_array_content: self.tool_result_array_content,
         })?;
 
         if enabled!(Level::TRACE) {
