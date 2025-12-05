@@ -1,10 +1,8 @@
-use std::{convert::Infallible, str::FromStr};
-
+use super::CompletionError;
 use crate::OneOrMany;
 use serde::{Deserialize, Serialize};
+use std::{convert::Infallible, str::FromStr};
 use thiserror::Error;
-
-use super::CompletionError;
 
 // ================================================================
 // Message models

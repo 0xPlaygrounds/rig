@@ -10,6 +10,7 @@ pub mod image_generation;
 pub mod transcription;
 pub mod verify;
 
+use crate::nothing::Nothing;
 use bytes::Bytes;
 pub use completion::CompletionClient;
 pub use embeddings::EmbeddingsClient;
@@ -100,23 +101,6 @@ where
 {
     fn from(value: S) -> Self {
         Self(value.into())
-    }
-}
-
-/// A type containing nothing at all. For `Option`-like behavior on the type level, i.e. to describe
-/// the lack of a capability or field (an API key, for instance)
-#[derive(Debug, Default, Clone, Copy)]
-pub struct Nothing;
-
-impl ApiKey for Nothing {}
-
-impl TryFrom<String> for Nothing {
-    type Error = &'static str;
-
-    fn try_from(_: String) -> Result<Self, Self::Error> {
-        Err(
-            "Tried to create a Nothing from a string - this should not happen, please file an issue",
-        )
     }
 }
 

@@ -169,6 +169,21 @@ impl<T: Clone> OneOrMany<T> {
     }
 }
 
+impl<T> OneOrMany<T> {
+    pub unsafe fn unsafe_from_vec(xs: Vec<T>) -> Self {
+        unsafe {
+            assert!(!xs.is_empty());
+
+            let mut iter = xs.into_iter();
+
+            let first = iter.next().unwrap_unchecked();
+            let rest = iter.collect();
+
+            Self { first, rest }
+        }
+    }
+}
+
 // ================================================================
 // Implementations of Iterator for OneOrMany
 //   - OneOrMany<T>::iter() -> iterate over references of T objects

@@ -67,6 +67,7 @@ use super::message::{AssistantContent, DocumentMediaType};
 use crate::client::FinalCompletionResponse;
 #[allow(deprecated)]
 use crate::client::completion::CompletionModelHandle;
+use crate::completion::typed_message_part_two::{Message, MessageBuilder, role};
 use crate::message::ToolChoice;
 use crate::streaming::StreamingCompletionResponse;
 use crate::tool::server::ToolServerError;

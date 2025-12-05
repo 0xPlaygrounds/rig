@@ -1,10 +1,10 @@
-#[cfg(feature = "image")]
-use crate::client::Nothing;
 use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient,
     Transport,
 };
 use crate::http_client;
+#[cfg(feature = "image")]
+use crate::nothing::Nothing;
 use serde::Deserialize;
 use std::fmt::Debug;
 

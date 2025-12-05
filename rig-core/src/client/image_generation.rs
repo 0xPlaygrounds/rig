@@ -1,11 +1,11 @@
 #[cfg(feature = "image")]
 mod image {
-    use crate::client::Nothing;
     #[allow(deprecated)]
     use crate::image_generation::ImageGenerationModelDyn;
     use crate::image_generation::{
         ImageGenerationError, ImageGenerationModel, ImageGenerationRequest, ImageGenerationResponse,
     };
+    use crate::nothing::Nothing;
     use std::future::Future;
     use std::sync::Arc;
 

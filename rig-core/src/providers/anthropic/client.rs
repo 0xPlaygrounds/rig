@@ -4,10 +4,10 @@ use http::{HeaderName, HeaderValue};
 use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
 use crate::{
     client::{
-        self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-        ProviderClient,
+        self, ApiKey, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient,
     },
     http_client,
+    nothing::Nothing,
 };
 
 // ================================================================

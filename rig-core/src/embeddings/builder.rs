@@ -158,11 +158,11 @@ where
 mod tests {
     use crate::{
         Embed,
-        client::Nothing,
         embeddings::{
             Embedding, EmbeddingModel,
             embed::{EmbedError, TextEmbedder},
         },
+        nothing::Nothing,
     };
 
     use super::EmbeddingsBuilder;

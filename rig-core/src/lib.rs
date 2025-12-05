@@ -125,6 +125,7 @@ pub mod image_generation;
 pub mod integrations;
 pub(crate) mod json_utils;
 pub mod loaders;
+pub(crate) mod nothing;
 pub mod one_or_many;
 pub mod pipeline;
 pub mod prelude;
@@ -145,5 +146,5 @@ pub use one_or_many::{EmptyListError, OneOrMany};
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use rig_derive::{Embed, rig_tool as tool_macro};
-
 pub mod telemetry;
+mod type_level;

@@ -1,11 +1,12 @@
 use crate::{
     Embed,
     client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+        self, BearerAuth, Capabilities, Capable, DebugExt, Provider, ProviderBuilder,
         ProviderClient,
     },
     embeddings::EmbeddingsBuilder,
     http_client::{self, HttpClientExt},
+    nothing::Nothing,
     wasm_compat::*,
 };
 
