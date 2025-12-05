@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.27](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.26...rig-postgres-v0.1.27) - 2025-12-04
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.1.26](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.25...rig-postgres-v0.1.26) - 2025-12-01
 
 ### Added
