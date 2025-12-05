@@ -13,7 +13,7 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils::{self, merge};
 use crate::message::{ToolCall, ToolFunction};
-use crate::providers::openai::completion::{self, CompletionModel, Usage};
+use crate::providers::openai::completion::{self, CompletionModel, OpenAIRequestParams, Usage};
 use crate::streaming::{self, RawStreamingChoice};
 
 // ================================================================
@@ -87,7 +87,12 @@ where
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
-        let request = super::CompletionRequest::try_from((self.model.clone(), completion_request))?;
+        let request = super::CompletionRequest::try_from(OpenAIRequestParams {
+            model: self.model.clone(),
+            request: completion_request,
+            strict_tools: self.strict_tools,
+            tool_result_array_content: self.tool_result_array_content,
+        })?;
         let request_messages = serde_json::to_string(&request.messages)
             .expect("Converting to JSON from a Rust struct shouldn't fail");
         let mut request_as_json = serde_json::to_value(request).expect("this should never fail");
