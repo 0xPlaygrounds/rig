@@ -208,9 +208,9 @@ impl ProviderClient for Client {
 pub(super) struct MiraCompletionRequest {
     model: String,
     pub messages: Vec<RawMessage>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u64>,
     pub stream: bool,
 }
