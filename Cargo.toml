@@ -1,25 +1,30 @@
 [workspace]
 resolver = "3"
 members = [
-    "rig-core",
-    "rig-lancedb",
-    "rig-mongodb",
-    "rig-neo4j",
-    "rig-postgres",
-    "rig-qdrant",
-    "rig-core/rig-core-derive",
-    "rig-scylladb",
-    "rig-sqlite",
-    "rig-surrealdb",
-    "rig-eternalai",
-    "rig-fastembed",
-    "rig-bedrock",
-    "rig-milvus",
-    "rig-wasm",
-    "rig-s3vectors",
-    "rig-helixdb",
-    "rig-vertexai",
+  "rig-core",
+  "rig-lancedb",
+  "rig-mongodb",
+  "rig-neo4j",
+  "rig-postgres",
+  "rig-qdrant",
+  "rig-core/rig-core-derive",
+  "rig-scylladb",
+  "rig-sqlite",
+  "rig-surrealdb",
+  "rig-eternalai",
+  "rig-fastembed",
+  "rig-bedrock",
+  "rig-milvus",
+  "rig-wasm",
+  "rig-s3vectors",
+  "rig-helixdb",
+  "rig-vertexai",
 ]
+
+[workspace.lints.clippy]
+dbg_macro = "forbid"
+todo = "forbid"
+unimplemented = "forbid"
 
 [profile.release]
 lto = true
@@ -52,7 +57,7 @@ futures = "0.3.31"
 glob = "0.3.2"
 google-cloud-auth = "1.0"
 google-cloud-aiplatform-v1 = { version = "1.2.0", default-features = false, features = [
-    "prediction-service",
+  "prediction-service",
 ] }
 httpmock = "0.7.0"
 indoc = "2.0.6"
@@ -66,7 +71,7 @@ ordered-float = "5.0.0"
 pgvector = "0.4"
 proc-macro2 = "1.0.95"
 qdrant-client = { version = "1.14.0", default-features = false, features = [
-    "serde",
+  "serde",
 ] }
 quick-xml = "0.38.0"
 quote = "1.0.40"

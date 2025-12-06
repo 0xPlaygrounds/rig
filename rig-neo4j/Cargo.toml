@@ -1,18 +1,21 @@
 [package]
 name = "rig-neo4j"
-version = "0.4.3"
+version = "0.4.4"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "Neo4j implementation of a Rig vector store."
 repository = "https://github.com/0xPlaygrounds/rig"
 
+[lints]
+workspace = true
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 futures = { workspace = true }
 neo4rs = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.25.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.26.0", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }

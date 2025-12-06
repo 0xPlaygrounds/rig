@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.25.0...rig-core-v0.26.0) - 2025-12-04
+
+### Added
+
+- add Anthropic prompt caching support ([#1116](https://github.com/0xPlaygrounds/rig/pull/1116))
+- *(rig-1076)* Providers should route all requests through `client::Client` ([#1115](https://github.com/0xPlaygrounds/rig/pull/1115))
+
+### Fixed
+
+- *(streaming)* use .instrument() instead of span.enter() to prevent span leak ([#1108](https://github.com/0xPlaygrounds/rig/pull/1108))
+
+### Other
+
+- *(rig-1077)* ensure log level enabled before logging messages ([#1114](https://github.com/0xPlaygrounds/rig/pull/1114))
+- *(rig-1078)* remove messages from span telemetry ([#1112](https://github.com/0xPlaygrounds/rig/pull/1112))
+
 ## [0.25.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.24.0...rig-core-v0.25.0) - 2025-12-01
 
 ### Added

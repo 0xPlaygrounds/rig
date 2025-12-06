@@ -131,10 +131,10 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::AssistantContent::Text(text) => texts.push(text),
                             message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
                             message::AssistantContent::Reasoning(_) => {
-                                unimplemented!("Reasoning content is not currently supported on Mistral via Rig");
+                                panic!("Reasoning content is not currently supported on Mistral via Rig");
                             }
                             message::AssistantContent::Image(_) => {
-                                unimplemented!("Image content is not currently supported on Mistral via Rig");
+                                panic!("Image content is not currently supported on Mistral via Rig");
                             }
                         }
                         (texts, tools)
@@ -600,10 +600,10 @@ where
                         })
                     }
                     message::AssistantContent::Reasoning(_) => {
-                        unimplemented!("Reasoning is not supported on Mistral via Rig")
+                        panic!("Reasoning is not supported on Mistral via Rig")
                     }
                     message::AssistantContent::Image(_) => {
-                        unimplemented!("Image content is not supported on Mistral via Rig")
+                        panic!("Image content is not supported on Mistral via Rig")
                     }
                 }
             }

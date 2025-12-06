@@ -5,7 +5,10 @@ use serde_json::json;
 use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
-use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefinition, Usage};
+use super::completion::{
+    CompletionModel, Content, Message, SystemContent, ToolChoice, ToolDefinition, Usage,
+    apply_cache_control,
+};
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
@@ -157,18 +160,42 @@ where
         }
         full_history.extend(completion_request.chat_history);
 
-        let full_history = full_history
+        let mut messages = full_history
             .into_iter()
             .map(Message::try_from)
             .collect::<Result<Vec<Message>, _>>()?;
 
+        // Convert system prompt to array format for cache_control support
+        let mut system: Vec<SystemContent> =
+            if let Some(preamble) = completion_request.preamble.as_ref() {
+                if preamble.is_empty() {
+                    vec![]
+                } else {
+                    vec![SystemContent::Text {
+                        text: preamble.clone(),
+                        cache_control: None,
+                    }]
+                }
+            } else {
+                vec![]
+            };
+
+        // Apply cache control breakpoints only if prompt_caching is enabled
+        if self.prompt_caching {
+            apply_cache_control(&mut system, &mut messages);
+        }
+
         let mut body = json!({
             "model": self.model,
-            "messages": full_history,
+            "messages": messages,
             "max_tokens": max_tokens,
-            "system": completion_request.preamble.unwrap_or("".to_string()),
             "stream": true,
         });
+
+        // Add system prompt if non-empty
+        if !system.is_empty() {
+            merge_inplace(&mut body, json!({ "system": system }));
+        }
 
         if let Some(temperature) = completion_request.temperature {
             merge_inplace(&mut body, json!({ "temperature": temperature }));
