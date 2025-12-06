@@ -472,6 +472,21 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
             sanitize_schema(items);
         }
 
+        // OpenAI doesn't support oneOf so we need to switch this to anyOf
+        if let Some(one_of) = obj.remove("oneOf") {
+            // If `anyOf` already exists, merge arrays. If not, insert new.
+            match obj.get_mut("anyOf") {
+                Some(Value::Array(existing)) => {
+                    if let Value::Array(mut incoming) = one_of {
+                        existing.append(&mut incoming);
+                    }
+                }
+                _ => {
+                    obj.insert("anyOf".to_string(), one_of);
+                }
+            }
+        }
+
         // should handle Enums (anyOf/oneOf)
         for key in ["anyOf", "oneOf", "allOf"] {
             if let Some(variants) = obj.get_mut(key)
