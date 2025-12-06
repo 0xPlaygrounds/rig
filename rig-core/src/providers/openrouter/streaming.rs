@@ -14,7 +14,7 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils;
 use crate::message::{ToolCall, ToolFunction};
-use crate::providers::openrouter::OpenrouterCompletionRequest;
+use crate::providers::openrouter::{OpenRouterRequestParams, OpenrouterCompletionRequest};
 use crate::streaming;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -115,8 +115,11 @@ where
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let preamble = completion_request.preamble.clone();
-        let mut request =
-            OpenrouterCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+        let mut request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: self.model.as_ref(),
+            request: completion_request,
+            strict_tools: self.strict_tools,
+        })?;
 
         let params = json_utils::merge(
             request.additional_params.unwrap_or(serde_json::json!({})),
