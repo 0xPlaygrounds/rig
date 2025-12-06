@@ -252,23 +252,11 @@ impl From<String> for ToolResultContent {
     }
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum ToolResultContentValue {
     Array(Vec<ToolResultContent>),
     String(String),
-}
-
-impl Serialize for ToolResultContentValue {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            ToolResultContentValue::Array(arr) => arr.serialize(serializer),
-            ToolResultContentValue::String(s) => s.serialize(serializer),
-        }
-    }
 }
 
 impl ToolResultContentValue {
