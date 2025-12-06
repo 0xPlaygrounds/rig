@@ -350,10 +350,9 @@ fn handle_event(
                     state.thinking.push_str(thinking);
                 }
 
-                Some(Ok(RawStreamingChoice::Reasoning {
+                Some(Ok(RawStreamingChoice::ReasoningDelta {
                     id: None,
                     reasoning: thinking.clone(),
-                    signature: None,
                 }))
             }
             ContentDelta::SignatureDelta { signature } => {
@@ -531,11 +530,11 @@ mod tests {
         let choice = result.unwrap().unwrap();
 
         match choice {
-            RawStreamingChoice::Reasoning { id, reasoning, .. } => {
+            RawStreamingChoice::ReasoningDelta { id, reasoning, .. } => {
                 assert_eq!(id, None);
                 assert_eq!(reasoning, "Analyzing the request...");
             }
-            _ => panic!("Expected Reasoning choice"),
+            _ => panic!("Expected ReasoningDelta choice"),
         }
 
         // Verify thinking state was updated
@@ -611,10 +610,10 @@ mod tests {
         let choice = result.unwrap().unwrap();
 
         match choice {
-            RawStreamingChoice::Reasoning { reasoning, .. } => {
+            RawStreamingChoice::ReasoningDelta { reasoning, .. } => {
                 assert_eq!(reasoning, "Thinking while tool is active...");
             }
-            _ => panic!("Expected Reasoning choice"),
+            _ => panic!("Expected ReasoningDelta choice"),
         }
 
         // Tool call state should remain unchanged
