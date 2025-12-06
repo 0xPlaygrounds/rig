@@ -146,10 +146,17 @@ where
             .field("base_url", &self.base_url)
             .field(
                 "headers",
-                &self.headers.iter().filter_map(|(k, v)| {
-                    (!(k == http::header::AUTHORIZATION || k.as_str().contains("api-key")))
-                        .then_some((k, v))
-                }),
+                &self
+                    .headers
+                    .iter()
+                    .filter_map(|(k, v)| {
+                        if k == http::header::AUTHORIZATION || k.as_str().contains("api-key") {
+                            None
+                        } else {
+                            Some((k, v))
+                        }
+                    })
+                    .collect::<Vec<(&HeaderName, &HeaderValue)>>(),
             )
             .field("http_client", &self.http_client);
 
