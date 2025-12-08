@@ -228,11 +228,8 @@ where
 
                 if let Some(ref hook) = self.hook {
                     let reader = chat_history.read().await;
-                    let prompt = reader.last().cloned().expect("there should always be at least one message in the chat history");
-                    let chat_history_except_last = reader[..reader.len() - 1].to_vec();
-
-                    hook.on_completion_call(&prompt, &chat_history_except_last, cancel_signal.clone())
-                    .await;
+                    hook.on_completion_call(&current_prompt, &reader.to_vec(), cancel_signal.clone())
+                        .await;
 
                     if cancel_signal.is_cancelled() {
                         yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec()).into()));
