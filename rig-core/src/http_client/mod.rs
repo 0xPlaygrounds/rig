@@ -2,10 +2,13 @@ use crate::http_client::sse::BoxedStream;
 use bytes::Bytes;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
 use http::{HeaderName, StatusCode};
-use reqwest::{Body, multipart::Form};
+use reqwest::Body;
 
+pub mod multipart;
 pub mod retry;
 pub mod sse;
+
+pub use multipart::MultipartForm;
 
 use std::pin::Pin;
 
@@ -110,7 +113,7 @@ pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
     /// Send a HTTP request with a multipart body, get a response back (as bytes). Response must be able to be turned back into Bytes (although usually for the response, you will probably want to specify Bytes anyway).
     fn send_multipart<U>(
         &self,
-        req: Request<Form>,
+        req: Request<MultipartForm>,
     ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
     where
         U: From<Bytes>,
@@ -171,13 +174,15 @@ impl HttpClientExt for reqwest::Client {
 
     fn send_multipart<U>(
         &self,
-        req: Request<Form>,
+        req: Request<MultipartForm>,
     ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
     where
         U: From<Bytes>,
         U: WasmCompatSend + 'static,
     {
         let (parts, body) = req.into_parts();
+        let body = reqwest::multipart::Form::from(body);
+
         let req = self
             .request(parts.method, parts.uri.to_string())
             .headers(parts.headers)

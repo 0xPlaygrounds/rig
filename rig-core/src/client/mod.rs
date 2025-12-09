@@ -32,7 +32,9 @@ use audio_generation::*;
 use crate::{
     completion::CompletionModel,
     embeddings::EmbeddingModel,
-    http_client::{self, Builder, HttpClientExt, LazyBody, Request, Response, make_auth_header},
+    http_client::{
+        self, Builder, HttpClientExt, LazyBody, MultipartForm, Request, Response, make_auth_header,
+    },
     prelude::TranscriptionClient,
     transcription::TranscriptionModel,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -299,7 +301,7 @@ where
 
     fn send_multipart<U>(
         &self,
-        req: Request<reqwest::multipart::Form>,
+        req: Request<MultipartForm>,
     ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
     where
         U: From<Bytes>,

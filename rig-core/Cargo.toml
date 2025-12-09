@@ -50,6 +50,7 @@ eventsource-stream = "0.2.3"
 pin-project-lite = "0.2.16"
 futures-timer = "3.0.3"
 wasm-bindgen-futures = { version = "0.4.54", optional = true }
+mime = "0.3.17"
 
 [dev-dependencies]
 anyhow = { workspace = true }

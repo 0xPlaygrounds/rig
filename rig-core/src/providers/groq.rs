@@ -20,8 +20,9 @@ use crate::client::{
     ProviderClient,
 };
 use crate::completion::GetTokenUsage;
+use crate::http_client::multipart::Part;
 use crate::http_client::sse::{Event, GenericEventSource};
-use crate::http_client::{self, HttpClientExt};
+use crate::http_client::{self, HttpClientExt, MultipartForm};
 use crate::json_utils::empty_or_none;
 use crate::providers::openai::{AssistantContent, Function, ToolType};
 use async_stream::stream;
@@ -35,7 +36,6 @@ use crate::{
     providers::openai::ToolDefinition,
     transcription::{self, TranscriptionError},
 };
-use reqwest::multipart::Part;
 use serde::{Deserialize, Serialize};
 
 // ================================================================
@@ -542,12 +542,9 @@ where
     > {
         let data = request.data;
 
-        let mut body = reqwest::multipart::Form::new()
+        let mut body = MultipartForm::new()
             .text("model", self.model.clone())
-            .part(
-                "file",
-                Part::bytes(data).file_name(request.filename.clone()),
-            );
+            .part(Part::bytes("file", data).filename(request.filename.clone()));
 
         if let Some(language) = request.language {
             body = body.text("language", language);
