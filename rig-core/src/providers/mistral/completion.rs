@@ -81,6 +81,14 @@ pub enum Message {
     System {
         content: String,
     },
+    Tool {
+        /// The name of the tool that was called
+        name: String,
+        /// The content of the tool call
+        content: String,
+        /// The id of the tool call
+        tool_call_id: String,
+    },
 }
 
 impl Message {
@@ -107,21 +115,39 @@ impl TryFrom<message::Message> for Vec<Message> {
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
             message::Message::User { content } => {
-                let (_, other_content): (Vec<_>, Vec<_>) = content
-                    .into_iter()
-                    .partition(|content| matches!(content, message::UserContent::ToolResult(_)));
+                let mut tool_result_messages = Vec::new();
+                let mut other_messages = Vec::new();
 
-                let messages = other_content
-                    .into_iter()
-                    .filter_map(|content| match content {
-                        message::UserContent::Text(message::Text { text }) => {
-                            Some(Message::User { content: text })
+                for content_item in content {
+                    match content_item {
+                        message::UserContent::ToolResult(message::ToolResult {
+                            id,
+                            call_id,
+                            content: tool_content,
+                        }) => {
+                            let call_id_key = call_id.unwrap_or_else(|| id.clone());
+                            let content_text = tool_content
+                                .into_iter()
+                                .find_map(|content_item| match content_item {
+                                    message::ToolResultContent::Text(text) => Some(text.text),
+                                    message::ToolResultContent::Image(_) => None,
+                                })
+                                .unwrap_or_default();
+                            tool_result_messages.push(Message::Tool {
+                                name: id,
+                                content: content_text,
+                                tool_call_id: call_id_key,
+                            });
                         }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
+                        message::UserContent::Text(message::Text { text }) => {
+                            other_messages.push(Message::User { content: text });
+                        }
+                        _ => {}
+                    }
+                }
 
-                Ok(messages)
+                tool_result_messages.append(&mut other_messages);
+                Ok(tool_result_messages)
             }
             message::Message::Assistant { content, .. } => {
                 let (text_content, tool_calls) = content.into_iter().fold(
