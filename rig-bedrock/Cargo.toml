@@ -18,7 +18,7 @@ base64 = { workspace = true }
 rig-core = { path = "../core/rig-core", version = "0.26.0", default-features = false, features = [
   "image",
 ] }
-rig-derive = { path = "../rig-core/rig-core-derive", version = "0.1.9" }
+rig-derive = { path = "../core/rig-derive", version = "0.1.9" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
