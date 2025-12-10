@@ -1,13 +1,12 @@
 [workspace]
 resolver = "3"
 members = [
-  "rig-core",
+  "core/*",
   "rig-lancedb",
   "rig-mongodb",
   "rig-neo4j",
   "rig-postgres",
   "rig-qdrant",
-  "rig-core/rig-core-derive",
   "rig-scylladb",
   "rig-sqlite",
   "rig-surrealdb",
@@ -103,4 +102,4 @@ zerocopy = "0.8.26"
 
 [workspace.metadata.cargo-autoinherit]
 # Skip cargo-autoinherit for these packages
-exclude-members = ["rig-core", "rig-derive"]
+exclude-members = ["core/rig-core", "core/rig-derive"]
