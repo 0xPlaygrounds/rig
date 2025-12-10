@@ -2,22 +2,7 @@
 resolver = "3"
 members = [
   "rig/*",
-  "rig-lancedb",
-  "rig-mongodb",
-  "rig-neo4j",
-  "rig-postgres",
-  "rig-qdrant",
-  "rig-scylladb",
-  "rig-sqlite",
-  "rig-surrealdb",
-  "rig-eternalai",
-  "rig-fastembed",
-  "rig-bedrock",
-  "rig-milvus",
-  "rig-wasm",
-  "rig-s3vectors",
-  "rig-helixdb",
-  "rig-vertexai",
+  "rig-integrations/*"
 ]
 
 [workspace.lints.clippy]
