@@ -60,6 +60,8 @@ where
     state: PhantomData<S>,
     /// Optional per-request hook for events
     hook: Option<P>,
+    /// How many tools should be executed at the same time (1 by default).
+    concurrency: usize,
 }
 
 impl<'a, M> PromptRequest<'a, Standard, M, ()>
@@ -75,6 +77,7 @@ where
             agent,
             state: PhantomData,
             hook: None,
+            concurrency: 1,
         }
     }
 }
@@ -98,6 +101,7 @@ where
             agent: self.agent,
             state: PhantomData,
             hook: self.hook,
+            concurrency: self.concurrency,
         }
     }
     /// Set the maximum depth for multi-turn conversations (ie, the maximum number of turns an LLM can have calling tools before writing a text response).
@@ -110,7 +114,15 @@ where
             agent: self.agent,
             state: PhantomData,
             hook: self.hook,
+            concurrency: self.concurrency,
         }
+    }
+
+    /// Add concurrency to the prompt request.
+    /// This will cause the agent to execute tools concurrently.
+    pub fn with_tool_concurrency(mut self, concurrency: usize) -> Self {
+        self.concurrency = concurrency;
+        self
     }
 
     /// Add chat history to the prompt request
@@ -122,6 +134,7 @@ where
             agent: self.agent,
             state: PhantomData,
             hook: self.hook,
+            concurrency: self.concurrency,
         }
     }
 
@@ -137,6 +150,7 @@ where
             agent: self.agent,
             state: PhantomData,
             hook: Some(hook),
+            concurrency: self.concurrency,
         }
     }
 }
@@ -426,8 +440,10 @@ where
             }
 
             let hook = self.hook.clone();
+
+            let tool_calls: Vec<AssistantContent> = tool_calls.into_iter().cloned().collect();
             let tool_content = stream::iter(tool_calls)
-                .then(|choice| {
+                .map(|choice| {
                     let hook1 = hook.clone();
                     let hook2 = hook.clone();
 
@@ -516,6 +532,7 @@ where
                     }
                     .instrument(tool_span)
                 })
+                .buffer_unordered(self.concurrency)
                 .collect::<Vec<Result<UserContent, ToolSetError>>>()
                 .await
                 .into_iter()
