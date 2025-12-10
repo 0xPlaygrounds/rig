@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.30](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.29...rig-lancedb-v0.2.30) - 2025-12-10
+
+### Other
+
+- deny `dbg!`, `todo!`, and `unimplemented!` in CI ([#1121](https://github.com/0xPlaygrounds/rig/pull/1121))
+
 ## [0.2.29](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.28...rig-lancedb-v0.2.29) - 2025-12-04
 
 ### Other

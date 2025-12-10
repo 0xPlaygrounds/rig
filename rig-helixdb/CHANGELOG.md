@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/0xPlaygrounds/rig/compare/rig-helixdb-v0.1.6...rig-helixdb-v0.1.7) - 2025-12-10
+
+### Other
+
+- deny `dbg!`, `todo!`, and `unimplemented!` in CI ([#1121](https://github.com/0xPlaygrounds/rig/pull/1121))
+
 ## [0.1.6](https://github.com/0xPlaygrounds/rig/compare/rig-helixdb-v0.1.5...rig-helixdb-v0.1.6) - 2025-12-04
 
 ### Other

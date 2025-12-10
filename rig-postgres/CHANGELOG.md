@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.28](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.27...rig-postgres-v0.1.28) - 2025-12-10
+
+### Other
+
+- deny `dbg!`, `todo!`, and `unimplemented!` in CI ([#1121](https://github.com/0xPlaygrounds/rig/pull/1121))
+
 ## [0.1.27](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.26...rig-postgres-v0.1.27) - 2025-12-04
 
 ### Other

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.26.0...rig-core-v0.27.0) - 2025-12-10
+
+### Added
+
+- Introduce reasoning delta ([#1055](https://github.com/0xPlaygrounds/rig/pull/1055))
+- *(rig-1066)* concurrent execution for tools ([#1142](https://github.com/0xPlaygrounds/rig/pull/1142))
+- LSH for in memory vector store ([#922](https://github.com/0xPlaygrounds/rig/pull/922))
+
+### Fixed
+
+- StreamingPromptHook panic when chat_history is empty ([#1132](https://github.com/0xPlaygrounds/rig/pull/1132))
+- *(rig-1087)* groq should accept tool calls ([#1137](https://github.com/0xPlaygrounds/rig/pull/1137))
+- *(rig-1082)* unnecessary JSON flatten ([#1127](https://github.com/0xPlaygrounds/rig/pull/1127))
+- OpenAI Chat Completions API tool result format and strict mode support ([#1117](https://github.com/0xPlaygrounds/rig/pull/1117))
+- *(rig-1081)* oneOf not supported by OpenAI tool calling ([#1124](https://github.com/0xPlaygrounds/rig/pull/1124))
+
+### Other
+
+- Fix Openrouter completion request ([#1141](https://github.com/0xPlaygrounds/rig/pull/1141))
+- *(rig-1060)* add generic multipart body ([#1133](https://github.com/0xPlaygrounds/rig/pull/1133))
+- *(rig-1080)* add Cairnify to Who's Using Rig list ([#1138](https://github.com/0xPlaygrounds/rig/pull/1138))
+- Turn ToolResult into Tool message for Mistral ([#1130](https://github.com/0xPlaygrounds/rig/pull/1130))
+- flatten display impl for tool call errors ([#1125](https://github.com/0xPlaygrounds/rig/pull/1125))
+- fix API key censoring ([#1128](https://github.com/0xPlaygrounds/rig/pull/1128))
+- deny `dbg!`, `todo!`, and `unimplemented!` in CI ([#1121](https://github.com/0xPlaygrounds/rig/pull/1121))
+
 ## [0.26.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.25.0...rig-core-v0.26.0) - 2025-12-04
 
 ### Added
