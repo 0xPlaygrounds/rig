@@ -773,10 +773,9 @@ where
 
                         // DeepSeek-specific reasoning stream
                         if let Some(content) = &delta.reasoning_content {
-                            yield Ok(crate::streaming::RawStreamingChoice::Reasoning {
-                                reasoning: content.to_string(),
+                            yield Ok(crate::streaming::RawStreamingChoice::ReasoningDelta {
                                 id: None,
-                                signature: None,
+                                reasoning: content.to_string()
                             });
                         }
 

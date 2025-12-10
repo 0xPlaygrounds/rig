@@ -664,10 +664,9 @@ where
                         if let Some(thinking_content) = thinking
                             && !thinking_content.is_empty() {
                             thinking_response += &thinking_content;
-                            yield RawStreamingChoice::Reasoning {
-                                reasoning: thinking_content,
+                            yield RawStreamingChoice::ReasoningDelta {
                                 id: None,
-                                signature: None,
+                                reasoning: thinking_content,
                             };
                         }
 

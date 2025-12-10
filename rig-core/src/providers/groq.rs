@@ -570,10 +570,9 @@ where
                     if let Some(choice) = data.choices.first() {
                         match &choice.delta {
                             StreamingDelta::Reasoning { reasoning } => {
-                                yield Ok(crate::streaming::RawStreamingChoice::Reasoning {
+                                yield Ok(crate::streaming::RawStreamingChoice::ReasoningDelta {
                                     id: None,
                                     reasoning: reasoning.to_string(),
-                                    signature: None,
                                 });
                             }
 
