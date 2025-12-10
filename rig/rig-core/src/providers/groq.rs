@@ -249,7 +249,7 @@ where
         Self::new(client.clone(), model)
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
+    
     async fn completion(
         &self,
         completion_request: CompletionRequest,
@@ -329,7 +329,7 @@ where
         tracing::Instrument::instrument(async_block, span).await
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
+    
     async fn stream(
         &self,
         request: CompletionRequest,
@@ -422,7 +422,7 @@ where
         Self::new(client.clone(), model)
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
+    
     async fn transcription(
         &self,
         request: transcription::TranscriptionRequest,

@@ -215,7 +215,7 @@ where
     fn ndims(&self) -> usize {
         self.ndims
     }
-    #[cfg_attr(feature = "worker", worker::send)]
+    
     async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
@@ -485,7 +485,7 @@ where
         Self::new(client.clone(), model.into().as_str())
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
+    
     async fn completion(
         &self,
         completion_request: CompletionRequest,
@@ -564,7 +564,7 @@ where
         tracing::Instrument::instrument(async_block, span).await
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
+    
     async fn stream(
         &self,
         request: CompletionRequest,

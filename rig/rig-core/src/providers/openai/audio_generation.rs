@@ -36,7 +36,7 @@ where
         Self::new(client.clone(), model)
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
+    
     async fn audio_generation(
         &self,
         request: AudioGenerationRequest,

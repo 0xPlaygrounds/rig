@@ -58,7 +58,7 @@ where
         Self::new(client.clone(), model)
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
+    
     async fn transcription(
         &self,
         request: transcription::TranscriptionRequest,

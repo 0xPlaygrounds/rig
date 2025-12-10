@@ -199,7 +199,7 @@ where
         self.ndims
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
+    
     async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,

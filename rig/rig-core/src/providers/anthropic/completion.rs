@@ -914,7 +914,6 @@ where
         Self::new(client.clone(), model.into())
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         mut completion_request: completion::CompletionRequest,
@@ -1017,7 +1016,6 @@ where
         .await
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         request: CompletionRequest,
