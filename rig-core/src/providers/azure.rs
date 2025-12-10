@@ -18,7 +18,8 @@ use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient,
 };
 use crate::completion::GetTokenUsage;
-use crate::http_client::{self, HttpClientExt, bearer_auth_header};
+use crate::http_client::multipart::Part;
+use crate::http_client::{self, HttpClientExt, MultipartForm, bearer_auth_header};
 use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::TranscriptionError;
 use crate::{
@@ -30,7 +31,6 @@ use crate::{
     transcription::{self},
 };
 use bytes::Bytes;
-use reqwest::multipart::Part;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 // ================================================================
@@ -810,10 +810,8 @@ where
     > {
         let data = request.data;
 
-        let mut body = reqwest::multipart::Form::new().part(
-            "file",
-            Part::bytes(data).file_name(request.filename.clone()),
-        );
+        let mut body =
+            MultipartForm::new().part(Part::bytes("file", data).filename(request.filename.clone()));
 
         if let Some(prompt) = request.prompt {
             body = body.text("prompt", prompt.clone());
