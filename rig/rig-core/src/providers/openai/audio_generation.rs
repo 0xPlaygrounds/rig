@@ -36,7 +36,6 @@ where
         Self::new(client.clone(), model)
     }
 
-    
     async fn audio_generation(
         &self,
         request: AudioGenerationRequest,

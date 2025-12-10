@@ -522,7 +522,6 @@ where
         Self::new(client.clone(), model.into())
     }
 
-    
     async fn completion(
         &self,
         completion_request: CompletionRequest,
@@ -603,7 +602,6 @@ where
         .await
     }
 
-    
     async fn stream(
         &self,
         completion_request: CompletionRequest,

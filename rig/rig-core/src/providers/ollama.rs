@@ -215,7 +215,7 @@ where
     fn ndims(&self) -> usize {
         self.ndims
     }
-    
+
     async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
@@ -485,7 +485,6 @@ where
         Self::new(client.clone(), model.into().as_str())
     }
 
-    
     async fn completion(
         &self,
         completion_request: CompletionRequest,
@@ -564,7 +563,6 @@ where
         tracing::Instrument::instrument(async_block, span).await
     }
 
-    
     async fn stream(
         &self,
         request: CompletionRequest,

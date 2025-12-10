@@ -87,7 +87,6 @@ where
         self.ndims
     }
 
-    
     async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,

@@ -335,7 +335,6 @@ where
         Self::new(client.clone(), model)
     }
 
-    
     async fn completion(
         &self,
         completion_request: CompletionRequest,
@@ -406,7 +405,6 @@ where
         async_block.instrument(span).await
     }
 
-    
     async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -549,7 +547,6 @@ mod image_generation {
             Self::new(client.clone(), model)
         }
 
-        
         async fn image_generation(
             &self,
             generation_request: ImageGenerationRequest,
@@ -657,7 +654,6 @@ mod audio_generation {
             }
         }
 
-        
         async fn audio_generation(
             &self,
             request: AudioGenerationRequest,

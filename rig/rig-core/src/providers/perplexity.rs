@@ -335,7 +335,6 @@ where
         Self::new(client.clone(), model)
     }
 
-    
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
@@ -421,7 +420,6 @@ where
         async_block.instrument(span).await
     }
 
-    
     async fn stream(
         &self,
         completion_request: completion::CompletionRequest,

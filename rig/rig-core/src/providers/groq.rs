@@ -249,7 +249,6 @@ where
         Self::new(client.clone(), model)
     }
 
-    
     async fn completion(
         &self,
         completion_request: CompletionRequest,
@@ -329,7 +328,6 @@ where
         tracing::Instrument::instrument(async_block, span).await
     }
 
-    
     async fn stream(
         &self,
         request: CompletionRequest,
@@ -422,7 +420,6 @@ where
         Self::new(client.clone(), model)
     }
 
-    
     async fn transcription(
         &self,
         request: transcription::TranscriptionRequest,

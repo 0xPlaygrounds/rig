@@ -431,7 +431,6 @@ where
         self.ndims
     }
 
-    
     async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
@@ -639,7 +638,6 @@ where
         Self::new(client.clone(), model.into())
     }
 
-    
     async fn completion(
         &self,
         completion_request: CompletionRequest,
@@ -713,7 +711,6 @@ where
         .await
     }
 
-    
     async fn stream(
         &self,
         completion_request: CompletionRequest,
@@ -800,7 +797,6 @@ where
         Self::new(client.clone(), model)
     }
 
-    
     async fn transcription(
         &self,
         request: transcription::TranscriptionRequest,
@@ -893,7 +889,6 @@ mod image_generation {
             }
         }
 
-        
         async fn image_generation(
             &self,
             generation_request: ImageGenerationRequest,

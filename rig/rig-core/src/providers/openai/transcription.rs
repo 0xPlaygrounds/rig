@@ -58,7 +58,6 @@ where
         Self::new(client.clone(), model)
     }
 
-    
     async fn transcription(
         &self,
         request: transcription::TranscriptionRequest,

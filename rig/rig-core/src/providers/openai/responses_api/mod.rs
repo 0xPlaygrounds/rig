@@ -1095,7 +1095,6 @@ where
         .await
     }
 
-    
     async fn stream(
         &self,
         request: crate::completion::CompletionRequest,

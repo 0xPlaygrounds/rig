@@ -73,7 +73,6 @@ where
         Self::new(client.clone(), model)
     }
 
-    
     async fn image_generation(
         &self,
         generation_request: ImageGenerationRequest,
