@@ -35,9 +35,9 @@
 //!
 //! This pipeline can be visualized as the following DAG:
 //! ```text
-//!          ┌─────────┐   ┌─────────┐         
+//!          ┌─────────┐   ┌─────────┐
 //! Input───►│   op1   ├──►│   op2   ├──►Output
-//!          └─────────┘   └─────────┘         
+//!          └─────────┘   └─────────┘
 //! ```
 //!
 //! ## Parallel Operations
@@ -69,26 +69,27 @@
 //! - [map] is a function that initializes a standalone [Map](self::op::Map) op without an existing pipeline/op.
 //!
 //! The pipeline above can be visualized as the following DAG:
-//! ```text                 
-//!           Input            
-//!             │              
-//!      ┌──────┴──────┐       
-//!      ▼             ▼       
-//! ┌─────────┐   ┌─────────┐  
-//! │   op1   │   │   op2   │  
-//! └────┬────┘   └────┬────┘  
-//!      └──────┬──────┘       
-//!             ▼              
-//!        ┌─────────┐         
-//!        │   op3   │         
-//!        └────┬────┘         
-//!             │              
-//!             ▼              
-//!          Output           
+//! ```text
+//!           Input
+//!             │
+//!      ┌──────┴──────┐
+//!      ▼             ▼
+//! ┌─────────┐   ┌─────────┐
+//! │   op1   │   │   op2   │
+//! └────┬────┘   └────┬────┘
+//!      └──────┬──────┘
+//!             ▼
+//!        ┌─────────┐
+//!        │   op3   │
+//!        └────┬────┘
+//!             │
+//!             ▼
+//!          Output
 //! ```
 
 pub mod agent_ops;
 pub mod op;
+pub mod stream_ops;
 pub mod try_op;
 #[macro_use]
 pub mod parallel;
