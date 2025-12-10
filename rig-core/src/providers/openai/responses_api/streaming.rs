@@ -8,10 +8,11 @@ use crate::providers::openai::responses_api::{
 };
 use crate::streaming;
 use crate::streaming::RawStreamingChoice;
+use crate::wasm_compat::WasmCompatSend;
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info_span};
+use tracing::{Level, debug, enabled, info_span};
 use tracing_futures::Instrument as _;
 
 use super::{CompletionResponse, Output};
@@ -201,7 +202,7 @@ pub enum SummaryPartChunkPart {
 
 impl<T> ResponsesCompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + WasmCompatSend + 'static,
 {
     pub(crate) async fn stream(
         &self,
@@ -211,12 +212,19 @@ where
         let mut request = self.create_completion_request(completion_request)?;
         request.stream = Some(true);
 
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "OpenAI Responses streaming completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let body = serde_json::to_vec(&request)?;
 
         let req = self
             .client
             .post("/responses")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
@@ -233,20 +241,14 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
         span.record("gen_ai.provider.name", "openai");
         span.record("gen_ai.request.model", &self.model);
-        span.record(
-            "gen_ai.input.messages",
-            serde_json::to_string(&request.input).expect("This should always work"),
-        );
         // Build the request with proper headers for SSE
-        let client = self.clone().client.http_client;
+        let client = self.client.clone();
 
         let mut event_source = GenericEventSource::new(client, req);
 
@@ -318,7 +320,6 @@ where
 
                         if let StreamingCompletionChunk::Response(chunk) = data {
                             if let ResponseChunk { kind: ResponseChunkKind::ResponseCompleted, response, .. } = *chunk {
-                                span.record("gen_ai.output.messages", serde_json::to_string(&response.output).unwrap());
                                 span.record("gen_ai.response.id", response.id);
                                 span.record("gen_ai.response.model", response.model);
                                 if let Some(usage) = response.usage {
@@ -334,14 +335,14 @@ where
                     }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
-                        yield Err(CompletionError::ResponseError(error.to_string()));
+                        yield Err(CompletionError::ProviderError(error.to_string()));
                         break;
                     }
                 }
             }
 
-            // // Ensure event source is closed when stream ends
-            // event_source.close();
+            // Ensure event source is closed when stream ends
+            event_source.close();
 
             for tool_call in &tool_calls {
                 yield Ok(tool_call.to_owned())
@@ -352,7 +353,7 @@ where
             tracing::info!("OpenAI stream finished");
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.clone()
+                usage: final_usage
             }));
         }.instrument(span);
 

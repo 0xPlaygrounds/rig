@@ -4,7 +4,7 @@ use rig::prelude::*;
 use rig::{
     completion::{Prompt, message::Image},
     message::ImageMediaType,
-    providers::anthropic::{self, CLAUDE_3_5_SONNET},
+    providers::anthropic::{self},
 };
 
 use base64::{Engine, prelude::BASE64_STANDARD};
@@ -25,7 +25,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let agent = client
-        .agent(CLAUDE_3_5_SONNET)
+        .agent(anthropic::completion::CLAUDE_3_5_SONNET)
         .preamble("You are an image describer.")
         .temperature(0.5)
         .build();

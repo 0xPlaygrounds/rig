@@ -1,8 +1,7 @@
 use async_stream::stream;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use std::{convert::Infallible, str::FromStr};
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Level, enabled, info_span};
 
 use super::client::{Client, Usage};
 use crate::completion::GetTokenUsage;
@@ -16,17 +15,26 @@ use crate::{
     telemetry::SpanCombinator,
 };
 
+/// The latest version of the `codestral` Mistral model
 pub const CODESTRAL: &str = "codestral-latest";
+/// The latest version of the `mistral-large` Mistral model
 pub const MISTRAL_LARGE: &str = "mistral-large-latest";
+/// The latest version of the `pixtral-large` Mistral multimodal model
 pub const PIXTRAL_LARGE: &str = "pixtral-large-latest";
+/// The latest version of the `mistral` Mistral multimodal model, trained on datasets from the Middle East & South Asia
 pub const MISTRAL_SABA: &str = "mistral-saba-latest";
+/// The latest version of the `mistral-3b` Mistral completions model
 pub const MINISTRAL_3B: &str = "ministral-3b-latest";
+/// The latest version of the `mistral-8b` Mistral completions model
 pub const MINISTRAL_8B: &str = "ministral-8b-latest";
 
-//Free models
+/// The latest version of the `mistral-small` Mistral completions model
 pub const MISTRAL_SMALL: &str = "mistral-small-latest";
+/// The `24-09` version of the `pixtral-small` Mistral multimodal model
 pub const PIXTRAL_SMALL: &str = "pixtral-12b-2409";
+/// The `open-mistral-nemo` model
 pub const MISTRAL_NEMO: &str = "open-mistral-nemo";
+/// The `open-mistral-mamba` model
 pub const CODESTRAL_MAMBA: &str = "open-codestral-mamba";
 
 // =================================================================
@@ -123,7 +131,10 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::AssistantContent::Text(text) => texts.push(text),
                             message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
                             message::AssistantContent::Reasoning(_) => {
-                                unimplemented!("Reasoning content is not currently supported on Mistral via Rig");
+                                panic!("Reasoning content is not currently supported on Mistral via Rig");
+                            }
+                            message::AssistantContent::Image(_) => {
+                                panic!("Image content is not currently supported on Mistral via Rig");
                             }
                         }
                         (texts, tools)
@@ -285,78 +296,80 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
     }
 }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct MistralCompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
+}
 
-    pub(crate) fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
-            partial_history.push(docs);
-        }
+impl TryFrom<(&str, CompletionRequest)> for MistralCompletionRequest {
+    type Error = CompletionError;
 
-        partial_history.extend(completion_request.chat_history);
-
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble.clone())],
             None => vec![],
         };
+        if let Some(docs) = req.normalized_documents() {
+            let docs: Vec<Message> = docs.try_into()?;
+            full_history.extend(docs);
+        }
 
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(message::Message::try_into)
-                .collect::<Result<Vec<Vec<Message>>, _>>()?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
-        );
+        let chat_history: Vec<Message> = req
+            .chat_history
+            .clone()
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
 
-        let tool_choice = completion_request
+        full_history.extend(chat_history);
+
+        let tool_choice = req
             .tool_choice
-            .map(ToolChoice::try_from)
+            .clone()
+            .map(crate::providers::openai::completion::ToolChoice::try_from)
             .transpose()?;
 
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+        })
+    }
+}
 
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": tool_choice,
-            })
-        };
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
+    }
 
-        let request = if let Some(temperature) = completion_request.temperature {
-            json_utils::merge(
-                request,
-                json!({
-                    "temperature": temperature,
-                }),
-            )
-        } else {
-            request
-        };
-
-        let request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
-
-        Ok(request)
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 
@@ -494,14 +507,28 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = CompletionResponse;
 
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model.into())
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
-        let request = self.create_completion_request(completion_request)?;
-        let body = serde_json::to_vec(&request)?;
+        let request =
+            MistralCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "Mistral completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -515,17 +542,16 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(request.get("messages").unwrap()).unwrap(),
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
+        let body = serde_json::to_vec(&request)?;
+
         let request = self
             .client
             .post("v1/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
@@ -538,7 +564,6 @@ where
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_token_usage(&response);
-                        span.record_model_output(&response.choices);
                         span.record_response_metadata(&response);
                         response.try_into()
                     }
@@ -575,7 +600,10 @@ where
                         })
                     }
                     message::AssistantContent::Reasoning(_) => {
-                        unimplemented!("Reasoning is not supported on Mistral via Rig")
+                        panic!("Reasoning is not supported on Mistral via Rig")
+                    }
+                    message::AssistantContent::Image(_) => {
+                        panic!("Image content is not supported on Mistral via Rig")
                     }
                 }
             }

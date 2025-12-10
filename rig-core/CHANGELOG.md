@@ -7,6 +7,121 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.25.0...rig-core-v0.26.0) - 2025-12-04
+
+### Added
+
+- add Anthropic prompt caching support ([#1116](https://github.com/0xPlaygrounds/rig/pull/1116))
+- *(rig-1076)* Providers should route all requests through `client::Client` ([#1115](https://github.com/0xPlaygrounds/rig/pull/1115))
+
+### Fixed
+
+- *(streaming)* use .instrument() instead of span.enter() to prevent span leak ([#1108](https://github.com/0xPlaygrounds/rig/pull/1108))
+
+### Other
+
+- *(rig-1077)* ensure log level enabled before logging messages ([#1114](https://github.com/0xPlaygrounds/rig/pull/1114))
+- *(rig-1078)* remove messages from span telemetry ([#1112](https://github.com/0xPlaygrounds/rig/pull/1112))
+
+## [0.25.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.24.0...rig-core-v0.25.0) - 2025-12-01
+
+### Added
+
+- Gemini Assistant Image Responses ([#1048](https://github.com/0xPlaygrounds/rig/pull/1048))
+- *(gemini-request)* add response_json_schema to GenerationConfig ([#1077](https://github.com/0xPlaygrounds/rig/pull/1077))
+- *(rig-985)* Consolidate provider clients ([#1050](https://github.com/0xPlaygrounds/rig/pull/1050))
+
+### Fixed
+
+- *(rig-1093)* gemini config error when no additional params used ([#1094](https://github.com/0xPlaygrounds/rig/pull/1094))
+- OpenAI required props for structured output ([#1090](https://github.com/0xPlaygrounds/rig/pull/1090))
+- *(rig-1055)* remove deprecated gemini-2.5-flash preview ([#1084](https://github.com/0xPlaygrounds/rig/pull/1084))
+- rmcp derive clone ([#1080](https://github.com/0xPlaygrounds/rig/pull/1080))
+- *(rig-1050)* Inconsistent model/agent initialisation methods ([#1069](https://github.com/0xPlaygrounds/rig/pull/1069))
+- *(gemini-request)* add `#[serde(default)]` for missing `generation_config` field ([#1060](https://github.com/0xPlaygrounds/rig/pull/1060))
+- update imported packages in the code example ([#1041](https://github.com/0xPlaygrounds/rig/pull/1041))
+
+### Other
+
+- add `Content-Type: application/json` to regular http requests ([#1106](https://github.com/0xPlaygrounds/rig/pull/1106))
+- Deprecate `DynClientBuilder` ([#1105](https://github.com/0xPlaygrounds/rig/pull/1105))
+- `client::Client` can leak api keys that have been inserted into its headers ([#1102](https://github.com/0xPlaygrounds/rig/pull/1102))
+- *(rig-1071)* remove outdated models ([#1096](https://github.com/0xPlaygrounds/rig/pull/1096))
+- *(rig-1068)* remove unused chatbot module ([#1092](https://github.com/0xPlaygrounds/rig/pull/1092))
+- Simple JSON passthrough unwrapper ([#1086](https://github.com/0xPlaygrounds/rig/pull/1086))
+- *(rig-777)* proper request modelling for every provider ([#1067](https://github.com/0xPlaygrounds/rig/pull/1067))
+- *(deps)* upgrade `rmcp` ([#1079](https://github.com/0xPlaygrounds/rig/pull/1079))
+- OpenAI parsing ([#1058](https://github.com/0xPlaygrounds/rig/pull/1058))
+- *(rig-1046)* update list of who's using rig ([#1061](https://github.com/0xPlaygrounds/rig/pull/1061))
+- clean up provider code ([#1052](https://github.com/0xPlaygrounds/rig/pull/1052))
+
+## [0.24.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.23.1...rig-core-v0.24.0) - 2025-11-10
+
+### Added
+
+- *(rig-1024)* yield tool calls and results from multi-step stream prompt ([#1023](https://github.com/0xPlaygrounds/rig/pull/1023))
+- *(providers)* Emit tool call deltas ([#1020](https://github.com/0xPlaygrounds/rig/pull/1020))
+- export rig tool macro from main crate ([#1016](https://github.com/0xPlaygrounds/rig/pull/1016))
+
+### Fixed
+
+- *(rig-1035)* export StreamingPromptHook ([#1039](https://github.com/0xPlaygrounds/rig/pull/1039))
+- Gemini responses lacking content ([#1030](https://github.com/0xPlaygrounds/rig/pull/1030))
+- *(rig-1029)* Reasoning not handled properly for agent stream prompt ([#1024](https://github.com/0xPlaygrounds/rig/pull/1024))
+- *(openai-responses)* add `#[serde(default)]` for missing `tools` field ([#1021](https://github.com/0xPlaygrounds/rig/pull/1021))
+- *(rig-1027)* allow any error type to be used for rig tool macro ([#1017](https://github.com/0xPlaygrounds/rig/pull/1017))
+
+### Other
+
+- make CompletionModel  default type to reqwest::Client ([#1013](https://github.com/0xPlaygrounds/rig/pull/1013))
+- *(deps)* upgrade rmcp dependency ([#1008](https://github.com/0xPlaygrounds/rig/pull/1008))
+
+## [0.23.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.23.0...rig-core-v0.23.1) - 2025-10-28
+
+### Fixed
+
+- compliance with OpenAI API  stream error "message":"Model field is required." ([#1006](https://github.com/0xPlaygrounds/rig/pull/1006))
+
+## [0.23.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.22.0...rig-core-v0.23.0) - 2025-10-27
+
+### Added
+
+- *(rig-1021)* allow language to be set to None for transcription ([#997](https://github.com/0xPlaygrounds/rig/pull/997))
+- *(rig-1008)* add Send + Sync to ProviderClient ([#974](https://github.com/0xPlaygrounds/rig/pull/974))
+- *(rig-976)* support filters for `VectorSearchRequest` ([#952](https://github.com/0xPlaygrounds/rig/pull/952))
+- *(rig-1004)* expose tool call partials ([#960](https://github.com/0xPlaygrounds/rig/pull/960))
+- convert video media mime type ([#959](https://github.com/0xPlaygrounds/rig/pull/959))
+- *(rig-996)* generic streaming ([#955](https://github.com/0xPlaygrounds/rig/pull/955))
+- *(gemini)* Support streaming thinking ([#947](https://github.com/0xPlaygrounds/rig/pull/947))
+- *(ollama)* thinking ([#948](https://github.com/0xPlaygrounds/rig/pull/948))
+- *(anthropic)* Expose the reasoning signature ([#945](https://github.com/0xPlaygrounds/rig/pull/945))
+
+### Fixed
+
+- CompletionError: ProviderError: {"error":{"code":null,"param":null,"message":"[] is too short - 'tools'","type":"invalid_request_error"}} ([#1003](https://github.com/0xPlaygrounds/rig/pull/1003))
+- *(rig-1023)* reasoning/thinking stream sends redundant data ([#1002](https://github.com/0xPlaygrounds/rig/pull/1002))
+- *(rig-1022)* GenericEventSource polling None should not error ([#999](https://github.com/0xPlaygrounds/rig/pull/999))
+- *(huggingface)* align tool message serialization with OpenAI API spec ([#993](https://github.com/0xPlaygrounds/rig/pull/993))
+- *(rig-1020)* add `futures-timer/wasm-bindgen` feature for wasm ([#995](https://github.com/0xPlaygrounds/rig/pull/995))
+- *(rig-1019)* fix potentially incorrect provider URLs ([#991](https://github.com/0xPlaygrounds/rig/pull/991))
+- *(rig-1016)* Huggingface completions API 404 ([#986](https://github.com/0xPlaygrounds/rig/pull/986))
+- *(rig-1011)* docs mismatch ([#981](https://github.com/0xPlaygrounds/rig/pull/981))
+- *(rig-1007)* tool servers broken in WASM ([#970](https://github.com/0xPlaygrounds/rig/pull/970))
+- *(rig-1009)* Incorrect struct shape (OpenAI) ([#973](https://github.com/0xPlaygrounds/rig/pull/973))
+- *(rig-997)* allow string documents for OpenAI Completions API ([#966](https://github.com/0xPlaygrounds/rig/pull/966))
+- *(rig-1006)* text-embedding-ada-002 doesn't support custom dimensions ([#967](https://github.com/0xPlaygrounds/rig/pull/967))
+- *(agent)* Apply tool_choice to completion request ([#958](https://github.com/0xPlaygrounds/rig/pull/958))
+- *(rig-1005)* enable toggling "think" on ollama ([#962](https://github.com/0xPlaygrounds/rig/pull/962))
+- *(openrouter)* use reqwest_post helper to construct full URL ([#943](https://github.com/0xPlaygrounds/rig/pull/943))
+- *(rig-995)* include max tokens in Moonshot API request ([#935](https://github.com/0xPlaygrounds/rig/pull/935))
+
+### Other
+
+- InvalidCodeWithMessage error enum variant ([#963](https://github.com/0xPlaygrounds/rig/pull/963))
+- *(rig-1003)* update list of production rig users ([#956](https://github.com/0xPlaygrounds/rig/pull/956))
+- make streaming prompt module pub ([#944](https://github.com/0xPlaygrounds/rig/pull/944))
+- *(rig-993)* re-import all items from embeddings module in rig::embeddings ([#936](https://github.com/0xPlaygrounds/rig/pull/936))
+
 ## [0.22.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.21.0...rig-core-v0.22.0) - 2025-10-14
 
 ### Added

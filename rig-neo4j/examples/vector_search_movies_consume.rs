@@ -14,16 +14,14 @@
 //! [examples/vector_search_movies_add_embeddings.rs](examples/vector_search_movies_add_embeddings.rs) provides an example of
 //! how to add embeddings to an existing `recommendations` database.
 use neo4rs::ConfigBuilder;
+use rig::providers::openai;
 use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use rig_neo4j::Neo4jClient;
 
 use std::env;
 
 use rig::client::EmbeddingsClient;
-use rig::{
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::VectorStoreIndex,
-};
+use rig::{providers::openai::Client, vector_store::VectorStoreIndex};
 use serde::{Deserialize, Serialize};
 
 #[path = "./display/lib.rs"]
@@ -40,7 +38,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Initialize OpenAI client
     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = Client::new(&openai_api_key);
+    let openai_client: Client = Client::new(&openai_api_key).unwrap();
 
     let neo4j_uri = "neo4j+s://demo.neo4jlabs.com:7687";
     let neo4j_username = "recommendations";
@@ -58,7 +56,7 @@ async fn main() -> Result<(), anyhow::Error> {
     .await?;
 
     // // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Define the properties that will be retrieved from querying the graph nodes
     #[derive(Debug, Deserialize, Serialize)]

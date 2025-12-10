@@ -1,26 +1,25 @@
-use bytes::Bytes;
-use serde::{Deserialize, Serialize};
-use tracing::{Instrument, info_span};
-
-use super::client::{ApiErrorResponse, ApiResponse, Client, Usage};
-
+use super::{
+    client::{ApiErrorResponse, ApiResponse, Client, Usage},
+    streaming::StreamingCompletionResponse,
+};
+use crate::message;
+use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     http_client::HttpClientExt,
     json_utils,
-    providers::openai::Message,
+    one_or_many::string_or_one_or_many,
+    providers::openai,
 };
-use serde_json::{Value, json};
-
-use crate::providers::openai::AssistantContent;
-use crate::providers::openrouter::streaming::FinalCompletionResponse;
-use crate::streaming::StreamingCompletionResponse;
-use crate::telemetry::SpanCombinator;
+use bytes::Bytes;
+use serde::{Deserialize, Serialize};
+use tracing::{Instrument, Level, enabled, info_span};
 
 // ================================================================
 // OpenRouter Completion API
 // ================================================================
+
 /// The `qwen/qwq-32b` model. Find more models at <https://openrouter.ai/models>.
 pub const QWEN_QWQ_32B: &str = "qwen/qwq-32b";
 /// The `anthropic/claude-3.7-sonnet` model. Find more models at <https://openrouter.ai/models>.
@@ -62,13 +61,16 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             Message::Assistant {
                 content,
                 tool_calls,
+                reasoning,
                 ..
             } => {
                 let mut content = content
                     .iter()
                     .map(|c| match c {
-                        AssistantContent::Text { text } => completion::AssistantContent::text(text),
-                        AssistantContent::Refusal { refusal } => {
+                        openai::AssistantContent::Text { text } => {
+                            completion::AssistantContent::text(text)
+                        }
+                        openai::AssistantContent::Refusal { refusal } => {
                             completion::AssistantContent::text(refusal)
                         }
                     })
@@ -86,6 +88,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         })
                         .collect::<Vec<_>>(),
                 );
+
+                if let Some(reasoning) = reasoning {
+                    content.push(completion::AssistantContent::reasoning(reasoning));
+                }
+
                 Ok(content)
             }
             _ => Err(CompletionError::ResponseError(
@@ -125,6 +132,148 @@ pub struct Choice {
     pub finish_reason: Option<String>,
 }
 
+/// OpenRouter message.
+///
+/// Almost identical to OpenAI's Message, but supports more parameters
+/// for some providers like `reasoning`.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum Message {
+    #[serde(alias = "developer")]
+    System {
+        #[serde(deserialize_with = "string_or_one_or_many")]
+        content: OneOrMany<openai::SystemContent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    User {
+        #[serde(deserialize_with = "string_or_one_or_many")]
+        content: OneOrMany<openai::UserContent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    Assistant {
+        #[serde(default, deserialize_with = "json_utils::string_or_vec")]
+        content: Vec<openai::AssistantContent>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        refusal: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        audio: Option<openai::AudioAssistant>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(
+            default,
+            deserialize_with = "json_utils::null_or_vec",
+            skip_serializing_if = "Vec::is_empty"
+        )]
+        tool_calls: Vec<openai::ToolCall>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reasoning: Option<String>,
+    },
+    #[serde(rename = "tool")]
+    ToolResult {
+        tool_call_id: String,
+        content: String,
+    },
+}
+
+impl Message {
+    pub fn system(content: &str) -> Self {
+        Message::System {
+            content: OneOrMany::one(content.to_owned().into()),
+            name: None,
+        }
+    }
+}
+
+impl From<openai::Message> for Message {
+    fn from(value: openai::Message) -> Self {
+        match value {
+            openai::Message::System { content, name } => Self::System { content, name },
+            openai::Message::User { content, name } => Self::User { content, name },
+            openai::Message::Assistant {
+                content,
+                refusal,
+                audio,
+                name,
+                tool_calls,
+            } => Self::Assistant {
+                content,
+                refusal,
+                audio,
+                name,
+                tool_calls,
+                reasoning: None,
+            },
+            openai::Message::ToolResult {
+                tool_call_id,
+                content,
+            } => Self::ToolResult {
+                tool_call_id,
+                content: content.as_text(),
+            },
+        }
+    }
+}
+
+impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
+    type Error = message::MessageError;
+
+    fn try_from(value: OneOrMany<message::AssistantContent>) -> Result<Self, Self::Error> {
+        let mut text_content = Vec::new();
+        let mut tool_calls = Vec::new();
+        let mut reasoning = None;
+
+        for content in value.into_iter() {
+            match content {
+                message::AssistantContent::Text(text) => text_content.push(text),
+                message::AssistantContent::ToolCall(tool_call) => tool_calls.push(tool_call),
+                message::AssistantContent::Reasoning(r) => {
+                    reasoning = r.reasoning.into_iter().next();
+                }
+                message::AssistantContent::Image(_) => {
+                    return Err(Self::Error::ConversionError(
+                        "OpenRouter currently doesn't support images.".into(),
+                    ));
+                }
+            }
+        }
+
+        // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
+        //  so either `content` or `tool_calls` will have some content.
+        Ok(vec![Message::Assistant {
+            content: text_content
+                .into_iter()
+                .map(|content| content.text.into())
+                .collect::<Vec<_>>(),
+            refusal: None,
+            audio: None,
+            name: None,
+            tool_calls: tool_calls
+                .into_iter()
+                .map(|tool_call| tool_call.into())
+                .collect::<Vec<_>>(),
+            reasoning,
+        }])
+    }
+}
+
+// We re-use most of the openai implementation when we can and we re-implement
+// only the part that differentate for openrouter (like reasoning support).
+impl TryFrom<message::Message> for Vec<Message> {
+    type Error = message::MessageError;
+
+    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
+        match message {
+            message::Message::User { content } => {
+                let messages: Vec<openai::Message> = content.try_into()?;
+                Ok(messages.into_iter().map(Message::from).collect::<Vec<_>>())
+            }
+            message::Message::Assistant { content, .. } => content.try_into(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged, rename_all = "snake_case")]
 pub enum ToolChoice {
@@ -162,40 +311,49 @@ pub enum ToolChoiceFunctionKind {
     Function { name: String },
 }
 
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
-    /// Name of the model (e.g.: deepseek-ai/DeepSeek-R1)
-    pub model: String,
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct OpenrouterCompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<crate::providers::openai::completion::ToolDefinition>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
 }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
+/// Parameters for building an OpenRouter CompletionRequest
+pub struct OpenRouterRequestParams<'a> {
+    pub model: &'a str,
+    pub request: CompletionRequest,
+    pub strict_tools: bool,
+}
 
-    pub(crate) fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
+impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from(params: OpenRouterRequestParams) -> Result<Self, Self::Error> {
+        let OpenRouterRequestParams {
+            model,
+            request: req,
+            strict_tools,
+        } = params;
+
+        let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
         };
-
-        // Gather docs
-        if let Some(docs) = completion_request.normalized_documents() {
+        if let Some(docs) = req.normalized_documents() {
             let docs: Vec<Message> = docs.try_into()?;
             full_history.extend(docs);
         }
 
-        // Convert existing chat history
-        let chat_history: Vec<Message> = completion_request
+        let chat_history: Vec<Message> = req
             .chat_history
+            .clone()
             .into_iter()
             .map(|message| message.try_into())
             .collect::<Result<Vec<Vec<Message>>, _>>()?
@@ -203,29 +361,76 @@ impl<T> CompletionModel<T> {
             .flatten()
             .collect();
 
-        // Combine all messages into a single history
         full_history.extend(chat_history);
 
-        let tool_choice = completion_request
+        let tool_choice = req
             .tool_choice
-            .map(ToolChoice::try_from)
+            .clone()
+            .map(crate::providers::openai::completion::ToolChoice::try_from)
             .transpose()?;
 
-        let request = json!({
-            "model": self.model,
-            "messages": full_history,
-            "temperature": completion_request.temperature,
-            "tools": completion_request.tools.into_iter().map(crate::providers::openai::completion::ToolDefinition::from).collect::<Vec<_>>(),
-            "tool_choice": tool_choice,
-        });
+        let tools: Vec<crate::providers::openai::completion::ToolDefinition> = req
+            .tools
+            .clone()
+            .into_iter()
+            .map(|tool| {
+                let def = crate::providers::openai::completion::ToolDefinition::from(tool);
+                if strict_tools { def.with_strict() } else { def }
+            })
+            .collect();
 
-        let request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            tools,
+            tool_choice,
+            additional_params: req.additional_params,
+        })
+    }
+}
 
-        Ok(request)
+impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model,
+            request: req,
+            strict_tools: false,
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct CompletionModel<T = reqwest::Client> {
+    pub(crate) client: Client<T>,
+    pub model: String,
+    /// Enable strict mode for tool schemas.
+    /// When enabled, tool schemas are sanitized to meet OpenAI's strict mode requirements.
+    pub strict_tools: bool,
+}
+
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+            strict_tools: false,
+        }
+    }
+
+    /// Enable strict mode for tool schemas.
+    ///
+    /// When enabled, tool schemas are automatically sanitized to meet OpenAI's strict mode requirements:
+    /// - `additionalProperties: false` is added to all objects
+    /// - All properties are marked as required
+    /// - `strict: true` is set on each function definition
+    ///
+    /// Note: Not all models on OpenRouter support strict mode. This works best with OpenAI models.
+    pub fn with_strict_tools(mut self) -> Self {
+        self.strict_tools = true;
+        self
     }
 }
 
@@ -234,7 +439,13 @@ where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
     type Response = CompletionResponse;
-    type StreamingResponse = FinalCompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
+
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -242,10 +453,23 @@ where
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
-        let request = self.create_completion_request(completion_request)?;
+        let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: self.model.as_ref(),
+            request: completion_request,
+            strict_tools: self.strict_tools,
+        })?;
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "OpenRouter completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
-                target: "rig::completion",
+                target: "rig::completions",
                 "chat",
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "openrouter",
@@ -255,8 +479,6 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(request.get("messages").unwrap()).unwrap(),
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -267,12 +489,11 @@ where
         let req = self
             .client
             .post("/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|x| CompletionError::HttpError(x.into()))?;
 
         async move {
-            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let response = self.client.send::<_, Bytes>(req).await?;
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
 
@@ -281,11 +502,10 @@ where
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_token_usage(&response.usage);
-                        span.record_model_output(&response.choices);
                         span.record("gen_ai.response.id", &response.id);
                         span.record("gen_ai.response.model_name", &response.model);
 
-                        tracing::debug!(target: "rig::completion",
+                        tracing::debug!(target: "rig::completions",
                             "OpenRouter response: {response:?}");
                         response.try_into()
                     }
@@ -305,7 +525,10 @@ where
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<
+        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+        CompletionError,
+    > {
         CompletionModel::stream(self, completion_request).await
     }
 }

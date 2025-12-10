@@ -1,23 +1,16 @@
-use crate::{
-    http_client::{
-        HttpClientExt,
-        sse::{Event, GenericEventSource},
-    },
-    telemetry::SpanCombinator,
-};
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::info_span;
+use tracing::{Level, enabled, info_span};
+use tracing_futures::Instrument;
 
-use super::completion::{
-    CompletionModel, create_request_body,
-    gemini_api_types::{ContentCandidate, Part, PartKind},
-};
-use crate::{
-    completion::{CompletionError, CompletionRequest, GetTokenUsage},
-    streaming::{self},
-};
+use super::completion::gemini_api_types::{ContentCandidate, Part, PartKind};
+use super::completion::{CompletionModel, create_request_body};
+use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::http_client::HttpClientExt;
+use crate::http_client::sse::{Event, GenericEventSource};
+use crate::streaming;
+use crate::telemetry::SpanCombinator;
 
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -95,37 +88,38 @@ where
                 gen_ai.response.model = self.model,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
         let request = create_request_body(completion_request)?;
 
-        span.record_model_input(&request.contents);
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::streaming",
+                "Gemini streaming completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
-        tracing::debug!(
-            "Sending completion request to Gemini API {}",
-            serde_json::to_string_pretty(&request)?
-        );
         let body = serde_json::to_vec(&request)?;
 
         let req = self
             .client
-            .post_sse(&format!(
+            .post_sse(format!(
                 "/v1beta/models/{}:streamGenerateContent",
                 self.model
-            ))
+            ))?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let mut event_source = GenericEventSource::new(self.client.http_client.clone(), req);
+        let mut event_source = GenericEventSource::new(self.client.clone(), req);
 
         let stream = stream! {
             let mut text_response = String::new();
             let mut model_outputs: Vec<Part> = Vec::new();
+            let mut final_usage = None;
             while let Some(event_result) = event_source.next().await {
                 match event_result {
                     Ok(Event::Open) => {
@@ -152,7 +146,12 @@ where
                             continue;
                         };
 
-                        for part in &choice.content.parts {
+                        let Some(content) = choice.content.as_ref() else {
+                            tracing::debug!(finish_reason = ?choice.finish_reason, "Streaming candidate missing content");
+                            continue;
+                        };
+
+                        for part in &content.parts {
                             match part {
                                 Part {
                                     part: PartKind::Text(text),
@@ -165,7 +164,7 @@ where
                                     part: PartKind::Text(text),
                                     ..
                                 } => {
-                                    text_response += text;
+                                    text_response.push_str(text);
                                     yield Ok(streaming::RawStreamingChoice::Message(text.clone()));
                                 },
                                 Part {
@@ -186,7 +185,7 @@ where
                             }
                         }
 
-                        if choice.content.parts.is_empty() {
+                        if content.parts.is_empty() {
                             tracing::trace!(reason = ?choice.finish_reason, "There is no part in the streaming content");
                         }
 
@@ -196,11 +195,8 @@ where
                                 model_outputs.push(Part { thought: None, thought_signature: None, part: PartKind::Text(text_response), additional_params: None });
                             }
                             let span = tracing::Span::current();
-                            span.record_model_output(&model_outputs);
                             span.record_token_usage(&data.usage_metadata);
-                            yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                                usage_metadata: data.usage_metadata.unwrap_or_default()
-                            }));
+                            final_usage = data.usage_metadata;
                             break;
                         }
                     }
@@ -209,7 +205,7 @@ where
                     }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
-                        yield Err(CompletionError::ResponseError(error.to_string()));
+                        yield Err(CompletionError::ProviderError(error.to_string()));
                         break;
                     }
                 }
@@ -217,7 +213,11 @@ where
 
             // Ensure event source is closed when stream ends
             event_source.close();
-        };
+
+            yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                usage_metadata: final_usage.unwrap_or_default()
+            }));
+        }.instrument(span);
 
         Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
             stream,
@@ -252,12 +252,16 @@ mod tests {
 
         let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
         assert_eq!(response.candidates.len(), 1);
-        assert_eq!(response.candidates[0].content.parts.len(), 1);
+        let content = response.candidates[0]
+            .content
+            .as_ref()
+            .expect("candidate should contain content");
+        assert_eq!(content.parts.len(), 1);
 
         if let Part {
             part: PartKind::Text(text),
             ..
-        } = &response.candidates[0].content.parts[0]
+        } = &content.parts[0]
         {
             assert_eq!(text, "Hello, world!");
         } else {
@@ -289,14 +293,18 @@ mod tests {
 
         let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
         assert_eq!(response.candidates.len(), 1);
-        assert_eq!(response.candidates[0].content.parts.len(), 3);
+        let content = response.candidates[0]
+            .content
+            .as_ref()
+            .expect("candidate should contain content");
+        assert_eq!(content.parts.len(), 3);
 
         // Verify all three text parts are present
         for (i, expected_text) in ["Hello, ", "world!", " How are you?"].iter().enumerate() {
             if let Part {
                 part: PartKind::Text(text),
                 ..
-            } = &response.candidates[0].content.parts[i]
+            } = &content.parts[i]
             {
                 assert_eq!(text, expected_text);
             } else {
@@ -337,13 +345,17 @@ mod tests {
         });
 
         let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
-        assert_eq!(response.candidates[0].content.parts.len(), 2);
+        let content = response.candidates[0]
+            .content
+            .as_ref()
+            .expect("candidate should contain content");
+        assert_eq!(content.parts.len(), 2);
 
         // Verify first tool call
         if let Part {
             part: PartKind::FunctionCall(call),
             ..
-        } = &response.candidates[0].content.parts[0]
+        } = &content.parts[0]
         {
             assert_eq!(call.name, "get_weather");
         } else {
@@ -354,7 +366,7 @@ mod tests {
         if let Part {
             part: PartKind::FunctionCall(call),
             ..
-        } = &response.candidates[0].content.parts[1]
+        } = &content.parts[1]
         {
             assert_eq!(call.name, "get_temperature");
         } else {
@@ -399,7 +411,11 @@ mod tests {
         });
 
         let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
-        let parts = &response.candidates[0].content.parts;
+        let content = response.candidates[0]
+            .content
+            .as_ref()
+            .expect("candidate should contain content");
+        let parts = &content.parts;
         assert_eq!(parts.len(), 4);
 
         // Verify reasoning (thought) part
@@ -469,7 +485,11 @@ mod tests {
         });
 
         let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
-        assert_eq!(response.candidates[0].content.parts.len(), 0);
+        let content = response.candidates[0]
+            .content
+            .as_ref()
+            .expect("candidate should contain content");
+        assert_eq!(content.parts.len(), 0);
     }
 
     #[test]

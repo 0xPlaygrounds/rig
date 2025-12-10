@@ -5,18 +5,18 @@
 
 use serde_json::json;
 
+use super::{Client, client::ApiResponse};
 use crate::{
     embeddings::{self, EmbeddingError},
     http_client::HttpClientExt,
     wasm_compat::WasmCompatSend,
 };
 
-use super::{Client, client::ApiResponse};
-
 /// `embedding-001` embedding model
 pub const EMBEDDING_001: &str = "embedding-001";
 /// `text-embedding-004` embedding model
 pub const EMBEDDING_004: &str = "text-embedding-004";
+
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
@@ -25,7 +25,15 @@ pub struct EmbeddingModel<T = reqwest::Client> {
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: &str, ndims: Option<usize>) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>, ndims: Option<usize>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+            ndims,
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str, ndims: Option<usize>) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -36,15 +44,18 @@ impl<T> EmbeddingModel<T> {
 
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
-    T: Clone + HttpClientExt,
+    T: Clone + HttpClientExt + 'static,
 {
+    type Client = Client<T>;
+
     const MAX_DOCUMENTS: usize = 1024;
 
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
+        Self::new(client.clone(), model, dims)
+    }
+
     fn ndims(&self) -> usize {
-        match self.model.as_str() {
-            EMBEDDING_001 | EMBEDDING_004 => 768,
-            _ => 0, // Default to 0 for unknown models
-        }
+        768
     }
 
     /// <https://ai.google.dev/api/embeddings#batch_embed_contents-SHELL>
@@ -73,13 +84,17 @@ where
 
         let request_body = json!({ "requests": requests  });
 
-        tracing::info!("{}", serde_json::to_string_pretty(&request_body).unwrap());
+        tracing::trace!(
+            target: "rig::embedding",
+            "Sending embedding request to Gemini API {}",
+            serde_json::to_string_pretty(&request_body).unwrap()
+        );
 
         let request_body = serde_json::to_vec(&request_body)?;
+        let path = format!("/v1beta/models/{}:batchEmbedContents", self.model);
         let req = self
             .client
-            .post(&format!("/v1beta/models/{}:batchEmbedContents", self.model))
-            .header("Content-Type", "application/json")
+            .post(path.as_str())?
             .body(request_body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
         let response = self.client.send::<_, Vec<u8>>(req).await?;

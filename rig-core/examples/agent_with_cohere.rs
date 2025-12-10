@@ -1,4 +1,5 @@
 use rig::prelude::*;
+use rig::providers::cohere::COMMAND_R;
 use rig::{
     completion::{Prompt, ToolDefinition},
     providers,
@@ -15,7 +16,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let client = providers::cohere::Client::from_env();
     let agent = client
-        .agent("command-r")
+        .agent(COMMAND_R)
         .preamble("You are a helpful assistant.")
         .build();
 
@@ -24,7 +25,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt and two tools
     let calculator_agent = client
-        .agent(providers::cohere::COMMAND_R)
+        .agent(COMMAND_R)
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
         .max_tokens(1024)
         .tool(Adder)

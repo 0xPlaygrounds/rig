@@ -4,7 +4,7 @@ use rig::prelude::*;
 use rig::{
     completion::ToolDefinition,
     integrations::cli_chatbot::ChatBotBuilder,
-    providers::openai::{Client, GPT_4O},
+    providers::openai::{self, Client},
     tool::Tool,
 };
 use serde::{Deserialize, Serialize};
@@ -311,7 +311,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with all tools
     let echochambers_agent = openai_client
-        .agent(GPT_4O)
+        .agent(openai::GPT_4O)
         .preamble(
             "You are an assistant designed to help users interact with EchoChambers rooms.
             You can send messages, retrieve message history, and analyze various metrics.

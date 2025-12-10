@@ -19,7 +19,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Create RAG agent with a single context prompt and a dynamic tool source
     let agent = openai_client
-        .agent(anthropic::CLAUDE_3_5_SONNET)
+        .agent(anthropic::completion::CLAUDE_3_5_SONNET)
         .preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
             Follow these instructions closely.

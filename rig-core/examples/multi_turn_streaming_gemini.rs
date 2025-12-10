@@ -1,4 +1,5 @@
 use futures::{Stream, StreamExt};
+use rig::client::ProviderClient;
 use rig::providers::gemini;
 use rig::tool::ToolError;
 use rig::{
@@ -43,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Create agent with a single context prompt and a calculator tools
     let calculator_agent = llm_client
-        .agent("gemini-2.5-flash")
+        .agent(gemini::completion::GEMINI_2_5_FLASH)
         .preamble("You are an calculator. You must use tools to get the user result")
         .tool(Add)
         .tool(Subtract)

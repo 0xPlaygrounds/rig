@@ -1,5 +1,6 @@
 use rig::integrations::discord_bot::DiscordExt;
 use rig::prelude::*;
+use rig::providers::openai;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -10,7 +11,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let mut discord_bot = client
-        .agent("gpt-4o")
+        .agent(openai::GPT_4O)
         .preamble("You are a helpful assistant.")
         .build()
         .into_discord_bot(&discord_bot_token)

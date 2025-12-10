@@ -29,7 +29,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let agent = client
-        .agent("gemini-2.5-pro")
+        .agent(gemini::completion::GEMINI_2_5_PRO_EXP_03_25)
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)
         // The `AdditionalParameters` utility struct helps construct a typesafe `additional_params`

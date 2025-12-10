@@ -1,10 +1,8 @@
-use std::env;
-
 use rig::agent::{CancelSignal, PromptHook};
-use rig::client::CompletionClient;
+use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, CompletionResponse, Message, Prompt};
 use rig::message::{AssistantContent, UserContent};
-use rig::providers;
+use rig::providers::{self, openai};
 
 #[derive(Clone)]
 struct SessionIdHook<'a> {
@@ -85,13 +83,11 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
 // Example main function (pseudo-code, as actual Agent/CompletionModel setup is project-specific)
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let client = providers::openai::Client::new(
-        &env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"),
-    );
+    let client = providers::openai::Client::from_env();
 
     // Create agent with a single context prompt
     let comedian_agent = client
-        .agent("gpt-4o")
+        .agent(openai::GPT_4O)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

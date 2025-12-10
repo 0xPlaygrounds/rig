@@ -7,9 +7,11 @@
 //! let client = mira::Client::new("YOUR_API_KEY");
 //!
 //! ```
-use crate::client::{CompletionClient, ProviderClient, VerifyClient, VerifyError};
+use crate::client::{
+    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient,
+};
 use crate::http_client::{self, HttpClientExt};
-use crate::json_utils::merge;
 use crate::message::{Document, DocumentSourceKind};
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
@@ -17,16 +19,59 @@ use crate::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
-    impl_conversion_traits,
     message::{self, AssistantContent, Message, UserContent},
 };
-use http::Method;
-use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use std::string::FromUtf8Error;
 use thiserror::Error;
 use tracing::{self, Instrument, info_span};
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MiraExt;
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MiraBuilder;
+
+type MiraApiKey = BearerAuth;
+
+impl Provider for MiraExt {
+    type Builder = MiraBuilder;
+
+    const VERIFY_PATH: &'static str = "/user-credits";
+
+    fn build<H>(
+        _: &crate::client::ClientBuilder<
+            Self::Builder,
+            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
+            H,
+        >,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
+    }
+}
+
+impl<H> Capabilities<H> for MiraExt {
+    type Completion = Capable<CompletionModel<H>>;
+    type Embeddings = Nothing;
+    type Transcription = Nothing;
+
+    #[cfg(feature = "image")]
+    type ImageGeneration = Nothing;
+
+    #[cfg(feature = "audio")]
+    type AudioGeneration = Nothing;
+}
+
+impl DebugExt for MiraExt {}
+
+impl ProviderBuilder for MiraBuilder {
+    type Output = MiraExt;
+    type ApiKey = MiraApiKey;
+
+    const BASE_URL: &'static str = MIRA_API_BASE_URL;
+}
+
+pub type Client<H = reqwest::Client> = client::Client<MiraExt, H>;
+pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<MiraBuilder, MiraApiKey, H>;
 
 #[derive(Debug, Error)]
 pub enum MiraError {
@@ -111,94 +156,9 @@ struct ModelInfo {
     id: String,
 }
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    api_key: &'a str,
-    base_url: &'a str,
-    http_client: T,
-}
-
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
-    pub fn new(api_key: &'a str) -> Self {
-        Self {
-            api_key,
-            base_url: MIRA_API_BASE_URL,
-            http_client: Default::default(),
-        }
-    }
-}
-
-impl<'a, T> ClientBuilder<'a, T> {
-    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
-        Self {
-            api_key,
-            base_url: MIRA_API_BASE_URL,
-            http_client,
-        }
-    }
-
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            api_key: self.api_key,
-            base_url: self.base_url,
-            http_client,
-        }
-    }
-
-    pub fn build(self) -> Client<T> {
-        let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        headers.insert(
-            reqwest::header::ACCEPT,
-            HeaderValue::from_static("application/json"),
-        );
-        headers.insert(
-            reqwest::header::USER_AGENT,
-            HeaderValue::from_static("rig-client/1.0"),
-        );
-
-        Client {
-            base_url: self.base_url.to_string(),
-            http_client: self.http_client,
-            api_key: self.api_key.to_string(),
-            headers,
-        }
-    }
-}
-
-#[derive(Clone)]
-/// Client for interacting with the Mira API
-pub struct Client<T = reqwest::Client> {
-    base_url: String,
-    http_client: T,
-    api_key: String,
-    headers: HeaderMap,
-}
-
-impl<T> std::fmt::Debug for Client<T>
-where
-    T: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client")
-            .field("base_url", &self.base_url)
-            .field("http_client", &self.http_client)
-            .field("api_key", &"<REDACTED>")
-            .field("headers", &self.headers)
-            .finish()
-    }
-}
-
 impl<T> Client<T>
 where
-    T: HttpClientExt,
+    T: HttpClientExt + 'static,
 {
     /// List available models
     pub async fn list_models(&self) -> Result<Vec<String>, MiraError> {
@@ -207,7 +167,7 @@ where
                 .map_err(http_client::Error::Protocol)
         })?;
 
-        let response = self.http_client.send(req).await?;
+        let response = self.send(req).await?;
 
         let status = response.status();
 
@@ -227,145 +187,48 @@ where
 
         Ok(models.data.into_iter().map(|model| model.id).collect())
     }
-
-    fn req(
-        &self,
-        method: http_client::Method,
-        path: &str,
-    ) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
-
-        let mut req = http_client::Builder::new().method(method).uri(url);
-
-        if let Some(hs) = req.headers_mut() {
-            *hs = self.headers.clone();
-        }
-
-        http_client::with_bearer_auth(req, &self.api_key)
-    }
-
-    pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        self.req(http_client::Method::POST, path)
-    }
 }
 
-impl Client<reqwest::Client> {
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::new(api_key)
-    }
+impl ProviderClient for Client {
+    type Input = String;
 
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key).build()
-    }
-
-    pub fn from_env() -> Self {
-        <Self as ProviderClient>::from_env()
-    }
-}
-
-impl<T> ProviderClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
     /// Create a new Mira client from the `MIRA_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("MIRA_API_KEY").expect("MIRA_API_KEY not set");
-        ClientBuilder::<T>::new(&api_key).build()
+        Self::new(&api_key).unwrap()
     }
 
-    fn from_val(input: crate::client::ProviderValue) -> Self {
-        let crate::client::ProviderValue::Simple(api_key) = input else {
-            panic!("Incorrect provider value type")
-        };
-        ClientBuilder::<T>::new(&api_key).build()
+    fn from_val(input: Self::Input) -> Self {
+        Self::new(&input).unwrap()
     }
 }
 
-impl<T> CompletionClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    type CompletionModel = CompletionModel<T>;
-
-    /// Create a completion model with the given name.
-    fn completion_model(&self, model: &str) -> Self::CompletionModel {
-        CompletionModel::new(self.to_owned(), model)
-    }
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct MiraCompletionRequest {
+    model: String,
+    pub messages: Vec<RawMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u64>,
+    pub stream: bool,
 }
 
-impl<T> VerifyClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn verify(&self) -> Result<(), VerifyError> {
-        let req = self
-            .get("/user-credits")?
-            .body(http_client::NoBody)
-            .map_err(http_client::Error::from)?;
+impl TryFrom<(&str, CompletionRequest)> for MiraCompletionRequest {
+    type Error = CompletionError;
 
-        let response = HttpClientExt::send(&self.http_client, req).await?;
-
-        match response.status() {
-            reqwest::StatusCode::OK => Ok(()),
-            reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
-            reqwest::StatusCode::INTERNAL_SERVER_ERROR
-            | reqwest::StatusCode::SERVICE_UNAVAILABLE
-            | reqwest::StatusCode::BAD_GATEWAY => {
-                let text = http_client::text(response).await?;
-                Err(VerifyError::ProviderError(text))
-            }
-            _ => {
-                //response.error_for_status()?;
-                Ok(())
-            }
-        }
-    }
-}
-
-impl_conversion_traits!(
-    AsEmbeddings,
-    AsTranscription,
-    AsImageGeneration,
-    AsAudioGeneration for Client<T>
-);
-
-#[derive(Clone)]
-pub struct CompletionModel<T> {
-    client: Client<T>,
-    /// Name of the model
-    pub model: String,
-}
-
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
-
-    fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        if completion_request.tool_choice.is_some() {
-            tracing::warn!("WARNING: `tool_choice` not supported on Mira AI");
-        }
-
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         let mut messages = Vec::new();
 
-        // Add preamble as user message if available
-        if let Some(preamble) = &completion_request.preamble {
-            messages.push(serde_json::json!({
-                "role": "user",
-                "content": preamble.to_string()
-            }));
+        if let Some(content) = &req.preamble {
+            messages.push(RawMessage {
+                role: "user".to_string(),
+                content: content.to_string(),
+            });
         }
 
-        // Add docs
-        if let Some(Message::User { content }) = completion_request.normalized_documents() {
+        if let Some(Message::User { content }) = req.normalized_documents() {
             let text = content
                 .into_iter()
                 .filter_map(|doc| match doc {
@@ -381,14 +244,13 @@ impl<T> CompletionModel<T> {
                 .collect::<Vec<_>>()
                 .join("\n");
 
-            messages.push(serde_json::json!({
-                "role": "user",
-                "content": text
-            }));
+            messages.push(RawMessage {
+                role: "user".to_string(),
+                content: text,
+            });
         }
 
-        // Add chat history
-        for msg in completion_request.chat_history {
+        for msg in req.chat_history {
             let (role, content) = match msg {
                 Message::User { content } => {
                     let text = content
@@ -413,21 +275,35 @@ impl<T> CompletionModel<T> {
                     ("assistant", text)
                 }
             };
-            messages.push(serde_json::json!({
-                "role": role,
-                "content": content
-            }));
+            messages.push(RawMessage {
+                role: role.to_string(),
+                content,
+            });
         }
 
-        let request = serde_json::json!({
-            "model": self.model,
-            "messages": messages,
-            "temperature": completion_request.temperature.map(|t| t as f32).unwrap_or(0.7),
-            "max_tokens": completion_request.max_tokens.map(|t| t as u32).unwrap_or(100),
-            "stream": false
-        });
+        Ok(Self {
+            model: model.to_string(),
+            messages,
+            temperature: req.temperature,
+            max_tokens: req.max_tokens,
+            stream: false,
+        })
+    }
+}
 
-        Ok(request)
+#[derive(Clone)]
+pub struct CompletionModel<T = reqwest::Client> {
+    client: Client<T>,
+    /// Name of the model
+    pub model: String,
+}
+
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 
@@ -438,22 +314,17 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        if !completion_request.tools.is_empty() {
-            tracing::warn!(target: "rig::completions",
-                "Tool calls are not supported by the Mira provider. {len} tools will be ignored.",
-                len = completion_request.tools.len()
-            );
-        }
-
-        let preamble = completion_request.preamble.clone();
-
-        let request = self.create_completion_request(completion_request)?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -461,31 +332,53 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "mira",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
+        span.record("gen_ai.system_instructions", &completion_request.preamble);
+
+        if !completion_request.tools.is_empty() {
+            tracing::warn!(target: "rig::completions",
+                "Tool calls are not supported by Mira AI. {len} tools will be ignored.",
+                len = completion_request.tools.len()
+            );
+        }
+
+        if completion_request.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported on Mira AI");
+        }
+
+        if completion_request.additional_params.is_some() {
+            tracing::warn!("WARNING: Additional parameters not supported on Mira AI");
+        }
+
+        let request = MiraCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if tracing::enabled!(tracing::Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "Mira completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let body = serde_json::to_vec(&request)?;
 
         let req = self
             .client
-            .req(Method::POST, "/v1/chat/completions")?
-            .header("Content-Type", "application/json")
+            .post("/v1/chat/completions")?
             .body(body)
             .map_err(http_client::Error::from)?;
 
         let async_block = async move {
             let response = self
                 .client
-                .http_client
                 .send::<_, bytes::Bytes>(req)
                 .await
                 .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
@@ -503,21 +396,20 @@ where
 
             let response: CompletionResponse = serde_json::from_slice(&response_body)?;
 
+            if tracing::enabled!(tracing::Level::TRACE) {
+                tracing::trace!(target: "rig::completions",
+                    "Mira completion response: {}",
+                    serde_json::to_string_pretty(&response)?
+                );
+            }
+
             if let CompletionResponse::Structured {
-                id,
-                model,
-                choices,
-                usage,
-                ..
+                id, model, usage, ..
             } = &response
             {
                 let span = tracing::Span::current();
                 span.record("gen_ai.response.model_name", model);
                 span.record("gen_ai.response.id", id);
-                span.record(
-                    "gen_ai.output.messages",
-                    serde_json::to_string(choices).unwrap(),
-                );
                 if let Some(usage) = usage {
                     span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
                     span.record(
@@ -538,9 +430,6 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let mut request = self.create_completion_request(completion_request)?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -548,28 +437,52 @@ where
                 gen_ai.operation.name = "chat_streaming",
                 gen_ai.provider.name = "mira",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
-        request = merge(request, json!({"stream": true}));
+
+        span.record("gen_ai.system_instructions", &completion_request.preamble);
+
+        if !completion_request.tools.is_empty() {
+            tracing::warn!(target: "rig::completions",
+                "Tool calls are not supported by Mira AI. {len} tools will be ignored.",
+                len = completion_request.tools.len()
+            );
+        }
+
+        if completion_request.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported on Mira AI");
+        }
+
+        if completion_request.additional_params.is_some() {
+            tracing::warn!("WARNING: Additional parameters not supported on Mira AI");
+        }
+        let mut request =
+            MiraCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+        request.stream = true;
+
+        if tracing::enabled!(tracing::Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "Mira completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let body = serde_json::to_vec(&request)?;
 
         let req = self
             .client
-            .req(Method::POST, "/v1/chat/completions")?
-            .header("Content-Type", "application/json")
+            .post("/v1/chat/completions")?
             .body(body)
             .map_err(http_client::Error::from)?;
 
-        send_compatible_streaming_request(self.client.http_client.clone(), req)
+        send_compatible_streaming_request(self.client.clone(), req)
             .instrument(span)
             .await
     }

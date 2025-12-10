@@ -1,4 +1,4 @@
-use rig::client::CompletionClient;
+use rig::client::{CompletionClient, ProviderClient};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
@@ -37,7 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create extractor
     let data_extractor = client
-        .extractor::<Person>("gemini-2.0-flash")
+        .extractor::<Person>(gemini::completion::GEMINI_2_0_FLASH)
         .additional_params(serde_json::to_value(cfg).unwrap())
         .build();
 

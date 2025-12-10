@@ -14,7 +14,7 @@
 //!
 //! # Simple example:
 //! ```
-//! use rig::{completion::Prompt, providers::openai};
+//! use rig::{client::CompletionClient, completion::Prompt, providers::openai};
 //!
 //! #[tokio::main]
 //! async fn main() {
@@ -129,6 +129,7 @@ pub mod one_or_many;
 pub mod pipeline;
 pub mod prelude;
 pub mod providers;
+
 pub mod streaming;
 pub mod tool;
 pub mod tools;
@@ -143,6 +144,6 @@ pub use one_or_many::{EmptyListError, OneOrMany};
 
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
-pub use rig_derive::Embed;
+pub use rig_derive::{Embed, rig_tool as tool_macro};
 
 pub mod telemetry;

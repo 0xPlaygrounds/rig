@@ -194,6 +194,7 @@ pub mod rmcp {
     use rmcp::model::RawContent;
     use std::borrow::Cow;
 
+    #[derive(Clone)]
     pub struct McpTool {
         definition: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
@@ -321,10 +322,10 @@ pub mod rmcp {
                             ),
                         },
                         RawContent::Audio(_) => {
-                            unimplemented!("Support for audio results from an MCP tool is currently unimplemented. Come back later!")
+                            panic!("Support for audio results from an MCP tool is currently unimplemented. Come back later!")
                         }
                         thing => {
-                            unimplemented!("Unsupported type found: {thing:?}")
+                            panic!("Unsupported type found: {thing:?}")
                         }
                     })
                     .collect::<String>())
@@ -462,7 +463,7 @@ impl ToolSet {
     /// Call a tool with the given name and arguments
     pub async fn call(&self, toolname: &str, args: String) -> Result<String, ToolSetError> {
         if let Some(tool) = self.tools.get(toolname) {
-            tracing::info!(target: "rig",
+            tracing::debug!(target: "rig",
                 "Calling tool {toolname} with args:\n{}",
                 serde_json::to_string_pretty(&args).unwrap()
             );

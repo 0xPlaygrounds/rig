@@ -8,9 +8,11 @@
 //!
 //! let moonshot_model = client.completion_model(moonshot::MOONSHOT_CHAT);
 //! ```
-use crate::client::{CompletionClient, ProviderClient, VerifyClient, VerifyError};
+use crate::client::{
+    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient,
+};
 use crate::http_client::HttpClientExt;
-use crate::json_utils::merge;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
@@ -18,10 +20,8 @@ use crate::{
     json_utils,
     providers::openai,
 };
-use crate::{http_client, impl_conversion_traits, message};
-use http::Method;
+use crate::{http_client, message};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
 
 // ================================================================
@@ -29,186 +29,66 @@ use tracing::{Instrument, info_span};
 // ================================================================
 const MOONSHOT_API_BASE_URL: &str = "https://api.moonshot.cn/v1";
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    api_key: &'a str,
-    base_url: &'a str,
-    http_client: T,
-}
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MoonshotExt;
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MoonshotBuilder;
 
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
-    pub fn new(api_key: &'a str) -> Self {
-        Self {
-            api_key,
-            base_url: MOONSHOT_API_BASE_URL,
-            http_client: Default::default(),
-        }
+type MoonshotApiKey = BearerAuth;
+
+impl Provider for MoonshotExt {
+    type Builder = MoonshotBuilder;
+
+    const VERIFY_PATH: &'static str = "/models";
+
+    fn build<H>(
+        _: &crate::client::ClientBuilder<
+            Self::Builder,
+            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
+            H,
+        >,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 
-impl<'a, T> ClientBuilder<'a, T> {
-    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
-        Self {
-            api_key,
-            base_url: MOONSHOT_API_BASE_URL,
-            http_client,
-        }
-    }
+impl DebugExt for MoonshotExt {}
 
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
+impl ProviderBuilder for MoonshotBuilder {
+    type Output = MoonshotExt;
+    type ApiKey = MoonshotApiKey;
 
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            api_key: self.api_key,
-            base_url: self.base_url,
-            http_client,
-        }
-    }
-
-    pub fn build(self) -> Client<T> {
-        Client {
-            base_url: self.base_url.to_string(),
-            api_key: self.api_key.to_string(),
-            http_client: self.http_client,
-        }
-    }
+    const BASE_URL: &'static str = MOONSHOT_API_BASE_URL;
 }
 
-#[derive(Clone)]
-pub struct Client<T = reqwest::Client> {
-    base_url: String,
-    api_key: String,
-    http_client: T,
+impl<H> Capabilities<H> for MoonshotExt {
+    type Completion = Capable<CompletionModel<H>>;
+    type Embeddings = Nothing;
+    type Transcription = Nothing;
+    #[cfg(feature = "image")]
+    type ImageGeneration = Nothing;
+    #[cfg(feature = "audio")]
+    type AudioGeneration = Nothing;
 }
 
-impl<T> std::fmt::Debug for Client<T>
-where
-    T: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client")
-            .field("base_url", &self.base_url)
-            .field("http_client", &self.http_client)
-            .field("api_key", &"<REDACTED>")
-            .finish()
-    }
-}
+pub type Client<H = reqwest::Client> = client::Client<MoonshotExt, H>;
+pub type ClientBuilder<H = reqwest::Client> =
+    client::ClientBuilder<MoonshotBuilder, MoonshotApiKey, H>;
 
-impl<T> Client<T>
-where
-    T: HttpClientExt,
-{
-    fn req(
-        &self,
-        method: http_client::Method,
-        path: &str,
-    ) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+impl ProviderClient for Client {
+    type Input = String;
 
-        http_client::with_bearer_auth(
-            http_client::Builder::new().method(method).uri(url),
-            &self.api_key,
-        )
-    }
-
-    pub(crate) fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        self.req(http_client::Method::GET, path)
-    }
-}
-
-impl Client<reqwest::Client> {
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::new(api_key)
-    }
-
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key).build()
-    }
-
-    pub fn from_env() -> Self {
-        <Self as ProviderClient>::from_env()
-    }
-}
-
-impl<T> ProviderClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
     /// Create a new Moonshot client from the `MOONSHOT_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("MOONSHOT_API_KEY").expect("MOONSHOT_API_KEY not set");
-        ClientBuilder::<T>::new(&api_key).build()
+        Self::new(&api_key).unwrap()
     }
 
-    fn from_val(input: crate::client::ProviderValue) -> Self {
-        let crate::client::ProviderValue::Simple(api_key) = input else {
-            panic!("Incorrect provider value type")
-        };
-        ClientBuilder::<T>::new(&api_key).build()
+    fn from_val(input: Self::Input) -> Self {
+        Self::new(&input).unwrap()
     }
 }
-
-impl<T> CompletionClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    type CompletionModel = CompletionModel<T>;
-
-    /// Create a completion model with the given name.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::moonshot::{Client, self};
-    ///
-    /// // Initialize the Moonshot client
-    /// let moonshot = Client::new("your-moonshot-api-key");
-    ///
-    /// let completion_model = moonshot.completion_model(moonshot::MOONSHOT_CHAT);
-    /// ```
-    fn completion_model(&self, model: &str) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model)
-    }
-}
-
-impl<T> VerifyClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn verify(&self) -> Result<(), VerifyError> {
-        let req = self
-            .get("/models")?
-            .body(http_client::NoBody)
-            .map_err(http_client::Error::from)?;
-
-        let response = HttpClientExt::send(&self.http_client, req).await?;
-
-        match response.status() {
-            reqwest::StatusCode::OK => Ok(()),
-            reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
-            reqwest::StatusCode::INTERNAL_SERVER_ERROR
-            | reqwest::StatusCode::SERVICE_UNAVAILABLE
-            | reqwest::StatusCode::BAD_GATEWAY => {
-                let text = http_client::text(response).await?;
-                Err(VerifyError::ProviderError(text))
-            }
-            _ => Ok(()),
-        }
-    }
-}
-
-impl_conversion_traits!(
-    AsEmbeddings,
-    AsTranscription,
-    AsImageGeneration,
-    AsAudioGeneration for Client<T>
-);
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
@@ -230,39 +110,41 @@ enum ApiResponse<T> {
 // ================================================================
 // Moonshot Completion API
 // ================================================================
+
 pub const MOONSHOT_CHAT: &str = "moonshot-v1-128k";
 
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct MoonshotCompletionRequest {
+    model: String,
+    pub messages: Vec<openai::Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<openai::ToolDefinition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
 }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
+impl TryFrom<(&str, CompletionRequest)> for MoonshotCompletionRequest {
+    type Error = CompletionError;
 
-    fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        // Build up the order of messages (context, chat_history)
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
+        if let Some(docs) = req.normalized_documents() {
             partial_history.push(docs);
         }
-        partial_history.extend(completion_request.chat_history);
+        partial_history.extend(req.chat_history);
 
-        // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<openai::Message> = completion_request
-            .preamble
-            .map_or_else(Vec::new, |preamble| {
-                vec![openai::Message::system(&preamble)]
-            });
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<openai::Message> = match &req.preamble {
+            Some(preamble) => vec![openai::Message::system(preamble)],
+            None => vec![],
+        };
 
         // Convert and extend the rest of the history
         full_history.extend(
@@ -275,36 +157,41 @@ impl<T> CompletionModel<T> {
                 .collect::<Vec<_>>(),
         );
 
-        let tool_choice = completion_request
+        let tool_choice = req
             .tool_choice
-            .map(ToolChoice::try_from)
+            .clone()
+            .map(crate::providers::openai::ToolChoice::try_from)
             .transpose()?;
 
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "max_tokens": completion_request.max_tokens,
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "max_tokens": completion_request.max_tokens,
-                "tools": completion_request.tools.into_iter().map(openai::ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": tool_choice,
-            })
-        };
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            max_tokens: req.max_tokens,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(openai::ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+        })
+    }
+}
 
-        let request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
+#[derive(Clone)]
+pub struct CompletionModel<T = reqwest::Client> {
+    client: Client<T>,
+    pub model: String,
+}
 
-        Ok(request)
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 
@@ -315,19 +202,17 @@ where
     type Response = openai::CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let request = self.create_completion_request(completion_request)?;
-
-        println!(
-            "Moonshot API input: {request}",
-            request = serde_json::to_string_pretty(&request).unwrap()
-        );
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -335,28 +220,37 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "moonshot",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
+        span.record("gen_ai.system_instructions", &completion_request.preamble);
+
+        let request =
+            MoonshotCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if tracing::enabled!(tracing::Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "MoonShot completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let body = serde_json::to_vec(&request)?;
         let req = self
             .client
-            .req(Method::POST, "/chat/completions")?
-            .header("Content-Type", "application/json")
+            .post("/chat/completions")?
             .body(body)
             .map_err(http_client::Error::from)?;
 
         let async_block = async move {
-            let response = self.client.http_client.send::<_, bytes::Bytes>(req).await?;
+            let response = self.client.send::<_, bytes::Bytes>(req).await?;
 
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
@@ -366,19 +260,20 @@ where
                     &response_body,
                 )? {
                     ApiResponse::Ok(response) => {
-                        tracing::debug!(target: "rig::completions", "MoonShot completion response: {t}", t = serde_json::to_string_pretty(&response)?);
                         let span = tracing::Span::current();
                         span.record("gen_ai.response.id", response.id.clone());
                         span.record("gen_ai.response.model_name", response.model.clone());
-                        span.record(
-                            "gen_ai.output.messages",
-                            serde_json::to_string(&response.choices).unwrap(),
-                        );
                         if let Some(ref usage) = response.usage {
                             span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
                             span.record(
                                 "gen_ai.usage.output_tokens",
                                 usage.total_tokens - usage.prompt_tokens,
+                            );
+                        }
+                        if tracing::enabled!(tracing::Level::TRACE) {
+                            tracing::trace!(target: "rig::completions",
+                                "MoonShot completion response: {}",
+                                serde_json::to_string_pretty(&response)?
                             );
                         }
                         response.try_into()
@@ -400,9 +295,6 @@ where
         &self,
         request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let preamble = request.preamble.clone();
-        let mut request = self.create_completion_request(request)?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -410,32 +302,41 @@ where
                 gen_ai.operation.name = "chat_streaming",
                 gen_ai.provider.name = "moonshot",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
-        request = merge(
-            request,
-            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        span.record("gen_ai.system_instructions", &request.preamble);
+        let mut request = MoonshotCompletionRequest::try_from((self.model.as_ref(), request))?;
+
+        let params = json_utils::merge(
+            request.additional_params.unwrap_or(serde_json::json!({})),
+            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
         );
+
+        request.additional_params = Some(params);
+
+        if tracing::enabled!(tracing::Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "MoonShot streaming completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let body = serde_json::to_vec(&request)?;
         let req = self
             .client
-            .req(Method::POST, "/chat/completions")?
-            .header("Content-Type", "application/json")
+            .post("/chat/completions")?
             .body(body)
             .map_err(http_client::Error::from)?;
 
-        send_compatible_streaming_request(self.client.http_client.clone(), req)
+        send_compatible_streaming_request(self.client.clone(), req)
             .instrument(span)
             .await
     }

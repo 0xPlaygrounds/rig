@@ -20,10 +20,11 @@ use crate::message::{
 };
 use crate::one_or_many::string_or_one_or_many;
 
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, message};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Level, enabled, info_span};
 
 use std::convert::Infallible;
 use std::ops::Add;
@@ -394,6 +395,12 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 }),
                             });
                         }
+                        crate::message::AssistantContent::Image(_) => {
+                            return Err(CompletionError::ProviderError(
+                                "Assistant image content is not supported in OpenAI Responses API"
+                                    .to_string(),
+                            ));
+                        }
                     }
                 }
 
@@ -425,51 +432,6 @@ pub struct ResponsesToolDefinition {
     pub description: String,
 }
 
-/// Recursively ensures all object schemas in a JSON schema have `additionalProperties: false`.
-/// Nested arrays, schema $defs, object properties and enums should be handled through this method
-/// This seems to be required by OpenAI's Responses API when using strict mode.
-fn add_props_false(schema: &mut serde_json::Value) {
-    if let Value::Object(obj) = schema {
-        let is_object_schema = obj.get("type") == Some(&Value::String("object".to_string()))
-            || obj.contains_key("properties");
-
-        if is_object_schema && !obj.contains_key("additionalProperties") {
-            obj.insert("additionalProperties".to_string(), Value::Bool(false));
-        }
-
-        if let Some(defs) = obj.get_mut("$defs")
-            && let Value::Object(defs_obj) = defs
-        {
-            for (_, def_schema) in defs_obj.iter_mut() {
-                add_props_false(def_schema);
-            }
-        }
-
-        if let Some(properties) = obj.get_mut("properties")
-            && let Value::Object(props) = properties
-        {
-            for (_, prop_value) in props.iter_mut() {
-                add_props_false(prop_value);
-            }
-        }
-
-        if let Some(items) = obj.get_mut("items") {
-            add_props_false(items);
-        }
-
-        // should handle Enums (anyOf/oneOf)
-        for key in ["anyOf", "oneOf", "allOf"] {
-            if let Some(variants) = obj.get_mut(key)
-                && let Value::Array(variants_array) = variants
-            {
-                for variant in variants_array.iter_mut() {
-                    add_props_false(variant);
-                }
-            }
-        }
-    }
-}
-
 impl From<completion::ToolDefinition> for ResponsesToolDefinition {
     fn from(value: completion::ToolDefinition) -> Self {
         let completion::ToolDefinition {
@@ -478,7 +440,7 @@ impl From<completion::ToolDefinition> for ResponsesToolDefinition {
             description,
         } = value;
 
-        add_props_false(&mut parameters);
+        super::sanitize_schema(&mut parameters);
 
         Self {
             name,
@@ -706,7 +668,14 @@ where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
 {
     /// Creates a new [`ResponsesCompletionModel`].
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -715,7 +684,7 @@ where
 
     /// Use the Completions API instead of Responses.
     pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel<T> {
-        crate::providers::openai::completion::CompletionModel::new(self.client, &self.model)
+        super::completion::CompletionModel::with_model(self.client.completions_api(), &self.model)
     }
 
     /// Attempt to create a completion request from [`crate::completion::CompletionRequest`].
@@ -755,6 +724,7 @@ pub struct CompletionResponse {
     /// The model output (messages, etc will go here)
     pub output: Vec<Output>,
     /// Tools
+    #[serde(default)]
     pub tools: Vec<ResponsesToolDefinition>,
     /// Additional parameters
     #[serde(flatten)]
@@ -1037,12 +1007,23 @@ pub enum OutputRole {
 
 impl<T> completion::CompletionModel for ResponsesCompletionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+    T: HttpClientExt
+        + Clone
+        + std::fmt::Debug
+        + Default
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
+    type Client = super::Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
+
     async fn completion(
         &self,
         completion_request: crate::completion::CompletionRequest,
@@ -1068,21 +1049,19 @@ where
         span.record("gen_ai.provider.name", "openai");
         span.record("gen_ai.request.model", &self.model);
         let request = self.create_completion_request(completion_request)?;
-        span.record(
-            "gen_ai.input.messages",
-            serde_json::to_string(&request.input)
-                .expect("openai request to successfully turn into a JSON value"),
-        );
         let body = serde_json::to_vec(&request)?;
-        tracing::debug!(
-            "OpenAI Responses API input: {request}",
-            request = serde_json::to_string_pretty(&request).unwrap()
-        );
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "OpenAI Responses completion request: {request}",
+                request = serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let req = self
             .client
             .post("/responses")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
@@ -1093,18 +1072,19 @@ where
                 let t = http_client::text(response).await?;
                 let response = serde_json::from_str::<Self::Response>(&t)?;
                 let span = tracing::Span::current();
-                span.record(
-                    "gen_ai.output.messages",
-                    serde_json::to_string(&response.output).unwrap(),
-                );
                 span.record("gen_ai.response.id", &response.id);
                 span.record("gen_ai.response.model", &response.model);
                 if let Some(ref usage) = response.usage {
                     span.record("gen_ai.usage.output_tokens", usage.output_tokens);
                     span.record("gen_ai.usage.input_tokens", usage.input_tokens);
                 }
-                // We need to call the event here to get the span to actually send anything
-                tracing::info!("API successfully called");
+                if enabled!(Level::TRACE) {
+                    tracing::trace!(
+                        target: "rig::completions",
+                        "OpenAI Responses completion response: {response}",
+                        response = serde_json::to_string_pretty(&response)?
+                    );
+                }
                 response.try_into()
             } else {
                 let text = http_client::text(response).await?;
@@ -1465,6 +1445,11 @@ impl TryFrom<message::Message> for Vec<Message> {
                         name: None,
                         status: (ToolStatus::Completed),
                     }]),
+                    crate::message::AssistantContent::Image(_) => {
+                        Err(MessageError::ConversionError(
+                            "Assistant image content is not supported in OpenAI Responses API".into(),
+                        ))
+                    }
                 }
             }
         }

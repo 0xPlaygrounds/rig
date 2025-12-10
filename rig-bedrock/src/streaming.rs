@@ -85,7 +85,14 @@ impl CompletionModel {
                             },
                             aws_bedrock::ContentBlockDelta::ToolUse(tool) => {
                                 if let Some(ref mut tool_call) = current_tool_call {
-                                    tool_call.input_json.push_str(tool.input());
+                                    let delta = tool.input().to_string();
+                                    tool_call.input_json.push_str(&delta);
+
+                                    // Emit the delta so UI can show progress
+                                    yield Ok(RawStreamingChoice::ToolCallDelta {
+                                        id: tool_call.id.clone(),
+                                        delta,
+                                    });
                                 }
                             },
                             aws_bedrock::ContentBlockDelta::ReasoningContent(reasoning) => {
@@ -365,5 +372,104 @@ mod tests {
         assert_eq!(state.name, "my_tool");
         assert_eq!(state.id, "tool_123");
         assert_eq!(state.input_json, "{\"arg1\":\"value1\"}");
+    }
+
+    #[test]
+    fn test_tool_call_state_empty_accumulation() {
+        let state = ToolCallState {
+            name: "test_tool".to_string(),
+            id: "tool_abc".to_string(),
+            input_json: String::new(),
+        };
+
+        assert_eq!(state.name, "test_tool");
+        assert_eq!(state.id, "tool_abc");
+        assert!(state.input_json.is_empty());
+    }
+
+    #[test]
+    fn test_tool_call_state_single_chunk() {
+        let mut state = ToolCallState {
+            name: "get_weather".to_string(),
+            id: "call_123".to_string(),
+            input_json: String::new(),
+        };
+
+        state.input_json.push_str("{\"location\":\"Paris\"}");
+
+        assert_eq!(state.input_json, "{\"location\":\"Paris\"}");
+    }
+
+    #[test]
+    fn test_tool_call_state_multiple_small_chunks() {
+        let mut state = ToolCallState {
+            name: "search".to_string(),
+            id: "call_xyz".to_string(),
+            input_json: String::new(),
+        };
+
+        // Simulate multiple small chunks arriving
+        let chunks = vec!["{", "\"q", "uery", "\":", "\"R", "ust", "\"}"];
+
+        for chunk in chunks {
+            state.input_json.push_str(chunk);
+        }
+
+        assert_eq!(state.input_json, "{\"query\":\"Rust\"}");
+    }
+
+    #[test]
+    fn test_tool_call_state_complex_json_accumulation() {
+        let mut state = ToolCallState {
+            name: "analyze_data".to_string(),
+            id: "call_456".to_string(),
+            input_json: String::new(),
+        };
+
+        // Simulate accumulating a complex nested JSON
+        state.input_json.push_str("{\"data\":{");
+        state.input_json.push_str("\"values\":[1,2,3],");
+        state
+            .input_json
+            .push_str("\"metadata\":{\"source\":\"api\"}");
+        state.input_json.push_str("}}");
+
+        assert_eq!(
+            state.input_json,
+            "{\"data\":{\"values\":[1,2,3],\"metadata\":{\"source\":\"api\"}}}"
+        );
+
+        // Verify it's valid JSON
+        let parsed: serde_json::Value =
+            serde_json::from_str(&state.input_json).expect("Should parse as valid JSON");
+        assert!(parsed.is_object());
+    }
+
+    #[test]
+    fn test_reasoning_state_accumulation() {
+        let mut state = ReasoningState::default();
+
+        state.content.push_str("First, ");
+        state.content.push_str("I need to ");
+        state.content.push_str("analyze the problem.");
+
+        assert_eq!(state.content, "First, I need to analyze the problem.");
+        assert!(state.signature.is_none());
+    }
+
+    #[test]
+    fn test_reasoning_state_with_signature_accumulation() {
+        let mut state = ReasoningState::default();
+
+        state.content.push_str("Reasoning content here");
+        state.signature = Some("sig_part1".to_string());
+
+        // Simulate signature being built up (in practice it comes in one chunk)
+        if let Some(ref mut sig) = state.signature {
+            sig.push_str("_part2");
+        }
+
+        assert_eq!(state.content, "Reasoning content here");
+        assert_eq!(state.signature, Some("sig_part1_part2".to_string()));
     }
 }

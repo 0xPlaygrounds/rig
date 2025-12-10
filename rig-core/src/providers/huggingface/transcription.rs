@@ -11,6 +11,7 @@ use serde_json::json;
 
 pub const WHISPER_LARGE_V3: &str = "openai/whisper-large-v3";
 pub const WHISPER_LARGE_V3_TURBO: &str = "openai/whisper-large-v3-turbo";
+
 pub const WHISPER_SMALL: &str = "openai/whisper-small";
 
 #[derive(Debug, Deserialize)]
@@ -39,18 +40,24 @@ pub struct TranscriptionModel<T = reqwest::Client> {
 }
 
 impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
 impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
 where
-    T: HttpClientExt + Clone + WasmCompatSync,
+    T: HttpClientExt + Clone + WasmCompatSync + 'static,
 {
     type Response = TranscriptionResponse;
+
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        TranscriptionModel::new(client.clone(), model)
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn transcription(
@@ -66,7 +73,7 @@ where
 
         let route = self
             .client
-            .sub_provider
+            .subprovider()
             .transcription_endpoint(&self.model)?;
 
         let request = serde_json::to_vec(&request)?;

@@ -158,7 +158,11 @@ where
 mod tests {
     use crate::{
         Embed,
-        embeddings::{Embedding, EmbeddingModel, embed::EmbedError, embed::TextEmbedder},
+        client::Nothing,
+        embeddings::{
+            Embedding, EmbeddingModel,
+            embed::{EmbedError, TextEmbedder},
+        },
     };
 
     use super::EmbeddingsBuilder;
@@ -168,6 +172,12 @@ mod tests {
 
     impl EmbeddingModel for Model {
         const MAX_DOCUMENTS: usize = 5;
+
+        type Client = Nothing;
+
+        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
+            Self
+        }
 
         fn ndims(&self) -> usize {
             10

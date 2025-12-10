@@ -122,20 +122,36 @@ where
 {
     /// Vector search stage of aggregation pipeline of mongoDB collection.
     /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
-    fn pipeline_search_stage(&self, prompt_embedding: &Embedding, n: usize) -> bson::Document {
+    fn pipeline_search_stage(
+        &self,
+        prompt_embedding: &Embedding,
+        req: &VectorSearchRequest<MongoDbSearchFilter>,
+    ) -> bson::Document {
         let SearchParams {
-            filter,
             exact,
             num_candidates,
         } = &self.search_params;
+
+        let samples = req.samples() as usize;
+
+        let thresh = req
+            .threshold()
+            .map(|thresh| MongoDbSearchFilter::gte("score".into(), thresh.into()));
+
+        let filter = match (thresh, req.filter()) {
+            (Some(thresh), Some(filt)) => thresh.and(filt.clone()).into_inner(),
+            (Some(thresh), _) => thresh.into_inner(),
+            (_, Some(filt)) => filt.clone().into_inner(),
+            _ => Default::default(),
+        };
 
         doc! {
           "$vectorSearch": {
             "index": &self.index_name,
             "path": self.embedded_field.clone(),
             "queryVector": &prompt_embedding.vec,
-            "numCandidates": num_candidates.unwrap_or((n * 10) as u32),
-            "limit": n as u32,
+            "numCandidates": num_candidates.unwrap_or((samples * 10) as u32),
+            "limit": samples as u32,
             "filter": filter,
             "exact": exact.unwrap_or(false)
           }
@@ -201,7 +217,6 @@ where
 /// on each of the fields
 #[derive(Default)]
 pub struct SearchParams {
-    filter: mongodb::bson::Document,
     exact: Option<bool>,
     num_candidates: Option<u32>,
 }
@@ -210,17 +225,9 @@ impl SearchParams {
     /// Initializes a new `SearchParams` with default values.
     pub fn new() -> Self {
         Self {
-            filter: doc! {},
             exact: None,
             num_candidates: None,
         }
-    }
-
-    /// Sets the pre-filter field of the search params.
-    /// See [MongoDB vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information.
-    pub fn filter(mut self, filter: mongodb::bson::Document) -> Self {
-        self.filter = filter;
-        self
     }
 
     /// Sets the exact field of the search params.
@@ -270,9 +277,8 @@ impl SearchFilter for MongoDbSearchFilter {
 }
 
 impl MongoDbSearchFilter {
-    /// Render the filter as a MonadDB `$match` expression
-    pub fn into_document(self) -> Document {
-        doc! { "$match": self.0 }
+    fn into_inner(self) -> Document {
+        self.0
     }
 
     pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
@@ -285,7 +291,25 @@ impl MongoDbSearchFilter {
 
     #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
-        Self(doc! { "$not": self.0 })
+        Self(doc! { "$nor": [self.0] })
+    }
+
+    /// Tests whether the value at `key` is the BSON type `typ`
+    pub fn is_type(key: String, typ: &'static str) -> Self {
+        Self(doc! { key: { "$type": typ } })
+    }
+
+    pub fn size(key: String, size: i32) -> Self {
+        Self(doc! { key: { "$size": size } })
+    }
+
+    // Array ops
+    pub fn all(key: String, values: Vec<Bson>) -> Self {
+        Self(doc! { key: { "$all": values } })
+    }
+
+    pub fn any(key: String, condition: Document) -> Self {
+        Self(doc! { key: { "$elemMatch": condition } })
     }
 }
 
@@ -305,27 +329,15 @@ where
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_text(req.query()).await?;
 
-        let mut pipeline = vec![
-            self.pipeline_search_stage(&prompt_embedding, req.samples() as usize),
+        let pipeline = vec![
+            self.pipeline_search_stage(&prompt_embedding, &req),
             self.pipeline_score_stage(),
+            doc! {
+                "$project": {
+                    self.embedded_field.clone(): 0
+                }
+            },
         ];
-
-        if let Some(filter) = req.filter() {
-            let filter = req
-                .threshold()
-                .map(|thresh| {
-                    MongoDbSearchFilter::gte("score".into(), thresh.into()).and(filter.clone())
-                })
-                .unwrap_or(filter.clone());
-
-            pipeline.push(filter.into_document())
-        }
-
-        pipeline.push(doc! {
-            "$project": {
-                self.embedded_field.clone(): 0
-            }
-        });
 
         let mut cursor = self
             .collection
@@ -361,28 +373,16 @@ where
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_text(req.query()).await?;
 
-        let mut pipeline = vec![
-            self.pipeline_search_stage(&prompt_embedding, req.samples() as usize),
+        let pipeline = vec![
+            self.pipeline_search_stage(&prompt_embedding, &req),
             self.pipeline_score_stage(),
-        ];
-
-        if let Some(filter) = req.filter() {
-            let filter = req
-                .threshold()
-                .map(|thresh| {
-                    MongoDbSearchFilter::gte("score".into(), thresh.into()).and(filter.clone())
-                })
-                .unwrap_or(filter.clone());
-
-            pipeline.push(filter.into_document())
-        }
-
-        pipeline.push(doc! {
-            "$project": {
-                "_id": 1,
-                "score": 1
+            doc! {
+                "$project": {
+                    "_id": 1,
+                    "score": 1
+                },
             },
-        });
+        ];
 
         let mut cursor = self
             .collection

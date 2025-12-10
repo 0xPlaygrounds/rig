@@ -1,13 +1,12 @@
 use rig::{
     Embed,
-    client::EmbeddingsClient,
+    client::{EmbeddingsClient, ProviderClient},
     embeddings::EmbeddingsBuilder,
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+    providers::openai::{self, Client},
     vector_store::{InsertDocuments, VectorStoreIndex, request::VectorSearchRequest},
 };
 use rig_scylladb::{ScyllaDbVectorStore, create_session};
 use serde::{Deserialize, Serialize};
-use std::env;
 
 #[derive(Embed, Clone, Debug, Deserialize, Serialize)]
 struct Word {
@@ -28,9 +27,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .expect("Failed to create ScyllaDB session");
 
     // Create OpenAI client and embedding model
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = Client::new(&openai_api_key);
-    let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+    let openai_client = Client::from_env();
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Create ScyllaDB vector store
     let vector_store = ScyllaDbVectorStore::new(

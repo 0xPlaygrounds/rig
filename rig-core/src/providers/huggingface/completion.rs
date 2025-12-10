@@ -11,9 +11,10 @@ use crate::{
     one_or_many::string_or_one_or_many,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::{convert::Infallible, str::FromStr};
-use tracing::info_span;
+use tracing::{Level, enabled, info_span};
+use tracing_futures::Instrument;
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
@@ -27,13 +28,10 @@ pub enum ApiResponse<T> {
 // ================================================================
 
 // Conversational LLMs
-
 /// `google/gemma-2-2b-it` completion model
 pub const GEMMA_2: &str = "google/gemma-2-2b-it";
 /// `meta-llama/Meta-Llama-3.1-8B-Instruct` completion model
 pub const META_LLAMA_3_1: &str = "meta-llama/Meta-Llama-3.1-8B-Instruct";
-/// `microsoft/phi-4` completion model
-pub const PHI_4: &str = "microsoft/phi-4";
 /// `PowerInfer/SmallThinker-3B-Preview` completion model
 pub const SMALLTHINKER_PREVIEW: &str = "PowerInfer/SmallThinker-3B-Preview";
 /// `Qwen/Qwen2.5-7B-Instruct` completion model
@@ -364,7 +362,10 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::AssistantContent::Text(text) => texts.push(text),
                             message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
                             message::AssistantContent::Reasoning(_) => {
-                                unimplemented!("Reasoning is not supported on HuggingFace via Rig");
+                                panic!("Reasoning is not supported on HuggingFace via Rig");
+                            }
+                            message::AssistantContent::Image(_) => {
+                                panic!("Image content is not supported on HuggingFace via Rig");
                             }
                         }
                         (texts, tools)
@@ -609,6 +610,67 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct HuggingfaceCompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
+}
+
+impl TryFrom<(&str, CompletionRequest)> for HuggingfaceCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let mut full_history: Vec<Message> = match &req.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
+        };
+        if let Some(docs) = req.normalized_documents() {
+            let docs: Vec<Message> = docs.try_into()?;
+            full_history.extend(docs);
+        }
+
+        let chat_history: Vec<Message> = req
+            .chat_history
+            .clone()
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        full_history.extend(chat_history);
+
+        let tool_choice = req
+            .tool_choice
+            .clone()
+            .map(crate::providers::openai::completion::ToolChoice::try_from)
+            .transpose()?;
+
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
@@ -623,57 +685,6 @@ impl<T> CompletionModel<T> {
             model: model.to_string(),
         }
     }
-
-    pub(crate) fn create_request_body(
-        &self,
-        completion_request: &CompletionRequest,
-    ) -> Result<serde_json::Value, CompletionError> {
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
-        if let Some(docs) = completion_request.normalized_documents() {
-            let docs: Vec<Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
-
-        let chat_history: Vec<Message> = completion_request
-            .chat_history
-            .clone()
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        full_history.extend(chat_history);
-
-        let model = self.client.sub_provider.model_identifier(&self.model);
-
-        let tool_choice = completion_request
-            .tool_choice
-            .clone()
-            .map(crate::providers::openai::completion::ToolChoice::try_from)
-            .transpose()?;
-
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-            })
-        } else {
-            json!({
-                "model": model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "tools": completion_request.tools.clone().into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": tool_choice,
-            })
-        };
-        Ok(request)
-    }
 }
 
 impl<T> completion::CompletionModel for CompletionModel<T>
@@ -682,6 +693,12 @@ where
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
+
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), &model.into())
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -700,25 +717,25 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
-        let request = self.create_request_body(&completion_request)?;
-        span.record_model_input(&request.get("messages"));
 
-        let path = self.client.sub_provider.completion_endpoint(&self.model);
+        let model = self.client.subprovider().model_identifier(&self.model);
+        let request = HuggingfaceCompletionRequest::try_from((model.as_ref(), completion_request))?;
 
-        let request = if let Some(ref params) = completion_request.additional_params {
-            json_utils::merge(request, params.clone())
-        } else {
-            request
-        };
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "Huggingface completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let request = serde_json::to_vec(&request)?;
 
+        let path = self.client.subprovider().completion_endpoint(&self.model);
         let request = self
             .client
             .post(&path)?
@@ -726,35 +743,46 @@ where
             .body(request)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let response = self.client.send(request).await?;
+        async move {
+            let response = self.client.send(request).await?;
 
-        if response.status().is_success() {
-            let bytes: Vec<u8> = response.into_body().await?;
-            let text = String::from_utf8_lossy(&bytes);
+            if response.status().is_success() {
+                let bytes: Vec<u8> = response.into_body().await?;
+                let text = String::from_utf8_lossy(&bytes);
 
-            tracing::debug!(target: "rig", "Huggingface completion error: {}", text);
+                tracing::debug!(target: "rig", "Huggingface completion error: {}", text);
 
-            match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&bytes)? {
-                ApiResponse::Ok(response) => {
-                    let span = tracing::Span::current();
-                    span.record_token_usage(&response.usage);
-                    span.record_model_output(&response.choices);
-                    span.record_response_metadata(&response);
+                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&bytes)? {
+                    ApiResponse::Ok(response) => {
+                        if enabled!(Level::TRACE) {
+                            tracing::trace!(
+                                target: "rig::completions",
+                                "Huggingface completion response: {}",
+                                serde_json::to_string_pretty(&response)?
+                            );
+                        }
 
-                    response.try_into()
+                        let span = tracing::Span::current();
+                        span.record_token_usage(&response.usage);
+                        span.record_response_metadata(&response);
+
+                        response.try_into()
+                    }
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.to_string())),
                 }
-                ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.to_string())),
-            }
-        } else {
-            let status = response.status();
-            let text: Vec<u8> = response.into_body().await?;
-            let text: String = String::from_utf8_lossy(&text).into();
+            } else {
+                let status = response.status();
+                let text: Vec<u8> = response.into_body().await?;
+                let text: String = String::from_utf8_lossy(&text).into();
 
-            Err(CompletionError::ProviderError(format!(
-                "{}: {}",
-                status, text
-            )))
+                Err(CompletionError::ProviderError(format!(
+                    "{}: {}",
+                    status, text
+                )))
+            }
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]

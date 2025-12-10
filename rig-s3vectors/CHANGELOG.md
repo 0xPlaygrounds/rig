@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.15](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.14...rig-s3vectors-v0.1.15) - 2025-12-04
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.14](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.13...rig-s3vectors-v0.1.14) - 2025-12-01
+
+### Added
+
+- *(rig-985)* Consolidate provider clients ([#1050](https://github.com/0xPlaygrounds/rig/pull/1050))
+
+### Fixed
+
+- *(rig-1050)* Inconsistent model/agent initialisation methods ([#1069](https://github.com/0xPlaygrounds/rig/pull/1069))
+
+## [0.1.13](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.12...rig-s3vectors-v0.1.13) - 2025-11-10
+
+### Added
+
+- *(rig-1014)* add backend specific vector search filters ([#1032](https://github.com/0xPlaygrounds/rig/pull/1032))
+
+## [0.1.12](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.11...rig-s3vectors-v0.1.12) - 2025-10-28
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.11](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.10...rig-s3vectors-v0.1.11) - 2025-10-27
+
+### Added
+
+- *(rig-976)* support filters for `VectorSearchRequest` ([#952](https://github.com/0xPlaygrounds/rig/pull/952))
+
+### Other
+
+- Dependent packages no longer force unnecessary features on rig-core ([#964](https://github.com/0xPlaygrounds/rig/pull/964))
+
 ## [0.1.10](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.9...rig-s3vectors-v0.1.10) - 2025-10-14
 
 ### Other

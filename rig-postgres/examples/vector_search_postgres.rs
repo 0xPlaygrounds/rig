@@ -1,7 +1,9 @@
 use rig::client::EmbeddingsClient;
+use rig::providers::openai;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
+    client::ProviderClient,
     embeddings::EmbeddingsBuilder,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
@@ -33,8 +35,8 @@ async fn main() -> Result<(), anyhow::Error> {
     dotenvy::dotenv().ok();
 
     // Create OpenAI client
-    let openai_client = rig::providers::openai::Client::from_env();
-    let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_3_SMALL);
+    let openai_client = openai::Client::from_env();
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
 
     // setup Postgres
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");

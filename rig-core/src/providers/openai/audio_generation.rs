@@ -16,10 +16,10 @@ pub struct AudioGenerationModel<T = reqwest::Client> {
 }
 
 impl<T> AudioGenerationModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -29,6 +29,12 @@ where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
     type Response = Bytes;
+
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn audio_generation(
@@ -45,7 +51,6 @@ where
         let req = self
             .client
             .post("/audio/speech")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(http_client::Error::from)?;
 

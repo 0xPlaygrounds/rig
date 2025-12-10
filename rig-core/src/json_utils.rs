@@ -5,6 +5,10 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::str::FromStr;
 
+pub fn empty_or_none(value: &Option<String>) -> bool {
+    value.as_ref().map(|v| v.is_empty()).unwrap_or(true)
+}
+
 pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
     match (a, b) {
         (serde_json::Value::Object(mut a_map), serde_json::Value::Object(b_map)) => {
@@ -22,6 +26,16 @@ pub fn merge_inplace(a: &mut serde_json::Value, b: serde_json::Value) {
         b_map.into_iter().for_each(|(key, value)| {
             a_map.insert(key, value);
         });
+    }
+}
+
+/// Convert a serde_json::Value to a JSON string for tool arguments.
+/// Handles the case where vLLM returns arguments as a JSON string (Value::String)
+/// instead of a JSON object (Value::Object) like OpenAI does.
+pub fn value_to_json_string(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
     }
 }
 

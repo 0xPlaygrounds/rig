@@ -89,7 +89,7 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     // Create agent with a single context prompt and two tools
     let calculator_agent = providers::anthropic::Client::from_env()
-        .agent(providers::anthropic::CLAUDE_3_5_SONNET)
+        .agent(providers::anthropic::completion::CLAUDE_3_5_SONNET)
         .preamble(
             "You are a calculator here to help the user perform arithmetic
             operations. Use the tools provided to answer the user's question.

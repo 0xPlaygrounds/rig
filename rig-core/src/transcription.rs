@@ -1,7 +1,7 @@
 //! This module provides functionality for working with audio transcription models.
 //! It provides traits, structs, and enums for generating audio transcription requests,
 //! handling transcription responses, and defining transcription models.
-
+#[allow(deprecated)]
 use crate::client::transcription::TranscriptionModelHandle;
 use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 use crate::{http_client, json_utils};
@@ -75,6 +75,9 @@ pub struct TranscriptionResponse<T> {
 pub trait TranscriptionModel: Clone + WasmCompatSend + WasmCompatSync {
     /// The raw response type returned by the underlying model.
     type Response: WasmCompatSend + WasmCompatSync;
+    type Client;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
 
     /// Generates a completion response for the given transcription model
     fn transcription(
@@ -90,6 +93,11 @@ pub trait TranscriptionModel: Clone + WasmCompatSend + WasmCompatSync {
     }
 }
 
+#[allow(deprecated)]
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `TranscriptionModel` instead."
+)]
 pub trait TranscriptionModelDyn: WasmCompatSend + WasmCompatSync {
     fn transcription(
         &self,
@@ -99,6 +107,7 @@ pub trait TranscriptionModelDyn: WasmCompatSend + WasmCompatSync {
     fn transcription_request(&self) -> TranscriptionRequestBuilder<TranscriptionModelHandle<'_>>;
 }
 
+#[allow(deprecated)]
 impl<T> TranscriptionModelDyn for T
 where
     T: TranscriptionModel,

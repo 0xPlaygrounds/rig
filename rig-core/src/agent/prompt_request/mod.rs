@@ -18,6 +18,7 @@ use tracing::info_span;
 use crate::{
     OneOrMany,
     completion::{Completion, CompletionModel, Message, PromptError, Usage},
+    json_utils,
     message::{AssistantContent, UserContent},
     tool::ToolSetError,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
@@ -457,7 +458,8 @@ where
                     async move {
                         if let AssistantContent::ToolCall(tool_call) = choice {
                             let tool_name = &tool_call.function.name;
-                            let args = tool_call.function.arguments.to_string();
+                            let args =
+                                json_utils::value_to_json_string(&tool_call.function.arguments);
                             let tool_span = tracing::Span::current();
                             tool_span.record("gen_ai.tool.name", tool_name);
                             tool_span.record("gen_ai.tool.call.id", &tool_call.id);

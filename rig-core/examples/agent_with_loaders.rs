@@ -1,15 +1,10 @@
 use rig::prelude::*;
-use rig::{
-    agent::AgentBuilder,
-    completion::Prompt,
-    loaders::FileLoader,
-    providers::openai::{self, GPT_4O},
-};
+use rig::{agent::AgentBuilder, completion::Prompt, loaders::FileLoader, providers::openai};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let openai_client = openai::Client::from_env();
-    let model = openai_client.completion_model(GPT_4O);
+    let model = openai_client.completion_model(openai::GPT_4O);
 
     // Load in all the rust examples
     let examples = FileLoader::with_glob("rig-core/examples/*.rs")?

@@ -4,7 +4,7 @@ use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
-    providers::openai::TEXT_EMBEDDING_ADA_002,
+    providers::openai,
     vector_store::{VectorStoreIndex, in_memory_store::InMemoryVectorStore},
 };
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,7 @@ struct WordDefinition {
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
     let openai_client = Client::from_env();
-    let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+    let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(vec![
             WordDefinition {

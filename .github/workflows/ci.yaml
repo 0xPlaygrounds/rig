@@ -5,6 +5,7 @@ on:
   pull_request:
     branches:
       - "**"
+  merge_group:
   workflow_call:
 
 env:
@@ -135,22 +136,3 @@ jobs:
         run: cargo doc --no-deps --all-features
         env:
           RUSTDOCFLAGS: -D warnings
-
-  # publish-check:
-  #   name: stable / publish dry-run
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-
-  #     - name: Install Rust stable
-  #       uses: actions-rust-lang/setup-rust-toolchain@v1
-  #       with:
-  #         components: rust-docs
-
-  #     # Required to compile rig-lancedb
-  #     - name: Install Protoc
-  #       uses: arduino/setup-protoc@v3
-
-  #     - name: Run cargo publish --dry-run
-  #       run: find . | grep -v "target" | grep "\./.*/Cargo\.toml" | xargs -n 1 sh -c 'cargo publish --manifest-path $0 --dry-run || exit 255'

@@ -4,7 +4,6 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError, GetTokenUsage},
     http_client::HttpClientExt,
-    json_utils,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, Reasoning},
     one_or_many::string_or_one_or_many,
     telemetry::{ProviderResponseExt, SpanCombinator},
@@ -17,8 +16,7 @@ use crate::completion::CompletionRequest;
 use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Level, enabled, info_span};
 
 // ================================================================
 // Anthropic Completion API
@@ -26,27 +24,14 @@ use tracing::{Instrument, info_span};
 
 /// `claude-opus-4-0` completion model
 pub const CLAUDE_4_OPUS: &str = "claude-opus-4-0";
-
 /// `claude-sonnet-4-0` completion model
 pub const CLAUDE_4_SONNET: &str = "claude-sonnet-4-0";
-
 /// `claude-3-7-sonnet-latest` completion model
 pub const CLAUDE_3_7_SONNET: &str = "claude-3-7-sonnet-latest";
-
 /// `claude-3-5-sonnet-latest` completion model
 pub const CLAUDE_3_5_SONNET: &str = "claude-3-5-sonnet-latest";
-
 /// `claude-3-5-haiku-latest` completion model
 pub const CLAUDE_3_5_HAIKU: &str = "claude-3-5-haiku-latest";
-
-/// `claude-3-5-haiku-latest` completion model
-pub const CLAUDE_3_OPUS: &str = "claude-3-opus-latest";
-
-/// `claude-3-sonnet-20240229` completion model
-pub const CLAUDE_3_SONNET: &str = "claude-3-sonnet-20240229";
-
-/// `claude-3-haiku-20240307` completion model
-pub const CLAUDE_3_HAIKU: &str = "claude-3-haiku-20240307";
 
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
@@ -84,7 +69,7 @@ impl ProviderResponseExt for CompletionResponse {
             .content
             .iter()
             .filter_map(|x| {
-                if let Content::Text { text } = x {
+                if let Content::Text { text, .. } = x {
                     Some(text.to_owned())
                 } else {
                     None
@@ -149,10 +134,22 @@ pub struct ToolDefinition {
     pub input_schema: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+/// Cache control directive for Anthropic prompt caching
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CacheControl {
     Ephemeral,
+}
+
+/// System message content block with optional cache control
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SystemContent {
+    Text {
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<CacheControl>,
+    },
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
@@ -162,19 +159,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let content = response
             .content
             .iter()
-            .map(|content| {
-                Ok(match content {
-                    Content::Text { text } => completion::AssistantContent::text(text),
-                    Content::ToolUse { id, name, input } => {
-                        completion::AssistantContent::tool_call(id, name, input.clone())
-                    }
-                    _ => {
-                        return Err(CompletionError::ResponseError(
-                            "Response did not contain a message or tool call".into(),
-                        ));
-                    }
-                })
-            })
+            .map(|content| content.clone().try_into())
             .collect::<Result<Vec<_>, _>>()?;
 
         let choice = OneOrMany::many(content).map_err(|_| {
@@ -216,9 +201,13 @@ pub enum Role {
 pub enum Content {
     Text {
         text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<CacheControl>,
     },
     Image {
         source: ImageSource,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<CacheControl>,
     },
     ToolUse {
         id: String,
@@ -231,12 +220,17 @@ pub enum Content {
         content: OneOrMany<ToolResultContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<CacheControl>,
     },
     Document {
         source: DocumentSource,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<CacheControl>,
     },
     Thinking {
         thinking: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
         signature: Option<String>,
     },
 }
@@ -245,7 +239,10 @@ impl FromStr for Content {
     type Err = Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Content::Text { text: s.to_owned() })
+        Ok(Content::Text {
+            text: s.to_owned(),
+            cache_control: None,
+        })
     }
 }
 
@@ -346,7 +343,10 @@ pub enum SourceType {
 
 impl From<String> for Content {
     fn from(text: String) -> Self {
-        Content::Text { text }
+        Content::Text {
+            text,
+            cache_control: None,
+        }
     }
 }
 
@@ -421,25 +421,32 @@ impl TryFrom<DocumentMediaType> for DocumentFormat {
     }
 }
 
-impl From<message::AssistantContent> for Content {
-    fn from(text: message::AssistantContent) -> Self {
+impl TryFrom<message::AssistantContent> for Content {
+    type Error = MessageError;
+    fn try_from(text: message::AssistantContent) -> Result<Self, Self::Error> {
         match text {
-            message::AssistantContent::Text(message::Text { text }) => Content::Text { text },
+            message::AssistantContent::Text(message::Text { text }) => Ok(Content::Text {
+                text,
+                cache_control: None,
+            }),
+            message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
+                "Anthropic currently doesn't support images.".to_string(),
+            )),
             message::AssistantContent::ToolCall(message::ToolCall { id, function, .. }) => {
-                Content::ToolUse {
+                Ok(Content::ToolUse {
                     id,
                     name: function.name,
                     input: function.arguments,
-                }
+                })
             }
             message::AssistantContent::Reasoning(Reasoning {
                 reasoning,
                 signature,
                 ..
-            }) => Content::Thinking {
+            }) => Ok(Content::Thinking {
                 thinking: reasoning.first().cloned().unwrap_or(String::new()),
                 signature,
-            },
+            }),
         }
     }
 }
@@ -452,9 +459,10 @@ impl TryFrom<message::Message> for Message {
             message::Message::User { content } => Message {
                 role: Role::User,
                 content: content.try_map(|content| match content {
-                    message::UserContent::Text(message::Text { text }) => {
-                        Ok(Content::Text { text })
-                    }
+                    message::UserContent::Text(message::Text { text }) => Ok(Content::Text {
+                        text,
+                        cache_control: None,
+                    }),
                     message::UserContent::ToolResult(message::ToolResult {
                         id, content, ..
                     }) => Ok(Content::ToolResult {
@@ -482,12 +490,13 @@ impl TryFrom<message::Message> for Message {
                             }
                         })?,
                         is_error: None,
+                        cache_control: None,
                     }),
                     message::UserContent::Image(message::Image {
                         data, media_type, ..
                     }) => {
                         let media_type = media_type.ok_or(MessageError::ConversionError(
-                            "Image media type is required for Claude API".into(),
+                            "Image media type is required for Claude API".to_string(),
                         ))?;
 
                         let source = match data {
@@ -513,7 +522,10 @@ impl TryFrom<message::Message> for Message {
                             }
                         };
 
-                        Ok(Content::Image { source })
+                        Ok(Content::Image {
+                            source,
+                            cache_control: None,
+                        })
                     }
                     message::UserContent::Document(message::Document {
                         data, media_type, ..
@@ -538,7 +550,10 @@ impl TryFrom<message::Message> for Message {
                             media_type: media_type.try_into()?,
                             r#type: SourceType::BASE64,
                         };
-                        Ok(Content::Document { source })
+                        Ok(Content::Document {
+                            source,
+                            cache_control: None,
+                        })
                     }
                     message::UserContent::Audio { .. } => Err(MessageError::ConversionError(
                         "Audio is not supported in Anthropic".to_owned(),
@@ -550,7 +565,7 @@ impl TryFrom<message::Message> for Message {
             },
 
             message::Message::Assistant { content, .. } => Message {
-                content: content.map(|content| content.into()),
+                content: content.try_map(|content| content.try_into())?,
                 role: Role::Assistant,
             },
         })
@@ -562,7 +577,7 @@ impl TryFrom<Content> for message::AssistantContent {
 
     fn try_from(content: Content) -> Result<Self, Self::Error> {
         Ok(match content {
-            Content::Text { text } => message::AssistantContent::text(text),
+            Content::Text { text, .. } => message::AssistantContent::text(text),
             Content::ToolUse { id, name, input } => {
                 message::AssistantContent::tool_call(id, name, input)
             }
@@ -574,7 +589,7 @@ impl TryFrom<Content> for message::AssistantContent {
             ),
             _ => {
                 return Err(MessageError::ConversionError(
-                    format!("Unsupported content type for Assistant role: {content:?}").to_owned(),
+                    "Content did not contain a message, tool call, or reasoning".to_owned(),
                 ));
             }
         })
@@ -602,7 +617,7 @@ impl TryFrom<Message> for message::Message {
             Role::User => message::Message::User {
                 content: message.content.try_map(|content| {
                     Ok(match content {
-                        Content::Text { text } => message::UserContent::text(text),
+                        Content::Text { text, .. } => message::UserContent::text(text),
                         Content::ToolResult {
                             tool_use_id,
                             content,
@@ -611,13 +626,15 @@ impl TryFrom<Message> for message::Message {
                             tool_use_id,
                             content.map(|content| content.into()),
                         ),
-                        Content::Image { source } => message::UserContent::Image(message::Image {
-                            data: source.data.into(),
-                            media_type: Some(source.media_type.into()),
-                            detail: None,
-                            additional_params: None,
-                        }),
-                        Content::Document { source } => message::UserContent::document(
+                        Content::Image { source, .. } => {
+                            message::UserContent::Image(message::Image {
+                                data: source.data.into(),
+                                media_type: Some(source.media_type.into()),
+                                detail: None,
+                                additional_params: None,
+                            })
+                        }
+                        Content::Document { source, .. } => message::UserContent::document(
                             source.data,
                             Some(message::DocumentMediaType::PDF),
                         ),
@@ -648,47 +665,70 @@ impl TryFrom<Message> for message::Message {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client>
-where
-    T: WasmCompatSend,
-{
+pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
+    /// Enable automatic prompt caching (adds cache_control breakpoints to system prompt and messages)
+    pub prompt_caching: bool,
 }
 
 impl<T> CompletionModel<T>
 where
     T: HttpClientExt,
 {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        let model = model.into();
+        let default_max_tokens = calculate_max_tokens(&model);
+
+        Self {
+            client,
+            model,
+            default_max_tokens,
+            prompt_caching: false, // Default to off
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
-            default_max_tokens: calculate_max_tokens(model),
+            default_max_tokens: Some(calculate_max_tokens_custom(model)),
+            prompt_caching: false, // Default to off
         }
+    }
+
+    /// Enable automatic prompt caching.
+    ///
+    /// When enabled, cache_control breakpoints are automatically added to:
+    /// - The system prompt (marked with ephemeral cache)
+    /// - The last content block of the last message (marked with ephemeral cache)
+    ///
+    /// This allows Anthropic to cache the conversation history for cost savings.
+    pub fn with_prompt_caching(mut self) -> Self {
+        self.prompt_caching = true;
+        self
     }
 }
 
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on the models
 /// available at the time of writing.
-///
-/// Dev Note: This is really bad design, I'm not sure why they did it like this..
 fn calculate_max_tokens(model: &str) -> Option<u64> {
-    if model.starts_with("claude-opus-4") {
-        Some(32000)
-    } else if model.starts_with("claude-sonnet-4") || model.starts_with("claude-3-7-sonnet") {
-        Some(64000)
-    } else if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
-        Some(8192)
-    } else if model.starts_with("claude-3-opus")
-        || model.starts_with("claude-3-sonnet")
-        || model.starts_with("claude-3-haiku")
-    {
-        Some(4096)
-    } else {
-        None
+    match model {
+        CLAUDE_4_OPUS => Some(32_000),
+        CLAUDE_4_SONNET | CLAUDE_3_7_SONNET => Some(64_000),
+        CLAUDE_3_5_SONNET | CLAUDE_3_5_HAIKU => Some(8_192),
+        _ => None,
+    }
+}
+
+fn calculate_max_tokens_custom(model: &str) -> u64 {
+    match model {
+        "claude-4-opus" => 32_000,
+        "claude-4-sonnet" | "claude-3.7-sonnet" => 64_000,
+        "claude-3.5-sonnet" | "claude-3.5-haiku" => 8_192,
+        _ => 4_096,
     }
 }
 
@@ -732,17 +772,152 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
         Ok(res)
     }
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+struct AnthropicCompletionRequest {
+    model: String,
+    messages: Vec<Message>,
+    max_tokens: u64,
+    /// System prompt as array of content blocks to support cache_control
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    system: Vec<SystemContent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<ToolChoice>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinition>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    additional_params: Option<serde_json::Value>,
+}
+
+/// Helper to set cache_control on a Content block
+fn set_content_cache_control(content: &mut Content, value: Option<CacheControl>) {
+    match content {
+        Content::Text { cache_control, .. } => *cache_control = value,
+        Content::Image { cache_control, .. } => *cache_control = value,
+        Content::ToolResult { cache_control, .. } => *cache_control = value,
+        Content::Document { cache_control, .. } => *cache_control = value,
+        _ => {}
+    }
+}
+
+/// Apply cache control breakpoints to system prompt and messages.
+/// Strategy: cache the system prompt, and mark the last content block of the last message
+/// for caching. This allows the conversation history to be cached while new messages
+/// are added.
+pub fn apply_cache_control(system: &mut [SystemContent], messages: &mut [Message]) {
+    // Add cache_control to the system prompt (if non-empty)
+    if let Some(SystemContent::Text { cache_control, .. }) = system.last_mut() {
+        *cache_control = Some(CacheControl::Ephemeral);
+    }
+
+    // Clear any existing cache_control from all message content blocks
+    for msg in messages.iter_mut() {
+        for content in msg.content.iter_mut() {
+            set_content_cache_control(content, None);
+        }
+    }
+
+    // Add cache_control to the last content block of the last message
+    if let Some(last_msg) = messages.last_mut() {
+        set_content_cache_control(last_msg.content.last_mut(), Some(CacheControl::Ephemeral));
+    }
+}
+
+/// Parameters for building an AnthropicCompletionRequest
+pub struct AnthropicRequestParams<'a> {
+    pub model: &'a str,
+    pub request: CompletionRequest,
+    pub prompt_caching: bool,
+}
+
+impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
+        let AnthropicRequestParams {
+            model,
+            request: req,
+            prompt_caching,
+        } = params;
+
+        // Check if max_tokens is set, required for Anthropic
+        let Some(max_tokens) = req.max_tokens else {
+            return Err(CompletionError::RequestError(
+                "`max_tokens` must be set for Anthropic".into(),
+            ));
+        };
+
+        let mut full_history = vec![];
+        if let Some(docs) = req.normalized_documents() {
+            full_history.push(docs);
+        }
+        full_history.extend(req.chat_history);
+
+        let mut messages = full_history
+            .into_iter()
+            .map(Message::try_from)
+            .collect::<Result<Vec<Message>, _>>()?;
+
+        let tools = req
+            .tools
+            .into_iter()
+            .map(|tool| ToolDefinition {
+                name: tool.name,
+                description: Some(tool.description),
+                input_schema: tool.parameters,
+            })
+            .collect::<Vec<_>>();
+
+        // Convert system prompt to array format for cache_control support
+        let mut system = if let Some(preamble) = req.preamble {
+            if preamble.is_empty() {
+                vec![]
+            } else {
+                vec![SystemContent::Text {
+                    text: preamble,
+                    cache_control: None,
+                }]
+            }
+        } else {
+            vec![]
+        };
+
+        // Apply cache control breakpoints only if prompt_caching is enabled
+        if prompt_caching {
+            apply_cache_control(&mut system, &mut messages);
+        }
+
+        Ok(Self {
+            model: model.to_string(),
+            messages,
+            max_tokens,
+            system,
+            temperature: req.temperature,
+            tool_choice: req.tool_choice.and_then(|x| ToolChoice::try_from(x).ok()),
+            tools,
+            additional_params: req.additional_params,
+        })
+    }
+}
+
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
     T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model.into())
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
-        completion_request: completion::CompletionRequest,
+        mut completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -750,99 +925,48 @@ where
                 "chat",
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "anthropic",
-                gen_ai.request.model = self.model,
+                gen_ai.request.model = &self.model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
-        // Note: Ideally we'd introduce provider-specific Request models to handle the
-        // specific requirements of each provider. For now, we just manually check while
-        // building the request as a raw JSON document.
 
         // Check if max_tokens is set, required for Anthropic
-        let max_tokens = if let Some(tokens) = completion_request.max_tokens {
-            tokens
-        } else if let Some(tokens) = self.default_max_tokens {
-            tokens
-        } else {
-            return Err(CompletionError::RequestError(
-                "`max_tokens` must be set for Anthropic".into(),
-            ));
-        };
-
-        let mut full_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
-            full_history.push(docs);
-        }
-        full_history.extend(completion_request.chat_history);
-        span.record_model_input(&full_history);
-
-        let full_history = full_history
-            .into_iter()
-            .map(Message::try_from)
-            .collect::<Result<Vec<Message>, _>>()?;
-
-        let mut request = json!({
-            "model": self.model,
-            "messages": full_history,
-            "max_tokens": max_tokens,
-            "system": completion_request.preamble.unwrap_or("".to_string()),
-        });
-
-        if let Some(temperature) = completion_request.temperature {
-            json_utils::merge_inplace(&mut request, json!({ "temperature": temperature }));
-        }
-
-        let tool_choice = if let Some(tool_choice) = completion_request.tool_choice {
-            Some(ToolChoice::try_from(tool_choice)?)
-        } else {
-            None
-        };
-
-        if !completion_request.tools.is_empty() {
-            let mut tools_json = json!({
-                "tools": completion_request
-                    .tools
-                    .into_iter()
-                    .map(|tool| ToolDefinition {
-                        name: tool.name,
-                        description: Some(tool.description),
-                        input_schema: tool.parameters,
-                    })
-                    .collect::<Vec<_>>(),
-            });
-
-            // Only include tool_choice if it's explicitly set (not None)
-            // When omitted, Anthropic defaults to "auto"
-            if let Some(tc) = tool_choice {
-                tools_json["tool_choice"] = serde_json::to_value(tc)?;
+        if completion_request.max_tokens.is_none() {
+            if let Some(tokens) = self.default_max_tokens {
+                completion_request.max_tokens = Some(tokens);
+            } else {
+                return Err(CompletionError::RequestError(
+                    "`max_tokens` must be set for Anthropic".into(),
+                ));
             }
-
-            json_utils::merge_inplace(&mut request, tools_json);
         }
 
-        if let Some(ref params) = completion_request.additional_params {
-            json_utils::merge_inplace(&mut request, params.clone())
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: &self.model,
+            request: completion_request,
+            prompt_caching: self.prompt_caching,
+        })?;
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "Anthropic completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
         }
 
         async move {
             let request: Vec<u8> = serde_json::to_vec(&request)?;
 
-            if let Ok(json_str) = String::from_utf8(request.clone()) {
-                tracing::debug!("Request body:\n{}", json_str);
-            }
-
             let req = self
                 .client
-                .post("/v1/messages")
-                .header("Content-Type", "application/json")
+                .post("/v1/messages")?
                 .body(request)
                 .map_err(|e| CompletionError::HttpError(e.into()))?;
 
@@ -863,9 +987,15 @@ where
                 )? {
                     ApiResponse::Message(completion) => {
                         let span = tracing::Span::current();
-                        span.record_model_output(&completion.content);
                         span.record_response_metadata(&completion);
                         span.record_token_usage(&completion.usage);
+                        if enabled!(Level::TRACE) {
+                            tracing::trace!(
+                                target: "rig::completions",
+                                "Anthropic completion response: {}",
+                                serde_json::to_string_pretty(&completion)?
+                            );
+                        }
                         completion.try_into()
                     }
                     ApiResponse::Error(ApiErrorResponse { message }) => {
@@ -914,6 +1044,7 @@ enum ApiResponse<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use serde_path_to_error::deserialize;
 
     #[test]
@@ -994,7 +1125,8 @@ mod tests {
         assert_eq!(
             content.first(),
             Content::Text {
-                text: "\n\nHello there, how may I assist you today?".to_owned()
+                text: "\n\nHello there, how may I assist you today?".to_owned(),
+                cache_control: None,
             }
         );
 
@@ -1006,7 +1138,7 @@ mod tests {
             let mut iter = content.into_iter();
 
             match iter.next().unwrap() {
-                Content::Text { text } => {
+                Content::Text { text, .. } => {
                     assert_eq!(text, "\n\nHello there, how may I assist you today?");
                 }
                 _ => panic!("Expected text content"),
@@ -1032,7 +1164,7 @@ mod tests {
             let mut iter = content.into_iter();
 
             match iter.next().unwrap() {
-                Content::Image { source } => {
+                Content::Image { source, .. } => {
                     assert_eq!(
                         source,
                         ImageSource {
@@ -1046,7 +1178,7 @@ mod tests {
             }
 
             match iter.next().unwrap() {
-                Content::Text { text } => {
+                Content::Text { text, .. } => {
                     assert_eq!(text, "What is in this image?");
                 }
                 _ => panic!("Expected text content"),
@@ -1057,6 +1189,7 @@ mod tests {
                     tool_use_id,
                     content,
                     is_error,
+                    ..
                 } => {
                     assert_eq!(tool_use_id, "toolu_01A09q90qw90lq917835lq9");
                     assert_eq!(
@@ -1124,6 +1257,7 @@ mod tests {
                     text: "15 degrees".to_string(),
                 }),
                 is_error: None,
+                cache_control: None,
             }),
         };
 
@@ -1241,5 +1375,79 @@ mod tests {
                 .to_string()
                 .contains("ContentFormat::String is deprecated")
         );
+    }
+
+    #[test]
+    fn test_cache_control_serialization() {
+        // Test SystemContent with cache_control
+        let system = SystemContent::Text {
+            text: "You are a helpful assistant.".to_string(),
+            cache_control: Some(CacheControl::Ephemeral),
+        };
+        let json = serde_json::to_string(&system).unwrap();
+        assert!(json.contains(r#""cache_control":{"type":"ephemeral"}"#));
+        assert!(json.contains(r#""type":"text""#));
+
+        // Test SystemContent without cache_control (should not have cache_control field)
+        let system_no_cache = SystemContent::Text {
+            text: "Hello".to_string(),
+            cache_control: None,
+        };
+        let json_no_cache = serde_json::to_string(&system_no_cache).unwrap();
+        assert!(!json_no_cache.contains("cache_control"));
+
+        // Test Content::Text with cache_control
+        let content = Content::Text {
+            text: "Test message".to_string(),
+            cache_control: Some(CacheControl::Ephemeral),
+        };
+        let json_content = serde_json::to_string(&content).unwrap();
+        assert!(json_content.contains(r#""cache_control":{"type":"ephemeral"}"#));
+
+        // Test apply_cache_control function
+        let mut system_vec = vec![SystemContent::Text {
+            text: "System prompt".to_string(),
+            cache_control: None,
+        }];
+        let mut messages = vec![
+            Message {
+                role: Role::User,
+                content: OneOrMany::one(Content::Text {
+                    text: "First message".to_string(),
+                    cache_control: None,
+                }),
+            },
+            Message {
+                role: Role::Assistant,
+                content: OneOrMany::one(Content::Text {
+                    text: "Response".to_string(),
+                    cache_control: None,
+                }),
+            },
+        ];
+
+        apply_cache_control(&mut system_vec, &mut messages);
+
+        // System should have cache_control
+        match &system_vec[0] {
+            SystemContent::Text { cache_control, .. } => {
+                assert!(cache_control.is_some());
+            }
+        }
+
+        // Only the last content block of last message should have cache_control
+        // First message should NOT have cache_control
+        for content in messages[0].content.iter() {
+            if let Content::Text { cache_control, .. } = content {
+                assert!(cache_control.is_none());
+            }
+        }
+
+        // Last message SHOULD have cache_control
+        for content in messages[1].content.iter() {
+            if let Content::Text { cache_control, .. } = content {
+                assert!(cache_control.is_some());
+            }
+        }
     }
 }

@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rig::agent::stream_to_stdout;
 use rig::prelude::*;
+use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
@@ -101,7 +102,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt and two tools
     let calculator_agent = providers::gemini::Client::from_env()
-        .agent(providers::gemini::completion::GEMINI_1_5_FLASH)
+        .agent(gemini::completion::GEMINI_2_5_FLASH)
         .preamble(
             "You are a calculator here to help the user perform arithmetic
             operations. Use the tools provided to answer the user's question.

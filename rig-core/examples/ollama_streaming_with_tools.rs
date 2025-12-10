@@ -93,7 +93,7 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
 
     // Create agent with a single context prompt and two tools
-    let calculator_agent = providers::ollama::Client::new()
+    let calculator_agent = providers::ollama::Client::from_env()
         .agent("llama3.2")
         .preamble(
             "You are a calculator here to help the user perform arithmetic

@@ -3,7 +3,7 @@ use rig::message::Message;
 use rig::prelude::*;
 use rig::streaming::StreamingChat;
 
-use rig::providers;
+use rig::providers::{self, openai};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -12,7 +12,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let comedian_agent = client
-        .agent("gpt-4o")
+        .agent(openai::GPT_4)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

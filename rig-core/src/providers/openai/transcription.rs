@@ -1,7 +1,7 @@
 use bytes::Bytes;
 
 use crate::http_client::HttpClientExt;
-use crate::providers::openai::{ApiResponse, Client};
+use crate::providers::openai::{Client, client::ApiResponse};
 use crate::transcription;
 use crate::transcription::TranscriptionError;
 use reqwest::multipart::Part;
@@ -10,6 +10,7 @@ use serde::Deserialize;
 // ================================================================
 // OpenAI Transcription API
 // ================================================================
+
 pub const WHISPER_1: &str = "whisper-1";
 
 #[derive(Debug, Deserialize)]
@@ -33,15 +34,14 @@ impl TryFrom<TranscriptionResponse>
 #[derive(Clone)]
 pub struct TranscriptionModel<T = reqwest::Client> {
     client: Client<T>,
-    /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
 }
 
 impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -51,6 +51,12 @@ where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     type Response = TranscriptionResponse;
+
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn transcription(
@@ -96,12 +102,7 @@ where
             .body(body)
             .unwrap();
 
-        let response = self
-            .client
-            .http_client
-            .send_multipart::<Bytes>(req)
-            .await
-            .unwrap();
+        let response = self.client.send_multipart::<Bytes>(req).await.unwrap();
 
         let status = response.status();
         let response_body = response.into_body().into_future().await?.to_vec();

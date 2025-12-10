@@ -64,7 +64,8 @@
 //! the individual traits, structs, and enums defined in this module.
 
 use super::message::{AssistantContent, DocumentMediaType};
-use crate::client::builder::FinalCompletionResponse;
+use crate::client::FinalCompletionResponse;
+#[allow(deprecated)]
 use crate::client::completion::CompletionModelHandle;
 use crate::message::ToolChoice;
 use crate::streaming::StreamingCompletionResponse;
@@ -352,6 +353,10 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
         + DeserializeOwned
         + GetTokenUsage;
 
+    type Client;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
+
     /// Generates a completion response for the given completion request.
     fn completion(
         &self,
@@ -372,6 +377,12 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
         CompletionRequestBuilder::new(self.clone(), prompt)
     }
 }
+
+#[allow(deprecated)]
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `CompletionModel` instead."
+)]
 pub trait CompletionModelDyn: WasmCompatSend + WasmCompatSync {
     fn completion(
         &self,
@@ -392,6 +403,7 @@ pub trait CompletionModelDyn: WasmCompatSend + WasmCompatSync {
     ) -> CompletionRequestBuilder<CompletionModelHandle<'_>>;
 }
 
+#[allow(deprecated)]
 impl<T, R> CompletionModelDyn for T
 where
     T: CompletionModel<StreamingResponse = R>,
@@ -436,12 +448,7 @@ where
         &self,
         prompt: Message,
     ) -> CompletionRequestBuilder<CompletionModelHandle<'_>> {
-        CompletionRequestBuilder::new(
-            CompletionModelHandle {
-                inner: Arc::new(self.clone()),
-            },
-            prompt,
-        )
+        CompletionRequestBuilder::new(CompletionModelHandle::new(Arc::new(self.clone())), prompt)
     }
 }
 

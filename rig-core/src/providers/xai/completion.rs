@@ -6,7 +6,6 @@
 use crate::{
     completion::{self, CompletionError},
     http_client::HttpClientExt,
-    json_utils,
     providers::openai::Message,
 };
 
@@ -15,8 +14,8 @@ use crate::completion::CompletionRequest;
 use crate::providers::openai;
 use crate::streaming::StreamingCompletionResponse;
 use bytes::Bytes;
-use serde_json::{Value, json};
-use tracing::{Instrument, info_span};
+use serde::{Deserialize, Serialize};
+use tracing::{Instrument, Level, enabled, info_span};
 use xai_api_types::{CompletionResponse, ToolDefinition};
 
 /// xAI completion models as of 2025-06-04
@@ -29,9 +28,66 @@ pub const GROK_3_MINI_FAST: &str = "grok-3-mini-fast";
 pub const GROK_2_IMAGE_1212: &str = "grok-2-image-1212";
 pub const GROK_4: &str = "grok-4-0709";
 
-// =================================================================
-// Rig Implementation Types
-// =================================================================
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct XAICompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openrouter::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
+}
+
+impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let mut full_history: Vec<Message> = match &req.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
+        };
+        if let Some(docs) = req.normalized_documents() {
+            let docs: Vec<Message> = docs.try_into()?;
+            full_history.extend(docs);
+        }
+
+        let chat_history: Vec<Message> = req
+            .chat_history
+            .clone()
+            .into_iter()
+            .map(|message| message.try_into())
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        full_history.extend(chat_history);
+
+        let tool_choice = req
+            .tool_choice
+            .clone()
+            .map(crate::providers::openrouter::ToolChoice::try_from)
+            .transpose()?;
+
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+        })
+    }
+}
 
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
@@ -40,74 +96,10 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub(crate) fn create_completion_request(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        // Convert documents into user message
-        let docs: Option<Vec<Message>> = completion_request
-            .normalized_documents()
-            .map(|docs| docs.try_into())
-            .transpose()?;
-
-        // Convert existing chat history
-        let chat_history: Vec<Message> = completion_request
-            .chat_history
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        // Init full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<Message> = match &completion_request.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
-
-        // Docs appear right after preamble, if they exist
-        if let Some(docs) = docs {
-            full_history.extend(docs)
-        }
-
-        // Chat history and prompt appear in the order they were provided
-        full_history.extend(chat_history);
-
-        let tool_choice = completion_request
-            .tool_choice
-            .map(crate::providers::openrouter::ToolChoice::try_from)
-            .transpose()?;
-
-        let mut request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": tool_choice,
-            })
-        };
-
-        request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
-
-        Ok(request)
-    }
-
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -119,16 +111,17 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let request = self.create_completion_request(completion_request)?;
-        let request_messages_json_str =
-            serde_json::to_string(&request.get("messages").unwrap()).unwrap();
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -136,36 +129,52 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "xai",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = &request_messages_json_str,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
-        tracing::debug!("xAI completion request: {request_messages_json_str}");
+        span.record("gen_ai.system_instructions", &completion_request.preamble);
+
+        let request =
+            XAICompletionRequest::try_from((self.model.to_string().as_ref(), completion_request))?;
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "xAI completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let body = serde_json::to_vec(&request)?;
         let req = self
             .client
             .post("/v1/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         async move {
-            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let response = self.client.send::<_, Bytes>(req).await?;
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if status.is_success() {
                 match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
-                    ApiResponse::Ok(completion) => completion.try_into(),
+                    ApiResponse::Ok(response) => {
+                        if enabled!(Level::TRACE) {
+                            tracing::trace!(target: "rig::completions",
+                                "xAI completion response: {}",
+                                serde_json::to_string_pretty(&response)?
+                            );
+                        }
+
+                        response.try_into()
+                    }
                     ApiResponse::Error(error) => {
                         Err(CompletionError::ProviderError(error.message()))
                     }

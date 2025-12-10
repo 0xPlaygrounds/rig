@@ -1,16 +1,13 @@
-use rig::client::EmbeddingsClient;
+use rig::client::{EmbeddingsClient, ProviderClient};
+use rig::providers::openai;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
-    Embed,
-    embeddings::EmbeddingsBuilder,
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-    vector_store::VectorStoreIndex,
+    Embed, embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex,
 };
 use rig_sqlite::{Column, ColumnValue, SqliteVectorStore, SqliteVectorStoreTable};
 use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use serde::Deserialize;
 use sqlite_vec::sqlite3_vec_init;
-use std::env;
 use tokio_rusqlite::Connection;
 
 #[derive(Embed, Clone, Debug, Deserialize)]
@@ -57,8 +54,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Initialize OpenAI client
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = Client::new(&openai_api_key);
+    let openai_client = Client::from_env();
 
     // Initialize the `sqlite-vec`extension
     // See: https://alexgarcia.xyz/sqlite-vec/rust.html
@@ -72,7 +68,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let conn = Connection::open("vector_store.db").await?;
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     let documents = vec![
         Document {

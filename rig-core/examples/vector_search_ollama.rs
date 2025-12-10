@@ -1,9 +1,10 @@
+use rig::client::Nothing;
 use rig::prelude::*;
+use rig::providers::ollama;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
-    providers,
     vector_store::{VectorStoreIndex, in_memory_store::InMemoryVectorStore},
 };
 
@@ -22,9 +23,12 @@ struct WordDefinition {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create ollama client
-    let client = providers::ollama::Client::builder()
+    let client: ollama::Client = ollama::Client::builder()
+        .api_key(Nothing)
         .base_url("http://localhost:11434")
-        .build();
+        .build()
+        .unwrap();
+
     let embedding_model = client.embedding_model("nomic-embed-text");
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())

@@ -1,10 +1,11 @@
 use anyhow::Result;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
+use rig::providers::openai;
 use rig::{
     completion::ToolDefinition,
     embeddings::EmbeddingsBuilder,
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+    providers::openai::Client,
     tool::{Tool, ToolEmbedding, ToolSet},
     vector_store::in_memory_store::InMemoryVectorStore,
 };
@@ -243,7 +244,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .dynamic_tool(Multiply)
         .dynamic_tool(Divide)
         .build();
-    let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+    let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(toolset.schemas()?)?
         .build()
@@ -255,7 +256,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create RAG agent with a single context prompt and a dynamic tool source
     let calculator_rag = openai_client
-        .agent("gpt-4")
+        .agent(openai::GPT_4)
         .preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
             Follow these instructions closely.

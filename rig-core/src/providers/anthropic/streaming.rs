@@ -2,11 +2,13 @@ use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::info_span;
+use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
-use super::completion::{CompletionModel, Content, Message, ToolChoice, ToolDefinition, Usage};
-use crate::OneOrMany;
+use super::completion::{
+    CompletionModel, Content, Message, SystemContent, ToolChoice, ToolDefinition, Usage,
+    apply_cache_control,
+};
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
@@ -67,7 +69,7 @@ pub struct MessageDelta {
     pub stop_sequence: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Clone, Serialize)]
+#[derive(Debug, Deserialize, Clone, Serialize, Default)]
 pub struct PartialUsage {
     pub output_tokens: usize,
     #[serde(default)]
@@ -98,7 +100,7 @@ struct ThinkingState {
     signature: String,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StreamingCompletionResponse {
     pub usage: PartialUsage,
 }
@@ -157,20 +159,43 @@ where
             full_history.push(docs);
         }
         full_history.extend(completion_request.chat_history);
-        span.record_model_input(&full_history);
 
-        let full_history = full_history
+        let mut messages = full_history
             .into_iter()
             .map(Message::try_from)
             .collect::<Result<Vec<Message>, _>>()?;
 
+        // Convert system prompt to array format for cache_control support
+        let mut system: Vec<SystemContent> =
+            if let Some(preamble) = completion_request.preamble.as_ref() {
+                if preamble.is_empty() {
+                    vec![]
+                } else {
+                    vec![SystemContent::Text {
+                        text: preamble.clone(),
+                        cache_control: None,
+                    }]
+                }
+            } else {
+                vec![]
+            };
+
+        // Apply cache control breakpoints only if prompt_caching is enabled
+        if self.prompt_caching {
+            apply_cache_control(&mut system, &mut messages);
+        }
+
         let mut body = json!({
             "model": self.model,
-            "messages": full_history,
+            "messages": messages,
             "max_tokens": max_tokens,
-            "system": completion_request.preamble.unwrap_or("".to_string()),
             "stream": true,
         });
+
+        // Add system prompt if non-empty
+        if !system.is_empty() {
+            merge_inplace(&mut body, json!({ "system": system }));
+        }
 
         if let Some(temperature) = completion_request.temperature {
             merge_inplace(&mut body, json!({ "temperature": temperature }));
@@ -198,16 +223,23 @@ where
             merge_inplace(&mut body, params.clone())
         }
 
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "Anthropic completion request: {}",
+                serde_json::to_string_pretty(&body)?
+            );
+        }
+
         let body: Vec<u8> = serde_json::to_vec(&body)?;
 
         let req = self
             .client
-            .post("/v1/messages")
-            .header("Content-Type", "application/json")
+            .post("/v1/messages")?
             .body(body)
             .map_err(http_client::Error::Protocol)?;
 
-        let stream = GenericEventSource::new(self.client.http_client.clone(), req);
+        let stream = GenericEventSource::new(self.client.clone(), req);
 
         // Use our SSE decoder to directly handle Server-Sent Events format
         let stream: StreamingResult<StreamingCompletionResponse> = Box::pin(stream! {
@@ -215,6 +247,7 @@ where
             let mut current_thinking: Option<ThinkingState> = None;
             let mut sse_stream = Box::pin(stream);
             let mut input_tokens = 0;
+            let mut final_usage = None;
 
             let mut text_content = String::new();
 
@@ -242,14 +275,8 @@ where
 
                                             let span = tracing::Span::current();
                                             span.record_token_usage(&usage);
-                                            span.record_model_output(&Message {
-                                                role: super::completion::Role::Assistant,
-                                                content: OneOrMany::one(Content::Text { text: text_content.clone() })}
-                                            );
-
-                                            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                                                usage
-                                            }))
+                                            final_usage = Some(usage);
+                                            break;
                                         }
                                     }
                                     _ => {}
@@ -272,11 +299,18 @@ where
                         }
                     },
                     Err(e) => {
-                        yield Err(CompletionError::ResponseError(format!("SSE Error: {e}")));
+                        yield Err(CompletionError::ProviderError(format!("SSE Error: {e}")));
                         break;
                     }
                 }
             }
+
+            // Ensure event source is closed when stream ends
+            sse_stream.close();
+
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                usage: final_usage.unwrap_or_default()
+            }))
         }.instrument(span));
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))
@@ -299,6 +333,11 @@ fn handle_event(
             ContentDelta::InputJsonDelta { partial_json } => {
                 if let Some(tool_call) = current_tool_call {
                     tool_call.input_json.push_str(partial_json);
+                    // Emit the delta so UI can show progress
+                    return Some(Ok(RawStreamingChoice::ToolCallDelta {
+                        id: tool_call.id.clone(),
+                        delta: partial_json.clone(),
+                    }));
                 }
                 None
             }
@@ -580,5 +619,115 @@ mod tests {
 
         // Tool call state should remain unchanged
         assert!(tool_call_state.is_some());
+    }
+
+    #[test]
+    fn test_handle_input_json_delta_event() {
+        let event = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::InputJsonDelta {
+                partial_json: "{\"arg\":\"value".to_string(),
+            },
+        };
+
+        let mut tool_call_state = Some(ToolCallState {
+            name: "test_tool".to_string(),
+            id: "tool_123".to_string(),
+            input_json: String::new(),
+        });
+        let mut thinking_state = None;
+
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+
+        // Should emit a ToolCallDelta
+        assert!(result.is_some());
+        let choice = result.unwrap().unwrap();
+
+        match choice {
+            RawStreamingChoice::ToolCallDelta { id, delta } => {
+                assert_eq!(id, "tool_123");
+                assert_eq!(delta, "{\"arg\":\"value");
+            }
+            _ => panic!("Expected ToolCallDelta choice, got {:?}", choice),
+        }
+
+        // Verify the input_json was accumulated
+        assert!(tool_call_state.is_some());
+        let state = tool_call_state.unwrap();
+        assert_eq!(state.input_json, "{\"arg\":\"value");
+    }
+
+    #[test]
+    fn test_tool_call_accumulation_with_multiple_deltas() {
+        let mut tool_call_state = Some(ToolCallState {
+            name: "test_tool".to_string(),
+            id: "tool_123".to_string(),
+            input_json: String::new(),
+        });
+        let mut thinking_state = None;
+
+        // First delta
+        let event1 = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::InputJsonDelta {
+                partial_json: "{\"location\":".to_string(),
+            },
+        };
+        let result1 = handle_event(&event1, &mut tool_call_state, &mut thinking_state);
+        assert!(result1.is_some());
+
+        // Second delta
+        let event2 = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::InputJsonDelta {
+                partial_json: "\"Paris\",".to_string(),
+            },
+        };
+        let result2 = handle_event(&event2, &mut tool_call_state, &mut thinking_state);
+        assert!(result2.is_some());
+
+        // Third delta
+        let event3 = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::InputJsonDelta {
+                partial_json: "\"temp\":\"20C\"}".to_string(),
+            },
+        };
+        let result3 = handle_event(&event3, &mut tool_call_state, &mut thinking_state);
+        assert!(result3.is_some());
+
+        // Verify accumulated JSON
+        assert!(tool_call_state.is_some());
+        let state = tool_call_state.as_ref().unwrap();
+        assert_eq!(
+            state.input_json,
+            "{\"location\":\"Paris\",\"temp\":\"20C\"}"
+        );
+
+        // Final ContentBlockStop should emit complete tool call
+        let stop_event = StreamingEvent::ContentBlockStop { index: 0 };
+        let final_result = handle_event(&stop_event, &mut tool_call_state, &mut thinking_state);
+        assert!(final_result.is_some());
+
+        match final_result.unwrap().unwrap() {
+            RawStreamingChoice::ToolCall {
+                id,
+                name,
+                arguments,
+                ..
+            } => {
+                assert_eq!(id, "tool_123");
+                assert_eq!(name, "test_tool");
+                assert_eq!(
+                    arguments.get("location").unwrap().as_str().unwrap(),
+                    "Paris"
+                );
+                assert_eq!(arguments.get("temp").unwrap().as_str().unwrap(), "20C");
+            }
+            other => panic!("Expected ToolCall, got {:?}", other),
+        }
+
+        // Tool call state should be taken
+        assert!(tool_call_state.is_none());
     }
 }

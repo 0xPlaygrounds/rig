@@ -2,6 +2,7 @@ use rig::prelude::*;
 
 use rig::pipeline::agent_ops::extract;
 
+use rig::providers::openai;
 use rig::providers::openai::client::Client;
 
 use rig::{
@@ -22,7 +23,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = Client::from_env();
 
     let manipulation_agent = openai_client
-        .extractor::<DocumentScore>("gpt-4")
+        .extractor::<DocumentScore>(openai::GPT_4)
         .preamble(
             "
             Your role is to score a user's statement on how manipulative it sounds between 0 and 1.
@@ -31,7 +32,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let depression_agent = openai_client
-        .extractor::<DocumentScore>("gpt-4")
+        .extractor::<DocumentScore>(openai::GPT_4)
         .preamble(
             "
             Your role is to score a user's statement on how depressive it sounds between 0 and 1.
@@ -40,7 +41,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let intelligent_agent = openai_client
-        .extractor::<DocumentScore>("gpt-4")
+        .extractor::<DocumentScore>(openai::GPT_4)
         .preamble(
             "
             Your role is to score a user's statement on how intelligent it sounds between 0 and 1.

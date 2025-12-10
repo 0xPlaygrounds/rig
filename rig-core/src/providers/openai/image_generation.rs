@@ -1,7 +1,7 @@
+use super::{Client, client::ApiResponse};
 use crate::http_client::HttpClientExt;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge_inplace;
-use crate::providers::openai::{ApiResponse, Client};
 use crate::{http_client, image_generation};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
@@ -13,7 +13,6 @@ use serde_json::json;
 // ================================================================
 pub const DALL_E_2: &str = "dall-e-2";
 pub const DALL_E_3: &str = "dall-e-3";
-
 pub const GPT_IMAGE_1: &str = "gpt-image-1";
 
 #[derive(Debug, Deserialize)]
@@ -54,10 +53,10 @@ pub struct ImageGenerationModel<T = reqwest::Client> {
 }
 
 impl<T> ImageGenerationModel<T> {
-    pub(crate) fn new(client: Client<T>, model: &str) -> Self {
+    pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -67,6 +66,12 @@ where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
 {
     type Response = ImageGenerationResponse;
+
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn image_generation(
@@ -80,7 +85,7 @@ where
             "size": format!("{}x{}", generation_request.width, generation_request.height),
         });
 
-        if self.model != *"gpt-image-1" {
+        if self.model.as_str() != GPT_IMAGE_1 {
             merge_inplace(
                 &mut request,
                 json!({
@@ -94,7 +99,6 @@ where
         let request = self
             .client
             .post("/images/generations")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
 

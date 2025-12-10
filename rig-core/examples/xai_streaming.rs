@@ -7,7 +7,7 @@ use rig::streaming::StreamingPrompt;
 async fn main() -> Result<(), anyhow::Error> {
     // Create streaming agent with a single context prompt
     let agent = xai::Client::from_env()
-        .agent(xai::GROK_3_MINI)
+        .agent(xai::completion::GROK_3_MINI)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

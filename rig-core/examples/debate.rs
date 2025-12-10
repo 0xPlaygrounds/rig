@@ -6,7 +6,6 @@ use rig::{
     message::Message,
     providers::{cohere, openai},
 };
-use std::env;
 
 struct Debater {
     gpt_4: Agent<openai::responses_api::ResponsesCompletionModel>,
@@ -20,12 +19,15 @@ impl Debater {
             .with_target(false)
             .init();
         let openai_client = openai::Client::from_env();
-        let cohere_client =
-            cohere::Client::new(&env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set"));
+        let cohere_client = cohere::Client::from_env();
+
         Self {
-            gpt_4: openai_client.agent("gpt-4").preamble(position_a).build(),
+            gpt_4: openai_client
+                .agent(openai::GPT_4)
+                .preamble(position_a)
+                .build(),
             coral: cohere_client
-                .agent("command-r")
+                .agent(cohere::COMMAND_R)
                 .preamble(position_b)
                 .build(),
         }

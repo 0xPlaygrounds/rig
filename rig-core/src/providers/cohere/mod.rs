@@ -14,8 +14,7 @@ pub mod completion;
 pub mod embeddings;
 pub mod streaming;
 
-pub use client::Client;
-pub use client::{ApiErrorResponse, ApiResponse};
+pub use client::{ApiErrorResponse, ApiResponse, Client};
 pub use completion::CompletionModel;
 pub use embeddings::EmbeddingModel;
 
@@ -48,9 +47,11 @@ pub const EMBED_ENGLISH_LIGHT_V3: &str = "embed-english-light-v3.0";
 pub const EMBED_MULTILINGUAL_V3: &str = "embed-multilingual-v3.0";
 /// `embed-multilingual-light-v3.0` embedding model
 pub const EMBED_MULTILINGUAL_LIGHT_V3: &str = "embed-multilingual-light-v3.0";
-/// `embed-english-v2.0` embedding model
-pub const EMBED_ENGLISH_V2: &str = "embed-english-v2.0";
-/// `embed-english-light-v2.0` embedding model
-pub const EMBED_ENGLISH_LIGHT_V2: &str = "embed-english-light-v2.0";
-/// `embed-multilingual-v2.0` embedding model
-pub const EMBED_MULTILINGUAL_V2: &str = "embed-multilingual-v2.0";
+
+pub(crate) fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
+    match identifier {
+        EMBED_ENGLISH_V3 | EMBED_MULTILINGUAL_V3 => Some(1_024),
+        EMBED_ENGLISH_LIGHT_V3 | EMBED_MULTILINGUAL_LIGHT_V3 => Some(384),
+        _ => None,
+    }
+}

@@ -125,6 +125,61 @@ impl Filter {
         Self(format!("{key} <= {}", value.escaped()))
     }
 
+    /// IN operator
+    pub fn in_values(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+        let values_str = values
+            .into_iter()
+            .map(|v| v.escaped())
+            .collect::<Vec<_>>()
+            .join(", ");
+        Self(format!("{} in [{}]", key, values_str))
+    }
+
+    /// NOT IN operator
+    pub fn not_in(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+        let values_str = values
+            .into_iter()
+            .map(|v| v.escaped())
+            .collect::<Vec<_>>()
+            .join(", ");
+        Self(format!("{} not in [{}]", key, values_str))
+    }
+
+    /// LIKE operator (string pattern matching)
+    pub fn like(key: String, pattern: String) -> Self {
+        Self(format!("{} like '{}'", key, pattern))
+    }
+
+    /// Array contains
+    pub fn array_contains(key: String, value: <Self as SearchFilter>::Value) -> Self {
+        Self(format!("array_contains({}, {})", key, value.escaped()))
+    }
+
+    /// Array contains all
+    pub fn array_contains_all(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+        let values_str = values
+            .into_iter()
+            .map(|v| v.escaped())
+            .collect::<Vec<_>>()
+            .join(", ");
+        Self(format!("array_contains_all({}, [{}])", key, values_str))
+    }
+
+    /// Array contains any
+    pub fn array_contains_any(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+        let values_str = values
+            .into_iter()
+            .map(|v| v.escaped())
+            .collect::<Vec<_>>()
+            .join(", ");
+        Self(format!("array_contains_any({}, [{}])", key, values_str))
+    }
+
+    /// Array length comparison
+    pub fn array_length_eq(key: String, length: i32) -> Self {
+        Self(format!("array_length({}) == {}", key, length))
+    }
+
     pub fn into_inner(self) -> String {
         self.0
     }

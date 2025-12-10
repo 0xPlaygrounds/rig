@@ -105,6 +105,36 @@ impl ScyllaSearchFilter {
             ..self
         }
     }
+
+    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+        Self {
+            condition: format!("{key} >= ?"),
+            params: vec![value],
+        }
+    }
+
+    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+        Self {
+            condition: format!("{key} <= ?"),
+            params: vec![value],
+        }
+    }
+
+    pub fn ne(key: String, value: <Self as SearchFilter>::Value) -> Self {
+        Self {
+            condition: format!("{key} != ?"),
+            params: vec![value],
+        }
+    }
+
+    pub fn member(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+        let placeholders = vec!["?"; values.len()].join(", ");
+
+        Self {
+            condition: format!("{key} IN ({placeholders})"),
+            params: values,
+        }
+    }
 }
 
 impl<M> ScyllaDbVectorStore<M>

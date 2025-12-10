@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.14](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.3.13...rig-eternalai-v0.3.14) - 2025-12-04
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.3.13](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.3.12...rig-eternalai-v0.3.13) - 2025-12-01
+
+### Added
+
+- Gemini Assistant Image Responses ([#1048](https://github.com/0xPlaygrounds/rig/pull/1048))
+- *(rig-985)* Consolidate provider clients ([#1050](https://github.com/0xPlaygrounds/rig/pull/1050))
+
+### Fixed
+
+- *(rig-1050)* Inconsistent model/agent initialisation methods ([#1069](https://github.com/0xPlaygrounds/rig/pull/1069))
+
+## [0.3.12](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.3.11...rig-eternalai-v0.3.12) - 2025-11-10
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.3.11](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.3.10...rig-eternalai-v0.3.11) - 2025-10-28
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.3.10](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.3.9...rig-eternalai-v0.3.10) - 2025-10-27
+
+### Other
+
+- Dependent packages no longer force unnecessary features on rig-core ([#964](https://github.com/0xPlaygrounds/rig/pull/964))
+
 ## [0.3.9](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.3.8...rig-eternalai-v0.3.9) - 2025-10-14
 
 ### Added

@@ -1,5 +1,6 @@
 use rig::pipeline::{self, Op, TryOp};
 use rig::prelude::*;
+use rig::providers::openai;
 use rig::providers::openai::client::Client;
 
 #[tokio::main]
@@ -9,7 +10,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Note that you can also create your own semantic router for this
     // that uses a vector store under the hood
-    let animal_agent = openai_client.agent("gpt-4")
+    let animal_agent = openai_client.agent(openai::GPT_4)
         .preamble("
             Your role is to categorise the user's statement using the following values: [sheep, cow, dog]
 
@@ -17,7 +18,7 @@ async fn main() -> Result<(), anyhow::Error> {
         ")
         .build();
 
-    let default_agent = openai_client.agent("gpt-4").build();
+    let default_agent = openai_client.agent(openai::GPT_4).build();
     let chain = pipeline::new()
         // Use our classifier agent to classify the agent under a number of fixed topics
         .prompt(animal_agent)

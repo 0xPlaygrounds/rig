@@ -2,7 +2,11 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::{ApiErrorResponse, ApiResponse, Client, streaming::StreamingCompletionResponse};
+use super::{
+    CompletionsClient as Client,
+    client::{ApiErrorResponse, ApiResponse},
+    streaming::StreamingCompletionResponse,
+};
 use crate::completion::{
     CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
 };
@@ -10,49 +14,27 @@ use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{ProviderResponseExt, SpanCombinator};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, json_utils, message};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::fmt;
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Level, enabled, info_span};
 
 use std::str::FromStr;
 
 pub mod streaming;
 
-/// `o4-mini-2025-04-16` completion model
-pub const O4_MINI_2025_04_16: &str = "o4-mini-2025-04-16";
-/// `o4-mini` completion model
-pub const O4_MINI: &str = "o4-mini";
-/// `o3` completion model
-pub const O3: &str = "o3";
-/// `o3-mini` completion model
-pub const O3_MINI: &str = "o3-mini";
-/// `o3-mini-2025-01-31` completion model
-pub const O3_MINI_2025_01_31: &str = "o3-mini-2025-01-31";
-/// `o1-pro` completion model
-pub const O1_PRO: &str = "o1-pro";
-/// `o1`` completion model
-pub const O1: &str = "o1";
-/// `o1-2024-12-17` completion model
-pub const O1_2024_12_17: &str = "o1-2024-12-17";
-/// `o1-preview` completion model
-pub const O1_PREVIEW: &str = "o1-preview";
-/// `o1-preview-2024-09-12` completion model
-pub const O1_PREVIEW_2024_09_12: &str = "o1-preview-2024-09-12";
-/// `o1-mini completion model
-pub const O1_MINI: &str = "o1-mini";
-/// `o1-mini-2024-09-12` completion model
-pub const O1_MINI_2024_09_12: &str = "o1-mini-2024-09-12";
+/// `gpt-5.1` completion model
+pub const GPT_5_1: &str = "gpt-5.1";
 
-/// `gpt-4.1-mini` completion model
-pub const GPT_4_1_MINI: &str = "gpt-4.1-mini";
-/// `gpt-4.1-nano` completion model
-pub const GPT_4_1_NANO: &str = "gpt-4.1-nano";
-/// `gpt-4.1-2025-04-14` completion model
-pub const GPT_4_1_2025_04_14: &str = "gpt-4.1-2025-04-14";
-/// `gpt-4.1` completion model
-pub const GPT_4_1: &str = "gpt-4.1";
+/// `gpt-5` completion model
+pub const GPT_5: &str = "gpt-5";
+/// `gpt-5` completion model
+pub const GPT_5_MINI: &str = "gpt-5-mini";
+/// `gpt-5` completion model
+pub const GPT_5_NANO: &str = "gpt-5-nano";
+
 /// `gpt-4.5-preview` completion model
 pub const GPT_4_5_PREVIEW: &str = "gpt-4.5-preview";
 /// `gpt-4.5-preview-2025-02-27` completion model
@@ -87,14 +69,40 @@ pub const GPT_4_0613: &str = "gpt-4-0613";
 pub const GPT_4_32K: &str = "gpt-4-32k";
 /// `gpt-4-32k-0613` completion model
 pub const GPT_4_32K_0613: &str = "gpt-4-32k-0613";
-/// `gpt-3.5-turbo` completion model
-pub const GPT_35_TURBO: &str = "gpt-3.5-turbo";
-/// `gpt-3.5-turbo-0125` completion model
-pub const GPT_35_TURBO_0125: &str = "gpt-3.5-turbo-0125";
-/// `gpt-3.5-turbo-1106` completion model
-pub const GPT_35_TURBO_1106: &str = "gpt-3.5-turbo-1106";
-/// `gpt-3.5-turbo-instruct` completion model
-pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
+
+/// `o4-mini-2025-04-16` completion model
+pub const O4_MINI_2025_04_16: &str = "o4-mini-2025-04-16";
+/// `o4-mini` completion model
+pub const O4_MINI: &str = "o4-mini";
+/// `o3` completion model
+pub const O3: &str = "o3";
+/// `o3-mini` completion model
+pub const O3_MINI: &str = "o3-mini";
+/// `o3-mini-2025-01-31` completion model
+pub const O3_MINI_2025_01_31: &str = "o3-mini-2025-01-31";
+/// `o1-pro` completion model
+pub const O1_PRO: &str = "o1-pro";
+/// `o1`` completion model
+pub const O1: &str = "o1";
+/// `o1-2024-12-17` completion model
+pub const O1_2024_12_17: &str = "o1-2024-12-17";
+/// `o1-preview` completion model
+pub const O1_PREVIEW: &str = "o1-preview";
+/// `o1-preview-2024-09-12` completion model
+pub const O1_PREVIEW_2024_09_12: &str = "o1-preview-2024-09-12";
+/// `o1-mini completion model
+pub const O1_MINI: &str = "o1-mini";
+/// `o1-mini-2024-09-12` completion model
+pub const O1_MINI_2024_09_12: &str = "o1-mini-2024-09-12";
+
+/// `gpt-4.1-mini` completion model
+pub const GPT_4_1_MINI: &str = "gpt-4.1-mini";
+/// `gpt-4.1-nano` completion model
+pub const GPT_4_1_NANO: &str = "gpt-4.1-nano";
+/// `gpt-4.1-2025-04-14` completion model
+pub const GPT_4_1_2025_04_14: &str = "gpt-4.1-2025-04-14";
+/// `gpt-4.1` completion model
+pub const GPT_4_1: &str = "gpt-4.1";
 
 impl From<ApiErrorResponse> for CompletionError {
     fn from(err: ApiErrorResponse) -> Self {
@@ -137,7 +145,7 @@ pub enum Message {
     #[serde(rename = "tool")]
     ToolResult {
         tool_call_id: String,
-        content: OneOrMany<ToolResultContent>,
+        content: ToolResultContentValue,
     },
 }
 
@@ -244,6 +252,43 @@ impl From<String> for ToolResultContent {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum ToolResultContentValue {
+    Array(Vec<ToolResultContent>),
+    String(String),
+}
+
+impl ToolResultContentValue {
+    pub fn from_string(s: String, use_array_format: bool) -> Self {
+        if use_array_format {
+            ToolResultContentValue::Array(vec![ToolResultContent::from(s)])
+        } else {
+            ToolResultContentValue::String(s)
+        }
+    }
+
+    pub fn as_text(&self) -> String {
+        match self {
+            ToolResultContentValue::Array(arr) => arr
+                .iter()
+                .map(|c| c.text.clone())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            ToolResultContentValue::String(s) => s.clone(),
+        }
+    }
+
+    pub fn to_array(&self) -> Self {
+        match self {
+            ToolResultContentValue::Array(_) => self.clone(),
+            ToolResultContentValue::String(s) => {
+                ToolResultContentValue::Array(vec![ToolResultContent::from(s.clone())])
+            }
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolCall {
     pub id: String,
@@ -259,18 +304,43 @@ pub enum ToolType {
     Function,
 }
 
+/// Function definition for a tool, with optional strict mode
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FunctionDefinition {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strict: Option<bool>,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ToolDefinition {
     pub r#type: String,
-    pub function: completion::ToolDefinition,
+    pub function: FunctionDefinition,
 }
 
 impl From<completion::ToolDefinition> for ToolDefinition {
     fn from(tool: completion::ToolDefinition) -> Self {
         Self {
             r#type: "function".into(),
-            function: tool,
+            function: FunctionDefinition {
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.parameters,
+                strict: None,
+            },
         }
+    }
+}
+
+impl ToolDefinition {
+    /// Apply strict mode to this tool definition.
+    /// This sets `strict: true` and sanitizes the schema to meet OpenAI requirements.
+    pub fn with_strict(mut self) -> Self {
+        self.function.strict = Some(true);
+        super::sanitize_schema(&mut self.function.parameters);
+        self
     }
 }
 
@@ -308,166 +378,203 @@ pub struct Function {
     pub arguments: serde_json::Value,
 }
 
+impl TryFrom<message::ToolResult> for Message {
+    type Error = message::MessageError;
+
+    fn try_from(value: message::ToolResult) -> Result<Self, Self::Error> {
+        let text = value
+            .content
+            .into_iter()
+            .map(|content| match content {
+                message::ToolResultContent::Text(message::Text { text }) => Ok(text),
+                _ => Err(message::MessageError::ConversionError(
+                    "Tool result content does not support non-text".into(),
+                )),
+            })
+            .collect::<Result<Vec<_>, _>>()?
+            .join("\n");
+
+        Ok(Message::ToolResult {
+            tool_call_id: value.id,
+            content: ToolResultContentValue::String(text),
+        })
+    }
+}
+
+impl TryFrom<message::UserContent> for UserContent {
+    type Error = message::MessageError;
+
+    fn try_from(value: message::UserContent) -> Result<Self, Self::Error> {
+        match value {
+            message::UserContent::Text(message::Text { text }) => Ok(UserContent::Text { text }),
+            message::UserContent::Image(message::Image {
+                data,
+                detail,
+                media_type,
+                ..
+            }) => match data {
+                DocumentSourceKind::Url(url) => Ok(UserContent::Image {
+                    image_url: ImageUrl {
+                        url,
+                        detail: detail.unwrap_or_default(),
+                    },
+                }),
+                DocumentSourceKind::Base64(data) => {
+                    let url = format!(
+                        "data:{};base64,{}",
+                        media_type.map(|i| i.to_mime_type()).ok_or(
+                            message::MessageError::ConversionError(
+                                "OpenAI Image URI must have media type".into()
+                            )
+                        )?,
+                        data
+                    );
+
+                    let detail = detail.ok_or(message::MessageError::ConversionError(
+                        "OpenAI image URI must have image detail".into(),
+                    ))?;
+
+                    Ok(UserContent::Image {
+                        image_url: ImageUrl { url, detail },
+                    })
+                }
+                DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
+                    "Raw files not supported, encode as base64 first".into(),
+                )),
+                DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
+                    "Document has no body".into(),
+                )),
+                doc => Err(message::MessageError::ConversionError(format!(
+                    "Unsupported document type: {doc:?}"
+                ))),
+            },
+            message::UserContent::Document(message::Document { data, .. }) => {
+                if let DocumentSourceKind::Base64(text) | DocumentSourceKind::String(text) = data {
+                    Ok(UserContent::Text { text })
+                } else {
+                    Err(message::MessageError::ConversionError(
+                        "Documents must be base64 or a string".into(),
+                    ))
+                }
+            }
+            message::UserContent::Audio(message::Audio {
+                data, media_type, ..
+            }) => match data {
+                DocumentSourceKind::Base64(data) => Ok(UserContent::Audio {
+                    input_audio: InputAudio {
+                        data,
+                        format: match media_type {
+                            Some(media_type) => media_type,
+                            None => AudioMediaType::MP3,
+                        },
+                    },
+                }),
+                DocumentSourceKind::Url(_) => Err(message::MessageError::ConversionError(
+                    "URLs are not supported for audio".into(),
+                )),
+                DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
+                    "Raw files are not supported for audio".into(),
+                )),
+                DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
+                    "Audio has no body".into(),
+                )),
+                audio => Err(message::MessageError::ConversionError(format!(
+                    "Unsupported audio type: {audio:?}"
+                ))),
+            },
+            message::UserContent::ToolResult(_) => Err(message::MessageError::ConversionError(
+                "Tool result is in unsupported format".into(),
+            )),
+            message::UserContent::Video(_) => Err(message::MessageError::ConversionError(
+                "Video is in unsupported format".into(),
+            )),
+        }
+    }
+}
+
+impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
+    type Error = message::MessageError;
+
+    fn try_from(value: OneOrMany<message::UserContent>) -> Result<Self, Self::Error> {
+        let (tool_results, other_content): (Vec<_>, Vec<_>) = value
+            .into_iter()
+            .partition(|content| matches!(content, message::UserContent::ToolResult(_)));
+
+        // If there are messages with both tool results and user content, openai will only
+        //  handle tool results. It's unlikely that there will be both.
+        if !tool_results.is_empty() {
+            tool_results
+                .into_iter()
+                .map(|content| match content {
+                    message::UserContent::ToolResult(tool_result) => tool_result.try_into(),
+                    _ => unreachable!(),
+                })
+                .collect::<Result<Vec<_>, _>>()
+        } else {
+            let other_content: Vec<UserContent> = other_content
+                .into_iter()
+                .map(|content| content.try_into())
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let other_content = OneOrMany::many(other_content)
+                .expect("There must be other content here if there were no tool result content");
+
+            Ok(vec![Message::User {
+                content: other_content,
+                name: None,
+            }])
+        }
+    }
+}
+
+impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
+    type Error = message::MessageError;
+
+    fn try_from(value: OneOrMany<message::AssistantContent>) -> Result<Self, Self::Error> {
+        let (text_content, tool_calls) = value.into_iter().fold(
+            (Vec::new(), Vec::new()),
+            |(mut texts, mut tools), content| {
+                match content {
+                    message::AssistantContent::Text(text) => texts.push(text),
+                    message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
+                    message::AssistantContent::Reasoning(_) => {
+                        panic!("The OpenAI Completions API doesn't support reasoning!");
+                    }
+                    message::AssistantContent::Image(_) => {
+                        panic!(
+                            "The OpenAI Completions API doesn't support image content in assistant messages!"
+                        );
+                    }
+                }
+                (texts, tools)
+            },
+        );
+
+        // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
+        //  so either `content` or `tool_calls` will have some content.
+        Ok(vec![Message::Assistant {
+            content: text_content
+                .into_iter()
+                .map(|content| content.text.into())
+                .collect::<Vec<_>>(),
+            refusal: None,
+            audio: None,
+            name: None,
+            tool_calls: tool_calls
+                .into_iter()
+                .map(|tool_call| tool_call.into())
+                .collect::<Vec<_>>(),
+        }])
+    }
+}
+
 impl TryFrom<message::Message> for Vec<Message> {
     type Error = message::MessageError;
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
-            message::Message::User { content } => {
-                let (tool_results, other_content): (Vec<_>, Vec<_>) = content
-                    .into_iter()
-                    .partition(|content| matches!(content, message::UserContent::ToolResult(_)));
-
-                // If there are messages with both tool results and user content, openai will only
-                //  handle tool results. It's unlikely that there will be both.
-                if !tool_results.is_empty() {
-                    tool_results
-                        .into_iter()
-                        .map(|content| match content {
-                            message::UserContent::ToolResult(message::ToolResult {
-                                id,
-                                content,
-                                ..
-                            }) => Ok::<_, message::MessageError>(Message::ToolResult {
-                                tool_call_id: id,
-                                content: content.try_map(|content| match content {
-                                    message::ToolResultContent::Text(message::Text { text }) => {
-                                        Ok(text.into())
-                                    }
-                                    _ => Err(message::MessageError::ConversionError(
-                                        "Tool result content does not support non-text".into(),
-                                    )),
-                                })?,
-                            }),
-                            _ => unreachable!(),
-                        })
-                        .collect::<Result<Vec<_>, _>>()
-                } else {
-                    let other_content: Vec<UserContent> = other_content
-                        .into_iter()
-                        .map(|content| match content {
-                            message::UserContent::Text(message::Text { text }) => {
-                                Ok(UserContent::Text { text })
-                            }
-                            message::UserContent::Image(message::Image {
-                                data,
-                                detail,
-                                media_type,
-                                ..
-                            }) => match data {
-                                DocumentSourceKind::Url(url) => Ok(UserContent::Image {
-                                    image_url: ImageUrl {
-                                        url,
-                                        detail: detail.unwrap_or_default(),
-                                    },
-                                }),
-                                DocumentSourceKind::Base64(data) => {
-                                    let url = format!(
-                                        "data:{};base64,{}",
-                                        media_type.map(|i| i.to_mime_type()).ok_or(
-                                            message::MessageError::ConversionError(
-                                                "OpenAI Image URI must have media type".into()
-                                            )
-                                        )?,
-                                        data
-                                    );
-
-                                    let detail =
-                                        detail.ok_or(message::MessageError::ConversionError(
-                                            "OpenAI image URI must have image detail".into(),
-                                        ))?;
-
-                                    Ok(UserContent::Image {
-                                        image_url: ImageUrl { url, detail },
-                                    })
-                                }
-                                DocumentSourceKind::Raw(_) => {
-                                    Err(message::MessageError::ConversionError(
-                                        "Raw files not supported, encode as base64 first".into(),
-                                    ))
-                                }
-                                DocumentSourceKind::Unknown => {
-                                    Err(message::MessageError::ConversionError(
-                                        "Document has no body".into(),
-                                    ))
-                                }
-                                doc => Err(message::MessageError::ConversionError(format!(
-                                    "Unsupported document type: {doc:?}"
-                                ))),
-                            },
-                            message::UserContent::Document(message::Document { data, .. }) => {
-                                if let DocumentSourceKind::Base64(text)
-                                | DocumentSourceKind::String(text) = data
-                                {
-                                    Ok(UserContent::Text { text })
-                                } else {
-                                    Err(message::MessageError::ConversionError(
-                                        "Documents must be base64 or a string".into(),
-                                    ))
-                                }
-                            }
-                            message::UserContent::Audio(message::Audio {
-                                data: DocumentSourceKind::Base64(data),
-                                media_type,
-                                ..
-                            }) => Ok(UserContent::Audio {
-                                input_audio: InputAudio {
-                                    data,
-                                    format: match media_type {
-                                        Some(media_type) => media_type,
-                                        None => AudioMediaType::MP3,
-                                    },
-                                },
-                            }),
-                            _ => Err(message::MessageError::ConversionError(
-                                "Tool result is in unsupported format".into(),
-                            )),
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    let other_content = OneOrMany::many(other_content).expect(
-                        "There must be other content here if there were no tool result content",
-                    );
-
-                    Ok(vec![Message::User {
-                        content: other_content,
-                        name: None,
-                    }])
-                }
-            }
-            message::Message::Assistant { content, .. } => {
-                let (text_content, tool_calls) = content.into_iter().fold(
-                    (Vec::new(), Vec::new()),
-                    |(mut texts, mut tools), content| {
-                        match content {
-                            message::AssistantContent::Text(text) => texts.push(text),
-                            message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
-                            message::AssistantContent::Reasoning(_) => {
-                                unimplemented!(
-                                    "The OpenAI Completions API doesn't support reasoning!"
-                                );
-                            }
-                        }
-                        (texts, tools)
-                    },
-                );
-
-                // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
-                //  so either `content` or `tool_calls` will have some content.
-                Ok(vec![Message::Assistant {
-                    content: text_content
-                        .into_iter()
-                        .map(|content| content.text.into())
-                        .collect::<Vec<_>>(),
-                    refusal: None,
-                    audio: None,
-                    name: None,
-                    tool_calls: tool_calls
-                        .into_iter()
-                        .map(|tool_call| tool_call.into())
-                        .collect::<Vec<_>>(),
-                }])
-            }
+            message::Message::User { content } => content.try_into(),
+            message::Message::Assistant { content, .. } => content.try_into(),
         }
     }
 }
@@ -548,7 +655,7 @@ impl TryFrom<Message> for message::Message {
             } => message::Message::User {
                 content: OneOrMany::one(message::UserContent::tool_result(
                     tool_call_id,
-                    content.map(|content| message::ToolResultContent::text(content.text)),
+                    OneOrMany::one(message::ToolResultContent::text(content.as_text())),
                 )),
             },
 
@@ -798,19 +905,49 @@ impl GetTokenUsage for Usage {
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
-    /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
+    pub strict_tools: bool,
+    pub tool_result_array_content: bool,
 }
 
 impl<T> CompletionModel<T>
 where
-    T: HttpClientExt + Default + std::fmt::Debug + Clone + 'static,
+    T: Default + std::fmt::Debug + Clone + 'static,
 {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
+            strict_tools: false,
+            tool_result_array_content: false,
         }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
+            strict_tools: false,
+            tool_result_array_content: false,
+        }
+    }
+
+    /// Enable strict mode for tool schemas.
+    ///
+    /// When enabled, tool schemas are automatically sanitized to meet OpenAI's strict mode requirements:
+    /// - `additionalProperties: false` is added to all objects
+    /// - All properties are marked as required
+    /// - `strict: true` is set on each function definition
+    ///
+    /// This allows OpenAI to guarantee that the model's tool calls will match the schema exactly.
+    pub fn with_strict_tools(mut self) -> Self {
+        self.strict_tools = true;
+        self
+    }
+
+    pub fn with_tool_result_array_content(mut self) -> Self {
+        self.tool_result_array_content = true;
+        self
     }
 }
 
@@ -818,17 +955,34 @@ where
 pub struct CompletionRequest {
     model: String,
     messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<ToolDefinition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<ToolChoice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
     #[serde(flatten)]
     additional_params: Option<serde_json::Value>,
 }
 
-impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
+pub struct OpenAIRequestParams {
+    pub model: String,
+    pub request: CoreCompletionRequest,
+    pub strict_tools: bool,
+    pub tool_result_array_content: bool,
+}
+
+impl TryFrom<OpenAIRequestParams> for CompletionRequest {
     type Error = CompletionError;
 
-    fn try_from((model, req): (String, CoreCompletionRequest)) -> Result<Self, Self::Error> {
+    fn try_from(params: OpenAIRequestParams) -> Result<Self, Self::Error> {
+        let OpenAIRequestParams {
+            model,
+            request: req,
+            strict_tools,
+            tool_result_array_content,
+        } = params;
+
         let mut partial_history = vec![];
         if let Some(docs) = req.normalized_documents() {
             partial_history.push(docs);
@@ -848,7 +1002,6 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
         let mut full_history: Vec<Message> =
             preamble.map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
 
-        // Convert and extend the rest of the history
         full_history.extend(
             partial_history
                 .into_iter()
@@ -859,21 +1012,47 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
                 .collect::<Vec<_>>(),
         );
 
+        if tool_result_array_content {
+            for msg in &mut full_history {
+                if let Message::ToolResult { content, .. } = msg {
+                    *content = content.to_array();
+                }
+            }
+        }
+
         let tool_choice = tool_choice.map(ToolChoice::try_from).transpose()?;
+
+        let tools: Vec<ToolDefinition> = tools
+            .into_iter()
+            .map(|tool| {
+                let def = ToolDefinition::from(tool);
+                if strict_tools { def.with_strict() } else { def }
+            })
+            .collect();
 
         let res = Self {
             model,
             messages: full_history,
-            tools: tools
-                .into_iter()
-                .map(ToolDefinition::from)
-                .collect::<Vec<_>>(),
+            tools,
             tool_choice,
             temperature,
             additional_params,
         };
 
         Ok(res)
+    }
+}
+
+impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (String, CoreCompletionRequest)) -> Result<Self, Self::Error> {
+        CompletionRequest::try_from(OpenAIRequestParams {
+            model,
+            request: req,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
     }
 }
 
@@ -921,11 +1100,25 @@ impl CompletionModel<reqwest::Client> {
     }
 }
 
-impl completion::CompletionModel for CompletionModel<reqwest::Client> {
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt
+        + Default
+        + std::fmt::Debug
+        + Clone
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
+{
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
-    #[cfg_attr(feature = "worker", worker::send)]
+    type Client = super::CompletionsClient<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
+
     async fn completion(
         &self,
         completion_request: CoreCompletionRequest,
@@ -942,23 +1135,31 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
-        let request = CompletionRequest::try_from((self.model.to_owned(), completion_request))?;
+        let request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: self.model.to_owned(),
+            request: completion_request,
+            strict_tools: self.strict_tools,
+            tool_result_array_content: self.tool_result_array_content,
+        })?;
 
-        span.record_model_input(&request.messages);
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "OpenAI Chat Completions completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let body = serde_json::to_vec(&request)?;
 
         let req = self
             .client
             .post("/chat/completions")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
@@ -971,10 +1172,17 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
                 match serde_json::from_str::<ApiResponse<CompletionResponse>>(&text)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
-                        span.record_model_output(&response.choices);
                         span.record_response_metadata(&response);
                         span.record_token_usage(&response.usage);
-                        tracing::debug!("OpenAI response: {response:?}");
+
+                        if enabled!(Level::TRACE) {
+                            tracing::trace!(
+                                target: "rig::completions",
+                                "OpenAI Chat Completions completion response: {}",
+                                serde_json::to_string_pretty(&response)?
+                            );
+                        }
+
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
@@ -988,7 +1196,6 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         .await
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         request: CoreCompletionRequest,
@@ -996,6 +1203,6 @@ impl completion::CompletionModel for CompletionModel<reqwest::Client> {
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        CompletionModel::stream(self, request).await
+        Self::stream(self, request).await
     }
 }

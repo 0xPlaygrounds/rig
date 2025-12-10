@@ -232,13 +232,14 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
 
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
-    let client = providers::anthropic::ClientBuilder::<reqwest::Client>::new(&api_key)
+    let client = providers::anthropic::Client::<reqwest::Client>::builder()
+        .api_key(&api_key)
         .anthropic_beta("token-efficient-tools-2025-02-19")
         .build()?;
 
     // Create agent with the Think tool and other tools
     let agent = client
-        .agent(providers::anthropic::CLAUDE_3_7_SONNET)
+        .agent(providers::anthropic::completion::CLAUDE_3_7_SONNET)
         .name("Customer Service Agent")
         .preamble(
             "You are a customer service agent for an online store.

@@ -21,7 +21,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let cfg = AdditionalParameters::default().with_config(gen_cfg);
     // Create streaming agent with a single context prompt
     let agent = gemini::Client::from_env()
-        .agent("gemini-2.5-flash")
+        .agent(gemini::completion::GEMINI_2_0_FLASH)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .additional_params(serde_json::to_value(cfg).unwrap())

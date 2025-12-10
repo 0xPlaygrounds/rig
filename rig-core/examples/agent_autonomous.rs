@@ -1,4 +1,5 @@
 use rig::prelude::*;
+use rig::providers::openai;
 use rig::providers::openai::client::Client;
 
 use schemars::JsonSchema;
@@ -13,7 +14,7 @@ struct Counter {
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
     let openai_client = Client::from_env();
-    let agent = openai_client.extractor::<Counter>("gpt-4")
+    let agent = openai_client.extractor::<Counter>(openai::GPT_4)
         .preamble("
             Your role is to add a random number between 1 and 64 (using only integers) to the previous number.
         ")

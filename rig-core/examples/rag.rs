@@ -1,8 +1,8 @@
 use rig::prelude::*;
 use rig::providers::openai::client::Client;
 use rig::{
-    Embed, completion::Prompt, embeddings::EmbeddingsBuilder,
-    providers::openai::TEXT_EMBEDDING_ADA_002, vector_store::in_memory_store::InMemoryVectorStore,
+    Embed, completion::Prompt, embeddings::EmbeddingsBuilder, providers::openai,
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::Serialize;
 use std::vec;
@@ -28,7 +28,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create OpenAI client
     let openai_client = Client::from_env();
-    let embedding_model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+    let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -66,7 +66,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create vector store index
     let index = vector_store.index(embedding_model);
-    let rag_agent = openai_client.agent("gpt-4")
+    let rag_agent = openai_client.agent(openai::GPT_4O)
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.

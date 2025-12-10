@@ -1,4 +1,8 @@
-use super::{ApiErrorResponse, ApiResponse, Client, completion::Usage};
+use super::{
+    Client,
+    client::{ApiErrorResponse, ApiResponse},
+    completion::Usage,
+};
 use crate::embeddings::EmbeddingError;
 use crate::http_client::HttpClientExt;
 use crate::{embeddings, http_client};
@@ -52,11 +56,30 @@ pub struct EmbeddingModel<T = reqwest::Client> {
     ndims: usize,
 }
 
+fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
+    match identifier {
+        TEXT_EMBEDDING_3_LARGE => Some(3_072),
+        TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => Some(1_536),
+        _ => None,
+    }
+}
+
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
 {
     const MAX_DOCUMENTS: usize = 1024;
+
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
+        let model = model.into();
+        let dims = ndims
+            .or(model_dimensions_from_identifier(&model))
+            .unwrap_or_default();
+
+        Self::new(client.clone(), model, dims)
+    }
 
     fn ndims(&self) -> usize {
         self.ndims
@@ -74,7 +97,7 @@ where
             "input": documents,
         });
 
-        if self.ndims > 0 && self.model != TEXT_EMBEDDING_ADA_002 {
+        if self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002 {
             body["dimensions"] = json!(self.ndims);
         }
 
@@ -83,11 +106,10 @@ where
         let req = self
             .client
             .post("/embeddings")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
-        let response = self.client.http_client.send(req).await?;
+        let response = self.client.send(req).await?;
 
         if response.status().is_success() {
             let body: Vec<u8> = response.into_body().await?;
@@ -126,10 +148,18 @@ where
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: &str, ndims: usize) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
+            ndims,
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
+        Self {
+            client,
+            model: model.into(),
             ndims,
         }
     }

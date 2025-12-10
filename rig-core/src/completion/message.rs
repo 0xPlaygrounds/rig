@@ -65,6 +65,7 @@ pub enum AssistantContent {
     Text(Text),
     ToolCall(ToolCall),
     Reasoning(Reasoning),
+    Image(Image),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -591,6 +592,20 @@ impl AssistantContent {
         AssistantContent::Text(text.into().into())
     }
 
+    /// Helper constructor to make creating assistant image content easier.
+    pub fn image_base64(
+        data: impl Into<String>,
+        media_type: Option<ImageMediaType>,
+        detail: Option<ImageDetail>,
+    ) -> Self {
+        AssistantContent::Image(Image {
+            data: DocumentSourceKind::Base64(data.into()),
+            media_type,
+            detail,
+            additional_params: None,
+        })
+    }
+
     /// Helper constructor to make creating assistant tool call content easier.
     pub fn tool_call(
         id: impl Into<String>,
@@ -621,6 +636,10 @@ impl AssistantContent {
                 arguments,
             },
         })
+    }
+
+    pub fn reasoning(reasoning: impl AsRef<str>) -> Self {
+        AssistantContent::Reasoning(Reasoning::new(reasoning.as_ref()))
     }
 }
 

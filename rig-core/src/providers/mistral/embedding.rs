@@ -11,8 +11,8 @@ use super::client::{ApiResponse, Client, Usage};
 // ================================================================
 // Mistral Embedding API
 // ================================================================
-/// `mistral-embed` embedding model
 pub const MISTRAL_EMBED: &str = "mistral-embed";
+
 pub const MAX_DOCUMENTS: usize = 1024;
 
 #[derive(Clone)]
@@ -23,7 +23,15 @@ pub struct EmbeddingModel<T = reqwest::Client> {
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: &str, ndims: usize) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
+        Self {
+            client,
+            model: model.into(),
+            ndims,
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -34,9 +42,16 @@ impl<T> EmbeddingModel<T> {
 
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
-    T: HttpClientExt + Clone,
+    T: HttpClientExt + Clone + 'static,
 {
+    type Client = Client<T>;
+
     const MAX_DOCUMENTS: usize = MAX_DOCUMENTS;
+
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
+        Self::new(client.clone(), model, dims.unwrap_or_default())
+    }
+
     fn ndims(&self) -> usize {
         self.ndims
     }

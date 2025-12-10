@@ -1,3 +1,4 @@
+use rig::client::ProviderClient;
 use rig::vector_store::InsertDocuments;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{

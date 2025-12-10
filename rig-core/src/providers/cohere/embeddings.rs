@@ -1,11 +1,9 @@
-use super::{Client, client::ApiResponse};
-
+use super::{client::ApiResponse, client::Client};
 use crate::{
     embeddings::{self, EmbeddingError},
     http_client::HttpClientExt,
     wasm_compat::*,
 };
-
 use serde::Deserialize;
 use serde_json::json;
 
@@ -72,6 +70,16 @@ where
     T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     const MAX_DOCUMENTS: usize = 96;
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
+        let model = model.into();
+        let dims = dims
+            .or(super::model_dimensions_from_identifier(&model))
+            .unwrap_or_default();
+
+        Self::new(client.clone(), model, "search_document", dims)
+    }
 
     fn ndims(&self) -> usize {
         self.ndims
@@ -85,7 +93,7 @@ where
         let documents = documents.into_iter().collect::<Vec<_>>();
 
         let body = json!({
-            "model": self.model,
+            "model": self.model.to_string(),
             "texts": documents,
             "input_type": self.input_type
         });
@@ -95,7 +103,6 @@ where
         let req = self
             .client
             .post("/v1/embed")?
-            .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
@@ -152,11 +159,25 @@ where
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: &str, input_type: &str, ndims: usize) -> Self {
+    pub fn new(
+        client: Client<T>,
+        model: impl Into<String>,
+        input_type: &str,
+        ndims: usize,
+    ) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
             input_type: input_type.to_string(),
+            ndims,
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str, input_type: &str, ndims: usize) -> Self {
+        Self {
+            client,
+            model: model.into(),
+            input_type: input_type.into(),
             ndims,
         }
     }

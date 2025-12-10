@@ -1,19 +1,17 @@
 use rig::prelude::*;
 use rig::{
     completion::Prompt,
-    providers::anthropic::{self, CLAUDE_3_5_SONNET},
+    providers::anthropic::{self},
 };
-use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create Anthropic client
-    let client =
-        anthropic::Client::new(&env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set"));
+    let client = anthropic::Client::from_env();
 
     // Create agent with a single context prompt
     let agent = client
-        .agent(CLAUDE_3_5_SONNET)
+        .agent(anthropic::completion::CLAUDE_3_5_SONNET)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

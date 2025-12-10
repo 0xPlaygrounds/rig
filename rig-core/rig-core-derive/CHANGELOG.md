@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.8...rig-derive-v0.1.9) - 2025-12-01
+
+### Added
+
+- *(rig-985)* Consolidate provider clients ([#1050](https://github.com/0xPlaygrounds/rig/pull/1050))
+
+### Fixed
+
+- *(rig-1050)* Inconsistent model/agent initialisation methods ([#1069](https://github.com/0xPlaygrounds/rig/pull/1069))
+
+## [0.1.8](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.7...rig-derive-v0.1.8) - 2025-11-10
+
+### Fixed
+
+- *(rig-1027)* allow any error type to be used for rig tool macro ([#1017](https://github.com/0xPlaygrounds/rig/pull/1017))
+
+## [0.1.7](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.6...rig-derive-v0.1.7) - 2025-10-27
+
+### Added
+
+- *(rig-996)* generic streaming ([#955](https://github.com/0xPlaygrounds/rig/pull/955))
+
 ## [0.1.6](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.5...rig-derive-v0.1.6) - 2025-09-02
 
 ### Other

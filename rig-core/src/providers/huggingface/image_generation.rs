@@ -1,12 +1,16 @@
-use super::Client;
+use super::client::Client;
 use crate::http_client::HttpClientExt;
 use crate::image_generation;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
 use serde_json::json;
 
-pub const FLUX_1: &str = "black-forest-labs/FLUX.1-dev";
-pub const KOLORS: &str = "Kwai-Kolors/Kolors";
-pub const STABLE_DIFFUSION_3: &str = "stabilityai/stable-diffusion-3-medium-diffusers";
+#[allow(non_upper_case_globals)]
+pub mod image_generation_models {
+    pub const Flux1: &str = "black-forest-labs/FLUX.1-dev";
+    pub const Kolors: &str = "Kwai-Kolors/Kolors";
+    pub const StableDiffusion3: &str = "stabilityai/stable-diffusion-3-medium-diffusers";
+}
+pub use image_generation_models::*;
 
 #[derive(Debug)]
 pub struct ImageGenerationResponse {
@@ -33,10 +37,10 @@ pub struct ImageGenerationModel<T = reqwest::Client> {
 }
 
 impl<T> ImageGenerationModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         ImageGenerationModel {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -46,6 +50,12 @@ where
     T: HttpClientExt + Send + Clone + 'static,
 {
     type Response = ImageGenerationResponse;
+
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn image_generation(
@@ -63,7 +73,7 @@ where
 
         let route = self
             .client
-            .sub_provider
+            .subprovider()
             .image_generation_endpoint(&self.model)?;
 
         let body = serde_json::to_vec(&request)?;

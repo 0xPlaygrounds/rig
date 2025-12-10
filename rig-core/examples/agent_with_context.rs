@@ -1,15 +1,15 @@
 use rig::prelude::*;
+use rig::providers::cohere::COMMAND_R;
 use rig::{agent::AgentBuilder, completion::Prompt, providers::cohere};
-use std::env;
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI and Cohere clients
     // let openai_client = openai::Client::new(&env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"));
-    let cohere_client =
-        cohere::Client::new(&env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set"));
+    let cohere_client = cohere::Client::from_env();
 
     // let model = openai_client.completion_model("gpt-4");
-    let model = cohere_client.completion_model("command-r");
+    let model = cohere_client.completion_model(COMMAND_R);
 
     // Create an agent with multiple context documents
     let agent = AgentBuilder::new(model)

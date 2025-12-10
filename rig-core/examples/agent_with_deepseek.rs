@@ -1,4 +1,5 @@
 use rig::prelude::*;
+use rig::providers::deepseek::DEEPSEEK_CHAT;
 use rig::{
     completion::{Prompt, ToolDefinition},
     providers,
@@ -15,7 +16,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let client = providers::deepseek::Client::from_env();
     let agent = client
-        .agent("deepseek-chat")
+        .agent(DEEPSEEK_CHAT)
         .preamble("You are a helpful assistant.")
         .build();
     let answer = agent.prompt("Tell me a joke").await?;
@@ -24,7 +25,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt and two tools
     let calculator_agent = client
-        .agent(providers::deepseek::DEEPSEEK_CHAT)
+        .agent(DEEPSEEK_CHAT)
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
         .max_tokens(1024)
         .tool(Adder)

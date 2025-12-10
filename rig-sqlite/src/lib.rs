@@ -5,6 +5,7 @@ use rig::vector_store::{VectorStoreError, VectorStoreIndex};
 use rusqlite::types::Value;
 use serde::Deserialize;
 use std::marker::PhantomData;
+use std::ops::RangeInclusive;
 use tokio_rusqlite::Connection;
 use tracing::{debug, info};
 use zerocopy::IntoBytes;
@@ -98,7 +99,7 @@ where
 
 impl<E, T> SqliteVectorStore<E, T>
 where
-    E: EmbeddingModel + 'static,
+    E: EmbeddingModel + Clone + 'static,
     T: SqliteVectorStoreTable + 'static,
 {
     pub async fn new(conn: Connection, embedding_model: &E) -> Result<Self, VectorStoreError> {
@@ -224,15 +225,19 @@ where
     pub async fn add_rows(
         &self,
         documents: Vec<(T, OneOrMany<Embedding>)>,
-    ) -> Result<i64, VectorStoreError> {
-        let documents = documents.clone();
-        let this = self.clone();
+    ) -> Result<i64, VectorStoreError>
+    where
+        T: 'static,
+        Self: 'static,
+    {
+        let cloned = self.clone();
 
         self.conn
             .call(move |conn| {
-                let tx = conn.transaction().map_err(tokio_rusqlite::Error::from)?;
-                let result = this.add_rows_with_txn(&tx, documents)?;
-                tx.commit().map_err(tokio_rusqlite::Error::from)?;
+                let tx = conn.transaction()?;
+                let result = cloned.add_rows_with_txn(&tx, documents)?;
+                tx.commit()?;
+
                 Ok(result)
             })
             .await
@@ -240,7 +245,7 @@ where
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct SqliteSearchFilter {
     condition: String,
     params: Vec<serde_json::Value>,
@@ -291,6 +296,60 @@ impl SqliteSearchFilter {
         Self {
             condition: format!("NOT ({})", self.condition),
             ..self
+        }
+    }
+
+    /// Tests whether the value at `key` is contained in the range
+    pub fn between<N>(key: String, range: RangeInclusive<N>) -> Self
+    where
+        N: Ord + rusqlite::ToSql + std::fmt::Display,
+    {
+        let lo = range.start();
+        let hi = range.end();
+
+        Self {
+            condition: format!("{key} between {lo} and {hi}"),
+            ..Default::default()
+        }
+    }
+
+    // Null checks
+    pub fn is_null(key: String) -> Self {
+        Self {
+            condition: format!("{key} is null"),
+            ..Default::default()
+        }
+    }
+
+    pub fn is_not_null(key: String) -> Self {
+        Self {
+            condition: format!("{key} is not null"),
+            ..Default::default()
+        }
+    }
+
+    // String ops
+    /// Tests whether the value at `key` satisfies the glob pattern
+    /// `pattern` should be a valid SQLite glob pattern
+    pub fn glob<'a, S>(key: String, pattern: S) -> Self
+    where
+        S: AsRef<&'a str>,
+    {
+        Self {
+            condition: format!("{key} glob {}", pattern.as_ref()),
+            ..Default::default()
+        }
+    }
+
+    /// Tests whether the value at `key` satisfies the "like" pattern
+    /// `pattern` should be a valid SQLite like pattern
+    pub fn like<'a, S>(key: String, pattern: S) -> Self
+    where
+        S: AsRef<&'a str>,
+    {
+        Self {
+            condition: format!("{key} like {}", pattern.as_ref()),
+            ..Default::default()
         }
     }
 }
@@ -508,8 +567,6 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                     ORDER BY e.distance"
                 ))?;
 
-                dbg!(&stmt);
-
                 let rows = stmt
                     .query_map(rusqlite::params_from_iter(params), |row| {
                         // Create a map of column names to values
@@ -572,8 +629,6 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                      {where_clause}
                      ORDER BY e.distance"
                 ))?;
-
-                dbg!(&stmt);
 
                 let results = stmt
                     .query_map(rusqlite::params_from_iter(params), |row| {

@@ -1,42 +1,130 @@
 //! Anthropic client api implementation
-use bytes::Bytes;
-use http_client::Method;
+use http::{HeaderName, HeaderValue};
 
 use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
 use crate::{
     client::{
-        ClientBuilderError, CompletionClient, ProviderClient, ProviderValue, VerifyClient,
-        VerifyError, impl_conversion_traits,
+        self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+        ProviderClient,
     },
-    http_client::{self, HttpClientExt},
-    wasm_compat::WasmCompatSend,
+    http_client,
 };
 
 // ================================================================
 // Main Anthropic Client
 // ================================================================
-const ANTHROPIC_API_BASE_URL: &str = "https://api.anthropic.com";
+#[derive(Debug, Default, Clone)]
+pub struct AnthropicExt;
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    api_key: &'a str,
-    base_url: &'a str,
-    anthropic_version: &'a str,
-    anthropic_betas: Option<Vec<&'a str>>,
-    http_client: T,
+impl Provider for AnthropicExt {
+    type Builder = AnthropicBuilder;
+
+    const VERIFY_PATH: &'static str = "/v1/models";
+
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self::Builder, AnthropicKey, H>,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
+    }
 }
 
-impl<'a, T> ClientBuilder<'a, T>
+impl<H> Capabilities<H> for AnthropicExt {
+    type Completion = Capable<CompletionModel<H>>;
+
+    type Embeddings = Nothing;
+    type Transcription = Nothing;
+    #[cfg(feature = "image")]
+    type ImageGeneration = Nothing;
+    #[cfg(feature = "audio")]
+    type AudioGeneration = Nothing;
+}
+
+#[derive(Debug, Clone)]
+pub struct AnthropicBuilder {
+    anthropic_version: String,
+    anthropic_betas: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AnthropicKey(String);
+
+impl<S> From<S> for AnthropicKey
 where
-    T: Default,
+    S: Into<String>,
 {
-    pub fn new(api_key: &'a str) -> Self {
-        ClientBuilder {
-            api_key,
-            base_url: ANTHROPIC_API_BASE_URL,
-            anthropic_version: ANTHROPIC_VERSION_LATEST,
-            anthropic_betas: None,
-            http_client: Default::default(),
+    fn from(value: S) -> Self {
+        Self(value.into())
+    }
+}
+
+impl ApiKey for AnthropicKey {
+    fn into_header(self) -> Option<http_client::Result<(http::HeaderName, HeaderValue)>> {
+        Some(
+            HeaderValue::from_str(&self.0)
+                .map(|val| (HeaderName::from_static("x-api-key"), val))
+                .map_err(Into::into),
+        )
+    }
+}
+
+pub type Client<H = reqwest::Client> = client::Client<AnthropicExt, H>;
+pub type ClientBuilder<H = reqwest::Client> =
+    client::ClientBuilder<AnthropicBuilder, AnthropicKey, H>;
+
+impl Default for AnthropicBuilder {
+    fn default() -> Self {
+        Self {
+            anthropic_version: ANTHROPIC_VERSION_LATEST.into(),
+            anthropic_betas: Vec::new(),
         }
+    }
+}
+
+impl ProviderBuilder for AnthropicBuilder {
+    type Output = AnthropicExt;
+    type ApiKey = AnthropicKey;
+
+    const BASE_URL: &'static str = "https://api.anthropic.com";
+
+    fn finish<H>(
+        &self,
+        mut builder: client::ClientBuilder<Self, AnthropicKey, H>,
+    ) -> http_client::Result<client::ClientBuilder<Self, AnthropicKey, H>> {
+        builder.headers_mut().insert(
+            "anthropic-version",
+            HeaderValue::from_str(&self.anthropic_version)?,
+        );
+
+        if !self.anthropic_betas.is_empty() {
+            builder.headers_mut().insert(
+                "anthropic-beta",
+                HeaderValue::from_str(&self.anthropic_betas.join(","))?,
+            );
+        }
+
+        Ok(builder)
+    }
+}
+
+impl DebugExt for AnthropicExt {}
+
+impl ProviderClient for Client {
+    type Input = String;
+
+    fn from_env() -> Self
+    where
+        Self: Sized,
+    {
+        let key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
+
+        Self::builder().api_key(key).build().unwrap()
+    }
+
+    fn from_val(input: Self::Input) -> Self
+    where
+        Self: Sized,
+    {
+        Self::builder().api_key(input).build().unwrap()
     }
 }
 
@@ -52,257 +140,28 @@ where
 ///    .anthropic_beta("prompt-caching-2024-07-31")
 ///    .build()
 /// ```
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: HttpClientExt,
-{
-    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
-        Self {
-            api_key,
-            base_url: ANTHROPIC_API_BASE_URL,
-            anthropic_version: ANTHROPIC_VERSION_LATEST,
-            anthropic_betas: None,
-            http_client,
-        }
+impl<H> ClientBuilder<H> {
+    pub fn anthropic_version(self, anthropic_version: &str) -> Self {
+        self.over_ext(|ext| AnthropicBuilder {
+            anthropic_version: anthropic_version.into(),
+            ..ext
+        })
     }
 
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            api_key: self.api_key,
-            base_url: self.base_url,
-            anthropic_version: self.anthropic_version,
-            anthropic_betas: self.anthropic_betas,
-            http_client,
-        }
+    pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
+        self.over_ext(|mut ext| {
+            ext.anthropic_betas
+                .extend(anthropic_betas.iter().copied().map(String::from));
+
+            ext
+        })
     }
 
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
+    pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
+        self.over_ext(|mut ext| {
+            ext.anthropic_betas.push(anthropic_beta.into());
 
-    pub fn anthropic_version(mut self, anthropic_version: &'a str) -> Self {
-        self.anthropic_version = anthropic_version;
-        self
-    }
-
-    pub fn anthropic_beta(mut self, anthropic_beta: &'a str) -> Self {
-        if let Some(mut betas) = self.anthropic_betas {
-            betas.push(anthropic_beta);
-            self.anthropic_betas = Some(betas);
-        } else {
-            self.anthropic_betas = Some(vec![anthropic_beta]);
-        }
-        self
-    }
-
-    pub fn build(self) -> Result<Client<T>, ClientBuilderError> {
-        let mut default_headers = reqwest::header::HeaderMap::new();
-        default_headers.insert(
-            "anthropic-version",
-            self.anthropic_version
-                .parse()
-                .map_err(|_| ClientBuilderError::InvalidProperty("anthropic-version"))?,
-        );
-
-        if let Some(betas) = self.anthropic_betas {
-            default_headers.insert(
-                "anthropic-beta",
-                betas
-                    .join(",")
-                    .parse()
-                    .map_err(|_| ClientBuilderError::InvalidProperty("anthropic-beta"))?,
-            );
-        };
-
-        Ok(Client {
-            base_url: self.base_url.to_string(),
-            api_key: self.api_key.to_string(),
-            default_headers,
-            http_client: self.http_client,
+            ext
         })
     }
 }
-
-#[derive(Clone)]
-pub struct Client<T = reqwest::Client> {
-    /// The base URL
-    base_url: String,
-    /// The API key
-    api_key: String,
-    /// The underlying HTTP client
-    pub http_client: T,
-    /// Default headers that will be automatically added to any given request with this client (API key, Anthropic Version and any betas that have been added)
-    default_headers: reqwest::header::HeaderMap,
-}
-
-impl<T> std::fmt::Debug for Client<T>
-where
-    T: HttpClientExt + std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client")
-            .field("base_url", &self.base_url)
-            .field("http_client", &self.http_client)
-            .field("api_key", &"<REDACTED>")
-            .field("default_headers", &self.default_headers)
-            .finish()
-    }
-}
-
-impl<T> Client<T>
-where
-    T: HttpClientExt + Clone + Default,
-{
-    pub async fn send<U, V>(
-        &self,
-        req: http_client::Request<U>,
-    ) -> Result<http_client::Response<http_client::LazyBody<V>>, http_client::Error>
-    where
-        U: Into<Bytes> + Send,
-        V: From<Bytes> + Send + 'static,
-    {
-        self.http_client.send(req).await
-    }
-
-    pub(crate) fn post(&self, path: &str) -> http_client::Builder {
-        let uri = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
-
-        let mut headers = self.default_headers.clone();
-
-        headers.insert(
-            "X-Api-Key",
-            http_client::HeaderValue::from_str(&self.api_key).unwrap(),
-        );
-
-        let mut req = http_client::Request::builder()
-            .method(Method::POST)
-            .uri(uri);
-
-        if let Some(hs) = req.headers_mut() {
-            *hs = headers;
-        }
-
-        req
-    }
-
-    pub(crate) fn get(&self, path: &str) -> http_client::Builder {
-        let uri = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
-
-        let mut headers = self.default_headers.clone();
-        headers.insert(
-            "X-Api-Key",
-            http_client::HeaderValue::from_str(&self.api_key).unwrap(),
-        );
-
-        let mut req = http_client::Request::builder().method(Method::GET).uri(uri);
-
-        if let Some(hs) = req.headers_mut() {
-            *hs = headers;
-        }
-
-        req
-    }
-}
-
-impl Client<reqwest::Client> {
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::new(api_key)
-    }
-
-    pub fn from_env() -> Self {
-        <Self as ProviderClient>::from_env()
-    }
-    /// Create a new Anthropic client. For more control, use the `builder` method.
-    ///
-    /// # Panics
-    /// - If the API key or version cannot be parsed as a Json value from a String.
-    /// - If the reqwest client cannot be built (if the TLS backend cannot be initialized).
-    pub fn new(api_key: &str) -> Self {
-        ClientBuilder::new(api_key)
-            .build()
-            .expect("Anthropic client should build")
-    }
-}
-
-impl<T> ProviderClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    /// Create a new Anthropic client from the `ANTHROPIC_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    fn from_env() -> Self {
-        let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
-
-        ClientBuilder::<T>::new(&api_key).build().unwrap()
-    }
-
-    fn from_val(input: crate::client::ProviderValue) -> Self {
-        let ProviderValue::Simple(api_key) = input else {
-            panic!("Incorrect provider value type")
-        };
-
-        ClientBuilder::<T>::new(&api_key).build().unwrap()
-    }
-}
-
-impl<T> CompletionClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
-{
-    type CompletionModel = CompletionModel<T>;
-
-    fn completion_model(&self, model: &str) -> CompletionModel<T> {
-        CompletionModel::new(self.clone(), model)
-    }
-}
-
-impl<T> VerifyClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn verify(&self) -> Result<(), VerifyError> {
-        let req = self
-            .get("/v1/models")
-            .body(http_client::NoBody)
-            .map_err(http_client::Error::from)?;
-
-        let response = HttpClientExt::send(&self.http_client, req).await?;
-
-        match response.status() {
-            http::StatusCode::OK => Ok(()),
-            http::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
-                Err(VerifyError::InvalidAuthentication)
-            }
-            http::StatusCode::INTERNAL_SERVER_ERROR => {
-                let text = http_client::text(response).await?;
-                Err(VerifyError::ProviderError(text))
-            }
-            status if status.as_u16() == 529 => {
-                let text = http_client::text(response).await?;
-                Err(VerifyError::ProviderError(text))
-            }
-            _ => {
-                let status = response.status();
-
-                if status.is_success() {
-                    Ok(())
-                } else {
-                    let text: String = String::from_utf8_lossy(&response.into_body().await?).into();
-                    Err(VerifyError::HttpError(http_client::Error::Instance(
-                        format!("Failed with '{status}': {text}").into(),
-                    )))
-                }
-            }
-        }
-    }
-}
-
-impl_conversion_traits!(
-    AsTranscription,
-    AsEmbeddings,
-    AsImageGeneration,
-    AsAudioGeneration
-    for Client<T>
-);

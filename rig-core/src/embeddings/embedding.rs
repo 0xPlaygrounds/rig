@@ -43,9 +43,13 @@ pub enum EmbeddingError {
 }
 
 /// Trait for embedding models that can generate embeddings for documents.
-pub trait EmbeddingModel: Clone + WasmCompatSend + WasmCompatSync {
+pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     /// The maximum number of documents that can be embedded in a single request.
     const MAX_DOCUMENTS: usize;
+
+    type Client;
+
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self;
 
     /// The number of dimensions in the embedding vector.
     fn ndims(&self) -> usize;
@@ -71,6 +75,10 @@ pub trait EmbeddingModel: Clone + WasmCompatSend + WasmCompatSync {
     }
 }
 
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `EmbeddingModel` instead."
+)]
 pub trait EmbeddingModelDyn: WasmCompatSend + WasmCompatSync {
     fn max_documents(&self) -> usize;
     fn ndims(&self) -> usize;
@@ -84,6 +92,7 @@ pub trait EmbeddingModelDyn: WasmCompatSend + WasmCompatSync {
     ) -> WasmBoxedFuture<'_, Result<Vec<Embedding>, EmbeddingError>>;
 }
 
+#[allow(deprecated)]
 impl<T> EmbeddingModelDyn for T
 where
     T: EmbeddingModel + WasmCompatSend + WasmCompatSync,

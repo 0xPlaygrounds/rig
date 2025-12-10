@@ -1,5 +1,4 @@
 use crate::{
-    client::{AsVerify, ProviderClient},
     http_client,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
@@ -21,30 +20,26 @@ pub enum VerifyError {
 
 /// A provider client that can verify the configuration.
 /// Clone is required for conversions between client types.
-pub trait VerifyClient: ProviderClient + Clone {
+pub trait VerifyClient {
     /// Verify the configuration.
     fn verify(&self) -> impl Future<Output = Result<(), VerifyError>> + WasmCompatSend;
 }
 
-pub trait VerifyClientDyn: ProviderClient {
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `VerifyClient` instead."
+)]
+pub trait VerifyClientDyn {
     /// Verify the configuration.
     fn verify(&self) -> WasmBoxedFuture<'_, Result<(), VerifyError>>;
 }
 
+#[allow(deprecated)]
 impl<T> VerifyClientDyn for T
 where
     T: VerifyClient,
 {
     fn verify(&self) -> WasmBoxedFuture<'_, Result<(), VerifyError>> {
         Box::pin(self.verify())
-    }
-}
-
-impl<T> AsVerify for T
-where
-    T: VerifyClientDyn + Clone + 'static,
-{
-    fn as_verify(&self) -> Option<Box<dyn VerifyClientDyn>> {
-        Some(Box::new(self.clone()))
     }
 }

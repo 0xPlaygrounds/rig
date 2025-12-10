@@ -3,7 +3,7 @@ use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
 };
-use rig::{providers::openai::TEXT_EMBEDDING_ADA_002, vector_store::request::VectorSearchRequest};
+use rig::{client::ProviderClient, providers::openai, vector_store::request::VectorSearchRequest};
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::env;
@@ -49,8 +49,7 @@ where
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize OpenAI client
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = Client::new(&openai_api_key);
+    let openai_client = Client::from_env();
 
     // Initialize MongoDB client
     let mongodb_connection_string =
@@ -68,7 +67,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .collection("context");
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     let words = vec![
         Word {

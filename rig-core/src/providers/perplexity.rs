@@ -8,24 +8,21 @@
 //!
 //! let llama_3_1_sonar_small_online = client.completion_model(perplexity::LLAMA_3_1_SONAR_SMALL_ONLINE);
 //! ```
-use crate::{
-    OneOrMany,
-    client::{VerifyClient, VerifyError},
-    completion::{self, CompletionError, MessageError, message},
-    http_client::{self, HttpClientExt},
-    impl_conversion_traits, json_utils,
-};
-
-use crate::client::{CompletionClient, ProviderClient};
+use crate::client::BearerAuth;
 use crate::completion::CompletionRequest;
-use crate::json_utils::merge;
 use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
+use crate::{
+    OneOrMany,
+    client::{
+        self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+    },
+    completion::{self, CompletionError, MessageError, message},
+    http_client::{self, HttpClientExt},
+};
 use bytes::Bytes;
-use http::Method;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
 
 // ================================================================
@@ -33,153 +30,69 @@ use tracing::{Instrument, info_span};
 // ================================================================
 const PERPLEXITY_API_BASE_URL: &str = "https://api.perplexity.ai";
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    api_key: &'a str,
-    base_url: &'a str,
-    http_client: T,
-}
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PerplexityExt;
 
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
-    pub fn new(api_key: &'a str) -> Self {
-        Self {
-            api_key,
-            base_url: PERPLEXITY_API_BASE_URL,
-            http_client: Default::default(),
-        }
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PerplexityBuilder;
+
+type PerplexityApiKey = BearerAuth;
+
+impl Provider for PerplexityExt {
+    type Builder = PerplexityBuilder;
+
+    // There is currently no way to verify a perplexity api key without consuming tokens
+    const VERIFY_PATH: &'static str = "";
+
+    fn build<H>(
+        _: &crate::client::ClientBuilder<
+            Self::Builder,
+            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
+            H,
+        >,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 
-impl<'a, T> ClientBuilder<'a, T> {
-    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
-        Self {
-            api_key,
-            base_url: PERPLEXITY_API_BASE_URL,
-            http_client,
-        }
-    }
+impl<H> Capabilities<H> for PerplexityExt {
+    type Completion = Capable<CompletionModel<H>>;
+    type Transcription = Nothing;
+    type Embeddings = Nothing;
+    #[cfg(feature = "image")]
+    type ImageGeneration = Nothing;
 
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            api_key: self.api_key,
-            base_url: self.base_url,
-            http_client,
-        }
-    }
-
-    pub fn build(self) -> Client<T> {
-        Client {
-            base_url: self.base_url.to_string(),
-            api_key: self.api_key.to_string(),
-            http_client: self.http_client,
-        }
-    }
+    #[cfg(feature = "audio")]
+    type AudioGeneration = Nothing;
 }
 
-#[derive(Clone)]
-pub struct Client<T = reqwest::Client> {
-    base_url: String,
-    api_key: String,
-    http_client: T,
+impl DebugExt for PerplexityExt {}
+
+impl ProviderBuilder for PerplexityBuilder {
+    type Output = PerplexityExt;
+    type ApiKey = PerplexityApiKey;
+
+    const BASE_URL: &'static str = PERPLEXITY_API_BASE_URL;
 }
 
-impl<T> std::fmt::Debug for Client<T>
-where
-    T: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client")
-            .field("base_url", &self.base_url)
-            .field("http_client", &self.http_client)
-            .field("api_key", &"<REDACTED>")
-            .finish()
-    }
-}
+pub type Client<H = reqwest::Client> = client::Client<PerplexityExt, H>;
+pub type ClientBuilder<H = reqwest::Client> =
+    client::ClientBuilder<PerplexityBuilder, PerplexityApiKey, H>;
 
-impl<T> Client<T>
-where
-    T: HttpClientExt,
-{
-    fn req(
-        &self,
-        method: http_client::Method,
-        path: &str,
-    ) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
-        let req = http_client::Builder::new().method(method).uri(url);
+impl ProviderClient for Client {
+    type Input = String;
 
-        http_client::with_bearer_auth(req, &self.api_key)
-    }
-}
-
-impl Client<reqwest::Client> {
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::new(api_key)
-    }
-
-    pub fn new(api_key: &str) -> Self {
-        Self::builder(api_key).build()
-    }
-
-    pub fn from_env() -> Self {
-        <Self as ProviderClient>::from_env()
-    }
-}
-
-impl<T> ProviderClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
     /// Create a new Perplexity client from the `PERPLEXITY_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("PERPLEXITY_API_KEY").expect("PERPLEXITY_API_KEY not set");
-        ClientBuilder::<T>::new(&api_key).build()
+        Self::new(&api_key).unwrap()
     }
 
-    fn from_val(input: crate::client::ProviderValue) -> Self {
-        let crate::client::ProviderValue::Simple(api_key) = input else {
-            panic!("Incorrect provider value type")
-        };
-        ClientBuilder::<T>::new(&api_key).build()
+    fn from_val(input: Self::Input) -> Self {
+        Self::new(&input).unwrap()
     }
 }
-
-impl<T> CompletionClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    type CompletionModel = CompletionModel<T>;
-
-    fn completion_model(&self, model: &str) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model)
-    }
-}
-
-impl<T> VerifyClient for Client<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn verify(&self) -> Result<(), VerifyError> {
-        // No API endpoint to verify the API key
-        Ok(())
-    }
-}
-
-impl_conversion_traits!(
-    AsTranscription,
-    AsEmbeddings,
-    AsImageGeneration,
-    AsAudioGeneration for Client<T>
-);
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
@@ -196,9 +109,8 @@ enum ApiResponse<T> {
 // ================================================================
 // Perplexity Completion API
 // ================================================================
-/// `sonar-pro` completion model
-pub const SONAR_PRO: &str = "sonar-pro";
-/// `sonar` completion model
+
+pub const SONAR_PRO: &str = "sonar_pro";
 pub const SONAR: &str = "sonar";
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -285,45 +197,36 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-#[derive(Clone)]
-pub struct CompletionModel<T> {
-    client: Client<T>,
-    pub model: String,
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct PerplexityCompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u64>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    additional_params: Option<serde_json::Value>,
+    pub stream: bool,
 }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
+impl TryFrom<(&str, CompletionRequest)> for PerplexityCompletionRequest {
+    type Error = CompletionError;
 
-    fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
-        if completion_request.tool_choice.is_some() {
-            tracing::warn!("WARNING: `tool_choice` not supported on Perplexity");
-        }
-
-        // Build up the order of messages (context, chat_history, prompt)
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
+        if let Some(docs) = req.normalized_documents() {
             partial_history.push(docs);
         }
-        partial_history.extend(completion_request.chat_history);
+        partial_history.extend(req.chat_history);
 
         // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<Message> =
-            completion_request
-                .preamble
-                .map_or_else(Vec::new, |preamble| {
-                    vec![Message {
-                        role: Role::System,
-                        content: preamble,
-                    }]
-                });
+        let mut full_history: Vec<Message> = req.preamble.map_or_else(Vec::new, |preamble| {
+            vec![Message {
+                role: Role::System,
+                content: preamble,
+            }]
+        });
 
         // Convert and extend the rest of the history
         full_history.extend(
@@ -333,20 +236,29 @@ impl<T> CompletionModel<T> {
                 .collect::<Result<Vec<Message>, _>>()?,
         );
 
-        // Compose request
-        let request = json!({
-            "model": self.model,
-            "messages": full_history,
-            "temperature": completion_request.temperature,
-        });
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            max_tokens: req.max_tokens,
+            additional_params: req.additional_params,
+            stream: false,
+        })
+    }
+}
 
-        let request = if let Some(ref params) = completion_request.additional_params {
-            json_utils::merge(request, params.clone())
-        } else {
-            request
-        };
+#[derive(Clone)]
+pub struct CompletionModel<T = reqwest::Client> {
+    client: Client<T>,
+    pub model: String,
+}
 
-        Ok(request)
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 
@@ -417,14 +329,17 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
 
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let request = self.create_completion_request(completion_request)?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -432,49 +347,67 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "perplexity",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
+        span.record("gen_ai.system_instructions", &completion_request.preamble);
+
+        if completion_request.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported on Perplexity");
+        }
+
+        if !completion_request.tools.is_empty() {
+            tracing::warn!("WARNING: `tools` not supported on Perplexity");
+        }
+        let request =
+            PerplexityCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if tracing::enabled!(tracing::Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "Perplexity completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let body = serde_json::to_vec(&request)?;
 
         let req = self
             .client
-            .req(Method::POST, "/v1/chat/completions")?
-            .header("Content-Type", "application/json")
+            .post("/v1/chat/completions")?
             .body(body)
             .map_err(http_client::Error::from)?;
 
         let async_block = async move {
-            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let response = self.client.send::<_, Bytes>(req).await?;
 
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if status.is_success() {
                 match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
-                    ApiResponse::Ok(completion) => {
+                    ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
-                        span.record("gen_ai.usage.input_tokens", completion.usage.prompt_tokens);
+                        span.record("gen_ai.usage.input_tokens", response.usage.prompt_tokens);
                         span.record(
                             "gen_ai.usage.output_tokens",
-                            completion.usage.completion_tokens,
+                            response.usage.completion_tokens,
                         );
-                        span.record(
-                            "gen_ai.output.messages",
-                            serde_json::to_string(&completion.choices).unwrap(),
-                        );
-                        span.record("gen_ai.response.id", completion.id.to_string());
-                        span.record("gen_ai.response.model_name", completion.model.to_string());
-                        Ok(completion.try_into()?)
+                        span.record("gen_ai.response.id", response.id.to_string());
+                        span.record("gen_ai.response.model_name", response.model.to_string());
+                        if tracing::enabled!(tracing::Level::TRACE) {
+                            tracing::trace!(target: "rig::responses",
+                                "Perplexity completion response: {}",
+                                serde_json::to_string_pretty(&response)?
+                            );
+                        }
+                        Ok(response.try_into()?)
                     }
                     ApiResponse::Err(error) => Err(CompletionError::ProviderError(error.message)),
                 }
@@ -493,19 +426,6 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let mut request = self.create_completion_request(completion_request)?;
-
-        request = merge(request, json!({"stream": true}));
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .req(Method::POST, "/chat/completions")?
-            .header("Content-Type", "application/json")
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -513,18 +433,46 @@ where
                 gen_ai.operation.name = "chat_streaming",
                 gen_ai.provider.name = "perplexity",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
-        send_compatible_streaming_request(self.client.http_client.clone(), req)
+
+        span.record("gen_ai.system_instructions", &completion_request.preamble);
+
+        if completion_request.tool_choice.is_some() {
+            tracing::warn!("WARNING: `tool_choice` not supported on Perplexity");
+        }
+
+        if !completion_request.tools.is_empty() {
+            tracing::warn!("WARNING: `tools` not supported on Perplexity");
+        }
+
+        let mut request =
+            PerplexityCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+        request.stream = true;
+
+        if tracing::enabled!(tracing::Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "Perplexity streaming completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .post("/chat/completions")?
+            .body(body)
+            .map_err(http_client::Error::from)?;
+
+        send_compatible_streaming_request(self.client.clone(), req)
             .instrument(span)
             .await
     }

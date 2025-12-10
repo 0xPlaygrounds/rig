@@ -9,17 +9,20 @@
 //! let gpt4o = client.completion_model(groq::GPT_4O);
 //! ```
 use bytes::Bytes;
-use http::{Method, Request};
+use http::Request;
 use std::collections::HashMap;
 use tracing::info_span;
 use tracing_futures::Instrument;
 
 use super::openai::{CompletionResponse, StreamingToolCall, TranscriptionResponse, Usage};
-use crate::client::{CompletionClient, TranscriptionClient, VerifyClient, VerifyError};
+use crate::client::{
+    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient,
+};
 use crate::completion::GetTokenUsage;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
-use crate::json_utils::merge;
+use crate::json_utils::empty_or_none;
 use crate::providers::openai::{AssistantContent, Function, ToolType};
 use async_stream::stream;
 use futures::StreamExt;
@@ -33,220 +36,73 @@ use crate::{
     transcription::{self, TranscriptionError},
 };
 use reqwest::multipart::Part;
-use rig::client::ProviderClient;
-use rig::impl_conversion_traits;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 
 // ================================================================
 // Main Groq Client
 // ================================================================
 const GROQ_API_BASE_URL: &str = "https://api.groq.com/openai/v1";
 
-pub struct ClientBuilder<'a, T = reqwest::Client> {
-    api_key: &'a str,
-    base_url: &'a str,
-    http_client: T,
-}
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GroqExt;
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GroqBuilder;
 
-impl<'a, T> ClientBuilder<'a, T>
-where
-    T: Default,
-{
-    pub fn new(api_key: &'a str) -> Self {
-        Self {
-            api_key,
-            base_url: GROQ_API_BASE_URL,
-            http_client: Default::default(),
-        }
+type GroqApiKey = BearerAuth;
+
+impl Provider for GroqExt {
+    type Builder = GroqBuilder;
+
+    const VERIFY_PATH: &'static str = "/models";
+
+    fn build<H>(
+        _: &crate::client::ClientBuilder<
+            Self::Builder,
+            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
+            H,
+        >,
+    ) -> http_client::Result<Self> {
+        Ok(Self)
     }
 }
 
-impl<'a, T> ClientBuilder<'a, T> {
-    pub fn new_with_client(api_key: &'a str, http_client: T) -> Self {
-        Self {
-            api_key,
-            base_url: GROQ_API_BASE_URL,
-            http_client,
-        }
-    }
+impl<H> Capabilities<H> for GroqExt {
+    type Completion = Capable<CompletionModel<H>>;
+    type Embeddings = Nothing;
+    type Transcription = Capable<TranscriptionModel<H>>;
+    #[cfg(feature = "image")]
+    type ImageGeneration = Nothing;
 
-    pub fn base_url(mut self, base_url: &'a str) -> Self {
-        self.base_url = base_url;
-        self
-    }
-
-    pub fn with_client<U>(self, http_client: U) -> ClientBuilder<'a, U> {
-        ClientBuilder {
-            api_key: self.api_key,
-            base_url: self.base_url,
-            http_client,
-        }
-    }
-
-    pub fn build(self) -> Client<T> {
-        Client {
-            base_url: self.base_url.to_string(),
-            api_key: self.api_key.to_string(),
-            http_client: self.http_client,
-        }
-    }
+    #[cfg(feature = "audio")]
+    type AudioGeneration = Nothing;
 }
 
-#[derive(Clone)]
-pub struct Client<T = reqwest::Client> {
-    base_url: String,
-    api_key: String,
-    http_client: T,
+impl DebugExt for GroqExt {}
+
+impl ProviderBuilder for GroqBuilder {
+    type Output = GroqExt;
+    type ApiKey = GroqApiKey;
+
+    const BASE_URL: &'static str = GROQ_API_BASE_URL;
 }
 
-impl<T> std::fmt::Debug for Client<T>
-where
-    T: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client")
-            .field("base_url", &self.base_url)
-            .field("http_client", &self.http_client)
-            .field("api_key", &"<REDACTED>")
-            .finish()
-    }
-}
+pub type Client<H = reqwest::Client> = client::Client<GroqExt, H>;
+pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<GroqBuilder, String, H>;
 
-impl<T> Client<T>
-where
-    T: HttpClientExt,
-{
-    fn req(
-        &self,
-        method: http_client::Method,
-        path: &str,
-    ) -> http_client::Result<http_client::Builder> {
-        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+impl ProviderClient for Client {
+    type Input = String;
 
-        http_client::with_bearer_auth(
-            http_client::Builder::new().method(method).uri(url),
-            &self.api_key,
-        )
-    }
-
-    fn get(&self, path: &str) -> http_client::Result<http_client::Builder> {
-        self.req(http_client::Method::GET, path)
-    }
-}
-
-impl Client<reqwest::Client> {
-    pub fn builder(api_key: &str) -> ClientBuilder<'_, reqwest::Client> {
-        ClientBuilder::new(api_key)
-    }
-
-    pub fn new(api_key: &str) -> Self {
-        ClientBuilder::new(api_key).build()
-    }
-
-    pub fn from_env() -> Self {
-        <Self as ProviderClient>::from_env()
-    }
-}
-
-impl<T> ProviderClient for Client<T>
-where
-    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
-{
     /// Create a new Groq client from the `GROQ_API_KEY` environment variable.
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("GROQ_API_KEY").expect("GROQ_API_KEY not set");
-        ClientBuilder::<T>::new(&api_key).build()
+        Self::new(&api_key).unwrap()
     }
 
-    fn from_val(input: crate::client::ProviderValue) -> Self {
-        let crate::client::ProviderValue::Simple(api_key) = input else {
-            panic!("Incorrect provider value type")
-        };
-        ClientBuilder::<T>::new(&api_key).build()
+    fn from_val(input: Self::Input) -> Self {
+        Self::new(&input).unwrap()
     }
 }
-
-impl<T> CompletionClient for Client<T>
-where
-    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
-{
-    type CompletionModel = CompletionModel<T>;
-
-    /// Create a completion model with the given name.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::groq::{Client, self};
-    ///
-    /// // Initialize the Groq client
-    /// let groq = Client::new("your-groq-api-key");
-    ///
-    /// let gpt4 = groq.completion_model(groq::GPT_4);
-    /// ```
-    fn completion_model(&self, model: &str) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model)
-    }
-}
-
-impl<T> TranscriptionClient for Client<T>
-where
-    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
-{
-    type TranscriptionModel = TranscriptionModel<T>;
-
-    /// Create a transcription model with the given name.
-    ///
-    /// # Example
-    /// ```
-    /// use rig::providers::groq::{Client, self};
-    ///
-    /// // Initialize the Groq client
-    /// let groq = Client::new("your-groq-api-key");
-    ///
-    /// let gpt4 = groq.transcription_model(groq::WHISPER_LARGE_V3);
-    /// ```
-    fn transcription_model(&self, model: &str) -> Self::TranscriptionModel {
-        TranscriptionModel::new(self.clone(), model)
-    }
-}
-
-impl<T> VerifyClient for Client<T>
-where
-    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
-{
-    #[cfg_attr(feature = "worker", worker::send)]
-    async fn verify(&self) -> Result<(), VerifyError> {
-        let req = self
-            .get("/models")?
-            .body(http_client::NoBody)
-            .map_err(http_client::Error::from)?;
-
-        let response = HttpClientExt::send(&self.http_client, req).await?;
-
-        match response.status() {
-            reqwest::StatusCode::OK => Ok(()),
-            reqwest::StatusCode::UNAUTHORIZED => Err(VerifyError::InvalidAuthentication),
-            reqwest::StatusCode::INTERNAL_SERVER_ERROR
-            | reqwest::StatusCode::SERVICE_UNAVAILABLE
-            | reqwest::StatusCode::BAD_GATEWAY => {
-                let text = http_client::text(response).await?;
-                Err(VerifyError::ProviderError(text))
-            }
-            _ => {
-                //response.error_for_status()?;
-                Ok(())
-            }
-        }
-    }
-}
-
-impl_conversion_traits!(
-    AsEmbeddings,
-    AsImageGeneration,
-    AsAudioGeneration for Client<T>
-);
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
@@ -266,6 +122,16 @@ pub struct Message {
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<String>,
+}
+
+impl Message {
+    fn system(preamble: &str) -> Self {
+        Self {
+            role: "system".to_string(),
+            content: Some(preamble.to_string()),
+            reasoning: None,
+        }
+    }
 }
 
 impl TryFrom<Message> for message::Message {
@@ -346,6 +212,11 @@ impl TryFrom<message::Message> for Message {
                             groq_reasoning =
                                 Some(reasoning.first().cloned().unwrap_or(String::new()));
                         }
+                        message::AssistantContent::Image(_) => {
+                            return Err(MessageError::ConversionError(
+                                "Ollama currently doesn't support images.".into(),
+                            ));
+                        }
                     }
                 }
 
@@ -362,6 +233,7 @@ impl TryFrom<message::Message> for Message {
 // ================================================================
 // Groq Completion API
 // ================================================================
+
 /// The `deepseek-r1-distill-llama-70b` model. Used for chat completion.
 pub const DEEPSEEK_R1_DISTILL_LLAMA_70B: &str = "deepseek-r1-distill-llama-70b";
 /// The `gemma2-9b-it` model. Used for chat completion.
@@ -389,43 +261,43 @@ pub const LLAMA_3_8B_8192: &str = "llama3-8b-8192";
 /// The `mixtral-8x7b-32768` model. Used for chat completion.
 pub const MIXTRAL_8X7B_32768: &str = "mixtral-8x7b-32768";
 
-#[derive(Clone, Debug)]
-pub struct CompletionModel<T> {
-    client: Client<T>,
-    /// Name of the model (e.g.: deepseek-r1-distill-llama-70b)
-    pub model: String,
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningFormat {
+    Parsed,
 }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct GroqCompletionRequest {
+    model: String,
+    pub messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolDefinition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
+    reasoning_format: ReasoningFormat,
+}
 
-    fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Value, CompletionError> {
+impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
+        if let Some(docs) = req.normalized_documents() {
             partial_history.push(docs);
         }
-        partial_history.extend(completion_request.chat_history);
+        partial_history.extend(req.chat_history);
 
-        // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<Message> =
-            completion_request
-                .preamble
-                .map_or_else(Vec::new, |preamble| {
-                    vec![Message {
-                        role: "system".to_string(),
-                        content: Some(preamble),
-                        reasoning: None,
-                    }]
-                });
+        // Add preamble to chat history (if available)
+        let mut full_history: Vec<Message> = match &req.preamble {
+            Some(preamble) => vec![Message::system(preamble)],
+            None => vec![],
+        };
 
         // Convert and extend the rest of the history
         full_history.extend(
@@ -435,35 +307,42 @@ impl<T> CompletionModel<T> {
                 .collect::<Result<Vec<Message>, _>>()?,
         );
 
-        let tool_choice = completion_request
+        let tool_choice = req
             .tool_choice
+            .clone()
             .map(crate::providers::openai::ToolChoice::try_from)
             .transpose()?;
 
-        let request = if completion_request.tools.is_empty() {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-            })
-        } else {
-            json!({
-                "model": self.model,
-                "messages": full_history,
-                "temperature": completion_request.temperature,
-                "tools": completion_request.tools.into_iter().map(ToolDefinition::from).collect::<Vec<_>>(),
-                "tool_choice": tool_choice,
-                "reasoning_format": "parsed"
-            })
-        };
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            tools: req
+                .tools
+                .clone()
+                .into_iter()
+                .map(ToolDefinition::from)
+                .collect::<Vec<_>>(),
+            tool_choice,
+            additional_params: req.additional_params,
+            reasoning_format: ReasoningFormat::Parsed,
+        })
+    }
+}
 
-        let request = if let Some(params) = completion_request.additional_params {
-            json_utils::merge(request, params)
-        } else {
-            request
-        };
+#[derive(Clone, Debug)]
+pub struct CompletionModel<T = reqwest::Client> {
+    client: Client<T>,
+    /// Name of the model (e.g.: deepseek-r1-distill-llama-70b)
+    pub model: String,
+}
 
-        Ok(request)
+impl<T> CompletionModel<T> {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 
@@ -474,14 +353,17 @@ where
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
+
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-
-        let request = self.create_completion_request(completion_request)?;
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -489,28 +371,36 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "groq",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
+        span.record("gen_ai.system_instructions", &completion_request.preamble);
+
+        let request = GroqCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        if tracing::enabled!(tracing::Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "Groq completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
         let body = serde_json::to_vec(&request)?;
         let req = self
             .client
-            .req(Method::POST, "/chat/completions")?
-            .header("Content-Type", "application/json")
+            .post("/chat/completions")?
             .body(body)
             .map_err(|e| http_client::Error::Instance(e.into()))?;
 
         let async_block = async move {
-            let response = self.client.http_client.send::<_, Bytes>(req).await?;
+            let response = self.client.send::<_, Bytes>(req).await?;
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
 
@@ -520,10 +410,6 @@ where
                         let span = tracing::Span::current();
                         span.record("gen_ai.response.id", response.id.clone());
                         span.record("gen_ai.response.model_name", response.model.clone());
-                        span.record(
-                            "gen_ai.output.messages",
-                            serde_json::to_string(&response.choices).unwrap(),
-                        );
                         if let Some(ref usage) = response.usage {
                             span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
                             span.record(
@@ -531,6 +417,14 @@ where
                                 usage.total_tokens - usage.prompt_tokens,
                             );
                         }
+
+                        if tracing::enabled!(tracing::Level::TRACE) {
+                            tracing::trace!(target: "rig::completions",
+                                "Groq completion response: {}",
+                                serde_json::to_string_pretty(&response)?
+                            );
+                        }
+
                         response.try_into()
                     }
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
@@ -553,22 +447,6 @@ where
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        let preamble = request.preamble.clone();
-        let mut request = self.create_completion_request(request)?;
-
-        request = merge(
-            request,
-            json!({"stream": true, "stream_options": {"include_usage": true}}),
-        );
-
-        let body = serde_json::to_vec(&request)?;
-        let req = self
-            .client
-            .req(Method::POST, "/chat/completions")?
-            .header("Content-Type", "application/json")
-            .body(body)
-            .map_err(|e| http_client::Error::Instance(e.into()))?;
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -576,20 +454,43 @@ where
                 gen_ai.operation.name = "chat_streaming",
                 gen_ai.provider.name = "groq",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
+                gen_ai.system_instructions = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = serde_json::to_string(&request.get("messages").unwrap()).unwrap(),
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
+        span.record("gen_ai.system_instructions", &request.preamble);
+
+        let mut request = GroqCompletionRequest::try_from((self.model.as_ref(), request))?;
+
+        let params = json_utils::merge(
+            request.additional_params.unwrap_or(serde_json::json!({})),
+            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
+        );
+
+        request.additional_params = Some(params);
+
+        if tracing::enabled!(tracing::Level::TRACE) {
+            tracing::trace!(target: "rig::completions",
+                "Groq streaming completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
+        let body = serde_json::to_vec(&request)?;
+        let req = self
+            .client
+            .post("/chat/completions")?
+            .body(body)
+            .map_err(|e| http_client::Error::Instance(e.into()))?;
+
         tracing::Instrument::instrument(
-            send_compatible_streaming_request(self.client.http_client.clone(), req),
+            send_compatible_streaming_request(self.client.clone(), req),
             span,
         )
         .await
@@ -599,9 +500,10 @@ where
 // ================================================================
 // Groq Transcription API
 // ================================================================
+
 pub const WHISPER_LARGE_V3: &str = "whisper-large-v3";
 pub const WHISPER_LARGE_V3_TURBO: &str = "whisper-large-v3-turbo";
-pub const DISTIL_WHISPER_LARGE_V3: &str = "distil-whisper-large-v3-en";
+pub const DISTIL_WHISPER_LARGE_V3_EN: &str = "distil-whisper-large-v3-en";
 
 #[derive(Clone)]
 pub struct TranscriptionModel<T> {
@@ -611,10 +513,10 @@ pub struct TranscriptionModel<T> {
 }
 
 impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
@@ -623,6 +525,12 @@ where
     T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
 {
     type Response = TranscriptionResponse;
+
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn transcription(
@@ -664,16 +572,11 @@ where
 
         let req = self
             .client
-            .req(Method::POST, "/audio/transcriptions")?
+            .post("/audio/transcriptions")?
             .body(body)
             .unwrap();
 
-        let response = self
-            .client
-            .http_client
-            .send_multipart::<Bytes>(req)
-            .await
-            .unwrap();
+        let response = self.client.send_multipart::<Bytes>(req).await.unwrap();
 
         let status = response.status();
         let response_body = response.into_body().into_future().await?.to_vec();
@@ -695,7 +598,7 @@ where
 
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
-pub enum StreamingDelta {
+enum StreamingDelta {
     Reasoning {
         reasoning: String,
     },
@@ -794,7 +697,7 @@ where
 
                                     // Start of tool call
                                     if function.name.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
-                                        && function.arguments.is_empty()
+                                        && empty_or_none(&function.arguments)
                                     {
                                         let id = tool_call.id.clone().unwrap_or_default();
                                         let name = function.name.clone().unwrap();
@@ -802,10 +705,11 @@ where
                                     }
                                     // Continuation
                                     else if function.name.as_ref().map(|s| s.is_empty()).unwrap_or(true)
-                                        && !function.arguments.is_empty()
+                                        && let Some(arguments) = &function.arguments
+                                        && !arguments.is_empty()
                                     {
                                         if let Some((id, name, existing_args)) = calls.get(&tool_call.index) {
-                                            let combined = format!("{}{}", existing_args, function.arguments);
+                                            let combined = format!("{}{}", existing_args, arguments);
                                             calls.insert(tool_call.index, (id.clone(), name.clone(), combined));
                                         } else {
                                             tracing::debug!("Partial tool call received but tool call was never started.");
@@ -815,7 +719,7 @@ where
                                     else {
                                         let id = tool_call.id.clone().unwrap_or_default();
                                         let name = function.name.clone().unwrap_or_default();
-                                        let arguments_str = function.arguments.clone();
+                                        let arguments_str = function.arguments.clone().unwrap_or_default();
 
                                         let Ok(arguments_json) = serde_json::from_str::<serde_json::Value>(&arguments_str) else {
                                             tracing::debug!("Couldn't parse tool call args '{}'", arguments_str);

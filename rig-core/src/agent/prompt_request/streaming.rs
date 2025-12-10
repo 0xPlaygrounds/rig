@@ -2,8 +2,9 @@ use crate::{
     OneOrMany,
     agent::CancelSignal,
     completion::GetTokenUsage,
-    message::{AssistantContent, Reasoning, ToolResultContent, UserContent},
-    streaming::{StreamedAssistantContent, StreamingCompletion},
+    json_utils,
+    message::{AssistantContent, Reasoning, ToolResult, ToolResultContent, UserContent},
+    streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletion},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{Stream, StreamExt};
@@ -32,7 +33,11 @@ pub type StreamingResult<R> =
 #[serde(tag = "type", rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum MultiTurnStreamItem<R> {
-    StreamItem(StreamedAssistantContent<R>),
+    /// A streamed assistant content item.
+    StreamAssistantItem(StreamedAssistantContent<R>),
+    /// A streamed user content item (mostly for tool results).
+    StreamUserItem(StreamedUserContent),
+    /// The final result from the stream.
     FinalResponse(FinalResponse),
 }
 
@@ -62,7 +67,7 @@ impl FinalResponse {
 
 impl<R> MultiTurnStreamItem<R> {
     pub(crate) fn stream_item(item: StreamedAssistantContent<R>) -> Self {
-        Self::StreamItem(item)
+        Self::StreamAssistantItem(item)
     }
 
     pub fn final_response(response: &str, aggregated_usage: crate::completion::Usage) -> Self {
@@ -194,8 +199,13 @@ where
 
         let cancel_signal = CancelSignal::new();
 
-        Box::pin(async_stream::stream! {
-            let _guard = agent_span.enter();
+        // NOTE: We use .instrument(agent_span) instead of span.enter() to avoid
+        // span context leaking to other concurrent tasks. Using span.enter() inside
+        // async_stream::stream! holds the guard across yield points, which causes
+        // thread-local span context to leak when other tasks run on the same thread.
+        // See: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#in-asynchronous-code
+        // See also: https://github.com/rust-lang/rust-clippy/issues/8722
+        let stream = async_stream::stream! {
             let mut current_prompt = prompt.clone();
             let mut did_call_tool = false;
 
@@ -288,20 +298,23 @@ where
                                 gen_ai.tool.call.result = tracing::field::Empty
                             );
 
-                            let res = async {
+                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ToolCall(tool_call.clone())));
+
+                            let tc_result = async {
                                 let tool_span = tracing::Span::current();
+                                let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
                                 if let Some(ref hook) = self.hook {
-                                    hook.on_tool_call(&tool_call.function.name, &tool_call.function.arguments.to_string(), cancel_signal.clone()).await;
+                                    hook.on_tool_call(&tool_call.function.name, &tool_args, cancel_signal.clone()).await;
                                     if cancel_signal.is_cancelled() {
                                         return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec()).into()));
                                     }
                                 }
 
                                 tool_span.record("gen_ai.tool.name", &tool_call.function.name);
-                                tool_span.record("gen_ai.tool.call.arguments", tool_call.function.arguments.to_string());
+                                tool_span.record("gen_ai.tool.call.arguments", &tool_args);
 
                                 let tool_result = match
-                                agent.tool_server_handle.call_tool(&tool_call.function.name, &tool_call.function.arguments.to_string()).await {
+                                agent.tool_server_handle.call_tool(&tool_call.function.name, &tool_args).await {
                                     Ok(thing) => thing,
                                     Err(e) => {
                                         tracing::warn!("Error while calling tool: {e}");
@@ -312,7 +325,7 @@ where
                                 tool_span.record("gen_ai.tool.call.result", &tool_result);
 
                                 if let Some(ref hook) = self.hook {
-                                    hook.on_tool_result(&tool_call.function.name, &tool_call.function.arguments.to_string(), &tool_result.to_string(), cancel_signal.clone())
+                                    hook.on_tool_result(&tool_call.function.name, &tool_args, &tool_result.to_string(), cancel_signal.clone())
                                     .await;
 
                                     if cancel_signal.is_cancelled() {
@@ -323,15 +336,20 @@ where
                                 let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
 
                                 tool_calls.push(tool_call_msg);
-                                tool_results.push((tool_call.id, tool_call.call_id, tool_result));
+                                tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), tool_result.clone()));
 
                                 did_call_tool = true;
-                                Ok(())
-                                // break;
+                                Ok(tool_result)
                             }.instrument(tool_span).await;
 
-                            if let Err(e) = res {
-                                yield Err(e);
+                            match tc_result {
+                                Ok(text) => {
+                                    let tr = ToolResult { id: tool_call.id, call_id: tool_call.call_id, content: OneOrMany::one(ToolResultContent::Text(Text { text })) };
+                                    yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult(tr)));
+                                }
+                                Err(e) => {
+                                    yield Err(e);
+                                }
                             }
                         },
                         Ok(StreamedAssistantContent::ToolCallDelta { id, delta }) => {
@@ -345,12 +363,6 @@ where
                             }
                         }
                         Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id, signature })) => {
-                            chat_history.write().await.push(rig::message::Message::Assistant {
-                                id: None,
-                                content: OneOrMany::one(AssistantContent::Reasoning(Reasoning {
-                                    reasoning: reasoning.clone(), id: id.clone(), signature: signature.clone()
-                                }))
-                            });
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id, signature })));
                             did_call_tool = false;
                         },
@@ -428,8 +440,9 @@ where
                     prompt: last_prompt_error.clone().into(),
                 }).into());
             }
+        };
 
-        })
+        Box::pin(stream.instrument(agent_span))
     }
 }
 
@@ -456,11 +469,13 @@ pub async fn stream_to_stdout<R>(
     print!("Response: ");
     while let Some(content) = stream.next().await {
         match content {
-            Ok(MultiTurnStreamItem::StreamItem(StreamedAssistantContent::Text(Text { text }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                Text { text },
+            ))) => {
                 print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout()).unwrap();
             }
-            Ok(MultiTurnStreamItem::StreamItem(StreamedAssistantContent::Reasoning(
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
                 Reasoning { reasoning, .. },
             ))) => {
                 let reasoning = reasoning.join("\n");
@@ -555,3 +570,113 @@ where
 }
 
 impl<M> StreamingPromptHook<M> for () where M: CompletionModel {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::ProviderClient;
+    use crate::client::completion::CompletionClient;
+    use crate::providers::anthropic;
+    use crate::streaming::StreamingPrompt;
+    use futures::StreamExt;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use std::time::Duration;
+
+    /// Background task that logs periodically to detect span leakage.
+    /// If span leakage occurs, these logs will be prefixed with `invoke_agent{...}`.
+    async fn background_logger(stop: Arc<AtomicBool>, leak_count: Arc<AtomicU32>) {
+        let mut interval = tokio::time::interval(Duration::from_millis(50));
+        let mut count = 0u32;
+
+        while !stop.load(Ordering::Relaxed) {
+            interval.tick().await;
+            count += 1;
+
+            tracing::event!(
+                target: "background_logger",
+                tracing::Level::INFO,
+                count = count,
+                "Background tick"
+            );
+
+            // Check if we're inside an unexpected span
+            let current = tracing::Span::current();
+            if !current.is_disabled() && !current.is_none() {
+                leak_count.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+
+        tracing::info!(target: "background_logger", total_ticks = count, "Background logger stopped");
+    }
+
+    /// Test that span context doesn't leak to concurrent tasks during streaming.
+    ///
+    /// This test verifies that using `.instrument()` instead of `span.enter()` in
+    /// async_stream prevents thread-local span context from leaking to other tasks.
+    ///
+    /// Uses single-threaded runtime to force all tasks onto the same thread,
+    /// making the span leak deterministic (it only occurs when tasks share a thread).
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "This requires an API key"]
+    async fn test_span_context_isolation() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let leak_count = Arc::new(AtomicU32::new(0));
+
+        // Start background logger
+        let bg_stop = stop.clone();
+        let bg_leak = leak_count.clone();
+        let bg_handle = tokio::spawn(async move {
+            background_logger(bg_stop, bg_leak).await;
+        });
+
+        // Small delay to let background logger start
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Make streaming request WITHOUT an outer span so rig creates its own invoke_agent span
+        // (rig reuses current span if one exists, so we need to ensure there's no current span)
+        let client = anthropic::Client::from_env();
+        let agent = client
+            .agent(anthropic::completion::CLAUDE_3_5_HAIKU)
+            .preamble("You are a helpful assistant.")
+            .temperature(0.1)
+            .max_tokens(100)
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("Say 'hello world' and nothing else.")
+            .await;
+
+        let mut full_content = String::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    text,
+                ))) => {
+                    full_content.push_str(&text.text);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => {
+                    break;
+                }
+                Err(e) => {
+                    tracing::warn!("Error: {:?}", e);
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        tracing::info!("Got response: {:?}", full_content);
+
+        // Stop background logger
+        stop.store(true, Ordering::Relaxed);
+        bg_handle.await.unwrap();
+
+        let leaks = leak_count.load(Ordering::Relaxed);
+        assert_eq!(
+            leaks, 0,
+            "SPAN LEAK DETECTED: Background logger was inside unexpected spans {leaks} times. \
+             This indicates that span.enter() is being used inside async_stream instead of .instrument()"
+        );
+    }
+}

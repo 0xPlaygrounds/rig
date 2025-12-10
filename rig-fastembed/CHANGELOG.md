@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.18](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.2.17...rig-fastembed-v0.2.18) - 2025-12-04
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.17](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.2.16...rig-fastembed-v0.2.17) - 2025-12-01
+
+### Added
+
+- *(rig-985)* Consolidate provider clients ([#1050](https://github.com/0xPlaygrounds/rig/pull/1050))
+
+### Fixed
+
+- *(rig-1050)* Inconsistent model/agent initialisation methods ([#1069](https://github.com/0xPlaygrounds/rig/pull/1069))
+
+## [0.2.16](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.2.15...rig-fastembed-v0.2.16) - 2025-11-10
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.15](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.2.14...rig-fastembed-v0.2.15) - 2025-10-28
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.14](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.2.13...rig-fastembed-v0.2.14) - 2025-10-27
+
+### Other
+
+- Dependent packages no longer force unnecessary features on rig-core ([#964](https://github.com/0xPlaygrounds/rig/pull/964))
+
 ## [0.2.13](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.2.12...rig-fastembed-v0.2.13) - 2025-10-14
 
 ### Other

@@ -1,4 +1,5 @@
 use rig::client::EmbeddingsClient;
+use rig::providers::openai;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
@@ -50,11 +51,13 @@ async fn vector_search_test() {
 
     // init fake openai service
     let openai_mock = create_openai_mock_service().await;
-    let openai_client = rig::providers::openai::Client::builder("TEST")
-        .base_url(&openai_mock.base_url())
-        .build();
+    let openai_client: openai::Client = openai::Client::builder()
+        .api_key("TEST")
+        .base_url(openai_mock.base_url())
+        .build()
+        .unwrap();
 
-    let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
 
     // create test documents with mocked embeddings
     let words = vec![
@@ -172,14 +175,15 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
     server.mock(|when, then| {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
-            .header("Authorization", "Bearer TEST")
+            .header("authorization", "Bearer TEST")
             .json_body(json!({
+                "dimensions": 1536,
                 "input": [
                     "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
                     "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
                     "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
                 ],
-                "model": "text-embedding-ada-002",
+                "model": "text-embedding-3-small",
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -202,7 +206,7 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
                     "index": 2
                   }
                 ],
-                "model": "text-embedding-ada-002",
+                "model": "text-embedding-3-small",
                 "usage": {
                   "prompt_tokens": 8,
                   "total_tokens": 8
@@ -213,12 +217,13 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
     server.mock(|when, then| {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
-            .header("Authorization", "Bearer TEST")
+            .header("authorization", "Bearer TEST")
             .json_body(json!({
+                "dimensions": 1536,
                 "input": [
                     "What does \"glarb-glarb\" mean?"
                 ],
-                "model": "text-embedding-ada-002",
+                "model": "text-embedding-3-small",
             }));
         then.status(200)
             .header("content-type", "application/json")
@@ -231,7 +236,7 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
                         "index": 0
                       }
                     ],
-                    "model": "text-embedding-ada-002",
+                    "model": "text-embedding-3-small",
                     "usage": {
                       "prompt_tokens": 8,
                       "total_tokens": 8

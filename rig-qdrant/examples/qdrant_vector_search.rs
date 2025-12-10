@@ -6,8 +6,6 @@
 //
 // You can view the data at http://localhost:6333/dashboard
 
-use std::env;
-
 use anyhow::anyhow;
 use qdrant_client::{
     Qdrant,
@@ -15,8 +13,9 @@ use qdrant_client::{
 };
 use rig::{
     Embed,
+    client::ProviderClient,
     embeddings::EmbeddingsBuilder,
-    providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+    providers::openai::{self, Client},
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
 use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
@@ -49,10 +48,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Initialize OpenAI client.
     // Get your API key from https://platform.openai.com/api-keys
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client = Client::new(&openai_api_key);
+    let openai_client = Client::from_env();
 
-    let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     let documents = EmbeddingsBuilder::new(model.clone())
         .document(Word {

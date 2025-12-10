@@ -20,16 +20,22 @@ pub struct ImageGenerationModel {
 }
 
 impl ImageGenerationModel {
-    pub fn new(client: Client, model: &str) -> Self {
+    pub fn new(client: Client, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
         }
     }
 }
 
 impl image_generation::ImageGenerationModel for ImageGenerationModel {
     type Response = TextToImageResponse;
+
+    type Client = Client;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
 
     async fn image_generation(
         &self,

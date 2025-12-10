@@ -1,14 +1,14 @@
 use rig::prelude::*;
 use rig::{
     agent::stream_to_stdout,
-    providers::anthropic::{self, CLAUDE_3_5_SONNET},
+    providers::anthropic::{self},
     streaming::StreamingPrompt,
 };
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create streaming agent with a single context prompt
     let agent = anthropic::Client::from_env()
-        .agent(CLAUDE_3_5_SONNET)
+        .agent(anthropic::completion::CLAUDE_3_5_SONNET)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

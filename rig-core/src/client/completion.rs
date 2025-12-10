@@ -1,9 +1,10 @@
 use crate::agent::AgentBuilder;
-use crate::client::builder::FinalCompletionResponse;
-use crate::client::{AsCompletion, ProviderClient};
+use crate::client::FinalCompletionResponse;
+
+#[allow(deprecated)]
+use crate::completion::CompletionModelDyn;
 use crate::completion::{
-    CompletionError, CompletionModel, CompletionModelDyn, CompletionRequest, CompletionResponse,
-    GetTokenUsage,
+    CompletionError, CompletionModel, CompletionRequest, CompletionResponse, GetTokenUsage,
 };
 use crate::extractor::ExtractorBuilder;
 use crate::streaming::StreamingCompletionResponse;
@@ -15,11 +16,11 @@ use std::sync::Arc;
 
 /// A provider client with completion capabilities.
 /// Clone is required for conversions between client types.
-pub trait CompletionClient: ProviderClient + Clone {
+pub trait CompletionClient {
     /// The type of CompletionModel used by the client.
-    type CompletionModel: CompletionModel;
+    type CompletionModel: CompletionModel<Client = Self>;
 
-    /// Create a completion model with the given name.
+    /// Create a completion model with the given model.
     ///
     /// # Example with OpenAI
     /// ```
@@ -29,9 +30,11 @@ pub trait CompletionClient: ProviderClient + Clone {
     /// // Initialize the OpenAI client
     /// let openai = Client::new("your-open-ai-api-key");
     ///
-    /// let gpt4 = openai.completion_model(openai::GPT_4);
+    /// let gpt4 = openai.completion_model(openai::GPT4);
     /// ```
-    fn completion_model(&self, model: &str) -> Self::CompletionModel;
+    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
+        Self::CompletionModel::make(self, model)
+    }
 
     /// Create an agent builder with the given completion model.
     ///
@@ -48,12 +51,12 @@ pub trait CompletionClient: ProviderClient + Clone {
     ///    .temperature(0.0)
     ///    .build();
     /// ```
-    fn agent(&self, model: &str) -> AgentBuilder<Self::CompletionModel> {
+    fn agent(&self, model: impl Into<String>) -> AgentBuilder<Self::CompletionModel> {
         AgentBuilder::new(self.completion_model(model))
     }
 
     /// Create an extractor builder with the given completion model.
-    fn extractor<T>(&self, model: &str) -> ExtractorBuilder<Self::CompletionModel, T>
+    fn extractor<T>(&self, model: impl Into<String>) -> ExtractorBuilder<Self::CompletionModel, T>
     where
         T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
     {
@@ -61,22 +64,40 @@ pub trait CompletionClient: ProviderClient + Clone {
     }
 }
 
+#[allow(deprecated)]
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release."
+)]
 /// Wraps a CompletionModel in a dyn-compatible way for AgentBuilder.
 #[derive(Clone)]
-pub struct CompletionModelHandle<'a> {
-    pub inner: Arc<dyn CompletionModelDyn + 'a>,
+pub struct CompletionModelHandle<'a>(Arc<dyn CompletionModelDyn + 'a>);
+
+#[allow(deprecated)]
+impl<'a> CompletionModelHandle<'a> {
+    pub fn new(handle: Arc<dyn CompletionModelDyn + 'a>) -> Self {
+        Self(handle)
+    }
 }
 
+#[allow(deprecated)]
 impl CompletionModel for CompletionModelHandle<'_> {
     type Response = ();
     type StreamingResponse = FinalCompletionResponse;
+    type Client = ();
+
+    /// **PANICS**: We are deprecating DynClientBuilder and related functionality, in the meantime
+    /// there may be some invalid methods which panic when called, such as this one
+    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
+        panic!("Cannot create a completion model handle from a client")
+    }
 
     fn completion(
         &self,
         request: CompletionRequest,
     ) -> impl Future<Output = Result<CompletionResponse<Self::Response>, CompletionError>> + WasmCompatSend
     {
-        self.inner.completion(request)
+        self.0.completion(request)
     }
 
     fn stream(
@@ -85,11 +106,16 @@ impl CompletionModel for CompletionModelHandle<'_> {
     ) -> impl Future<
         Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
     > + WasmCompatSend {
-        self.inner.stream(request)
+        self.0.stream(request)
     }
 }
 
-pub trait CompletionClientDyn: ProviderClient {
+#[allow(deprecated)]
+#[deprecated(
+    since = "0.25.0",
+    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `CompletionClient` instead."
+)]
+pub trait CompletionClientDyn {
     /// Create a completion model with the given name.
     fn completion_model<'a>(&self, model: &str) -> Box<dyn CompletionModelDyn + 'a>;
 
@@ -97,6 +123,7 @@ pub trait CompletionClientDyn: ProviderClient {
     fn agent<'a>(&self, model: &str) -> AgentBuilder<CompletionModelHandle<'a>>;
 }
 
+#[allow(deprecated)]
 impl<T, M, R> CompletionClientDyn for T
 where
     T: CompletionClient<CompletionModel = M>,
@@ -108,17 +135,8 @@ where
     }
 
     fn agent<'a>(&self, model: &str) -> AgentBuilder<CompletionModelHandle<'a>> {
-        AgentBuilder::new(CompletionModelHandle {
-            inner: Arc::new(self.completion_model(model)),
-        })
-    }
-}
-
-impl<T> AsCompletion for T
-where
-    T: CompletionClientDyn + Clone + 'static,
-{
-    fn as_completion(&self) -> Option<Box<dyn CompletionClientDyn>> {
-        Some(Box::new(self.clone()))
+        AgentBuilder::new(CompletionModelHandle(Arc::new(
+            self.completion_model(model),
+        )))
     }
 }

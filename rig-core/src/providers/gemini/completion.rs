@@ -8,28 +8,21 @@ pub const GEMINI_2_5_PRO_PREVIEW_06_05: &str = "gemini-2.5-pro-preview-06-05";
 pub const GEMINI_2_5_PRO_PREVIEW_05_06: &str = "gemini-2.5-pro-preview-05-06";
 /// `gemini-2.5-pro-preview-03-25` completion model
 pub const GEMINI_2_5_PRO_PREVIEW_03_25: &str = "gemini-2.5-pro-preview-03-25";
-/// `gemini-2.5-flash-preview-05-20` completion model
-pub const GEMINI_2_5_FLASH_PREVIEW_05_20: &str = "gemini-2.5-flash-preview-05-20";
 /// `gemini-2.5-flash-preview-04-17` completion model
 pub const GEMINI_2_5_FLASH_PREVIEW_04_17: &str = "gemini-2.5-flash-preview-04-17";
 /// `gemini-2.5-pro-exp-03-25` experimental completion model
 pub const GEMINI_2_5_PRO_EXP_03_25: &str = "gemini-2.5-pro-exp-03-25";
+/// `gemini-2.5-flash` completion model
+pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
 /// `gemini-2.0-flash-lite` completion model
 pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 /// `gemini-2.0-flash` completion model
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
-/// `gemini-1.5-flash` completion model
-pub const GEMINI_1_5_FLASH: &str = "gemini-1.5-flash";
-/// `gemini-1.5-pro` completion model
-pub const GEMINI_1_5_PRO: &str = "gemini-1.5-pro";
-/// `gemini-1.5-pro-8b` completion model
-pub const GEMINI_1_5_PRO_8B: &str = "gemini-1.5-pro-8b";
-/// `gemini-1.0-pro` completion model
-pub const GEMINI_1_0_PRO: &str = "gemini-1.0-pro";
 
 use self::gemini_api_types::Schema;
 use crate::http_client::HttpClientExt;
-use crate::message::Reasoning;
+use crate::message::{self, MimeType, Reasoning};
+
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
@@ -45,7 +38,8 @@ use gemini_api_types::{
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
-use tracing::info_span;
+use tracing::{Level, enabled, info_span};
+use tracing_futures::Instrument;
 
 use super::Client;
 
@@ -53,17 +47,24 @@ use super::Client;
 // Rig Implementation Types
 // =================================================================
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_string(),
+            model: model.into(),
+        }
+    }
+
+    pub fn with_model(client: Client<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.into(),
         }
     }
 }
@@ -74,6 +75,11 @@ where
 {
     type Response = GenerateContentResponse;
     type StreamingResponse = StreamingCompletionResponse;
+    type Client = super::Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
 
     #[cfg_attr(feature = "worker", worker::send)]
     async fn completion(
@@ -92,74 +98,79 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
 
         let request = create_request_body(completion_request)?;
-        span.record_model_input(&request.contents);
 
-        span.record_model_input(&request.contents);
-
-        tracing::debug!(
-            "Sending completion request to Gemini API {}",
-            serde_json::to_string_pretty(&request)?
-        );
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "Gemini completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
 
         let body = serde_json::to_vec(&request)?;
 
+        let path = format!("/v1beta/models/{}:generateContent", self.model);
+
         let request = self
             .client
-            .post(&format!("/v1beta/models/{}:generateContent", self.model))
-            .header("Content-Type", "application/json")
+            .post(path.as_str())?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let response = self.client.send::<_, Vec<u8>>(request).await?;
+        async move {
+            let response = self.client.send::<_, Vec<u8>>(request).await?;
 
-        if response.status().is_success() {
-            let response_body = response
-                .into_body()
-                .await
-                .map_err(CompletionError::HttpError)?;
-
-            let response: GenerateContentResponse = serde_json::from_slice(&response_body)?;
-
-            match response.usage_metadata {
-                Some(ref usage) => tracing::info!(target: "rig",
-                "Gemini completion token usage: {}",
-                usage
-                ),
-                None => tracing::info!(target: "rig",
-                    "Gemini completion token usage: n/a",
-                ),
-            }
-
-            let span = tracing::Span::current();
-            span.record_model_output(&response.candidates);
-            span.record_response_metadata(&response);
-            span.record_token_usage(&response.usage_metadata);
-
-            tracing::debug!(
-                "Received response from Gemini API: {}",
-                serde_json::to_string_pretty(&response)?
-            );
-
-            response.try_into()
-        } else {
-            let text = String::from_utf8_lossy(
-                &response
+            if response.status().is_success() {
+                let response_body = response
                     .into_body()
                     .await
-                    .map_err(CompletionError::HttpError)?,
-            )
-            .into();
+                    .map_err(CompletionError::HttpError)?;
 
-            Err(CompletionError::ProviderError(text))
+                let response_text = String::from_utf8_lossy(&response_body).to_string();
+
+                let response: GenerateContentResponse = serde_json::from_slice(&response_body)
+                    .map_err(|err| {
+                        tracing::error!(
+                            error = %err,
+                            body = %response_text,
+                            "Failed to deserialize Gemini completion response"
+                        );
+                        CompletionError::JsonError(err)
+                    })?;
+
+                let span = tracing::Span::current();
+                span.record_response_metadata(&response);
+                span.record_token_usage(&response.usage_metadata);
+
+                if enabled!(Level::TRACE) {
+                    tracing::trace!(
+                        target: "rig::completions",
+                        "Gemini completion response: {}",
+                        serde_json::to_string_pretty(&response)?
+                    );
+                }
+
+                response.try_into()
+            } else {
+                let text = String::from_utf8_lossy(
+                    &response
+                        .into_body()
+                        .await
+                        .map_err(CompletionError::HttpError)?,
+                )
+                .into();
+
+                Err(CompletionError::ProviderError(text))
+            }
         }
+        .instrument(span)
+        .await
     }
 
     #[cfg_attr(feature = "worker", worker::send)]
@@ -189,13 +200,17 @@ pub(crate) fn create_request_body(
         additional_params,
     } = serde_json::from_value::<AdditionalParameters>(additional_params)?;
 
-    if let Some(temp) = completion_request.temperature {
-        generation_config.temperature = Some(temp);
-    }
+    generation_config = generation_config.map(|mut cfg| {
+        if let Some(temp) = completion_request.temperature {
+            cfg.temperature = Some(temp);
+        };
 
-    if let Some(max_tokens) = completion_request.max_tokens {
-        generation_config.max_output_tokens = Some(max_tokens);
-    }
+        if let Some(max_tokens) = completion_request.max_tokens {
+            cfg.max_output_tokens = Some(max_tokens);
+        };
+
+        cfg
+    });
 
     let system_instruction = completion_request.preamble.clone().map(|preamble| Content {
         parts: vec![preamble.into()],
@@ -224,7 +239,7 @@ pub(crate) fn create_request_body(
                     .map_err(|e| CompletionError::RequestError(Box::new(e)))
             })
             .collect::<Result<Vec<_>, _>>()?,
-        generation_config: Some(generation_config),
+        generation_config,
         safety_settings: None,
         tools,
         tool_config,
@@ -304,6 +319,21 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
 
         let content = candidate
             .content
+            .as_ref()
+            .ok_or_else(|| {
+                let reason = candidate
+                    .finish_reason
+                    .as_ref()
+                    .map(|r| format!("finish_reason={r:?}"))
+                    .unwrap_or_else(|| "finish_reason=<unknown>".to_string());
+                let message = candidate
+                    .finish_message
+                    .as_deref()
+                    .unwrap_or("no finish message provided");
+                CompletionError::ResponseError(format!(
+                    "Gemini candidate missing content ({reason}, finish_message={message})"
+                ))
+            })?
             .parts
             .iter()
             .map(|Part { thought, part, .. }| {
@@ -315,6 +345,24 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                             completion::AssistantContent::Reasoning(Reasoning::new(text))
                         } else {
                             completion::AssistantContent::text(text)
+                        }
+                    }
+                    PartKind::InlineData(inline_data) => {
+                        let mime_type = message::MediaType::from_mime_type(&inline_data.mime_type);
+
+                        match mime_type {
+                            Some(message::MediaType::Image(media_type)) => {
+                                message::AssistantContent::image_base64(
+                                    &inline_data.data,
+                                    Some(media_type),
+                                    Some(message::ImageDetail::default()),
+                                )
+                            }
+                            _ => {
+                                return Err(CompletionError::ResponseError(format!(
+                                    "Unsupported media type {mime_type:?}"
+                                )));
+                            }
                         }
                     }
                     PartKind::FunctionCall(function_call) => {
@@ -380,7 +428,7 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct AdditionalParameters {
         /// Change your Gemini request configuration.
-        pub generation_config: GenerationConfig,
+        pub generation_config: Option<GenerationConfig>,
         /// Any additional parameters that you want.
         #[serde(flatten, skip_serializing_if = "Option::is_none")]
         pub additional_params: Option<serde_json::Value>,
@@ -388,7 +436,7 @@ pub mod gemini_api_types {
 
     impl AdditionalParameters {
         pub fn with_config(mut self, cfg: GenerationConfig) -> Self {
-            self.generation_config = cfg;
+            self.generation_config = Some(cfg);
             self
         }
 
@@ -439,12 +487,12 @@ pub mod gemini_api_types {
                 .candidates
                 .iter()
                 .filter_map(|x| {
-                    if x.content.role.as_ref().is_none_or(|y| y != &Role::Model) {
+                    let content = x.content.as_ref()?;
+                    if content.role.as_ref().is_none_or(|y| y != &Role::Model) {
                         return None;
                     }
 
-                    let res = x
-                        .content
+                    let res = content
                         .parts
                         .iter()
                         .filter_map(|part| {
@@ -475,7 +523,8 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct ContentCandidate {
         /// Output only. Generated content returned from the model.
-        pub content: Content,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub content: Option<Content>,
         /// Optional. Output only. The reason why the model stopped generating tokens.
         /// If empty, the model has not stopped generating tokens.
         pub finish_reason: Option<FinishReason>,
@@ -494,6 +543,8 @@ pub mod gemini_api_types {
         pub logprobs_result: Option<LogprobsResult>,
         /// Output only. Index of the candidate in the list of response candidates.
         pub index: Option<i32>,
+        /// Output only. Additional information about why the model stopped generating tokens.
+        pub finish_message: Option<String>,
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -520,7 +571,10 @@ pub mod gemini_api_types {
                 },
                 message::Message::Assistant { content, .. } => Content {
                     role: Some(Role::Model),
-                    parts: content.into_iter().map(|content| content.into()).collect(),
+                    parts: content
+                        .into_iter()
+                        .map(|content| content.try_into())
+                        .collect::<Result<Vec<_>, _>>()?,
                 },
             })
         }
@@ -939,20 +993,47 @@ pub mod gemini_api_types {
         }
     }
 
-    impl From<message::AssistantContent> for Part {
-        fn from(content: message::AssistantContent) -> Self {
+    impl TryFrom<message::AssistantContent> for Part {
+        type Error = message::MessageError;
+
+        fn try_from(content: message::AssistantContent) -> Result<Self, Self::Error> {
             match content {
-                message::AssistantContent::Text(message::Text { text }) => text.into(),
-                message::AssistantContent::ToolCall(tool_call) => tool_call.into(),
+                message::AssistantContent::Text(message::Text { text }) => Ok(text.into()),
+                message::AssistantContent::Image(message::Image {
+                    data, media_type, ..
+                }) => match media_type {
+                    Some(media_type) => match media_type {
+                        message::ImageMediaType::JPEG
+                        | message::ImageMediaType::PNG
+                        | message::ImageMediaType::WEBP
+                        | message::ImageMediaType::HEIC
+                        | message::ImageMediaType::HEIF => {
+                            let part = PartKind::try_from((media_type, data))?;
+                            Ok(Part {
+                                thought: Some(false),
+                                thought_signature: None,
+                                part,
+                                additional_params: None,
+                            })
+                        }
+                        _ => Err(message::MessageError::ConversionError(format!(
+                            "Unsupported image media type {media_type:?}"
+                        ))),
+                    },
+                    None => Err(message::MessageError::ConversionError(
+                        "Media type for image is required for Gemini".to_string(),
+                    )),
+                },
+                message::AssistantContent::ToolCall(tool_call) => Ok(tool_call.into()),
                 message::AssistantContent::Reasoning(message::Reasoning { reasoning, .. }) => {
-                    Part {
+                    Ok(Part {
                         thought: Some(true),
                         thought_signature: None,
                         part: PartKind::Text(
                             reasoning.first().cloned().unwrap_or_else(|| "".to_string()),
                         ),
                         additional_params: None,
-                    }
+                    })
                 }
             }
         }
@@ -1234,6 +1315,19 @@ pub mod gemini_api_types {
         /// types: application/json: Schema for JSON response. Refer to the JSON text generation guide for more details.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub response_schema: Option<Schema>,
+        /// Optional. The output schema of the generated response.
+        /// This is an alternative to responseSchema that accepts a standard JSON Schema.
+        /// If this is set, responseSchema must be omitted.
+        /// Compatible MIME type: application/json.
+        /// Supported properties: $id, $defs, $ref, type, properties, etc.
+        #[serde(
+            skip_serializing_if = "Option::is_none",
+            rename = "_responseJsonSchema"
+        )]
+        pub _response_json_schema: Option<Value>,
+        /// Internal or alternative representation for `response_json_schema`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub response_json_schema: Option<Value>,
         /// Number of generated responses to return. Currently, this value can only be set to 1. If
         /// unset, this will default to 1.
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1287,6 +1381,8 @@ pub mod gemini_api_types {
         /// Configuration for thinking/reasoning.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thinking_config: Option<ThinkingConfig>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub image_config: Option<ImageConfig>,
     }
 
     impl Default for GenerationConfig {
@@ -1297,6 +1393,8 @@ pub mod gemini_api_types {
                 stop_sequences: None,
                 response_mime_type: None,
                 response_schema: None,
+                _response_json_schema: None,
+                response_json_schema: None,
                 candidate_count: None,
                 top_p: None,
                 top_k: None,
@@ -1305,6 +1403,7 @@ pub mod gemini_api_types {
                 response_logprobs: None,
                 logprobs: None,
                 thinking_config: None,
+                image_config: None,
             }
         }
     }
@@ -1315,6 +1414,16 @@ pub mod gemini_api_types {
         pub thinking_budget: u32,
         pub include_thoughts: Option<bool>,
     }
+
+    #[derive(Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ImageConfig {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub aspect_ratio: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub image_size: Option<String>,
+    }
+
     /// The Schema object allows the definition of input and output data types. These types can be objects, but also
     /// primitives and arrays. Represents a select subset of an OpenAPI 3.0 schema object.
     /// From [Gemini API Reference](https://ai.google.dev/api/caching#Schema)
