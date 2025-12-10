@@ -14,7 +14,9 @@ use std::collections::HashMap;
 use tracing::info_span;
 use tracing_futures::Instrument;
 
-use super::openai::{CompletionResponse, StreamingToolCall, TranscriptionResponse, Usage};
+use super::openai::{
+    CompletionResponse, Message as OpenAIMessage, StreamingToolCall, TranscriptionResponse, Usage,
+};
 use crate::client::{
     self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
     ProviderClient,
@@ -28,10 +30,9 @@ use async_stream::stream;
 use futures::StreamExt;
 
 use crate::{
-    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
-    message::{self, MessageError},
+    message::{self},
     providers::openai::ToolDefinition,
     transcription::{self, TranscriptionError},
 };
@@ -116,120 +117,6 @@ enum ApiResponse<T> {
     Err(ApiErrorResponse),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Message {
-    pub role: String,
-    pub content: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning: Option<String>,
-}
-
-impl Message {
-    fn system(preamble: &str) -> Self {
-        Self {
-            role: "system".to_string(),
-            content: Some(preamble.to_string()),
-            reasoning: None,
-        }
-    }
-}
-
-impl TryFrom<Message> for message::Message {
-    type Error = message::MessageError;
-
-    fn try_from(message: Message) -> Result<Self, Self::Error> {
-        match message.role.as_str() {
-            "user" => Ok(Self::User {
-                content: OneOrMany::one(
-                    message
-                        .content
-                        .map(|content| message::UserContent::text(&content))
-                        .ok_or_else(|| {
-                            message::MessageError::ConversionError("Empty user message".to_string())
-                        })?,
-                ),
-            }),
-            "assistant" => Ok(Self::Assistant {
-                id: None,
-                content: OneOrMany::one(
-                    message
-                        .content
-                        .map(|content| message::AssistantContent::text(&content))
-                        .ok_or_else(|| {
-                            message::MessageError::ConversionError(
-                                "Empty assistant message".to_string(),
-                            )
-                        })?,
-                ),
-            }),
-            _ => Err(message::MessageError::ConversionError(format!(
-                "Unknown role: {}",
-                message.role
-            ))),
-        }
-    }
-}
-
-impl TryFrom<message::Message> for Message {
-    type Error = message::MessageError;
-
-    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
-        match message {
-            message::Message::User { content } => Ok(Self {
-                role: "user".to_string(),
-                content: content.iter().find_map(|c| match c {
-                    message::UserContent::Text(text) => Some(text.text.clone()),
-                    _ => None,
-                }),
-                reasoning: None,
-            }),
-            message::Message::Assistant { content, .. } => {
-                let mut text_content: Option<String> = None;
-                let mut groq_reasoning: Option<String> = None;
-
-                for c in content.iter() {
-                    match c {
-                        message::AssistantContent::Text(text) => {
-                            text_content = Some(
-                                text_content
-                                    .map(|mut existing| {
-                                        existing.push('\n');
-                                        existing.push_str(&text.text);
-                                        existing
-                                    })
-                                    .unwrap_or_else(|| text.text.clone()),
-                            );
-                        }
-                        message::AssistantContent::ToolCall(_tool_call) => {
-                            return Err(MessageError::ConversionError(
-                                "Tool calls do not exist on this message".into(),
-                            ));
-                        }
-                        message::AssistantContent::Reasoning(message::Reasoning {
-                            reasoning,
-                            ..
-                        }) => {
-                            groq_reasoning =
-                                Some(reasoning.first().cloned().unwrap_or(String::new()));
-                        }
-                        message::AssistantContent::Image(_) => {
-                            return Err(MessageError::ConversionError(
-                                "Ollama currently doesn't support images.".into(),
-                            ));
-                        }
-                    }
-                }
-
-                Ok(Self {
-                    role: "assistant".to_string(),
-                    content: text_content,
-                    reasoning: groq_reasoning,
-                })
-            }
-        }
-    }
-}
-
 // ================================================================
 // Groq Completion API
 // ================================================================
@@ -270,7 +157,7 @@ pub enum ReasoningFormat {
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct GroqCompletionRequest {
     model: String,
-    pub messages: Vec<Message>,
+    pub messages: Vec<OpenAIMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -294,8 +181,8 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
         partial_history.extend(req.chat_history);
 
         // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &req.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
+        let mut full_history: Vec<OpenAIMessage> = match &req.preamble {
+            Some(preamble) => vec![OpenAIMessage::system(preamble)],
             None => vec![],
         };
 
@@ -304,7 +191,10 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
             partial_history
                 .into_iter()
                 .map(message::Message::try_into)
-                .collect::<Result<Vec<Message>, _>>()?,
+                .collect::<Result<Vec<Vec<OpenAIMessage>>, _>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>(),
         );
 
         let tool_choice = req
