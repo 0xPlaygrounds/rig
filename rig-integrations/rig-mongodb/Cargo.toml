@@ -1,0 +1,34 @@
+[package]
+name = "rig-mongodb"
+version = "0.3.2"
+edition = { workspace = true }
+license = "MIT"
+readme = "README.md"
+description = "MongoDB implementation of a Rig vector store."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+futures = { workspace = true }
+mongodb = { workspace = true }
+rig-core = { path = "../../rig/rig-core", version = "0.26.0", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+httpmock = { workspace = true }
+testcontainers = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }
+tokio-test = { workspace = true }
+
+[[example]]
+name = "vector_search_mongodb"
+required-features = ["rig-core/derive"]
+
+[[test]]
+name = "integration_tests"
+required-features = ["rig-core/derive"]

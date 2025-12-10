@@ -1,24 +1,8 @@
 [workspace]
 resolver = "3"
 members = [
-  "rig-core",
-  "rig-lancedb",
-  "rig-mongodb",
-  "rig-neo4j",
-  "rig-postgres",
-  "rig-qdrant",
-  "rig-core/rig-core-derive",
-  "rig-scylladb",
-  "rig-sqlite",
-  "rig-surrealdb",
-  "rig-eternalai",
-  "rig-fastembed",
-  "rig-bedrock",
-  "rig-milvus",
-  "rig-wasm",
-  "rig-s3vectors",
-  "rig-helixdb",
-  "rig-vertexai",
+  "rig/*",
+  "rig-integrations/*"
 ]
 
 [workspace.lints.clippy]
@@ -103,4 +87,4 @@ zerocopy = "0.8.26"
 
 [workspace.metadata.cargo-autoinherit]
 # Skip cargo-autoinherit for these packages
-exclude-members = ["rig-core", "rig-derive"]
+exclude-members = ["rig/rig-core", "rig/rig-derive"]
