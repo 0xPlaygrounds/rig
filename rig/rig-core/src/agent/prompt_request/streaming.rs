@@ -21,11 +21,11 @@ use crate::{
     tool::ToolSetError,
 };
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send>>;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>>>>;
 
@@ -158,7 +158,6 @@ where
         }
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn send(self) -> StreamingResult<M::StreamingResponse> {
         let agent_span = if tracing::Span::current().is_disabled() {
             info_span!(

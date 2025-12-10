@@ -1095,7 +1095,6 @@ where
         .await
     }
 
-    #[cfg_attr(feature = "worker", worker::send)]
     async fn stream(
         &self,
         request: crate::completion::CompletionRequest,
