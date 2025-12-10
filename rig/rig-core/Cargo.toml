@@ -1,0 +1,177 @@
+[package]
+name = "rig-core"
+version = "0.27.0"
+edition = { workspace = true }
+license = "MIT"
+readme = "README.md"
+description = "An opinionated library for building LLM powered applications."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[lib]
+name = "rig"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+as-any = { workspace = true }
+async-stream = { workspace = true }
+base64 = { workspace = true }
+bytes = { workspace = true }
+epub = { workspace = true, optional = true }
+futures = { workspace = true }
+glob = { workspace = true }
+lopdf = { workspace = true, optional = true }
+mime_guess.workspace = true
+ordered-float = { workspace = true }
+quick-xml = { workspace = true, optional = true }
+rayon = { workspace = true, optional = true }
+reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
+rig-derive = { version = "0.1.10", path = "../rig-derive", optional = true }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+worker = { workspace = true, optional = true }
+rmcp = { version = "0.9", optional = true, features = ["client"] }
+tokio = { workspace = true, features = ["rt", "sync"] }
+http = "1.3.1"
+tracing-futures = { version = "0.2.5", features = ["futures-03"] }
+serenity = { version = "0.12.4", optional = true }
+fastrand = "2.3.0"
+eventsource-stream = "0.2.3"
+pin-project-lite = "0.2.16"
+futures-timer = "3.0.3"
+wasm-bindgen-futures = { version = "0.4.54", optional = true }
+mime = "0.3.17"
+
+[dev-dependencies]
+anyhow = { workspace = true }
+assert_fs = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tokio-test = { workspace = true }
+serde_path_to_error = { workspace = true }
+base64 = { workspace = true }
+
+# Required for `rmcp` example
+hyper-util = { version = "0.1.14", features = ["service", "server"] }
+rmcp = { version = "0.9", features = [
+  "client",
+  "macros",
+  "reqwest",                                  # required for some strange reason
+  "transport-streamable-http-client",
+  "transport-streamable-http-client-reqwest",
+  "transport-streamable-http-server-session",
+  "transport-streamable-http-server",
+  "transport-worker",
+] }
+axum = "0.8.4"
+
+# required for otel
+opentelemetry = "0.30.0"
+opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio"] }
+opentelemetry-otlp = "0.30.0"
+tracing-opentelemetry = "0.31.0"
+
+
+[features]
+default = ["reqwest-tls"]
+all = ["derive", "pdf", "rayon"]
+audio = []
+image = []
+derive = ["dep:rig-derive"]
+experimental = []
+discord-bot = ["dep:serenity"]
+pdf = ["dep:lopdf"]
+epub = ["dep:epub", "dep:quick-xml"]
+rayon = ["dep:rayon"]
+worker = [
+  "dep:worker",
+  "dep:wasm-bindgen-futures",
+  "futures-timer/wasm-bindgen",
+]
+rmcp = ["dep:rmcp"]
+socks = ["reqwest/socks"]
+reqwest-tls = ["reqwest/default"]
+# Replace "default-tls" with "rustls-tls" in "reqwest/default"
+reqwest-rustls = [
+  "reqwest/rustls-tls",
+  "reqwest/charset",
+  "reqwest/http2",
+  "reqwest/macos-system-configuration",
+]
+
+[[test]]
+name = "embed_macro"
+required-features = ["derive"]
+
+[[example]]
+name = "rag"
+required-features = ["derive"]
+
+[[example]]
+name = "rag_ollama"
+required-features = ["derive"]
+
+[[example]]
+name = "vector_search"
+required-features = ["derive"]
+
+[[example]]
+name = "vector_search_cohere"
+required-features = ["derive"]
+
+[[example]]
+name = "gemini_embeddings"
+required-features = ["derive"]
+
+[[example]]
+name = "agent_with_moonshot"
+
+[[example]]
+name = "pdf_agent"
+required-features = ["derive", "pdf"]
+
+[[example]]
+name = "agent_with_together"
+required-features = ["derive"]
+
+[[example]]
+name = "together_embeddings"
+required-features = ["derive"]
+
+[[example]]
+name = "openai_audio_generation"
+required-features = ["audio"]
+
+[[example]]
+name = "hyperbolic_audio_generation"
+required-features = ["audio"]
+
+[[example]]
+name = "mistral_embeddings"
+required-features = ["derive"]
+
+[[example]]
+name = "voyageai_embeddings"
+required-features = ["derive"]
+
+[[example]]
+name = "rmcp"
+required-features = ["rmcp"]
+
+[[example]]
+name = "request_hook"
+
+[[example]]
+name = "discord_bot"
+required-features = ["discord-bot"]

@@ -1,0 +1,28 @@
+[package]
+name = "rig-surrealdb"
+version = "0.1.25"
+edition = { workspace = true }
+description = "SurrealDB vector store implementation for the rig framework"
+license = "MIT"
+
+[lints]
+workspace = true
+
+[dependencies]
+surrealdb = { workspace = true, features = ["protocol-ws", "kv-mem"] }
+rig-core = { path = "../../rig/rig-core", version = "0.27.0", default-features = false, features = [
+  "derive",
+] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[[example]]
+name = "vector_search_surreal"
+required-features = ["rig-core/derive"]
