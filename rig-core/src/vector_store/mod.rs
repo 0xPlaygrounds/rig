@@ -12,7 +12,9 @@ use crate::{
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
+pub mod builder;
 pub mod in_memory_store;
+pub mod lsh;
 pub mod request;
 
 #[derive(Debug, thiserror::Error)]
@@ -211,5 +213,26 @@ where
                 document,
             })
             .collect())
+    }
+}
+
+/// Index strategy for the super::InMemoryVectorStore
+#[derive(Clone, Debug)]
+pub enum IndexStrategy {
+    /// Checks all documents in the vector store to find the most relevant documents.
+    BruteForce,
+
+    /// Uses LSH to find candidates then computes exact distances.
+    LSH {
+        /// Number of tables to use for LSH.
+        num_tables: usize,
+        /// Number of hyperplanes to use for LSH.
+        num_hyperplanes: usize,
+    },
+}
+
+impl Default for IndexStrategy {
+    fn default() -> Self {
+        Self::BruteForce
     }
 }

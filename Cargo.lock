@@ -9785,6 +9785,7 @@ dependencies = [
  "bytes",
  "epub",
  "eventsource-stream",
+ "fastrand",
  "futures",
  "futures-timer",
  "glob",
