@@ -30,6 +30,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: ${{ vars.RUST_VERSION }}
+          cache: true
 
       # Required to compile rig-lancedb
       - name: Install Protoc
