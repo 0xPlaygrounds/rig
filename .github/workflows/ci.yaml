@@ -50,7 +50,7 @@ jobs:
           toolchain: ${{ vars.RUST_VERSION }}
 
       - name: Run cargo check wasm target
-        run: cargo check --package rig-core --features worker --target wasm32-unknown-unknown
+        run: cargo check --package rig-core --features wasm --target wasm32-unknown-unknown
 
   clippy:
     name: stable / clippy
