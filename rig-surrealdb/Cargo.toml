@@ -10,7 +10,7 @@ workspace = true
 
 [dependencies]
 surrealdb = { workspace = true, features = ["protocol-ws", "kv-mem"] }
-rig-core = { path = "../core/rig-core", version = "0.26.0", default-features = false, features = [
+rig-core = { path = "../rig/rig-core", version = "0.26.0", default-features = false, features = [
   "derive",
 ] }
 serde = { workspace = true, features = ["derive"] }
