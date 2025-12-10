@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.33](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.32...rig-qdrant-v0.1.33) - 2025-12-10
+
+### Other
+
+- *(rig-1090)* crate re-org ([#1145](https://github.com/0xPlaygrounds/rig/pull/1145))
+
 ## [0.1.32](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.31...rig-qdrant-v0.1.32) - 2025-12-04
 
 ### Other
