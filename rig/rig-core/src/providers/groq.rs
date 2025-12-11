@@ -731,9 +731,11 @@ mod tests {
 
     #[test]
     fn serialize_groq_request() {
-        let mut additional_params = GroqAdditionalParameters::default();
-        additional_params.include_reasoning = Some(true);
-        additional_params.reasoning_format = Some(super::ReasoningFormat::Parsed);
+        let mut additional_params = GroqAdditionalParameters {
+            include_reasoning: Some(true),
+            reasoning_format: Some(super::ReasoningFormat::Parsed),
+            ..Default::default()
+        };
 
         let groq = GroqCompletionRequest {
             model: "openai/gpt-120b-oss".to_string(),
