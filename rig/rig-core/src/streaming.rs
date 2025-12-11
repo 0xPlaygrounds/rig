@@ -71,12 +71,7 @@ where
     Message(String),
 
     /// A tool call response (in its entirety)
-    ToolCall {
-        id: String,
-        call_id: Option<String>,
-        name: String,
-        arguments: serde_json::Value,
-    },
+    ToolCall(RawStreamingToolCall),
     /// A tool call partial/delta
     ToolCallDelta { id: String, delta: String },
     /// A reasoning (in its entirety)
@@ -94,6 +89,71 @@ where
     /// The final response object, must be yielded if you want the
     /// `response` field to be populated on the `StreamingCompletionResponse`
     FinalResponse(R),
+}
+
+/// Describes a streaming tool call response (in its entirety)
+#[derive(Debug, Clone)]
+pub struct RawStreamingToolCall {
+    pub id: String,
+    pub call_id: Option<String>,
+    pub name: String,
+    pub arguments: serde_json::Value,
+    pub signature: Option<String>,
+    pub additional_params: Option<serde_json::Value>,
+}
+
+impl RawStreamingToolCall {
+    pub fn empty() -> Self {
+        Self {
+            id: String::new(),
+            call_id: None,
+            name: String::new(),
+            arguments: serde_json::Value::Null,
+            signature: None,
+            additional_params: None,
+        }
+    }
+
+    pub fn new(id: String, name: String, arguments: serde_json::Value) -> Self {
+        Self {
+            id,
+            call_id: None,
+            name,
+            arguments,
+            signature: None,
+            additional_params: None,
+        }
+    }
+
+    pub fn with_call_id(mut self, call_id: String) -> Self {
+        self.call_id = Some(call_id);
+        self
+    }
+
+    pub fn with_signature(mut self, signature: Option<String>) -> Self {
+        self.signature = signature;
+        self
+    }
+
+    pub fn with_additional_params(mut self, additional_params: Option<serde_json::Value>) -> Self {
+        self.additional_params = additional_params;
+        self
+    }
+}
+
+impl From<RawStreamingToolCall> for ToolCall {
+    fn from(tool_call: RawStreamingToolCall) -> Self {
+        ToolCall {
+            id: tool_call.id,
+            call_id: tool_call.call_id,
+            function: ToolFunction {
+                name: tool_call.name,
+                arguments: tool_call.arguments,
+            },
+            signature: tool_call.signature,
+            additional_params: tool_call.additional_params,
+        }
+    }
 }
 
 #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
@@ -250,31 +310,12 @@ where
                         reasoning,
                     })))
                 }
-                RawStreamingChoice::ToolCall {
-                    id,
-                    name,
-                    arguments,
-                    call_id,
-                } => {
+                RawStreamingChoice::ToolCall(tool_call) => {
                     // Keep track of each tool call to aggregate the final message later
                     // and pass it to the outer stream
-                    stream.tool_calls.push(ToolCall {
-                        id: id.clone(),
-                        call_id: call_id.clone(),
-                        function: ToolFunction {
-                            name: name.clone(),
-                            arguments: arguments.clone(),
-                        },
-                    });
-                    if let Some(call_id) = call_id {
-                        Poll::Ready(Some(Ok(StreamedAssistantContent::tool_call_with_call_id(
-                            id, call_id, name, arguments,
-                        ))))
-                    } else {
-                        Poll::Ready(Some(Ok(StreamedAssistantContent::tool_call(
-                            id, name, arguments,
-                        ))))
-                    }
+                    let tool_call: ToolCall = tool_call.into();
+                    stream.tool_calls.push(tool_call.clone());
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall(tool_call))))
                 }
                 RawStreamingChoice::FinalResponse(response) => {
                     if stream
@@ -377,17 +418,9 @@ impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
                         reasoning,
                     })))
                 }
-                RawStreamingChoice::ToolCall {
-                    id,
-                    name,
-                    arguments,
-                    call_id,
-                } => Poll::Ready(Some(Ok(RawStreamingChoice::ToolCall {
-                    id,
-                    name,
-                    arguments,
-                    call_id,
-                }))),
+                RawStreamingChoice::ToolCall(tool_call) => {
+                    Poll::Ready(Some(Ok(RawStreamingChoice::ToolCall(tool_call))))
+                }
             },
         }
     }
@@ -593,38 +626,6 @@ where
     pub fn text(text: &str) -> Self {
         Self::Text(Text {
             text: text.to_string(),
-        })
-    }
-
-    /// Helper constructor to make creating assistant tool call content easier.
-    pub fn tool_call(
-        id: impl Into<String>,
-        name: impl Into<String>,
-        arguments: serde_json::Value,
-    ) -> Self {
-        Self::ToolCall(ToolCall {
-            id: id.into(),
-            call_id: None,
-            function: ToolFunction {
-                name: name.into(),
-                arguments,
-            },
-        })
-    }
-
-    pub fn tool_call_with_call_id(
-        id: impl Into<String>,
-        call_id: String,
-        name: impl Into<String>,
-        arguments: serde_json::Value,
-    ) -> Self {
-        Self::ToolCall(ToolCall {
-            id: id.into(),
-            call_id: Some(call_id),
-            function: ToolFunction {
-                name: name.into(),
-                arguments,
-            },
         })
     }
 
