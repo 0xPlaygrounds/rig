@@ -731,7 +731,7 @@ mod tests {
 
     #[test]
     fn serialize_groq_request() {
-        let mut additional_params = GroqAdditionalParameters {
+        let additional_params = GroqAdditionalParameters {
             include_reasoning: Some(true),
             reasoning_format: Some(super::ReasoningFormat::Parsed),
             ..Default::default()
