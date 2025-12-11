@@ -169,6 +169,13 @@ pub(super) struct GroqCompletionRequest {
     tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<GroqAdditionalParameters>,
+    pub(super) stream: bool,
+    pub(super) streaming_options: Option<StreamingOptions>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub(super) struct StreamingOptions {
+    pub(super) include_usage: bool,
 }
 
 impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
@@ -224,6 +231,8 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
                 .collect::<Vec<_>>(),
             tool_choice,
             additional_params,
+            stream: false,
+            streaming_options: None,
         })
     }
 }
@@ -388,12 +397,10 @@ where
 
         let mut request = GroqCompletionRequest::try_from((self.model.as_ref(), request))?;
 
-        let params = json_utils::merge(
-            request.additional_params.unwrap_or(serde_json::json!({})),
-            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
-        );
-
-        request.additional_params = Some(params);
+        request.stream = true;
+        request.streaming_options = Some(StreamingOptions {
+            include_usage: true,
+        });
 
         if tracing::enabled!(tracing::Level::TRACE) {
             tracing::trace!(target: "rig::completions",
