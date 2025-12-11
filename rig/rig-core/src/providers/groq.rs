@@ -242,13 +242,13 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
 pub struct GroqAdditionalParameters {
     /// The reasoning format. See Groq's API docs for more details.
     #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning_format: Option<ReasoningFormat>,
+    pub reasoning_format: Option<ReasoningFormat>,
     /// Whether or not to include reasoning. See Groq's API docs for more details.
     #[serde(skip_serializing_if = "Option::is_none")]
-    include_reasoning: Option<bool>,
+    pub include_reasoning: Option<bool>,
     /// Any other properties not included by default on this struct (that you want to send)
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    extra: Option<Map<String, serde_json::Value>>,
+    pub extra: Option<Map<String, serde_json::Value>>,
 }
 
 impl Default for GroqAdditionalParameters {
