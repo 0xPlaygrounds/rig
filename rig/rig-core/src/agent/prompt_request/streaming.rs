@@ -437,7 +437,7 @@ where
                 yield Err(Box::new(PromptError::MaxDepthError {
                     max_depth: self.max_depth,
                     chat_history: Box::new((*chat_history.read().await).clone()),
-                    prompt: last_prompt_error.clone().into(),
+                    prompt: Box::new(last_prompt_error.clone().into()),
                 }).into());
             }
         };
