@@ -10,6 +10,7 @@
 //! ```
 use bytes::Bytes;
 use http::Request;
+use serde_json::Map;
 use std::collections::HashMap;
 use tracing::info_span;
 use tracing_futures::Instrument;
@@ -148,10 +149,12 @@ pub const LLAMA_3_8B_8192: &str = "llama3-8b-8192";
 /// The `mixtral-8x7b-32768` model. Used for chat completion.
 pub const MIXTRAL_8X7B_32768: &str = "mixtral-8x7b-32768";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningFormat {
     Parsed,
+    Raw,
+    Hidden,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -165,8 +168,15 @@ pub(super) struct GroqCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<serde_json::Value>,
-    reasoning_format: ReasoningFormat,
+    pub additional_params: Option<GroqAdditionalParameters>,
+    pub(super) stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) streaming_options: Option<StreamingOptions>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub(super) struct StreamingOptions {
+    pub(super) include_usage: bool,
 }
 
 impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
@@ -203,6 +213,13 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
             .map(crate::providers::openai::ToolChoice::try_from)
             .transpose()?;
 
+        let additional_params: Option<GroqAdditionalParameters> =
+            if let Some(params) = req.additional_params {
+                Some(serde_json::from_value(params)?)
+            } else {
+                None
+            };
+
         Ok(Self {
             model: model.to_string(),
             messages: full_history,
@@ -214,10 +231,25 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
                 .map(ToolDefinition::from)
                 .collect::<Vec<_>>(),
             tool_choice,
-            additional_params: req.additional_params,
-            reasoning_format: ReasoningFormat::Parsed,
+            additional_params,
+            stream: false,
+            streaming_options: None,
         })
     }
+}
+
+/// Additional parameters to send to the Groq API
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct GroqAdditionalParameters {
+    /// The reasoning format. See Groq's API docs for more details.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_format: Option<ReasoningFormat>,
+    /// Whether or not to include reasoning. See Groq's API docs for more details.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub include_reasoning: Option<bool>,
+    /// Any other properties not included by default on this struct (that you want to send)
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub extra: Option<Map<String, serde_json::Value>>,
 }
 
 #[derive(Clone, Debug)]
@@ -356,12 +388,10 @@ where
 
         let mut request = GroqCompletionRequest::try_from((self.model.as_ref(), request))?;
 
-        let params = json_utils::merge(
-            request.additional_params.unwrap_or(serde_json::json!({})),
-            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
-        );
-
-        request.additional_params = Some(params);
+        request.stream = true;
+        request.streaming_options = Some(StreamingOptions {
+            include_usage: true,
+        });
 
         if tracing::enabled!(tracing::Level::TRACE) {
             tracing::trace!(target: "rig::completions",
@@ -687,4 +717,61 @@ where
     Ok(crate::streaming::StreamingCompletionResponse::stream(
         Box::pin(stream),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        OneOrMany,
+        providers::{
+            groq::{GroqAdditionalParameters, GroqCompletionRequest},
+            openai::{Message, UserContent},
+        },
+    };
+
+    #[test]
+    fn serialize_groq_request() {
+        let additional_params = GroqAdditionalParameters {
+            include_reasoning: Some(true),
+            reasoning_format: Some(super::ReasoningFormat::Parsed),
+            ..Default::default()
+        };
+
+        let groq = GroqCompletionRequest {
+            model: "openai/gpt-120b-oss".to_string(),
+            temperature: None,
+            tool_choice: None,
+            streaming_options: None,
+            tools: Vec::new(),
+            messages: vec![Message::User {
+                content: OneOrMany::one(UserContent::Text {
+                    text: "Hello world!".to_string(),
+                }),
+                name: None,
+            }],
+            stream: false,
+            additional_params: Some(additional_params),
+        };
+
+        let json = serde_json::to_value(&groq).unwrap();
+
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "model": "openai/gpt-120b-oss",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{
+                            "type": "text",
+                            "text": "Hello world!"
+                        }]
+                    }
+                ],
+                "stream": false,
+                "include_reasoning": true,
+                "reasoning_format": "parsed"
+            })
+        )
+    }
 }
