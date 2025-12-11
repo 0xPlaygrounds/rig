@@ -882,6 +882,7 @@ pub enum OpenAIServiceTier {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReasoningEffort {
+    None,
     Minimal,
     Low,
     #[default]
