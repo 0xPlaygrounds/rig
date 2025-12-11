@@ -10,6 +10,7 @@
 //! ```
 use bytes::Bytes;
 use http::Request;
+use serde_json::Map;
 use std::collections::HashMap;
 use tracing::info_span;
 use tracing_futures::Instrument;
@@ -148,10 +149,12 @@ pub const LLAMA_3_8B_8192: &str = "llama3-8b-8192";
 /// The `mixtral-8x7b-32768` model. Used for chat completion.
 pub const MIXTRAL_8X7B_32768: &str = "mixtral-8x7b-32768";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningFormat {
     Parsed,
+    Raw,
+    Hidden,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -165,8 +168,7 @@ pub(super) struct GroqCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<serde_json::Value>,
-    reasoning_format: ReasoningFormat,
+    pub additional_params: Option<GroqAdditionalParameters>,
 }
 
 impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
@@ -203,6 +205,13 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
             .map(crate::providers::openai::ToolChoice::try_from)
             .transpose()?;
 
+        let additional_params: Option<GroqAdditionalParameters> =
+            if let Some(params) = req.additional_params {
+                Some(serde_json::from_value(params)?)
+            } else {
+                None
+            };
+
         Ok(Self {
             model: model.to_string(),
             messages: full_history,
@@ -214,9 +223,32 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
                 .map(ToolDefinition::from)
                 .collect::<Vec<_>>(),
             tool_choice,
-            additional_params: req.additional_params,
-            reasoning_format: ReasoningFormat::Parsed,
+            additional_params,
         })
+    }
+}
+
+/// Additional parameters to send to the Groq API
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GroqAdditionalParameters {
+    /// The reasoning format. See Groq's API docs for more details.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_format: Option<ReasoningFormat>,
+    /// Whether or not to include reasoning. See Groq's API docs for more details.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    include_reasoning: Option<bool>,
+    /// Any other properties not included by default on this struct (that you want to send)
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    extra: Option<Map<String, serde_json::Value>>,
+}
+
+impl Default for GroqAdditionalParameters {
+    fn default() -> Self {
+        Self {
+            reasoning_format: None,
+            include_reasoning: None,
+            extra: None,
+        }
     }
 }
 
