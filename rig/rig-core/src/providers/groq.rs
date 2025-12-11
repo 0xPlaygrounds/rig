@@ -170,6 +170,7 @@ pub(super) struct GroqCompletionRequest {
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<GroqAdditionalParameters>,
     pub(super) stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) streaming_options: Option<StreamingOptions>,
 }
 
@@ -716,4 +717,59 @@ where
     Ok(crate::streaming::StreamingCompletionResponse::stream(
         Box::pin(stream),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        OneOrMany,
+        providers::{
+            groq::{GroqAdditionalParameters, GroqCompletionRequest},
+            openai::{Message, UserContent},
+        },
+    };
+
+    #[test]
+    fn serialize_groq_request() {
+        let mut additional_params = GroqAdditionalParameters::default();
+        additional_params.include_reasoning = Some(true);
+        additional_params.reasoning_format = Some(super::ReasoningFormat::Parsed);
+
+        let groq = GroqCompletionRequest {
+            model: "openai/gpt-120b-oss".to_string(),
+            temperature: None,
+            tool_choice: None,
+            streaming_options: None,
+            tools: Vec::new(),
+            messages: vec![Message::User {
+                content: OneOrMany::one(UserContent::Text {
+                    text: "Hello world!".to_string(),
+                }),
+                name: None,
+            }],
+            stream: false,
+            additional_params: Some(additional_params),
+        };
+
+        let json = serde_json::to_value(&groq).unwrap();
+
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "model": "openai/gpt-120b-oss",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{
+                            "type": "text",
+                            "text": "Hello world!"
+                        }]
+                    }
+                ],
+                "stream": false,
+                "include_reasoning": true,
+                "reasoning_format": "parsed"
+            })
+        )
+    }
 }
