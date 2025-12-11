@@ -238,7 +238,7 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
 }
 
 /// Additional parameters to send to the Groq API
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GroqAdditionalParameters {
     /// The reasoning format. See Groq's API docs for more details.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -249,16 +249,6 @@ pub struct GroqAdditionalParameters {
     /// Any other properties not included by default on this struct (that you want to send)
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub extra: Option<Map<String, serde_json::Value>>,
-}
-
-impl Default for GroqAdditionalParameters {
-    fn default() -> Self {
-        Self {
-            reasoning_format: None,
-            include_reasoning: None,
-            extra: None,
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
