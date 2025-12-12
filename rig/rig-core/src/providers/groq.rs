@@ -171,11 +171,11 @@ pub(super) struct GroqCompletionRequest {
     pub additional_params: Option<GroqAdditionalParameters>,
     pub(super) stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) streaming_options: Option<StreamingOptions>,
+    pub(super) stream_options: Option<StreamOptions>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-pub(super) struct StreamingOptions {
+pub(super) struct StreamOptions {
     pub(super) include_usage: bool,
 }
 
@@ -233,7 +233,7 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
             tool_choice,
             additional_params,
             stream: false,
-            streaming_options: None,
+            stream_options: None,
         })
     }
 }
@@ -389,7 +389,7 @@ where
         let mut request = GroqCompletionRequest::try_from((self.model.as_ref(), request))?;
 
         request.stream = true;
-        request.streaming_options = Some(StreamingOptions {
+        request.stream_options = Some(StreamOptions {
             include_usage: true,
         });
 
@@ -741,7 +741,7 @@ mod tests {
             model: "openai/gpt-120b-oss".to_string(),
             temperature: None,
             tool_choice: None,
-            streaming_options: None,
+            stream_options: None,
             tools: Vec::new(),
             messages: vec![Message::User {
                 content: OneOrMany::one(UserContent::Text {
