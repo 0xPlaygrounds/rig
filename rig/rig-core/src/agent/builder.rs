@@ -29,7 +29,7 @@ use super::Agent;
 /// let gpt4o = openai.completion_model("gpt-4o");
 ///
 /// // Configure the agent
-/// let agent = AgentBuilder::new(model)
+/// let agent = AgentBuilder::new(gpt4o)
 ///     .preamble("System prompt")
 ///     .context("Context document 1")
 ///     .context("Context document 2")
@@ -324,7 +324,7 @@ where
 /// let gpt4o = openai.completion_model("gpt-4o");
 ///
 /// // Configure the agent
-/// let agent = AgentBuilder::new(model)
+/// let agent = AgentBuilder::new(gpt4o)
 ///     .preamble("System prompt")
 ///     .context("Context document 1")
 ///     .context("Context document 2")
