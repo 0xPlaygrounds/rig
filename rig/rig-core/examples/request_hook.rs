@@ -10,15 +10,25 @@ struct SessionIdHook<'a> {
 }
 
 impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
-    async fn on_tool_call(&self, tool_name: &str, args: &str, _cancel_sig: CancelSignal) {
+    async fn on_tool_call(
+        &self,
+        tool_name: &str,
+        tool_call_id: Option<String>,
+        args: &str,
+        _cancel_sig: CancelSignal,
+    ) {
         println!(
-            "[Session {}] Calling tool: {} with args: {}",
-            self.session_id, tool_name, args
+            "[Session {}] Calling tool: {} with call ID: {tool_call_id} with args: {}",
+            self.session_id,
+            tool_name,
+            args,
+            tool_call_id = tool_call_id.unwrap_or("<no call ID provided>".to_string()),
         );
     }
     async fn on_tool_result(
         &self,
         tool_name: &str,
+        _tool_call_id: Option<String>,
         args: &str,
         result: &str,
         _cancel_sig: CancelSignal,

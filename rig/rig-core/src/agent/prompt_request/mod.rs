@@ -210,6 +210,7 @@ where
     fn on_tool_call(
         &self,
         tool_name: &str,
+        tool_call_id: Option<String>,
         args: &str,
         cancel_sig: CancelSignal,
     ) -> impl Future<Output = ()> + WasmCompatSend {
@@ -221,6 +222,7 @@ where
     fn on_tool_result(
         &self,
         tool_name: &str,
+        tool_call_id: Option<String>,
         args: &str,
         result: &str,
         cancel_sig: CancelSignal,
@@ -481,8 +483,13 @@ where
                             tool_span.record("gen_ai.tool.call.id", &tool_call.id);
                             tool_span.record("gen_ai.tool.call.arguments", &args);
                             if let Some(hook) = hook1 {
-                                hook.on_tool_call(tool_name, &args, cancel_sig1.clone())
-                                    .await;
+                                hook.on_tool_call(
+                                    tool_name,
+                                    tool_call.call_id.clone(),
+                                    &args,
+                                    cancel_sig1.clone(),
+                                )
+                                .await;
                                 if cancel_sig1.is_cancelled() {
                                     return Err(ToolSetError::Interrupted);
                                 }
@@ -498,6 +505,7 @@ where
                             if let Some(hook) = hook2 {
                                 hook.on_tool_result(
                                     tool_name,
+                                    tool_call.call_id.clone(),
                                     &args,
                                     &output.to_string(),
                                     cancel_sig2.clone(),
