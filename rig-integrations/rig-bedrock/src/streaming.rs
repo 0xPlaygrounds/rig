@@ -4,7 +4,10 @@ use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig::completion::GetTokenUsage;
 use rig::streaming::StreamingCompletionResponse;
-use rig::{completion::CompletionError, streaming::RawStreamingChoice};
+use rig::{
+    completion::CompletionError,
+    streaming::{RawStreamingChoice, RawStreamingToolCall},
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -160,12 +163,7 @@ impl CompletionModel {
                                     } else {
                                         serde_json::from_str(tool_call.input_json.as_str())?
                                     };
-                                    yield Ok(RawStreamingChoice::ToolCall {
-                                        name: tool_call.name,
-                                        call_id: None,
-                                        id: tool_call.id,
-                                        arguments: tool_input
-                                    });
+                                    yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(tool_call.id, tool_call.name, tool_input)));
                                 } else {
                                     yield Err(CompletionError::ProviderError("Failed to call tool".into()))
                                 }

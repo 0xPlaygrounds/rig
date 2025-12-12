@@ -562,7 +562,7 @@ where
         Err(PromptError::MaxDepthError {
             max_depth: self.max_depth,
             chat_history: Box::new(chat_history.clone()),
-            prompt: last_prompt,
+            prompt: Box::new(last_prompt),
         })
     }
 }

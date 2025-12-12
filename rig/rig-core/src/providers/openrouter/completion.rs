@@ -169,6 +169,8 @@ pub enum Message {
         tool_calls: Vec<openai::ToolCall>,
         #[serde(skip_serializing_if = "Option::is_none")]
         reasoning: Option<String>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        reasoning_details: Vec<ReasoningDetails>,
     },
     #[serde(rename = "tool")]
     ToolResult {
@@ -184,6 +186,43 @@ impl Message {
             name: None,
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ReasoningDetails {
+    #[serde(rename = "reasoning.summary")]
+    Summary {
+        id: Option<String>,
+        format: Option<String>,
+        index: Option<usize>,
+        summary: String,
+    },
+    #[serde(rename = "reasoning.encrypted")]
+    Encrypted {
+        id: Option<String>,
+        format: Option<String>,
+        index: Option<usize>,
+        data: String,
+    },
+    #[serde(rename = "reasoning.text")]
+    Text {
+        id: Option<String>,
+        format: Option<String>,
+        index: Option<usize>,
+        text: Option<String>,
+        signature: Option<String>,
+    },
+}
+
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+#[serde(untagged)]
+enum ToolCallAdditionalParams {
+    ReasoningDetails(ReasoningDetails),
+    Minimal {
+        id: Option<String>,
+        format: Option<String>,
+    },
 }
 
 impl From<openai::Message> for Message {
@@ -204,6 +243,7 @@ impl From<openai::Message> for Message {
                 name,
                 tool_calls,
                 reasoning: None,
+                reasoning_details: Vec::new(),
             },
             openai::Message::ToolResult {
                 tool_call_id,
@@ -223,11 +263,51 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
         let mut text_content = Vec::new();
         let mut tool_calls = Vec::new();
         let mut reasoning = None;
+        let mut reasoning_details = Vec::new();
 
         for content in value.into_iter() {
             match content {
                 message::AssistantContent::Text(text) => text_content.push(text),
-                message::AssistantContent::ToolCall(tool_call) => tool_calls.push(tool_call),
+                message::AssistantContent::ToolCall(tool_call) => {
+                    // We usually want to provide back the reasoning to OpenRouter since some
+                    // providers require it.
+                    // 1. Full reasoning details passed back the user
+                    // 2. The signature, an id and a format if present
+                    // 3. The signature and the call_id if present
+                    if let Some(additional_params) = &tool_call.additional_params
+                        && let Ok(additional_params) =
+                            serde_json::from_value::<ToolCallAdditionalParams>(
+                                additional_params.clone(),
+                            )
+                    {
+                        match additional_params {
+                            ToolCallAdditionalParams::ReasoningDetails(full) => {
+                                reasoning_details.push(full);
+                            }
+                            ToolCallAdditionalParams::Minimal { id, format } => {
+                                let id = id.or_else(|| tool_call.call_id.clone());
+                                if let Some(signature) = &tool_call.signature
+                                    && let Some(id) = id
+                                {
+                                    reasoning_details.push(ReasoningDetails::Encrypted {
+                                        id: Some(id),
+                                        format,
+                                        index: None,
+                                        data: signature.clone(),
+                                    })
+                                }
+                            }
+                        }
+                    } else if let Some(signature) = &tool_call.signature {
+                        reasoning_details.push(ReasoningDetails::Encrypted {
+                            id: tool_call.call_id.clone(),
+                            format: None,
+                            index: None,
+                            data: signature.clone(),
+                        });
+                    }
+                    tool_calls.push(tool_call.into())
+                }
                 message::AssistantContent::Reasoning(r) => {
                     reasoning = r.reasoning.into_iter().next();
                 }
@@ -249,11 +329,9 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
             refusal: None,
             audio: None,
             name: None,
-            tool_calls: tool_calls
-                .into_iter()
-                .map(|tool_call| tool_call.into())
-                .collect::<Vec<_>>(),
+            tool_calls,
             reasoning,
+            reasoning_details,
         }])
     }
 }

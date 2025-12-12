@@ -369,6 +369,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             id: tool_id,
                             call_id,
                             function,
+                            ..
                         }) => {
                             items.push(InputItem {
                                 role: None,
@@ -1416,6 +1417,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                         id,
                         call_id,
                         function,
+                        ..
                     }) => Ok(vec![Message::Assistant {
                         content: OneOrMany::one(AssistantContentType::ToolCall(
                             OutputFunctionCall {

@@ -57,14 +57,10 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
             _ => None,
         }) {
             return Ok(completion::CompletionResponse {
-                choice: OneOrMany::one(AssistantContent::ToolCall(ToolCall {
-                    id: tool_use.id,
-                    call_id: None,
-                    function: ToolFunction {
-                        name: tool_use.function.name,
-                        arguments: tool_use.function.arguments,
-                    },
-                })),
+                choice: OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
+                    tool_use.id,
+                    ToolFunction::new(tool_use.function.name, tool_use.function.arguments),
+                ))),
                 usage,
                 raw_response: value,
             });

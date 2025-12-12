@@ -201,6 +201,8 @@ where
                                     name: String::new(),
                                     arguments: serde_json::Value::Null,
                                 },
+                                signature: None,
+                                additional_params: None,
                             });
 
                             // Update fields if present
@@ -264,12 +266,13 @@ where
                                     arguments: tool_call.function.arguments.clone(),
                                 },
                             });
-                            yield Ok(streaming::RawStreamingChoice::ToolCall {
-                                name: tool_call.function.name,
-                                id: tool_call.id,
-                                arguments: tool_call.function.arguments,
-                                call_id: None,
-                            });
+                            yield Ok(streaming::RawStreamingChoice::ToolCall(
+                                streaming::RawStreamingToolCall::new(
+                                    tool_call.id,
+                                    tool_call.function.name,
+                                    tool_call.function.arguments,
+                                )
+                            ));
                         }
                         tool_calls = HashMap::new();
                     }
@@ -291,12 +294,13 @@ where
 
         // Flush any accumulated tool calls (that weren't emitted as ToolCall earlier)
         for (_idx, tool_call) in tool_calls.into_iter() {
-            yield Ok(streaming::RawStreamingChoice::ToolCall {
-                name: tool_call.function.name,
-                id: tool_call.id,
-                arguments: tool_call.function.arguments,
-                call_id: None,
-            });
+            yield Ok(streaming::RawStreamingChoice::ToolCall(
+                streaming::RawStreamingToolCall::new(
+                    tool_call.id,
+                    tool_call.function.name,
+                    tool_call.function.arguments,
+                )
+            ));
         }
 
         let final_usage = final_usage.unwrap_or_default();

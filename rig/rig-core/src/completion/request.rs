@@ -140,7 +140,7 @@ pub enum PromptError {
     MaxDepthError {
         max_depth: usize,
         chat_history: Box<Vec<Message>>,
-        prompt: Message,
+        prompt: Box<Message>,
     },
 
     /// A prompting loop was cancelled.
