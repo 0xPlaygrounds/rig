@@ -520,7 +520,7 @@ where
     }
 
     /// Set the HTTP headers used in this client
-    pub fn http_headers<M>(self, headers: HeaderMap) -> Self {
+    pub fn http_headers(self, headers: HeaderMap) -> Self {
         Self {
             headers,
             ..self
