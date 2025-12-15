@@ -5,7 +5,7 @@ use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::{
     AssistantContent, CohereCompletionRequest, Message, ToolCall, ToolCallFunction, ToolType, Usage,
 };
-use crate::streaming::RawStreamingChoice;
+use crate::streaming::{RawStreamingChoice, RawStreamingToolCall};
 use crate::telemetry::SpanCombinator;
 use crate::{json_utils, streaming};
 use async_stream::stream;
@@ -231,12 +231,9 @@ where
                                     })
                                 });
 
-                                yield Ok(RawStreamingChoice::ToolCall {
-                                    id: tc.0,
-                                    name: tc.1,
-                                    arguments: args,
-                                    call_id: None
-                                });
+                                yield Ok(RawStreamingChoice::ToolCall(
+                                    RawStreamingToolCall::new(tc.0, tc.1, args)
+                                ));
 
                                 current_tool_call = None;
                             },

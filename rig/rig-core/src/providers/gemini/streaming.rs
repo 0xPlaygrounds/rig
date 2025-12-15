@@ -117,8 +117,6 @@ where
         let mut event_source = GenericEventSource::new(self.client.clone(), req);
 
         let stream = stream! {
-            let mut text_response = String::new();
-            let mut model_outputs: Vec<Part> = Vec::new();
             let mut final_usage = None;
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -141,17 +139,21 @@ where
                         };
 
                         // Process the response data
-                        let Some(choice) = data.candidates.first() else {
+                        let Some(choice) = data.candidates.into_iter().next() else {
                             tracing::debug!("There is no content candidate");
                             continue;
                         };
 
-                        let Some(content) = choice.content.as_ref() else {
+                        let Some(content) = choice.content else {
                             tracing::debug!(finish_reason = ?choice.finish_reason, "Streaming candidate missing content");
                             continue;
                         };
 
-                        for part in &content.parts {
+                        if content.parts.is_empty() {
+                            tracing::trace!(reason = ?choice.finish_reason, "There is no part in the streaming content");
+                        }
+
+                        for part in content.parts {
                             match part {
                                 Part {
                                     part: PartKind::Text(text),
@@ -160,27 +162,24 @@ where
                                 } => {
                                     yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
                                         id: None,
-                                        reasoning: text.clone(),
+                                        reasoning: text,
                                     });
                                 },
                                 Part {
                                     part: PartKind::Text(text),
                                     ..
                                 } => {
-                                    text_response.push_str(text);
-                                    yield Ok(streaming::RawStreamingChoice::Message(text.clone()));
+                                    yield Ok(streaming::RawStreamingChoice::Message(text));
                                 },
                                 Part {
                                     part: PartKind::FunctionCall(function_call),
+                                    thought_signature,
                                     ..
                                 } => {
-                                    model_outputs.push(part.clone());
-                                    yield Ok(streaming::RawStreamingChoice::ToolCall {
-                                        name: function_call.name.clone(),
-                                        id: function_call.name.clone(),
-                                        arguments: function_call.args.clone(),
-                                        call_id: None
-                                    });
+                                    yield Ok(streaming::RawStreamingChoice::ToolCall(
+                                        streaming::RawStreamingToolCall::new(function_call.name.clone(), function_call.name.clone(), function_call.args.clone())
+                                            .with_signature(thought_signature)
+                                    ));
                                 },
                                 part => {
                                     tracing::warn!(?part, "Unsupported response type with streaming");
@@ -188,15 +187,8 @@ where
                             }
                         }
 
-                        if content.parts.is_empty() {
-                            tracing::trace!(reason = ?choice.finish_reason, "There is no part in the streaming content");
-                        }
-
                         // Check if this is the final response
                         if choice.finish_reason.is_some() {
-                            if !text_response.is_empty() {
-                                model_outputs.push(Part { thought: None, thought_signature: None, part: PartKind::Text(text_response), additional_params: None });
-                            }
                             let span = tracing::Span::current();
                             span.record_token_usage(&data.usage_metadata);
                             final_usage = data.usage_metadata;

@@ -334,49 +334,62 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             })?
             .parts
             .iter()
-            .map(|Part { thought, part, .. }| {
-                Ok(match part {
-                    PartKind::Text(text) => {
-                        if let Some(thought) = thought
-                            && *thought
-                        {
-                            completion::AssistantContent::Reasoning(Reasoning::new(text))
-                        } else {
-                            completion::AssistantContent::text(text)
+            .map(
+                |Part {
+                     thought,
+                     thought_signature,
+                     part,
+                     ..
+                 }| {
+                    Ok(match part {
+                        PartKind::Text(text) => {
+                            if let Some(thought) = thought
+                                && *thought
+                            {
+                                completion::AssistantContent::Reasoning(Reasoning::new(text))
+                            } else {
+                                completion::AssistantContent::text(text)
+                            }
                         }
-                    }
-                    PartKind::InlineData(inline_data) => {
-                        let mime_type = message::MediaType::from_mime_type(&inline_data.mime_type);
+                        PartKind::InlineData(inline_data) => {
+                            let mime_type =
+                                message::MediaType::from_mime_type(&inline_data.mime_type);
 
-                        match mime_type {
-                            Some(message::MediaType::Image(media_type)) => {
-                                message::AssistantContent::image_base64(
-                                    &inline_data.data,
-                                    Some(media_type),
-                                    Some(message::ImageDetail::default()),
-                                )
-                            }
-                            _ => {
-                                return Err(CompletionError::ResponseError(format!(
-                                    "Unsupported media type {mime_type:?}"
-                                )));
+                            match mime_type {
+                                Some(message::MediaType::Image(media_type)) => {
+                                    message::AssistantContent::image_base64(
+                                        &inline_data.data,
+                                        Some(media_type),
+                                        Some(message::ImageDetail::default()),
+                                    )
+                                }
+                                _ => {
+                                    return Err(CompletionError::ResponseError(format!(
+                                        "Unsupported media type {mime_type:?}"
+                                    )));
+                                }
                             }
                         }
-                    }
-                    PartKind::FunctionCall(function_call) => {
-                        completion::AssistantContent::tool_call(
-                            &function_call.name,
-                            &function_call.name,
-                            function_call.args.clone(),
-                        )
-                    }
-                    _ => {
-                        return Err(CompletionError::ResponseError(
-                            "Response did not contain a message or tool call".into(),
-                        ));
-                    }
-                })
-            })
+                        PartKind::FunctionCall(function_call) => {
+                            completion::AssistantContent::ToolCall(
+                                message::ToolCall::new(
+                                    function_call.name.clone(),
+                                    message::ToolFunction::new(
+                                        function_call.name.clone(),
+                                        function_call.args.clone(),
+                                    ),
+                                )
+                                .with_signature(thought_signature.clone()),
+                            )
+                        }
+                        _ => {
+                            return Err(CompletionError::ResponseError(
+                                "Response did not contain a message or tool call".into(),
+                            ));
+                        }
+                    })
+                },
+            )
             .collect::<Result<Vec<_>, _>>()?;
 
         let choice = OneOrMany::many(content).map_err(|_| {
@@ -416,9 +429,8 @@ pub mod gemini_api_types {
     use crate::completion::GetTokenUsage;
     use crate::message::{DocumentSourceKind, ImageMediaType, MessageError, MimeType};
     use crate::{
-        OneOrMany,
         completion::CompletionError,
-        message::{self, Reasoning, Text},
+        message::{self},
         providers::gemini::gemini_api_types::{CodeExecutionResult, ExecutableCode},
     };
 
@@ -575,102 +587,6 @@ pub mod gemini_api_types {
                         .collect::<Result<Vec<_>, _>>()?,
                 },
             })
-        }
-    }
-
-    impl TryFrom<Content> for message::Message {
-        type Error = message::MessageError;
-
-        fn try_from(content: Content) -> Result<Self, Self::Error> {
-            match content.role {
-                Some(Role::User) | None => {
-                    Ok(message::Message::User {
-                        content: {
-                            let user_content: Result<Vec<_>, _> = content.parts.into_iter()
-                            .map(|Part { part, .. }| {
-                                Ok(match part {
-                                    PartKind::Text(text) => message::UserContent::text(text),
-                                    PartKind::InlineData(inline_data) => {
-                                        let mime_type =
-                                            message::MediaType::from_mime_type(&inline_data.mime_type);
-
-                                        match mime_type {
-                                            Some(message::MediaType::Image(media_type)) => {
-                                                message::UserContent::image_base64(
-                                                    inline_data.data,
-                                                    Some(media_type),
-                                                    Some(message::ImageDetail::default()),
-                                                )
-                                            }
-                                            Some(message::MediaType::Document(media_type)) => {
-                                                message::UserContent::document(
-                                                    inline_data.data,
-                                                    Some(media_type),
-                                                )
-                                            }
-                                            Some(message::MediaType::Audio(media_type)) => {
-                                                message::UserContent::audio(
-                                                    inline_data.data,
-                                                    Some(media_type),
-                                                )
-                                            }
-                                            _ => {
-                                                return Err(message::MessageError::ConversionError(
-                                                    format!("Unsupported media type {mime_type:?}"),
-                                                ));
-                                            }
-                                        }
-                                    }
-                                    _ => {
-                                        return Err(message::MessageError::ConversionError(format!(
-                                            "Unsupported gemini content part type: {part:?}"
-                                        )));
-                                    }
-                                })
-                            })
-                            .collect();
-                            OneOrMany::many(user_content?).map_err(|_| {
-                                message::MessageError::ConversionError(
-                                    "Failed to create OneOrMany from user content".to_string(),
-                                )
-                            })?
-                        },
-                    })
-                }
-                Some(Role::Model) => Ok(message::Message::Assistant {
-                    id: None,
-                    content: {
-                        let assistant_content: Result<Vec<_>, _> = content
-                            .parts
-                            .into_iter()
-                            .map(|Part { thought, part, .. }| {
-                                Ok(match part {
-                                    PartKind::Text(text) => match thought {
-                                        Some(true) => message::AssistantContent::Reasoning(
-                                            Reasoning::new(&text),
-                                        ),
-                                        _ => message::AssistantContent::Text(Text { text }),
-                                    },
-
-                                    PartKind::FunctionCall(function_call) => {
-                                        message::AssistantContent::ToolCall(function_call.into())
-                                    }
-                                    _ => {
-                                        return Err(message::MessageError::ConversionError(
-                                            format!("Unsupported part type: {part:?}"),
-                                        ));
-                                    }
-                                })
-                            })
-                            .collect();
-                        OneOrMany::many(assistant_content?).map_err(|_| {
-                            message::MessageError::ConversionError(
-                                "Failed to create OneOrMany from assistant content".to_string(),
-                            )
-                        })?
-                    },
-                }),
-            }
         }
     }
 
@@ -1041,7 +957,7 @@ pub mod gemini_api_types {
         fn from(tool_call: message::ToolCall) -> Self {
             Self {
                 thought: Some(false),
-                thought_signature: None,
+                thought_signature: tool_call.signature,
                 part: PartKind::FunctionCall(FunctionCall {
                     name: tool_call.function.name,
                     args: tool_call.function.arguments,
@@ -1072,19 +988,6 @@ pub mod gemini_api_types {
         pub name: String,
         /// Optional. The function parameters and values in JSON object format.
         pub args: serde_json::Value,
-    }
-
-    impl From<FunctionCall> for message::ToolCall {
-        fn from(function_call: FunctionCall) -> Self {
-            Self {
-                id: function_call.name.clone(),
-                call_id: None,
-                function: message::ToolFunction {
-                    name: function_call.name,
-                    arguments: function_call.args,
-                },
-            }
-        }
     }
 
     impl From<message::ToolCall> for FunctionCall {
@@ -2016,6 +1919,8 @@ mod tests {
                 name: "test_function".to_string(),
                 arguments: json!({"arg1": "value1"}),
             },
+            signature: None,
+            additional_params: None,
         };
 
         let msg = message::Message::Assistant {

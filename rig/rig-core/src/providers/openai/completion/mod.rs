@@ -601,6 +601,8 @@ impl From<ToolCall> for message::ToolCall {
                 name: tool_call.function.name,
                 arguments: tool_call.function.arguments,
             },
+            signature: None,
+            additional_params: None,
         }
     }
 }

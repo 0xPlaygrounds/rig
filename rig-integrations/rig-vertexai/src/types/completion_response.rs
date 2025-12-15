@@ -34,14 +34,10 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
                     .map(|s| serde_json::Value::Object(s.clone()))
                     .unwrap_or_else(|| serde_json::json!({}));
 
-                assistant_contents.push(AssistantContent::ToolCall(ToolCall {
-                    id: function_call.name.clone(),
-                    call_id: None,
-                    function: ToolFunction {
-                        name: function_call.name.clone(),
-                        arguments: args_json,
-                    },
-                }));
+                assistant_contents.push(AssistantContent::ToolCall(ToolCall::new(
+                    function_call.name.clone(),
+                    ToolFunction::new(function_call.name.clone(), args_json),
+                )));
             } else if let Some(text) = part.text() {
                 assistant_contents.push(AssistantContent::Text(Text { text: text.clone() }));
             }

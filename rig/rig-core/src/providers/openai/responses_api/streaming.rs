@@ -285,7 +285,14 @@ where
                                 ItemChunkKind::OutputItemDone(message) => {
                                     match message {
                                         StreamingItemDoneOutput {  item: Output::FunctionCall(func), .. } => {
-                                            tool_calls.push(streaming::RawStreamingChoice::ToolCall { id: func.id.clone(), call_id: Some(func.call_id.clone()), name: func.name.clone(), arguments: func.arguments.clone() });
+                                            tool_calls.push(streaming::RawStreamingChoice::ToolCall(
+                                                streaming::RawStreamingToolCall::new(
+                                                    func.id.clone(),
+                                                    func.name.clone(),
+                                                    func.arguments.clone(),
+                                                )
+                                                .with_call_id(func.call_id.clone())
+                                            ));
                                         }
 
                                         StreamingItemDoneOutput {  item: Output::Reasoning {  summary, id }, .. } => {

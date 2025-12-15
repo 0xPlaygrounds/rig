@@ -148,17 +148,16 @@ mod tests {
     #[test]
     fn test_assistant_tool_call_message_conversion() {
         use rig::message::{ToolCall, ToolFunction};
-        let tool_call = ToolCall {
-            id: "add".to_string(),
-            call_id: None,
-            function: ToolFunction {
-                name: "add".to_string(),
-                arguments: serde_json::json!({
+        let tool_call = ToolCall::new(
+            "add".to_string(),
+            ToolFunction::new(
+                "add".to_string(),
+                serde_json::json!({
                     "x": 5,
                     "y": 3
                 }),
-            },
-        };
+            ),
+        );
 
         let message = Message::Assistant {
             id: None,

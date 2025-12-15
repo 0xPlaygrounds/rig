@@ -675,12 +675,9 @@ where
 
                         for tool_call in tool_calls {
                             tool_calls_final.push(tool_call.clone());
-                            yield RawStreamingChoice::ToolCall {
-                                id: String::new(),
-                                name: tool_call.function.name,
-                                arguments: tool_call.function.arguments,
-                                call_id: None,
-                            };
+                            yield RawStreamingChoice::ToolCall(
+                                crate::streaming::RawStreamingToolCall::new(String::new(), tool_call.function.name, tool_call.function.arguments)
+                            );
                         }
                     }
                 }
