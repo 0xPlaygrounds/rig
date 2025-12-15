@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.26.0...rig-core-v0.27.0) - 2025-12-15
+
+### Added
+
+- *(rig-1096)* pass tool call ID to prompt hook ([#1162](https://github.com/0xPlaygrounds/rig/pull/1162))
+- *(rig-1059)* support `reqwest-middleware` client ([#1152](https://github.com/0xPlaygrounds/rig/pull/1152))
+
+### Fixed
+
+- *(groq)* rename StreamingOptions to StreamOptions ([#1159](https://github.com/0xPlaygrounds/rig/pull/1159))
+- *(openai)* add None variant to ReasoningEffort enum ([#1158](https://github.com/0xPlaygrounds/rig/pull/1158))
+
+### Other
+
+- ToolCall Signature and additional parameters ([#1154](https://github.com/0xPlaygrounds/rig/pull/1154))
+- fix incorrect variable name in AgentBuilder examples ([#1160](https://github.com/0xPlaygrounds/rig/pull/1160))
+- *(rig-1085)* groq reasoning format ([#1151](https://github.com/0xPlaygrounds/rig/pull/1151))
+- *(rig-1031)* remove worker crate dep ([#1149](https://github.com/0xPlaygrounds/rig/pull/1149))
+- *(rig-1090)* crate re-org ([#1145](https://github.com/0xPlaygrounds/rig/pull/1145))
+
 ## [0.26.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.25.0...rig-core-v0.26.0) - 2025-12-04
 
 ### Added
