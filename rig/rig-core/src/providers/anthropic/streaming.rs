@@ -13,7 +13,7 @@ use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
-use crate::streaming::{self, RawStreamingChoice, StreamingResult};
+use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, StreamingResult};
 use crate::telemetry::SpanCombinator;
 
 #[derive(Debug, Deserialize)]
@@ -408,12 +408,9 @@ fn handle_event(
                     &tool_call.input_json
                 };
                 match serde_json::from_str(json_str) {
-                    Ok(json_value) => Some(Ok(RawStreamingChoice::ToolCall {
-                        name: tool_call.name,
-                        id: tool_call.id,
-                        arguments: json_value,
-                        call_id: None,
-                    })),
+                    Ok(json_value) => Some(Ok(RawStreamingChoice::ToolCall(
+                        RawStreamingToolCall::new(tool_call.id, tool_call.name, json_value),
+                    ))),
                     Err(e) => Some(Err(CompletionError::from(e))),
                 }
             } else {
@@ -709,12 +706,12 @@ mod tests {
         assert!(final_result.is_some());
 
         match final_result.unwrap().unwrap() {
-            RawStreamingChoice::ToolCall {
+            RawStreamingChoice::ToolCall(RawStreamingToolCall {
                 id,
                 name,
                 arguments,
                 ..
-            } => {
+            }) => {
                 assert_eq!(id, "tool_123");
                 assert_eq!(name, "test_tool");
                 assert_eq!(

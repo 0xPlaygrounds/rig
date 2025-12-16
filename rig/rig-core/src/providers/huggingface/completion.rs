@@ -112,6 +112,8 @@ impl From<ToolCall> for message::ToolCall {
             id: value.id,
             call_id: None,
             function: value.function.into(),
+            signature: None,
+            additional_params: None,
         }
     }
 }

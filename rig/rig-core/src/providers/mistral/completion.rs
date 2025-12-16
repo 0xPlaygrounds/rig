@@ -6,7 +6,7 @@ use tracing::{Instrument, Level, enabled, info_span};
 use super::client::{Client, Usage};
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
-use crate::streaming::{RawStreamingChoice, StreamingCompletionResponse};
+use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamingCompletionResponse};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -616,12 +616,13 @@ where
                         yield Ok(RawStreamingChoice::Message(t.text.clone()))
                     }
                     message::AssistantContent::ToolCall(tc) => {
-                        yield Ok(RawStreamingChoice::ToolCall {
-                            id: tc.id.clone(),
-                            name: tc.function.name.clone(),
-                            arguments: tc.function.arguments.clone(),
-                             call_id: None
-                        })
+                        yield Ok(RawStreamingChoice::ToolCall(
+                                RawStreamingToolCall::new(
+                                    tc.id.clone(),
+                                    tc.function.name.clone(),
+                                    tc.function.arguments.clone(),
+                                )
+                        ))
                     }
                     message::AssistantContent::Reasoning(_) => {
                         panic!("Reasoning is not supported on Mistral via Rig")

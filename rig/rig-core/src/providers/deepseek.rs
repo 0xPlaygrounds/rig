@@ -759,12 +759,9 @@ where
                                         continue;
                                     };
 
-                                    yield Ok(crate::streaming::RawStreamingChoice::ToolCall {
-                                        id,
-                                        name,
-                                        arguments: arguments_json,
-                                        call_id: None,
-                                    });
+                                    yield Ok(crate::streaming::RawStreamingChoice::ToolCall(
+                                        crate::streaming::RawStreamingToolCall::new(id, name, arguments_json)
+                                    ));
                                 }
                             }
                         }
@@ -816,12 +813,9 @@ where
                     arguments: arguments_json.clone()
                 }
             });
-            yield Ok(crate::streaming::RawStreamingChoice::ToolCall {
-                id,
-                name,
-                arguments: arguments_json,
-                call_id: None,
-            });
+            yield Ok(crate::streaming::RawStreamingChoice::ToolCall(
+                crate::streaming::RawStreamingToolCall::new(id, name, arguments_json)
+            ));
         }
 
         let message = Message::Assistant {

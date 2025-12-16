@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.2.1...rig-vertexai-v0.2.2) - 2025-12-15
+
+### Other
+
+- ToolCall Signature and additional parameters ([#1154](https://github.com/0xPlaygrounds/rig/pull/1154))
+- *(rig-1090)* crate re-org ([#1145](https://github.com/0xPlaygrounds/rig/pull/1145))
+
 ## [0.2.1](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.2.0...rig-vertexai-v0.2.1) - 2025-12-04
 
 ### Other

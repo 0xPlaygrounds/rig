@@ -23,7 +23,7 @@ use rig::http_client;
 use rig::message;
 use rig::message::AssistantContent;
 use rig::providers::openai::{self, Message};
-use rig::streaming::{RawStreamingChoice, StreamingCompletionResponse};
+use rig::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamingCompletionResponse};
 use rig::{Embed, completion, embeddings};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -734,12 +734,7 @@ impl completion::CompletionModel for CompletionModel {
                         yield Ok(RawStreamingChoice::Message(text.text.clone()))
                     }
                     AssistantContent::ToolCall(tc) => {
-                        yield Ok(RawStreamingChoice::ToolCall {
-                            id: tc.id.clone(),
-                            call_id: None,
-                            name: tc.function.name.clone(),
-                            arguments: tc.function.arguments.clone(),
-                        })
+                        yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(tc.id.clone(), tc.function.name.clone(), tc.function.arguments.clone())));
                     }
                     AssistantContent::Image(_) => {
                         panic!("Image content is currently unimplemented on Eternal AI. If you need this, please open a ticket!")

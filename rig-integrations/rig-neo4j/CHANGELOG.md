@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.4.4...rig-neo4j-v0.4.5) - 2025-12-15
+
+### Other
+
+- *(rig-1090)* crate re-org ([#1145](https://github.com/0xPlaygrounds/rig/pull/1145))
+
 ## [0.4.4](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.4.3...rig-neo4j-v0.4.4) - 2025-12-04
 
 ### Other
