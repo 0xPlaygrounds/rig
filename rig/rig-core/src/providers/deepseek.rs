@@ -92,9 +92,9 @@ impl ProviderClient for Client {
         let api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY not set");
         let mut client_builder = Self::builder();
         client_builder.headers_mut().insert(
-                http::header::CONTENT_TYPE,
-                http::HeaderValue::from_static("application/json")
-            );
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("application/json"),
+        );
         let client_builder = client_builder.api_key(&api_key);
         client_builder.build().unwrap()
     }
