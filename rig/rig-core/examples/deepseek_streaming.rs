@@ -12,7 +12,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_max_level(tracing::Level::INFO)
         .with_target(false)
         .init();
-    
+
     let client = providers::deepseek::Client::from_env();
 
     let agent = client
@@ -35,7 +35,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Prompt the agent and print the response
     println!("Calculate 2 - 5");
-    let mut answer = calculator_agent.stream_chat("Calculate 2 - 5", vec![]).await;
+    let mut answer = calculator_agent
+        .stream_chat("Calculate 2 - 5", vec![])
+        .await;
     print!("DeepSeek Calculator Agent Stream ");
     stream_to_stdout(&mut answer).await?;
 
