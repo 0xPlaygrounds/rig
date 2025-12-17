@@ -169,7 +169,7 @@ pub enum Message {
         tool_calls: Vec<openai::ToolCall>,
         #[serde(skip_serializing_if = "Option::is_none")]
         reasoning: Option<String>,
-        #[serde(skip_serializing_if = "Vec::is_empty")]
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
         reasoning_details: Vec<ReasoningDetails>,
     },
     #[serde(rename = "tool")]
@@ -606,5 +606,70 @@ where
         CompletionError,
     > {
         CompletionModel::stream(self, completion_request).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_completion_response_deserialization_gemini_flash() {
+        // Real response from OpenRouter with google/gemini-2.5-flash
+        let json = json!({
+            "id": "gen-AAAAAAAAAA-AAAAAAAAAAAAAAAAAAAA",
+            "provider": "Google",
+            "model": "google/gemini-2.5-flash",
+            "object": "chat.completion",
+            "created": 1765971703u64,
+            "choices": [{
+                "logprobs": null,
+                "finish_reason": "stop",
+                "native_finish_reason": "STOP",
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "CONTENT",
+                    "refusal": null,
+                    "reasoning": null
+                }
+            }],
+            "usage": {
+                "prompt_tokens": 669,
+                "completion_tokens": 5,
+                "total_tokens": 674
+            }
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(response.id, "gen-AAAAAAAAAA-AAAAAAAAAAAAAAAAAAAA");
+        assert_eq!(response.model, "google/gemini-2.5-flash");
+        assert_eq!(response.choices.len(), 1);
+        assert_eq!(response.choices[0].finish_reason, Some("stop".to_string()));
+    }
+
+    #[test]
+    fn test_message_assistant_without_reasoning_details() {
+        // Verify that missing reasoning_details field doesn't cause deserialization failure
+        let json = json!({
+            "role": "assistant",
+            "content": "Hello world",
+            "refusal": null,
+            "reasoning": null
+        });
+
+        let message: Message = serde_json::from_value(json).unwrap();
+        match message {
+            Message::Assistant {
+                content,
+                reasoning_details,
+                ..
+            } => {
+                assert_eq!(content.len(), 1);
+                assert!(reasoning_details.is_empty());
+            }
+            _ => panic!("Expected Assistant message"),
+        }
     }
 }
