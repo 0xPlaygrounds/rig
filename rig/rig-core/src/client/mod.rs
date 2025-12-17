@@ -521,10 +521,7 @@ where
 
     /// Set the HTTP headers used in this client
     pub fn http_headers(self, headers: HeaderMap) -> Self {
-        Self {
-            headers,
-            ..self
-        }
+        Self { headers, ..self }
     }
 
     pub(crate) fn headers_mut(&mut self) -> &mut HeaderMap {
