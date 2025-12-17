@@ -93,7 +93,8 @@ where
         let mut req_clone = req.clone();
         req_clone
             .headers_mut()
-            .insert("Accept", HeaderValue::from_static("text/event-stream"));
+            .entry("Accept")
+            .or_insert(HeaderValue::from_static("text/event-stream"));
         let res_fut = Box::pin(async move { client_clone.clone().send_streaming(req_clone).await });
         Self {
             client,
