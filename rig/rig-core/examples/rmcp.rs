@@ -133,6 +133,7 @@ impl ServerHandler for Counter {
                 self._create_resource_text("memo://insights", "memo-name"),
             ],
             next_cursor: None,
+            meta: None,
         })
     }
 
@@ -171,6 +172,7 @@ impl ServerHandler for Counter {
         Ok(ListResourceTemplatesResult {
             next_cursor: None,
             resource_templates: Vec::new(),
+            meta: None,
         })
     }
 
