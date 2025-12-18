@@ -378,7 +378,13 @@ where
             .ext
             .build_uri(&self.base_url, path.as_ref(), Transport::Http);
 
-        self.ext.with_custom(Request::get(uri))
+        let mut req = Request::get(uri);
+
+        if let Some(hs) = req.headers_mut() {
+            hs.extend(self.headers.iter().map(|(k, v)| (k.clone(), v.clone())));
+        }
+
+        self.ext.with_custom(req)
     }
 }
 
