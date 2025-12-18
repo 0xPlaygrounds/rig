@@ -1,8 +1,8 @@
 <p align="center">
 <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="img/rig-playgrounds-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="img/rig-playgrounds-light.svg">
-    <img src="img/rig-playgrounds-light.svg" style="width: 40%; height: 40%;" alt="Rig logo">
+    <source media="(prefers-color-scheme: dark)" srcset="img/rig-rebranded-logo-white.svg">
+    <source media="(prefers-color-scheme: light)" srcset="img/rig-rebranded-logo-black.svg">
+    <img src="img/rig-rebranded-logo-white.svg" style="width: 40%; height: 40%;" alt="Rig logo">
 </picture>
 <br>
 <a href="https://docs.rig.rs"><img src="https://img.shields.io/badge/📖 docs-rig.rs-dca282.svg" /></a> &nbsp;
@@ -16,9 +16,6 @@
 <a href="https://github.com/0xPlaygrounds/rig"><img src="https://img.shields.io/github/stars/0xPlaygrounds/rig?style=social" alt="stars - rig" /></a>
 <br>
 <a href=""><img src="https://img.shields.io/badge/built_with-Rust-dca282.svg?logo=rust" /></a>
-&nbsp;
-<a href="https://twitter.com/ryzomeai"><img src="https://img.shields.io/twitter/follow/ryzomeai"></a> &nbsp
-
 <br>
 </p>
 &nbsp;
@@ -76,6 +73,7 @@ Below is a non-exhaustive list of companies and people who are using Rig:
 - [Neon](https://neon.com) - Using Rig for their [app.build](https://github.com/neondatabase/appdotbuild-agent) V2 reboot in Rust.
 - [Listen](https://github.com/piotrostr/listen) - A framework aiming to become the go-to framework for AI portfolio management agents. Powers [the Listen app.](https://app.listen-rs.com/)
 - [Cairnify](https://cairnify.com/) - helps users find documents, links, and information instantly through an intelligent search bar. Rig provides the agentic foundation behind Cairnify’s AI search experience, enabling tool-calling, reasoning, and retrieval workflows.
+- [Ryzome](https://ryzome.ai) - Ryzome is a visual AI workspace that lets you build interconnected canvases of thoughts, research, and AI agents to orchestrate complex knowledge work.
 
 Are you also using Rig in production? [Open an issue](https://www.github.com/0xPlaygrounds/rig/issues) to have your name added!
 
