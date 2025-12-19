@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.27.0...rig-core-v0.27.1) - 2025-12-19
+
+### Fixed
+
+- add headers to get call ([#1178](https://github.com/0xPlaygrounds/rig/pull/1178))
+- deepseek stream_prompt Invalid status code 415 ([#1170](https://github.com/0xPlaygrounds/rig/pull/1170))
+- *(openrouter)* add default serde attr to reasoning_details for optional field deserialization ([#1173](https://github.com/0xPlaygrounds/rig/pull/1173))
+
+### Other
+
+- *(deps)* update rmcp dependency to 0.12.0 ([#1182](https://github.com/0xPlaygrounds/rig/pull/1182))
+- *(deps)* upgrade rmcp dependency to 0.11 ([#1165](https://github.com/0xPlaygrounds/rig/pull/1165))
+- Respect custom http headers for outgoing client requests ([#1166](https://github.com/0xPlaygrounds/rig/pull/1166))
+
 ## [0.27.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.26.0...rig-core-v0.27.0) - 2025-12-15
 
 ### Added
