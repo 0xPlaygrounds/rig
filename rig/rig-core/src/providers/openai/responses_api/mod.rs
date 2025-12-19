@@ -709,6 +709,9 @@ pub struct CompletionResponse {
     /// The time at which a given response has been created, in seconds from the UNIX epoch (01/01/1970 00:00:00).
     pub created_at: u64,
     /// The status of the response.
+    ///
+    /// This is optional because the OpenRouter API behaves differently than the OpenAI API.
+    /// OpenRouter's responses API doesn't include a status field in the response object.
     pub status: Option<ResponseStatus>,
     /// Response error (optional)
     pub error: Option<ResponseError>,
