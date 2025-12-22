@@ -38,6 +38,15 @@ pub mod content {
         Auto,
     }
 
+    #[derive(Debug, Clone, thiserror::Error)]
+    #[error("Unexpected mime type '{0}'")]
+    pub struct ParseMimeError(String);
+
+    pub trait MimeType: Sized {
+        fn to_mime(&self) -> &'static str;
+        fn from_mime(input: impl AsRef<str>) -> Result<Self, ParseMimeError>;
+    }
+
     #[repr(u8)]
     #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     #[serde(rename_all = "lowercase")]
@@ -49,6 +58,33 @@ pub mod content {
         HEIC,
         HEIF,
         SVG,
+    }
+
+    impl MimeType for ImageMediaType {
+        fn from_mime(mime_type: impl AsRef<str>) -> Result<Self, ParseMimeError> {
+            match mime_type.as_ref() {
+                "image/jpeg" => Ok(ImageMediaType::JPEG),
+                "image/png" => Ok(ImageMediaType::PNG),
+                "image/gif" => Ok(ImageMediaType::GIF),
+                "image/webp" => Ok(ImageMediaType::WEBP),
+                "image/heic" => Ok(ImageMediaType::HEIC),
+                "image/heif" => Ok(ImageMediaType::HEIF),
+                "image/svg+xml" => Ok(ImageMediaType::SVG),
+                otherwise => Err(ParseMimeError(otherwise.to_string())),
+            }
+        }
+
+        fn to_mime(&self) -> &'static str {
+            match self {
+                ImageMediaType::JPEG => "image/jpeg",
+                ImageMediaType::PNG => "image/png",
+                ImageMediaType::GIF => "image/gif",
+                ImageMediaType::WEBP => "image/webp",
+                ImageMediaType::HEIC => "image/heic",
+                ImageMediaType::HEIF => "image/heif",
+                ImageMediaType::SVG => "image/svg+xml",
+            }
+        }
     }
 
     #[repr(u8)]
@@ -63,6 +99,31 @@ pub mod content {
         FLAC,
     }
 
+    impl MimeType for AudioMediaType {
+        fn from_mime(mime_type: impl AsRef<str>) -> Result<Self, ParseMimeError> {
+            match mime_type.as_ref() {
+                "audio/wav" => Ok(AudioMediaType::WAV),
+                "audio/mp3" => Ok(AudioMediaType::MP3),
+                "audio/aiff" => Ok(AudioMediaType::AIFF),
+                "audio/aac" => Ok(AudioMediaType::AAC),
+                "audio/ogg" => Ok(AudioMediaType::OGG),
+                "audio/flac" => Ok(AudioMediaType::FLAC),
+                otherwise => Err(ParseMimeError(otherwise.to_string())),
+            }
+        }
+
+        fn to_mime(&self) -> &'static str {
+            match self {
+                AudioMediaType::WAV => "audio/wav",
+                AudioMediaType::MP3 => "audio/mp3",
+                AudioMediaType::AIFF => "audio/aiff",
+                AudioMediaType::AAC => "audio/aac",
+                AudioMediaType::OGG => "audio/ogg",
+                AudioMediaType::FLAC => "audio/flac",
+            }
+        }
+    }
+
     #[repr(u8)]
     #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     #[serde(rename_all = "lowercase")]
@@ -70,6 +131,87 @@ pub mod content {
         AVI,
         MP4,
         MPEG,
+    }
+
+    impl MimeType for VideoMediaType {
+        fn from_mime(mime_type: impl AsRef<str>) -> Result<Self, ParseMimeError>
+        where
+            Self: Sized,
+        {
+            match mime_type.as_ref() {
+                "video/avi" => Ok(VideoMediaType::AVI),
+                "video/mp4" => Ok(VideoMediaType::MP4),
+                "video/mpeg" => Ok(VideoMediaType::MPEG),
+                otherwise => Err(ParseMimeError(otherwise.to_string())),
+            }
+        }
+
+        fn to_mime(&self) -> &'static str {
+            match self {
+                VideoMediaType::AVI => "video/avi",
+                VideoMediaType::MP4 => "video/mp4",
+                VideoMediaType::MPEG => "video/mpeg",
+            }
+        }
+    }
+
+    /// Describes the document media type of the content. Not every provider supports every media type.
+    /// Includes also programming languages as document types for providers who support code running.
+    /// Convertible to and from MIME type strings.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(rename_all = "lowercase")]
+    pub enum DocumentMediaType {
+        PDF,
+        TXT,
+        RTF,
+        HTML,
+        CSS,
+        MARKDOWN,
+        CSV,
+        XML,
+        Javascript,
+        Python,
+    }
+
+    impl DocumentMediaType {
+        pub fn is_code(&self) -> bool {
+            matches!(self, Self::Javascript | Self::Python)
+        }
+    }
+
+    impl MimeType for DocumentMediaType {
+        fn from_mime(mime_type: impl AsRef<str>) -> Result<Self, ParseMimeError> {
+            match mime_type.as_ref() {
+                "application/pdf" => Ok(DocumentMediaType::PDF),
+                "text/plain" => Ok(DocumentMediaType::TXT),
+                "text/rtf" => Ok(DocumentMediaType::RTF),
+                "text/html" => Ok(DocumentMediaType::HTML),
+                "text/css" => Ok(DocumentMediaType::CSS),
+                "text/md" | "text/markdown" => Ok(DocumentMediaType::MARKDOWN),
+                "text/csv" => Ok(DocumentMediaType::CSV),
+                "text/xml" => Ok(DocumentMediaType::XML),
+                "application/x-javascript" | "text/x-javascript" => {
+                    Ok(DocumentMediaType::Javascript)
+                }
+                "application/x-python" | "text/x-python" => Ok(DocumentMediaType::Python),
+                otherwise => Err(ParseMimeError(otherwise.to_string())),
+            }
+        }
+
+        fn to_mime(&self) -> &'static str {
+            match self {
+                DocumentMediaType::PDF => "application/pdf",
+                DocumentMediaType::TXT => "text/plain",
+                DocumentMediaType::RTF => "text/rtf",
+                DocumentMediaType::HTML => "text/html",
+                DocumentMediaType::CSS => "text/css",
+                DocumentMediaType::MARKDOWN => "text/markdown",
+                DocumentMediaType::CSV => "text/csv",
+                DocumentMediaType::XML => "text/xml",
+                DocumentMediaType::Javascript => "application/x-javascript",
+                DocumentMediaType::Python => "application/x-python",
+            }
+        }
     }
 
     #[derive(Debug, Clone)]
@@ -97,6 +239,10 @@ pub mod content {
 
     impl GetMime for Video {
         type Output = VideoMediaType;
+    }
+
+    impl GetMime for Document {
+        type Output = DocumentMediaType;
     }
 
     #[derive(Debug, Clone)]
@@ -572,6 +718,7 @@ where
             parts: self.parts,
         }
     }
+
     pub fn audio<E, MT>(
         mut self,
         audio: impl Into<content::Media<content::Audio, E, MT>>,
@@ -659,7 +806,7 @@ mod example {
             Self
         }
 
-        pub fn send<C: NonEmpty>(self, _message: Message<C>) -> Result<(), Infallible>
+        pub fn send<C: NonEmpty>(&self, _message: Message<C>) -> Result<(), Infallible>
         where
             Self: SatisfiesAll<SupportsContent<role::User>, C>,
         {
@@ -688,7 +835,6 @@ mod example {
     #[cfg(test)]
     mod tests {
         use super::content::{ImageMediaType, Media, Quality};
-
         use super::*;
 
         #[test]
@@ -697,18 +843,23 @@ mod example {
             let openai = OpenAI::new();
 
             let message = MessageBuilder::new()
-                .text("Hello World")
                 .image(
                     Media::image()
                         .base64("some_base64_data")
                         .media_type(ImageMediaType::JPEG)
                         .quality(Quality::Low),
                 )
+                .text("Hello World")
                 .build();
 
             claude.send(message).unwrap();
-            // Doesn't compile
+            // Doesn't typecheck because `OpenAI` doesn't impl `Supports<Image, Role>`
             //openai.send(message).unwrap();
+
+            let just_text = MessageBuilder::new().text("Hello GPT").build();
+
+            openai.send(just_text.clone()).unwrap();
+            claude.send(just_text).unwrap();
         }
     }
 }
