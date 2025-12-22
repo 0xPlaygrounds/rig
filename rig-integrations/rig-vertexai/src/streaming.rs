@@ -139,17 +139,18 @@ impl<HttpClient: HttpClientExt + Clone + 'static> StreamingCompletionModel<HttpC
         let project = self.client.project();
         let location = self.client.location();
 
-        // Gemini 3 models use 'global' location
-        let (endpoint_location, domain_prefix) = if self.model_name.contains("gemini-3") {
-            ("global", "global")
+        // Gemini 3 models use 'global' location with non-regional endpoint
+        if self.model_name.contains("gemini-3") {
+            format!(
+                "https://aiplatform.googleapis.com/v1/projects/{}/locations/global/publishers/google/models/{}:streamGenerateContent",
+                project, self.model_name
+            )
         } else {
-            (location, location)
-        };
-
-        format!(
-            "https://{}-aiplatform.googleapis.com/v1/projects/{}/locations/{}/publishers/google/models/{}:streamGenerateContent",
-            domain_prefix, project, endpoint_location, self.model_name
-        )
+            format!(
+                "https://{}-aiplatform.googleapis.com/v1/projects/{}/locations/{}/publishers/google/models/{}:streamGenerateContent",
+                location, project, location, self.model_name
+            )
+        }
     }
 }
 
