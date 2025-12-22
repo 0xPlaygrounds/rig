@@ -1,615 +1,41 @@
+use super::content;
+use super::encoding::{self, AnyEncoding};
 use crate::{
     OneOrMany,
-    completion::typed_message_part_two::encoding::AnyEncoding,
     nothing::Nothing,
     type_level::list::{Cons, List, Nil, NonEmpty},
 };
 use std::marker::PhantomData;
 
+// ROLES
 pub mod role {
-    pub trait Label {
-        const LABEL: &str;
-    }
-
+    #[derive(Debug, Clone, Copy)]
     pub struct User;
+
+    #[derive(Debug, Clone, Copy)]
     pub struct Assistant;
 }
 
-pub mod content {
-    use super::encoding;
-    use crate::{completion::typed_message_part_two::encoding::AnyEncoding, nothing::Nothing};
-    use serde::{Deserialize, Serialize};
-    use std::marker::PhantomData;
-
-    #[derive(Debug, Clone)]
-    pub struct Text {
-        pub text: String,
-    }
-
-    // Media-specific types
-    #[repr(u8)]
-    #[derive(
-        Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default,
-    )]
-    pub enum Quality {
-        Low,
-        High,
-        #[default]
-        Auto,
-    }
-
-    #[derive(Debug, Clone, thiserror::Error)]
-    #[error("Unexpected mime type '{0}'")]
-    pub struct ParseMimeError(String);
-
-    pub trait MimeType: Sized {
-        fn to_mime(&self) -> &'static str;
-        fn from_mime(input: impl AsRef<str>) -> Result<Self, ParseMimeError>;
-    }
-
-    #[repr(u8)]
-    #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    #[serde(rename_all = "lowercase")]
-    pub enum ImageMediaType {
-        JPEG,
-        PNG,
-        GIF,
-        WEBP,
-        HEIC,
-        HEIF,
-        SVG,
-    }
-
-    impl MimeType for ImageMediaType {
-        fn from_mime(mime_type: impl AsRef<str>) -> Result<Self, ParseMimeError> {
-            match mime_type.as_ref() {
-                "image/jpeg" => Ok(ImageMediaType::JPEG),
-                "image/png" => Ok(ImageMediaType::PNG),
-                "image/gif" => Ok(ImageMediaType::GIF),
-                "image/webp" => Ok(ImageMediaType::WEBP),
-                "image/heic" => Ok(ImageMediaType::HEIC),
-                "image/heif" => Ok(ImageMediaType::HEIF),
-                "image/svg+xml" => Ok(ImageMediaType::SVG),
-                otherwise => Err(ParseMimeError(otherwise.to_string())),
-            }
-        }
-
-        fn to_mime(&self) -> &'static str {
-            match self {
-                ImageMediaType::JPEG => "image/jpeg",
-                ImageMediaType::PNG => "image/png",
-                ImageMediaType::GIF => "image/gif",
-                ImageMediaType::WEBP => "image/webp",
-                ImageMediaType::HEIC => "image/heic",
-                ImageMediaType::HEIF => "image/heif",
-                ImageMediaType::SVG => "image/svg+xml",
-            }
-        }
-    }
-
-    #[repr(u8)]
-    #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    #[serde(rename_all = "lowercase")]
-    pub enum AudioMediaType {
-        WAV,
-        MP3,
-        AIFF,
-        AAC,
-        OGG,
-        FLAC,
-    }
-
-    impl MimeType for AudioMediaType {
-        fn from_mime(mime_type: impl AsRef<str>) -> Result<Self, ParseMimeError> {
-            match mime_type.as_ref() {
-                "audio/wav" => Ok(AudioMediaType::WAV),
-                "audio/mp3" => Ok(AudioMediaType::MP3),
-                "audio/aiff" => Ok(AudioMediaType::AIFF),
-                "audio/aac" => Ok(AudioMediaType::AAC),
-                "audio/ogg" => Ok(AudioMediaType::OGG),
-                "audio/flac" => Ok(AudioMediaType::FLAC),
-                otherwise => Err(ParseMimeError(otherwise.to_string())),
-            }
-        }
-
-        fn to_mime(&self) -> &'static str {
-            match self {
-                AudioMediaType::WAV => "audio/wav",
-                AudioMediaType::MP3 => "audio/mp3",
-                AudioMediaType::AIFF => "audio/aiff",
-                AudioMediaType::AAC => "audio/aac",
-                AudioMediaType::OGG => "audio/ogg",
-                AudioMediaType::FLAC => "audio/flac",
-            }
-        }
-    }
-
-    #[repr(u8)]
-    #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    #[serde(rename_all = "lowercase")]
-    pub enum VideoMediaType {
-        AVI,
-        MP4,
-        MPEG,
-    }
-
-    impl MimeType for VideoMediaType {
-        fn from_mime(mime_type: impl AsRef<str>) -> Result<Self, ParseMimeError>
-        where
-            Self: Sized,
-        {
-            match mime_type.as_ref() {
-                "video/avi" => Ok(VideoMediaType::AVI),
-                "video/mp4" => Ok(VideoMediaType::MP4),
-                "video/mpeg" => Ok(VideoMediaType::MPEG),
-                otherwise => Err(ParseMimeError(otherwise.to_string())),
-            }
-        }
-
-        fn to_mime(&self) -> &'static str {
-            match self {
-                VideoMediaType::AVI => "video/avi",
-                VideoMediaType::MP4 => "video/mp4",
-                VideoMediaType::MPEG => "video/mpeg",
-            }
-        }
-    }
-
-    /// Describes the document media type of the content. Not every provider supports every media type.
-    /// Includes also programming languages as document types for providers who support code running.
-    /// Convertible to and from MIME type strings.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-    #[serde(rename_all = "lowercase")]
-    pub enum DocumentMediaType {
-        PDF,
-        TXT,
-        RTF,
-        HTML,
-        CSS,
-        MARKDOWN,
-        CSV,
-        XML,
-        Javascript,
-        Python,
-    }
-
-    impl DocumentMediaType {
-        pub fn is_code(&self) -> bool {
-            matches!(self, Self::Javascript | Self::Python)
-        }
-    }
-
-    impl MimeType for DocumentMediaType {
-        fn from_mime(mime_type: impl AsRef<str>) -> Result<Self, ParseMimeError> {
-            match mime_type.as_ref() {
-                "application/pdf" => Ok(DocumentMediaType::PDF),
-                "text/plain" => Ok(DocumentMediaType::TXT),
-                "text/rtf" => Ok(DocumentMediaType::RTF),
-                "text/html" => Ok(DocumentMediaType::HTML),
-                "text/css" => Ok(DocumentMediaType::CSS),
-                "text/md" | "text/markdown" => Ok(DocumentMediaType::MARKDOWN),
-                "text/csv" => Ok(DocumentMediaType::CSV),
-                "text/xml" => Ok(DocumentMediaType::XML),
-                "application/x-javascript" | "text/x-javascript" => {
-                    Ok(DocumentMediaType::Javascript)
-                }
-                "application/x-python" | "text/x-python" => Ok(DocumentMediaType::Python),
-                otherwise => Err(ParseMimeError(otherwise.to_string())),
-            }
-        }
-
-        fn to_mime(&self) -> &'static str {
-            match self {
-                DocumentMediaType::PDF => "application/pdf",
-                DocumentMediaType::TXT => "text/plain",
-                DocumentMediaType::RTF => "text/rtf",
-                DocumentMediaType::HTML => "text/html",
-                DocumentMediaType::CSS => "text/css",
-                DocumentMediaType::MARKDOWN => "text/markdown",
-                DocumentMediaType::CSV => "text/csv",
-                DocumentMediaType::XML => "text/xml",
-                DocumentMediaType::Javascript => "application/x-javascript",
-                DocumentMediaType::Python => "application/x-python",
-            }
-        }
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct Image;
-
-    #[derive(Debug, Clone)]
-    pub struct Audio;
-
-    #[derive(Debug, Clone)]
-    pub struct Video;
-
-    trait GetMime {
-        type Output;
-    }
-
-    type Mime<T> = <T as GetMime>::Output;
-
-    impl GetMime for Image {
-        type Output = ImageMediaType;
-    }
-
-    impl GetMime for Audio {
-        type Output = AudioMediaType;
-    }
-
-    impl GetMime for Video {
-        type Output = VideoMediaType;
-    }
-
-    impl GetMime for Document {
-        type Output = DocumentMediaType;
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct Media<MediaKind, Encoding, MediaType = Nothing, Quality = Nothing> {
-        __media_kind: PhantomData<MediaKind>,
-        pub data: Encoding,
-        pub media_type: MediaType,
-        pub quality: Quality,
-    }
-
-    impl Media<Image, Nothing, Nothing, Nothing> {
-        pub fn image() -> Self {
-            Self {
-                __media_kind: PhantomData,
-                data: Nothing,
-                media_type: Nothing,
-                quality: Nothing,
-            }
-        }
-    }
-
-    impl Media<Audio, Nothing, Nothing, Nothing> {
-        pub fn audio() -> Self {
-            Self {
-                __media_kind: PhantomData,
-                data: Nothing,
-                media_type: Nothing,
-                quality: Nothing,
-            }
-        }
-    }
-
-    impl Media<Video, Nothing, Nothing, Nothing> {
-        pub fn video() -> Self {
-            Self {
-                __media_kind: PhantomData,
-                data: Nothing,
-                media_type: Nothing,
-                quality: Nothing,
-            }
-        }
-    }
-
-    // Builder methods for setting encoding
-    impl<K, MT, Q> Media<K, Nothing, MT, Q> {
-        pub fn base64(self, data: impl Into<String>) -> Media<K, encoding::Base64, MT, Q> {
-            Media {
-                __media_kind: PhantomData,
-                data: encoding::Base64(data.into()),
-                media_type: self.media_type,
-                quality: self.quality,
-            }
-        }
-
-        pub fn uri(self, uri: http::Uri) -> Media<K, encoding::Uri, MT, Q> {
-            Media {
-                __media_kind: PhantomData,
-                data: encoding::Uri(uri),
-                media_type: self.media_type,
-                quality: self.quality,
-            }
-        }
-
-        pub fn raw(self, data: impl Into<Vec<u8>>) -> Media<K, encoding::Raw, MT, Q> {
-            Media {
-                __media_kind: PhantomData,
-                data: encoding::Raw(data.into()),
-                media_type: self.media_type,
-                quality: self.quality,
-            }
-        }
-    }
-
-    // Builder methods for setting media type
-    impl<E, Q> Media<Image, E, Nothing, Q> {
-        pub fn media_type(self, media_type: ImageMediaType) -> Media<Image, E, ImageMediaType, Q> {
-            Media {
-                __media_kind: PhantomData,
-                data: self.data,
-                media_type,
-                quality: self.quality,
-            }
-        }
-    }
-
-    impl<E, Q> Media<Audio, E, Nothing, Q> {
-        pub fn media_type(self, media_type: AudioMediaType) -> Media<Audio, E, AudioMediaType, Q> {
-            Media {
-                __media_kind: PhantomData,
-                data: self.data,
-                media_type,
-                quality: self.quality,
-            }
-        }
-    }
-
-    impl<E, Q> Media<Video, E, Nothing, Q> {
-        pub fn media_type(self, media_type: VideoMediaType) -> Media<Video, E, VideoMediaType, Q> {
-            Media {
-                __media_kind: PhantomData,
-                data: self.data,
-                media_type,
-                quality: self.quality,
-            }
-        }
-    }
-
-    // Builder methods for setting quality (only for Image)
-    impl<E, MT> Media<Image, E, MT, Nothing> {
-        pub fn quality(self, quality: Quality) -> Media<Image, E, MT, Quality> {
-            Media {
-                __media_kind: PhantomData,
-                data: self.data,
-                media_type: self.media_type,
-                quality,
-            }
-        }
-    }
-
-    // Standard From implementations for Nothing -> concrete types (defaults)
-    impl From<Nothing> for AnyEncoding {
-        fn from(_: Nothing) -> Self {
-            AnyEncoding::Raw(encoding::Raw::default())
-        }
-    }
-
-    impl From<Nothing> for ImageMediaType {
-        fn from(_: Nothing) -> Self {
-            ImageMediaType::JPEG
-        }
-    }
-
-    impl From<Nothing> for AudioMediaType {
-        fn from(_: Nothing) -> Self {
-            AudioMediaType::MP3
-        }
-    }
-
-    impl From<Nothing> for VideoMediaType {
-        fn from(_: Nothing) -> Self {
-            VideoMediaType::MP4
-        }
-    }
-
-    impl From<Nothing> for Quality {
-        fn from(_: Nothing) -> Self {
-            Quality::Auto
-        }
-    }
-
-    // Conversion implementations for Media -> Part
-    impl<E, MT, Q> From<Media<Image, E, MT, Q>> for Part
-    where
-        E: Into<AnyEncoding>,
-        MT: Into<ImageMediaType>,
-        Q: Into<Quality>,
-    {
-        fn from(media: Media<Image, E, MT, Q>) -> Part {
-            Part::Image(Media {
-                __media_kind: PhantomData,
-                data: media.data.into(),
-                media_type: media.media_type.into(),
-                quality: media.quality.into(),
-            })
-        }
-    }
-
-    impl<E, MT> From<Media<Audio, E, MT>> for Part
-    where
-        E: Into<AnyEncoding>,
-        MT: Into<AudioMediaType>,
-    {
-        fn from(media: Media<Audio, E, MT>) -> Part {
-            Part::Audio(Media {
-                __media_kind: PhantomData,
-                data: media.data.into(),
-                media_type: media.media_type.into(),
-                quality: Nothing,
-            })
-        }
-    }
-
-    impl<E, MT> From<Media<Video, E, MT>> for Part
-    where
-        E: Into<AnyEncoding>,
-        MT: Into<VideoMediaType>,
-    {
-        fn from(media: Media<Video, E, MT>) -> Part {
-            Part::Video(Media {
-                __media_kind: PhantomData,
-                data: media.data.into(),
-                media_type: media.media_type.into(),
-                quality: Nothing,
-            })
-        }
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct Document<Data = Nothing> {
-        pub data: Data,
-    }
-
-    // Tool-specific types
-    #[derive(Debug, Clone)]
-    pub struct ToolFunction {
-        pub name: String,
-        pub arguments: serde_json::Value,
-    }
-
-    #[derive(Clone, Debug)]
-    pub struct ToolCall {
-        pub name: String,
-        pub function: ToolFunction,
-    }
-
-    #[derive(Clone, Debug)]
-    pub struct ToolResult<Data = Nothing, CallId = Nothing> {
-        pub data: Data,
-        pub call_id: CallId,
-    }
-
-    #[derive(Clone, Debug)]
-    pub struct Reasoning<Data = Nothing, Signature = Nothing, Id = Nothing> {
-        pub data: Data,
-        pub signature: Signature,
-        pub id: Id,
-    }
-
-    // Additional From implementations for Nothing -> String types
-    impl From<Nothing> for String {
-        fn from(_: Nothing) -> Self {
-            String::new()
-        }
-    }
-
-    impl From<Nothing> for Option<String> {
-        fn from(_: Nothing) -> Self {
-            None
-        }
-    }
-
-    // Conversions for Text
-    impl From<Text> for Part {
-        fn from(text: Text) -> Part {
-            Part::Text(text)
-        }
-    }
-
-    // Conversions for ToolCall
-    impl From<ToolCall> for Part {
-        fn from(tool_call: ToolCall) -> Part {
-            Part::ToolCall(tool_call)
-        }
-    }
-
-    // Conversions for ToolResult
-    impl<D, C> From<ToolResult<D, C>> for Part
-    where
-        D: Into<String>,
-        C: Into<String>,
-    {
-        fn from(tool_result: ToolResult<D, C>) -> Part {
-            Part::ToolResult(ToolResult {
-                data: tool_result.data.into(),
-                call_id: tool_result.call_id.into(),
-            })
-        }
-    }
-
-    // Conversions for Reasoning
-    impl<D, S, I> From<Reasoning<D, S, I>> for Part
-    where
-        D: Into<String>,
-        S: Into<String>,
-        I: Into<String>,
-    {
-        fn from(
-            Reasoning {
-                data,
-                signature,
-                id,
-            }: Reasoning<D, S, I>,
-        ) -> Part {
-            Part::Reasoning(Reasoning {
-                data: data.into(),
-                signature: signature.into(),
-                id: id.into(),
-            })
-        }
-    }
-
-    #[derive(Debug, Clone)]
-    pub enum Part {
-        Text(Text),
-        Image(Media<Image, encoding::AnyEncoding, ImageMediaType, Quality>),
-        Audio(Media<Audio, encoding::AnyEncoding, AudioMediaType>),
-        Video(Media<Video, encoding::AnyEncoding, VideoMediaType>),
-        Document,
-        ToolCall(ToolCall),
-        // Really this should only be able to be like text or an image
-        // or maybe something we can extend as providers potentially add tool call capabilities
-        ToolResult(ToolResult<String, String>),
-        Reasoning(Reasoning<String, String, String>),
-    }
+pub trait Label {
+    const LABEL: &str;
 }
 
-// Common encoding types for all media
-pub mod encoding {
-    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
-    pub struct Base64(pub String);
-
-    impl<S> From<S> for Base64
-    where
-        S: Into<String>,
-    {
-        fn from(value: S) -> Self {
-            Base64(value.into())
-        }
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, Default)]
-    pub struct Uri(pub http::Uri);
-
-    impl From<http::Uri> for Uri {
-        fn from(value: http::Uri) -> Self {
-            Uri(value)
-        }
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
-    pub struct Raw(pub Vec<u8>);
-
-    impl From<Vec<u8>> for Raw {
-        fn from(value: Vec<u8>) -> Self {
-            Raw(value)
-        }
-    }
-
-    #[derive(Debug, Clone)]
-    pub enum AnyEncoding {
-        Base64(Base64),
-        Uri(Uri),
-        Raw(Raw),
-    }
-
-    impl From<Base64> for AnyEncoding {
-        fn from(value: Base64) -> Self {
-            Self::Base64(value)
-        }
-    }
-
-    impl From<Raw> for AnyEncoding {
-        fn from(value: Raw) -> Self {
-            Self::Raw(value)
-        }
-    }
-
-    impl From<Uri> for AnyEncoding {
-        fn from(value: Uri) -> Self {
-            Self::Uri(value)
-        }
-    }
+pub trait GetRoleContent {
+    type Output: std::fmt::Debug + Clone;
 }
 
-// Implementation patterns for each content type
+pub type Content<T> = <T as GetRoleContent>::Output;
+
+impl GetRoleContent for role::User {
+    type Output = content::UserPart;
+}
+
+impl GetRoleContent for role::Assistant {
+    type Output = content::AssistantPart;
+}
 
 // Text builders
+
 impl Default for content::Text {
     fn default() -> Self {
         Self {
@@ -619,12 +45,18 @@ impl Default for content::Text {
 }
 
 impl content::Text {
-    pub fn new() -> Self {
+    pub fn empty() -> Self {
         Self::default()
     }
 
     pub fn text(self, text: impl Into<String>) -> content::Text {
         content::Text { text: text.into() }
+    }
+
+    pub fn concat(mut self, rhs: impl Into<Self>) -> Self {
+        self.text.push_str(rhs.into().text.as_str());
+
+        self
     }
 }
 
@@ -670,33 +102,62 @@ pub trait Supports<Kind, Role> {}
 
 #[repr(transparent)]
 #[derive(Debug, Clone)]
-pub struct Message<C: NonEmpty> {
-    __content: PhantomData<C>,
-    parts: OneOrMany<content::Part>,
+pub struct Message<Role, ContentTypes>
+where
+    Role: GetRoleContent,
+    ContentTypes: NonEmpty,
+{
+    __role: PhantomData<Role>,
+    __content: PhantomData<ContentTypes>,
+    parts: OneOrMany<Content<Role>>,
 }
 
 #[repr(transparent)]
 #[derive(Debug, Clone)]
-pub struct MessageBuilder<Content: List = Nil> {
-    __content: PhantomData<fn() -> Content>,
-    parts: Vec<content::Part>,
+pub struct MessageBuilder<Role, ContentTypes = Nil>
+where
+    Role: GetRoleContent,
+    ContentTypes: List,
+{
+    __role: PhantomData<Role>,
+    __content: PhantomData<fn() -> ContentTypes>,
+    parts: Vec<Content<Role>>,
 }
 
-impl MessageBuilder<Nil> {
-    pub fn new() -> Self {
+impl<R> Default for MessageBuilder<R, Nil>
+where
+    R: GetRoleContent,
+{
+    fn default() -> Self {
         Self {
+            __role: PhantomData,
             __content: PhantomData,
             parts: Default::default(),
         }
     }
 }
 
-impl<C> MessageBuilder<C>
+impl<R> MessageBuilder<R, Nil>
 where
+    R: GetRoleContent,
+{
+    pub fn new() -> Self {
+        Self {
+            __role: PhantomData,
+            __content: PhantomData,
+            parts: Default::default(),
+        }
+    }
+}
+
+impl<R, C> MessageBuilder<R, C>
+where
+    R: GetRoleContent,
     C: NonEmpty,
 {
-    pub fn build(self) -> Message<C> {
+    pub fn build(self) -> Message<R, C> {
         Message {
+            __role: PhantomData,
             __content: PhantomData,
             // SAFETY: This is safe because the `NonEmpty` bound guarantees something has been
             // cons'd onto the type-level list tracking the content of this message
@@ -705,53 +166,60 @@ where
     }
 }
 
-impl<C> MessageBuilder<C>
+// MEDIA
+impl<R, C> MessageBuilder<R, C>
 where
+    R: GetRoleContent,
+    Content<R>: From<String>,
     C: List,
 {
-    pub fn text(mut self, text: impl Into<String>) -> MessageBuilder<Cons<content::Text, C>> {
-        self.parts
-            .push(content::Part::Text(content::Text { text: text.into() }));
+    pub fn text(mut self, text: impl Into<String>) -> MessageBuilder<R, Cons<content::Text, C>> {
+        self.parts.push(R::Output::from(text.into()));
 
         MessageBuilder {
-            __content: PhantomData,
             parts: self.parts,
+            __role: PhantomData,
+            __content: PhantomData,
         }
     }
 
     pub fn audio<E, MT>(
         mut self,
         audio: impl Into<content::Media<content::Audio, E, MT>>,
-    ) -> MessageBuilder<Cons<content::Media<content::Audio, E, MT>, C>>
+    ) -> MessageBuilder<R, Cons<content::Media<content::Audio, E, MT>, C>>
     where
         E: Into<AnyEncoding>,
         MT: Into<content::AudioMediaType>,
+        Content<R>: From<content::Media<content::Audio, E, MT>>,
     {
-        let part: content::Part = audio.into().into();
+        let part: Content<R> = audio.into().into();
 
         self.parts.push(part);
 
         MessageBuilder {
             __content: PhantomData,
+            __role: PhantomData,
             parts: self.parts,
         }
     }
 
     pub fn image<E, MT, Q>(
         mut self,
-        image: content::Media<content::Image, E, MT, Q>,
-    ) -> MessageBuilder<Cons<content::Media<content::Image, E, MT, Q>, C>>
+        image: impl Into<content::Media<content::Image, E, MT, Q>>,
+    ) -> MessageBuilder<R, Cons<content::Media<content::Image, E, MT, Q>, C>>
     where
         E: Into<AnyEncoding>,
         MT: Into<content::ImageMediaType>,
         Q: Into<content::Quality>,
+        Content<R>: From<content::Media<content::Image, E, MT, Q>>,
     {
-        let part: content::Part = image.into();
+        let part: Content<R> = image.into().into();
 
         self.parts.push(part);
 
         MessageBuilder {
             __content: PhantomData,
+            __role: PhantomData,
             parts: self.parts,
         }
     }
@@ -806,7 +274,7 @@ mod example {
             Self
         }
 
-        pub fn send<C: NonEmpty>(&self, _message: Message<C>) -> Result<(), Infallible>
+        pub fn send<C: NonEmpty>(&self, _message: Message<role::User, C>) -> Result<(), Infallible>
         where
             Self: SatisfiesAll<SupportsContent<role::User>, C>,
         {
@@ -824,7 +292,7 @@ mod example {
             Self
         }
 
-        fn send<C: NonEmpty>(&self, _message: Message<C>) -> Result<(), Infallible>
+        fn send<C: NonEmpty>(&self, _message: Message<role::User, C>) -> Result<(), Infallible>
         where
             Self: SatisfiesAll<SupportsContent<role::User>, C>,
         {
@@ -854,7 +322,7 @@ mod example {
 
             claude.send(message).unwrap();
             // Doesn't typecheck because `OpenAI` doesn't impl `Supports<Image, Role>`
-            //openai.send(message).unwrap();
+            // openai.send(message).unwrap();
 
             let just_text = MessageBuilder::new().text("Hello GPT").build();
 
