@@ -152,6 +152,7 @@ impl<HttpClient: HttpClientExt + Clone + 'static> StreamingCompletionModel<HttpC
             )
         }
     }
+
 }
 
 impl<HttpClient: HttpClientExt + Clone + 'static> CompletionModelTrait
@@ -226,6 +227,10 @@ impl<HttpClient: HttpClientExt + Clone + 'static> CompletionModelTrait
         debug!("Streaming to: {}", url);
 
         // Create SSE request
+        // AUTHENTICATION: The provided HttpClient must handle GCP authentication
+        // (e.g., via interceptors, middleware, or pre-configured auth headers)
+        // Callers should pass an authenticated HTTP client that includes Bearer tokens
+        // in Authorization headers for Vertex AI API requests.
         let req = Request::post(url)
             .header("Content-Type", "application/json")
             .body(body)
