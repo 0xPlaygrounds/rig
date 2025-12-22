@@ -227,14 +227,16 @@ impl<HttpClient: HttpClientExt + Clone + 'static> CompletionModelTrait
         debug!("Streaming to: {}", url);
 
         // Create SSE request
+        // NOTE: The provided HttpClient must have GCP authentication configured.
+        // For proper authentication, use an HTTP client built with reqwest-middleware
+        // and the GcpAuthMiddleware from the auth module, or ensure credentials
+        // are configured via Application Default Credentials (ADC).
         let req = Request::post(url)
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::ProviderError(format!("Request building error: {e}")))?;
 
         // Create event source for SSE parsing
-        // NOTE: The provided HttpClient must have GCP authentication configured
-        // (e.g., via reqwest-middleware with GcpAuthMiddleware or equivalent)
         let mut event_source = GenericEventSource::new(self.http_client.clone(), req);
 
         // Create streaming response using async_stream
