@@ -199,6 +199,11 @@ impl Client {
             })
             .await
     }
+
+    /// Get GCP access token from credentials for manual authentication
+    pub fn credentials(&self) -> &google_cloud_auth::credentials::Credentials {
+        &self.credentials
+    }
 }
 
 impl Default for Client {
