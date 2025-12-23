@@ -118,4 +118,4 @@ pub use prompt_request::streaming::{
     FinalResponse, MultiTurnStreamItem, StreamingPromptRequest, stream_to_stdout,
 };
 pub use prompt_request::{CancelSignal, PromptRequest, PromptResponse};
-pub use prompt_request::{PromptHook, StreamingPromptHook};
+pub use prompt_request::{PromptHook, StreamingPromptHook, ToolResultReviewer};
