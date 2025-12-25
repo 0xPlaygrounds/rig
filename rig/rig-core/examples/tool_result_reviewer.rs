@@ -1,3 +1,4 @@
+use anthropic::completion::{CLAUDE_3_5_HAIKU, CLAUDE_4_SONNET};
 use anyhow::Result;
 use rig::agent::{Agent, CancelSignal, ToolResultReviewer};
 use rig::completion::{CompletionModel, Prompt, ToolDefinition};
@@ -147,7 +148,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let client = anthropic::Client::from_env();
 
     let agent = client
-        .agent("claude-sonnet-4-5-20250929")
+        .agent(CLAUDE_4_SONNET)
         .preamble(&format!(
             "You are a directory explorer. Use list_dir to explore directories. \
              The target directory is: {}",
@@ -159,10 +160,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Reviewer uses a smaller/faster model
     let reviewer = SmallModelReviewer {
-        agent: client
-            .agent("claude-sonnet-4-5-20250929")
-            .max_tokens(512)
-            .build(),
+        agent: client.agent(CLAUDE_3_5_HAIKU).max_tokens(512).build(),
     };
 
     let response = agent
