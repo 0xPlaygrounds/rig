@@ -4,8 +4,9 @@
 
 pub mod client;
 pub mod completion;
+pub mod streaming;
 
 pub use client::Client;
 pub use completion::{
-    CompletionModel, GLM_4, GLM_4_0520, GLM_4_AIR, GLM_4_AIRX, GLM_4_FLASH, GLM_4_PLUS,
+    CompletionModel, GLM_4, GLM_4_0520, GLM_4_7, GLM_4_AIR, GLM_4_AIRX, GLM_4_FLASH, GLM_4_PLUS,
 };

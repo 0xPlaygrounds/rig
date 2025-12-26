@@ -24,6 +24,8 @@ pub const GLM_4_0520: &str = "glm-4-0520";
 pub const GLM_4_AIR: &str = "glm-4-air";
 pub const GLM_4_AIRX: &str = "glm-4-airx";
 pub const GLM_4_FLASH: &str = "glm-4-flash";
+pub const GLM_4_7: &str = "glm-4.7";
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct ZaiCompletionRequest {
