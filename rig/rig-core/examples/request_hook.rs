@@ -1,4 +1,4 @@
-use rig::agent::{CancelSignal, PromptHook};
+use rig::agent::{CancelSignal, PromptHook, ToolCallHookAction};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, CompletionResponse, Message, Prompt};
 use rig::message::{AssistantContent, UserContent};
@@ -16,7 +16,7 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
         tool_call_id: Option<String>,
         args: &str,
         _cancel_sig: CancelSignal,
-    ) {
+    ) -> ToolCallHookAction {
         println!(
             "[Session {}] Calling tool: {} with call ID: {tool_call_id} with args: {}",
             self.session_id,
@@ -24,6 +24,7 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
             args,
             tool_call_id = tool_call_id.unwrap_or("<no call ID provided>".to_string()),
         );
+        ToolCallHookAction::Continue
     }
     async fn on_tool_result(
         &self,
