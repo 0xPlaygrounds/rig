@@ -61,7 +61,15 @@ impl ProviderClient for Client {
     /// Panics if the environment variable is not set.
     fn from_env() -> Self {
         let api_key = std::env::var("ZAI_API_KEY").expect("ZAI_API_KEY not set");
-        Self::new(&api_key).unwrap()
+        let builder = Self::builder().api_key(&api_key);
+
+        let builder = if let Ok(base_url) = std::env::var("ZAI_BASE_URL") {
+            builder.base_url(&base_url)
+        } else {
+            builder
+        };
+
+        builder.build().expect("Failed to build client")
     }
 
     fn from_val(input: Self::Input) -> Self {

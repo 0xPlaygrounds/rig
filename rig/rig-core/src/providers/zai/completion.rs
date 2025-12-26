@@ -18,13 +18,19 @@ use tracing::{Instrument, Level, enabled, info_span};
 use zai_api_types::{CompletionResponse, ToolDefinition};
 
 /// z.ai completion models
-pub const GLM_4: &str = "glm-4";
-pub const GLM_4_PLUS: &str = "glm-4-plus";
-pub const GLM_4_0520: &str = "glm-4-0520";
-pub const GLM_4_AIR: &str = "glm-4-air";
-pub const GLM_4_AIRX: &str = "glm-4-airx";
-pub const GLM_4_FLASH: &str = "glm-4-flash";
-pub const GLM_4_7: &str = "glm-4.7";
+pub const GLM_4: &str = "glm-4"; // Legacy?
+pub const GLM_4_PLUS: &str = "GLM-4-Plus";
+pub const GLM_4_0520: &str = "glm-4-0520"; // Legacy?
+pub const GLM_4_AIR: &str = "glm-4-air"; // Legacy?
+pub const GLM_4_AIRX: &str = "glm-4-airx"; // Legacy?
+pub const GLM_4_FLASH: &str = "glm-4-flash"; // Legacy?
+pub const GLM_4_7: &str = "GLM-4.7";
+pub const GLM_4_6: &str = "GLM-4.6";
+pub const GLM_4_5: &str = "GLM-4.5";
+pub const GLM_4_5_FLASH: &str = "GLM-4.5-Flash";
+pub const GLM_4_5_AIR: &str = "GLM-4.5-Air";
+pub const GLM_4_5_AIRX: &str = "GLM-4.5-AirX";
+
 
 
 #[derive(Debug, Serialize, Deserialize)]

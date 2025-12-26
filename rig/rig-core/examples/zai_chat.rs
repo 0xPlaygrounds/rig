@@ -6,7 +6,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let client = zai::Client::from_env();
 
     // Create an agent
-    let agent = client.agent(zai::GLM_4_7).build();
+    let agent = client.agent(zai::GLM_4_5_FLASH).build();
 
     // Send a prompt
     let response = agent.prompt("Hello, z.ai!").await?;
