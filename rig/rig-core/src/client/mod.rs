@@ -312,11 +312,16 @@ where
 
     fn send_streaming<T>(
         &self,
-        req: Request<T>,
+        mut req: Request<T>,
     ) -> impl Future<Output = http_client::Result<http_client::StreamingResponse>> + WasmCompatSend
     where
         T: Into<Bytes>,
     {
+        req.headers_mut().insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("application/json"),
+        );
+
         self.http_client.send_streaming(req)
     }
 }
