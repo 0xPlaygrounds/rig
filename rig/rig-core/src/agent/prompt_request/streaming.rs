@@ -21,6 +21,8 @@ use crate::{
     tool::ToolSetError,
 };
 
+use super::ToolResultReviewer;
+
 #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send>>;
@@ -96,10 +98,11 @@ pub enum StreamingError {
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxDepthError`] if the agent decides to call tools
 /// back to back.
-pub struct StreamingPromptRequest<M, P>
+pub struct StreamingPromptRequest<M, P, R = ()>
 where
     M: CompletionModel,
     P: StreamingPromptHook<M> + 'static,
+    R: ToolResultReviewer,
 {
     /// The prompt message to send to the model
     prompt: Message,
@@ -112,13 +115,16 @@ where
     agent: Arc<Agent<M>>,
     /// Optional per-request hook for events
     hook: Option<P>,
+    /// Optional reviewer to critique tool execution results
+    reviewer: Option<R>,
 }
 
-impl<M, P> StreamingPromptRequest<M, P>
+impl<M, P, R> StreamingPromptRequest<M, P, R>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
     P: StreamingPromptHook<M>,
+    R: ToolResultReviewer + 'static,
 {
     /// Create a new PromptRequest with the given prompt and model
     pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> Self {
@@ -128,6 +134,7 @@ where
             max_depth: 0,
             agent,
             hook: None,
+            reviewer: None,
         }
     }
 
@@ -145,7 +152,7 @@ where
     }
 
     /// Attach a per-request hook for tool call events
-    pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2>
+    pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2, R>
     where
         P2: StreamingPromptHook<M>,
     {
@@ -155,6 +162,25 @@ where
             max_depth: self.max_depth,
             agent: self.agent,
             hook: Some(hook),
+            reviewer: self.reviewer,
+        }
+    }
+
+    /// Attach a reviewer to critique tool execution results.
+    ///
+    /// The reviewer's `critique()` method will be called after successful tool execution.
+    /// The returned string will be used as the final tool result.
+    pub fn with_reviewer<R2>(self, reviewer: R2) -> StreamingPromptRequest<M, P, R2>
+    where
+        R2: ToolResultReviewer,
+    {
+        StreamingPromptRequest {
+            prompt: self.prompt,
+            chat_history: self.chat_history,
+            max_depth: self.max_depth,
+            agent: self.agent,
+            hook: self.hook,
+            reviewer: Some(reviewer),
         }
     }
 
@@ -309,19 +335,32 @@ where
                                 tool_span.record("gen_ai.tool.name", &tool_call.function.name);
                                 tool_span.record("gen_ai.tool.call.arguments", &tool_args);
 
-                                let tool_result = match
+                                let (output, tool_succeeded) = match
                                 agent.tool_server_handle.call_tool(&tool_call.function.name, &tool_args).await {
-                                    Ok(thing) => thing,
+                                    Ok(thing) => (thing, true),
                                     Err(e) => {
                                         tracing::warn!("Error while calling tool: {e}");
-                                        e.to_string()
+                                        (e.to_string(), false)
                                     }
+                                };
+
+                                // Only critique when tool execution succeeds
+                                let tool_result = if let (true, Some(reviewer)) = (tool_succeeded, &self.reviewer) {
+                                    reviewer.critique(
+                                        &tool_call.function.name,
+                                        tool_call.call_id.clone(),
+                                        &tool_args,
+                                        &output,
+                                        cancel_signal.clone(),
+                                    ).await
+                                } else {
+                                    output
                                 };
 
                                 tool_span.record("gen_ai.tool.call.result", &tool_result);
 
                                 if let Some(ref hook) = self.hook {
-                                    hook.on_tool_result(&tool_call.function.name, tool_call.call_id.clone(), &tool_args, &tool_result.to_string(), cancel_signal.clone())
+                                    hook.on_tool_result(&tool_call.function.name, tool_call.call_id.clone(), &tool_args, &tool_result, cancel_signal.clone())
                                     .await;
 
                                     if cancel_signal.is_cancelled() {
@@ -446,11 +485,12 @@ where
     }
 }
 
-impl<M, P> IntoFuture for StreamingPromptRequest<M, P>
+impl<M, P, R> IntoFuture for StreamingPromptRequest<M, P, R>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
     P: StreamingPromptHook<M> + 'static,
+    R: ToolResultReviewer + 'static,
 {
     type Output = StreamingResult<M::StreamingResponse>; // what `.await` returns
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
