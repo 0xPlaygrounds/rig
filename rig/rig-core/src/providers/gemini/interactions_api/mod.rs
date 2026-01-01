@@ -1,0 +1,1642 @@
+//! Google Gemini Interactions API integration.
+//! From <https://ai.google.dev/api/interactions-api>
+
+use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
+use crate::http_client::HttpClientExt;
+use crate::message::{self, MimeType, Reasoning};
+use crate::telemetry::SpanCombinator;
+use crate::OneOrMany;
+use serde_json::{Map, Value};
+use tracing::{Level, enabled, info_span};
+use tracing_futures::Instrument;
+
+use super::client::InteractionsClient;
+
+pub mod streaming;
+pub use interactions_api_types::*;
+
+// =================================================================
+// Rig Implementation Types
+// =================================================================
+
+#[derive(Clone, Debug)]
+pub struct InteractionsCompletionModel<T = reqwest::Client> {
+    pub(crate) client: InteractionsClient<T>,
+    pub model: String,
+}
+
+impl<T> InteractionsCompletionModel<T> {
+    pub fn new(client: InteractionsClient<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
+    }
+
+    pub fn with_model(client: InteractionsClient<T>, model: &str) -> Self {
+        Self {
+            client,
+            model: model.to_string(),
+        }
+    }
+
+    /// Use the GenerateContent API instead of Interactions.
+    pub fn generate_content_api(self) -> super::completion::CompletionModel<T> {
+        super::completion::CompletionModel::with_model(self.client.generate_content_api(), &self.model)
+    }
+
+    pub(crate) fn create_completion_request(
+        &self,
+        completion_request: CompletionRequest,
+        stream_override: Option<bool>,
+    ) -> Result<CreateInteractionRequest, CompletionError> {
+        create_request_body(self.model.clone(), completion_request, stream_override)
+    }
+}
+
+impl<T> completion::CompletionModel for InteractionsCompletionModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    type Response = Interaction;
+    type StreamingResponse = streaming::StreamingCompletionResponse;
+    type Client = InteractionsClient<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
+
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse<Interaction>, CompletionError> {
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "interactions",
+                gen_ai.operation.name = "interactions",
+                gen_ai.provider.name = "gcp.gemini",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        let request = self.create_completion_request(completion_request, Some(false))?;
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "Gemini interactions completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
+        let body = serde_json::to_vec(&request)?;
+        let request = self
+            .client
+            .post("/v1beta/interactions")?
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        async move {
+            let response = self.client.send::<_, Vec<u8>>(request).await?;
+
+            if response.status().is_success() {
+                let response_body = response
+                    .into_body()
+                    .await
+                    .map_err(CompletionError::HttpError)?;
+
+                let response_text = String::from_utf8_lossy(&response_body).to_string();
+
+                let response: Interaction = serde_json::from_slice(&response_body).map_err(|err| {
+                    tracing::error!(
+                        error = %err,
+                        body = %response_text,
+                        "Failed to deserialize Gemini interactions response"
+                    );
+                    CompletionError::JsonError(err)
+                })?;
+
+                let span = tracing::Span::current();
+                span.record_response_metadata(&response);
+                span.record_token_usage(&response);
+
+                if enabled!(Level::TRACE) {
+                    tracing::trace!(
+                        target: "rig::completions",
+                        "Gemini interactions completion response: {}",
+                        serde_json::to_string_pretty(&response)?
+                    );
+                }
+
+                response.try_into()
+            } else {
+                let text = String::from_utf8_lossy(
+                    &response
+                        .into_body()
+                        .await
+                        .map_err(CompletionError::HttpError)?,
+                )
+                .into();
+
+                Err(CompletionError::ProviderError(text))
+            }
+        }
+        .instrument(span)
+        .await
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<
+        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+        CompletionError,
+    > {
+        InteractionsCompletionModel::stream(self, request).await
+    }
+}
+
+pub(crate) fn create_request_body(
+    model: String,
+    completion_request: CompletionRequest,
+    stream_override: Option<bool>,
+) -> Result<CreateInteractionRequest, CompletionError> {
+    let mut history = Vec::new();
+    if let Some(docs) = completion_request.normalized_documents() {
+        history.push(docs);
+    }
+    history.extend(completion_request.chat_history.into_iter());
+
+    let turns = history
+        .into_iter()
+        .map(Turn::try_from)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| CompletionError::RequestError(Box::new(err)))?;
+
+    let input = InteractionInput::Turns(turns);
+
+    let raw_params = completion_request
+        .additional_params
+        .unwrap_or_else(|| Value::Object(Map::new()));
+
+    let mut params: AdditionalParameters = serde_json::from_value(raw_params)?;
+
+    let mut generation_config = params.generation_config.take().unwrap_or_default();
+    if let Some(temp) = completion_request.temperature {
+        generation_config.temperature = Some(temp);
+    }
+    if let Some(max_tokens) = completion_request.max_tokens {
+        generation_config.max_output_tokens = Some(max_tokens);
+    }
+    if let Some(tool_choice) = completion_request.tool_choice {
+        generation_config.tool_choice = Some(tool_choice.try_into()?);
+    }
+    let generation_config = if generation_config.is_empty() {
+        None
+    } else {
+        Some(generation_config)
+    };
+
+    let system_instruction = completion_request.preamble.or(params.system_instruction.take());
+
+    let mut tools = Vec::new();
+    if !completion_request.tools.is_empty() {
+        tools.extend(
+            completion_request
+                .tools
+                .into_iter()
+                .map(Tool::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+        );
+    }
+    if let Some(mut extra_tools) = params.tools.take() {
+        tools.append(&mut extra_tools);
+    }
+    let tools = if tools.is_empty() { None } else { Some(tools) };
+
+    let stream = stream_override.or(params.stream.take());
+
+    let (agent, agent_config) = if params.agent.is_some() {
+        (params.agent.take(), params.agent_config.take())
+    } else {
+        (None, None)
+    };
+
+    let response_format = params.response_format.take();
+    let response_mime_type = params.response_mime_type.take();
+
+    if response_format.is_some() && response_mime_type.is_none() {
+        return Err(CompletionError::RequestError(Box::new(
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "response_mime_type is required when response_format is set",
+            ),
+        )));
+    }
+
+    Ok(CreateInteractionRequest {
+        model: if agent.is_some() { None } else { Some(model) },
+        agent,
+        input,
+        system_instruction,
+        tools,
+        response_format,
+        response_mime_type,
+        stream,
+        store: params.store.take(),
+        background: params.background.take(),
+        generation_config,
+        agent_config,
+        response_modalities: params.response_modalities.take(),
+        previous_interaction_id: params.previous_interaction_id.take(),
+        additional_params: params.additional_params.take(),
+    })
+}
+
+impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
+    type Error = CompletionError;
+
+    fn try_from(response: Interaction) -> Result<Self, Self::Error> {
+        if response.outputs.is_empty() {
+            return Err(CompletionError::ResponseError(
+                "Response contained no outputs".to_owned(),
+            ));
+        }
+
+        let content = response
+            .outputs
+            .iter()
+            .cloned()
+            .filter_map(|output| match assistant_content_from_output(output) {
+                Ok(Some(content)) => Some(Ok(content)),
+                Ok(None) => None,
+                Err(err) => Some(Err(err)),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let choice = OneOrMany::many(content).map_err(|_| {
+            CompletionError::ResponseError(
+                "Response contained no message or tool call (empty)".to_owned(),
+            )
+        })?;
+
+        let usage = response
+            .usage
+            .as_ref()
+            .and_then(|usage| usage.token_usage())
+            .unwrap_or_default();
+
+        Ok(completion::CompletionResponse {
+            choice,
+            usage,
+            raw_response: response,
+        })
+    }
+}
+
+fn assistant_content_from_output(
+    output: Content,
+) -> Result<Option<completion::AssistantContent>, CompletionError> {
+    match output {
+        Content::Text(TextContent { text, .. }) => Ok(Some(completion::AssistantContent::text(text))),
+        Content::FunctionCall(FunctionCallContent {
+            name,
+            arguments,
+            id,
+            ..
+        }) => {
+            let Some(name) = name else {
+                return Ok(None);
+            };
+            let call_id = id.unwrap_or_else(|| name.clone());
+            Ok(Some(
+                completion::AssistantContent::tool_call_with_call_id(
+                    name.clone(),
+                    call_id,
+                    name,
+                    arguments.unwrap_or(Value::Object(Map::new())),
+                ),
+            ))
+        }
+        Content::Thought(ThoughtContent { summary, signature, .. }) => {
+            let summary = summary
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|content| match content {
+                    ThoughtSummaryContent::Text(text) => Some(text.text),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+
+            if summary.is_empty() {
+                return Ok(None);
+            }
+
+            Ok(Some(completion::AssistantContent::Reasoning(
+                Reasoning::multi(summary).with_signature(signature),
+            )))
+        }
+        Content::Image(ImageContent {
+            data,
+            uri,
+            mime_type,
+            ..
+        }) => {
+            let Some(mime_type) = mime_type else {
+                return Err(CompletionError::ResponseError(
+                    "Image output missing mime_type".to_owned(),
+                ));
+            };
+
+            let media_type = message::ImageMediaType::from_mime_type(&mime_type).ok_or_else(|| {
+                CompletionError::ResponseError(format!(
+                    "Unsupported image output mime type {mime_type}"
+                ))
+            })?;
+
+            let image = if let Some(data) = data {
+                message::AssistantContent::image_base64(
+                    data,
+                    Some(media_type),
+                    Some(message::ImageDetail::default()),
+                )
+            } else if let Some(uri) = uri {
+                completion::AssistantContent::Image(message::Image {
+                    data: message::DocumentSourceKind::Url(uri),
+                    media_type: Some(media_type),
+                    detail: Some(message::ImageDetail::default()),
+                    additional_params: None,
+                })
+            } else {
+                return Err(CompletionError::ResponseError(
+                    "Image output missing data or uri".to_owned(),
+                ));
+            };
+
+            Ok(Some(image))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn split_data_uri(
+    src: message::DocumentSourceKind,
+) -> Result<(Option<String>, Option<String>), message::MessageError> {
+    match src {
+        message::DocumentSourceKind::Url(uri) => Ok((None, Some(uri))),
+        message::DocumentSourceKind::Base64(data)
+        | message::DocumentSourceKind::String(data) => Ok((Some(data), None)),
+        message::DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
+            "Raw content is not supported, encode as base64 first".to_string(),
+        )),
+        message::DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
+            "Unknown content source".to_string(),
+        )),
+    }
+}
+
+pub mod interactions_api_types {
+    use super::split_data_uri;
+    use crate::completion::{CompletionError, GetTokenUsage, Usage};
+    use crate::message::{self, MimeType};
+    use crate::telemetry::ProviderResponseExt;
+    use serde::{Deserialize, Serialize};
+    use serde_json::{Value, json};
+
+    // =================================================================
+    // Request / Response Types
+    // =================================================================
+
+    #[derive(Debug, Deserialize, Serialize, Default, Clone)]
+    #[serde(rename_all = "snake_case")]
+    pub struct AdditionalParameters {
+        pub agent: Option<String>,
+        pub agent_config: Option<AgentConfig>,
+        pub background: Option<bool>,
+        pub generation_config: Option<GenerationConfig>,
+        pub previous_interaction_id: Option<String>,
+        pub response_modalities: Option<Vec<ResponseModality>>,
+        pub response_format: Option<Value>,
+        pub response_mime_type: Option<String>,
+        pub store: Option<bool>,
+        pub stream: Option<bool>,
+        pub system_instruction: Option<String>,
+        pub tools: Option<Vec<Tool>>,
+        #[serde(flatten, skip_serializing_if = "Option::is_none")]
+        pub additional_params: Option<Value>,
+    }
+
+    #[derive(Debug, Deserialize, Serialize, Clone)]
+    #[serde(rename_all = "snake_case")]
+    pub struct CreateInteractionRequest {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub model: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub agent: Option<String>,
+        pub input: InteractionInput,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub system_instruction: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub tools: Option<Vec<Tool>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub response_format: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub response_mime_type: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub stream: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub store: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub background: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub generation_config: Option<GenerationConfig>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub agent_config: Option<AgentConfig>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub response_modalities: Option<Vec<ResponseModality>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub previous_interaction_id: Option<String>,
+        #[serde(flatten, skip_serializing_if = "Option::is_none")]
+        pub additional_params: Option<Value>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize, Default)]
+    #[serde(rename_all = "snake_case")]
+    pub struct Interaction {
+        #[serde(default)]
+        pub id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub model: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub agent: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub status: Option<InteractionStatus>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub object: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub created: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub updated: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub role: Option<String>,
+        #[serde(default)]
+        pub outputs: Vec<Content>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub usage: Option<InteractionUsage>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub system_instruction: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub tools: Option<Vec<Tool>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub background: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub response_modalities: Option<Vec<ResponseModality>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub response_format: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub response_mime_type: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub previous_interaction_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub input: Option<InteractionInput>,
+    }
+
+    impl GetTokenUsage for Interaction {
+        fn token_usage(&self) -> Option<Usage> {
+            self.usage.as_ref().and_then(|usage| usage.token_usage())
+        }
+    }
+
+    impl ProviderResponseExt for Interaction {
+        type OutputMessage = Content;
+        type Usage = InteractionUsage;
+
+        fn get_response_id(&self) -> Option<String> {
+            if self.id.is_empty() {
+                None
+            } else {
+                Some(self.id.clone())
+            }
+        }
+
+        fn get_response_model_name(&self) -> Option<String> {
+            self.model.clone()
+        }
+
+        fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+            self.outputs.clone()
+        }
+
+        fn get_text_response(&self) -> Option<String> {
+            let text = self
+                .outputs
+                .iter()
+                .filter_map(|content| match content {
+                    Content::Text(text) => Some(text.text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            if text.is_empty() {
+                None
+            } else {
+                Some(text)
+            }
+        }
+
+        fn get_usage(&self) -> Option<Self::Usage> {
+            self.usage.clone()
+        }
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum InteractionStatus {
+        InProgress,
+        RequiresAction,
+        Completed,
+        Failed,
+        Cancelled,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize, Default)]
+    #[serde(rename_all = "snake_case")]
+    pub struct InteractionUsage {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub total_input_tokens: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub total_output_tokens: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub total_tokens: Option<u64>,
+    }
+
+    impl GetTokenUsage for InteractionUsage {
+        fn token_usage(&self) -> Option<Usage> {
+            let mut usage = Usage::new();
+            usage.input_tokens = self.total_input_tokens.unwrap_or_default();
+            usage.output_tokens = self.total_output_tokens.unwrap_or_default();
+            usage.total_tokens = self
+                .total_tokens
+                .unwrap_or(usage.input_tokens + usage.output_tokens);
+            Some(usage)
+        }
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(untagged)]
+    pub enum InteractionInput {
+        Text(String),
+        Content(Content),
+        Turns(Vec<Turn>),
+        Contents(Vec<Content>),
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "lowercase")]
+    pub enum Role {
+        User,
+        Model,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct Turn {
+        pub role: Role,
+        pub content: TurnContent,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(untagged)]
+    pub enum TurnContent {
+        Text(String),
+        Contents(Vec<Content>),
+    }
+
+    impl TryFrom<crate::completion::Message> for Turn {
+        type Error = message::MessageError;
+
+        fn try_from(message: crate::completion::Message) -> Result<Self, Self::Error> {
+            match message {
+                crate::completion::Message::User { content } => {
+                    let contents = content
+                        .into_iter()
+                        .map(Content::try_from)
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(Self {
+                        role: Role::User,
+                        content: TurnContent::Contents(contents),
+                    })
+                }
+                crate::completion::Message::Assistant { content, .. } => {
+                    let contents = content
+                        .into_iter()
+                        .map(Content::try_from)
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(Self {
+                        role: Role::Model,
+                        content: TurnContent::Contents(contents),
+                    })
+                }
+            }
+        }
+    }
+
+    // =================================================================
+    // Content
+    // =================================================================
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct Annotation {
+        pub start_index: i64,
+        pub end_index: i64,
+        pub source: String,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct TextContent {
+        pub text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub annotations: Option<Vec<Annotation>>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ImageContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub data: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub uri: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub mime_type: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub resolution: Option<MediaResolution>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct AudioContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub data: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub uri: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub mime_type: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct DocumentContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub data: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub uri: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub mime_type: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct VideoContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub data: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub uri: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub mime_type: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub resolution: Option<MediaResolution>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ThoughtContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub signature: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub summary: Option<Vec<ThoughtSummaryContent>>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(untagged)]
+    pub enum ThoughtSummaryContent {
+        Text(TextContent),
+        Image(ImageContent),
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct FunctionCallContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub arguments: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct FunctionResultContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub is_error: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub result: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub call_id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct CodeExecutionCallArguments {
+        pub language: String,
+        pub code: String,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct CodeExecutionCallContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub arguments: Option<CodeExecutionCallArguments>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct CodeExecutionResultContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub result: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub is_error: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub signature: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub call_id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct UrlContextCallArguments {
+        pub urls: Vec<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct UrlContextCallContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub arguments: Option<UrlContextCallArguments>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct UrlContextResult {
+        pub url: String,
+        pub status: String,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct UrlContextResultContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub signature: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub result: Option<Vec<UrlContextResult>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub is_error: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub call_id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct GoogleSearchCallArguments {
+        pub queries: Vec<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct GoogleSearchCallContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub arguments: Option<GoogleSearchCallArguments>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct GoogleSearchResult {
+        pub url: String,
+        pub title: String,
+        pub rendered_content: String,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct GoogleSearchResultContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub signature: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub result: Option<Vec<GoogleSearchResult>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub is_error: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub call_id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct McpServerToolCallContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub server_name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub arguments: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct McpServerToolResultContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub server_name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub result: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub call_id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct FileSearchResult {
+        pub title: String,
+        pub text: String,
+        pub file_search_store: String,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct FileSearchResultContent {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub result: Option<Vec<FileSearchResult>>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    pub enum Content {
+        Text(TextContent),
+        Image(ImageContent),
+        Audio(AudioContent),
+        Document(DocumentContent),
+        Video(VideoContent),
+        Thought(ThoughtContent),
+        FunctionCall(FunctionCallContent),
+        FunctionResult(FunctionResultContent),
+        CodeExecutionCall(CodeExecutionCallContent),
+        CodeExecutionResult(CodeExecutionResultContent),
+        UrlContextCall(UrlContextCallContent),
+        UrlContextResult(UrlContextResultContent),
+        GoogleSearchCall(GoogleSearchCallContent),
+        GoogleSearchResult(GoogleSearchResultContent),
+        McpServerToolCall(McpServerToolCallContent),
+        McpServerToolResult(McpServerToolResultContent),
+        FileSearchResult(FileSearchResultContent),
+    }
+
+    impl TryFrom<message::UserContent> for Content {
+        type Error = message::MessageError;
+
+        fn try_from(content: message::UserContent) -> Result<Self, Self::Error> {
+            match content {
+                message::UserContent::Text(message::Text { text }) => {
+                    Ok(Self::Text(TextContent { text, annotations: None }))
+                }
+                message::UserContent::ToolResult(message::ToolResult {
+                    id,
+                    call_id,
+                    content,
+                }) => {
+                    let Some(call_id) = call_id else {
+                        return Err(message::MessageError::ConversionError(
+                            "Tool results require call_id for Gemini Interactions API".to_string(),
+                        ));
+                    };
+
+                    let content = content.first();
+
+                    let message::ToolResultContent::Text(text) = content else {
+                        return Err(message::MessageError::ConversionError(
+                            "Tool result content must be text".to_string(),
+                        ));
+                    };
+
+                    let result: Value = serde_json::from_str(&text.text).unwrap_or_else(|error| {
+                        tracing::trace!(
+                            ?error,
+                            "Tool result is not valid JSON; sending as string"
+                        );
+                        json!(text.text)
+                    });
+
+                    Ok(Self::FunctionResult(FunctionResultContent {
+                        name: Some(id),
+                        is_error: None,
+                        result: Some(result),
+                        call_id: Some(call_id),
+                    }))
+                }
+                message::UserContent::Image(message::Image {
+                    data,
+                    media_type,
+                    ..
+                }) => {
+                    let media_type = media_type.ok_or_else(|| {
+                        message::MessageError::ConversionError(
+                            "Media type for image is required for Gemini".to_string(),
+                        )
+                    })?;
+                    let mime_type = media_type.to_mime_type().to_string();
+                    let (data, uri) = split_data_uri(data)?;
+                    Ok(Self::Image(ImageContent {
+                        data,
+                        uri,
+                        mime_type: Some(mime_type),
+                        resolution: None,
+                    }))
+                }
+                message::UserContent::Audio(message::Audio {
+                    data,
+                    media_type,
+                    ..
+                }) => {
+                    let media_type = media_type.ok_or_else(|| {
+                        message::MessageError::ConversionError(
+                            "Media type for audio is required for Gemini".to_string(),
+                        )
+                    })?;
+                    let mime_type = media_type.to_mime_type().to_string();
+                    let (data, uri) = split_data_uri(data)?;
+                    Ok(Self::Audio(AudioContent {
+                        data,
+                        uri,
+                        mime_type: Some(mime_type),
+                    }))
+                }
+                message::UserContent::Video(message::Video {
+                    data,
+                    media_type,
+                    ..
+                }) => {
+                    let media_type = media_type.ok_or_else(|| {
+                        message::MessageError::ConversionError(
+                            "Media type for video is required for Gemini".to_string(),
+                        )
+                    })?;
+                    let mime_type = media_type.to_mime_type().to_string();
+                    let (data, uri) = split_data_uri(data)?;
+                    Ok(Self::Video(VideoContent {
+                        data,
+                        uri,
+                        mime_type: Some(mime_type),
+                        resolution: None,
+                    }))
+                }
+                message::UserContent::Document(message::Document {
+                    data,
+                    media_type,
+                    ..
+                }) => {
+                    let media_type = media_type.ok_or_else(|| {
+                        message::MessageError::ConversionError(
+                            "Media type for document is required for Gemini".to_string(),
+                        )
+                    })?;
+                    let mime_type = media_type.to_mime_type().to_string();
+                    let (data, uri) = split_data_uri(data)?;
+                    Ok(Self::Document(DocumentContent {
+                        data,
+                        uri,
+                        mime_type: Some(mime_type),
+                    }))
+                }
+            }
+        }
+    }
+
+    impl TryFrom<message::AssistantContent> for Content {
+        type Error = message::MessageError;
+
+        fn try_from(content: message::AssistantContent) -> Result<Self, Self::Error> {
+            match content {
+                message::AssistantContent::Text(message::Text { text }) => {
+                    Ok(Self::Text(TextContent { text, annotations: None }))
+                }
+                message::AssistantContent::ToolCall(tool_call) => {
+                    let call_id = tool_call.call_id.unwrap_or_else(|| tool_call.id.clone());
+                    Ok(Self::FunctionCall(FunctionCallContent {
+                        name: Some(tool_call.function.name),
+                        arguments: Some(tool_call.function.arguments),
+                        id: Some(call_id),
+                    }))
+                }
+                message::AssistantContent::Reasoning(message::Reasoning {
+                    reasoning,
+                    signature,
+                    ..
+                }) => Ok(Self::Thought(ThoughtContent {
+                    signature,
+                    summary: Some(
+                        reasoning
+                            .into_iter()
+                            .map(|text| {
+                                ThoughtSummaryContent::Text(TextContent {
+                                    text,
+                                    annotations: None,
+                                })
+                            })
+                            .collect(),
+                    ),
+                })),
+                message::AssistantContent::Image(message::Image {
+                    data, media_type, ..
+                }) => {
+                    let media_type = media_type.ok_or_else(|| {
+                        message::MessageError::ConversionError(
+                            "Media type for image is required for Gemini".to_string(),
+                        )
+                    })?;
+                    let mime_type = media_type.to_mime_type().to_string();
+                    let (data, uri) = split_data_uri(data)?;
+                    Ok(Self::Image(ImageContent {
+                        data,
+                        uri,
+                        mime_type: Some(mime_type),
+                        resolution: None,
+                    }))
+                }
+            }
+        }
+    }
+
+    // =================================================================
+    // Tools / Config
+    // =================================================================
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum ResponseModality {
+        Text,
+        Image,
+        Audio,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum ThinkingLevel {
+        Minimal,
+        Low,
+        Medium,
+        High,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum ThinkingSummaries {
+        Auto,
+        None,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct SpeechConfig {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub voice: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub language: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub speaker: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize, Default)]
+    #[serde(rename_all = "snake_case")]
+    pub struct GenerationConfig {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub temperature: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub top_p: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub seed: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub stop_sequences: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub tool_choice: Option<ToolChoice>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub thinking_level: Option<ThinkingLevel>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub thinking_summaries: Option<ThinkingSummaries>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub max_output_tokens: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub speech_config: Option<Vec<SpeechConfig>>,
+    }
+
+    impl GenerationConfig {
+        pub fn is_empty(&self) -> bool {
+            self.temperature.is_none()
+                && self.top_p.is_none()
+                && self.seed.is_none()
+                && self.stop_sequences.is_none()
+                && self.tool_choice.is_none()
+                && self.thinking_level.is_none()
+                && self.thinking_summaries.is_none()
+                && self.max_output_tokens.is_none()
+                && self.speech_config.is_none()
+        }
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(untagged)]
+    pub enum ToolChoice {
+        Type(ToolChoiceType),
+        Config(ToolChoiceConfig),
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum ToolChoiceType {
+        Auto,
+        Any,
+        None,
+        Validated,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ToolChoiceConfig {
+        pub allowed_tools: AllowedTools,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct AllowedTools {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub mode: Option<ToolChoiceType>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub tools: Option<Vec<String>>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    pub enum Tool {
+        Function(FunctionTool),
+        GoogleSearch,
+        CodeExecution,
+        UrlContext,
+        ComputerUse(ComputerUseTool),
+        McpServer(McpServerTool),
+        FileSearch(FileSearchTool),
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct FunctionTool {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub description: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub parameters: Option<Value>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ComputerUseTool {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub environment: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub excluded_predefined_functions: Option<Vec<String>>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct McpServerTool {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub url: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub headers: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub allowed_tools: Option<AllowedTools>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct FileSearchTool {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub file_search_store_names: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub top_k: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub metadata_filter: Option<String>,
+    }
+
+    impl TryFrom<crate::completion::ToolDefinition> for Tool {
+        type Error = CompletionError;
+
+        fn try_from(tool: crate::completion::ToolDefinition) -> Result<Self, Self::Error> {
+            Ok(Tool::Function(FunctionTool {
+                name: Some(tool.name),
+                description: Some(tool.description),
+                parameters: Some(tool.parameters),
+            }))
+        }
+    }
+
+    impl TryFrom<message::ToolChoice> for ToolChoice {
+        type Error = CompletionError;
+
+        fn try_from(tool_choice: message::ToolChoice) -> Result<Self, Self::Error> {
+            match tool_choice {
+                message::ToolChoice::Auto => Ok(ToolChoice::Type(ToolChoiceType::Auto)),
+                message::ToolChoice::None => Ok(ToolChoice::Type(ToolChoiceType::None)),
+                message::ToolChoice::Required => Ok(ToolChoice::Type(ToolChoiceType::Any)),
+                message::ToolChoice::Specific { function_names } => Ok(ToolChoice::Config(
+                    ToolChoiceConfig {
+                        allowed_tools: AllowedTools {
+                            mode: Some(ToolChoiceType::Validated),
+                            tools: Some(function_names),
+                        },
+                    },
+                )),
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(tag = "type", rename_all = "kebab-case")]
+    pub enum AgentConfig {
+        Dynamic,
+        DeepResearch {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            thinking_summaries: Option<ThinkingSummaries>,
+        },
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum MediaResolution {
+        Low,
+        Medium,
+        High,
+        UltraHigh,
+    }
+
+    // =================================================================
+    // Streaming Events
+    // =================================================================
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(tag = "event_type")]
+    pub enum InteractionSseEvent {
+        #[serde(rename = "interaction.start")]
+        InteractionStart {
+            interaction: Interaction,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            event_id: Option<String>,
+        },
+        #[serde(rename = "interaction.complete")]
+        InteractionComplete {
+            interaction: Interaction,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            event_id: Option<String>,
+        },
+        #[serde(rename = "interaction.status_update")]
+        InteractionStatusUpdate {
+            interaction_id: String,
+            status: InteractionStatus,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            event_id: Option<String>,
+        },
+        #[serde(rename = "content.start")]
+        ContentStart {
+            index: i32,
+            content: Content,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            event_id: Option<String>,
+        },
+        #[serde(rename = "content.delta")]
+        ContentDelta {
+            index: i32,
+            delta: ContentDelta,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            event_id: Option<String>,
+        },
+        #[serde(rename = "content.stop")]
+        ContentStop {
+            index: i32,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            event_id: Option<String>,
+        },
+        #[serde(rename = "error")]
+        Error {
+            error: ErrorEvent,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            event_id: Option<String>,
+        },
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ErrorEvent {
+        pub code: String,
+        pub message: String,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    pub enum ContentDelta {
+        Text(TextDelta),
+        Image(ImageDelta),
+        Audio(AudioDelta),
+        Document(DocumentDelta),
+        Video(VideoDelta),
+        ThoughtSummary(ThoughtSummaryDelta),
+        ThoughtSignature(ThoughtSignatureDelta),
+        FunctionCall(FunctionCallDelta),
+        FunctionResult(FunctionResultDelta),
+        CodeExecutionCall(CodeExecutionCallDelta),
+        CodeExecutionResult(CodeExecutionResultDelta),
+        UrlContextCall(UrlContextCallDelta),
+        UrlContextResult(UrlContextResultDelta),
+        GoogleSearchCall(GoogleSearchCallDelta),
+        GoogleSearchResult(GoogleSearchResultDelta),
+        McpServerToolCall(McpServerToolCallDelta),
+        McpServerToolResult(McpServerToolResultDelta),
+        FileSearchResult(FileSearchResultDelta),
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct TextDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub text: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub annotations: Option<Vec<Annotation>>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ImageDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub data: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub uri: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub mime_type: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub resolution: Option<MediaResolution>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct AudioDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub data: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub uri: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub mime_type: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct DocumentDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub data: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub uri: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub mime_type: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct VideoDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub data: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub uri: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub mime_type: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub resolution: Option<MediaResolution>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ThoughtSummaryDelta {
+        pub content: ThoughtSummaryContent,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ThoughtSignatureDelta {
+        pub signature: String,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct FunctionCallDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub arguments: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct FunctionResultDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub result: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub call_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub is_error: Option<bool>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct CodeExecutionCallDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub arguments: Option<CodeExecutionCallArguments>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct CodeExecutionResultDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub result: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub is_error: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub signature: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub call_id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct UrlContextCallDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub arguments: Option<UrlContextCallArguments>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct UrlContextResultDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub result: Option<Vec<UrlContextResult>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub signature: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub is_error: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub call_id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct GoogleSearchCallDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub arguments: Option<GoogleSearchCallArguments>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct GoogleSearchResultDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub result: Option<Vec<GoogleSearchResult>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub signature: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub is_error: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub call_id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct McpServerToolCallDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub server_name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub arguments: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct McpServerToolResultDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub server_name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub result: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub call_id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct FileSearchResultDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub result: Option<Vec<FileSearchResult>>,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::completion::{CompletionRequest, Message};
+    use crate::message::{self, ToolChoice};
+    use crate::OneOrMany;
+    use serde_json::json;
+
+    #[test]
+    fn test_create_request_body_simple() {
+        let prompt = Message::User {
+            content: OneOrMany::one(message::UserContent::text("Hello")),
+        };
+
+        let request = CompletionRequest {
+            preamble: Some("Be precise.".to_string()),
+            chat_history: OneOrMany::one(prompt),
+            documents: vec![],
+            tools: vec![],
+            temperature: Some(0.7),
+            max_tokens: Some(128),
+            tool_choice: Some(ToolChoice::Required),
+            additional_params: None,
+        };
+
+        let result = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
+            .expect("request should build");
+
+        assert_eq!(result.model.as_deref(), Some("gemini-2.5-flash"));
+        assert!(result.agent.is_none());
+        assert_eq!(result.stream, Some(false));
+        assert_eq!(result.system_instruction.as_deref(), Some("Be precise."));
+
+        let config = result.generation_config.expect("generation config missing");
+        assert_eq!(config.temperature, Some(0.7));
+        assert_eq!(config.max_output_tokens, Some(128));
+        assert!(matches!(
+            config.tool_choice,
+            Some(ToolChoice::Type(ToolChoiceType::Any))
+        ));
+
+        let InteractionInput::Turns(turns) = result.input else {
+            panic!("expected turns input");
+        };
+        assert_eq!(turns.len(), 1);
+        let turn = &turns[0];
+        assert!(matches!(turn.role, Role::User));
+        let TurnContent::Contents(contents) = &turn.content else {
+            panic!("expected content array");
+        };
+        assert_eq!(contents.len(), 1);
+        match &contents[0] {
+            Content::Text(TextContent { text, .. }) => assert_eq!(text, "Hello"),
+            other => panic!("unexpected content: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_tool_result_requires_call_id() {
+        let content = message::UserContent::ToolResult(message::ToolResult {
+            id: "get_weather".to_string(),
+            call_id: None,
+            content: OneOrMany::one(message::ToolResultContent::text("ok")),
+        });
+
+        let err = Content::try_from(content).expect_err("should require call_id");
+        assert!(format!("{err}").contains("call_id"));
+    }
+
+    #[test]
+    fn test_response_function_call_mapping() {
+        let interaction = Interaction {
+            id: "interaction-1".to_string(),
+            outputs: vec![Content::FunctionCall(FunctionCallContent {
+                name: Some("get_weather".to_string()),
+                arguments: Some(json!({"location": "Paris"})),
+                id: Some("call-123".to_string()),
+            })],
+            usage: Some(InteractionUsage {
+                total_input_tokens: Some(5),
+                total_output_tokens: Some(7),
+                total_tokens: Some(12),
+            }),
+            ..Default::default()
+        };
+
+        let response: completion::CompletionResponse<Interaction> =
+            interaction.try_into().expect("conversion should succeed");
+
+        let choice = response.choice.first();
+        match choice {
+            completion::AssistantContent::ToolCall(tool_call) => {
+                assert_eq!(tool_call.function.name, "get_weather");
+                assert_eq!(tool_call.call_id.as_deref(), Some("call-123"));
+            }
+            other => panic!("unexpected content: {other:?}"),
+        }
+
+        assert_eq!(response.usage.input_tokens, 5);
+        assert_eq!(response.usage.output_tokens, 7);
+        assert_eq!(response.usage.total_tokens, 12);
+    }
+}
