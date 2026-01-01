@@ -4,12 +4,13 @@ use serde::{Deserialize, Serialize};
 use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
+use super::InteractionsCompletionModel;
 use super::create_request_body;
 use super::interactions_api_types::{
-    Content, ContentDelta, FunctionCallContent, FunctionCallDelta, Interaction, InteractionSseEvent,
-    InteractionUsage, TextContent, TextDelta, ThoughtSummaryContent, ThoughtSummaryDelta,
+    Content, ContentDelta, FunctionCallContent, FunctionCallDelta, Interaction,
+    InteractionSseEvent, InteractionUsage, TextContent, TextDelta, ThoughtSummaryContent,
+    ThoughtSummaryDelta,
 };
-use super::InteractionsCompletionModel;
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -17,6 +18,7 @@ use crate::streaming;
 use crate::telemetry::SpanCombinator;
 use serde_json::{Map, Value};
 
+/// Final metadata yielded by an Interactions streaming response.
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct StreamingCompletionResponse {
     pub usage: Option<InteractionUsage>,
@@ -151,7 +153,9 @@ where
         }
         .instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(stream)))
+        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+            stream,
+        )))
     }
 }
 
@@ -190,9 +194,9 @@ fn content_delta_to_choice(
     delta: ContentDelta,
 ) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
     match delta {
-        ContentDelta::Text(TextDelta { text: Some(text), .. }) => {
-            Some(streaming::RawStreamingChoice::Message(text))
-        }
+        ContentDelta::Text(TextDelta {
+            text: Some(text), ..
+        }) => Some(streaming::RawStreamingChoice::Message(text)),
         ContentDelta::FunctionCall(FunctionCallDelta {
             name,
             arguments,

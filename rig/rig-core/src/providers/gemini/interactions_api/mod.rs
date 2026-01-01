@@ -1,17 +1,18 @@
 //! Google Gemini Interactions API integration.
 //! From <https://ai.google.dev/api/interactions-api>
 
+use crate::OneOrMany;
 use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
 use crate::telemetry::SpanCombinator;
-use crate::OneOrMany;
 use serde_json::{Map, Value};
 use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::client::InteractionsClient;
 
+/// Streaming helpers for the Interactions API.
 pub mod streaming;
 pub use interactions_api_types::*;
 
@@ -19,6 +20,7 @@ pub use interactions_api_types::*;
 // Rig Implementation Types
 // =================================================================
 
+/// Completion model wrapper for the Gemini Interactions API.
 #[derive(Clone, Debug)]
 pub struct InteractionsCompletionModel<T = reqwest::Client> {
     pub(crate) client: InteractionsClient<T>,
@@ -26,6 +28,7 @@ pub struct InteractionsCompletionModel<T = reqwest::Client> {
 }
 
 impl<T> InteractionsCompletionModel<T> {
+    /// Create a new Interactions completion model for the given client and model name.
     pub fn new(client: InteractionsClient<T>, model: impl Into<String>) -> Self {
         Self {
             client,
@@ -33,6 +36,7 @@ impl<T> InteractionsCompletionModel<T> {
         }
     }
 
+    /// Create a new Interactions completion model using a string model name.
     pub fn with_model(client: InteractionsClient<T>, model: &str) -> Self {
         Self {
             client,
@@ -42,7 +46,10 @@ impl<T> InteractionsCompletionModel<T> {
 
     /// Use the GenerateContent API instead of Interactions.
     pub fn generate_content_api(self) -> super::completion::CompletionModel<T> {
-        super::completion::CompletionModel::with_model(self.client.generate_content_api(), &self.model)
+        super::completion::CompletionModel::with_model(
+            self.client.generate_content_api(),
+            &self.model,
+        )
     }
 
     pub(crate) fn create_completion_request(
@@ -115,14 +122,15 @@ where
 
                 let response_text = String::from_utf8_lossy(&response_body).to_string();
 
-                let response: Interaction = serde_json::from_slice(&response_body).map_err(|err| {
-                    tracing::error!(
-                        error = %err,
-                        body = %response_text,
-                        "Failed to deserialize Gemini interactions response"
-                    );
-                    CompletionError::JsonError(err)
-                })?;
+                let response: Interaction =
+                    serde_json::from_slice(&response_body).map_err(|err| {
+                        tracing::error!(
+                            error = %err,
+                            body = %response_text,
+                            "Failed to deserialize Gemini interactions response"
+                        );
+                        CompletionError::JsonError(err)
+                    })?;
 
                 let span = tracing::Span::current();
                 span.record_response_metadata(&response);
@@ -173,7 +181,7 @@ pub(crate) fn create_request_body(
     if let Some(docs) = completion_request.normalized_documents() {
         history.push(docs);
     }
-    history.extend(completion_request.chat_history.into_iter());
+    history.extend(completion_request.chat_history);
 
     let turns = history
         .into_iter()
@@ -205,7 +213,9 @@ pub(crate) fn create_request_body(
         Some(generation_config)
     };
 
-    let system_instruction = completion_request.preamble.or(params.system_instruction.take());
+    let system_instruction = completion_request
+        .preamble
+        .or(params.system_instruction.take());
 
     let mut tools = Vec::new();
     if !completion_request.tools.is_empty() {
@@ -306,7 +316,9 @@ fn assistant_content_from_output(
     output: Content,
 ) -> Result<Option<completion::AssistantContent>, CompletionError> {
     match output {
-        Content::Text(TextContent { text, .. }) => Ok(Some(completion::AssistantContent::text(text))),
+        Content::Text(TextContent { text, .. }) => {
+            Ok(Some(completion::AssistantContent::text(text)))
+        }
         Content::FunctionCall(FunctionCallContent {
             name,
             arguments,
@@ -317,16 +329,16 @@ fn assistant_content_from_output(
                 return Ok(None);
             };
             let call_id = id.unwrap_or_else(|| name.clone());
-            Ok(Some(
-                completion::AssistantContent::tool_call_with_call_id(
-                    name.clone(),
-                    call_id,
-                    name,
-                    arguments.unwrap_or(Value::Object(Map::new())),
-                ),
-            ))
+            Ok(Some(completion::AssistantContent::tool_call_with_call_id(
+                name.clone(),
+                call_id,
+                name,
+                arguments.unwrap_or(Value::Object(Map::new())),
+            )))
         }
-        Content::Thought(ThoughtContent { summary, signature, .. }) => {
+        Content::Thought(ThoughtContent {
+            summary, signature, ..
+        }) => {
             let summary = summary
                 .unwrap_or_default()
                 .into_iter()
@@ -356,11 +368,12 @@ fn assistant_content_from_output(
                 ));
             };
 
-            let media_type = message::ImageMediaType::from_mime_type(&mime_type).ok_or_else(|| {
-                CompletionError::ResponseError(format!(
-                    "Unsupported image output mime type {mime_type}"
-                ))
-            })?;
+            let media_type =
+                message::ImageMediaType::from_mime_type(&mime_type).ok_or_else(|| {
+                    CompletionError::ResponseError(format!(
+                        "Unsupported image output mime type {mime_type}"
+                    ))
+                })?;
 
             let image = if let Some(data) = data {
                 message::AssistantContent::image_base64(
@@ -392,8 +405,9 @@ fn split_data_uri(
 ) -> Result<(Option<String>, Option<String>), message::MessageError> {
     match src {
         message::DocumentSourceKind::Url(uri) => Ok((None, Some(uri))),
-        message::DocumentSourceKind::Base64(data)
-        | message::DocumentSourceKind::String(data) => Ok((Some(data), None)),
+        message::DocumentSourceKind::Base64(data) | message::DocumentSourceKind::String(data) => {
+            Ok((Some(data), None))
+        }
         message::DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
             "Raw content is not supported, encode as base64 first".to_string(),
         )),
@@ -403,6 +417,7 @@ fn split_data_uri(
     }
 }
 
+/// Raw request/response types for the Gemini Interactions API.
 pub mod interactions_api_types {
     use super::split_data_uri;
     use crate::completion::{CompletionError, GetTokenUsage, Usage};
@@ -415,6 +430,7 @@ pub mod interactions_api_types {
     // Request / Response Types
     // =================================================================
 
+    /// Optional parameters for creating an interaction.
     #[derive(Debug, Deserialize, Serialize, Default, Clone)]
     #[serde(rename_all = "snake_case")]
     pub struct AdditionalParameters {
@@ -434,6 +450,7 @@ pub mod interactions_api_types {
         pub additional_params: Option<Value>,
     }
 
+    /// Request body for the create interaction endpoint.
     #[derive(Debug, Deserialize, Serialize, Clone)]
     #[serde(rename_all = "snake_case")]
     pub struct CreateInteractionRequest {
@@ -468,6 +485,7 @@ pub mod interactions_api_types {
         pub additional_params: Option<Value>,
     }
 
+    /// Interaction response payload.
     #[derive(Clone, Debug, Deserialize, Serialize, Default)]
     #[serde(rename_all = "snake_case")]
     pub struct Interaction {
@@ -546,11 +564,7 @@ pub mod interactions_api_types {
                 .collect::<Vec<_>>()
                 .join("\n");
 
-            if text.is_empty() {
-                None
-            } else {
-                Some(text)
-            }
+            if text.is_empty() { None } else { Some(text) }
         }
 
         fn get_usage(&self) -> Option<Self::Usage> {
@@ -558,6 +572,59 @@ pub mod interactions_api_types {
         }
     }
 
+    impl Interaction {
+        /// Collects Google Search tool call contents from the interaction outputs.
+        pub fn google_search_call_contents(&self) -> Vec<GoogleSearchCallContent> {
+            self.outputs
+                .iter()
+                .filter_map(|content| match content {
+                    Content::GoogleSearchCall(call) => Some(call.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        /// Collects Google Search result contents from the interaction outputs.
+        pub fn google_search_result_contents(&self) -> Vec<GoogleSearchResultContent> {
+            self.outputs
+                .iter()
+                .filter_map(|content| match content {
+                    Content::GoogleSearchResult(result) => Some(result.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        /// Collects all Google Search queries from tool calls in the outputs.
+        pub fn google_search_queries(&self) -> Vec<String> {
+            let mut queries = Vec::new();
+            for content in &self.outputs {
+                if let Content::GoogleSearchCall(call) = content {
+                    if let Some(args) = &call.arguments {
+                        if let Some(call_queries) = &args.queries {
+                            queries.extend(call_queries.clone());
+                        }
+                    }
+                }
+            }
+            queries
+        }
+
+        /// Collects all Google Search result entries from tool results in the outputs.
+        pub fn google_search_results(&self) -> Vec<GoogleSearchResult> {
+            let mut results = Vec::new();
+            for content in &self.outputs {
+                if let Content::GoogleSearchResult(result) = content {
+                    if let Some(items) = &result.result {
+                        results.extend(items.clone());
+                    }
+                }
+            }
+            results
+        }
+    }
+
+    /// Lifecycle status of an interaction.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "snake_case")]
     pub enum InteractionStatus {
@@ -568,6 +635,7 @@ pub mod interactions_api_types {
         Cancelled,
     }
 
+    /// Token usage metadata for an interaction.
     #[derive(Clone, Debug, Deserialize, Serialize, Default)]
     #[serde(rename_all = "snake_case")]
     pub struct InteractionUsage {
@@ -591,6 +659,7 @@ pub mod interactions_api_types {
         }
     }
 
+    /// Input payload accepted by the Interactions API.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(untagged)]
     pub enum InteractionInput {
@@ -600,6 +669,7 @@ pub mod interactions_api_types {
         Contents(Vec<Content>),
     }
 
+    /// Role for a conversation turn.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "lowercase")]
     pub enum Role {
@@ -607,12 +677,14 @@ pub mod interactions_api_types {
         Model,
     }
 
+    /// Single conversational turn with role and content.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct Turn {
         pub role: Role,
         pub content: TurnContent,
     }
 
+    /// Content for a single turn.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(untagged)]
     pub enum TurnContent {
@@ -653,6 +725,7 @@ pub mod interactions_api_types {
     // Content
     // =================================================================
 
+    /// Text annotation metadata.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct Annotation {
         pub start_index: i64,
@@ -660,6 +733,7 @@ pub mod interactions_api_types {
         pub source: String,
     }
 
+    /// Text content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct TextContent {
         pub text: String,
@@ -667,6 +741,7 @@ pub mod interactions_api_types {
         pub annotations: Option<Vec<Annotation>>,
     }
 
+    /// Image content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct ImageContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -679,6 +754,7 @@ pub mod interactions_api_types {
         pub resolution: Option<MediaResolution>,
     }
 
+    /// Audio content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct AudioContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -689,6 +765,7 @@ pub mod interactions_api_types {
         pub mime_type: Option<String>,
     }
 
+    /// Document content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct DocumentContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -699,6 +776,7 @@ pub mod interactions_api_types {
         pub mime_type: Option<String>,
     }
 
+    /// Video content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct VideoContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -711,6 +789,7 @@ pub mod interactions_api_types {
         pub resolution: Option<MediaResolution>,
     }
 
+    /// Thought summary content.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct ThoughtContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -719,6 +798,7 @@ pub mod interactions_api_types {
         pub summary: Option<Vec<ThoughtSummaryContent>>,
     }
 
+    /// Thought summary item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(untagged)]
     pub enum ThoughtSummaryContent {
@@ -726,6 +806,7 @@ pub mod interactions_api_types {
         Image(ImageContent),
     }
 
+    /// Function call content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct FunctionCallContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -736,6 +817,7 @@ pub mod interactions_api_types {
         pub id: Option<String>,
     }
 
+    /// Function result content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct FunctionResultContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -748,12 +830,14 @@ pub mod interactions_api_types {
         pub call_id: Option<String>,
     }
 
+    /// Arguments for a code execution call.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct CodeExecutionCallArguments {
         pub language: String,
         pub code: String,
     }
 
+    /// Code execution call content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct CodeExecutionCallContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -762,6 +846,7 @@ pub mod interactions_api_types {
         pub id: Option<String>,
     }
 
+    /// Code execution result content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct CodeExecutionResultContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -774,11 +859,13 @@ pub mod interactions_api_types {
         pub call_id: Option<String>,
     }
 
+    /// Arguments for a URL context call.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct UrlContextCallArguments {
         pub urls: Vec<String>,
     }
 
+    /// URL context call content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct UrlContextCallContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -787,12 +874,14 @@ pub mod interactions_api_types {
         pub id: Option<String>,
     }
 
+    /// URL context result entry.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct UrlContextResult {
         pub url: String,
         pub status: String,
     }
 
+    /// URL context result content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct UrlContextResultContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -805,11 +894,14 @@ pub mod interactions_api_types {
         pub call_id: Option<String>,
     }
 
+    /// Arguments for a Google Search call.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct GoogleSearchCallArguments {
-        pub queries: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub queries: Option<Vec<String>>,
     }
 
+    /// Google Search call content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct GoogleSearchCallContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -818,13 +910,18 @@ pub mod interactions_api_types {
         pub id: Option<String>,
     }
 
+    /// Google Search result entry.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct GoogleSearchResult {
-        pub url: String,
-        pub title: String,
-        pub rendered_content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub url: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub title: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub rendered_content: Option<String>,
     }
 
+    /// Google Search result content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct GoogleSearchResultContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -837,6 +934,7 @@ pub mod interactions_api_types {
         pub call_id: Option<String>,
     }
 
+    /// MCP server tool call content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct McpServerToolCallContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -849,6 +947,7 @@ pub mod interactions_api_types {
         pub id: Option<String>,
     }
 
+    /// MCP server tool result content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct McpServerToolResultContent {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -861,6 +960,7 @@ pub mod interactions_api_types {
         pub call_id: Option<String>,
     }
 
+    /// File search result entry.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct FileSearchResult {
         pub title: String,
@@ -868,12 +968,14 @@ pub mod interactions_api_types {
         pub file_search_store: String,
     }
 
+    /// File search result content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct FileSearchResultContent {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub result: Option<Vec<FileSearchResult>>,
     }
 
+    /// Content item produced or consumed by the Interactions API.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum Content {
@@ -901,9 +1003,10 @@ pub mod interactions_api_types {
 
         fn try_from(content: message::UserContent) -> Result<Self, Self::Error> {
             match content {
-                message::UserContent::Text(message::Text { text }) => {
-                    Ok(Self::Text(TextContent { text, annotations: None }))
-                }
+                message::UserContent::Text(message::Text { text }) => Ok(Self::Text(TextContent {
+                    text,
+                    annotations: None,
+                })),
                 message::UserContent::ToolResult(message::ToolResult {
                     id,
                     call_id,
@@ -924,10 +1027,7 @@ pub mod interactions_api_types {
                     };
 
                     let result: Value = serde_json::from_str(&text.text).unwrap_or_else(|error| {
-                        tracing::trace!(
-                            ?error,
-                            "Tool result is not valid JSON; sending as string"
-                        );
+                        tracing::trace!(?error, "Tool result is not valid JSON; sending as string");
                         json!(text.text)
                     });
 
@@ -939,9 +1039,7 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::UserContent::Image(message::Image {
-                    data,
-                    media_type,
-                    ..
+                    data, media_type, ..
                 }) => {
                     let media_type = media_type.ok_or_else(|| {
                         message::MessageError::ConversionError(
@@ -958,9 +1056,7 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::UserContent::Audio(message::Audio {
-                    data,
-                    media_type,
-                    ..
+                    data, media_type, ..
                 }) => {
                     let media_type = media_type.ok_or_else(|| {
                         message::MessageError::ConversionError(
@@ -976,9 +1072,7 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::UserContent::Video(message::Video {
-                    data,
-                    media_type,
-                    ..
+                    data, media_type, ..
                 }) => {
                     let media_type = media_type.ok_or_else(|| {
                         message::MessageError::ConversionError(
@@ -995,9 +1089,7 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::UserContent::Document(message::Document {
-                    data,
-                    media_type,
-                    ..
+                    data, media_type, ..
                 }) => {
                     let media_type = media_type.ok_or_else(|| {
                         message::MessageError::ConversionError(
@@ -1022,7 +1114,10 @@ pub mod interactions_api_types {
         fn try_from(content: message::AssistantContent) -> Result<Self, Self::Error> {
             match content {
                 message::AssistantContent::Text(message::Text { text }) => {
-                    Ok(Self::Text(TextContent { text, annotations: None }))
+                    Ok(Self::Text(TextContent {
+                        text,
+                        annotations: None,
+                    }))
                 }
                 message::AssistantContent::ToolCall(tool_call) => {
                     let call_id = tool_call.call_id.unwrap_or_else(|| tool_call.id.clone());
@@ -1075,6 +1170,7 @@ pub mod interactions_api_types {
     // Tools / Config
     // =================================================================
 
+    /// Response modalities supported by the model.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "snake_case")]
     pub enum ResponseModality {
@@ -1083,6 +1179,7 @@ pub mod interactions_api_types {
         Audio,
     }
 
+    /// Thinking depth hint for generation.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "snake_case")]
     pub enum ThinkingLevel {
@@ -1092,6 +1189,7 @@ pub mod interactions_api_types {
         High,
     }
 
+    /// Thinking summary behavior.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "snake_case")]
     pub enum ThinkingSummaries {
@@ -1099,6 +1197,7 @@ pub mod interactions_api_types {
         None,
     }
 
+    /// Speech synthesis configuration.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "snake_case")]
     pub struct SpeechConfig {
@@ -1110,6 +1209,7 @@ pub mod interactions_api_types {
         pub speaker: Option<String>,
     }
 
+    /// Generation configuration for the Interactions API.
     #[derive(Clone, Debug, Deserialize, Serialize, Default)]
     #[serde(rename_all = "snake_case")]
     pub struct GenerationConfig {
@@ -1134,6 +1234,7 @@ pub mod interactions_api_types {
     }
 
     impl GenerationConfig {
+        /// Returns true when no generation fields are set.
         pub fn is_empty(&self) -> bool {
             self.temperature.is_none()
                 && self.top_p.is_none()
@@ -1147,6 +1248,7 @@ pub mod interactions_api_types {
         }
     }
 
+    /// Tool selection strategy.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(untagged)]
     pub enum ToolChoice {
@@ -1154,6 +1256,7 @@ pub mod interactions_api_types {
         Config(ToolChoiceConfig),
     }
 
+    /// Tool selection mode.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "snake_case")]
     pub enum ToolChoiceType {
@@ -1163,11 +1266,13 @@ pub mod interactions_api_types {
         Validated,
     }
 
+    /// Tool selection configuration.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct ToolChoiceConfig {
         pub allowed_tools: AllowedTools,
     }
 
+    /// Allowed tools for tool selection.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct AllowedTools {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1176,6 +1281,7 @@ pub mod interactions_api_types {
         pub tools: Option<Vec<String>>,
     }
 
+    /// Tool definition for Interactions API.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum Tool {
@@ -1188,6 +1294,7 @@ pub mod interactions_api_types {
         FileSearch(FileSearchTool),
     }
 
+    /// Function tool definition.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct FunctionTool {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1198,6 +1305,7 @@ pub mod interactions_api_types {
         pub parameters: Option<Value>,
     }
 
+    /// Computer use tool configuration.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct ComputerUseTool {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1206,6 +1314,7 @@ pub mod interactions_api_types {
         pub excluded_predefined_functions: Option<Vec<String>>,
     }
 
+    /// MCP server tool configuration.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct McpServerTool {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1218,6 +1327,7 @@ pub mod interactions_api_types {
         pub allowed_tools: Option<AllowedTools>,
     }
 
+    /// File search tool configuration.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct FileSearchTool {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1248,18 +1358,19 @@ pub mod interactions_api_types {
                 message::ToolChoice::Auto => Ok(ToolChoice::Type(ToolChoiceType::Auto)),
                 message::ToolChoice::None => Ok(ToolChoice::Type(ToolChoiceType::None)),
                 message::ToolChoice::Required => Ok(ToolChoice::Type(ToolChoiceType::Any)),
-                message::ToolChoice::Specific { function_names } => Ok(ToolChoice::Config(
-                    ToolChoiceConfig {
+                message::ToolChoice::Specific { function_names } => {
+                    Ok(ToolChoice::Config(ToolChoiceConfig {
                         allowed_tools: AllowedTools {
                             mode: Some(ToolChoiceType::Validated),
                             tools: Some(function_names),
                         },
-                    },
-                )),
+                    }))
+                }
             }
         }
     }
 
+    /// Agent configuration for Interactions API.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "type", rename_all = "kebab-case")]
     pub enum AgentConfig {
@@ -1270,6 +1381,7 @@ pub mod interactions_api_types {
         },
     }
 
+    /// Media resolution hint for multimodal content.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "snake_case")]
     pub enum MediaResolution {
@@ -1283,6 +1395,7 @@ pub mod interactions_api_types {
     // Streaming Events
     // =================================================================
 
+    /// Server-sent event payloads for streaming interactions.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "event_type")]
     pub enum InteractionSseEvent {
@@ -1333,12 +1446,14 @@ pub mod interactions_api_types {
         },
     }
 
+    /// Error payload for streaming events.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct ErrorEvent {
         pub code: String,
         pub message: String,
     }
 
+    /// Content delta item in streaming events.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum ContentDelta {
@@ -1362,6 +1477,7 @@ pub mod interactions_api_types {
         FileSearchResult(FileSearchResultDelta),
     }
 
+    /// Streaming text delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct TextDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1370,6 +1486,7 @@ pub mod interactions_api_types {
         pub annotations: Option<Vec<Annotation>>,
     }
 
+    /// Streaming image delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct ImageDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1382,6 +1499,7 @@ pub mod interactions_api_types {
         pub resolution: Option<MediaResolution>,
     }
 
+    /// Streaming audio delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct AudioDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1392,6 +1510,7 @@ pub mod interactions_api_types {
         pub mime_type: Option<String>,
     }
 
+    /// Streaming document delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct DocumentDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1402,6 +1521,7 @@ pub mod interactions_api_types {
         pub mime_type: Option<String>,
     }
 
+    /// Streaming video delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct VideoDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1414,16 +1534,19 @@ pub mod interactions_api_types {
         pub resolution: Option<MediaResolution>,
     }
 
+    /// Streaming thought summary delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct ThoughtSummaryDelta {
         pub content: ThoughtSummaryContent,
     }
 
+    /// Streaming thought signature delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct ThoughtSignatureDelta {
         pub signature: String,
     }
 
+    /// Streaming function call delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct FunctionCallDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1434,6 +1557,7 @@ pub mod interactions_api_types {
         pub id: Option<String>,
     }
 
+    /// Streaming function result delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct FunctionResultDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1446,6 +1570,7 @@ pub mod interactions_api_types {
         pub is_error: Option<bool>,
     }
 
+    /// Streaming code execution call delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct CodeExecutionCallDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1454,6 +1579,7 @@ pub mod interactions_api_types {
         pub id: Option<String>,
     }
 
+    /// Streaming code execution result delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct CodeExecutionResultDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1466,6 +1592,7 @@ pub mod interactions_api_types {
         pub call_id: Option<String>,
     }
 
+    /// Streaming URL context call delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct UrlContextCallDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1474,6 +1601,7 @@ pub mod interactions_api_types {
         pub id: Option<String>,
     }
 
+    /// Streaming URL context result delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct UrlContextResultDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1486,6 +1614,7 @@ pub mod interactions_api_types {
         pub call_id: Option<String>,
     }
 
+    /// Streaming Google Search call delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct GoogleSearchCallDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1494,6 +1623,7 @@ pub mod interactions_api_types {
         pub id: Option<String>,
     }
 
+    /// Streaming Google Search result delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct GoogleSearchResultDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1506,6 +1636,7 @@ pub mod interactions_api_types {
         pub call_id: Option<String>,
     }
 
+    /// Streaming MCP server tool call delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct McpServerToolCallDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1518,6 +1649,7 @@ pub mod interactions_api_types {
         pub id: Option<String>,
     }
 
+    /// Streaming MCP server tool result delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct McpServerToolResultDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1530,6 +1662,7 @@ pub mod interactions_api_types {
         pub call_id: Option<String>,
     }
 
+    /// Streaming file search result delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct FileSearchResultDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1540,9 +1673,9 @@ pub mod interactions_api_types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::completion::{CompletionRequest, Message};
-    use crate::message::{self, ToolChoice};
     use crate::OneOrMany;
+    use crate::completion::{CompletionRequest, Message};
+    use crate::message::{self, ToolChoice as MessageToolChoice};
     use serde_json::json;
 
     #[test]
@@ -1558,7 +1691,7 @@ mod tests {
             tools: vec![],
             temperature: Some(0.7),
             max_tokens: Some(128),
-            tool_choice: Some(ToolChoice::Required),
+            tool_choice: Some(MessageToolChoice::Required),
             additional_params: None,
         };
 
@@ -1638,5 +1771,52 @@ mod tests {
         assert_eq!(response.usage.input_tokens, 5);
         assert_eq!(response.usage.output_tokens, 7);
         assert_eq!(response.usage.total_tokens, 12);
+    }
+
+    #[test]
+    fn test_google_search_tool_serialization() {
+        let tool = Tool::GoogleSearch;
+        let value = serde_json::to_value(tool).expect("tool should serialize");
+        assert_eq!(value, json!({ "type": "google_search" }));
+    }
+
+    #[test]
+    fn test_google_search_helpers() {
+        let interaction = Interaction {
+            outputs: vec![
+                Content::GoogleSearchCall(GoogleSearchCallContent {
+                    arguments: Some(GoogleSearchCallArguments {
+                        queries: Some(vec!["query-one".to_string(), "query-two".to_string()]),
+                    }),
+                    id: Some("call-1".to_string()),
+                }),
+                Content::GoogleSearchResult(GoogleSearchResultContent {
+                    result: Some(vec![GoogleSearchResult {
+                        url: Some("https://example.com".to_string()),
+                        title: Some("Example".to_string()),
+                        rendered_content: None,
+                    }]),
+                    signature: None,
+                    is_error: None,
+                    call_id: Some("call-1".to_string()),
+                }),
+            ],
+            ..Default::default()
+        };
+
+        let queries = interaction.google_search_queries();
+        assert_eq!(queries, vec!["query-one", "query-two"]);
+
+        let results = interaction.google_search_results();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title.as_deref(), Some("Example"));
+
+        let call_contents = interaction.google_search_call_contents();
+        assert_eq!(call_contents.len(), 1);
+        assert_eq!(call_contents[0].id.as_deref(), Some("call-1"));
+
+        let result_contents = interaction.google_search_result_contents();
+        assert_eq!(result_contents.len(), 1);
+        assert_eq!(result_contents[0].call_id.as_deref(), Some("call-1"));
     }
 }

@@ -13,22 +13,27 @@ use std::fmt::Debug;
 // ================================================================
 const GEMINI_API_BASE_URL: &str = "https://generativelanguage.googleapis.com";
 
+/// Provider extension for the Gemini GenerateContent API.
 #[derive(Debug, Default, Clone)]
 pub struct GeminiExt {
     api_key: String,
 }
 
+/// Builder marker for the Gemini GenerateContent client.
 #[derive(Debug, Default, Clone)]
 pub struct GeminiBuilder;
 
+/// Provider extension for the Gemini Interactions API.
 #[derive(Debug, Default, Clone)]
 pub struct GeminiInteractionsExt {
     api_key: String,
 }
 
+/// Builder marker for the Gemini Interactions client.
 #[derive(Debug, Default, Clone)]
 pub struct GeminiInteractionsBuilder;
 
+/// Wrapper type for Gemini API keys.
 pub struct GeminiApiKey(String);
 
 impl<S> From<S> for GeminiApiKey
@@ -40,9 +45,13 @@ where
     }
 }
 
+/// Gemini GenerateContent client.
 pub type Client<H = reqwest::Client> = client::Client<GeminiExt, H>;
+/// Builder for the Gemini GenerateContent client.
 pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<GeminiBuilder, GeminiApiKey, H>;
+/// Gemini Interactions API client.
 pub type InteractionsClient<H = reqwest::Client> = client::Client<GeminiInteractionsExt, H>;
+/// Builder for the Gemini Interactions API client.
 pub type InteractionsClientBuilder<H = reqwest::Client> =
     client::ClientBuilder<GeminiInteractionsBuilder, GeminiApiKey, H>;
 
@@ -199,11 +208,13 @@ impl<H> InteractionsClient<H> {
     }
 }
 
+/// Error response payload returned by Gemini.
 #[derive(Debug, Deserialize)]
 pub struct ApiErrorResponse {
     pub message: String,
 }
 
+/// Wrapper for successful or error Gemini API responses.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum ApiResponse<T> {

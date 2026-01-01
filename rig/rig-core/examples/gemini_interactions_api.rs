@@ -1,11 +1,14 @@
 use anyhow::Result;
 use futures::StreamExt;
+use rig::OneOrMany;
 use rig::completion::{CompletionModel, GetTokenUsage, ToolDefinition};
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice};
 use rig::prelude::*;
-use rig::providers::gemini::{self, interactions_api::AdditionalParameters};
+use rig::providers::gemini::{
+    self,
+    interactions_api::{AdditionalParameters, Tool},
+};
 use rig::streaming::StreamedAssistantContent;
-use rig::OneOrMany;
 use serde_json::json;
 use std::io::Write;
 use tracing_subscriber::EnvFilter;
@@ -74,6 +77,38 @@ async fn main() -> Result<()> {
             .build();
         let follow_response = model.completion(follow_request).await?;
         print_text("Follow-up", &follow_response.choice);
+    }
+
+    println!("\n== Google Search tool ==");
+    let search_params = AdditionalParameters {
+        tools: Some(vec![Tool::GoogleSearch]),
+        ..Default::default()
+    };
+    let search_request = model
+        .completion_request("Who won the last Super Bowl?")
+        .additional_params(serde_json::to_value(&search_params)?)
+        .build();
+    let search_response = model.completion(search_request).await?;
+    print_text("Search response", &search_response.choice);
+
+    let queries = search_response.raw_response.google_search_queries();
+    if !queries.is_empty() {
+        println!("Search queries: {}", queries.join(", "));
+    }
+
+    let results = search_response.raw_response.google_search_results();
+    if results.is_empty() {
+        println!("No search results returned.");
+    } else {
+        for (idx, result) in results.iter().enumerate() {
+            let title = result.title.as_deref().unwrap_or("Untitled");
+            let url = result.url.as_deref().unwrap_or("");
+            if url.is_empty() {
+                println!("[{}] {}", idx + 1, title);
+            } else {
+                println!("[{}] {} ({})", idx + 1, title, url);
+            }
+        }
     }
 
     println!("\n== Tool call roundtrip ==");
