@@ -417,7 +417,7 @@ fn split_data_uri(
     }
 }
 
-/// Raw request/response types for the Gemini Interactions API.
+/// Raw request/response types and convenience helpers for the Gemini Interactions API.
 pub mod interactions_api_types {
     use super::split_data_uri;
     use crate::completion::{CompletionError, GetTokenUsage, Usage};
@@ -572,55 +572,131 @@ pub mod interactions_api_types {
         }
     }
 
-    impl Interaction {
-        /// Collects Google Search tool call contents from the interaction outputs.
-        pub fn google_search_call_contents(&self) -> Vec<GoogleSearchCallContent> {
-            self.outputs
-                .iter()
-                .filter_map(|content| match content {
-                    Content::GoogleSearchCall(call) => Some(call.clone()),
-                    _ => None,
-                })
-                .collect()
-        }
+    /// Groups Google Search tool calls and results for a single interaction.
+    #[derive(Clone, Debug, Default)]
+    pub struct GoogleSearchExchange {
+        /// Call identifier used to match calls to results.
+        pub call_id: Option<String>,
+        /// One or more Google Search tool calls.
+        pub calls: Vec<GoogleSearchCallContent>,
+        /// One or more Google Search tool results.
+        pub results: Vec<GoogleSearchResultContent>,
+    }
 
-        /// Collects Google Search result contents from the interaction outputs.
-        pub fn google_search_result_contents(&self) -> Vec<GoogleSearchResultContent> {
-            self.outputs
-                .iter()
-                .filter_map(|content| match content {
-                    Content::GoogleSearchResult(result) => Some(result.clone()),
-                    _ => None,
-                })
-                .collect()
-        }
-
-        /// Collects all Google Search queries from tool calls in the outputs.
-        pub fn google_search_queries(&self) -> Vec<String> {
+    impl GoogleSearchExchange {
+        /// Collects all queries from the stored Google Search tool calls.
+        pub fn queries(&self) -> Vec<String> {
             let mut queries = Vec::new();
-            for content in &self.outputs {
-                if let Content::GoogleSearchCall(call) = content {
-                    if let Some(args) = &call.arguments {
-                        if let Some(call_queries) = &args.queries {
-                            queries.extend(call_queries.clone());
-                        }
+            for call in &self.calls {
+                if let Some(args) = &call.arguments {
+                    if let Some(call_queries) = &args.queries {
+                        queries.extend(call_queries.clone());
                     }
                 }
             }
             queries
         }
 
-        /// Collects all Google Search result entries from tool results in the outputs.
-        pub fn google_search_results(&self) -> Vec<GoogleSearchResult> {
-            let mut results = Vec::new();
-            for content in &self.outputs {
-                if let Content::GoogleSearchResult(result) = content {
-                    if let Some(items) = &result.result {
-                        results.extend(items.clone());
-                    }
+        /// Collects all Google Search result entries from tool results.
+        pub fn result_items(&self) -> Vec<GoogleSearchResult> {
+            let mut items = Vec::new();
+            for result in &self.results {
+                if let Some(entries) = &result.result {
+                    items.extend(entries.clone());
                 }
             }
-            results
+            items
+        }
+    }
+
+    impl Interaction {
+        /// Groups Google Search tool calls and results by call_id.
+        pub fn google_search_exchanges(&self) -> Vec<GoogleSearchExchange> {
+            let mut exchanges: Vec<GoogleSearchExchange> = Vec::new();
+
+            for content in &self.outputs {
+                match content {
+                    Content::GoogleSearchCall(call) => {
+                        if let Some(call_id) = call.id.as_ref() {
+                            if let Some(index) = exchanges
+                                .iter()
+                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
+                            {
+                                exchanges[index].calls.push(call.clone());
+                            } else {
+                                exchanges.push(GoogleSearchExchange {
+                                    call_id: Some(call_id.clone()),
+                                    calls: vec![call.clone()],
+                                    results: Vec::new(),
+                                });
+                            }
+                        } else {
+                            exchanges.push(GoogleSearchExchange {
+                                call_id: None,
+                                calls: vec![call.clone()],
+                                results: Vec::new(),
+                            });
+                        }
+                    }
+                    Content::GoogleSearchResult(result) => {
+                        if let Some(call_id) = result.call_id.as_ref() {
+                            if let Some(index) = exchanges
+                                .iter()
+                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
+                            {
+                                exchanges[index].results.push(result.clone());
+                            } else {
+                                exchanges.push(GoogleSearchExchange {
+                                    call_id: Some(call_id.clone()),
+                                    calls: Vec::new(),
+                                    results: vec![result.clone()],
+                                });
+                            }
+                        } else {
+                            exchanges.push(GoogleSearchExchange {
+                                call_id: None,
+                                calls: Vec::new(),
+                                results: vec![result.clone()],
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            exchanges
+        }
+
+        /// Collects Google Search tool call contents from the interaction outputs.
+        pub fn google_search_call_contents(&self) -> Vec<GoogleSearchCallContent> {
+            self.google_search_exchanges()
+                .into_iter()
+                .flat_map(|exchange| exchange.calls)
+                .collect()
+        }
+
+        /// Collects Google Search result contents from the interaction outputs.
+        pub fn google_search_result_contents(&self) -> Vec<GoogleSearchResultContent> {
+            self.google_search_exchanges()
+                .into_iter()
+                .flat_map(|exchange| exchange.results)
+                .collect()
+        }
+
+        /// Collects all Google Search queries from tool calls in the outputs.
+        pub fn google_search_queries(&self) -> Vec<String> {
+            self.google_search_exchanges()
+                .into_iter()
+                .flat_map(|exchange| exchange.queries())
+                .collect()
+        }
+
+        /// Collects all Google Search result entries from tool results in the outputs.
+        pub fn google_search_results(&self) -> Vec<GoogleSearchResult> {
+            self.google_search_exchanges()
+                .into_iter()
+                .flat_map(|exchange| exchange.result_items())
+                .collect()
         }
     }
 
@@ -1793,30 +1869,66 @@ mod tests {
                 Content::GoogleSearchResult(GoogleSearchResultContent {
                     result: Some(vec![GoogleSearchResult {
                         url: Some("https://example.com".to_string()),
-                        title: Some("Example".to_string()),
+                        title: Some("Example One".to_string()),
                         rendered_content: None,
                     }]),
                     signature: None,
                     is_error: None,
                     call_id: Some("call-1".to_string()),
                 }),
+                Content::GoogleSearchCall(GoogleSearchCallContent {
+                    arguments: Some(GoogleSearchCallArguments {
+                        queries: Some(vec!["query-three".to_string()]),
+                    }),
+                    id: Some("call-2".to_string()),
+                }),
+                Content::GoogleSearchResult(GoogleSearchResultContent {
+                    result: Some(vec![GoogleSearchResult {
+                        url: Some("https://example.org".to_string()),
+                        title: Some("Example Two".to_string()),
+                        rendered_content: None,
+                    }]),
+                    signature: None,
+                    is_error: None,
+                    call_id: Some("call-2".to_string()),
+                }),
             ],
             ..Default::default()
         };
 
+        let exchanges = interaction.google_search_exchanges();
+        assert_eq!(exchanges.len(), 2);
+        assert_eq!(exchanges[0].call_id.as_deref(), Some("call-1"));
+        assert_eq!(
+            exchanges[0].queries(),
+            vec!["query-one".to_string(), "query-two".to_string()]
+        );
+        let exchange_results = exchanges[0].result_items();
+        assert_eq!(exchange_results.len(), 1);
+        assert_eq!(exchange_results[0].title.as_deref(), Some("Example One"));
+
+        assert_eq!(exchanges[1].call_id.as_deref(), Some("call-2"));
+        assert_eq!(exchanges[1].queries(), vec!["query-three".to_string()]);
+        let exchange_results = exchanges[1].result_items();
+        assert_eq!(exchange_results.len(), 1);
+        assert_eq!(exchange_results[0].title.as_deref(), Some("Example Two"));
+
         let queries = interaction.google_search_queries();
-        assert_eq!(queries, vec!["query-one", "query-two"]);
+        assert_eq!(queries, vec!["query-one", "query-two", "query-three"]);
 
         let results = interaction.google_search_results();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].title.as_deref(), Some("Example"));
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].title.as_deref(), Some("Example One"));
+        assert_eq!(results[1].title.as_deref(), Some("Example Two"));
 
         let call_contents = interaction.google_search_call_contents();
-        assert_eq!(call_contents.len(), 1);
+        assert_eq!(call_contents.len(), 2);
         assert_eq!(call_contents[0].id.as_deref(), Some("call-1"));
+        assert_eq!(call_contents[1].id.as_deref(), Some("call-2"));
 
         let result_contents = interaction.google_search_result_contents();
-        assert_eq!(result_contents.len(), 1);
+        assert_eq!(result_contents.len(), 2);
         assert_eq!(result_contents[0].call_id.as_deref(), Some("call-1"));
+        assert_eq!(result_contents[1].call_id.as_deref(), Some("call-2"));
     }
 }

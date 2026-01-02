@@ -91,22 +91,36 @@ async fn main() -> Result<()> {
     let search_response = model.completion(search_request).await?;
     print_text("Search response", &search_response.choice);
 
-    let queries = search_response.raw_response.google_search_queries();
-    if !queries.is_empty() {
-        println!("Search queries: {}", queries.join(", "));
-    }
-
-    let results = search_response.raw_response.google_search_results();
-    if results.is_empty() {
-        println!("No search results returned.");
+    let exchanges = search_response.raw_response.google_search_exchanges();
+    if exchanges.is_empty() {
+        println!("No search tool outputs returned.");
     } else {
-        for (idx, result) in results.iter().enumerate() {
-            let title = result.title.as_deref().unwrap_or("Untitled");
-            let url = result.url.as_deref().unwrap_or("");
-            if url.is_empty() {
-                println!("[{}] {}", idx + 1, title);
+        for exchange in exchanges {
+            let exchange_label = exchange
+                .call_id
+                .as_deref()
+                .map(|id| format!(" ({id})"))
+                .unwrap_or_default();
+            println!("Search exchange{exchange_label}:");
+
+            let queries = exchange.queries();
+            if !queries.is_empty() {
+                println!("Queries: {}", queries.join(", "));
+            }
+
+            let results = exchange.result_items();
+            if results.is_empty() {
+                println!("No search results returned.");
             } else {
-                println!("[{}] {} ({})", idx + 1, title, url);
+                for (idx, result) in results.iter().enumerate() {
+                    let title = result.title.as_deref().unwrap_or("Untitled");
+                    let url = result.url.as_deref().unwrap_or("");
+                    if url.is_empty() {
+                        println!("[{}] {}", idx + 1, title);
+                    } else {
+                        println!("[{}] {} ({})", idx + 1, title, url);
+                    }
+                }
             }
         }
     }
