@@ -53,6 +53,7 @@ pub struct EmbeddingData {
 pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
     pub model: String,
+    pub encoding_format: Option<String>,
     ndims: usize,
 }
 
@@ -98,6 +99,10 @@ where
 
         if self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002 {
             body["dimensions"] = json!(self.ndims);
+        }
+
+        if self.encoding_format.is_some() {
+            body["encoding_format"] = json!(self.encoding_format.clone());
         }
 
         let body = serde_json::to_vec(&body)?;
@@ -151,6 +156,7 @@ impl<T> EmbeddingModel<T> {
         Self {
             client,
             model: model.into(),
+            encoding_format: None,
             ndims,
         }
     }
@@ -159,7 +165,27 @@ impl<T> EmbeddingModel<T> {
         Self {
             client,
             model: model.into(),
+            encoding_format: None,
             ndims,
         }
+    }
+
+    pub fn with_encoding_format(
+        client: Client<T>,
+        model: &str,
+        ndims: usize,
+        encoding_format: &str,
+    ) -> Self {
+        Self {
+            client,
+            model: model.into(),
+            encoding_format: Some(encoding_format.into()),
+            ndims,
+        }
+    }
+
+    pub fn encoding_format(mut self, encoding_format: impl Into<String>) -> Self {
+        self.encoding_format = Some(encoding_format.into());
+        self
     }
 }
