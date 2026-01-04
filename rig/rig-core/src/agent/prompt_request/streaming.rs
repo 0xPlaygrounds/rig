@@ -473,6 +473,15 @@ where
                 };
 
                 if !did_call_tool {
+                    // Add user message and assistant response to history before finishing
+                    {
+                        let mut history = chat_history.write().expect("chat_history lock poisoned");
+                        history.push(current_prompt.clone());
+                        if !last_text_response.is_empty() {
+                            history.push(Message::assistant(&last_text_response));
+                        }
+                    }
+
                     let current_span = tracing::Span::current();
                     current_span.record("gen_ai.usage.input_tokens", aggregated_usage.input_tokens);
                     current_span.record("gen_ai.usage.output_tokens", aggregated_usage.output_tokens);
@@ -735,6 +744,85 @@ mod tests {
             leaks, 0,
             "SPAN LEAK DETECTED: Background logger was inside unexpected spans {leaks} times. \
              This indicates that span.enter() is being used inside async_stream instead of .instrument()"
+        );
+    }
+
+    /// Test that chat_history with shared ownership (Arc<RwLock<...>>) is correctly
+    /// updated after the streaming request completes.
+    ///
+    /// This verifies that:
+    /// 1. The caller can access the updated history through the Arc after streaming
+    /// 2. The history contains both the user prompt and assistant response
+    #[tokio::test]
+    #[ignore = "This requires an API key"]
+    async fn test_chat_history_shared_ownership() {
+        use crate::message::Message;
+        use std::sync::RwLock;
+
+        let client = anthropic::Client::from_env();
+        let agent = client
+            .agent(anthropic::completion::CLAUDE_3_5_HAIKU)
+            .preamble("You are a helpful assistant. Keep responses brief.")
+            .temperature(0.1)
+            .max_tokens(50)
+            .build();
+
+        // Create shared history
+        let history = Arc::new(RwLock::new(Vec::<Message>::new()));
+
+        // Send streaming request with shared history
+        let mut stream = agent
+            .stream_prompt("Say 'hello' and nothing else.")
+            .with_history(history.clone())
+            .await;
+
+        // Consume the stream
+        let mut response_text = String::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    text,
+                ))) => {
+                    response_text.push_str(&text.text);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => {
+                    break;
+                }
+                Err(e) => {
+                    panic!("Streaming error: {:?}", e);
+                }
+                _ => {}
+            }
+        }
+
+        // Verify the shared history was updated
+        let updated_history = history.read().expect("chat_history lock poisoned");
+
+        assert!(
+            !updated_history.is_empty(),
+            "History should not be empty after streaming request"
+        );
+
+        // Should contain at least the user message
+        assert!(
+            updated_history
+                .iter()
+                .any(|m| matches!(m, Message::User { .. })),
+            "History should contain the user message"
+        );
+
+        // Should contain the assistant response
+        assert!(
+            updated_history
+                .iter()
+                .any(|m| matches!(m, Message::Assistant { .. })),
+            "History should contain the assistant response"
+        );
+
+        tracing::info!(
+            "History after streaming: {} messages, response: {:?}",
+            updated_history.len(),
+            response_text
         );
     }
 }
