@@ -14,7 +14,6 @@ use crate::{
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::{pin::Pin, sync::Arc};
-use tokio::sync::RwLock;
 use tracing::info_span;
 use tracing_futures::Instrument;
 
@@ -51,6 +50,8 @@ pub enum MultiTurnStreamItem<R> {
 pub struct FinalResponse {
     response: String,
     aggregated_usage: crate::completion::Usage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    history: Option<Vec<Message>>,
 }
 
 impl FinalResponse {
@@ -58,6 +59,7 @@ impl FinalResponse {
         Self {
             response: String::new(),
             aggregated_usage: crate::completion::Usage::new(),
+            history: None,
         }
     }
 
@@ -67,6 +69,10 @@ impl FinalResponse {
 
     pub fn usage(&self) -> crate::completion::Usage {
         self.aggregated_usage
+    }
+
+    pub fn history(&self) -> Option<&[Message]> {
+        self.history.as_deref()
     }
 }
 
@@ -79,6 +85,19 @@ impl<R> MultiTurnStreamItem<R> {
         Self::FinalResponse(FinalResponse {
             response: response.to_string(),
             aggregated_usage,
+            history: None,
+        })
+    }
+
+    pub fn final_response_with_history(
+        response: &str,
+        aggregated_usage: crate::completion::Usage,
+        history: Option<Vec<Message>>,
+    ) -> Self {
+        Self::FinalResponse(FinalResponse {
+            response: response.to_string(),
+            aggregated_usage,
+            history,
         })
     }
 }
@@ -110,8 +129,7 @@ where
 {
     /// The prompt message to send to the model
     prompt: Message,
-    /// Optional chat history to include with the prompt
-    /// Note: chat history needs to outlive the agent as it might be used with other agents
+    /// Optional chat history to include with the prompt.
     chat_history: Option<Vec<Message>>,
     /// Maximum Turns for multi-turn conversations (0 means no multi-turn)
     max_turns: usize,
@@ -209,7 +227,18 @@ where
         self
     }
 
-    /// Add chat history to the prompt request
+    /// Add chat history to the prompt request.
+    ///
+    /// When history is provided, the final [`FinalResponse`] will include the
+    /// updated chat history (original messages + new user prompt + assistant response).
+    /// ```ignore
+    /// let mut stream = agent
+    ///     .stream_prompt("Hello")
+    ///     .with_history(vec![])
+    ///     .await;
+    /// // ... consume stream ...
+    /// // Access updated history from FinalResponse::history()
+    /// ```
     pub fn with_history(mut self, history: Vec<Message>) -> Self {
         self.chat_history = Some(history);
         self
@@ -272,12 +301,8 @@ where
         let dynamic_context = self.dynamic_context.clone();
         let tool_choice = self.tool_choice.clone();
         let agent_name = self.agent_name.clone();
-
-        let chat_history = if let Some(history) = self.chat_history {
-            Arc::new(RwLock::new(history))
-        } else {
-            Arc::new(RwLock::new(vec![]))
-        };
+        let has_history = self.chat_history.is_some();
+        let mut chat_history = self.chat_history.unwrap_or_default();
 
         let mut current_max_turns = 0;
         let mut last_prompt_error = String::new();
@@ -317,13 +342,11 @@ where
                 }
 
                 if let Some(ref hook) = self.hook {
-                    let reader = chat_history.read().await;
-                    if let HookAction::Terminate { reason } = hook.on_completion_call(&current_prompt, &reader.to_vec())
+                    let history_snapshot = chat_history.clone();
+                    if let HookAction::Terminate { reason } = hook.on_completion_call(&current_prompt, &history_snapshot)
                         .await {
 
-                        yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                            reason
-                        ).into()));
+                        yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(history_snapshot,reason).into()));
                     }
                 }
 
@@ -344,11 +367,12 @@ where
                     gen_ai.output.messages = tracing::field::Empty,
                 );
 
+                let history_snapshot = chat_history.clone();
                 let mut stream = tracing::Instrument::instrument(
                     build_completion_request(
                         &model,
                         current_prompt.clone(),
-                        (*chat_history.read().await).clone(),
+                        history_snapshot,
                         preamble.as_deref(),
                         &static_context,
                         temperature,
@@ -365,7 +389,7 @@ where
 
                 .await?;
 
-                chat_history.write().await.push(current_prompt.clone());
+                chat_history.push(current_prompt.clone());
 
                 let mut tool_calls = vec![];
                 let mut tool_results = vec![];
@@ -381,9 +405,7 @@ where
                             last_text_response.push_str(&text.text);
                             if let Some(ref hook) = self.hook &&
                                 let HookAction::Terminate { reason } = hook.on_text_delta(&text.text, &last_text_response).await {
-                                    yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                        reason
-                                    ).into()));
+                                    yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.clone(), reason).into()));
                                 }
 
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
@@ -412,9 +434,7 @@ where
                                         .await;
 
                                     if let ToolCallHookAction::Terminate { reason } = action {
-                                        return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                            reason
-                                        ).into()));
+                                        return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.clone(),reason).into()));
                                     }
 
                                     if let ToolCallHookAction::Skip { reason } = action {
@@ -456,9 +476,7 @@ where
                                         &tool_result.to_string()
                                     )
                                     .await {
-                                        return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                            reason
-                                        ).into()));
+                                        return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.clone(), reason).into()));
                                     }
 
                                 let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
@@ -489,9 +507,7 @@ where
 
                                 if let HookAction::Terminate { reason } = hook.on_tool_call_delta(&id, &internal_call_id, name, delta)
                                 .await {
-                                    yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                        reason
-                                    ).into()));
+                                    yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.clone(), reason).into()));
                                 }
                             }
                         }
@@ -520,9 +536,7 @@ where
                             if is_text_response {
                                 if let Some(ref hook) = self.hook &&
                                      let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&prompt, &final_resp).await {
-                                        yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                            reason
-                                        ).into()));
+                                        yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.clone(), reason).into()));
                                     }
 
                                 tracing::Span::current().record("gen_ai.completion", &last_text_response);
@@ -550,7 +564,7 @@ where
                     content_items.extend(tool_calls.clone());
 
                     if !content_items.is_empty() {
-                        chat_history.write().await.push(Message::Assistant {
+                        chat_history.push(Message::Assistant {
                             id: None,
                             content: OneOrMany::many(content_items).expect("Should have at least one item"),
                         });
@@ -560,7 +574,7 @@ where
                 // Add tool results to chat history
                 for (id, call_id, tool_result) in tool_results {
                     if let Some(call_id) = call_id {
-                        chat_history.write().await.push(Message::User {
+                        chat_history.push(Message::User {
                             content: OneOrMany::one(UserContent::tool_result_with_call_id(
                                 &id,
                                 call_id.clone(),
@@ -568,7 +582,7 @@ where
                             )),
                         });
                     } else {
-                        chat_history.write().await.push(Message::User {
+                        chat_history.push(Message::User {
                             content: OneOrMany::one(UserContent::tool_result(
                                 &id,
                                 OneOrMany::one(ToolResultContent::text(&tool_result)),
@@ -578,17 +592,32 @@ where
                 }
 
                 // Set the current prompt to the last message in the chat history
-                current_prompt = match chat_history.write().await.pop() {
+                current_prompt = match chat_history.pop() {
                     Some(prompt) => prompt,
                     None => unreachable!("Chat history should never be empty at this point"),
                 };
 
                 if !did_call_tool {
+                    // Add user message and assistant response to history before finishing
+                    chat_history.push(current_prompt.clone());
+                    if !last_text_response.is_empty() {
+                        chat_history.push(Message::assistant(&last_text_response));
+                    }
+
                     let current_span = tracing::Span::current();
                     current_span.record("gen_ai.usage.input_tokens", aggregated_usage.input_tokens);
                     current_span.record("gen_ai.usage.output_tokens", aggregated_usage.output_tokens);
                     tracing::info!("Agent multi-turn stream finished");
-                    yield Ok(MultiTurnStreamItem::final_response(&last_text_response, aggregated_usage));
+                    let history_snapshot = if has_history {
+                        Some(chat_history.clone())
+                    } else {
+                        None
+                    };
+                    yield Ok(MultiTurnStreamItem::final_response_with_history(
+                        &last_text_response,
+                        aggregated_usage,
+                        history_snapshot,
+                    ));
                     break;
                 }
             }
@@ -596,7 +625,7 @@ where
             if max_turns_reached {
                 yield Err(Box::new(PromptError::MaxTurnsError {
                     max_turns: self.max_turns,
-                    chat_history: Box::new((*chat_history.read().await).clone()),
+                    chat_history: Box::new(chat_history.clone()),
                     prompt: Box::new(last_prompt_error.clone().into()),
                 }).into());
             }
@@ -761,6 +790,75 @@ mod tests {
             leaks, 0,
             "SPAN LEAK DETECTED: Background logger was inside unexpected spans {leaks} times. \
              This indicates that span.enter() is being used inside async_stream instead of .instrument()"
+        );
+    }
+
+    /// Test that FinalResponse contains the updated chat history when with_history is used.
+    ///
+    /// This verifies that:
+    /// 1. FinalResponse.history() returns Some when with_history was called
+    /// 2. The history contains both the user prompt and assistant response
+    #[tokio::test]
+    #[ignore = "This requires an API key"]
+    async fn test_chat_history_in_final_response() {
+        use crate::message::Message;
+
+        let client = anthropic::Client::from_env();
+        let agent = client
+            .agent(anthropic::completion::CLAUDE_3_5_HAIKU)
+            .preamble("You are a helpful assistant. Keep responses brief.")
+            .temperature(0.1)
+            .max_tokens(50)
+            .build();
+
+        // Send streaming request with history
+        let mut stream = agent
+            .stream_prompt("Say 'hello' and nothing else.")
+            .with_history(vec![])
+            .await;
+
+        // Consume the stream and collect FinalResponse
+        let mut response_text = String::new();
+        let mut final_history = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    text,
+                ))) => {
+                    response_text.push_str(&text.text);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_history = res.history().map(|h| h.to_vec());
+                    break;
+                }
+                Err(e) => {
+                    panic!("Streaming error: {:?}", e);
+                }
+                _ => {}
+            }
+        }
+
+        let history =
+            final_history.expect("FinalResponse should contain history when with_history is used");
+
+        // Should contain at least the user message
+        assert!(
+            history.iter().any(|m| matches!(m, Message::User { .. })),
+            "History should contain the user message"
+        );
+
+        // Should contain the assistant response
+        assert!(
+            history
+                .iter()
+                .any(|m| matches!(m, Message::Assistant { .. })),
+            "History should contain the assistant response"
+        );
+
+        tracing::info!(
+            "History after streaming: {} messages, response: {:?}",
+            history.len(),
+            response_text
         );
     }
 }
