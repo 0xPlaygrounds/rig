@@ -5,6 +5,7 @@ use rig::streaming::{StreamingChat, StreamingPrompt};
 use rig::{completion::ToolDefinition, providers, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::{Arc, RwLock};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -35,8 +36,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Prompt the agent and print the response
     println!("Calculate 2 - 5");
+    let history = Arc::new(RwLock::new(vec![]));
     let mut answer = calculator_agent
-        .stream_chat("Calculate 2 - 5", vec![])
+        .stream_chat("Calculate 2 - 5", history)
         .await;
     print!("DeepSeek Calculator Agent Stream ");
     stream_to_stdout(&mut answer).await?;
