@@ -2103,4 +2103,147 @@ mod tests {
             assert!(items.properties.is_some());
         }
     }
+
+    #[test]
+    fn test_txt_document_conversion_to_text_part() {
+        // Test that TXT documents are converted to plain text parts, not inline data
+        use crate::message::{DocumentMediaType, UserContent};
+
+        let doc = UserContent::document(
+            "Note: test.md\nPath: /test.md\nContent: Hello World!",
+            Some(DocumentMediaType::TXT),
+        );
+
+        let content: Content = message::Message::User {
+            content: crate::OneOrMany::one(doc),
+        }
+        .try_into()
+        .unwrap();
+
+        assert_eq!(content.role, Some(Role::User));
+        assert_eq!(content.parts.len(), 1);
+
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &content.parts[0]
+        {
+            assert!(text.contains("Note: test.md"));
+            assert!(text.contains("Hello World!"));
+        } else {
+            panic!("Expected text part for TXT document, got: {:?}", content.parts[0]);
+        }
+    }
+
+    #[test]
+    fn test_create_request_body_with_documents() {
+        // Test that documents are injected into chat history
+        use crate::completion::request::{CompletionRequest, Document};
+        use crate::message::Message;
+        use crate::OneOrMany;
+
+        let documents = vec![
+            Document {
+                id: "doc1".to_string(),
+                text: "Note: first.md\nContent: First note".to_string(),
+                additional_props: std::collections::HashMap::new(),
+            },
+            Document {
+                id: "doc2".to_string(),
+                text: "Note: second.md\nContent: Second note".to_string(),
+                additional_props: std::collections::HashMap::new(),
+            },
+        ];
+
+        let completion_request = CompletionRequest {
+            preamble: Some("You are a helpful assistant".to_string()),
+            chat_history: OneOrMany::one(Message::user("What are my notes about?")),
+            documents: documents.clone(),
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let request = create_request_body(completion_request).unwrap();
+
+        // Should have 2 contents: 1 for documents, 1 for user message
+        assert_eq!(
+            request.contents.len(),
+            2,
+            "Expected 2 contents (documents + user message)"
+        );
+
+        // First content should be documents with role User
+        assert_eq!(request.contents[0].role, Some(Role::User));
+        assert_eq!(
+            request.contents[0].parts.len(),
+            2,
+            "Expected 2 document parts"
+        );
+
+        // Check that documents are text parts
+        for part in &request.contents[0].parts {
+            if let Part {
+                part: PartKind::Text(text),
+                ..
+            } = part
+            {
+                assert!(
+                    text.contains("Note:") && text.contains("Content:"),
+                    "Document should contain note metadata"
+                );
+            } else {
+                panic!("Document parts should be text, not {:?}", part);
+            }
+        }
+
+        // Second content should be the user message
+        assert_eq!(request.contents[1].role, Some(Role::User));
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &request.contents[1].parts[0]
+        {
+            assert_eq!(text, "What are my notes about?");
+        } else {
+            panic!("Expected user message to be text");
+        }
+    }
+
+    #[test]
+    fn test_create_request_body_without_documents() {
+        // Test backward compatibility: requests without documents work as before
+        use crate::completion::request::CompletionRequest;
+        use crate::message::Message;
+        use crate::OneOrMany;
+
+        let completion_request = CompletionRequest {
+            preamble: Some("You are a helpful assistant".to_string()),
+            chat_history: OneOrMany::one(Message::user("Hello")),
+            documents: vec![], // No documents
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let request = create_request_body(completion_request).unwrap();
+
+        // Should have only 1 content (the user message)
+        assert_eq!(request.contents.len(), 1, "Expected only user message");
+        assert_eq!(request.contents[0].role, Some(Role::User));
+
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &request.contents[0].parts[0]
+        {
+            assert_eq!(text, "Hello");
+        } else {
+            panic!("Expected user message to be text");
+        }
+    }
 }
