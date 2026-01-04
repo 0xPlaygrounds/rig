@@ -7,8 +7,7 @@ use crate::{
 };
 use futures::StreamExt;
 use std::io::{self, Write};
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 pub struct NoImplProvided;
 

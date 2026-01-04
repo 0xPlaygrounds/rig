@@ -24,9 +24,9 @@ use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll};
-use tokio::sync::{RwLock, watch};
+use tokio::sync::watch;
 
 /// Control for pausing and resuming a streaming response
 pub struct PauseControl {
