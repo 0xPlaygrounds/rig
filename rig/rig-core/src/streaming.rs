@@ -24,8 +24,9 @@ use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::sync::watch;
+use tokio::sync::{RwLock, watch};
 
 /// Control for pausing and resuming a streaming response
 pub struct PauseControl {
@@ -369,11 +370,13 @@ where
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
     R: Clone + Unpin + GetTokenUsage,
 {
-    /// Stream a chat with history to the model
+    /// Stream a chat with history to the model.
+    ///
+    /// Uses shared ownership so you can access the updated history after the request completes.
     fn stream_chat(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
+        chat_history: Arc<RwLock<Vec<Message>>>,
     ) -> StreamingPromptRequest<M, ()>;
 }
 

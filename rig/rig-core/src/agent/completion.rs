@@ -275,7 +275,7 @@ where
     fn stream_chat(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
+        chat_history: Arc<RwLock<Vec<Message>>>,
     ) -> StreamingPromptRequest<M, ()> {
         let arc = Arc::new(self.clone());
         StreamingPromptRequest::new(arc, prompt).with_history(chat_history)
