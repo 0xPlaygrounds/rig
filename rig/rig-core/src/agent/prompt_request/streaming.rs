@@ -103,9 +103,9 @@ where
 {
     /// The prompt message to send to the model
     prompt: Message,
-    /// Optional chat history to include with the prompt
-    /// Note: chat history needs to outlive the agent as it might be used with other agents
-    chat_history: Option<Vec<Message>>,
+    /// Optional chat history to include with the prompt.
+    /// Uses shared ownership so callers can access updated history after the request completes.
+    chat_history: Option<Arc<RwLock<Vec<Message>>>>,
     /// Maximum depth for multi-turn conversations (0 means no multi-turn)
     max_depth: usize,
     /// The agent to use for execution
@@ -138,8 +138,19 @@ where
         self
     }
 
-    /// Add chat history to the prompt request
-    pub fn with_history(mut self, history: Vec<Message>) -> Self {
+    /// Add chat history to the prompt request.
+    ///
+    /// Uses shared ownership so you can access the updated history after the request completes:
+    /// ```ignore
+    /// let history = Arc::new(RwLock::new(Vec::new()));
+    /// let mut stream = agent
+    ///     .stream_prompt("Hello")
+    ///     .with_history(history.clone())
+    ///     .await;
+    /// // ... consume stream ...
+    /// let updated = history.read().await;  // Access updated history
+    /// ```
+    pub fn with_history(mut self, history: Arc<RwLock<Vec<Message>>>) -> Self {
         self.chat_history = Some(history);
         self
     }
@@ -181,11 +192,9 @@ where
 
         let agent = self.agent;
 
-        let chat_history = if let Some(history) = self.chat_history {
-            Arc::new(RwLock::new(history))
-        } else {
-            Arc::new(RwLock::new(vec![]))
-        };
+        let chat_history = self
+            .chat_history
+            .unwrap_or_else(|| Arc::new(RwLock::new(vec![])));
 
         let mut current_max_depth = 0;
         let mut last_prompt_error = String::new();
