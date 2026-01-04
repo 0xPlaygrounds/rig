@@ -187,6 +187,12 @@ pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, CompletionError> {
     let mut full_history = Vec::new();
+
+    // Add documents as a user message at the beginning if present
+    if let Some(documents_message) = completion_request.normalized_documents() {
+        full_history.push(documents_message);
+    }
+
     full_history.extend(completion_request.chat_history);
 
     let additional_params = completion_request
@@ -763,7 +769,41 @@ pub mod gemini_api_types {
                         ));
                     };
 
-                    if !media_type.is_code() {
+                    // For text/plain documents (RAG context), convert to plain text
+                    if media_type == message::DocumentMediaType::TXT {
+                        use base64::Engine;
+                        let text = match data {
+                            DocumentSourceKind::String(text) => text.clone(),
+                            DocumentSourceKind::Base64(data) => {
+                                // Decode base64 if needed
+                                String::from_utf8(
+                                    base64::engine::general_purpose::STANDARD
+                                        .decode(&data)
+                                        .map_err(|e| {
+                                            MessageError::ConversionError(format!(
+                                                "Failed to decode base64: {e}"
+                                            ))
+                                        })?,
+                                )
+                                .map_err(|e| {
+                                    MessageError::ConversionError(format!(
+                                        "Invalid UTF-8 in document: {e}"
+                                    ))
+                                })?
+                            }
+                            _ => {
+                                return Err(MessageError::ConversionError(
+                                    "TXT documents must be String or Base64 encoded".to_string(),
+                                ));
+                            }
+                        };
+
+                        Ok(Part {
+                            thought: Some(false),
+                            part: PartKind::Text(text),
+                            ..Default::default()
+                        })
+                    } else if !media_type.is_code() {
                         let mime_type = media_type.to_mime_type().to_string();
 
                         let part = match data {
