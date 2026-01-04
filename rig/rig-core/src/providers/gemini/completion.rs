@@ -770,7 +770,18 @@ pub mod gemini_api_types {
                     };
 
                     // For text/plain documents (RAG context), convert to plain text
-                    if media_type == message::DocumentMediaType::TXT {
+                    if matches!(
+                        media_type,
+                        message::DocumentMediaType::TXT
+                            | message::DocumentMediaType::RTF
+                            | message::DocumentMediaType::HTML
+                            | message::DocumentMediaType::CSS
+                            | message::DocumentMediaType::MARKDOWN
+                            | message::DocumentMediaType::CSV
+                            | message::DocumentMediaType::XML
+                            | message::DocumentMediaType::Javascript
+                            | message::DocumentMediaType::Python
+                    ) {
                         use base64::Engine;
                         let text = match data {
                             DocumentSourceKind::String(text) => text.clone(),
@@ -793,7 +804,7 @@ pub mod gemini_api_types {
                             }
                             _ => {
                                 return Err(MessageError::ConversionError(
-                                    "TXT documents must be String or Base64 encoded".to_string(),
+                                    "Text-based documents must be String or Base64 encoded".to_string(),
                                 ));
                             }
                         };
@@ -2132,6 +2143,39 @@ mod tests {
             assert!(text.contains("Hello World!"));
         } else {
             panic!("Expected text part for TXT document, got: {:?}", content.parts[0]);
+        }
+    }
+
+    #[test]
+    fn test_markdown_document_conversion_to_text_part() {
+        // Test that MARKDOWN documents are converted to plain text parts
+        use crate::message::{DocumentMediaType, UserContent};
+
+        let doc = UserContent::document(
+            "# Heading\n\n* List item",
+            Some(DocumentMediaType::MARKDOWN),
+        );
+
+        let content: Content = message::Message::User {
+            content: crate::OneOrMany::one(doc),
+        }
+        .try_into()
+        .unwrap();
+
+        assert_eq!(content.role, Some(Role::User));
+        assert_eq!(content.parts.len(), 1);
+
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &content.parts[0]
+        {
+            assert_eq!(text, "# Heading\n\n* List item");
+        } else {
+            panic!(
+                "Expected text part for MARKDOWN document, got: {:?}",
+                content.parts[0]
+            );
         }
     }
 
