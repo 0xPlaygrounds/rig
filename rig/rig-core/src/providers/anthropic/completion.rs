@@ -715,20 +715,36 @@ where
 /// set or if set too high, the request will fail. The following values are based on the models
 /// available at the time of writing.
 fn calculate_max_tokens(model: &str) -> Option<u64> {
-    match model {
-        CLAUDE_4_OPUS => Some(32_000),
-        CLAUDE_4_SONNET | CLAUDE_3_7_SONNET => Some(64_000),
-        CLAUDE_3_5_SONNET | CLAUDE_3_5_HAIKU => Some(8_192),
-        _ => None,
+    if model.starts_with("claude-opus-4") {
+        Some(32000)
+    } else if model.starts_with("claude-sonnet-4") || model.starts_with("claude-3-7-sonnet") {
+        Some(64000)
+    } else if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
+        Some(8192)
+    } else if model.starts_with("claude-3-opus")
+        || model.starts_with("claude-3-sonnet")
+        || model.starts_with("claude-3-haiku")
+    {
+        Some(4096)
+    } else {
+        None
     }
 }
 
 fn calculate_max_tokens_custom(model: &str) -> u64 {
-    match model {
-        "claude-4-opus" => 32_000,
-        "claude-4-sonnet" | "claude-3.7-sonnet" => 64_000,
-        "claude-3.5-sonnet" | "claude-3.5-haiku" => 8_192,
-        _ => 4_096,
+    if model.starts_with("claude-opus-4") {
+        32000
+    } else if model.starts_with("claude-sonnet-4") || model.starts_with("claude-3-7-sonnet") {
+        64000
+    } else if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
+        8192
+    } else if model.starts_with("claude-3-opus")
+        || model.starts_with("claude-3-sonnet")
+        || model.starts_with("claude-3-haiku")
+    {
+        4096
+    } else {
+        2048
     }
 }
 
