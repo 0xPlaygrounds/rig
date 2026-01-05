@@ -41,11 +41,12 @@ impl PromptType for Extended {}
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxDepthError`] if the agent decides to call tools
 /// back to back.
-pub struct PromptRequest<'a, S, M, P>
+pub struct PromptRequest<'a, S, M, P, R = ()>
 where
     S: PromptType,
     M: CompletionModel,
     P: PromptHook<M>,
+    R: ToolResultReviewer,
 {
     /// The prompt message to send to the model
     prompt: Message,
@@ -62,9 +63,11 @@ where
     hook: Option<P>,
     /// How many tools should be executed at the same time (1 by default).
     concurrency: usize,
+    /// Optional reviewer for critiquing tool execution results
+    reviewer: Option<R>,
 }
 
-impl<'a, M> PromptRequest<'a, Standard, M, ()>
+impl<'a, M> PromptRequest<'a, Standard, M, (), ()>
 where
     M: CompletionModel,
 {
@@ -78,22 +81,24 @@ where
             state: PhantomData,
             hook: None,
             concurrency: 1,
+            reviewer: None,
         }
     }
 }
 
-impl<'a, S, M, P> PromptRequest<'a, S, M, P>
+impl<'a, S, M, P, R> PromptRequest<'a, S, M, P, R>
 where
     S: PromptType,
     M: CompletionModel,
     P: PromptHook<M>,
+    R: ToolResultReviewer,
 {
     /// Enable returning extended details for responses (includes aggregated token usage)
     ///
     /// Note: This changes the type of the response from `.send` to return a `PromptResponse` struct
     /// instead of a simple `String`. This is useful for tracking token usage across multiple turns
     /// of conversation.
-    pub fn extended_details(self) -> PromptRequest<'a, Extended, M, P> {
+    pub fn extended_details(self) -> PromptRequest<'a, Extended, M, P, R> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
@@ -102,11 +107,12 @@ where
             state: PhantomData,
             hook: self.hook,
             concurrency: self.concurrency,
+            reviewer: self.reviewer,
         }
     }
     /// Set the maximum depth for multi-turn conversations (ie, the maximum number of turns an LLM can have calling tools before writing a text response).
     /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxDepthError`].
-    pub fn multi_turn(self, depth: usize) -> PromptRequest<'a, S, M, P> {
+    pub fn multi_turn(self, depth: usize) -> PromptRequest<'a, S, M, P, R> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
@@ -115,6 +121,7 @@ where
             state: PhantomData,
             hook: self.hook,
             concurrency: self.concurrency,
+            reviewer: self.reviewer,
         }
     }
 
@@ -126,7 +133,7 @@ where
     }
 
     /// Add chat history to the prompt request
-    pub fn with_history(self, history: &'a mut Vec<Message>) -> PromptRequest<'a, S, M, P> {
+    pub fn with_history(self, history: &'a mut Vec<Message>) -> PromptRequest<'a, S, M, P, R> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: Some(history),
@@ -135,11 +142,12 @@ where
             state: PhantomData,
             hook: self.hook,
             concurrency: self.concurrency,
+            reviewer: self.reviewer,
         }
     }
 
     /// Attach a per-request hook for tool call events
-    pub fn with_hook<P2>(self, hook: P2) -> PromptRequest<'a, S, M, P2>
+    pub fn with_hook<P2>(self, hook: P2) -> PromptRequest<'a, S, M, P2, R>
     where
         P2: PromptHook<M>,
     {
@@ -151,6 +159,35 @@ where
             state: PhantomData,
             hook: Some(hook),
             concurrency: self.concurrency,
+            reviewer: self.reviewer,
+        }
+    }
+
+    /// Attach a reviewer to critique tool execution results.
+    ///
+    /// The reviewer's `critique()` method will be called after successful tool execution.
+    /// The returned string will be used as the final tool result.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let response = agent
+    ///     .prompt("List files")
+    ///     .with_reviewer(my_reviewer)
+    ///     .await?;
+    /// ```
+    pub fn with_reviewer<R2>(self, reviewer: R2) -> PromptRequest<'a, S, M, P, R2>
+    where
+        R2: ToolResultReviewer,
+    {
+        PromptRequest {
+            prompt: self.prompt,
+            chat_history: self.chat_history,
+            max_depth: self.max_depth,
+            agent: self.agent,
+            state: PhantomData,
+            hook: self.hook,
+            concurrency: self.concurrency,
+            reviewer: Some(reviewer),
         }
     }
 }
@@ -233,13 +270,49 @@ where
 
 impl<M> PromptHook<M> for () where M: CompletionModel {}
 
+/// Trait for reviewing/critiquing tool execution results.
+///
+/// This trait allows you to implement custom logic to evaluate tool execution results,
+/// such as using a smaller model to critique whether the result achieves the intended goal.
+pub trait ToolResultReviewer: Clone + WasmCompatSend + WasmCompatSync {
+    /// Critique a tool execution result and return the final output.
+    ///
+    /// This method is called after successful tool execution. The returned string
+    /// will be used as the tool result sent back to the LLM.
+    ///
+    /// # Arguments
+    /// * `tool_name` - The name of the tool that was executed
+    /// * `tool_call_id` - Optional call ID for the tool invocation
+    /// * `args` - The JSON string of arguments passed to the tool
+    /// * `result` - The result returned by the tool
+    /// * `cancel_sig` - Signal to check if the operation should be cancelled
+    ///
+    /// # Returns
+    /// The final output to use. Default implementation returns `result` unchanged.
+    #[allow(unused_variables)]
+    fn critique(
+        &self,
+        tool_name: &str,
+        tool_call_id: Option<String>,
+        args: &str,
+        result: &str,
+        cancel_sig: CancelSignal,
+    ) -> impl Future<Output = String> + WasmCompatSend {
+        let result = result.to_string();
+        async { result }
+    }
+}
+
+impl ToolResultReviewer for () {}
+
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
 ///  for the `IntoFuture` implementation. In the future, we should be able to use `impl Future<...>`
 ///  directly via the associated type.
-impl<'a, M, P> IntoFuture for PromptRequest<'a, Standard, M, P>
+impl<'a, M, P, R> IntoFuture for PromptRequest<'a, Standard, M, P, R>
 where
     M: CompletionModel,
     P: PromptHook<M> + 'static,
+    R: ToolResultReviewer + 'static,
 {
     type Output = Result<String, PromptError>;
     type IntoFuture = WasmBoxedFuture<'a, Self::Output>; // This future should not outlive the agent
@@ -249,10 +322,11 @@ where
     }
 }
 
-impl<'a, M, P> IntoFuture for PromptRequest<'a, Extended, M, P>
+impl<'a, M, P, R> IntoFuture for PromptRequest<'a, Extended, M, P, R>
 where
     M: CompletionModel,
     P: PromptHook<M> + 'static,
+    R: ToolResultReviewer + 'static,
 {
     type Output = Result<PromptResponse, PromptError>;
     type IntoFuture = WasmBoxedFuture<'a, Self::Output>; // This future should not outlive the agent
@@ -262,10 +336,11 @@ where
     }
 }
 
-impl<M, P> PromptRequest<'_, Standard, M, P>
+impl<M, P, R> PromptRequest<'_, Standard, M, P, R>
 where
     M: CompletionModel,
     P: PromptHook<M>,
+    R: ToolResultReviewer,
 {
     async fn send(self) -> Result<String, PromptError> {
         self.extended_details().send().await.map(|resp| resp.output)
@@ -287,10 +362,11 @@ impl PromptResponse {
     }
 }
 
-impl<M, P> PromptRequest<'_, Extended, M, P>
+impl<M, P, R> PromptRequest<'_, Extended, M, P, R>
 where
     M: CompletionModel,
     P: PromptHook<M>,
+    R: ToolResultReviewer,
 {
     async fn send(self) -> Result<PromptResponse, PromptError> {
         let agent_span = if tracing::Span::current().is_disabled() {
@@ -442,15 +518,18 @@ where
             }
 
             let hook = self.hook.clone();
+            let reviewer = self.reviewer.clone();
 
             let tool_calls: Vec<AssistantContent> = tool_calls.into_iter().cloned().collect();
             let tool_content = stream::iter(tool_calls)
                 .map(|choice| {
                     let hook1 = hook.clone();
                     let hook2 = hook.clone();
+                    let reviewer = reviewer.clone();
 
                     let cancel_sig1 = cancel_sig.clone();
                     let cancel_sig2 = cancel_sig.clone();
+                    let cancel_sig3 = cancel_sig.clone();
 
                     let tool_span = info_span!(
                         "execute_tool",
@@ -494,20 +573,38 @@ where
                                     return Err(ToolSetError::Interrupted);
                                 }
                             }
-                            let output =
+                            // Execute tool and track success/failure status
+                            let (output, tool_succeeded) =
                                 match agent.tool_server_handle.call_tool(tool_name, &args).await {
-                                    Ok(res) => res,
+                                    Ok(res) => (res, true),
                                     Err(e) => {
                                         tracing::warn!("Error while executing tool: {e}");
-                                        e.to_string()
+                                        (e.to_string(), false)
                                     }
                                 };
+                            // Only critique when tool execution succeeds
+                            let final_output = match (tool_succeeded, &reviewer) {
+                                (true, Some(reviewer)) => {
+                                    reviewer
+                                        .critique(
+                                            tool_name,
+                                            tool_call.call_id.clone(),
+                                            &args,
+                                            &output.to_string(),
+                                            cancel_sig3.clone(),
+                                        )
+                                        .await
+                                }
+                                _ => output.to_string(),
+                            };
+
+                            // on_tool_result sees the final output (including critique if any)
                             if let Some(hook) = hook2 {
                                 hook.on_tool_result(
                                     tool_name,
                                     tool_call.call_id.clone(),
                                     &args,
-                                    &output.to_string(),
+                                    &final_output,
                                     cancel_sig2.clone(),
                                 )
                                 .await;
@@ -516,20 +613,21 @@ where
                                     return Err(ToolSetError::Interrupted);
                                 }
                             }
-                            tool_span.record("gen_ai.tool.call.result", &output);
+
+                            tool_span.record("gen_ai.tool.call.result", &final_output);
                             tracing::info!(
-                                "executed tool {tool_name} with args {args}. result: {output}"
+                                "executed tool {tool_name} with args {args}. result: {final_output}"
                             );
                             if let Some(call_id) = tool_call.call_id.clone() {
                                 Ok(UserContent::tool_result_with_call_id(
                                     tool_call.id.clone(),
                                     call_id,
-                                    OneOrMany::one(output.into()),
+                                    OneOrMany::one(final_output.into()),
                                 ))
                             } else {
                                 Ok(UserContent::tool_result(
                                     tool_call.id.clone(),
-                                    OneOrMany::one(output.into()),
+                                    OneOrMany::one(final_output.into()),
                                 ))
                             }
                         } else {
