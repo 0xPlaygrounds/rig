@@ -60,7 +60,7 @@ qdrant-client = { version = "1.14.0", default-features = false, features = [
 quick-xml = "0.38.0"
 quote = "1.0.40"
 rayon = "1.10.0"
-reqwest = { version = "0.12.20", default-features = false }
+reqwest = { version = "0.13", default-features = false }
 url = "2.5"
 rusqlite = "0.32"
 scylla = "1.2.0"

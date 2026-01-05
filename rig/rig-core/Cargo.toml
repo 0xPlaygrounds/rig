@@ -32,7 +32,7 @@ mime_guess.workspace = true
 ordered-float = { workspace = true }
 quick-xml = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
-reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
+reqwest = { workspace = true, features = ["json", "stream", "multipart", "charset", "http2", "form", "query"] }
 rig-derive = { version = "0.1.10", path = "../rig-derive", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -84,7 +84,8 @@ tracing-opentelemetry = "0.31.0"
 
 
 [features]
-default = ["reqwest-tls"]
+# No TLS by default - rustls is now the default in reqwest 0.13
+default = []
 all = ["derive", "pdf", "rayon"]
 audio = []
 image = []
@@ -100,16 +101,20 @@ wasm = [
 ]
 rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
-reqwest-tls = ["reqwest/default"]
-# Replace "default-tls" with "rustls-tls" in "reqwest/default"
+# Enable native-tls backend (for users who specifically need OpenSSL/native TLS)
+reqwest-native-tls = ["reqwest/native-tls"]
+# Enable rustls backend explicitly (rustls is the default in reqwest 0.13)
+# This adds charset, http2 for full feature parity
 reqwest-rustls = [
-  "reqwest/rustls-tls",
+  "reqwest/rustls",
   "reqwest/charset",
   "reqwest/http2",
-  "reqwest/macos-system-configuration",
 ]
-reqwest-middleware = ["dep:reqwest-middleware"]
-reqwest-middleware-rustls = ["reqwest-middleware", "reqwest-middleware/rustls-tls"]
+# WARNING: reqwest-middleware features are temporarily incompatible with reqwest 0.13
+# See: https://github.com/TrueLayer/reqwest-middleware/issues/265
+# Uncomment when reqwest-middleware 0.5+ is available
+# reqwest-middleware = ["dep:reqwest-middleware"]
+# reqwest-middleware-rustls = ["reqwest-middleware", "reqwest-middleware/rustls-tls"]
 
 [[test]]
 name = "embed_macro"
