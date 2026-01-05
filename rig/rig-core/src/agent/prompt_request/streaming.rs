@@ -461,7 +461,7 @@ where
     }
 }
 
-/// helper function to stream a completion selfuest to stdout
+/// Helper function to stream a completion request to stdout.
 pub async fn stream_to_stdout<R>(
     stream: &mut StreamingResult<R>,
 ) -> Result<FinalResponse, std::io::Error> {
