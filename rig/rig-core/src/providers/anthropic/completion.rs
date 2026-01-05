@@ -744,7 +744,7 @@ fn calculate_max_tokens_custom(model: &str) -> u64 {
     {
         4096
     } else {
-        4096
+        2048
     }
 }
 
