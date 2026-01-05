@@ -44,6 +44,15 @@ AI-generated PRs may require additional review to ensure correctness and long-te
 
 Other than that, each PR will be taken on a case-by-case basis.
 
+### PRs that will be rejected
+As with every open source repo, not every contribution is within the scope of the repo and as Rig grows, so will the number of potential contributions - which also means defining an absolute list of things that are not within the scope of Rig. This includes but is not limited to:
+- Changes that would force model provider integrations to diverge from the original API (eg attempting to add a field to the OpenAI API that does not actually exist within the OpenAI API for the sake of satisfying another model provider)
+- PRs with arbitrary markdown files. The only markdown files we currently allow are ones that are already traditional convention (DEVELOPING.md, CONTRIBUTIONS.md, ARCHITECTURE.md, ... etc)
+- PRs that are found to be duplicates of other PRs
+
+This will be reviewed on a case by case basis, but generally unjustifiable breaking changes are much more likely to be rejected.
+
+
 ## Project Structure
 
 Rig is split up into multiple crates in a monorepo structure. The main crate `rig-core` contains all of the foundational abstractions for building with LLMs. This crate avoids adding many new dependencies to keep to lean and only really contains simple provider integrations on top of the base layer of abstractions. Side crates are leveraged to help add important first-party behavior without over burdening the main library with dependencies. For example, `rig-mongodb` contains extra dependencies to be able to interact with `mongodb` as a vector store.
