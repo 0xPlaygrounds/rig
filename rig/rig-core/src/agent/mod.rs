@@ -115,7 +115,8 @@ pub use crate::message::Text;
 pub use builder::{AgentBuilder, AgentBuilderSimple};
 pub use completion::Agent;
 pub use prompt_request::streaming::{
-    FinalResponse, MultiTurnStreamItem, StreamingError, StreamingPromptRequest, stream_to_stdout,
+    FinalResponse, MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult,
+    stream_to_stdout,
 };
 pub use prompt_request::{CancelSignal, PromptRequest, PromptResponse};
 pub use prompt_request::{PromptHook, StreamingPromptHook};
