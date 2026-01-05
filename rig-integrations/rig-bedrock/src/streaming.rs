@@ -94,6 +94,7 @@ impl CompletionModel {
                                     // Emit the delta so UI can show progress
                                     yield Ok(RawStreamingChoice::ToolCallDelta {
                                         id: tool_call.id.clone(),
+                                        name: None,
                                         delta,
                                     });
                                 }
@@ -135,9 +136,14 @@ impl CompletionModel {
                         match event.start.ok_or(CompletionError::ProviderError("ContentBlockStart has no data".into()))? {
                             aws_bedrock::ContentBlockStart::ToolUse(tool_use) => {
                                 current_tool_call = Some(ToolCallState {
-                                    name: tool_use.name,
-                                    id: tool_use.tool_use_id,
+                                    name: tool_use.name.clone(),
+                                    id: tool_use.tool_use_id.clone(),
                                     input_json: String::new(),
+                                });
+                                yield Ok(RawStreamingChoice::ToolCallDelta {
+                                    id: tool_use.tool_use_id,
+                                    name: Some(tool_use.name),
+                                    delta: String::new(),
                                 });
                             },
                             _ => yield Err(CompletionError::ProviderError("Stream is empty".into()))

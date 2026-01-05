@@ -212,10 +212,15 @@ where
 
                             if let Some(name) = &tool_call.function.name && !name.is_empty() {
                                     existing_tool_call.function.name = name.clone();
+                                    yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                                        id: existing_tool_call.id.clone(),
+                                        name: Some(name.clone()),
+                                        delta: String::new(),
+                                    });
                             }
 
-                            if let Some(chunk) = &tool_call.function.arguments {
                                 // Convert current arguments to string if needed
+                            if let Some(chunk) = &tool_call.function.arguments && !chunk.is_empty() {
                                 let current_args = match &existing_tool_call.function.arguments {
                                     serde_json::Value::Null => String::new(),
                                     serde_json::Value::String(s) => s.clone(),
@@ -238,6 +243,7 @@ where
                                 // Emit the delta so UI can show progress
                                 yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
                                     id: existing_tool_call.id.clone(),
+                                    name: None,
                                     delta: chunk.clone(),
                                 });
                             }

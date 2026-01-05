@@ -348,9 +348,9 @@ where
                                 }
                             }
                         },
-                        Ok(StreamedAssistantContent::ToolCallDelta { id, delta }) => {
+                        Ok(StreamedAssistantContent::ToolCallDelta { id, name, delta }) => {
                             if let Some(ref hook) = self.hook {
-                                hook.on_tool_call_delta(&id, &delta, cancel_signal.clone())
+                                hook.on_tool_call_delta(&id, name.as_deref(), &delta, cancel_signal.clone())
                                 .await;
 
                                 if cancel_signal.is_cancelled() {
@@ -524,10 +524,12 @@ where
     }
 
     #[allow(unused_variables)]
-    /// Called when receiving a tool call delta
+    /// Called when receiving a tool call delta.
+    /// `tool_name` is Some on the first delta for a tool call, None on subsequent deltas.
     fn on_tool_call_delta(
         &self,
         tool_call_id: &str,
+        tool_name: Option<&str>,
         tool_call_delta: &str,
         cancel_sig: CancelSignal,
     ) -> impl Future<Output = ()> + Send {

@@ -73,7 +73,11 @@ where
     /// A tool call response (in its entirety)
     ToolCall(RawStreamingToolCall),
     /// A tool call partial/delta
-    ToolCallDelta { id: String, delta: String },
+    ToolCallDelta {
+        id: String,
+        name: Option<String>,
+        delta: String,
+    },
     /// A reasoning (in its entirety)
     Reasoning {
         id: Option<String>,
@@ -286,9 +290,10 @@ where
                     stream.text = format!("{}{}", stream.text, text);
                     Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
                 }
-                RawStreamingChoice::ToolCallDelta { id, delta } => {
+                RawStreamingChoice::ToolCallDelta { id, name, delta } => {
                     Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCallDelta {
                         id,
+                        name,
                         delta,
                     })))
                 }
@@ -400,8 +405,8 @@ impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
                 RawStreamingChoice::Message(m) => {
                     Poll::Ready(Some(Ok(RawStreamingChoice::Message(m))))
                 }
-                RawStreamingChoice::ToolCallDelta { id, delta } => {
-                    Poll::Ready(Some(Ok(RawStreamingChoice::ToolCallDelta { id, delta })))
+                RawStreamingChoice::ToolCallDelta { id, name, delta } => {
+                    Poll::Ready(Some(Ok(RawStreamingChoice::ToolCallDelta { id, name, delta })))
                 }
                 RawStreamingChoice::Reasoning {
                     id,
@@ -550,8 +555,8 @@ mod tests {
                     println!("\nTool Call: {tc:?}");
                     chunk_count += 1;
                 }
-                Ok(StreamedAssistantContent::ToolCallDelta { delta, .. }) => {
-                    println!("\nTool Call delta: {delta:?}");
+                Ok(StreamedAssistantContent::ToolCallDelta { name, delta, .. }) => {
+                    println!("\nTool Call delta: name={name:?}, delta={delta:?}");
                     chunk_count += 1;
                 }
                 Ok(StreamedAssistantContent::Final(res)) => {
@@ -609,6 +614,7 @@ pub enum StreamedAssistantContent<R> {
     ToolCall(ToolCall),
     ToolCallDelta {
         id: String,
+        name: Option<String>,
         delta: String,
     },
     Reasoning(Reasoning),

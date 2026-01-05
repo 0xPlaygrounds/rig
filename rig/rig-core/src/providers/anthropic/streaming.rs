@@ -336,6 +336,7 @@ fn handle_event(
                     // Emit the delta so UI can show progress
                     return Some(Ok(RawStreamingChoice::ToolCallDelta {
                         id: tool_call.id.clone(),
+                        name: None,
                         delta: partial_json.clone(),
                     }));
                 }
@@ -375,7 +376,11 @@ fn handle_event(
                     id: id.clone(),
                     input_json: String::new(),
                 });
-                None
+                Some(Ok(RawStreamingChoice::ToolCallDelta {
+                    id: id.clone(),
+                    name: Some(name.clone()),
+                    delta: String::new(),
+                }))
             }
             Content::Thinking { .. } => {
                 *current_thinking = Some(ThinkingState::default());
@@ -640,8 +645,9 @@ mod tests {
         let choice = result.unwrap().unwrap();
 
         match choice {
-            RawStreamingChoice::ToolCallDelta { id, delta } => {
+            RawStreamingChoice::ToolCallDelta { id, name, delta } => {
                 assert_eq!(id, "tool_123");
+                assert!(name.is_none());
                 assert_eq!(delta, "{\"arg\":\"value");
             }
             _ => panic!("Expected ToolCallDelta choice, got {:?}", choice),

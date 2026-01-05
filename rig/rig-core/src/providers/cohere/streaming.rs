@@ -199,7 +199,13 @@ where
                                 let Some(name) = function.name.clone() else { continue; };
                                 let Some(arguments) = function.arguments.clone() else { continue; };
 
-                                current_tool_call = Some((id, name, arguments));
+                                current_tool_call = Some((id.clone(), name.clone(), arguments));
+
+                                yield Ok(RawStreamingChoice::ToolCallDelta {
+                                    id,
+                                    name: Some(name),
+                                    delta: String::new(),
+                                });
                             },
 
                             StreamingEvent::ToolCallDelta { delta: Some(delta) } => {
@@ -214,6 +220,7 @@ where
                                 // Emit the delta so UI can show progress
                                 yield Ok(RawStreamingChoice::ToolCallDelta {
                                     id: tc.0,
+                                    name: None,
                                     delta: arguments,
                                 });
                             },
