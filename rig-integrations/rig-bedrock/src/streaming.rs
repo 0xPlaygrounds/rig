@@ -6,7 +6,7 @@ use rig::completion::GetTokenUsage;
 use rig::streaming::StreamingCompletionResponse;
 use rig::{
     completion::CompletionError,
-    streaming::{RawStreamingChoice, RawStreamingToolCall},
+    streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent},
 };
 use serde::{Deserialize, Serialize};
 
@@ -94,7 +94,7 @@ impl CompletionModel {
                                     // Emit the delta so UI can show progress
                                     yield Ok(RawStreamingChoice::ToolCallDelta {
                                         id: tool_call.id.clone(),
-                                        delta,
+                                        content: ToolCallDeltaContent::Delta(delta),
                                     });
                                 }
                             },
@@ -135,9 +135,13 @@ impl CompletionModel {
                         match event.start.ok_or(CompletionError::ProviderError("ContentBlockStart has no data".into()))? {
                             aws_bedrock::ContentBlockStart::ToolUse(tool_use) => {
                                 current_tool_call = Some(ToolCallState {
-                                    name: tool_use.name,
-                                    id: tool_use.tool_use_id,
+                                    name: tool_use.name.clone(),
+                                    id: tool_use.tool_use_id.clone(),
                                     input_json: String::new(),
+                                });
+                                yield Ok(RawStreamingChoice::ToolCallDelta {
+                                    id: tool_use.tool_use_id,
+                                    content: ToolCallDeltaContent::Name(tool_use.name),
                                 });
                             },
                             _ => yield Err(CompletionError::ProviderError("Stream is empty".into()))
