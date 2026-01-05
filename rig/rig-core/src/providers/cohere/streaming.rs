@@ -5,7 +5,7 @@ use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::{
     AssistantContent, CohereCompletionRequest, Message, ToolCall, ToolCallFunction, ToolType, Usage,
 };
-use crate::streaming::{RawStreamingChoice, RawStreamingToolCall};
+use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
 use crate::telemetry::SpanCombinator;
 use crate::{json_utils, streaming};
 use async_stream::stream;
@@ -203,8 +203,7 @@ where
 
                                 yield Ok(RawStreamingChoice::ToolCallDelta {
                                     id,
-                                    name: Some(name),
-                                    delta: String::new(),
+                                    content: ToolCallDeltaContent::Name(name),
                                 });
                             },
 
@@ -220,8 +219,7 @@ where
                                 // Emit the delta so UI can show progress
                                 yield Ok(RawStreamingChoice::ToolCallDelta {
                                     id: tc.0,
-                                    name: None,
-                                    delta: arguments,
+                                    content: ToolCallDeltaContent::Delta(arguments),
                                 });
                             },
 

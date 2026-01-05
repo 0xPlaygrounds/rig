@@ -286,8 +286,7 @@ where
                                     if let StreamingItemDoneOutput { item: Output::FunctionCall(func), .. } = message {
                                         yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
                                             id: func.id.clone(),
-                                            name: Some(func.name.clone()),
-                                            delta: String::new(),
+                                            content: streaming::ToolCallDeltaContent::Name(func.name.clone()),
                                         });
                                     }
                                 }
@@ -334,7 +333,7 @@ where
                                     yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
                                 }
                                 ItemChunkKind::FunctionCallArgsDelta(delta) => {
-                                    yield Ok(streaming::RawStreamingChoice::ToolCallDelta { id: delta.item_id.clone(), name: None, delta: delta.delta.clone() })
+                                    yield Ok(streaming::RawStreamingChoice::ToolCallDelta { id: delta.item_id.clone(), content: streaming::ToolCallDeltaContent::Delta(delta.delta.clone()) })
                                 }
 
                                 _ => { continue }

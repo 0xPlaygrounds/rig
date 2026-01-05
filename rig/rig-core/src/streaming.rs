@@ -61,6 +61,13 @@ impl Default for PauseControl {
     }
 }
 
+/// The content of a tool call delta - either the tool name or argument data
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub enum ToolCallDeltaContent {
+    Name(String),
+    Delta(String),
+}
+
 /// Enum representing a streaming chunk from the model
 #[derive(Debug, Clone)]
 pub enum RawStreamingChoice<R>
@@ -75,8 +82,7 @@ where
     /// A tool call partial/delta
     ToolCallDelta {
         id: String,
-        name: Option<String>,
-        delta: String,
+        content: ToolCallDeltaContent,
     },
     /// A reasoning (in its entirety)
     Reasoning {
@@ -290,11 +296,10 @@ where
                     stream.text = format!("{}{}", stream.text, text);
                     Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
                 }
-                RawStreamingChoice::ToolCallDelta { id, name, delta } => {
+                RawStreamingChoice::ToolCallDelta { id, content } => {
                     Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCallDelta {
                         id,
-                        name,
-                        delta,
+                        content,
                     })))
                 }
                 RawStreamingChoice::Reasoning {
@@ -405,8 +410,8 @@ impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
                 RawStreamingChoice::Message(m) => {
                     Poll::Ready(Some(Ok(RawStreamingChoice::Message(m))))
                 }
-                RawStreamingChoice::ToolCallDelta { id, name, delta } => {
-                    Poll::Ready(Some(Ok(RawStreamingChoice::ToolCallDelta { id, name, delta })))
+                RawStreamingChoice::ToolCallDelta { id, content } => {
+                    Poll::Ready(Some(Ok(RawStreamingChoice::ToolCallDelta { id, content })))
                 }
                 RawStreamingChoice::Reasoning {
                     id,
@@ -555,8 +560,8 @@ mod tests {
                     println!("\nTool Call: {tc:?}");
                     chunk_count += 1;
                 }
-                Ok(StreamedAssistantContent::ToolCallDelta { name, delta, .. }) => {
-                    println!("\nTool Call delta: name={name:?}, delta={delta:?}");
+                Ok(StreamedAssistantContent::ToolCallDelta { id, content }) => {
+                    println!("\nTool Call delta: id={id:?}, content={content:?}");
                     chunk_count += 1;
                 }
                 Ok(StreamedAssistantContent::Final(res)) => {
@@ -614,8 +619,7 @@ pub enum StreamedAssistantContent<R> {
     ToolCall(ToolCall),
     ToolCallDelta {
         id: String,
-        name: Option<String>,
-        delta: String,
+        content: ToolCallDeltaContent,
     },
     Reasoning(Reasoning),
     ReasoningDelta {

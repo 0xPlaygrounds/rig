@@ -348,9 +348,13 @@ where
                                 }
                             }
                         },
-                        Ok(StreamedAssistantContent::ToolCallDelta { id, name, delta }) => {
+                        Ok(StreamedAssistantContent::ToolCallDelta { id, content }) => {
                             if let Some(ref hook) = self.hook {
-                                hook.on_tool_call_delta(&id, name.as_deref(), &delta, cancel_signal.clone())
+                                let (name, delta) = match &content {
+                                    rig::streaming::ToolCallDeltaContent::Name(n) => (Some(n.as_str()), ""),
+                                    rig::streaming::ToolCallDeltaContent::Delta(d) => (None, d.as_str()),
+                                };
+                                hook.on_tool_call_delta(&id, name, delta, cancel_signal.clone())
                                 .await;
 
                                 if cancel_signal.is_cancelled() {

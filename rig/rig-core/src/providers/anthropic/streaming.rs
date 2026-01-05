@@ -13,7 +13,9 @@ use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
-use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, StreamingResult};
+use crate::streaming::{
+    self, RawStreamingChoice, RawStreamingToolCall, StreamingResult, ToolCallDeltaContent,
+};
 use crate::telemetry::SpanCombinator;
 
 #[derive(Debug, Deserialize)]
@@ -336,8 +338,7 @@ fn handle_event(
                     // Emit the delta so UI can show progress
                     return Some(Ok(RawStreamingChoice::ToolCallDelta {
                         id: tool_call.id.clone(),
-                        name: None,
-                        delta: partial_json.clone(),
+                        content: ToolCallDeltaContent::Delta(partial_json.clone()),
                     }));
                 }
                 None
@@ -378,8 +379,7 @@ fn handle_event(
                 });
                 Some(Ok(RawStreamingChoice::ToolCallDelta {
                     id: id.clone(),
-                    name: Some(name.clone()),
-                    delta: String::new(),
+                    content: ToolCallDeltaContent::Name(name.clone()),
                 }))
             }
             Content::Thinking { .. } => {
@@ -645,10 +645,12 @@ mod tests {
         let choice = result.unwrap().unwrap();
 
         match choice {
-            RawStreamingChoice::ToolCallDelta { id, name, delta } => {
+            RawStreamingChoice::ToolCallDelta { id, content } => {
                 assert_eq!(id, "tool_123");
-                assert!(name.is_none());
-                assert_eq!(delta, "{\"arg\":\"value");
+                match content {
+                    ToolCallDeltaContent::Delta(delta) => assert_eq!(delta, "{\"arg\":\"value"),
+                    _ => panic!("Expected Delta content"),
+                }
             }
             _ => panic!("Expected ToolCallDelta choice, got {:?}", choice),
         }
