@@ -49,7 +49,7 @@
 - [Who's using Rig in production?](#who-is-using-rig-in-production)
 - [Get Started](#get-started)
   - [Simple example](#simple-example)
-- [Integrations](#integrations)
+- [Integrations](#supported-integrations)
 
 ## What is Rig?
 Rig is a Rust library for building scalable, modular, and ergonomic **LLM-powered** applications.
